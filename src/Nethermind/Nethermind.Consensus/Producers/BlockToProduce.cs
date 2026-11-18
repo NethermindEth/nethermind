@@ -47,7 +47,11 @@ namespace Nethermind.Consensus.Producers
             : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals) => Transactions = transactions;
 
         public long TxByteLength { get; internal set; }
+        public IReadOnlySet<Transaction>? TransactionsExemptFromByteLimit { get; set; }
 
-        public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);
+        public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals)
+        {
+            TransactionsExemptFromByteLimit = TransactionsExemptFromByteLimit,
+        };
     }
 }

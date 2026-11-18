@@ -81,7 +81,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig, IJsonRpcConfig
         ISpecProvider specProvider,
         ILogManager logManager)
         : DbPersistingBlockTracer<ParityLikeTxTrace, ParityLikeTxTracer>(
-            new ParityLikeBlockTracer(traceStoreConfig.TraceTypes, specProvider),
+            new ParityLikeBlockTracer(traceStoreConfig.TraceTypes, specProvider) { MaxRetainedBytes = long.MaxValue },
             db,
             traceSerializer,
             logManager);

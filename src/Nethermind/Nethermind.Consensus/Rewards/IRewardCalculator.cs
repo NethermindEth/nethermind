@@ -14,5 +14,8 @@ namespace Nethermind.Consensus.Rewards
         /// <remarks>Must depend only on the header and configuration, not on state: callers may ask it outside block
         /// processing, from any thread, on an instance whose processing scope has been returned.</remarks>
         bool MayReward(BlockHeader header) => true;
+
+        /// <summary>Whether calculating rewards for this header requires a contract call.</summary>
+        bool UsesRewardContract(BlockHeader header) => false;
     }
 }

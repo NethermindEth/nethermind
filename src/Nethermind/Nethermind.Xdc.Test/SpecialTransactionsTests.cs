@@ -6,6 +6,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -34,6 +35,26 @@ namespace Nethermind.Xdc.Test;
 
 internal class SpecialTransactionsTests
 {
+    [Test]
+    public void Block_validation_matches_the_intrinsic_gas_rules_for_signing_transactions([Values] bool isSigning)
+    {
+        XdcReleaseSpec spec = new() { BlockSignerContract = TestItem.AddressA };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+        IHeaderValidator headerValidator = Substitute.For<IHeaderValidator>();
+        headerValidator.ValidateOrphaned(Arg.Any<BlockHeader>(), out Arg.Any<string?>()).Returns(true);
+        XdcBlockValidator validator = new(new TxValidator(1), headerValidator, Substitute.For<IUnclesValidator>(),
+            specProvider, LimboLogs.Instance);
+        Transaction tx = Build.A.Transaction
+            .WithTo(isSigning ? spec.BlockSignerContract : TestItem.AddressB)
+            .WithGasLimit(0)
+            .SignedAndResolved()
+            .TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+
+        Assert.That(validator.ValidateOrphanedBlock(block, out string? error), Is.EqualTo(isSigning), error);
+    }
+
     private bool IsTimeForOnchainSignature(IXdcReleaseSpec spec, ulong blockNumber) =>
         blockNumber % spec.MergeSignRange == 0;
 

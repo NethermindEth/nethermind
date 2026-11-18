@@ -30,14 +30,16 @@ namespace Nethermind.Consensus.Clique
         {
         }
 
-        public object Clone() =>
-            new Snapshot(Number,
-                Hash,
-                new SortedList<Address, ulong>(Signers, GenericComparer.GetOptimized<Address>()),
-                [with(Tally)])
+        public object Clone()
+        {
+            Dictionary<Address, Tally> tallyCopy = [with(Tally.Count, Tally.Comparer)];
+            foreach ((Address address, Tally tally) in Tally)
             {
-                Votes = [.. Votes]
-            };
+                tallyCopy.Add(address, new Tally(tally.Authorize) { Votes = tally.Votes });
+            }
+
+            return new Snapshot(Number, Hash, Signers, tallyCopy) { Votes = [.. Votes] };
+        }
 
         public ulong SignerLimit => (ulong)Signers.Count / 2 + 1;
     }

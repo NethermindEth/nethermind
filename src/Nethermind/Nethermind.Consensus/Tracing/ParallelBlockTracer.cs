@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using Autofac;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
@@ -206,15 +207,15 @@ public sealed partial class ParallelBlockTracer : IParallelBlockTracer, IDisposa
     }
 
     /// <summary>False when the environment cannot seed or the tracer cannot be bounded; the caller replays the block.</summary>
+    /// <remarks>Called holding a permit of <paramref name="slots"/>, which it gives back.</remarks>
     private bool TraceOne<TTrace>(Block block, BlockHeader parent, Transaction[] transactions, int index, ParallelTraceBudget slots, IPrefixStateSeedSource seeds,
         Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction, ParallelTraceResults<TTrace> results, CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
         Hash256 hash = transactions[index].Hash!;
         IReadOnlyCollection<TTrace>? traces = null;
-        slots.Wait(token);
         try
         {
+            token.ThrowIfCancellationRequested();
             using Scope<Components> scope = RentEnvironment(parent);
             // Every environment resolves the same calculator, and the first transaction always rents one before the
             // reward pass is considered.

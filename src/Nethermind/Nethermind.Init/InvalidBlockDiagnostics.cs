@@ -105,7 +105,7 @@ public sealed class InvalidBlockDiagnostics(
     {
         List<IBlockTracer> tracers = [];
         if ((dumpOptions & DumpOptions.Receipts) != 0) tracers.Add(new BlockReceiptsTracer());
-        if ((dumpOptions & DumpOptions.Parity) != 0) tracers.Add(new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace, specProvider));
+        if ((dumpOptions & DumpOptions.Parity) != 0) tracers.Add(new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace, specProvider) { MaxRetainedBytes = long.MaxValue });
         if ((dumpOptions & DumpOptions.Geth) != 0) tracers.Add(new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }, specProvider));
         return tracers;
     }

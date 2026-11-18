@@ -56,14 +56,16 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     filter.FromBlock,
                     filter.ToBlock,
                     filter.Address,
-                    filter.Topics);
+                    filter.Topics,
+                    setId: false);
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Created LogFilter with the same arguments like \"filter\"");
             }
             else
             {
                 _filter = filterStore.CreateLogFilter(
                     BlockParameter.Latest,
-                    BlockParameter.Latest);
+                    BlockParameter.Latest,
+                    setId: false);
                 if (_logger.IsTrace) _logger.Trace($"Logs Subscription {Id}: Argument \"filter\" was null and created LogFilter with arguments: FromBlock: BlockParameter.Latest, ToBlock: BlockParameter.Latest");
             }
 

@@ -77,6 +77,15 @@ public class ModExpPrecompileTests : PrecompileTests<ModExpPrecompile, ModExpPre
         }
     }
 
+    [TestCase("80000000", "00000000", TestName = "Base length above int range with no modulus bytes returns zero")]
+    [TestCase("00000001", "80000000", TestName = "Exponent length above int range with no modulus bytes returns zero")]
+    public void Lengths_above_int_range_leave_no_modulus_bytes(string baseLength, string expLength) =>
+        RunTest(baseLength.PadLeft(64, '0') + expLength.PadLeft(64, '0') + "1".PadLeft(64, '0') + "02", "00", true, Prague.Instance);
+
+    [Test]
+    public void Fails_when_modulus_length_exceeds_array_limit([Values("7fffffd0", "80000000")] string modulusLength) =>
+        RunTest(new string('0', 128) + modulusLength.PadLeft(64, '0') + "01", "", false, Prague.Instance);
+
     [TestCaseSource(nameof(ReducibleBases))]
     public void TestReducibleBase(string input, string expectedOutput, bool status)
     {

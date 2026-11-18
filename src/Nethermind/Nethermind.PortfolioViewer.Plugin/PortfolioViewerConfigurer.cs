@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -81,6 +82,15 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         "image/png", "image/jpeg", "image/gif", "image/webp", "image/avif", "image/apng", "image/bmp", "image/svg+xml",
         "video/mp4", "video/webm", "video/ogg", "audio/mpeg", "audio/ogg", "audio/wav", "audio/webm", "application/json",
     ];
+
+    // Siblings receive these calls on loopback, where they can expose additional RPC modules.
+    private static readonly HashSet<string> PortfolioRpcMethods =
+    [
+        with(StringComparer.Ordinal),
+        "eth_blockNumber", "eth_call", "eth_chainId", "eth_getBalance",
+        "eth_getBlockByNumber", "eth_getCode", "eth_getLogs", "eth_syncing",
+    ];
+    private static readonly JsonDocumentOptions ProxyJsonOptions = new() { AllowDuplicateProperties = false };
 
     private static readonly JsonSerializerOptions JsonOpts =
         new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, TypeInfoResolver = PortfolioViewerJsonContext.Default };
@@ -317,6 +327,41 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
     }
 
+    private const int MaxProxyBodyBytes = 1024 * 1024;
+
+    private static async Task<bool> ReadProxyBodyAsync(HttpContext context, MemoryStream body)
+    {
+        if (context.Request.ContentLength <= MaxProxyBodyBytes || context.Request.ContentLength is null)
+        {
+            const int bufferSize = 16 * 1024;
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
+            try
+            {
+                while (true)
+                {
+                    int remaining = MaxProxyBodyBytes - (int)body.Length;
+                    int read = await context.Request.Body.ReadAsync(
+                        buffer.AsMemory(0, Math.Min(bufferSize, remaining + 1)), context.RequestAborted);
+                    if (read == 0)
+                    {
+                        body.Position = 0;
+                        return true;
+                    }
+
+                    if (read > remaining) break;
+                    body.Write(buffer.AsSpan(0, read));
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+        }
+
+        context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        return false;
+    }
+
     private async Task ProxyAsync(HttpContext context)
     {
         context.Request.Path.StartsWithSegments(ProxyPathPrefix, out PathString remaining);
@@ -326,8 +371,58 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
             return;
         }
 
+        using MemoryStream body = new();
+        if (!await ReadProxyBodyAsync(context, body)) return;
+        if (!AllowsPortfolioRequest(body.GetBuffer().AsMemory(0, checked((int)body.Length))))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
         context.Response.ContentType = "application/json";
-        await siblings.ProxyAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
+        await siblings.ProxyAsync(port, body, context.Response.Body, context.RequestAborted);
+    }
+
+    private static bool AllowsPortfolioRequest(ReadOnlyMemory<byte> body)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(body, ProxyJsonOptions);
+            JsonElement root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Array) return IsPortfolioCall(root);
+            if (root.GetArrayLength() == 0) return false;
+            foreach (JsonElement request in root.EnumerateArray())
+            {
+                if (!IsPortfolioCall(request)) return false;
+            }
+
+            return true;
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsPortfolioCall(JsonElement request)
+    {
+        if (request.ValueKind != JsonValueKind.Object) return false;
+
+        bool allowedMethod = false;
+        foreach (JsonProperty property in request.EnumerateObject())
+        {
+            if (!string.Equals(property.Name, "method", StringComparison.OrdinalIgnoreCase)) continue;
+            if (!property.NameEquals("method")
+                || property.Value.ValueKind != JsonValueKind.String
+                || !PortfolioRpcMethods.Contains(property.Value.GetString()!))
+            {
+                return false;
+            }
+
+            allowedMethod = true;
+        }
+
+        return allowedMethod;
     }
 
     private async Task ProxyDetectAsync(HttpContext context)
@@ -339,8 +434,29 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
             return;
         }
 
+        using MemoryStream requestBody = new();
+        if (!await ReadProxyBodyAsync(context, requestBody)) return;
+
+        DetectPost? request;
+        try
+        {
+            request = await TypeInfoJsonSerializer.DeserializeAsync<DetectPost>(requestBody, JsonOpts, context.RequestAborted);
+        }
+        catch (JsonException)
+        {
+            request = null;
+        }
+
+        if (request is null || !Address.TryParse(request.Address, out _))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            return;
+        }
+
+        // A sibling without the portfolio plugin can dispatch a JSON-RPC request on this path.
+        using MemoryStream body = new(TypeInfoJsonSerializer.SerializeToUtf8Bytes(request, JsonOpts));
         context.Response.ContentType = "application/json";
-        await siblings.ProxyDetectAsync(port, context.Request.Body, context.Response.Body, context.RequestAborted);
+        await siblings.ProxyDetectAsync(port, body, context.Response.Body, context.RequestAborted);
     }
 
     private async Task ServeDetectGetAsync(HttpContext context)

@@ -224,6 +224,9 @@ public class StatelessBlockTree : IBlockTree, IBlockhashCache, IHeaderFinder
         set => throw new NotSupportedException();
     }
 
+    /// <inheritdoc/>
+    public void ReplaceSyncPivot((ulong BlockNumber, Hash256 BlockHash) pivot) => throw new NotSupportedException();
+
     public bool IsProcessingBlock
     {
         get => throw new NotSupportedException();

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -36,6 +35,53 @@ public partial class ParityLikeTxTracer : TxTracer
 
     protected bool _treatGasParityStyle;
     protected bool _gasAlreadySetForCurrentOp;
+
+    /// <summary>The default limit of the kept trace data, in bytes.</summary>
+    public const long DefaultMaxRetainedBytes = 256 * 1024 * 1024;
+
+    /// <summary>
+    /// The bytes charged for each buffered <c>vmTrace</c> operation: its object (72 bytes), its slot in the operation
+    /// list and the header of its push array, rounded up.
+    /// </summary>
+    public const int RetainedOperationBytes = 128;
+
+    /// <summary>The bytes charged for each pushed stack item on top of its length: its array header and its slot in the push array.</summary>
+    public const int RetainedStackItemBytes = 32;
+
+    /// <summary>The smallest length charged for a stack item, as an array keeps at least 8 bytes of data.</summary>
+    public const int MinStackItemBytes = 8;
+
+    /// <summary>The bytes charged for a memory change on top of its data: its object and its array header.</summary>
+    public const int RetainedMemoryChangeBytes = 56;
+
+    /// <summary>The bytes charged for a storage change on top of its key and value: its object and the two array headers.</summary>
+    public const int RetainedStorageChangeBytes = 80;
+
+    /// <summary>The action, result, and subtrace list metadata and its parent list slot.</summary>
+    public const int RetainedActionBytes = 192;
+    private const int RetainedArrayHeaderBytes = 24;
+    private const int RetainedAccountChangeBytes = 128;
+    private const int RetainedScalarChangeBytes = 96;
+    private const int RetainedByteChangeBytes = 32;
+    private const int RetainedStorageDictionaryBytes = 96;
+    private const int RetainedStorageSlotBytes = 80;
+
+    private long _retainedBytes;
+
+    private TraceDataBudget? _dataBudget;
+
+    /// <summary>
+    /// The budget that the data this tracer keeps is charged to. It is created with
+    /// <see cref="DefaultMaxRetainedBytes"/> when not set.
+    /// </summary>
+    public TraceDataBudget DataBudget
+    {
+        get => _dataBudget ??= new TraceDataBudget(DefaultMaxRetainedBytes);
+        init => _dataBudget = value;
+    }
+
+    /// <summary>The position in its block of the transaction traced now; null when no transaction is.</summary>
+    public int? TransactionPosition => _trace.TransactionPosition;
 
     /// <param name="spec">The block's spec, which prices an EIP-8141 frame transaction's gas budget for its root;
     /// without it the root reports only the frame limits.</param>
@@ -150,8 +196,37 @@ public partial class ParityLikeTxTracer : TxTracer
 
     protected virtual ParityTraceAction RentAction() => new();
 
+    private ParityTraceAction CreateRetainedAction()
+    {
+        Retain(RetainedActionBytes);
+        return RentAction();
+    }
+
+    /// <summary>The approximate retained metadata charge for an action and its address array.</summary>
+    public static int GetActionMetadataSize(ParityTraceAction action) => RetainedActionBytes + TraceAddressSize(action.TraceAddress);
+
+    private static int TraceAddressSize(in CappedArray<int> address) =>
+        address.UnderlyingLength > 0 ? RetainedArrayHeaderBytes + address.UnderlyingLength * sizeof(int) : 0;
+
+    private CappedArray<int> CreateRetainedTraceAddress(int length)
+    {
+        CappedArray<int> address = RentTraceAddress(length);
+        try
+        {
+            Retain(TraceAddressSize(address));
+            return address;
+        }
+        catch (TraceDataLimitExceededException)
+        {
+            ReturnTraceAddress(address);
+            throw;
+        }
+    }
+
     protected virtual CappedArray<int> RentTraceAddress(int length) =>
         length == 0 ? CappedArray<int>.Empty : new CappedArray<int>(new int[length], length);
+
+    protected virtual void ReturnTraceAddress(CappedArray<int> address) { }
 
     protected virtual ParityAccountStateChange RentAccountStateChange() => new();
 
@@ -166,6 +241,7 @@ public partial class ParityLikeTxTracer : TxTracer
     protected virtual CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
     {
         if (input.IsEmpty) return CappedArray<byte>.Empty;
+        Retain(input.Length);
         byte[] copy = new byte[input.Length];
         input.Span.CopyTo(copy);
         return new CappedArray<byte>(copy, copy.Length);
@@ -174,19 +250,62 @@ public partial class ParityLikeTxTracer : TxTracer
     protected virtual void ReturnInputBytes(in CappedArray<byte> input) { }
 
     /// <summary>Takes back an action that left its frame without joining the trace, which nothing references any more.</summary>
-    protected virtual void ReturnExcludedAction(ParityTraceAction action) { }
+    protected virtual void ReturnExcludedAction(ParityTraceAction action) =>
+        ReleaseRetainedData(action.Input.UnderlyingLength);
 
     // Only the action tree reads the input, and BuildResult drops it unless Trace was requested.
-    private CappedArray<byte> CopyActionInput(ReadOnlyMemory<byte> input) =>
-        (_parityTraceTypes & ParityTraceTypes.Trace) != 0 ? CopyInput(input) : CappedArray<byte>.Empty;
+    private CappedArray<byte> CopyActionInput(ReadOnlyMemory<byte> input)
+    {
+        if ((_parityTraceTypes & ParityTraceTypes.Trace) == 0) return CappedArray<byte>.Empty;
+        return CopyInput(input);
+    }
+
+    protected void Retain(int length)
+    {
+        _retainedBytes += length;
+        ChargeRetainedData(length);
+    }
+
+    protected virtual void ChargeRetainedData(int length) => DataBudget.Add(length);
+
+    protected void TransferRetainedData(int length) => _retainedBytes -= length;
+
+    /// <summary>Counts in the trace <paramref name="length"/> bytes that are charged already, without charging them again.</summary>
+    protected void TakeOverRetainedData(int length) => _retainedBytes += length;
+
+    private void ReleaseRetainedData(int length)
+    {
+        TransferRetainedData(length);
+        DataBudget.Release(length);
+    }
+
+    /// <summary>
+    /// Gives back to <see cref="DataBudget"/> the bytes this tracer charged since it started or last gave them back.
+    /// Called once the trace it kept is released, also when the budget is shared with other tracers.
+    /// </summary>
+    public virtual void ReleaseRetainedData()
+    {
+        DataBudget.Release(_retainedBytes);
+        _retainedBytes = 0;
+    }
 
     protected void ResetTracerState(Block block, Transaction? tx)
     {
+        ReleaseRetainedData();
         _tx = tx;
         _trace.TransactionHash = tx?.Hash;
         _trace.TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx);
         _trace.BlockNumber = block.Number;
         _trace.BlockHash = block.Hash!;
+        _treatGasParityStyle = false;
+        _gasAlreadySetForCurrentOp = false;
+        _frameTx = CreateFrameTxTraceBuilder(tx);
+    }
+
+    protected void ClearTraceReferences()
+    {
+        _tx = null;
+        _frameTx = null;
         _trace.Output = null;
         _trace.Action = null;
         _trace.VmTrace = null;
@@ -198,9 +317,6 @@ public partial class ParityLikeTxTracer : TxTracer
         _currentPushList.Clear();
         _vmTraceStack.Clear();
         _currentVmTrace = (null!, null!);
-        _treatGasParityStyle = false;
-        _gasAlreadySetForCurrentOp = false;
-        _frameTx = CreateFrameTxTraceBuilder(tx);
     }
 
     private void PushAction(ParityTraceAction action)
@@ -220,7 +336,16 @@ public partial class ParityLikeTxTracer : TxTracer
         if (_currentAction is not null)
         {
             int parentLen = _currentAction.TraceAddress.Length;
-            CappedArray<int> traceAddress = RentTraceAddress(parentLen + 1);
+            CappedArray<int> traceAddress;
+            try
+            {
+                traceAddress = CreateRetainedTraceAddress(parentLen + 1);
+            }
+            catch (TraceDataLimitExceededException)
+            {
+                ReturnExcludedAction(action);
+                throw;
+            }
             ReadOnlySpan<int> parentSpan = _currentAction.TraceAddress.AsSpan();
             Span<int> childSpan = traceAddress.AsSpan();
             parentSpan.CopyTo(childSpan);
@@ -236,6 +361,14 @@ public partial class ParityLikeTxTracer : TxTracer
         {
             _trace.Action = action;
             action.TraceAddress = CappedArray<int>.Empty;
+        }
+    }
+
+    protected void ReturnActiveExcludedActions()
+    {
+        foreach (ParityTraceAction action in _actionStack)
+        {
+            if (!action.IncludeInTrace && action != _trace.Action) ReturnExcludedAction(action);
         }
     }
 
@@ -266,6 +399,8 @@ public partial class ParityLikeTxTracer : TxTracer
 
         if (!popped.IncludeInTrace && popped != _trace.Action)
         {
+            ReleaseRetainedData(popped.Result?.Output?.Length ?? 0);
+            ReleaseRetainedData(GetActionMetadataSize(popped));
             ReturnExcludedAction(popped);
         }
     }
@@ -298,6 +433,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
         if (!IsTracingActions)
         {
+            Retain(output.Length);
             _trace.Output = output;
             return;
         }
@@ -322,6 +458,7 @@ public partial class ParityLikeTxTracer : TxTracer
             throw new InvalidOperationException($"Closing trace at level {_currentAction!.TraceAddress.Length}");
         }
 
+        if (!IsTracingActions) Retain(output.Length);
         _trace.Output = output;
 
         if (!IsTracingActions) return;
@@ -341,7 +478,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     private ParityTraceAction CreateRootActionFromTx()
     {
-        ParityTraceAction action = RentAction();
+        ParityTraceAction action = CreateRetainedAction();
         action.From = _tx!.SenderAddress;
         action.To = _tx.To;
         action.Value = _tx.Value;
@@ -353,6 +490,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
+        Retain(RetainedOperationBytes);
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
         operationTrace.Pc = pc;
@@ -405,96 +543,109 @@ public partial class ParityLikeTxTracer : TxTracer
         }
     }
 
-    public override void ReportStackPush(in ReadOnlySpan<byte> stackItem) => _currentPushList.Add(stackItem.ToArray());
+    public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+    {
+        Retain(Math.Max(stackItem.Length, MinStackItemBytes) + RetainedStackItemBytes);
+        _currentPushList.Add(stackItem.ToArray());
+    }
 
     public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
     {
-        if (data.Length != 0)
+        if (data.IsEmpty) return;
+        if (_currentOperation!.Memory is not { } previous)
         {
-            _currentOperation!.Memory = new ParityMemoryChangeTrace { Offset = offset, Data = data.ToArray() };
+            Retain(data.Length + RetainedMemoryChangeBytes);
+            _currentOperation.Memory = new ParityMemoryChangeTrace { Offset = offset, Data = data.ToArray() };
+            return;
         }
+
+        int delta = data.Length - previous.Data.Length;
+        if (delta > 0) Retain(delta);
+        previous.Data = data.ToArray();
+        previous.Offset = offset;
+        if (delta < 0) ReleaseRetainedData(-delta);
     }
 
-    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value) =>
+    public override void ReportOperationStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+    {
+        Retain(key.Length + value.Length + RetainedStorageChangeBytes);
         _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
+    }
 
     public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
-        if (_trace.StateChanges is null)
-        {
-            throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
-        }
-
-        ref ParityAccountStateChange? value =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
-        if (!exists)
-        {
-            value = RentAccountStateChange();
-        }
-        else
-        {
-            before = value.Balance?.Before ?? before;
-        }
-
-        value.Balance = RentNullableUInt256StateChange(before, after);
+        ParityAccountStateChange value = GetAccountChange(address);
+        value.Balance = UpdateScalarChange(value.Balance, before, after);
     }
 
     public override void ReportCodeChange(Address address, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
     {
-        if (_trace.StateChanges is null)
-        {
-            throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
-        }
-
-        ref ParityAccountStateChange? value =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
-        byte[]? previous = null;
-        if (!exists)
-        {
-            value = RentAccountStateChange();
-        }
-        else
-        {
-            previous = value.Code?.Before;
-        }
-
-        value.Code = RentByteStateChange(previous ?? AsArrayOrNull(before), AsArrayOrNull(after));
+        ParityAccountStateChange value = GetAccountChange(address);
+        value.Code = UpdateByteChange(value.Code, value.Code?.Before is { } previous ? previous : before, after);
     }
 
     public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
     {
-        ref ParityAccountStateChange? value =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
-        if (!exists)
-        {
-            value = RentAccountStateChange();
-        }
-        else
-        {
-            before = value.Nonce?.Before ?? before;
-        }
-
-        value.Nonce = RentNullableUInt256StateChange(before, after);
+        ParityAccountStateChange value = GetAccountChange(address);
+        value.Nonce = UpdateScalarChange(value.Nonce, before, after);
     }
 
     public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
     {
-        ref ParityAccountStateChange? value =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
-        if (!exists)
+        ParityAccountStateChange value = GetAccountChange(storageCell.Address);
+        if (value.Storage is null)
         {
+            Retain(RetainedStorageDictionaryBytes);
+            value.Storage = RentStorageDictionary();
+        }
+
+        value.Storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]>? existing);
+        if (existing is null) Retain(RetainedStorageSlotBytes);
+        value.Storage[storageCell.Index] = UpdateByteChange(existing, existing?.Before ?? before, after);
+    }
+
+    private ParityAccountStateChange GetAccountChange(Address address)
+    {
+        Dictionary<Address, ParityAccountStateChange> changes = _trace.StateChanges ??
+            throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
+        if (!changes.TryGetValue(address, out ParityAccountStateChange? value))
+        {
+            Retain(RetainedAccountChangeBytes);
             value = RentAccountStateChange();
+            changes.Add(address, value);
         }
+        return value;
+    }
 
-        Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= RentStorageDictionary();
-        ref ParityStateChange<byte[]>? change =
-            ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
-        if (exists)
+    private ParityStateChange<UInt256?> UpdateScalarChange(ParityStateChange<UInt256?>? change, UInt256? before, UInt256? after)
+    {
+        if (change is null)
         {
-            before = change.Before ?? before;
+            Retain(RetainedScalarChangeBytes);
+            return RentNullableUInt256StateChange(before, after);
+        }
+        change.Before ??= before;
+        change.After = after;
+        return change;
+    }
+
+    private ParityStateChange<byte[]> UpdateByteChange(ParityStateChange<byte[]>? change, ReadOnlyMemory<byte> before, ReadOnlyMemory<byte> after)
+    {
+        int newSize = ArraySize(before.Length) + ArraySize(after.Length);
+        if (change is null)
+        {
+            Retain(RetainedByteChangeBytes + newSize);
+            return RentByteStateChange(AsArrayOrNull(before), AsArrayOrNull(after));
         }
 
-        change = RentByteStateChange(before, after);
+        int delta = newSize - ArraySize(change.Before?.Length ?? 0) - ArraySize(change.After?.Length ?? 0);
+        if (delta > 0) Retain(delta);
+        change.Before = AsArrayOrNull(before);
+        change.After = AsArrayOrNull(after);
+        if (delta < 0) ReleaseRetainedData(-delta);
+        return change;
+
+        static int ArraySize(int length) => length > 0 ? RetainedArrayHeaderBytes + length : 0;
     }
 
     public override void ReportAction(ulong gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
@@ -542,7 +693,7 @@ public partial class ParityLikeTxTracer : TxTracer
     private ParityTraceAction CreateAction(ulong gas, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall)
     {
-        ParityTraceAction action = RentAction();
+        ParityTraceAction action = CreateRetainedAction();
         action.IsPrecompiled = isPrecompileCall;
         // ignore pre compile calls with Zero value that originates from contracts
         action.IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero);
@@ -567,7 +718,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
     {
-        ParityTraceAction action = RentAction();
+        ParityTraceAction action = CreateRetainedAction();
         action.From = address;
         action.To = refundAddress;
         action.Value = balance;
@@ -585,6 +736,7 @@ public partial class ParityLikeTxTracer : TxTracer
                 $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
         }
 
+        Retain(output.Length);
         _currentAction.Result.Output = output.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
@@ -599,6 +751,7 @@ public partial class ParityLikeTxTracer : TxTracer
     public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output)
     {
         ParityTraceResult result = _currentAction!.Result!;
+        Retain(output.Length);
         result.Output = output.AsArray();
         result.GasUsed = _currentAction.Gas - gas;
         _currentAction.Error = GetErrorDescription(EvmExceptionType.Revert);
@@ -620,15 +773,18 @@ public partial class ParityLikeTxTracer : TxTracer
                 $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
         }
 
+        Retain(deployedCode.Length);
         _currentAction.Result.Address = deploymentAddress;
         _currentAction.Result.Code = deployedCode.AsArray();
         _currentAction.Result.GasUsed = _currentAction.Gas - gas;
         PopAction();
     }
 
-    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
-        // TODO: use memory pool?
+    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
+    {
+        Retain(byteCode.Length);
         _currentVmTrace.VmTrace.Code = byteCode.ToArray();
+    }
 
     public override void ReportGasUpdateForVmTrace(ulong refund, ulong gasAvailable)
     {

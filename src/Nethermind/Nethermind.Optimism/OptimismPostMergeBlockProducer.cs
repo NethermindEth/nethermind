@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -51,6 +52,11 @@ public class OptimismPostMergeBlockProducer(
             ?? throw new InvalidOperationException("Payload attributes are not set");
 
         BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
+        if (attrs.GetTransactions() is { Length: > 0 } transactions)
+        {
+            blockToProduce.TransactionsExemptFromByteLimit = new HashSet<Transaction>(transactions, ReferenceEqualityComparer.Instance);
+        }
+
         if ((flags & IBlockProducer.Flags.EmptyBlock) != 0)
         {
             blockToProduce.Transactions = _payloadAttrsTxSource.GetTransactions(parent, blockToProduce.Header, attrs.GasLimit, attrs);

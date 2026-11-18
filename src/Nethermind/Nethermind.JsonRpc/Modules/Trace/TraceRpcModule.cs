@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -37,6 +38,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.TxPool;
@@ -61,12 +63,38 @@ namespace Nethermind.JsonRpc.Modules.Trace
         ITxValidator txValidator,
         IBlocksConfig blocksConfig,
         IPrefixStateSeedSource prefixSeeds,
+        IRewardCalculator? rewardCalculator,
         ILogManager logManager,
         IParallelBlockTracer? parallelTracer = null)
         : ITraceRpcModule, ICancellableBlockTracer
     {
+        public TraceRpcModule(
+            IReceiptFinder receiptFinder,
+            IOverridableEnv<ITracer> tracerEnv,
+            IBlockFinder blockFinder,
+            IJsonRpcConfig jsonRpcConfig,
+            IBlockchainBridge blockchainBridge,
+            ISpecProvider specProvider,
+            ITxValidator txValidator,
+            IBlocksConfig blocksConfig,
+            IPrefixStateSeedSource prefixSeeds,
+            ILogManager logManager,
+            IParallelBlockTracer? parallelTracer = null)
+            : this(receiptFinder, tracerEnv, blockFinder, jsonRpcConfig, blockchainBridge, specProvider, txValidator,
+                blocksConfig, prefixSeeds, null, logManager, parallelTracer)
+        {
+        }
+
         private readonly TxDecoder _txDecoder = TxDecoder.Instance;
         private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
+
+        /// <summary>
+        /// <c>trace_simulateV1</c> keeps its traces and then serializes the whole response, about twice their size, so
+        /// its traces get this part of <see cref="MaxTraceDataSize"/>.
+        /// </summary>
+        private const long SimulateTraceDataShare = 3;
+
+        private long MaxTraceDataSize => jsonRpcConfig.MaxBufferedTraceLogSize > 0 ? jsonRpcConfig.MaxBufferedTraceLogSize : long.MaxValue;
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
         private readonly ILogger _logger = logManager.GetClassLogger<TraceRpcModule>();
 
@@ -192,12 +220,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         traceTypeByTransaction, ParityTraceTypes.None,
                         ParityTraceStreamMode.Replay, includeTxHash: false,
-                        writer, pipeWriter, ct, specProvider: specProvider);
+                        writer, pipeWriter, ct, specProvider: specProvider)
+                    {
+                        MaxRetainedBytes = MaxTraceDataSize,
+                        RetainsOutput = pipeWriter is CountingWriter { RetainsOutput: true }
+                    };
                     TraceBlockStreaming(block, streamingTracer, ct);
                 },
                 runBuffered: () =>
                 {
-                    IReadOnlyCollection<ParityLikeTxTrace> traces = TraceBlock(block, new(traceTypeByTransaction, specProvider));
+                    IReadOnlyCollection<ParityLikeTxTrace> traces = TraceBlock(block, new(traceTypeByTransaction, specProvider) { MaxRetainedBytes = MaxTraceDataSize });
                     return traces.Select(static t => new ParityTxTraceFromReplay(t));
                 });
         }
@@ -342,16 +374,21 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         parityTypes, ParityTraceStreamMode.Replay, includeTxHash: false,
-                        writer, pipeWriter, ct, specProvider: specProvider);
+                        writer, pipeWriter, ct, specProvider: specProvider)
+                    {
+                        MaxRetainedBytes = MaxTraceDataSize,
+                        RetainsOutput = pipeWriter is CountingWriter { RetainsOutput: true }
+                    };
                     using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
                     TraceConstructedBlock(env.Component, block, streamingTracer.WithCancellation(ct), isSigned);
                 },
                 runBuffered: () =>
                 {
                     using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
-                    IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Component, block, new(parityTypes, specProvider), isSigned);
+                    IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Component, block, new(parityTypes, specProvider) { MaxRetainedBytes = MaxTraceDataSize }, isSigned);
                     return new ParityTxTraceFromReplay(result.SingleOrDefault());
-                });
+                },
+                stream: stateOverride is not { Count: > 0 } || rewardCalculator?.UsesRewardContract(header) == false);
         }
 
         /// <summary>
@@ -395,12 +432,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         txHash, parityTypes, ParityTraceStreamMode.Replay, includeTxHash: true,
-                        writer, pipeWriter, ct, specProvider: specProvider);
+                        writer, pipeWriter, ct, specProvider: specProvider)
+                    {
+                        MaxRetainedBytes = MaxTraceDataSize,
+                        RetainsOutput = pipeWriter is CountingWriter { RetainsOutput: true }
+                    };
                     ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct, transactionHash: txHash);
                 },
                 runBuffered: () =>
                 {
-                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, parityTypes, specProvider), transactionHash: txHash);
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new ParityLikeBlockTracer(txHash, parityTypes, specProvider) { MaxRetainedBytes = MaxTraceDataSize }, transactionHash: txHash);
                     return new ParityTxTraceFromReplay(txTrace, includeTransactionHash: true);
                 });
         }
@@ -451,7 +492,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         traceTypes1, ParityTraceStreamMode.Replay, includeTxHash: true,
-                        writer, pipeWriter, ct, specProvider: specProvider);
+                        writer, pipeWriter, ct, specProvider: specProvider)
+                    {
+                        MaxRetainedBytes = MaxTraceDataSize,
+                        RetainsOutput = pipeWriter is CountingWriter { RetainsOutput: true }
+                    };
                     if (!TryStreamBlockInParallel(parentHeader, block, traceTypes1, streamingTracer, ct))
                         ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct);
                 },
@@ -517,7 +562,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     {
                         using StreamingParityLikeBlockTracer streamingTracer = new(
                             types, ParityTraceStreamMode.Store, includeTxHash: false,
-                            writer, pipeWriter, ct, storeFilter: filter, specProvider: specProvider);
+                            writer, pipeWriter, ct, storeFilter: filter, specProvider: specProvider)
+                        {
+                            MaxRetainedBytes = MaxTraceDataSize,
+                            RetainsOutput = pipeWriter is CountingWriter { RetainsOutput: true }
+                        };
                         foreach ((BlockHeader header, BlockHeader parentHeader) in GetTraceFilterBlocks(blockHashes))
                         {
                             if (filter.IsExhausted) break;
@@ -584,6 +633,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private IEnumerable<ParityTxTraceFromStore> RunBufferedTraceFilter(IEnumerable<(BlockHeader Header, BlockHeader Parent)> blocks, TxTraceFilter filter, CancellationToken cancellationToken)
         {
             ArrayPoolList<ParityTxTraceFromStore> result = [with(16)];
+            TraceDataBudget dataBudget = new(MaxTraceDataSize);
             try
             {
                 foreach ((BlockHeader header, BlockHeader parentHeader) in blocks)
@@ -591,8 +641,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                     if (filter.IsExhausted) break;
                     cancellationToken.ThrowIfCancellationRequested();
                     Block block = LoadBlock(header);
-                    IReadOnlyCollection<ParityLikeTxTrace> txTraces = ExecuteBlockParallelOrReplay(parentHeader, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken);
-                    result.AddRange(filter.FilterTxTraces(txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace)));
+                    AppendFilteredBlock(parentHeader, block, filter, dataBudget, result, cancellationToken);
                 }
             }
             catch
@@ -602,6 +651,36 @@ namespace Nethermind.JsonRpc.Modules.Trace
             }
 
             return result;
+        }
+
+        private void AppendFilteredBlock(BlockHeader parent, Block block, TxTraceFilter filter, TraceDataBudget budget,
+            ArrayPoolList<ParityTxTraceFromStore> result, CancellationToken cancellationToken)
+        {
+            long beforeBlock = budget.Used;
+            long matchedBytes = 0;
+            IReadOnlyCollection<ParityLikeTxTrace> traces = ExecuteBlockParallelOrReplay(
+                parent, block, ParityTraceTypes.Trace | ParityTraceTypes.Rewards, cancellationToken, budget);
+            try
+            {
+                foreach (ParityLikeTxTrace trace in traces)
+                {
+                    if (filter.IsExhausted) break;
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    foreach (ParityTxTraceFromStore match in filter.FilterTxTraces(ParityTxTraceFromStore.FromTxTrace(trace, detachActions: true)))
+                    {
+                        matchedBytes += match.GetRetainedDataSize();
+                        result.Add(match);
+                    }
+                }
+            }
+            finally
+            {
+                traces.TryDispose();
+            }
+
+            long discardedBytes = budget.Used - beforeBlock - matchedBytes;
+            if (discardedBytes > 0) budget.Release(discardedBytes);
         }
 
         // Bodies are loaded one at a time so a long range never holds all of them.
@@ -660,7 +739,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         types, ParityTraceStreamMode.Store, includeTxHash: false,
-                        writer, pipeWriter, ct, specProvider: tracerSpecs);
+                        writer, pipeWriter, ct, specProvider: tracerSpecs)
+                    {
+                        MaxRetainedBytes = MaxTraceDataSize,
+                        RetainsOutput = pipeWriter is CountingWriter { RetainsOutput: true }
+                    };
                     if (forkSpec is not null || !TryStreamBlockInParallel(parentHeader, block, types, streamingTracer, ct))
                         ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct, forkSpec);
                 },
@@ -668,7 +751,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     IReadOnlyCollection<ParityLikeTxTrace> txTraces = forkSpec is null
                         ? ExecuteBlockParallelOrReplay(parentHeader, block, types, cancellationToken)
-                        : ExecuteBlock(parentHeader, block, new(types, tracerSpecs), forkSpec, cancellationToken: cancellationToken);
+                        : ExecuteBlock(parentHeader, block, new(types, tracerSpecs) { MaxRetainedBytes = MaxTraceDataSize }, forkSpec, cancellationToken: cancellationToken);
                     return txTraces.SelectMany(ParityTxTraceFromStore.FromTxTrace);
                 });
         }
@@ -753,12 +836,16 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using StreamingParityLikeBlockTracer streamingTracer = new(
                         txHash, ParityTraceTypes.Trace, ParityTraceStreamMode.Store, includeTxHash: false,
-                        writer, pipeWriter, ct, specProvider: specProvider);
+                        writer, pipeWriter, ct, specProvider: specProvider)
+                    {
+                        MaxRetainedBytes = MaxTraceDataSize,
+                        RetainsOutput = pipeWriter is CountingWriter { RetainsOutput: true }
+                    };
                     ExecuteBlockStreaming(parentHeader, block, streamingTracer, ct, transactionHash: txHash);
                 },
                 runBuffered: () =>
                 {
-                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new(txHash, ParityTraceTypes.Trace, specProvider), transactionHash: txHash);
+                    IReadOnlyCollection<ParityLikeTxTrace> txTrace = ExecuteBlock(parentHeader, block, new(txHash, ParityTraceTypes.Trace, specProvider) { MaxRetainedBytes = MaxTraceDataSize }, transactionHash: txHash);
                     return ParityTxTraceFromStore.FromTxTrace(txTrace);
                 });
         }
@@ -803,13 +890,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         /// <summary>A covered block is traced one transaction per worker, rewards last on the seeded end state; any
         /// other block is executed as before. Both produce the traces a full execution produces.</summary>
-        private bool TryExecuteBlockInParallel(BlockHeader parent, Block block, ParityTraceTypes types, CancellationToken cancellationToken, [NotNullWhen(true)] out IReadOnlyList<ParityLikeTxTrace>? traces)
+        private bool TryExecuteBlockInParallel(BlockHeader parent, Block block, ParityTraceTypes types, TraceDataBudget dataBudget, CancellationToken cancellationToken, [NotNullWhen(true)] out IReadOnlyList<ParityLikeTxTrace>? traces)
         {
             traces = null;
             if (parallelTracer is null) return false;
 
             return parallelTracer.TryTrace(block, parent,
-                PerTransaction(types), Rewards(types), cancellationToken, out traces);
+                PerTransaction(types, dataBudget), Rewards(types, dataBudget), cancellationToken, out traces);
         }
 
         /// <summary>The same, writing each transaction's traces out as the workers finish them, so the caller reads
@@ -820,26 +907,29 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
             using ParallelParityTxTracerPool txTracers = streamingTracer.CreateParallelTxTracers(block, types & ~ParityTraceTypes.Rewards);
             return parallelTracer.TryStream(block, parent,
-                (_, txHash) => txTracers.For(txHash), Rewards(types), streamingTracer, cancellationToken);
+                (_, txHash) => txTracers.For(txHash), Rewards(types, new TraceDataBudget(MaxTraceDataSize)), streamingTracer, cancellationToken);
         }
 
-        private Func<IWorldState, Hash256, IBlockTracer<ParityLikeTxTrace>> PerTransaction(ParityTraceTypes types)
+        private Func<IWorldState, Hash256, IBlockTracer<ParityLikeTxTrace>> PerTransaction(ParityTraceTypes types, TraceDataBudget dataBudget)
         {
             ParityTraceTypes perTransaction = types & ~ParityTraceTypes.Rewards;
-            return (_, txHash) => new ParityLikeBlockTracer(txHash, perTransaction, specProvider);
+            return (_, txHash) => new ParityLikeBlockTracer(txHash, perTransaction, specProvider) { DataBudget = dataBudget };
         }
 
-        private Func<IWorldState, IBlockTracer<ParityLikeTxTrace>>? Rewards(ParityTraceTypes types) =>
-            (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards ? _ => new ParityLikeBlockTracer(types, specProvider) : null;
+        private Func<IWorldState, IBlockTracer<ParityLikeTxTrace>>? Rewards(ParityTraceTypes types, TraceDataBudget dataBudget) =>
+            (types & ParityTraceTypes.Rewards) == ParityTraceTypes.Rewards ? _ => new ParityLikeBlockTracer(types, specProvider) { DataBudget = dataBudget } : null;
 
-        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlockParallelOrReplay(BlockHeader parent, Block block, ParityTraceTypes types, CancellationToken cancellationToken = default)
+        /// <param name="dataBudget">The budget of the whole request, shared by the parallel transaction tracers and by
+        /// every block the request traces; a new one of <see cref="MaxTraceDataSize"/> bytes when null.</param>
+        private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlockParallelOrReplay(BlockHeader parent, Block block, ParityTraceTypes types, CancellationToken cancellationToken = default, TraceDataBudget? dataBudget = null)
         {
             using RentedTimeout timeout = cancellationToken.CanBeCanceled ? default : jsonRpcConfig.RentTimeout();
             CancellationToken token = cancellationToken.CanBeCanceled ? cancellationToken : timeout.Token;
             token.ThrowIfCancellationRequested();
-            return TryExecuteBlockInParallel(parent, block, types, token, out IReadOnlyList<ParityLikeTxTrace>? traces)
+            TraceDataBudget budget = dataBudget ?? new TraceDataBudget(MaxTraceDataSize);
+            return TryExecuteBlockInParallel(parent, block, types, budget, token, out IReadOnlyList<ParityLikeTxTrace>? traces)
                 ? traces
-                : ExecuteBlock(parent, block, new ParityLikeBlockTracer(types, specProvider), cancellationToken: token);
+                : ExecuteBlock(parent, block, new ParityLikeBlockTracer(types, specProvider) { DataBudget = budget }, cancellationToken: token);
         }
 
         private IReadOnlyCollection<ParityLikeTxTrace> ExecuteBlock(BlockHeader baseBlock, Block block, ParityLikeBlockTracer tracer, IReleaseSpec? specOverride = null, Hash256? transactionHash = null, CancellationToken cancellationToken = default)
@@ -958,9 +1048,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         private ResultWrapper<ParityTxTraceFromReplay> BuildStreamingSingleResult(
             Action<Utf8JsonWriter, PipeWriter?, CancellationToken> runStreaming,
-            Func<ParityTxTraceFromReplay> runBuffered)
+            Func<ParityTxTraceFromReplay> runBuffered,
+            bool stream = true)
         {
-            if (!jsonRpcConfig.EnableTracingStreamMode)
+            if (!stream || !jsonRpcConfig.EnableTracingStreamMode)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Success(runBuffered());
             }
@@ -1011,7 +1102,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
             SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) =>
             TryGetParityTypes(traceTypes ?? ["Trace"], out ParityTraceTypes parityTypes)
-                ? new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: parityTypes), _secondsPerSlot)
+                ? new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: parityTypes, MaxTraceDataSize / SimulateTraceDataShare), _secondsPerSlot)
                     .Execute(payload, blockParameter)
                 : InvalidTraceTypes<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>();
     }

@@ -204,7 +204,7 @@ public partial class ModExpPrecompile : IPrecompile<ModExpPrecompile>
 
     private static bool ExceedsMaxInputSize(IReleaseSpec releaseSpec, uint baseLength, uint expLength, uint modulusLength) => releaseSpec.IsEip7823Enabled
             ? (baseLength > ModExpMaxInputSizeEip7823 || expLength > ModExpMaxInputSizeEip7823 || modulusLength > ModExpMaxInputSizeEip7823)
-            : baseLength >= uint.MaxValue || modulusLength >= uint.MaxValue;
+            : baseLength >= uint.MaxValue || modulusLength > (uint)Array.MaxLength;
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static (uint baseLength, uint expLength, uint modulusLength) GetInputLengthsShort(ReadOnlySpan<byte> inputData)

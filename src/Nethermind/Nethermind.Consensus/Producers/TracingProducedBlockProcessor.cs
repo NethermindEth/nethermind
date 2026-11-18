@@ -59,7 +59,7 @@ internal sealed class TracingProducedBlockProcessor(
 
         BlockReceiptsTracer? receiptsTracer = (_dumpOptions & ProducedBlockDumpOptions.Receipts) != 0 ? new BlockReceiptsTracer(parallel: true) : null;
         ParityLikeBlockTracer? parityTracer = (_dumpOptions & ProducedBlockDumpOptions.Parity) != 0
-            ? new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace, specProvider)
+            ? new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace, specProvider) { MaxRetainedBytes = long.MaxValue }
             : null;
         GethLikeBlockMemoryTracer? gethTracer = (_dumpOptions & ProducedBlockDumpOptions.Geth) != 0
             ? new GethLikeBlockMemoryTracer(new GethTraceOptions { EnableMemory = true }, specProvider)

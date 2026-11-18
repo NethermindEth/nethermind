@@ -187,6 +187,11 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
             return TxErrorMessages.InvalidTransactionForm;
         }
 
+        if ((options & TxValidationOptions.SkipIntrinsicGas) != 0)
+        {
+            return ValidationResult.Success;
+        }
+
         IntrinsicGas<EthereumGasPolicy> intrinsicGas = (options & TxValidationOptions.SkipIntrinsicGasMemo) != 0
             ? EthereumGasPolicy.CalculateIntrinsicGasWithoutMemo(transaction, releaseSpec)
             : EthereumGasPolicy.CalculateIntrinsicGas(transaction, releaseSpec, blockGasLimit);

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Rewards;
@@ -18,10 +19,11 @@ namespace Nethermind.Consensus.AuRa.Rewards
         private readonly StaticRewardCalculator _blockRewardCalculator;
         private readonly IList<IRewardContract> _contracts;
 
-        public AuRaRewardCalculator(AuRaChainSpecEngineParameters auRaParameters, ITransactionProcessor transactionProcessor)
+        public AuRaRewardCalculator(AuRaChainSpecEngineParameters auRaParameters, ITransactionProcessor transactionProcessor, RewardContractGasLimit? gasLimit = null)
         {
             ArgumentNullException.ThrowIfNull(auRaParameters);
             ArgumentNullException.ThrowIfNull(transactionProcessor);
+            ulong contractGasLimit = gasLimit?.Value ?? CallableContract.UnlimitedGas;
 
             IList<IRewardContract> BuildTransitions()
             {
@@ -29,7 +31,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
                 if (auRaParameters.BlockRewardContractTransitions is not null)
                 {
-                    contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, t.Value, t.Key)));
+                    contracts.AddRange(auRaParameters.BlockRewardContractTransitions.Select(t => new RewardContract(transactionProcessor, t.Value, t.Key, contractGasLimit)));
                     CollectionsMarshal.AsSpan(contracts).Sort(default(ActivatedAtComparer<IRewardContract, ulong>));
                 }
 
@@ -41,7 +43,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                         throw new ArgumentException($"{nameof(auRaParameters.BlockRewardContractTransition)} provided for {nameof(auRaParameters.BlockRewardContractAddress)} is higher than first {nameof(auRaParameters.BlockRewardContractTransitions)}.");
                     }
 
-                    contracts.Insert(0, new RewardContract(transactionProcessor, auRaParameters.BlockRewardContractAddress, contractTransition));
+                    contracts.Insert(0, new RewardContract(transactionProcessor, auRaParameters.BlockRewardContractAddress, contractTransition, contractGasLimit));
                 }
 
                 return contracts;
@@ -51,6 +53,8 @@ namespace Nethermind.Consensus.AuRa.Rewards
             _contracts = BuildTransitions();
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
+
+        public bool UsesRewardContract(BlockHeader header) => !header.IsGenesis && _contracts.TryGetForBlock(header.Number, out _);
 
         public BlockReward[] CalculateRewards(Block block)
         {

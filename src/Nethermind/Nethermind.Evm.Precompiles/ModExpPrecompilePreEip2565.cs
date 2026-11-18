@@ -83,15 +83,30 @@ public partial class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePr
         UInt256 expLength = new(extendedInput.Slice(32, 32), true);
         UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 
-        UInt256 complexity = MultComplexity(UInt256.Max(baseLength, modulusLength));
+        if (!TryGetOperandComplexity(UInt256.Max(baseLength, modulusLength), out UInt256 complexity))
+            return ulong.MaxValue;
 
-        ReadOnlySpan<byte> expSignificantBytes =
-            inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32));
+        ReadOnlySpan<byte> expSignificantBytes = inputData.Length > 96 && baseLength < (uint)(inputData.Length - 96)
+            ? inputData.Span.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)UInt256.Min(expLength, 32))
+            : default;
 
         UInt256 lengthOver32 = expLength <= 32 ? 0 : expLength - 32;
         UInt256 adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
-        UInt256 gas = complexity * UInt256.Max(adjusted, UInt256.One) / 20;
+        if (UInt256.MultiplyOverflow(complexity, UInt256.Max(adjusted, UInt256.One), out UInt256 gas)) return ulong.MaxValue;
+        gas /= 20;
         return gas > ulong.MaxValue ? ulong.MaxValue : (ulong)gas;
+    }
+
+    internal static bool TryGetOperandComplexity(in UInt256 operandLength, out UInt256 complexity)
+    {
+        if (operandLength > ulong.MaxValue)
+        {
+            complexity = default;
+            return false;
+        }
+
+        complexity = MultComplexity(operandLength);
+        return true;
     }
 
     /// <inheritdoc/>

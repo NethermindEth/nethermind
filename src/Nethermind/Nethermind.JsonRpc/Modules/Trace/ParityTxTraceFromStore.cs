@@ -9,14 +9,19 @@ using System.Threading;
 
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class ParityTxTraceFromStore
     {
-        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace)
+        public static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace) =>
+            FromTxTrace(txTrace, detachActions: false);
+
+        internal static IEnumerable<ParityTxTraceFromStore> FromTxTrace(ParityLikeTxTrace txTrace, bool detachActions)
         {
             ParityTraceAction? txTraceAction = txTrace.Action;
             Stack<ParityTraceAction>? pending = null;
@@ -26,7 +31,6 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     ParityTxTraceFromStore result = new();
                     result.Fill(txTrace, txTraceAction);
-                    yield return result;
 
                     List<ParityTraceAction> subtraces = txTraceAction.Subtraces;
                     if (subtraces.Count > 0)
@@ -36,7 +40,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
                         {
                             pending.Push(subtraces[index]);
                         }
+
+                        if (detachActions) txTraceAction.Subtraces = [];
                     }
+
+                    yield return result;
                 }
 
                 txTraceAction = pending is not null && pending.TryPop(out ParityTraceAction? next) ? next : null;
@@ -56,6 +64,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
 
         [ThreadStatic]
         private static ParityTxTraceFromStore? _writeItem;
+        private static readonly SerializedTraces.Pool BufferedActions = new(8, 16);
 
         /// <summary>
         /// Serializes the items <see cref="FromTxTrace(ParityLikeTxTrace)"/> would return, reusing one instance for all of them.
@@ -64,38 +73,74 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// <param name="cancellationToken">Checked before each action is written.</param>
         public static void Write(Utf8JsonWriter writer, ParityLikeTxTrace txTrace, TxTraceFilter? filter, JsonSerializerOptions options, CancellationToken cancellationToken = default)
         {
+            TraceStreamOutput output = new(writer, null, cancellationToken, 0);
+            Write(ref output, txTrace, filter, options, null);
+        }
+
+        internal static void Write(ref TraceStreamOutput output, ParityLikeTxTrace txTrace, TxTraceFilter? filter, JsonSerializerOptions options, TraceOutputLimit? limit)
+        {
             if (txTrace.Action is null) return;
 
             ParityTxTraceFromStore item = _writeItem ??= new ParityTxTraceFromStore();
+            BufferedAction? buffered = limit is not null && ParallelTraceStream.SerializeAheadOptions(output.Writer) is { } actionOptions
+                ? new(BufferedActions.Rent(actionOptions), actionOptions, limit)
+                : null;
             try
             {
-                WriteActionRecursively(writer, txTrace, txTrace.Action, filter, options, item, cancellationToken);
+                WriteActionRecursively(ref output, txTrace, txTrace.Action, filter, options, item, buffered);
             }
             finally
             {
                 // Drop the references to the trace tree so the thread does not keep it alive.
                 item.Action = null!;
                 item.Result = null!;
+                if (buffered is { } staging) BufferedActions.Return(staging.Traces);
             }
         }
 
-        private static void WriteActionRecursively(Utf8JsonWriter writer, ParityLikeTxTrace txTrace, ParityTraceAction action, TxTraceFilter? filter, JsonSerializerOptions options, ParityTxTraceFromStore item, CancellationToken cancellationToken)
+        private static void WriteActionRecursively(ref TraceStreamOutput output, ParityLikeTxTrace txTrace, ParityTraceAction action,
+            TxTraceFilter? filter, JsonSerializerOptions options, ParityTxTraceFromStore item, BufferedAction? buffered)
         {
             if (!action.IncludeInTrace || filter is { IsExhausted: true }) return;
 
-            cancellationToken.ThrowIfCancellationRequested();
+            output.CancellationToken.ThrowIfCancellationRequested();
 
             if (filter is null || filter.ShouldUseTxTrace(action))
             {
                 item.Fill(txTrace, action);
-                TypeInfoJsonSerializer.Serialize(writer, item, options);
+                if (buffered is not { } staging)
+                {
+                    TypeInfoJsonSerializer.Serialize(output.Writer, item, options);
+                }
+                else
+                {
+                    Utf8JsonWriter writer = output.Writer;
+                    staging.Limit.BypassedBytes = output.BypassedBytes;
+                    long written = writer.BytesCommitted + writer.BytesPending + 1;
+                    Utf8JsonWriter actionWriter = staging.Traces.Start(staging.Options, staging.Limit, written);
+                    TypeInfoJsonSerializer.Serialize(actionWriter, item, options);
+                    actionWriter.Flush();
+                    staging.Traces.Seal();
+                    output.WriteSerialized(staging.Traces.Written);
+                    staging.Traces.Empty();
+                }
             }
 
             List<ParityTraceAction> subtraces = action.Subtraces;
             for (int index = 0; index < subtraces.Count; index++)
             {
-                WriteActionRecursively(writer, txTrace, subtraces[index], filter, options, item, cancellationToken);
+                WriteActionRecursively(ref output, txTrace, subtraces[index], filter, options, item, buffered);
             }
+        }
+
+        private readonly record struct BufferedAction(SerializedTraces Traces, JsonWriterOptions Options, TraceOutputLimit Limit);
+
+        internal long GetRetainedDataSize()
+        {
+            byte[]? code = Result?.Code;
+            byte[]? output = Result?.Output;
+            long bytes = (long)ParityLikeTxTracer.GetActionMetadataSize(Action) + Action.Input.UnderlyingLength + (code?.Length ?? 0);
+            return ReferenceEquals(code, output) ? bytes : bytes + (output?.Length ?? 0);
         }
 
         private void Fill(ParityLikeTxTrace txTrace, ParityTraceAction txTraceAction)

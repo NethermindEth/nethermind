@@ -16,6 +16,8 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
+// ClearScript can return this instance as the target of a host helper delegate.
+[NoDefaultScriptAccess]
 public partial class Engine : IDisposable
 {
     private const bool IsDebugging = false;

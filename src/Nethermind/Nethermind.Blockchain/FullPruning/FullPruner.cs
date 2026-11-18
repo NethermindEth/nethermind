@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.FullPruning
     /// </summary>
     public class FullPruner : IDisposable
     {
+        private readonly Func<bool> _canPrune;
         private readonly IFullPruningDb _fullPruningDb;
         private readonly INodeStorageFactory _nodeStorageFactory;
         private readonly INodeStorage _nodeStorage;
@@ -57,8 +58,10 @@ namespace Nethermind.Blockchain.FullPruning
             IChainEstimations chainEstimations,
             IDriveInfo? driveInfo,
             IPruningTrieStore trieStore,
-            ILogManager logManager)
+            ILogManager logManager,
+            Func<bool> canPrune)
         {
+            _canPrune = canPrune;
             _fullPruningDb = fullPruningDb;
             _nodeStorageFactory = nodeStorageFactory;
             _nodeStorage = mainNodeStorage;
@@ -100,7 +103,12 @@ namespace Nethermind.Blockchain.FullPruning
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
 
-            if (DateTime.UtcNow - _lastPruning < _minimumPruningDelay)
+            if (!_canPrune())
+            {
+                if (_logger.IsInfo) _logger.Info("Full pruning is delayed while state synchronization is running.");
+                e.Status = PruningStatus.Delayed;
+            }
+            else if (DateTime.UtcNow - _lastPruning < _minimumPruningDelay)
             {
                 e.Status = PruningStatus.Delayed;
             }
@@ -144,7 +152,12 @@ namespace Nethermind.Blockchain.FullPruning
 
             try
             {
-                await RunFullPruning(pruningContext, cancellationToken);
+                using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, pruningContext.Superseded);
+                await RunFullPruning(pruningContext, lifetime.Token);
+            }
+            catch (OperationCanceledException) when (pruningContext.Superseded.IsCancellationRequested)
+            {
+                if (_logger.IsInfo) _logger.Info("Full pruning copy canceled by an atomic state write.");
             }
             catch (Exception e)
             {

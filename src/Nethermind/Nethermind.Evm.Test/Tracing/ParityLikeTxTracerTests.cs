@@ -4,9 +4,11 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Buffers;
@@ -28,6 +30,180 @@ namespace Nethermind.Evm.Test.Tracing;
 
 public class ParityLikeTxTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Streaming_trace_releases_byte_state_change_values_when_recycled([Values] bool code)
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.StateDiff, writer, null, default, fillVmTraceSlot: false);
+        try
+        {
+            byte[] before = [1];
+            byte[] after = [2];
+            Address address = TestItem.AddressA;
+            if (code) tracer.ReportCodeChange(address, before, after);
+            else tracer.ReportStorageChange(new StorageCell(address, UInt256.Zero), before, after);
+
+            ParityAccountStateChange account = tracer.BuildResult().StateChanges![address];
+            ParityStateChange<byte[]> change = code ? account.Code! : account.Storage![UInt256.Zero];
+            tracer.ReleaseRetainedData();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(change.Before, Is.Null);
+                Assert.That(change.After, Is.Null);
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    [Test]
+    public void Streaming_trace_returns_input_when_action_attachment_exceeds_the_budget()
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        byte[] input = new byte[32];
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, null, default, fillVmTraceSlot: false)
+        {
+            DataBudget = new TraceDataBudget(2 * ParityLikeTxTracer.RetainedActionBytes + input.Length),
+        };
+        try
+        {
+            tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+
+            Assert.That(() => tracer.ReportAction(10_000, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, input, ExecutionType.CALL),
+                Throws.TypeOf<TraceDataLimitExceededException>());
+            Assert.That(tracer.PooledInputBytes, Is.EqualTo(input.Length));
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    [Test]
+    public void Streaming_trace_reuses_actions_only_while_the_pool_has_capacity([Values(1, 8193)] int subtraceCount)
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, null, default, fillVmTraceSlot: false);
+        try
+        {
+            tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+            for (int i = 0; i < subtraceCount; i++)
+            {
+                tracer.ReportAction(100, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, default, ExecutionType.CALL);
+                tracer.ReportActionEnd(100, default);
+            }
+            tracer.ReportActionEnd(100_000, default);
+            ParityTraceAction previous = tracer.BuildResult().Action!;
+
+            tracer.ResetForNextTx(block, tx);
+            tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+            tracer.ReportActionEnd(100_000, default);
+
+            Assert.That(tracer.BuildResult().Action, subtraceCount == 1 ? Is.SameAs(previous) : Is.Not.SameAs(previous));
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    [Test]
+    public void Materialized_frame_vmtrace_is_only_written_when_it_fits_the_output_limit([Values(16, 4096)] int limit)
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.FrameTx).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.VmTrace, writer, null, default, fillVmTraceSlot: true)
+        {
+            OutputLimit = new TraceOutputLimit(limit),
+        };
+        try
+        {
+            tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+            tracer.ReportActionEnd(0, default);
+
+            if (limit == 16)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(() => tracer.BuildResult(), Throws.TypeOf<TraceDataLimitExceededException>());
+                    Assert.That(writer.BytesPending + writer.BytesCommitted, Is.Zero);
+                }
+            }
+            else
+            {
+                ParityLikeTxTrace trace = tracer.BuildResult();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(trace.VmTrace, Is.Not.Null);
+                    Assert.That(writer.BytesPending + writer.BytesCommitted, Is.InRange(17L, limit));
+                }
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    [Test]
+    public void Receipt_output_counts_against_the_budget_without_action_tracing([Values] bool success)
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TraceDataBudget budget = new(64);
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.StateDiff) { DataBudget = budget };
+        byte[] output = new byte[32];
+
+        if (success)
+            tracer.MarkAsSuccess(TestItem.AddressA, 0, output, []);
+        else
+            tracer.MarkAsFailed(TestItem.AddressA, 0, output, "revert");
+
+        Assert.That(budget.Used, Is.EqualTo(output.Length));
+    }
+
+    [Test]
+    public void Releasing_a_buffered_streaming_trace_drops_its_vm_trace_and_output()
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        StreamingParityLikeTxTracer tracer = new(
+            block, tx, ParityTraceTypes.VmTrace, writer, null, CancellationToken.None, fillVmTraceSlot: false);
+        try
+        {
+            tracer.ReportAction(100, 0, TestItem.AddressA, TestItem.AddressB, ReadOnlyMemory<byte>.Empty, ExecutionType.TRANSACTION);
+            tracer.ReportByteCode(new byte[32]);
+            byte[] output = new byte[16];
+            tracer.ReportActionEnd(0, output);
+            tracer.MarkAsSuccess(TestItem.AddressB, 0, output, []);
+            ParityLikeTxTrace trace = tracer.BuildResult();
+
+            tracer.ReleaseRetainedData();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(trace.VmTrace, Is.Null);
+                Assert.That(trace.Output, Is.Null);
+                Assert.That(tracer.DataBudget.Used, Is.Zero);
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
     [Test]
     public void Output_only_receipts_do_not_allocate_actions(
         [Values(ParityTraceTypes.None, ParityTraceTypes.StateDiff)] ParityTraceTypes types, [Values] bool failed)
@@ -97,6 +273,561 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         {
             if (input.Length > 0) ReturnedInputs++;
             base.ReturnInputBytes(input);
+        }
+    }
+
+    [Test]
+    public void Streaming_trace_takes_no_input_array_for_a_rejected_charge()
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        InputReturningTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer)
+        {
+            DataBudget = new TraceDataBudget(ParityLikeTxTracer.RetainedActionBytes + 32)
+        };
+        try
+        {
+            Assert.That(() => tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, new byte[60], ExecutionType.TRANSACTION),
+                Throws.TypeOf<TraceDataLimitExceededException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.CopiedInputs, Is.EqualTo(1), "precondition: the input was to be copied");
+                Assert.That(tracer.ReturnedInputs, Is.Zero, "the charge failed before an array was taken for the input");
+                Assert.That(tracer.PooledInputBytes, Is.Zero);
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    [Test]
+    public void Buffered_vm_trace_only_charges_the_last_memory_report_for_an_operation()
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        long limit = ParityLikeTxTracer.RetainedActionBytes + ParityLikeTxTracer.RetainedOperationBytes +
+            ParityLikeTxTracer.RetainedMemoryChangeBytes + 64;
+        TraceDataBudget budget = new(limit);
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.VmTrace) { DataBudget = budget };
+        tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+        tracer.StartOperation(0, Instruction.MCOPY, 1000, default);
+        tracer.ReportMemoryChange(0, new byte[64]);
+        tracer.ReportMemoryChange(64, new byte[32]);
+        tracer.ReportActionEnd(1000, ReadOnlyMemory<byte>.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Used, Is.EqualTo(limit - 32));
+            Assert.That(tracer.BuildResult().VmTrace!.Operations.Single().Memory!.Offset, Is.EqualTo(64));
+        }
+    }
+
+    [Test]
+    public void Kept_call_input_above_the_limit_fails_the_trace()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[60]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace)
+        {
+            DataBudget = new TraceDataBudget(2 * ParityLikeTxTracer.RetainedActionBytes + 100)
+        };
+        tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+
+        Assert.That(() => tracer.ReportAction(50000, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, new byte[60], ExecutionType.CALL),
+            Throws.TypeOf<TraceDataLimitExceededException>());
+    }
+
+    [Test]
+    public void Kept_return_data_above_the_limit_fails_the_trace()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[60]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace)
+        {
+            DataBudget = new TraceDataBudget(ParityLikeTxTracer.RetainedActionBytes + 100)
+        };
+        tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+
+        Assert.That(() => tracer.ReportActionEnd(1000, new byte[60]), Throws.TypeOf<TraceDataLimitExceededException>());
+    }
+
+    [Test]
+    public void Block_tracer_counts_kept_data_of_all_transactions_of_a_block()
+    {
+        Transaction tx1 = Build.A.Transaction.WithData(new byte[60]).TestObject;
+        Transaction tx2 = Build.A.Transaction.WithData(new byte[60]).WithNonce(1).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx1, tx2).TestObject;
+        ParityLikeBlockTracer parityTracer = new(ParityTraceTypes.Trace) { MaxRetainedBytes = 2 * ParityLikeTxTracer.RetainedActionBytes + 100 };
+        IBlockTracer blockTracer = parityTracer;
+
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer first = blockTracer.StartNewTxTrace(tx1);
+        first.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx1.Data, ExecutionType.TRANSACTION);
+        first.ReportActionEnd(1000, ReadOnlyMemory<byte>.Empty);
+        first.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        blockTracer.EndTxTrace();
+        ITxTracer second = blockTracer.StartNewTxTrace(tx2);
+
+        Assert.That(() => second.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx2.Data, ExecutionType.TRANSACTION),
+            Throws.TypeOf<TraceDataLimitExceededException>());
+    }
+
+    [Test]
+    public void Block_tracer_keeps_one_data_budget_across_blocks()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[60]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ParityLikeBlockTracer parityTracer = new(ParityTraceTypes.Trace) { MaxRetainedBytes = 2 * ParityLikeTxTracer.RetainedActionBytes + 100 };
+        IBlockTracer blockTracer = parityTracer;
+
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer first = blockTracer.StartNewTxTrace(tx);
+        first.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+        first.ReportActionEnd(1000, ReadOnlyMemory<byte>.Empty);
+        first.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+
+        blockTracer.StartNewBlockTrace(block);
+        ITxTracer second = blockTracer.StartNewTxTrace(tx);
+
+        Assert.That(() => second.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION),
+            Throws.TypeOf<TraceDataLimitExceededException>());
+    }
+
+    [Test]
+    public void Block_tracers_that_share_a_data_budget_count_it_together_from_parallel_threads()
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TraceDataBudget budget = new(1000);
+        int failures = 0;
+
+        Parallel.For(0, 20, _ =>
+        {
+            IBlockTracer blockTracer = new ParityLikeBlockTracer(tx.Hash!, ParityTraceTypes.Trace) { DataBudget = budget };
+            blockTracer.StartNewBlockTrace(block);
+            ITxTracer txTracer = blockTracer.StartNewTxTrace(tx);
+            try
+            {
+                txTracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+            }
+            catch (TraceDataLimitExceededException)
+            {
+                Interlocked.Increment(ref failures);
+            }
+        });
+
+        Assert.That(failures, Is.EqualTo(20 - 1000 / ParityLikeTxTracer.RetainedActionBytes));
+    }
+
+    [Test]
+    public void Kept_subtrace_charges_its_address_even_with_empty_input()
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace)
+        {
+            DataBudget = new TraceDataBudget(2 * ParityLikeTxTracer.RetainedActionBytes)
+        };
+        tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+
+        Assert.That(() => tracer.ReportAction(50000, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, default, ExecutionType.CALL),
+            Throws.TypeOf<TraceDataLimitExceededException>());
+    }
+
+    [Test]
+    public void Kept_state_diff_charges_code_and_releases_replaced_bytes()
+    {
+        Transaction tx = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        TraceDataBudget budget = new(1024);
+        ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.StateDiff) { DataBudget = budget };
+        tracer.ReportCodeChange(TestItem.AddressA, default, new byte[500]);
+        long before = budget.Used;
+
+        tracer.ReportCodeChange(TestItem.AddressA, default, new byte[100]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Used, Is.EqualTo(before - 400));
+            Assert.That(() => tracer.ReportCodeChange(TestItem.AddressB, default, new byte[1024]),
+                Throws.TypeOf<TraceDataLimitExceededException>());
+        }
+    }
+
+    [TestCase(30_000UL, false, TestName = "Buffered_vm_trace_of_a_short_jump_loop_stays_within_the_limit")]
+    [TestCase(1_000_000UL, true, TestName = "Buffered_vm_trace_of_a_long_jump_loop_exceeds_the_limit")]
+    public void Buffered_vm_trace_charges_each_operation(ulong gasLimit, bool exceeds)
+    {
+        byte[] loop = Prepare.EvmCode.Op(Instruction.JUMPDEST).PushData(0).Op(Instruction.JUMP).Done;
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, gasLimit, loop);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.VmTrace)
+        {
+            DataBudget = new TraceDataBudget(ParityLikeTxTracer.RetainedOperationBytes * 10_000)
+        };
+
+        Assert.That(() => _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer),
+            exceeds ? Throws.TypeOf<TraceDataLimitExceededException>() : Throws.Nothing);
+    }
+
+    [Test]
+    public void Buffered_vm_trace_charges_stack_items_close_to_what_it_allocates()
+    {
+        const long budget = 4 * 1024 * 1024;
+        Prepare fill = Prepare.EvmCode;
+        for (int i = 0; i < 17; i++) fill = fill.PushData(1);
+        byte[] code = fill.Op(Instruction.JUMPDEST).Op(Instruction.SWAP16).PushData(34).Op(Instruction.JUMP).Done;
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 1_000_000, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.VmTrace) { DataBudget = new TraceDataBudget(budget) };
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        bool exceeded = false;
+        try
+        {
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+        }
+        catch (TraceDataLimitExceededException)
+        {
+            exceeded = true;
+        }
+
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exceeded, Is.True);
+            Assert.That(allocated, Is.LessThan(budget * 12 / 10));
+        }
+    }
+
+    [TestCase(false, TestName = "Buffered_vm_trace_without_a_storage_change_fits_the_budget")]
+    [TestCase(true, TestName = "Buffered_vm_trace_charges_a_storage_change")]
+    public void Buffered_vm_trace_charges_storage_changes(bool store)
+    {
+        Prepare prepare = Prepare.EvmCode.PushData(1).PushData(0);
+        byte[] code = (store ? prepare.Op(Instruction.SSTORE) : prepare.Op(Instruction.POP)).Op(Instruction.STOP).Done;
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 100_000, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.VmTrace)
+        {
+            DataBudget = new TraceDataBudget(ParityLikeTxTracer.RetainedActionBytes + 650)
+        };
+
+        Assert.That(() => _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer),
+            store ? Throws.TypeOf<TraceDataLimitExceededException>() : Throws.Nothing);
+    }
+
+    [Test]
+    public void Streaming_tracers_keep_their_pooled_inputs_charged_and_within_the_limit()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[40 * 1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        TraceDataBudget budget = new(256 * 1024 + ParityLikeTxTracer.RetainedActionBytes);
+        List<StreamingParityLikeTxTracer> tracers = [];
+        try
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+                {
+                    DataBudget = budget
+                };
+                tracers.Add(tracer);
+                tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+                tracer.ReportActionEnd(1000, ReadOnlyMemory<byte>.Empty);
+                tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+                tracer.BuildResult();
+                tracer.ReleaseRetainedData();
+            }
+
+            long pooled = tracers.Sum(static t => t.PooledInputBytes);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pooled, Is.GreaterThan(0), "guards the premise: input arrays are kept for later traces");
+                Assert.That(budget.Used, Is.EqualTo(pooled), "kept input arrays stay charged");
+                Assert.That(budget.Used, Is.LessThanOrEqualTo(budget.Limit));
+            }
+        }
+        finally
+        {
+            foreach (StreamingParityLikeTxTracer tracer in tracers) tracer.ReleaseResources();
+        }
+
+        Assert.That(budget.Used, Is.Zero);
+    }
+
+    [Test]
+    public void Streaming_tracer_charges_the_length_of_the_array_it_keeps_an_input_in()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[33 * 1024]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        TraceDataBudget budget = new(1024 * 1024);
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+        {
+            DataBudget = budget
+        };
+        try
+        {
+            tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+
+            Assert.That(budget.Used, Is.EqualTo(ParityLikeTxTracer.RetainedActionBytes + 64 * 1024));
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    /// <summary>A charge may wait for room shared with other tracers; one for a new input comes before the array the input
+    /// is copied into, so no array is held outside the budget while it waits, nor kept when it fails.</summary>
+    [Test]
+    public void Streaming_tracer_charges_a_new_input_before_it_takes_an_array_for_it()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[3000]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        // The shared pool rounds the input up to the next power of two.
+        RecordingGate gate = new() { FailingCharge = 4096 };
+        TraceDataBudget budget = new(1024 * 1024, gate);
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+        {
+            DataBudget = budget
+        };
+        try
+        {
+            Assert.That(() => tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION),
+                Throws.TypeOf<OperationCanceledException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(gate.Charges, Does.Contain((4096L, true)), "the input is charged at the length of the array it would take, and may wait");
+                Assert.That(tracer.PooledInputBytes, Is.Zero, "no array was taken for the input whose charge failed");
+            }
+
+            tracer.ReleaseRetainedData();
+            Assert.That(budget.Used, Is.Zero);
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    /// <summary>A kept input array is charged already, so taking it for the next trace's input charges nothing and gives
+    /// nothing back: it never leaves the budget, also not while another charge waits.</summary>
+    [Test]
+    public void Streaming_tracer_takes_a_kept_input_array_without_charging_it_again()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[3000]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+        RecordingGate gate = new();
+        TraceDataBudget budget = new(1024 * 1024, gate);
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+        {
+            DataBudget = budget
+        };
+        try
+        {
+            tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+            tracer.ReportActionEnd(1000, ReadOnlyMemory<byte>.Empty);
+            tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+            tracer.BuildResult();
+            tracer.ResetForNextTx(block, tx);
+            Assert.That(tracer.PooledInputBytes, Is.EqualTo(4096), "precondition: the input array is kept for the next trace");
+            gate.Charges.Clear();
+            gate.Releases.Clear();
+
+            tracer.ReportAction(100_000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.PooledInputBytes, Is.Zero, "precondition: the kept array is taken");
+                Assert.That(gate.Charges.Select(static c => c.Bytes), Is.EqualTo(new long[] { ParityLikeTxTracer.RetainedActionBytes }), "only the action is charged");
+                Assert.That(gate.Releases, Is.Empty, "the kept array is not given back before it is taken");
+                Assert.That(budget.Used, Is.EqualTo(ParityLikeTxTracer.RetainedActionBytes + 4096));
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        Assert.That(budget.Used, Is.Zero);
+    }
+
+    private sealed class RecordingGate : ITraceDataGate
+    {
+        public long? FailingCharge { get; init; }
+        public List<(long Bytes, bool MayWait)> Charges { get; } = [];
+        public List<long> Releases { get; } = [];
+
+        public void Charge(long bytes, bool mayWait)
+        {
+            Charges.Add((bytes, mayWait));
+            // As a wait for room ends when the workers stop.
+            if (bytes == FailingCharge) throw new OperationCanceledException();
+        }
+
+        public bool TryCharge(long bytes)
+        {
+            Charges.Add((bytes, false));
+            return true;
+        }
+
+        public void Release(long bytes) => Releases.Add(bytes);
+    }
+
+    [Test]
+    public void Budget_passes_its_gate_every_byte_also_of_a_charge_that_fails()
+    {
+        CountingGate gate = new(room: 50);
+        TraceDataBudget budget = new(100, gate);
+        budget.Add(80);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => budget.Add(40), Throws.TypeOf<TraceDataLimitExceededException>());
+            Assert.That(gate.Waits, Is.EqualTo(new[] { true, false }), "only a charge within the budget's own limit may wait");
+            Assert.That(gate.Used, Is.EqualTo(budget.Used), "the gate counts the bytes of the failed charge, which the tracer gives back");
+            Assert.That(budget.TryAdd(10), Is.False, "the budget is full");
+        }
+
+        budget.Release(120);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.TryAdd(60), Is.False, "a charge the gate has no room for is not kept");
+            Assert.That(budget.Used, Is.Zero);
+            Assert.That(budget.TryAdd(50), Is.True);
+            Assert.That(gate.Used, Is.EqualTo(budget.Used));
+        }
+    }
+
+    private sealed class CountingGate(long room) : ITraceDataGate
+    {
+        public long Used { get; private set; }
+        public List<bool> Waits { get; } = [];
+
+        public void Charge(long bytes, bool mayWait)
+        {
+            Waits.Add(mayWait);
+            Used += bytes;
+        }
+
+        public bool TryCharge(long bytes)
+        {
+            if (Used + bytes > room) return false;
+            Used += bytes;
+            return true;
+        }
+
+        public void Release(long bytes) => Used -= bytes;
+    }
+
+    [Test]
+    public void Reused_streaming_tracer_starts_a_new_data_budget_per_transaction()
+    {
+        Transaction tx = Build.A.Transaction.WithData(new byte[60]).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        ArrayBufferWriter<byte> sink = new();
+        using Utf8JsonWriter writer = new(sink);
+        StreamingParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace, writer, null, CancellationToken.None, fillVmTraceSlot: false)
+        {
+            DataBudget = new TraceDataBudget(ParityLikeTxTracer.RetainedActionBytes + 100)
+        };
+        try
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                tracer.ReportAction(100000, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, tx.Data, ExecutionType.TRANSACTION);
+                tracer.ReportActionEnd(1000, ReadOnlyMemory<byte>.Empty);
+                tracer.MarkAsSuccess(TestItem.AddressA, default, [], []);
+                tracer.BuildResult();
+                tracer.ResetForNextTx(block, tx);
+            }
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    [Test]
+    public void Streaming_vm_trace_keeps_entry_and_byte_thresholds_distinct([Values] bool flushByBytes)
+    {
+        byte[] copy = Prepare.EvmCode.PushData(0x10000).PushData(0).PushData(0).Op(Instruction.CODECOPY).Done;
+        byte[] code = [.. copy, .. copy, .. copy, .. copy];
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 1_000_000, code);
+        FlushCountingPipeWriter pipe = new();
+        using Utf8JsonWriter writer = new(pipe, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer tracer = flushByBytes
+            ? new(block, transaction, ParityTraceTypes.VmTrace, writer, pipe, CancellationToken.None, fillVmTraceSlot: true,
+                flushThreshold: new(64 * 1024))
+            : new(block, transaction, ParityTraceTypes.VmTrace, writer, pipe, CancellationToken.None, fillVmTraceSlot: true,
+                flushIntervalEntries: 8192);
+        try
+        {
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+            tracer.BuildResult();
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+
+        Assert.That(pipe.Flushes, flushByBytes ? Is.GreaterThanOrEqualTo(4) : Is.Zero);
+    }
+
+    [Test]
+    public void Streaming_vm_trace_kept_in_memory_stops_at_the_output_limit()
+    {
+        byte[] copy = Prepare.EvmCode.PushData(0x10000).PushData(0).PushData(0).Op(Instruction.CODECOPY).Done;
+        byte[] code = [.. copy, .. copy, .. copy, .. copy];
+        (Block block, Transaction transaction) = PrepareTx(BlockNumber, 1_000_000, code);
+        FlushCountingPipeWriter pipe = new();
+        using Utf8JsonWriter writer = new(pipe, new JsonWriterOptions { SkipValidation = true });
+        StreamingParityLikeTxTracer tracer = new(
+            block, transaction, ParityTraceTypes.VmTrace, writer, pipe, CancellationToken.None, fillVmTraceSlot: true,
+            flushThreshold: new(64 * 1024))
+        {
+            OutputLimit = new TraceOutputLimit(128 * 1024)
+        };
+        try
+        {
+            Assert.That(() => _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer),
+                Throws.TypeOf<TraceDataLimitExceededException>());
+        }
+        finally
+        {
+            tracer.ReleaseResources();
+        }
+    }
+
+    private sealed class FlushCountingPipeWriter : PipeWriter
+    {
+        private readonly ArrayBufferWriter<byte> _buffer = new();
+
+        public int Flushes { get; private set; }
+
+        public override void Advance(int bytes) => _buffer.Advance(bytes);
+
+        public override Memory<byte> GetMemory(int sizeHint = 0) => _buffer.GetMemory(sizeHint);
+
+        public override Span<byte> GetSpan(int sizeHint = 0) => _buffer.GetSpan(sizeHint);
+
+        public override void CancelPendingFlush() { }
+
+        public override void Complete(Exception exception = null) { }
+
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            Flushes++;
+            return ValueTask.FromResult(new FlushResult(false, false));
         }
     }
 

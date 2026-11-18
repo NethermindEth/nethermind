@@ -1058,20 +1058,25 @@ public partial class EthRpcModule(
     {
         BlockParameter fromBlock = filter.FromBlock;
         BlockParameter toBlock = filter.ToBlock;
-        int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        return InstallFilter(() => _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics));
     }
 
-    public ResultWrapper<UInt256?> eth_newBlockFilter()
-    {
-        int filterId = _blockchainBridge.NewBlockFilter();
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
-    }
+    public ResultWrapper<UInt256?> eth_newBlockFilter() => InstallFilter(_blockchainBridge.NewBlockFilter);
 
-    public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
+    public ResultWrapper<UInt256?> eth_newPendingTransactionFilter() => InstallFilter(_blockchainBridge.NewPendingTransactionFilter);
+
+    private static ResultWrapper<UInt256?> InstallFilter(Func<int> install)
     {
-        int filterId = _blockchainBridge.NewPendingTransactionFilter();
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        try
+        {
+            return ResultWrapper<UInt256?>.Success((UInt256)install());
+        }
+        catch (FilterLimitExceededException e)
+        {
+            // Same code as eth_getLogs answers with when MaxLogsPerResponse is hit; the store is shared by
+            // all callers, so the limit is not a rate limit on this caller.
+            return ResultWrapper<UInt256?>.Fail(e.Message, ErrorCodes.LimitExceeded);
+        }
     }
 
     public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)

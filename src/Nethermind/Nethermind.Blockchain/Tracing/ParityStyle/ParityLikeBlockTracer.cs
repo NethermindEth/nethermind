@@ -43,11 +43,33 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
         IsTracingRewards = false;
     }
 
+    private TraceDataBudget? _dataBudget;
+
+    /// <summary>
+    /// The most bytes of trace data that the transaction tracers of this tracer keep in memory, over every block it
+    /// traces. Used only when <see cref="DataBudget"/> is not set.
+    /// </summary>
+    public long MaxRetainedBytes { get; init; } = ParityLikeTxTracer.DefaultMaxRetainedBytes;
+
+    /// <summary>
+    /// The budget that every transaction tracer of this tracer charges. It is never reset, so it bounds one request
+    /// over all the blocks it traces. Set it to share one budget between tracers of one request, also when they run
+    /// in parallel; by default it is created from <see cref="MaxRetainedBytes"/>.
+    /// </summary>
+    public TraceDataBudget DataBudget
+    {
+        get => _dataBudget ??= new TraceDataBudget(MaxRetainedBytes);
+        init => _dataBudget = value;
+    }
+
     protected override ParityLikeTxTracer OnStart(Transaction? tx) => new(_block, tx,
         tx is not null && _typesByTransaction?.TryGetValue(tx.Hash!, out ParityTraceTypes types) == true
             ? types
             : _types,
-        _block is null ? null : _specProvider?.GetSpec(_block.Header));
+        _block is null ? null : _specProvider?.GetSpec(_block.Header))
+    {
+        DataBudget = DataBudget
+    };
 
     protected override ParityLikeTxTrace OnEnd(ParityLikeTxTracer txTracer) => txTracer.BuildResult();
 
@@ -58,6 +80,7 @@ public class ParityLikeBlockTracer : BlockTracerBase<ParityLikeTxTrace, ParityLi
         ParityLikeTxTrace rewardTrace = TxTraces.LastOrDefault();
         if (rewardTrace is not null)
         {
+            DataBudget.Add(ParityLikeTxTracer.RetainedActionBytes);
             rewardTrace.Action = new ParityTraceAction
             {
                 RewardType = rewardType,

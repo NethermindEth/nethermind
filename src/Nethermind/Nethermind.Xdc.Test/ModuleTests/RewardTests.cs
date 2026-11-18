@@ -32,6 +32,38 @@ namespace Nethermind.Xdc.Test.ModuleTests;
 [NonParallelizable]
 public class RewardTests
 {
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Accounting_reads_previous_totals_from_the_parent_epoch(bool zeroTotals)
+    {
+        XdcReleaseSpec spec = new() { SwitchEpoch = 1, EpochLength = 10 };
+        IWorldState state = Substitute.For<IWorldState>();
+        state.GetNonce(Arg.Any<Address>()).Returns(1UL);
+        UInt256 previousMintedSlot = UInt256.Parse("0x0100000000000000000000000000000000000000000000000000000000000003");
+        UInt256 previousRewardBlockSlot = UInt256.Parse("0x0300000000000000000000000000000000000000000000000000000000000003");
+        state.When(s => s.Get(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+            .Do(call =>
+            {
+                UInt256 slot = call.ArgAt<StorageCell>(0).Index;
+                call[1] = slot == previousMintedSlot && !zeroTotals ? (UInt256)12
+                    : slot == previousRewardBlockSlot ? (UInt256)12
+                    : slot == UInt256.One ? UInt256.One
+                    : UInt256.Zero;
+            });
+        XdcTransactionProcessor processor = CreateXdcTransactionProcessor(
+            Substitute.For<ISpecProvider>(), Substitute.For<IMasternodeVotingContract>(), state);
+        QuorumCertificate parent = Build.A.QuorumCertificate()
+            .WithBlockInfo(new BlockRoundInfo(TestItem.KeccakA, 20, 12)).TestObject;
+        XdcBlockHeader header = Build.A.XdcBlockHeader()
+            .WithNumber(13)
+            .WithExtraConsensusData(new ExtraFieldsV2(40, parent)).TestObject;
+
+        new MintedRecordContract().UpdateAccounting(processor, header, spec, 4, 0);
+
+        state.Received(1).Get(Arg.Is<StorageCell>(cell => cell.Index == previousMintedSlot), out Arg.Any<UInt256>());
+        state.Received(zeroTotals ? 4 : 3).Get(Arg.Any<StorageCell>(), out Arg.Any<UInt256>());
+    }
+
     [TestCase(false, 3)]
     [TestCase(true, 0)]
     public void GetRewardMasternodes_GenesisHeader_UsesExpectedValidatorSource(bool isSubnet, int expectedCount)

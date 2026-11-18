@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Runtime.CompilerServices;
@@ -26,6 +27,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.WebSockets;
@@ -69,6 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private static readonly TimeSpan NoDeliveryWait = TimeSpan.FromSeconds(1);
         // Every notification is a send of its own on that loop.
         private static readonly TimeSpan AllDeliveriesTimeout = TimeSpan.FromMinutes(1);
+        private static readonly Lazy<IRpcModuleProvider> NoModuleProvider = new(NullModuleProvider.Instance);
         private IPeerPool _peerPool;
         private IRlpxHost _rlpxPeer;
 
@@ -80,7 +83,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
             _specProvider = Substitute.For<ISpecProvider>();
-            _filterStore = new FilterStore(new TimerFactory());
+            _filterStore = new FilterStore(new TimerFactory(), maxFilters: 1);
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
             _syncConfig = new SyncConfig();
@@ -101,7 +104,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _jsonRpcConfig,
             _logManager);
 
-            _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager);
+            _subscribeRpcModule = new SubscribeRpcModule(_subscriptionManager, NoModuleProvider);
             _subscribeRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
 
             // block numbers matching filters in LogsSubscriptions with null arguments will be 33333-77777
@@ -111,6 +114,28 @@ namespace Nethermind.JsonRpc.Test.Modules
             _blockTree.FindHeader(Arg.Any<BlockParameter>(), true).Returns(toBlock);
 
             _specProvider.ChainId.Returns(BlockchainIds.Mainnet);
+        }
+
+        [Test]
+        public void Peer_events_require_admin_on_the_request_endpoint([Values] bool adminEnabled)
+        {
+            JsonRpcConfig config = new() { EnabledModules = [ModuleType.Admin, ModuleType.Eth] };
+            RpcModuleProvider provider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), [], LimboLogs.Instance);
+            provider.Register(new BoundedModulePool<IAdminRpcModule>(
+                new SingletonFactory<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()), exclusiveCapacity: 1, timeout: 1000));
+            string[] modules = adminEnabled ? [ModuleType.Admin, ModuleType.Eth] : [ModuleType.Eth];
+            JsonRpcUrl url = new("ws", "localhost", 8546, RpcEndpoint.Ws, isAuthenticated: false, modules);
+            ISubscriptionManager manager = Substitute.For<ISubscriptionManager>();
+            manager.AddSubscription(_jsonRpcDuplexClient, SubscriptionType.AdminSubscription.PeerEvents, null).Returns("subscription");
+            SubscribeRpcModule module = new(manager, new Lazy<IRpcModuleProvider>(provider)) { Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient, url) };
+
+            ResultWrapper<string> result = module.eth_subscribe(SubscriptionType.AdminSubscription.PeerEvents);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.Result.ResultType, Is.EqualTo(adminEnabled ? ResultType.Success : ResultType.Failure));
+                manager.Received(adminEnabled ? 1 : 0).AddSubscription(_jsonRpcDuplexClient, SubscriptionType.AdminSubscription.PeerEvents, null);
+            }
         }
 
         [TearDown]
@@ -487,20 +512,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        [Test]
-        public async Task LogsSubscription_with_null_arguments_creating_result()
+        [TestCase(null)]
+        [TestCase("""{"fromBlock":"latest","toBlock":"latest","address":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","topics":"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760"}""")]
+        public async Task LogsSubscription_opens_at_installed_filter_capacity(string? filter)
         {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs");
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            Assert.That(expectedResult, Is.EqualTo(serialized));
-        }
+            _filterStore.SaveFilter(_filterStore.CreateBlockFilter());
 
-        [Test]
-        public async Task LogsSubscription_with_valid_arguments_creating_result()
-        {
-            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", "{\"fromBlock\":\"latest\",\"toBlock\":\"latest\",\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"topics\":\"0x03783fac2efed8fbc9ad443e592ee30e61d65f471140c10ca155e937b435b760\"}");
-            string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
-            Assert.That(expectedResult, Is.EqualTo(serialized));
+            string serialized = filter is null
+                ? await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs")
+                : await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "logs", filter);
+            using JsonDocument response = JsonDocument.Parse(serialized);
+            Assert.That(response.RootElement.GetProperty("result").GetString(), Does.Match("^0x[0-9a-fA-F]{32}$"));
         }
 
         [Test]
@@ -1875,9 +1897,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             otherClient.Id.Returns("other-client");
             IJsonRpcDuplexClient lateClient = Substitute.For<IJsonRpcDuplexClient>();
             lateClient.Id.Returns("late-client");
-            SubscribeRpcModule busyModule = new(manager) { Context = new JsonRpcContext(RpcEndpoint.Ws, busyClient) };
-            SubscribeRpcModule otherModule = new(manager) { Context = new JsonRpcContext(RpcEndpoint.Ws, otherClient) };
-            SubscribeRpcModule lateModule = new(manager) { Context = new JsonRpcContext(RpcEndpoint.Ws, lateClient) };
+            SubscribeRpcModule busyModule = new(manager, NoModuleProvider) { Context = new JsonRpcContext(RpcEndpoint.Ws, busyClient) };
+            SubscribeRpcModule otherModule = new(manager, NoModuleProvider) { Context = new JsonRpcContext(RpcEndpoint.Ws, otherClient) };
+            SubscribeRpcModule lateModule = new(manager, NoModuleProvider) { Context = new JsonRpcContext(RpcEndpoint.Ws, lateClient) };
 
             for (int i = 0; i < connectionLimit; i++)
             {

@@ -53,34 +53,37 @@ public class RbuilderRpcModuleTests
         await _container.DisposeAsync();
 
     [Test]
-    public async Task Test_getCodeByHash()
+    public async Task Get_code_by_hash_is_independent_of_state_root_calculation(
+        [Values] bool codeExists, [Values] bool calculateStateRootFirst)
     {
-        string theCode = "01234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567";
-        byte[] theCodeBytes = Bytes.FromHexString(theCode);
-        Hash256 theHash = Keccak.Compute(theCodeBytes);
+        string code = "01234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567";
+        byte[] codeBytes = Bytes.FromHexString(code);
+        Hash256 hash = Keccak.Compute(codeBytes);
 
-        IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
-        using (worldState.BeginScope(IWorldState.PreGenesis))
+        if (codeExists)
         {
-            worldState.CreateAccount(TestItem.AddressA, 100000);
-            worldState.InsertCode(TestItem.AddressA, theCodeBytes, London.Instance);
-            worldState.Commit(London.Instance);
-            worldState.CommitTree(0);
+            IWorldState worldState = new WorldState(_worldStateManager.GlobalWorldState, LimboLogs.Instance);
+            using (worldState.BeginScope(IWorldState.PreGenesis))
+            {
+                worldState.CreateAccount(TestItem.AddressA, 100000);
+                worldState.InsertCode(TestItem.AddressA, codeBytes, London.Instance);
+                worldState.Commit(London.Instance);
+                worldState.CommitTree(0);
+            }
         }
 
-        string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_getCodeByHash", theHash);
+        if (calculateStateRootFirst)
+        {
+            Dictionary<Address, AccountChange> diff = new()
+            {
+                [TestItem.AddressB] = new AccountChange { CodeHash = hash }
+            };
+            string calculation = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_calculateStateRoot", "LATEST", diff);
+            Assert.That(calculation, Does.Contain("\"result\":\"0x"));
+        }
 
-        Assert.That(response, Does.Contain(theCode));
-    }
-
-    [Test]
-    public async Task Test_getCodeByHashNotFound()
-    {
-        string theCode = "01234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567012345670123456701234567";
-        byte[] theCodeBytes = Bytes.FromHexString(theCode);
-        Hash256 theHash = Keccak.Compute(theCodeBytes);
-        string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_getCodeByHash", theHash);
-        Assert.That(response, Does.Contain("null"));
+        string response = await RpcTest.TestSerializedRequest(_rbuilderRpcModule, "rbuilder_getCodeByHash", hash);
+        Assert.That(response, Does.Contain(codeExists ? code : "null"));
     }
 
     [Test]

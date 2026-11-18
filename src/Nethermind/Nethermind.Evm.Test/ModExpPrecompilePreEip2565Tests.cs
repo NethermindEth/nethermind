@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -14,6 +16,85 @@ public class ModExpPrecompilePreEip2565Tests : PrecompileTests<ModExpPrecompileP
     static IEnumerable<string> IPrecompileTests.TestFiles()
     {
         yield return "modexp.json";
+    }
+
+    [Test]
+    public void Gas_cost_treats_missing_exponent_bytes_as_zero([Values] bool hasExponentByte)
+    {
+        byte[] input = new byte[hasExponentByte ? 99 : 98];
+        input[31] = 2;
+        input[63] = 32;
+        input[95] = 2;
+        if (hasExponentByte) input[98] = 1;
+
+        ulong gas = ModExpPrecompilePreEip2565.Instance.DataGasCost(input, Byzantium.Instance);
+
+        Assert.That(gas, Is.EqualTo(hasExponentByte ? 49UL : 0UL));
+    }
+
+    [Test]
+    public void Operand_complexity_accepts_lengths_through_uint64_max()
+    {
+        UInt256 limit = ulong.MaxValue;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ModExpPrecompilePreEip2565.TryGetOperandComplexity(limit, out _), Is.True);
+            Assert.That(ModExpPrecompilePreEip2565.TryGetOperandComplexity(limit + UInt256.One, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Gas_cost_saturates_when_an_operand_length_exceeds_uint64()
+    {
+        byte[] input = new byte[96];
+        UInt256 operandLength = (UInt256)ulong.MaxValue + UInt256.One;
+        operandLength.ToBigEndian(input.AsSpan(0, 32));
+
+        Assert.That(ModExpPrecompilePreEip2565.Instance.DataGasCost(input, Byzantium.Instance), Is.EqualTo(ulong.MaxValue));
+    }
+
+    [Test]
+    public void Gas_cost_saturates_when_the_cost_product_overflows()
+    {
+        byte[] input = new byte[96];
+        input[31] = 64;
+        UInt256.MaxValue.ToBigEndian(input.AsSpan(32, 32));
+
+        Assert.That(ModExpPrecompilePreEip2565.Instance.DataGasCost(input, Byzantium.Instance), Is.EqualTo(ulong.MaxValue));
+    }
+
+    // modulusLength = 2^128 exceeds ulong; the old wrapping UInt256 arithmetic charged 0 gas for it.
+    [Test]
+    public void Gas_cost_is_max_when_operand_length_exceeds_ulong()
+    {
+        byte[] input = InputWithAdjustedExponentLength2Pow255();
+        input[79] = 0x01;
+
+        ulong gas = ModExpPrecompilePreEip2565.Instance.DataGasCost(input, Byzantium.Instance);
+
+        Assert.That(gas, Is.EqualTo(ulong.MaxValue));
+    }
+
+    // modulusLength = 2^63 passes the operand guard, but complexity * 2^255 overflows UInt256 and used to wrap to 0.
+    [Test]
+    public void Gas_cost_is_max_when_gas_multiplication_overflows()
+    {
+        byte[] input = InputWithAdjustedExponentLength2Pow255();
+        input[88] = 0x80;
+
+        ulong gas = ModExpPrecompilePreEip2565.Instance.DataGasCost(input, Byzantium.Instance);
+
+        Assert.That(gas, Is.EqualTo(ulong.MaxValue));
+    }
+
+    // baseLength = 0, expLength = 2^252 + 32 with no exponent bytes, so the adjusted exponent length is 2^255.
+    private static byte[] InputWithAdjustedExponentLength2Pow255()
+    {
+        byte[] input = new byte[96];
+        input[32] = 0x10;
+        input[63] = 0x20;
+        return input;
     }
 
     [TestCase(

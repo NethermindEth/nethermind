@@ -16,6 +16,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
@@ -684,6 +685,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
                 GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", in request.IdRef, returnAction, suppressWarning: true),
+
+            TraceDataLimitExceededException or { InnerException: TraceDataLimitExceededException } =>
+                GetErrorResponse(methodName, ErrorCodes.ClientLimitExceededError, (ex as TraceDataLimitExceededException ?? ex.InnerException)!.Message, in request.IdRef, returnAction),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
                 LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), in request.IdRef, returnAction)),

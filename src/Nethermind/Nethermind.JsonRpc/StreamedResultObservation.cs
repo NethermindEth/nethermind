@@ -114,6 +114,8 @@ internal sealed class StreamedResultObservation(IStreamedResultObserver observer
             WrittenCount = writer.WrittenCount;
         }
 
+        public override bool RetainsOutput => _writer.RetainsOutput;
+
         public override Memory<byte> GetMemory(int sizeHint = 0) => _memory = _writer.GetMemory(sizeHint);
 
         public override Span<byte> GetSpan(int sizeHint = 0) => GetMemory(sizeHint).Span;

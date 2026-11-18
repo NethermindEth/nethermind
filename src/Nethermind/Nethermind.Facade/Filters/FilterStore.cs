@@ -19,6 +19,7 @@ namespace Nethermind.Facade.Filters
     public sealed class FilterStore : IDisposable
     {
         private readonly TimeSpan _timeout;
+        private readonly int _maxFilters;
         private int _currentFilterId = -1;
         private readonly Lock _locker = new();
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new();
@@ -55,9 +56,14 @@ namespace Nethermind.Facade.Filters
         // https://github.com/dotnet/runtime/pull/38296
         private IEnumerator<KeyValuePair<int, FilterBase>>? _enumerator;
 
-        public FilterStore(ITimerFactory timerFactory, int timeout = 15 * 60 * 1000, int cleanupInterval = 5 * 60 * 1000)
+        /// <param name="timeout">How long an unused filter is kept, in milliseconds.</param>
+        /// <param name="cleanupInterval">How often unused filters are removed, in milliseconds.</param>
+        /// <param name="maxFilters">The max number of filters held at a time. <c>0</c> to lift the limit.</param>
+        public FilterStore(ITimerFactory timerFactory, int timeout = 15 * 60 * 1000, int cleanupInterval = 5 * 60 * 1000, int maxFilters = 0)
         {
             _timeout = TimeSpan.FromMilliseconds(timeout);
+            ArgumentOutOfRangeException.ThrowIfNegative(maxFilters);
+            _maxFilters = maxFilters;
             _timer = timerFactory.CreateTimer(TimeSpan.FromMilliseconds(cleanupInterval));
             _timer.AutoReset = false;
             _timer.Enabled = true;
@@ -150,15 +156,19 @@ namespace Nethermind.Facade.Filters
 
         internal event EventHandler<FilterEventArgs>? FilterSaved;
 
+        /// <exception cref="FilterLimitExceededException">The store already holds the max number of filters.</exception>
+        /// <exception cref="InvalidOperationException">A filter with the same ID is already stored.</exception>
         public void SaveFilter(FilterBase filter)
         {
-            if (!_filters.TryAdd(filter.Id, filter))
-            {
-                throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
-            }
-
             lock (_locker)
             {
+                ThrowIfFull();
+
+                if (!_filters.TryAdd(filter.Id, filter))
+                {
+                    throw new InvalidOperationException($"Filter with ID {filter.Id} already exists");
+                }
+
                 _currentFilterId = Math.Max(filter.Id, _currentFilterId);
             }
 
@@ -171,11 +181,23 @@ namespace Nethermind.Facade.Filters
             {
                 lock (_locker)
                 {
+                    // Refuse before taking an ID so that refused installs do not consume the ID space
+                    ThrowIfFull();
                     return ++_currentFilterId;
                 }
             }
 
             return 0;
+        }
+
+        // Filters are installed by unauthenticated RPC callers and live until uninstalled or unused for the
+        // timeout, so their count has to be bounded. Must be called under _locker to keep the bound exact.
+        private void ThrowIfFull()
+        {
+            if (_maxFilters > 0 && _filters.Count >= _maxFilters)
+            {
+                throw new FilterLimitExceededException(_maxFilters);
+            }
         }
 
         private static TopicsFilter GetTopicsFilter(IEnumerable<Hash256[]?>? topics = null)

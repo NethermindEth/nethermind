@@ -439,6 +439,43 @@ public partial class BlockProcessorTests
         }
     }
 
+    /// <summary>Before any transaction is traced, the stream learns whether the workers release their own traces, and
+    /// gets the token that stops them, which a failed worker cancels: a trace waiting for room inside a permit stops.</summary>
+    [Test]
+    public async Task AccessListSeed_ParallelStream_StartsTheStreamWithTheTokenAFailedWorkerCancels([Values] bool inTurn)
+    {
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await AddSharedStateBlock(chain));
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        using ParallelTraceBudget budget = new(2);
+        using ParallelBlockTracer parallel = new(() => BuildParallelEnvironment(chain), seeds, Budgets(chain, budget), LimboLogs.Instance);
+        GethTraceOptions options = new() { Tracer = "callTracer" };
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0, resumeWriterThreshold: 0));
+        using Utf8JsonWriter writer = new(pipe.Writer, ResponseWriterOptions);
+        writer.WriteStartArray();
+        IParallelTraceStream<GethLikeTxTrace> geth = GethLikeTraceStream.Rent(writer, pipe.Writer, CancellationToken.None);
+        BlockStartRecordingStream<GethLikeTxTrace> stream = new(inTurn ? new InTurnStream<GethLikeTxTrace>(geth) : geth);
+        int startsBeforeTracing = -1;
+
+        Assert.That(() => parallel.TryStream(block, parent, (state, txHash) =>
+        {
+            int index = Array.FindIndex(block.Transactions, tx => tx.Hash == txHash);
+            if (index == 0) startsBeforeTracing = stream.Starts;
+            if (index == block.Transactions.Length - 1) throw new InvalidOperationException("worker failed");
+            return GethStyleTracer.CreateOptionsTracer(block.Header, options with { TxHash = txHash }, state, chain.SpecProvider);
+        }, afterTransactions: null, stream, CancellationToken.None), Throws.InvalidOperationException.With.Message.EqualTo("worker failed"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Has.Length.GreaterThan(2), "precondition: the failing transaction is traced by a worker");
+            Assert.That(startsBeforeTracing, Is.EqualTo(1), "the stream is started once, before the first transaction is traced");
+            Assert.That(stream.Starts, Is.EqualTo(1));
+            Assert.That(stream.SerializedAhead, Is.EqualTo(!inTurn));
+            Assert.That(stream.Stop.IsCancellationRequested, Is.True, "the failed worker stops the others through the token");
+        }
+    }
+
     /// <summary>One place per worker, with the oldest transaction not yet written held: once the last transaction is
     /// taken, the workers with nothing left to take give their threads back rather than wait for a place they would
     /// give straight back.</summary>
@@ -639,6 +676,34 @@ public partial class BlockProcessorTests
         public void WriteSerialized(in ReadOnlySequence<byte> elements) => throw new NotSupportedException();
 
         public void Write(IReadOnlyCollection<TTrace> traces) => inner.Write(traces);
+
+        public void OnBlockStart(CancellationToken stop, bool serializedAhead) => inner.OnBlockStart(stop, serializedAhead);
+    }
+
+    /// <summary>Records how the block was started.</summary>
+    private sealed class BlockStartRecordingStream<TTrace>(IParallelTraceStream<TTrace> inner) : IParallelTraceStream<TTrace>
+    {
+        public int Starts { get; private set; }
+
+        public bool SerializedAhead { get; private set; }
+
+        public CancellationToken Stop { get; private set; }
+
+        public JsonWriterOptions? SerializeAheadOptions => inner.SerializeAheadOptions;
+
+        public void Serialize(IReadOnlyCollection<TTrace> traces, Utf8JsonWriter writer) => inner.Serialize(traces, writer);
+
+        public void WriteSerialized(in ReadOnlySequence<byte> elements) => inner.WriteSerialized(elements);
+
+        public void Write(IReadOnlyCollection<TTrace> traces) => inner.Write(traces);
+
+        public void OnBlockStart(CancellationToken stop, bool serializedAhead)
+        {
+            Starts++;
+            SerializedAhead = serializedAhead;
+            Stop = stop;
+            inner.OnBlockStart(stop, serializedAhead);
+        }
     }
 
     private sealed class WriteCounts
@@ -666,6 +731,8 @@ public partial class BlockProcessorTests
             counts.InTurn++;
             inner.Write(traces);
         }
+
+        public void OnBlockStart(CancellationToken stop, bool serializedAhead) => inner.OnBlockStart(stop, serializedAhead);
     }
 
     /// <summary>Fails the given write of serialized traces, and counts any write after it.</summary>

@@ -163,13 +163,15 @@ public class UnclesValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)] // because we decided to store the head block at 0x00..., eh
-    public void Uncles_near_genesis_with_00_address_used()
+    public void Rejects_an_uncle_with_an_unknown_parent_near_genesis()
     {
         Block falseUncle = Build.A.Block.WithParent(Build.A.Block.WithDifficulty(123).TestObject).TestObject;
         Block toValidate = Build.A.Block.WithParent(_parent).WithUncles(falseUncle).TestObject;
-        SetupHeaderValidator(toValidate.Uncles);
         UnclesValidator unclesValidator = new(_blockTree, _headerValidator, LimboLogs.Instance);
-        Assert.That(unclesValidator.Validate(toValidate.Header, toValidate.Uncles), Is.False);
-        AssertHeaderValidatorReceivedProperCalls(toValidate.Uncles);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unclesValidator.Validate(toValidate.Header, toValidate.Uncles), Is.False);
+            Assert.That(_headerValidator.ReceivedCalls(), Is.Empty);
+        }
     }
 }

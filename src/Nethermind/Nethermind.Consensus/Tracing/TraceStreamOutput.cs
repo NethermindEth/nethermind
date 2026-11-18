@@ -36,6 +36,9 @@ internal struct TraceStreamOutput(Utf8JsonWriter writer, PipeWriter? output, Can
 
     public readonly CancellationToken CancellationToken => cancellationToken;
 
+    /// <summary>Bytes of long elements copied into the pipe directly, past the writer.</summary>
+    public readonly long BypassedBytes => _bypassed;
+
     /// <summary>Appends elements serialized ahead, with the separator the writer would put before them.</summary>
     /// <remarks>With a pipe, only the first bytes go through the writer, which adds the separator and records that an
     /// element was written; the rest is copied into the pipe segment by segment, and the pipe is flushed whenever the

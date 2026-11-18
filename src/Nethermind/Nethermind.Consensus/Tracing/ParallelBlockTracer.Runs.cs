@@ -222,12 +222,14 @@ public sealed partial class ParallelBlockTracer
 
             if (stream.SerializeAheadOptions is { } options)
             {
+                stream.OnBlockStart(_stop.Token, serializedAhead: true);
                 _serializing ??= new SerializingTraceEmitter<TTrace>();
                 long budget = Math.Max(StreamedBudgetBytes, workers * StreamedBudgetBytesPerWorker);
                 _serializing.Start(stream, options, tracer._serialized, transactions, window, budget);
                 return _results = _serializing;
             }
 
+            stream.OnBlockStart(_stop.Token, serializedAhead: false);
             _inTurn ??= new InTurnTraceEmitter<TTrace>();
             _inTurn.Start(stream, transactions, window);
             return _results = _inTurn;
@@ -241,6 +243,7 @@ public sealed partial class ParallelBlockTracer
             CancellationToken stop = _stop.Token;
             IPrefixStateSeedSource callerSeeds = covered.CreateWorkerSeeds();
             results.Reserve(stop);
+            _slots!.Wait(stop);
             if (!TraceOne(Interlocked.Increment(ref _cursor), callerSeeds, stop)) return false;
 
             ExceptionDispatchInfo? failure = null;
@@ -285,9 +288,13 @@ public sealed partial class ParallelBlockTracer
                     if (Volatile.Read(ref _cursor) >= transactions - 1) return;
 
                     results.Reserve(stop);
+                    // The transaction is taken only with a permit held, so the earliest one not traced yet is always
+                    // on a worker that runs: a tracer may wait inside a later trace until the earlier ones are released.
+                    _slots!.Wait(stop);
                     int index = Interlocked.Increment(ref _cursor);
                     if (index >= transactions)
                     {
+                        _slots.Release();
                         results.Unreserve();
                         return;
                     }

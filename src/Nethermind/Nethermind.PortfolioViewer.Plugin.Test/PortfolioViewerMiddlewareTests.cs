@@ -113,17 +113,21 @@ public class PortfolioViewerMiddlewareTests
         }
     }
 
-    [Test]
-    public async Task Proxy_KnownSibling_ForwardsRequest()
+    [TestCase("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}""", true)]
+    [TestCase("""[{"jsonrpc":"2.0","id":1,"method":"eth_chainId"},{"jsonrpc":"2.0","id":2,"method":"eth_blockNumber"}]""", true)]
+    [TestCase("""{"jsonrpc":"2.0","id":1,"method":"example_getStatus"}""", false)]
+    [TestCase("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId","METHOD":"eth_blockNumber"}""", false)]
+    public async Task Proxy_KnownSibling_ForwardsPortfolioMethods(string body, bool expectedForward)
     {
-        (DefaultHttpContext ctx, _) = CreateContext(Port, method: "POST", path: $"/portfolio-rpc/{SiblingPort}");
+        (DefaultHttpContext ctx, _) = CreateContext(Port, method: "POST", path: $"/portfolio-rpc/{SiblingPort}", body: body);
         ISiblingNodeRegistry siblings = Substitute.For<ISiblingNodeRegistry>();
         siblings.IsKnownSibling(SiblingPort).Returns(true);
 
         await CreateMiddleware(siblings: siblings).InvokeAsync(ctx);
 
-        await siblings.Received(1).ProxyAsync(SiblingPort, Arg.Any<Stream>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await siblings.Received(expectedForward ? 1 : 0)
+            .ProxyAsync(SiblingPort, Arg.Any<Stream>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedForward ? StatusCodes.Status200OK : StatusCodes.Status400BadRequest));
     }
 
     [Test]
@@ -137,6 +141,53 @@ public class PortfolioViewerMiddlewareTests
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status404NotFound));
         await siblings.DidNotReceive().ProxyAsync(Arg.Any<int>(), Arg.Any<Stream>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+    }
+
+    [TestCase("portfolio-rpc", false)]
+    [TestCase("portfolio-rpc", true)]
+    [TestCase("portfolio-detect-rpc", false)]
+    [TestCase("portfolio-detect-rpc", true)]
+    public async Task Proxy_rejects_a_body_over_one_mebibyte(string route, bool knownLength)
+    {
+        (DefaultHttpContext ctx, _) = CreateContext(Port, method: "POST", path: $"/{route}/{SiblingPort}");
+        using MemoryStream request = new(new byte[1024 * 1024 + 2]);
+        ctx.Request.Body = request;
+        ctx.Request.ContentLength = knownLength ? request.Length : null;
+        ISiblingNodeRegistry siblings = Substitute.For<ISiblingNodeRegistry>();
+        siblings.IsKnownSibling(SiblingPort).Returns(true);
+
+        await CreateMiddleware(siblings: siblings).InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
+            Assert.That(request.Position, Is.EqualTo(knownLength ? 0 : 1024 * 1024 + 1));
+        }
+        await siblings.DidNotReceive().ProxyAsync(Arg.Any<int>(), Arg.Any<Stream>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+        await siblings.DidNotReceive().ProxyDetectAsync(Arg.Any<int>(), Arg.Any<Stream>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Detect_proxy_forwards_only_the_detection_request()
+    {
+        const string address = "0x0000000000000000000000000000000000000001";
+        string request = $$"""{"chainId":1,"address":"{{address}}","extra":true}""";
+        (DefaultHttpContext ctx, _) = CreateContext(
+            Port, method: "POST", path: $"/portfolio-detect-rpc/{SiblingPort}", body: request);
+        ISiblingNodeRegistry siblings = Substitute.For<ISiblingNodeRegistry>();
+        siblings.IsKnownSibling(SiblingPort).Returns(true);
+        string? forwarded = null;
+        siblings.ProxyDetectAsync(SiblingPort, Arg.Any<Stream>(), Arg.Any<Stream>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                using StreamReader reader = new(call.ArgAt<Stream>(1), leaveOpen: true);
+                forwarded = reader.ReadToEnd();
+                return Task.CompletedTask;
+            });
+
+        await CreateMiddleware(siblings: siblings).InvokeAsync(ctx);
+
+        Assert.That(forwarded, Is.EqualTo($$"""{"chainId":1,"address":"{{address}}"}"""));
     }
 
     [Test]

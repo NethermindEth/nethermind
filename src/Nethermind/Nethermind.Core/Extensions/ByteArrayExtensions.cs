@@ -77,7 +77,7 @@ namespace Nethermind.Core.Extensions
 
         public static ReadOnlySpan<byte> SliceWithZeroPaddingEmptyOnError(this ReadOnlySpan<byte> bytes, uint startIndex, uint length)
         {
-            if (bytes.Length < startIndex)
+            if (bytes.Length < startIndex || length > int.MaxValue)
             {
                 return default;
             }

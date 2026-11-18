@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -16,6 +18,8 @@ namespace Nethermind.JsonRpc.Modules.Trace;
 
 public static class ParityReplayEnvelopeWriter
 {
+    private static readonly SerializedTraces.Pool BufferedValues = new(8, 16);
+
     public static void WriteFromTrace(Utf8JsonWriter writer, ParityLikeTxTrace trace, bool includeTxHash, JsonSerializerOptions options)
     {
         writer.WriteStartObject();
@@ -26,33 +30,72 @@ public static class ParityReplayEnvelopeWriter
 
     public static void WriteTail(Utf8JsonWriter writer, ParityLikeTxTrace trace, bool includeTxHash, JsonSerializerOptions options)
     {
+        TraceStreamOutput output = new(writer, null, default, 0);
+        WriteTail(ref output, trace, includeTxHash, options, null);
+    }
+
+    internal static void WriteTail(ref TraceStreamOutput output, ParityLikeTxTrace trace, bool includeTxHash,
+        JsonSerializerOptions options, TraceOutputLimit? limit)
+    {
+        BufferedValue? buffer = limit is not null && ParallelTraceStream.SerializeAheadOptions(output.Writer) is { } valueOptions
+            ? new(BufferedValues.Rent(valueOptions), valueOptions, limit)
+            : null;
+        try
+        {
+            WriteTailValues(ref output, trace, includeTxHash, options, buffer);
+        }
+        finally
+        {
+            if (buffer is { } staged) BufferedValues.Return(staged.Traces);
+        }
+    }
+
+    private static void WriteTailValues(ref TraceStreamOutput output, ParityLikeTxTrace trace, bool includeTxHash,
+        JsonSerializerOptions options, BufferedValue? buffer)
+    {
+        Utf8JsonWriter writer = output.Writer;
         writer.WritePropertyName("output"u8);
-        TypeInfoJsonSerializer.Serialize(writer, trace.Output, options);
+        WriteValue(ref output, trace.Output, options, buffer);
 
         writer.WritePropertyName("stateDiff"u8);
-        WriteStateDiff(writer, trace.StateChanges, options);
+        WriteStateDiff(ref output, trace.StateChanges, options, buffer);
 
         writer.WritePropertyName("trace"u8);
         writer.WriteStartArray();
         if (trace.Action is not null)
         {
-            WriteActionRecursively(writer, trace.Action, options);
+            WriteActionRecursively(ref output, trace.Action, options, buffer);
         }
         writer.WriteEndArray();
 
         if (includeTxHash)
         {
             writer.WritePropertyName("transactionHash"u8);
-            TypeInfoJsonSerializer.Serialize(writer, trace.TransactionHash, options);
+            WriteValue(ref output, trace.TransactionHash, options, buffer);
         }
 
         writer.WriteEndObject();
     }
 
+    private static void WriteValue<T>(ref TraceStreamOutput output, T value, JsonSerializerOptions options, BufferedValue? buffer)
+    {
+        Utf8JsonWriter writer = buffer?.Start(ref output) ?? output.Writer;
+        TypeInfoJsonSerializer.Serialize(writer, value, options);
+        buffer?.Commit(ref output, writer);
+    }
+
     /// <summary>Writes the accounts in ascending address order, sorting them in a pooled buffer.</summary>
-    [SkipLocalsInit]
     internal static void WriteStateDiff(Utf8JsonWriter writer, Dictionary<Address, ParityAccountStateChange>? stateChanges, JsonSerializerOptions options)
     {
+        TraceStreamOutput output = new(writer, null, default, 0);
+        WriteStateDiff(ref output, stateChanges, options, null);
+    }
+
+    [SkipLocalsInit]
+    private static void WriteStateDiff(ref TraceStreamOutput output, Dictionary<Address, ParityAccountStateChange>? stateChanges,
+        JsonSerializerOptions options, BufferedValue? buffer)
+    {
+        Utf8JsonWriter writer = output.Writer;
         if (stateChanges is null)
         {
             writer.WriteNullValue();
@@ -71,7 +114,7 @@ public static class ParityReplayEnvelopeWriter
         {
             address.Bytes.OutputBytesToByteHex(hex, false);
             writer.WritePropertyName(addressBytes);
-            TypeInfoJsonSerializer.Serialize(writer, stateChange, options);
+            WriteValue(ref output, stateChange, options, buffer);
         }
 
         writer.WriteEndObject();
@@ -93,10 +136,12 @@ public static class ParityReplayEnvelopeWriter
         writer.WriteEndArray();
     }
 
-    private static void WriteActionRecursively(Utf8JsonWriter writer, ParityTraceAction action, JsonSerializerOptions options)
+    private static void WriteActionRecursively(ref TraceStreamOutput output, ParityTraceAction action,
+        JsonSerializerOptions options, BufferedValue? buffer)
     {
         if (!action.IncludeInTrace) return;
 
+        Utf8JsonWriter writer = buffer?.Start(ref output) ?? output.Writer;
         writer.WriteStartObject();
 
         writer.WritePropertyName("action"u8);
@@ -118,10 +163,29 @@ public static class ParityReplayEnvelopeWriter
 
         writer.WriteString("type"u8, action.Type);
         writer.WriteEndObject();
+        buffer?.Commit(ref output, writer);
 
         for (int i = 0; i < action.Subtraces.Count; i++)
         {
-            WriteActionRecursively(writer, action.Subtraces[i], options);
+            WriteActionRecursively(ref output, action.Subtraces[i], options, buffer);
+        }
+    }
+
+    private readonly record struct BufferedValue(SerializedTraces Traces, JsonWriterOptions Options, TraceOutputLimit Limit)
+    {
+        public Utf8JsonWriter Start(ref TraceStreamOutput output)
+        {
+            Utf8JsonWriter writer = output.Writer;
+            Limit.BypassedBytes = output.BypassedBytes;
+            return Traces.Start(Options, Limit, writer.BytesCommitted + writer.BytesPending + 1);
+        }
+
+        public void Commit(ref TraceStreamOutput output, Utf8JsonWriter writer)
+        {
+            writer.Flush();
+            Traces.Seal();
+            output.WriteSerialized(Traces.Written);
+            Traces.Empty();
         }
     }
 }

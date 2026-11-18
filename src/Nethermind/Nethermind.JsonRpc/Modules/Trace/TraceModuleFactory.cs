@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -65,6 +66,7 @@ public class TraceModuleFactory(
         ILifetimeScope rpcProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
             ConfigureCommonBlockProcessing(builder, static p => new UnpricedCallTraceAdapter(p), validationBlockProcessingModules)
                 .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, UnpricedBlobFeeCalculator>()
+                .AddSingleton<RewardContractGasLimit>(RewardContractGasLimit.Rpc)
                 .AddModule(env)
                 .AddReadOnlyQueryModules(readOnlyQueryModules, ReadOnlyQueryKind.Trace));
         ILifetimeScope validationProcessingScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
@@ -86,6 +88,7 @@ public class TraceModuleFactory(
         ILifetimeScope rpcLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {
             builder.AddScoped(tracerEnv);
+            builder.AddScoped(rpcProcessingScope.Resolve<IRewardCalculator>());
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
         });
 

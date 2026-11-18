@@ -1376,5 +1376,13 @@ namespace Nethermind.Core.Test
 
             Assert.That(memory.IsNull(), Is.EqualTo(expected));
         }
+
+        [Test]
+        public void SliceWithZeroPaddingEmptyOnError_is_empty_when_length_exceeds_int_range([Values(0x8000_0000u, uint.MaxValue)] uint length)
+        {
+            ReadOnlySpan<byte> sliced = new ReadOnlySpan<byte>([1, 2, 3]).SliceWithZeroPaddingEmptyOnError(2u, length);
+
+            Assert.That(sliced.IsEmpty, Is.True);
+        }
     }
 }

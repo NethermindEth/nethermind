@@ -51,7 +51,7 @@ public unsafe partial class ModExpPrecompile
         if (modulusDataSpan.Length > 0)
         {
             fixed (byte* modulusData = &MemoryMarshal.GetReference(modulusDataSpan))
-                Gmp.mpz_import(modulusInt, modulusLength, 1, 1, 1, nuint.Zero, modulusData);
+                Gmp.mpz_import(modulusInt, (nuint)modulusDataSpan.Length, 1, 1, 1, nuint.Zero, modulusData);
         }
 
         if (Gmp.mpz_sgn(modulusInt) == 0)
@@ -66,7 +66,7 @@ public unsafe partial class ModExpPrecompile
         if (baseDataSpan.Length > 0)
         {
             fixed (byte* baseData = &MemoryMarshal.GetReference(baseDataSpan))
-                Gmp.mpz_import(baseInt, baseLength, 1, 1, 1, nuint.Zero, baseData);
+                Gmp.mpz_import(baseInt, (nuint)baseDataSpan.Length, 1, 1, 1, nuint.Zero, baseData);
         }
 
         ReadOnlySpan<byte> expDataSpan = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
@@ -74,7 +74,7 @@ public unsafe partial class ModExpPrecompile
         if (expDataSpan.Length > 0)
         {
             fixed (byte* expData = &MemoryMarshal.GetReference(expDataSpan))
-                Gmp.mpz_import(expInt, expLength, 1, 1, 1, nuint.Zero, expData);
+                Gmp.mpz_import(expInt, (nuint)expDataSpan.Length, 1, 1, 1, nuint.Zero, expData);
         }
 
         // Reduce the base before exponentiating. EIP-198 leaves the result unchanged, but a base that

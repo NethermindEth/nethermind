@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
+using System.Net;
 using System.IO;
 using System.Text.Json;
 using System.Threading;
@@ -19,8 +21,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Subscribe;
@@ -28,6 +31,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
+using Nethermind.Network.StaticNodes;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
@@ -42,12 +46,19 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.State;
 
+using Nethermind.Core.Timers;
+using Nethermind.Stats;
+
 namespace Nethermind.JsonRpc.Test.Modules;
 
 [Parallelizable(ParallelScope.Self)]
 [TestFixture]
 public class AdminModuleTests
 {
+    private static PeerAddressPolicy CreateDevnetPolicy()
+        => new(new FixedIpResolver(new NetworkConfig { ExternalIp = "127.0.0.1" }),
+            new LocalAddressSource(LimboLogs.Instance));
+
     private const string _enodeString = "enode://e1b7e0dc09aae610c9dec8a0bee62bab9946cc27ebdd2f9e3571ed6d444628f99e91e43f4a14d42d498217608bb3e1d1bc8ec2aa27d7f7e423413b851bae02bc@127.0.0.1:30303";
     private const string _exampleDataDir = "/example/dbdir";
 
@@ -80,6 +91,7 @@ public class AdminModuleTests
         _networkConfig = new NetworkConfig();
 
         IPeerPool peerPool = Substitute.For<IPeerPool>();
+        peerPool.TryReserveStats(Arg.Any<Node>(), out Arg.Any<IDisposable?>()).Returns(true);
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
         Peer testPeer = new(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303, true));
         ISession validatedSession = Substitute.For<ISession>();
@@ -264,6 +276,7 @@ public class AdminModuleTests
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
         trustedNodesManager.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(!alreadyTrusted));
         IPeerPool peerPool = Substitute.For<IPeerPool>();
+        peerPool.TryReserveStats(Arg.Any<Node>(), out Arg.Any<IDisposable?>()).Returns(true);
         IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith(peerPool: peerPool, trustedNodesManager: trustedNodesManager);
 
         string serialized = await RpcTest.TestSerializedRequest(adminRpcModule, "admin_addTrustedPeer", _enodeString, persistent);
@@ -295,6 +308,58 @@ public class AdminModuleTests
         {
             Assert.That(serialized, Does.Contain("\"code\":-32602"), "all four peer-management methods must return InvalidParams whether parsing fails at scheme or content level");
             Assert.That(serialized, Does.Contain("invalid enode"), "the error message must identify the failing parameter");
+        }
+    }
+
+    [Test]
+    public async Task AdminPeerMethods_WithInvalidEnr_ReturnsInvalidParamsError(
+        [Values("admin_addPeer", "admin_removePeer")] string method,
+        [Values("enr:!", "enr:wA", "endpointless")] string record)
+    {
+        if (record == "endpointless")
+        {
+            NodeRecord nodeRecord = new();
+            nodeRecord.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+            new NodeRecordSigner(new Nethermind.Crypto.Ecdsa(), TestItem.PrivateKeyA).Sign(nodeRecord);
+            record = nodeRecord.ToString();
+        }
+
+        string serialized = await RpcTest.TestSerializedRequest(_adminRpcModule, method, record);
+
+        Assert.That(serialized, Does.Contain("\"code\":-32602"));
+    }
+
+    [Test]
+    public async Task AdminPeer_enr_requires_tcp_for_add_but_preserves_removal(
+        [Values] bool ipv6, [Values] bool hasTcp, [Values] bool remove)
+    {
+        using TempPath file = TempPath.GetTempFile();
+        StaticNodesManager manager = new(file.Path, LimboLogs.Instance);
+        NodeRecord record = new();
+        record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
+        if (ipv6)
+        {
+            record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860::1")));
+            record.SetEntry(new Udp6Entry(30304));
+            if (hasTcp) record.SetEntry(new Tcp6Entry(30303));
+        }
+        else
+        {
+            record.SetEntry(new IpEntry(IPAddress.Parse("8.8.8.1")));
+            record.SetEntry(new UdpEntry(30304));
+            if (hasTcp) record.SetEntry(new TcpEntry(30303));
+        }
+        new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
+        IAdminRpcModule module = BuildAdminRpcModuleWith(staticNodesManager: manager);
+
+        string response = await RpcTest.TestSerializedRequest(module, remove ? "admin_removePeer" : "admin_addPeer", record.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, remove || hasTcp ? Does.Contain("\"result\":true") : Does.Contain("\"code\":-32602"));
+            Assert.That(manager.Nodes.Select(node => node.NodeId), !remove && hasTcp
+                ? Is.EqualTo(new[] { TestItem.PublicKeyA })
+                : Is.Empty);
         }
     }
 
@@ -864,10 +929,15 @@ public class AdminModuleTests
         string enode = _enodeString)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
+        if (peerPool is null)
+        {
+            peerPool = Substitute.For<IPeerPool>();
+            peerPool.TryReserveStats(Arg.Any<Node>(), out Arg.Any<IDisposable?>()).Returns(true);
+        }
         return new AdminRpcModule(
             _blockTree,
             _networkConfig,
-            peerPool ?? Substitute.For<IPeerPool>(),
+            peerPool,
             staticNodesManager ?? Substitute.For<IStaticNodesManager>(),
             Substitute.For<IStateReader>(),
             new Enode(enode),
@@ -1001,5 +1071,216 @@ public class AdminModuleTests
             peer.OutSession = session;
         }
         return peer;
+    }
+
+    [Test]
+    public async Task Trusted_peer_admission_returns_explicit_capacity_error_without_mutating_trust([Values] bool saturated)
+    {
+        using NodeStatsManager stats = new(TimerFactory.Default, LimboLogs.Instance, 1);
+        using TempPath path = TempPath.GetTempFile();
+        TrustedNodesManager trusted = new(path.Path, LimboLogs.Instance);
+        using PeerAddressPolicy policy = CreateDevnetPolicy();
+        PeerPool pool = new(Substitute.For<INodeSource>(), stats, Substitute.For<INetworkStorage>(),
+            new NetworkConfig(), LimboLogs.Instance, trusted, TimeProvider.System, policy);
+        if (saturated) pool.GetOrAdd(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303, true));
+        Enode enode = new(TestItem.PublicKeyB, IPAddress.Parse("9.9.9.9"), 30303);
+        AdminRpcModule module = CreateModule(pool, trusted, enode);
+        try
+        {
+            string response = await RpcTest.TestSerializedRequest<IAdminRpcModule>(module, "admin_addTrustedPeer", enode.ToString(), false);
+            using JsonDocument document = JsonDocument.Parse(response);
+            if (saturated)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Does.Contain("capacity"));
+                    Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                    Assert.That(pool.Peers.ContainsKey(TestItem.PublicKeyB), Is.False);
+                }
+                Assert.That(trusted.IsTrusted(enode), Is.False);
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(document.RootElement.GetProperty("result").GetBoolean(), Is.True);
+                    Assert.That(pool.Peers.ContainsKey(TestItem.PublicKeyB), Is.True);
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(trusted.IsTrusted(enode), Is.True);
+                    Assert.That(pool.Peers[TestItem.PublicKeyB].Node.IsTrusted, Is.True);
+                }
+            }
+        }
+        finally { await pool.StopAsync(); }
+    }
+
+    [Test]
+    public async Task Prepublication_trusted_add_failure_keeps_pool_empty_and_releases_reservation([Values] AddFailure failure)
+    {
+        using NodeStatsManager stats = new(TimerFactory.Default, LimboLogs.Instance, 1);
+        ITrustedNodesManager trusted = Substitute.For<ITrustedNodesManager>();
+        Exception error = failure switch
+        {
+            AddFailure.InvalidEndpoint => new ArgumentException("invalid endpoint"),
+            AddFailure.Cancelled => new OperationCanceledException(),
+            _ => new IOException("trusted store unavailable")
+        };
+        trusted.AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromException<bool>(error));
+        using PeerAddressPolicy policy = CreateDevnetPolicy();
+        PeerPool pool = new(Substitute.For<INodeSource>(), stats, Substitute.For<INetworkStorage>(),
+            new NetworkConfig(), LimboLogs.Instance, trusted, TimeProvider.System, policy);
+        Enode enode = new(TestItem.PublicKeyB, IPAddress.Parse("9.9.9.9"), 30303);
+        AdminRpcModule module = CreateModule(pool, trusted, enode);
+        try
+        {
+            await Assert.ThrowsAsync(error.GetType(), async () => await module.admin_addTrustedPeer(enode.ToString()));
+
+            Assert.That(pool.Peers, Is.Empty);
+            Node unrelated = new(TestItem.PublicKeyA, "8.8.8.8", 30303, isStatic: true);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool.GetOrAdd(unrelated).Node.Id, Is.EqualTo(unrelated.Id));
+                Assert.That(pool.Peers.ContainsKey(unrelated.Id), Is.True);
+                Assert.That(pool.TryRemove(unrelated.Id, out _), Is.True);
+            }
+        }
+        finally { await pool.StopAsync(); }
+    }
+
+    public enum AddFailure { InvalidEndpoint, Cancelled, StoreUnavailable }
+
+    [Test]
+    public async Task Legacy_plugin_pool_uses_the_default_reservation_contract()
+    {
+        using NodeStatsManager stats = new(TimerFactory.Default, LimboLogs.Instance);
+        using PeerAddressPolicy policy = CreateDevnetPolicy();
+        PeerPool concrete = new(Substitute.For<INodeSource>(), stats, Substitute.For<INetworkStorage>(),
+            new NetworkConfig(), LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), TimeProvider.System, policy);
+        IPeerPool plugin = new LegacyPool(concrete);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(plugin.TryReserveStats(new Node(TestItem.PublicKeyB, "9.9.9.9", 30303), out IDisposable? lease), Is.True);
+                Assert.That(lease, Is.Null);
+            }
+        }
+        finally { await concrete.StopAsync(); }
+    }
+
+    private sealed class LegacyPool(IPeerPool inner) : IPeerPool
+    {
+        public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers => inner.Peers;
+        public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers => inner.ActivePeers;
+        public IEnumerable<Peer> StaticPeers => inner.StaticPeers;
+        public IEnumerable<Peer> NonStaticPeers => inner.NonStaticPeers;
+        public int PeerCount => inner.PeerCount;
+        public int ActivePeerCount => inner.ActivePeerCount;
+        public Peer GetOrAdd(Node node) => inner.GetOrAdd(node);
+        public bool TryGet(PublicKey id, out Peer peer) => inner.TryGet(id, out peer);
+        public bool TryRemove(PublicKey id, out Peer removed) => inner.TryRemove(id, out removed);
+        public Peer Replace(ISession session) => inner.Replace(session);
+        public event EventHandler<PeerEventArgs> PeerAdded { add => inner.PeerAdded += value; remove => inner.PeerAdded -= value; }
+        public event EventHandler<PeerEventArgs> PeerRemoved { add => inner.PeerRemoved += value; remove => inner.PeerRemoved -= value; }
+        public void Start() => inner.Start();
+        public Task StopAsync() => inner.StopAsync();
+    }
+
+    [Test]
+    public async Task Static_add_reserves_stats_before_publication_and_inserts_before_releasing([Values] bool saturated)
+    {
+        using NodeStatsManager stats = new(TimerFactory.Default, LimboLogs.Instance, 1);
+        ITrustedNodesManager trusted = Substitute.For<ITrustedNodesManager>();
+        IStaticNodesManager source = Substitute.For<IStaticNodesManager>();
+        source.AddAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult(true));
+        using PeerAddressPolicy policy = CreateDevnetPolicy();
+        PeerPool pool = new(Substitute.For<INodeSource>(), stats, Substitute.For<INetworkStorage>(),
+            new NetworkConfig(), LimboLogs.Instance, trusted, TimeProvider.System, policy);
+        if (saturated) pool.GetOrAdd(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303, isStatic: true));
+        Enode enode = new(TestItem.PublicKeyB, IPAddress.Parse("9.9.9.9"), 30303);
+        bool released = false;
+        bool publishedAtRelease = false;
+        IPeerPool observed = Substitute.For<IPeerPool>();
+        observed.GetOrAdd(Arg.Any<Node>()).Returns(call => pool.GetOrAdd(call.Arg<Node>()));
+        observed.TryReserveStats(Arg.Any<Node>(), out Arg.Any<IDisposable?>()).Returns(call =>
+        {
+            bool accepted = ((IPeerPool)pool).TryReserveStats(call.Arg<Node>(), out IDisposable? reservation);
+            if (accepted && reservation is not null)
+            {
+                IDisposable tracked = Substitute.For<IDisposable>();
+                tracked.When(lease => lease.Dispose()).Do(_ =>
+                {
+                    released = true;
+                    publishedAtRelease = pool.Peers.TryGetValue(enode.PublicKey, out Peer? peer) && peer.Node.IsStatic;
+                    reservation.Dispose();
+                });
+                call[1] = tracked;
+            }
+            return accepted;
+        });
+        AdminRpcModule module = CreateModule(observed, trusted, enode, source);
+        try
+        {
+            string response = await RpcTest.TestSerializedRequest<IAdminRpcModule>(module, "admin_addPeer", enode.ToString(), false);
+            using JsonDocument document = JsonDocument.Parse(response);
+            if (saturated)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Does.Contain("capacity"));
+                    Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceUnavailable));
+                }
+                await source.DidNotReceive().AddAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(pool.Peers.ContainsKey(TestItem.PublicKeyB), Is.False);
+                    Assert.That(released, Is.False);
+                }
+            }
+            else
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(document.RootElement.GetProperty("result").GetBoolean(), Is.True);
+                    Assert.That(pool.Peers[TestItem.PublicKeyB].Node.IsStatic, Is.True);
+                }
+                await source.Received(1).AddAsync(Arg.Any<NetworkNode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(released, Is.True);
+                    Assert.That(publishedAtRelease, Is.True);
+                }
+            }
+        }
+        finally { await pool.StopAsync(); }
+    }
+
+    [Test]
+    public async Task Plugin_pool_capacity_refusal_is_observed_through_the_interface()
+    {
+        IPeerPool pool = Substitute.For<IPeerPool>();
+        pool.TryReserveStats(Arg.Any<Node>(), out Arg.Any<IDisposable?>()).Returns(false);
+        ITrustedNodesManager trusted = Substitute.For<ITrustedNodesManager>();
+        Enode enode = new(TestItem.PublicKeyB, IPAddress.Parse("9.9.9.9"), 30303);
+        AdminRpcModule module = CreateModule(pool, trusted, enode);
+        string response = await RpcTest.TestSerializedRequest<IAdminRpcModule>(module, "admin_addTrustedPeer", enode.ToString(), false);
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Does.Contain("capacity"));
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        }
+        await trusted.DidNotReceive().AddAsync(Arg.Any<Enode>(), Arg.Any<bool>(), Arg.Any<CancellationToken>());
+        pool.DidNotReceive().GetOrAdd(Arg.Any<NetworkNode>());
+    }
+
+    private static AdminRpcModule CreateModule(IPeerPool pool, ITrustedNodesManager trusted, Enode enode, IStaticNodesManager? source = null)
+    {
+        IBlockTree tree = Build.A.BlockTree().OfChainLength(1).TestObject;
+        return new AdminRpcModule(tree, new NetworkConfig(), pool, source ?? Substitute.For<IStaticNodesManager>(),
+            Substitute.For<IStateReader>(), enode, ".", new ChainParameters(), trusted,
+            Substitute.For<ISubscriptionManager>(), new JsonRpcConfig(), Substitute.For<IBlockProcessingPauseControl>());
     }
 }

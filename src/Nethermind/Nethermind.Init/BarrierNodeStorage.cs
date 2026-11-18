@@ -32,6 +32,8 @@ internal sealed class BarrierNodeStorage(INodeStorage inner, IStatePersistenceBa
 
     public INodeStorage.IWriteBatch StartWriteBatch() => inner.StartWriteBatch();
 
+    public INodeStorage.IAtomicNodeStorageBatch StartAtomicWriteBatch() => inner.StartAtomicWriteBatch();
+
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash)
         => inner.KeyExists(in address, in path, in hash);
 

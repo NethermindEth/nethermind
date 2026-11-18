@@ -859,10 +859,10 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private JsonRpcResult.Entry CreateBatchResponseLimitEntry(JsonRpcRequest jsonRpcRequest) =>
         new(
             _jsonRpcService.GetErrorResponse(
-                ErrorCodes.LimitExceeded,
-                jsonRpcRequest.Method,
-                in jsonRpcRequest.IdRef,
-                $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded"),
+                errorCode: ErrorCodes.LimitExceeded,
+                errorMessage: $"{nameof(IJsonRpcConfig.MaxBatchResponseBodySize)} of {_jsonRpcConfig.MaxBatchResponseBodySize / 1.KB}KB exceeded",
+                id: in jsonRpcRequest.IdRef,
+                methodName: jsonRpcRequest.Method),
             RpcReport.Error);
 
     private ValueTask WriteSingleEntryAsync(JsonRpcResult.Entry entry, IJsonRpcResponseSink sink, CancellationToken cancellationToken) =>

@@ -17,6 +17,9 @@ namespace Nethermind.Serialization.Json;
 
 public abstract class CountingWriter : PipeWriter
 {
+    /// <summary>Whether the transport buffers the whole response.</summary>
+    public virtual bool RetainsOutput => false;
+
     public long WrittenCount { get; protected set; }
 }
 

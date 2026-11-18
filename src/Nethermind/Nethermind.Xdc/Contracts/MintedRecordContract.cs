@@ -43,13 +43,18 @@ public class MintedRecordContract : IMintedRecordContract
         }
         else
         {
-            UInt256 epochNumberIter = epochNumber;
-            while (!epochNumberIter.IsZero)
+            // Only ancestors can have booked totals. Skip epochs after the parent round in the quorum certificate.
+            ulong parentRound = header.ExtraConsensusData?.QuorumCert?.ProposedBlockInfo.Round ?? 0;
+            UInt256 parentEpoch = (UInt256)spec.SwitchEpoch + parentRound / spec.EpochLength;
+            UInt256 onsetEpoch = ReadStorage(worldState, MintedRecordOnsetEpochSlot);
+            UInt256 epochNumberIter = UInt256.Min(epochNumber, parentEpoch + UInt256.One);
+            while (epochNumberIter > onsetEpoch)
             {
                 epochNumberIter -= UInt256.One;
                 totalMinted = ReadStorage(worldState, MintedRecordPostMintedBase + epochNumberIter);
                 totalBurned = ReadStorage(worldState, MintedRecordPostBurnedBase + epochNumberIter);
-                if (!totalMinted.IsZero || !totalBurned.IsZero)
+                if (!totalMinted.IsZero || !totalBurned.IsZero ||
+                    !ReadStorage(worldState, MintedRecordPostRewardBlockBase + epochNumberIter).IsZero)
                 {
                     break;
                 }

@@ -20,6 +20,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
 using Nethermind.State;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Stats.Model;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.JsonRpc.Exceptions;
 
@@ -95,7 +96,11 @@ public class AdminRpcModule : IAdminRpcModule
         if (TryParseAsNetworkNode(enode, out NetworkNode? networkNode) is { } error) return error;
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
+        if (!_peerPool.TryReserveStats(new Node(networkNode!, isStatic: true), out IDisposable? reservation))
+            return ResultWrapper<bool>.Fail("Peer statistics capacity is exhausted.", ErrorCodes.ResourceUnavailable, isTemporary: true);
+        using IDisposable? admission = reservation;
         await _staticNodesManager.AddAsync(networkNode!, updateFile: persistent, timeout.Token);
+        _peerPool.GetOrAdd(new Node(networkNode!, isStatic: true));
         return ResultWrapper<bool>.Success(true);
     }
 
@@ -121,14 +126,13 @@ public class AdminRpcModule : IAdminRpcModule
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
-        try
-        {
-            await _trustedNodesManager.AddAsync(enodeObj!, updateFile: persistent, timeout.Token);
-        }
-        finally
-        {
-            _peerPool.GetOrAdd(new NetworkNode(enodeObj!));
-        }
+        NetworkNode networkNode = new(enodeObj!);
+        if (!_peerPool.TryReserveStats(new Node(networkNode), out IDisposable? reservation))
+            return ResultWrapper<bool>.Fail("Peer statistics capacity is exhausted.", ErrorCodes.ResourceUnavailable, isTemporary: true);
+        using IDisposable? admission = reservation;
+
+        await _trustedNodesManager.AddAsync(enodeObj!, updateFile: persistent, timeout.Token);
+        _peerPool.GetOrAdd(networkNode);
         return ResultWrapper<bool>.Success(true);
     }
 
@@ -220,9 +224,10 @@ public class AdminRpcModule : IAdminRpcModule
         try
         {
             node = new NetworkNode(enode);
+            _ = new Node(node);
             return null;
         }
-        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException or RlpReaderException)
+        catch (Exception ex) when (ex is ArgumentException or FormatException or SocketException or RlpReaderException or InvalidOperationException)
         {
             node = null;
             return ResultWrapper<bool>.Fail($"invalid enode: {ex.Message}", ErrorCodes.InvalidParams);

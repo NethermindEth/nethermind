@@ -21,6 +21,9 @@ public sealed class RewindableStreamPipeWriter : CountingWriter
     private bool _completed;
     private int _flushCanceled;
 
+    /// <inheritdoc/>
+    public override bool RetainsOutput => true;
+
     /// <summary>Creates a writer over a memory stream positioned at its end.</summary>
     /// <exception cref="ArgumentNullException"><paramref name="stream"/> is null.</exception>
     /// <exception cref="ArgumentException">The stream's position is not at its end.</exception>

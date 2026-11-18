@@ -48,6 +48,14 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     private Block? _block;
     private StreamingParityLikeTxTracer? _reusableTxTracer;
     private ParityTraceTypes _reusableTxTracerTypes;
+    private TraceOutputLimit? _outputLimit;
+    private ParallelParityTxTracerPool? _parallelTxTracers;
+
+    /// <summary>Set when the response is kept whole in memory by the transport, so everything it streams
+    /// counts against <see cref="ParityLikeBlockTracer.MaxRetainedBytes"/>.</summary>
+    public bool RetainsOutput { get; init; }
+
+    private TraceOutputLimit? OutputLimit => RetainsOutput ? _outputLimit ??= new TraceOutputLimit(MaxRetainedBytes) : null;
 
     public StreamingParityLikeBlockTracer(
         ParityTraceTypes types,
@@ -145,7 +153,12 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
             _reusableTxTracer?.ReleaseResources();
             _reusableTxTracer = new StreamingParityLikeTxTracer(
                 _block!, tx, resolvedTypes, _writer, _pipeWriter, _cancellationToken, fillVmTraceSlot,
-                spec: _specProvider?.GetSpec(_block!.Header));
+                StreamingParityLikeTxTracer.FlushThreshold.Default,
+                spec: _specProvider?.GetSpec(_block!.Header))
+            {
+                DataBudget = new TraceDataBudget(MaxRetainedBytes),
+                OutputLimit = OutputLimit
+            };
             _reusableTxTracerTypes = resolvedTypes;
         }
         else
@@ -197,6 +210,9 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     /// serialized on its own by the worker that traced it.</summary>
     public JsonWriterOptions? SerializeAheadOptions => _storeFilter is null ? ParallelTraceStream.SerializeAheadOptions(_writer) : null;
 
+    /// <inheritdoc />
+    public void OnBlockStart(CancellationToken stop, bool serializedAhead) => _parallelTxTracers?.OnBlockStart(stop, serializedAhead);
+
     /// <summary>Writes traces produced elsewhere exactly as they would have been streamed while being produced here.
     /// Called in block order when the traces cannot be serialized ahead, as when a store filter counts what it writes.</summary>
     public void Write(IReadOnlyCollection<ParityLikeTxTrace> traces)
@@ -235,12 +251,16 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     }
 
     /// <inheritdoc />
-    public void WriteSerialized(in ReadOnlySequence<byte> elements) => _output.WriteSerialized(elements);
+    public void WriteSerialized(in ReadOnlySequence<byte> elements)
+    {
+        CheckOutputLimit(elements.Length + 1);
+        _output.WriteSerialized(elements);
+    }
 
     /// <summary>Tracers for the transactions of <paramref name="block"/> when it is traced in parallel; their traces are
     /// recycled once they are serialized.</summary>
     internal ParallelParityTxTracerPool CreateParallelTxTracers(Block block, ParityTraceTypes types) =>
-        new(_writer, _cancellationToken, types, _specProvider?.GetSpec(block.Header));
+        _parallelTxTracers = new(_writer, _cancellationToken, types, _specProvider?.GetSpec(block.Header), MaxRetainedBytes, block.Transactions.Length);
 
     public override void EndBlockTrace()
     {
@@ -273,10 +293,26 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IPar
     }
 
     private void EmitReplayEnvelopeTail(ParityLikeTxTrace trace) =>
-        ParityReplayEnvelopeWriter.WriteTail(_writer, trace, _includeTxHash, _jsonOptions);
+        ParityReplayEnvelopeWriter.WriteTail(ref _output, trace, _includeTxHash, _jsonOptions, OutputLimit);
 
-    private void EmitStoreItems(Utf8JsonWriter writer, ParityLikeTxTrace trace) =>
-        ParityTxTraceFromStore.Write(writer, trace, _storeFilter, _jsonOptions);
+    private void EmitStoreItems(Utf8JsonWriter writer, ParityLikeTxTrace trace)
+    {
+        if (RetainsOutput && ReferenceEquals(writer, _writer))
+            ParityTxTraceFromStore.Write(ref _output, trace, _storeFilter, _jsonOptions, OutputLimit);
+        else
+            ParityTxTraceFromStore.Write(writer, trace, _storeFilter, _jsonOptions, _cancellationToken);
+    }
 
-    private void FlushPipe() => _output.FlushIfDue();
+    private void FlushPipe()
+    {
+        CheckOutputLimit();
+        _output.FlushIfDue();
+    }
+
+    private void CheckOutputLimit(long additionalBytes = 0)
+    {
+        if (OutputLimit is not { } limit) return;
+        limit.BypassedBytes = _output.BypassedBytes;
+        limit.Check(_writer.BytesCommitted + _writer.BytesPending + additionalBytes);
+    }
 }

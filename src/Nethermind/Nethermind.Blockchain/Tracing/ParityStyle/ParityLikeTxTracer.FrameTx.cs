@@ -182,7 +182,12 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
             List<ParityTraceAction> ordered = [with(frameCount)];
             for (int i = 0; i < frameCount; i++)
             {
-                ParityTraceAction action = _frameActions?[i] ?? BuildUndispatchedFrameAction(_frames[i], frameReceipts[i], _frameErrors?[i]);
+                ParityTraceAction? action = _frameActions?[i];
+                if (action is null)
+                {
+                    action = BuildUndispatchedFrameAction(_frames[i], frameReceipts[i], _frameErrors?[i]);
+                    _root!.Subtraces.Add(action);
+                }
                 action.Gas = _frames[i].ExecutionGasLimit;
                 action.Result?.GasUsed = frameReceipts[i].ExecutionGasUsed;
                 if (_frameOperations?[i] is { } operation)
@@ -199,7 +204,7 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
 
         private ParityTraceAction CreateRoot()
         {
-            ParityTraceAction action = tracer.RentAction();
+            ParityTraceAction action = tracer.CreateRetainedAction();
             action.Type = "call";
             action.CallType = "call";
             action.From = tx.SenderAddress;
@@ -214,14 +219,22 @@ public partial class ParityLikeTxTracer : IFrameTxReceiptTracer
 
         private ParityTraceAction BuildUndispatchedFrameAction(TxFrame frame, TxFrameReceipt receipt, EvmExceptionType? error)
         {
-            ParityTraceAction action = tracer.RentAction();
-            action.TraceAddress = tracer.RentTraceAddress(1);
+            ParityTraceAction action = tracer.CreateRetainedAction();
+            try
+            {
+                action.TraceAddress = tracer.CreateRetainedTraceAddress(1);
+                action.Input = tracer.CopyActionInput(frame.Data);
+            }
+            catch (TraceDataLimitExceededException)
+            {
+                tracer.ReturnExcludedAction(action);
+                throw;
+            }
             action.Type = "call";
             action.CallType = frame.Mode is FrameMode.Verify or FrameMode.Assert ? "staticcall" : "call";
             action.From = frame.Mode == FrameMode.Sender ? tx.SenderAddress : Eip8141Constants.EntryPointAddress;
             action.To = frame.Target ?? tx.SenderAddress;
             action.Value = frame.Value;
-            action.Input = tracer.CopyActionInput(frame.Data);
             action.Error = receipt.Status switch
             {
                 TxFrameReceipt.StatusSuccess => null,

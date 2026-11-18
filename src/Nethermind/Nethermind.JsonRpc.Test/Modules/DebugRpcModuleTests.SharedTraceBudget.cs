@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.IO.Pipelines;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -25,6 +26,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -681,6 +683,233 @@ public partial class DebugRpcModuleTests
             else
                 Assert.That(first, Is.EqualTo(replayed));
         }
+    }
+
+    // Each call keeps its action and its input, about two thirds of the limit: alone it fits, two at once do not.
+    private const int CallInputBytes = 4096;
+    private const long CallsTraceLimit = 6_000;
+
+    [TestCase("trace_replayBlockTransactions")]
+    [TestCase("trace_block")]
+    public async Task ParityTraces_OnAnIndexedBlock_StreamTransactionsThatFitTheLimitAloneButNotTogether(string method)
+    {
+        using ParallelTraceBudget budget = new(2);
+        OverlappingTraces overlap = new();
+        using BlockOfCalls calls = await BlockOfCalls.Create(budget, overlap, count: 3);
+        Block block = calls.Block;
+        object[] parameters = method == "trace_block" ? [block.Hash!] : [block.Hash!, new[] { "trace" }];
+        string replayed = await RpcTest.TestSerializedRequest(calls.Chain.TraceRpcModule, method, parameters);
+        calls.Index();
+        // The first transaction is traced alone; the second then holds its trace until the third has traced too, or long
+        // enough after the third started that its charge must have been met.
+        overlap.Held = block.Transactions[1].Hash;
+        overlap.Other = block.Transactions[2].Hash;
+        string parallel = await RpcTest.TestSerializedRequest(calls.Chain.TraceRpcModule, method, parameters);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls.Seeds.Opened, Is.EqualTo(1), "precondition: the indexed block is traced in parallel");
+            Assert.That(overlap.OtherStarted.IsSet, Is.True, "precondition: the third transaction is traced while the second holds its trace");
+            Assert.That(JToken.Parse(replayed)["error"], Is.Null, replayed);
+            Assert.That(parallel, Is.EqualTo(replayed), "transactions that each fit the limit must be traced in parallel as they are one by one");
+        }
+    }
+
+    /// <summary>A worker takes a transaction only while it holds a processing permit, so the earliest transaction not
+    /// traced yet always runs: a later one never holds the one free permit while it waits for room an earlier one,
+    /// waiting for that permit, would give back.</summary>
+    [Test, CancelAfter(120_000)]
+    public async Task ParityTraces_OnAnIndexedBlock_WithOnePermitFree_StreamTransactionsThatDoNotFitTogether()
+    {
+        using ParallelTraceBudget budget = new(2);
+        using BlockOfCalls calls = await BlockOfCalls.Create(budget, new OverlappingTraces(), count: 3);
+        object[] parameters = [calls.Block.Hash!, new[] { "trace" }];
+        string replayed = await RpcTest.TestSerializedRequest(calls.Chain.TraceRpcModule, "trace_replayBlockTransactions", parameters);
+        calls.Index();
+
+        Task<string> parallel;
+        bool finished;
+        budget.Wait(CancellationToken.None);
+        try
+        {
+            parallel = Task.Run(() => RpcTest.TestSerializedRequest(calls.Chain.TraceRpcModule, "trace_replayBlockTransactions", parameters));
+            finished = await Task.WhenAny(parallel, Task.Delay(TimeSpan.FromSeconds(30))) == parallel;
+        }
+        finally
+        {
+            budget.Release();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(finished, Is.True, "the block is traced with the one permit left free");
+            Assert.That(calls.Seeds.Opened, Is.EqualTo(1), "precondition: the indexed block is traced in parallel");
+            Assert.That(await parallel, Is.EqualTo(replayed));
+        }
+    }
+
+    /// <summary><c>trace_filter</c> writes its traces in turn, so they are released only as its client reads the
+    /// response. A trace that does not fit beside them fails rather than waits for that client while holding one of the
+    /// node's processing permits, which every parallel trace shares.</summary>
+    [Test, CancelAfter(120_000)]
+    public async Task Trace_filter_OnAnIndexedBlock_WhoseClientStopsReading_HoldsNoProcessingPermit()
+    {
+        using ParallelTraceBudget budget = new(3);
+        OverlappingTraces overlap = new();
+        using BlockOfCalls calls = await BlockOfCalls.Create(budget, overlap, count: 4);
+        calls.Index();
+        Block block = calls.Block;
+        // The first two traces fill the response's flush window, so writing the second waits for a client that never
+        // reads. The third holds its trace until the fourth has traced too, so the fourth does not fit beside it.
+        overlap.Held = block.Transactions[2].Hash;
+        overlap.Other = block.Transactions[3].Hash;
+        using ResultWrapper<IEnumerable<ParityTxTraceFromStore>> result = calls.Chain.TraceRpcModule.trace_filter(new TraceFilterForRpc
+        {
+            FromBlock = new BlockParameter(block.Number),
+            ToBlock = new BlockParameter(block.Number)
+        });
+        Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 1, resumeWriterThreshold: 1));
+        using CancellationTokenSource client = new();
+        Task writing = Task.Run(async () => await ((JsonStreamingResultBase)result.Data).WriteToAsync(pipe.Writer, client.Token));
+
+        bool fourthTraced;
+        bool permitsFree;
+        bool stalled;
+        try
+        {
+            fourthTraced = overlap.OtherStarted.Wait(TimeSpan.FromSeconds(10));
+            permitsFree = TakeEveryPermit(budget, TimeSpan.FromSeconds(5));
+            stalled = !writing.IsCompleted;
+        }
+        finally
+        {
+            client.Cancel();
+        }
+
+        bool ended = Task.WaitAny([writing], TimeSpan.FromSeconds(10)) == 0;
+        await pipe.Reader.CompleteAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fourthTraced, Is.True, "precondition: the fourth transaction is traced while the third holds its trace");
+            Assert.That(calls.Seeds.Opened, Is.EqualTo(1), "precondition: the indexed block is traced in parallel");
+            Assert.That(stalled, Is.True, "precondition: the response waits for its client while the permits are taken");
+            Assert.That(permitsFree, Is.True, "no worker waits for a client that stopped reading while holding a processing permit");
+            Assert.That(ended, Is.True, "the stalled response ends once its client goes away");
+        }
+    }
+
+    private static bool TakeEveryPermit(ParallelTraceBudget budget, TimeSpan timeout)
+    {
+        using CancellationTokenSource expiry = new(timeout);
+        int taken = 0;
+        try
+        {
+            for (; taken < budget.Degree; taken++) budget.Wait(expiry.Token);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        finally
+        {
+            for (int i = 0; i < taken; i++) budget.Release();
+        }
+    }
+
+    /// <summary>A chain whose head block holds calls with <see cref="CallInputBytes"/> of input each, streaming parity traces
+    /// that keep at most <see cref="CallsTraceLimit"/> bytes per transaction; traced in parallel once indexed.</summary>
+    private sealed class BlockOfCalls : IDisposable
+    {
+        private readonly SnapshotableMemColumnsDb<FlatHistoryColumns> _columns = new();
+        private readonly TransactionChangesetIndex _index;
+        private BlockHeader _parent = null!;
+
+        private BlockOfCalls() => _index = new(_columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+
+        public OpenedBlockCount Seeds { get; private set; } = null!;
+        public TestRpcBlockchain Chain { get; private set; } = null!;
+        public Block Block { get; private set; } = null!;
+
+        public static async Task<BlockOfCalls> Create(ParallelTraceBudget budget, OverlappingTraces overlap, int count)
+        {
+            BlockOfCalls calls = new();
+            try
+            {
+                calls.Seeds = new OpenedBlockCount(new ChangesetPrefixStateSeedSource(calls._index));
+                calls.Chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+                    .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = true, MaxBufferedTraceLogSize = CallsTraceLimit })
+                    .Build(builder => builder
+                        .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                        .AddSingleton<IPrefixStateSeedSource>(calls.Seeds)
+                        .AddSingleton(budget)
+                        .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
+                        .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new OverlappingAdapter(inner, overlap)));
+                calls._parent = calls.Chain.BlockTree.Head!.Header;
+                ulong nonce = calls.Chain.WorldStateManager.GlobalStateReader.GetNonce(calls._parent, TestItem.AddressB);
+                Transaction[] transactions = new Transaction[count];
+                for (int i = 0; i < transactions.Length; i++)
+                {
+                    transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithData(new byte[CallInputBytes]).WithNonce(nonce + (ulong)i)
+                        .WithGasLimit(300_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+                }
+
+                calls.Block = await calls.Chain.AddBlock(transactions);
+                Assert.That(calls.Block.Transactions, Has.Length.EqualTo(count), "precondition: every transaction is in the block");
+                return calls;
+            }
+            catch
+            {
+                calls.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>Indexes the block, so that it is traced in parallel from then on.</summary>
+        public void Index() => IndexThroughTheCapture(Chain, _index, Block, _parent);
+
+        public void Dispose()
+        {
+            Chain?.Dispose();
+            _columns.Dispose();
+        }
+    }
+
+    private sealed class OverlappingTraces
+    {
+        public Hash256? Held { get; set; }
+        public Hash256? Other { get; set; }
+        public ManualResetEventSlim OtherStarted { get; } = new();
+        public ManualResetEventSlim OtherFinished { get; } = new();
+    }
+
+    /// <summary>Holds <see cref="OverlappingTraces.Held"/>, executed with its trace kept, until <see cref="OverlappingTraces.Other"/> is executed too.</summary>
+    private sealed class OverlappingAdapter(ITransactionProcessorAdapter inner, OverlappingTraces overlap) : ITransactionProcessorAdapter
+    {
+        public TransactionResult Execute(Transaction transaction, ITxTracer tracer)
+        {
+            if (overlap.Held is null) return inner.Execute(transaction, tracer);
+            if (transaction.Hash == overlap.Other)
+            {
+                overlap.OtherStarted.Set();
+                try
+                {
+                    return inner.Execute(transaction, tracer);
+                }
+                finally
+                {
+                    overlap.OtherFinished.Set();
+                }
+            }
+
+            TransactionResult result = inner.Execute(transaction, tracer);
+            if (transaction.Hash == overlap.Held && overlap.OtherStarted.Wait(TimeSpan.FromSeconds(10)))
+                overlap.OtherFinished.Wait(TimeSpan.FromMilliseconds(500));
+            return result;
+        }
+        public void SetBlockExecutionContext(in BlockExecutionContext context) => inner.SetBlockExecutionContext(context);
+        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
     }
 
     [Test]

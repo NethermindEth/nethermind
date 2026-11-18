@@ -18,6 +18,12 @@ namespace Nethermind.Consensus
         /// <returns><value>True</value> if seal is valid or was not checked, otherwise <value>false</value></returns>
         bool ValidateSeal(BlockHeader header, bool force);
 
+        /// <summary>Whether forward-sync credit requires consensus parameters from the known parent.</summary>
+        bool RequiresParentForSyncCredit => false;
+
+        /// <summary>Checks whether the child's proposer can be authorized using the known parent.</summary>
+        bool CanCreditChild(BlockHeader parent, BlockHeader child) => ValidateParams(parent, child);
+
         public void HintValidationRange(Guid guid, ulong start, ulong end) { }
     }
 }

@@ -18,6 +18,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
+using Microsoft.ClearScript.V8;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -41,6 +42,16 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 {
+    [Test]
+    public void Tracer_engine_has_no_script_visible_lifecycle_methods()
+    {
+        using Engine tracerEngine = new(Shanghai.Instance);
+        using V8ScriptEngine scriptEngine = new();
+        scriptEngine.AddHostObject("host", tracerEngine);
+
+        Assert.That(scriptEngine.Evaluate("typeof host.Dispose"), Is.EqualTo("undefined"));
+    }
+
     [TestCase("new Uint8Array([])", "{}")]
     [TestCase("new Uint8Array(12)", "{\"0\":0,\"1\":0,\"2\":0,\"3\":0,\"4\":0,\"5\":0,\"6\":0,\"7\":0,\"8\":0,\"9\":0,\"10\":0,\"11\":0}")]
     [TestCase("new Uint8Array([0, 1, 255])", "{\"0\":0,\"1\":1,\"2\":255}")]

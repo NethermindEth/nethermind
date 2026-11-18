@@ -86,8 +86,8 @@ public class RbuilderRpcModule(IBlockFinder blockFinder, ISpecProvider specProvi
 
             if (accountChange.CodeHash is not null)
             {
-                // Note, this also set CodeDb, but since this is a read only world state, it should do nothing.
-                worldState.InsertCode(address, accountChange.CodeHash, Array.Empty<byte>(), releaseSpec, false);
+                // The diff supplies only the hash. Update the account without staging bytecode for the shared store.
+                worldState.InsertTransientCode(address, accountChange.CodeHash, ReadOnlyMemory<byte>.Empty, releaseSpec);
             }
 
             if (accountChange.ChangedSlots is not null)

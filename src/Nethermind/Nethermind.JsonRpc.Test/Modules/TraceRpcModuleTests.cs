@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text;
@@ -4371,5 +4372,69 @@ public class TraceRpcModuleTests
             Assert.That(stateChanges!.Balance!.Before, Is.EqualTo(before));
             Assert.That(stateChanges.Balance.After, Is.EqualTo(after));
         }
+    }
+
+    [Test]
+    public async Task Buffered_trace_block_counts_kept_data_of_all_transactions_on_both_paths([Values] bool parallel, [Values(480L, 1000L)] long limit)
+    {
+        Context context = new();
+        await context.Build(configurer: parallel ? static builder => builder.AddSingleton<IParallelBlockTracer>(new TxTracerReplay()) : null);
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        IJsonRpcConfig config = blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.EnableTracingStreamMode = false;
+        config.MaxBufferedTraceLogSize = limit;
+        ulong nonce = blockchain.StateReader.GetNonce(blockchain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions =
+        [
+            .. Enumerable.Range(0, 2).Select(i => Build.A.Transaction
+                .WithTo(Address.Zero)
+                .WithData(new byte[60])
+                .WithGasLimit(100_000)
+                .WithNonce(nonce + (ulong)i)
+                .SignedAndResolved(blockchain.EthereumEcdsa, TestItem.PrivateKeyB).TestObject)
+        ];
+        await blockchain.AddBlockMayMissTx(transactions);
+
+        string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_block", "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        bool exceeded = document.RootElement.TryGetProperty("error", out JsonElement error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exceeded, Is.EqualTo(limit < 2 * (ParityLikeTxTracer.RetainedActionBytes + 60)), response);
+            if (exceeded) Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ClientLimitExceededError));
+        }
+    }
+
+    /// <summary>
+    /// Traces each transaction of a block with its own tracer, the one the module builds for it, as the parallel tracer's
+    /// workers do, and reports the call with the transaction's data.
+    /// </summary>
+    private sealed class TxTracerReplay : IParallelBlockTracer
+    {
+        public bool TryTrace<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, CancellationToken token, [NotNullWhen(true)] out IReadOnlyList<TTrace>? traces)
+        {
+            TTrace[][] perTransaction = new TTrace[block.Transactions.Length][];
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Transaction tx = block.Transactions[i];
+                IBlockTracer<TTrace> tracer = forTransaction(null!, tx.Hash!);
+                tracer.StartNewBlockTrace(block);
+                ITxTracer txTracer = tracer.StartNewTxTrace(tx);
+                txTracer.ReportAction(tx.GasLimit, tx.Value, tx.SenderAddress!, tx.To!, tx.Data, ExecutionType.TRANSACTION);
+                txTracer.ReportActionEnd(0, ReadOnlyMemory<byte>.Empty);
+                txTracer.MarkAsSuccess(tx.To!, default, [], []);
+                tracer.EndTxTrace();
+                tracer.EndBlockTrace();
+                perTransaction[i] = [.. tracer.BuildResult()];
+            }
+
+            traces = [.. perTransaction.SelectMany(static t => t)];
+            return true;
+        }
+
+        public bool TryStream<TTrace>(Block block, BlockHeader parent, Func<IWorldState, Hash256, IBlockTracer<TTrace>> forTransaction,
+            Func<IWorldState, IBlockTracer<TTrace>>? afterTransactions, IParallelTraceStream<TTrace> stream, CancellationToken token) => false;
     }
 }

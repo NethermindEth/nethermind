@@ -66,6 +66,13 @@ namespace Nethermind.Consensus.Validators
             {
                 BlockHeader uncle = uncles[i];
                 BlockHeader? uncleParent = _blockTree.FindParentHeader(uncle, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                // Parentless header validation can record the uncle itself as invalid.
+                if (uncleParent is null)
+                {
+                    _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's parent is unknown");
+                    return false;
+                }
+
                 if (!_headerValidator.Validate(uncle, uncleParent, true, out string? err))
                 {
                     _logger.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - uncle's header invalid. Error: {err}");

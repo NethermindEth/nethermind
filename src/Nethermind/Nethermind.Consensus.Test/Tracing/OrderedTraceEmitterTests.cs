@@ -13,6 +13,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;

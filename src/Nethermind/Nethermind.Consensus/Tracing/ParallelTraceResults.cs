@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Tracing;

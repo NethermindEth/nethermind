@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Threading;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -29,6 +30,16 @@ public interface IParallelTraceStream<TTrace>
     /// <summary>Serializes <paramref name="traces"/> into the response and releases them, even when it fails. Called in
     /// block order by one thread at a time, when <see cref="SerializeAheadOptions"/> is null.</summary>
     void Write(IReadOnlyCollection<TTrace> traces);
+
+    /// <summary>Called once a block starts, before any of its transactions is traced.</summary>
+    /// <param name="stop">Stops the block's workers: cancelled with the request, and when a worker fails. A tracer that
+    /// waits inside a trace for another transaction's trace to be released must stop waiting on it, as that trace may
+    /// then never be released.</param>
+    /// <param name="serializedAhead">Whether each worker serializes and releases its own traces, as
+    /// <see cref="SerializeAheadOptions"/> was set. Otherwise traces are released only as <see cref="Write"/> writes them
+    /// out, which a client that stops reading can hold indefinitely: a tracer must then never wait for them inside a
+    /// trace, as it holds one of the node's processing permits while it does.</param>
+    void OnBlockStart(CancellationToken stop, bool serializedAhead) { }
 }
 
 /// <summary>Helpers for <see cref="IParallelTraceStream{TTrace}"/> implementations.</summary>

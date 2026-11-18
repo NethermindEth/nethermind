@@ -15,6 +15,8 @@ namespace Nethermind.TxPool
         SkipErrorDetails = 2,
         /// <summary>Calculates intrinsic gas without caching it on the transaction.</summary>
         SkipIntrinsicGasMemo = 4,
+        /// <summary>Skips intrinsic gas validation for a transaction applied outside the EVM.</summary>
+        SkipIntrinsicGas = 8,
     }
 
     public interface ITxValidator

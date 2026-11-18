@@ -31,14 +31,23 @@ namespace Nethermind.Blockchain.Tracing.ParityStyle;
 /// </remarks>
 public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 {
+    private const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int DefaultFlushIntervalEntries = 8192;
     private const int InitialFrameStackCapacity = 8;
+    private const int MaxPooledTraceItems = 256;
+    private const int MaxPooledStorageDictionaryCapacity = 64;
+    private const int MaxPooledActions = 8192;
+    private const int MaxPooledSubtraceSlots = 8192;
+    private const int MaxPooledTraceAddressElements = 128 * 1024;
+    private const int MaxPooledOperationBufferBytes = 16 * 1024;
+    private static readonly SerializedTraces.Pool BufferedVmTraces = new(8, 16);
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
     private readonly bool _fillVmTraceSlot;
     private bool _streamVmTrace;
+    private readonly int _flushThresholdBytes;
     private readonly int _flushIntervalEntries;
 
     private bool _hasPendingOp;
@@ -69,17 +78,33 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private readonly ArrayPoolList<VmFrame> _framePool = [with(InitialFrameStackCapacity)];
 
     private readonly ArrayPoolList<ParityTraceAction> _actionPool = [with(InitialFrameStackCapacity)];
+    private int _pooledSubtraceSlots;
     private readonly ArrayPoolList<ParityAccountStateChange> _accountStateChangePool = [with(InitialFrameStackCapacity)];
     private readonly ArrayPoolList<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = [with(InitialFrameStackCapacity)];
     private readonly ArrayPoolList<ParityStateChange<byte[]>> _byteStateChangePool = [with(InitialFrameStackCapacity)];
     private readonly ArrayPoolList<ParityStateChange<UInt256?>> _uint256StateChangePool = [with(InitialFrameStackCapacity)];
     private readonly RetainingArrayPool<byte> _inputPool = new();
+    private long _pooledInputCharge;
+
+    /// <summary>The bytes of input arrays the tracer keeps for its next traces; they stay charged to <see cref="ParityLikeTxTracer.DataBudget"/>.</summary>
+    public long PooledInputBytes => _inputPool.RetainedLength;
     private readonly RetainingArrayPool<int> _traceAddressPool = new();
 
+    private long _flushedBytes;
     private int _entriesSinceLastFlush;
     private bool _disposed;
 
     private bool _outerOpHasSubWritten;
+
+    /// <summary>Set when the response is kept whole in memory, so the streamed vmTrace counts against its limit.</summary>
+    public TraceOutputLimit? OutputLimit { get; init; }
+
+    /// <summary>The number of serialized bytes between flushes.</summary>
+    public readonly record struct FlushThreshold(int Bytes)
+    {
+        /// <summary>The threshold used by the trace RPC.</summary>
+        public static FlushThreshold Default => new(DefaultFlushThresholdBytes);
+    }
 
     public StreamingParityLikeTxTracer(
         Block block,
@@ -91,17 +116,51 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         bool fillVmTraceSlot,
         int flushIntervalEntries = DefaultFlushIntervalEntries,
         IReleaseSpec? spec = null)
+        : this(block, tx, parityTraceTypes, writer, pipeWriter, cancellationToken, fillVmTraceSlot, default,
+            ValidateThreshold(flushIntervalEntries, nameof(flushIntervalEntries)), spec)
+    {
+    }
+
+    public StreamingParityLikeTxTracer(
+        Block block,
+        Transaction? tx,
+        ParityTraceTypes parityTraceTypes,
+        Utf8JsonWriter writer,
+        PipeWriter? pipeWriter,
+        CancellationToken cancellationToken,
+        bool fillVmTraceSlot,
+        FlushThreshold flushThreshold,
+        IReleaseSpec? spec = null)
+        : this(block, tx, parityTraceTypes, writer, pipeWriter, cancellationToken, fillVmTraceSlot,
+            new FlushThreshold(ValidateThreshold(flushThreshold.Bytes, nameof(flushThreshold))), 0, spec)
+    {
+    }
+
+    private static int ValidateThreshold(int value, string parameter) => value > 0 ? value : throw new ArgumentOutOfRangeException(parameter);
+
+    private StreamingParityLikeTxTracer(
+        Block block,
+        Transaction? tx,
+        ParityTraceTypes parityTraceTypes,
+        Utf8JsonWriter writer,
+        PipeWriter? pipeWriter,
+        CancellationToken cancellationToken,
+        bool fillVmTraceSlot,
+        FlushThreshold flushThreshold,
+        int flushIntervalEntries,
+        IReleaseSpec? spec)
         : base(block, tx, parityTraceTypes, spec)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
 
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _fillVmTraceSlot = fillVmTraceSlot;
         _streamVmTrace = StreamsVmTraceOf(tx);
+        _flushThresholdBytes = flushThreshold.Bytes;
         _flushIntervalEntries = flushIntervalEntries;
+        _flushedBytes = writer.BytesCommitted;
 
         if (fillVmTraceSlot && !IsTracingInstructions)
         {
@@ -112,9 +171,6 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     public void ResetForNextTx(Block block, Transaction? tx)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
-        if (_trace.Action is not null) ReturnActionTree(_trace.Action);
-        if (_trace.StateChanges is not null) ReturnStateChanges(_trace.StateChanges);
 
         ResetTracerState(block, tx);
         _streamVmTrace = StreamsVmTraceOf(tx);
@@ -132,6 +188,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             ReturnFrame(PopLast(_streamingFrames));
         }
 
+        _flushedBytes = _writer.BytesCommitted + _writer.BytesPending;
         _entriesSinceLastFlush = 0;
 
         if (_fillVmTraceSlot && !IsTracingInstructions)
@@ -145,15 +202,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         if (_disposed) return;
         _disposed = true;
 
-        if (_trace.Action is not null)
-        {
-            ReturnActionTree(_trace.Action);
-            _trace.Action = null;
-        }
-        if (_trace.StateChanges is not null)
-        {
-            ReturnStateChanges(_trace.StateChanges);
-        }
+        RecycleTrace();
+        base.ReleaseRetainedData();
 
         ReturnByteBuffer(ref _memoryBuffer);
         ReturnByteBuffer(ref _storageKeyBuffer);
@@ -179,7 +229,58 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _uint256StateChangePool.Dispose();
         _pushItems.Dispose();
         _inputPool.Clear();
+        DataBudget.Release(_pooledInputCharge);
+        _pooledInputCharge = 0;
         _traceAddressPool.Clear();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The buffers of the released trace go back to the pools first. The input arrays the tracer keeps for its next
+    /// traces stay charged; when the budget has no room for them, the tracer drops them.
+    /// </remarks>
+    public override void ReleaseRetainedData()
+    {
+        RecycleTrace();
+        base.ReleaseRetainedData();
+        if (_memoryBuffer is { Length: > MaxPooledOperationBufferBytes }) ReturnByteBuffer(ref _memoryBuffer);
+        if (_pushBytes is { Length: > MaxPooledOperationBufferBytes }) ReturnByteBuffer(ref _pushBytes);
+
+        long pooled = _inputPool.RetainedLength;
+        if (pooled > _pooledInputCharge && !DataBudget.TryAdd(pooled - _pooledInputCharge))
+        {
+            _inputPool.Clear();
+            pooled = 0;
+        }
+
+        if (pooled < _pooledInputCharge) DataBudget.Release(_pooledInputCharge - pooled);
+        _pooledInputCharge = pooled;
+    }
+
+    /// <summary>Drops the input arrays kept for later traces and gives back their charge.</summary>
+    public void DropPooledInputs()
+    {
+        _inputPool.Clear();
+        DataBudget.Release(_pooledInputCharge);
+        _pooledInputCharge = 0;
+    }
+
+    private void RecycleTrace()
+    {
+        ReturnActiveExcludedActions();
+        if (_trace.Action is not null)
+        {
+            ReturnActionTree(_trace.Action);
+            _trace.Action = null;
+        }
+
+        if (_trace.StateChanges is not null)
+        {
+            ReturnStateChanges(_trace.StateChanges);
+            if (_trace.StateChanges.EnsureCapacity(0) > MaxPooledTraceItems) _trace.StateChanges = [];
+        }
+
+        ClearTraceReferences();
     }
 
     private static T PopLast<T>(ArrayPoolList<T> list)
@@ -196,6 +297,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (_actionPool.Count == 0) return new ParityTraceAction();
         ParityTraceAction action = PopLast(_actionPool);
+        _pooledSubtraceSlots -= action.Subtraces.Capacity;
         action.Reset();
         return action;
     }
@@ -206,11 +308,15 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         return new CappedArray<int>(_traceAddressPool.Rent(length), length);
     }
 
-    private void ReturnTraceAddress(CappedArray<int> address)
+    protected override void ReturnTraceAddress(CappedArray<int> address)
     {
         if (address.IsNotNull && address.UnderlyingLength > 0)
         {
-            _traceAddressPool.Return(address.UnderlyingArray!);
+            int[] buffer = address.UnderlyingArray!;
+            if (_traceAddressPool.RetainedLength + buffer.Length <= MaxPooledTraceAddressElements)
+                _traceAddressPool.Return(buffer);
+            else
+                ArrayPool<int>.Shared.Return(buffer);
         }
     }
 
@@ -244,12 +350,29 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         return sc;
     }
 
+    /// <remarks>
+    /// A kept array is charged already, so it moves into the trace without a new charge. A new one is charged before it
+    /// is rented: a charge may wait for room, and an array rented first would be held outside the budget meanwhile.
+    /// </remarks>
     protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
     {
         if (input.IsEmpty) return CappedArray<byte>.Empty;
-        byte[] rented = _inputPool.Rent(input.Length);
-        input.Span.CopyTo(rented);
-        return new CappedArray<byte>(rented, input.Length);
+        if (_inputPool.TryRentRetained(input.Length, out byte[]? rented))
+        {
+            // Its charge as a kept input becomes trace data.
+            int moved = (int)Math.Min(rented.Length, _pooledInputCharge);
+            _pooledInputCharge -= moved;
+            TakeOverRetainedData(moved);
+        }
+        else
+        {
+            Retain(RetainingArrayPool<byte>.SharedRentLength(input.Length));
+            rented = ArrayPool<byte>.Shared.Rent(input.Length);
+        }
+
+        CappedArray<byte> buffer = new(rented, input.Length);
+        input.Span.CopyTo(buffer.AsSpan());
+        return buffer;
     }
 
     protected override void ReturnInputBytes(in CappedArray<byte> input)
@@ -260,7 +383,26 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
     }
 
-    protected override void ReturnExcludedAction(ParityTraceAction action) => ReturnActionTree(action);
+    protected override void ChargeRetainedData(int length)
+    {
+        if (_pooledInputCharge > 0)
+        {
+            if (DataBudget.TryAdd(length)) return;
+            DropPooledInputs();
+        }
+
+        base.ChargeRetainedData(length);
+    }
+
+    protected override void ReturnExcludedAction(ParityTraceAction action)
+    {
+        int inputBytes = action.Input.UnderlyingLength;
+        ReturnActionTree(action);
+        if (inputBytes == 0) return;
+
+        _pooledInputCharge += inputBytes;
+        TransferRetainedData(inputBytes);
+    }
 
     private void ReturnActionTree(ParityTraceAction action)
     {
@@ -271,8 +413,12 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
         ReturnTraceAddress(action.TraceAddress);
         ReturnInputBytes(action.Input);
-        action.Reset();
-        _actionPool.Add(action);
+        if (_actionPool.Count < MaxPooledActions && subtraces.Capacity <= MaxPooledSubtraceSlots - _pooledSubtraceSlots)
+        {
+            action.Reset();
+            _actionPool.Add(action);
+            _pooledSubtraceSlots += subtraces.Capacity;
+        }
     }
 
     private void ReturnStateChanges(Dictionary<Address, ParityAccountStateChange> changes)
@@ -283,17 +429,33 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
             {
                 foreach (KeyValuePair<UInt256, ParityStateChange<byte[]>> kv in account.Storage)
                 {
-                    _byteStateChangePool.Add(kv.Value);
+                    ReturnByteStateChange(kv.Value);
                 }
-                account.Storage.Clear();
-                _storageDictPool.Add((Dictionary<UInt256, ParityStateChange<byte[]>>)account.Storage);
+                Dictionary<UInt256, ParityStateChange<byte[]>> storage = (Dictionary<UInt256, ParityStateChange<byte[]>>)account.Storage;
+                if (_storageDictPool.Count < MaxPooledTraceItems && storage.EnsureCapacity(0) <= MaxPooledStorageDictionaryCapacity)
+                {
+                    storage.Clear();
+                    _storageDictPool.Add(storage);
+                }
                 account.Storage = null;
             }
-            if (account.Balance is not null) { _uint256StateChangePool.Add(account.Balance); account.Balance = null; }
-            if (account.Code is not null) { _byteStateChangePool.Add(account.Code); account.Code = null; }
-            if (account.Nonce is not null) { _uint256StateChangePool.Add(account.Nonce); account.Nonce = null; }
-            _accountStateChangePool.Add(account);
+            if (account.Balance is not null) { ReturnStateChange(account.Balance); account.Balance = null; }
+            if (account.Code is not null) { ReturnByteStateChange(account.Code); account.Code = null; }
+            if (account.Nonce is not null) { ReturnStateChange(account.Nonce); account.Nonce = null; }
+            if (_accountStateChangePool.Count < MaxPooledTraceItems) _accountStateChangePool.Add(account);
         }
+    }
+
+    private void ReturnByteStateChange(ParityStateChange<byte[]> change)
+    {
+        change.Before = null;
+        change.After = null;
+        if (_byteStateChangePool.Count < MaxPooledTraceItems) _byteStateChangePool.Add(change);
+    }
+
+    private void ReturnStateChange(ParityStateChange<UInt256?> change)
+    {
+        if (_uint256StateChangePool.Count < MaxPooledTraceItems) _uint256StateChangePool.Add(change);
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -477,28 +639,28 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         VmFrame frame = PopLast(_streamingFrames);
 
-        if (frame.IsSuicide)
-        {
-            ReturnFrame(frame);
-            return;
-        }
-
-        FinalizePendingOp(frame, closeWithNullSub: true);
-
-        if (frame.JsonObjectOpened)
-        {
-            _writer.WriteEndArray();
-            _writer.WriteEndObject();
-        }
-        else
-        {
-            WriteEmptyFrame(frame);
-        }
-
         bool hadPendingParent = frame.HasPendingParentOpToClose;
         int outerPc = frame.OuterPendingPc;
         ulong outerCost = frame.OuterPendingCost;
-        ReturnFrame(frame);
+        try
+        {
+            if (frame.IsSuicide) return;
+
+            FinalizePendingOp(frame, closeWithNullSub: true);
+            if (frame.JsonObjectOpened)
+            {
+                _writer.WriteEndArray();
+                _writer.WriteEndObject();
+            }
+            else
+            {
+                WriteEmptyFrame(frame);
+            }
+        }
+        finally
+        {
+            ReturnFrame(frame);
+        }
 
         if (hadPendingParent)
         {
@@ -531,13 +693,38 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         }
         ParityTraceAction? action = _trace.Action;
         ParityLikeTxTrace result = base.BuildResult();
+        if (action is not null && result.Action is null) ReturnActionTree(action);
         if (_fillVmTraceSlot && IsTracingInstructions && !_streamVmTrace)
         {
-            TypeInfoJsonSerializer.Serialize(_writer, result.VmTrace, EthereumJsonSerializer.JsonOptions);
+            WriteMaterializedVmTrace(result.VmTrace);
         }
 
-        if (action is not null && result.Action is null) ReturnActionTree(action);
         return result;
+    }
+
+    private void WriteMaterializedVmTrace(ParityVmTrace? trace)
+    {
+        if (OutputLimit is not { } limit)
+        {
+            TypeInfoJsonSerializer.Serialize(_writer, trace, EthereumJsonSerializer.JsonOptions);
+            return;
+        }
+
+        JsonWriterOptions options = _writer.Options;
+        options.MaxDepth = Math.Max(1, options.MaxDepth - _writer.CurrentDepth);
+        SerializedTraces serialized = BufferedVmTraces.Rent(options);
+        try
+        {
+            Utf8JsonWriter writer = serialized.Start(options, limit, _writer.BytesCommitted + _writer.BytesPending);
+            TypeInfoJsonSerializer.Serialize(writer, trace, EthereumJsonSerializer.JsonOptions);
+            writer.Flush();
+            serialized.Seal();
+            _writer.WriteRawValue(serialized.Written, skipInputValidation: true);
+        }
+        finally
+        {
+            BufferedVmTraces.Return(serialized);
+        }
     }
 
     /// <param name="frame">The frame the pending operation runs in, whose code names it.</param>
@@ -562,8 +749,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
 
         _hasPendingOp = false;
         ReleaseOpBuffers();
-        _entriesSinceLastFlush++;
-        MaybeFlushToWire();
+        MaybeFlushToWire(completedEntry: true);
     }
 
     private void EmitOuterOpTail(VmFrame? frame)
@@ -677,11 +863,23 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private void WriteHexBytes(ReadOnlySpan<byte> bytes) =>
         ByteArrayConverter.Convert(_writer, bytes, skipLeadingZeros: false);
 
-    private void MaybeFlushToWire()
+    private void MaybeFlushToWire(bool completedEntry = false)
     {
-        if (_pipeWriter is null || _entriesSinceLastFlush < _flushIntervalEntries) return;
+        long writtenBytes = _writer.BytesCommitted + _writer.BytesPending;
+        OutputLimit?.Check(writtenBytes);
+        if (_pipeWriter is null) return;
+        if (_flushIntervalEntries != 0)
+        {
+            if (completedEntry) _entriesSinceLastFlush++;
+            if (_entriesSinceLastFlush < _flushIntervalEntries) return;
+        }
+        else if (writtenBytes - _flushedBytes < _flushThresholdBytes)
+        {
+            return;
+        }
         _writer.Flush();
         _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
+        _flushedBytes = _writer.BytesCommitted;
         _entriesSinceLastFlush = 0;
     }
 

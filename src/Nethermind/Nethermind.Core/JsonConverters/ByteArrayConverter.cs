@@ -362,8 +362,14 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
 
         byte[] array = ArrayPool<byte>.Shared.Rent(rawLength);
-        WriteHexStringValue(writer, bytes, leadingNibbleZeros, addHexPrefix, array.AsSpan(0, rawLength));
-        ArrayPool<byte>.Shared.Return(array);
+        try
+        {
+            WriteHexStringValue(writer, bytes, leadingNibbleZeros, addHexPrefix, array.AsSpan(0, rawLength));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(array);
+        }
     }
 
     [SkipLocalsInit]

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -83,7 +84,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
             result.Error = ex.Message;
             result.TransactionResult = TransactionResult.InsufficientSenderBalance;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not TraceDataLimitExceededException)
         {
             result.Error = ex.Message;
         }

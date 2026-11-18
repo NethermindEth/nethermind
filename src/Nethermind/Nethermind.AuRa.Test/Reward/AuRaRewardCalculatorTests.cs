@@ -6,6 +6,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Abi;
+using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Rewards;
@@ -177,6 +178,21 @@ namespace Nethermind.AuRa.Test.Reward
             AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor);
             BlockReward[] result = calculator.CalculateRewards(_block);
             Assert.That(result, Is.EquivalentTo(expected).UsingPropertiesComparer());
+        }
+
+        [Test]
+        public void reward_contract_call_uses_the_given_gas_limit([Values] bool limited)
+        {
+            _block.Header.Number = 10;
+            SetupBlockRewards(new Dictionary<Address, BlockReward[]>() { { _address10, [new BlockReward(_block.Beneficiary, 100, BlockRewardType.External)] } });
+            ulong gasLimit = 0;
+            _transactionProcessor.When(x => x.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()))
+                .Do(args => gasLimit = args.Arg<Transaction>().GasLimit);
+
+            AuRaRewardCalculator calculator = new(_auraParameters, _transactionProcessor, limited ? RewardContractGasLimit.Rpc : null);
+            calculator.CalculateRewards(_block);
+
+            Assert.That(gasLimit, Is.EqualTo(limited ? CallableContract.SystemTransactionGasLimit : CallableContract.UnlimitedGas));
         }
 
         private void SetupBlockRewards(IDictionary<Address, BlockReward[]> rewards) =>

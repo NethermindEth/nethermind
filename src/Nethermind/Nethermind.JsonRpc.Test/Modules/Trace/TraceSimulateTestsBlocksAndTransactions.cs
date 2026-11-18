@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Find;
@@ -12,7 +14,10 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Test.Modules.Simulate;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 using Nethermind.JsonRpc.Test.Modules.Eth;
 using Nethermind.JsonRpc.Test.Modules.Eth.Simulate;
@@ -91,5 +96,39 @@ public class TraceSimulateTestsBlocksAndTransactions : TracedSimulateTestsBase<P
             Assert.That(serialized, Does.Contain("\"stateDiff\":"));
             Assert.That(serialized, Does.Not.Contain("stateChanges"));
         }
+    }
+
+    [TestCase(1, false, TestName = "Trace_simulate_of_one_block_stays_within_the_data_limit")]
+    [TestCase(2, true, TestName = "Trace_simulate_keeps_one_data_budget_across_blocks")]
+    public async Task Trace_simulate_counts_kept_data_over_all_blocks(int blocks, bool exceeds)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        chain.Container.Resolve<IJsonRpcConfig>().MaxBufferedTraceLogSize = 3 * (ParityLikeTxTracer.RetainedActionBytes + 100);
+        string input = "0x" + new string('a', 120);
+        string call = $$"""{ "from": "0xc000000000000000000000000000000000000000", "to": "0xc100000000000000000000000000000000000000", "gas": "0x10000", "input": "{{input}}" }""";
+        string blockStateCalls = string.Join(",", Enumerable.Repeat($$"""{ "calls": [ {{call}} ] }""", blocks));
+        SimulatePayload<TransactionForRpc> payload = new EthereumJsonSerializer().Deserialize<SimulatePayload<TransactionForRpc>>(
+            $$"""{ "blockStateCalls": [ {{blockStateCalls}} ] }""")!;
+
+        string response = await RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_simulateV1", payload, "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        if (exceeds)
+        {
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ClientLimitExceededError), response);
+        }
+        else
+        {
+            Assert.That(document.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(blocks), response);
+        }
+    }
+
+    [Test]
+    public void Trace_simulate_is_not_sharable()
+    {
+        JsonRpcMethodAttribute attribute = typeof(ITraceRpcModule).GetMethod(nameof(ITraceRpcModule.trace_simulateV1))!
+            .GetCustomAttribute<JsonRpcMethodAttribute>()!;
+
+        Assert.That(attribute.IsSharable, Is.False);
     }
 }

@@ -6,13 +6,21 @@ using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core.Exceptions;
 using Nethermind.JsonRpc.Exceptions;
+using Nethermind.JsonRpc.Modules.Admin;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
-    public class SubscribeRpcModule(ISubscriptionManager subscriptionManager) : ISubscribeRpcModule
+    // Lazy: the provider preloads module pools (including this one) in its constructor when PreloadRpcModules is set.
+    public class SubscribeRpcModule(ISubscriptionManager subscriptionManager, Lazy<IRpcModuleProvider> moduleProvider) : ISubscribeRpcModule
     {
         public ResultWrapper<string> eth_subscribe(string subscriptionName, string? args = null)
         {
+            if (subscriptionName == SubscriptionType.AdminSubscription.PeerEvents
+                && moduleProvider.Value.Check(nameof(IAdminRpcModule.admin_subscribe), Context) != ModuleResolution.Enabled)
+            {
+                return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+            }
+
             if (Subscription.ValidateArgs(args) is { } failure) return failure;
 
             try

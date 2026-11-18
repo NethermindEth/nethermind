@@ -57,6 +57,24 @@ public class FilterStoreTests
         Assert.Throws<InvalidOperationException>(() => store.SaveFilter(externalFilter));
     }
 
+    [Test]
+    public void Installed_filters_share_the_limit_and_removal_releases_a_slot()
+    {
+        using FilterStore store = new(new TimerFactory(), maxFilters: 1);
+        BlockFilter first = store.CreateBlockFilter();
+        PendingTransactionFilter next = store.CreatePendingTransactionFilter();
+        store.SaveFilter(first);
+
+        Assert.Throws<FilterLimitExceededException>(() => store.SaveFilter(next));
+        bool removed = store.RemoveFilter(first.Id);
+        store.SaveFilter(next);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.True);
+            Assert.That(store.FilterExists(next.Id), Is.True);
+        }
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Ids_are_incremented_when_storing_externally_created_filter()
     {

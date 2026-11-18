@@ -162,7 +162,7 @@ public interface IJsonRpcConfig : IConfig
     public long? MaxLogsResponseBodySize { get; set; }
 
     [ConfigItem(
-        Description = "The max opcode log size, in bytes, per transaction of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. `0` or negative to lift the limit.",
+        Description = "The max opcode log size, in bytes, per transaction of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. It is also the max size, in bytes, of the trace data (call inputs, return data, code, memory, stack and storage changes) that a buffered `trace_*` request keeps over all the blocks it traces, and that a streamed `trace_*` request keeps per transaction; a larger trace fails. The transactions of a block streamed in parallel by `trace_block` or `trace_replayBlockTransactions` wait for room within it rather than fail, but for the earliest one not released yet, so together they keep at most twice as much; those of `trace_filter` fail when they do not fit together. `trace_simulateV1` keeps at most a third of it, as its response is serialized whole after the traces. `0` or negative to lift the limit.",
         DefaultValue = "268435456")]
     public long MaxBufferedTraceLogSize { get; set; }
 
@@ -290,6 +290,11 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The eth_filters timeout, in milliseconds.", DefaultValue = "900000")]
     int FiltersTimeout { get; set; }
+
+    [ConfigItem(
+        Description = "The max number of filters installed at a time with the `eth_newFilter`, `eth_newBlockFilter`, and `eth_newPendingTransactionFilter` JSON-RPC methods. `0` to lift the limit.",
+        DefaultValue = "10000")]
+    int MaxFilters { get; set; }
 
     [ConfigItem(Description = "Preload rpc modules. Useful in rpc provider to reduce latency on first request.", DefaultValue = "false")]
     bool PreloadRpcModules { get; set; }

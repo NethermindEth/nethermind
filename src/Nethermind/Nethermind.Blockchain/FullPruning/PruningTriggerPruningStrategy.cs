@@ -17,7 +17,7 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
     private readonly IFullPruningDb _fullPruningDb;
     private readonly IPruningStrategy _basePruningStrategy;
     private readonly IPruningStrategy _duringFullPruningStrategy;
-    private int _inPruning = 0;
+    private IPruningContext? _pruningContext;
 
     public PruningTriggerPruningStrategy(
         IFullPruningDb fullPruningDb,
@@ -38,21 +38,21 @@ public class PruningTriggerPruningStrategy : IPruningStrategy, IDisposable
         _fullPruningDb.PruningStarted += OnPruningStarted;
     }
 
-    private void OnPruningStarted(object? sender, EventArgs e) => Interlocked.CompareExchange(ref _inPruning, 1, 0);
+    private void OnPruningStarted(object? sender, PruningEventArgs e) => Interlocked.Exchange(ref _pruningContext, e.Context);
 
-    private void OnPruningFinished(object? sender, EventArgs e) => Interlocked.CompareExchange(ref _inPruning, 0, 1);
+    private void OnPruningFinished(object? sender, PruningEventArgs e) => Interlocked.CompareExchange(ref _pruningContext, null, e.Context);
 
     public bool DeleteObsoleteKeys
     {
         get
         {
-            bool inPruning = _inPruning != 0;
+            bool inPruning = Volatile.Read(ref _pruningContext) is not null;
             return !inPruning && _basePruningStrategy.DeleteObsoleteKeys;
         }
     }
 
     public bool ShouldPruneDirtyNode(TrieStoreState state) =>
-        (_inPruning != 0 ? _duringFullPruningStrategy : _basePruningStrategy).ShouldPruneDirtyNode(state);
+        (Volatile.Read(ref _pruningContext) is not null ? _duringFullPruningStrategy : _basePruningStrategy).ShouldPruneDirtyNode(state);
 
     public bool ShouldPrunePersistedNode(TrieStoreState state) => _basePruningStrategy.ShouldPrunePersistedNode(state);
 

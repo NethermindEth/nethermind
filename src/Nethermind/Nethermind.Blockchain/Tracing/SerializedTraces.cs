@@ -6,8 +6,9 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Text.Json;
 using System.Threading;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 
-namespace Nethermind.Consensus.Tracing;
+namespace Nethermind.Blockchain.Tracing;
 
 /// <summary>The JSON of one transaction's traces, serialized by the worker that traced it and waiting for its turn in
 /// the response. The bytes live in a chain of chunks, so a large trace never needs one contiguous buffer of its whole
@@ -33,6 +34,8 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
     private long _held;
     private Utf8JsonWriter? _writer;
     private JsonWriterOptions _options;
+    private TraceOutputLimit? _outputLimit;
+    private long _outputBytesBefore;
 
     private SerializedTraces(Pool pool) => _pool = pool;
 
@@ -55,8 +58,10 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
     }
 
     /// <summary>Starts an empty serialization; the writer is replaced only when the options differ from its own.</summary>
-    public Utf8JsonWriter Start(JsonWriterOptions options)
+    public Utf8JsonWriter Start(JsonWriterOptions options, TraceOutputLimit? outputLimit = null, long outputBytesBefore = 0)
     {
+        _outputLimit = outputLimit;
+        _outputBytesBefore = outputBytesBefore;
         Utf8JsonWriter? writer = _writer;
         if (writer is null || !Matches(options))
         {
@@ -82,12 +87,16 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
     }
 
     internal bool Matches(JsonWriterOptions options) =>
-        _writer is not null && ReferenceEquals(_options.Encoder, options.Encoder) && _options.MaxDepth == options.MaxDepth;
+        _writer is not null && ReferenceEquals(_options.Encoder, options.Encoder) && _options.MaxDepth == options.MaxDepth
+        && _options.Indented == options.Indented && _options.SkipValidation == options.SkipValidation
+        && _options.IndentCharacter == options.IndentCharacter && _options.IndentSize == options.IndentSize
+        && _options.NewLine == options.NewLine;
 
     public void Advance(int count)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(count);
         if (count == 0) return;
+        _outputLimit?.Check(_outputBytesBefore + _length + count);
 
         Chunk current = _chunks[_chunkCount - 1]!;
         ArgumentOutOfRangeException.ThrowIfGreaterThan(count, current.Free);
@@ -116,7 +125,7 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
     }
 
     /// <summary>Gives every chunk back and empties the instance.</summary>
-    private void Empty()
+    internal void Empty()
     {
         // A serialization that failed leaves bytes pending in the writer, over memory released below.
         _writer?.Reset();
@@ -125,6 +134,7 @@ internal sealed class SerializedTraces : IBufferWriter<byte>
         _chunkCount = 0;
         _length = 0;
         _held = 0;
+        _outputLimit = null;
     }
 
     /// <summary>One link of the chain: an array and how much of it is written.</summary>
