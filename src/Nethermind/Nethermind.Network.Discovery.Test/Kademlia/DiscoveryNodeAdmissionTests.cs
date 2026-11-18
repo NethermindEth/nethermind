@@ -396,6 +396,56 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void First_contact_checks_each_managed_set_once()
+    {
+        int staticScans = 0;
+        int trustedScans = 0;
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns(_ =>
+        {
+            staticScans++;
+            return [];
+        });
+        ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
+        trustedNodes.Nodes.Returns(_ =>
+        {
+            trustedScans++;
+            return [];
+        });
+        Fixture fixture = CreateAdmission(staticNodes: staticNodes, trustedNodes: trustedNodes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
+            Assert.That(staticScans, Is.EqualTo(1), "the locked re-check must be the only managed walk");
+            Assert.That(trustedScans, Is.EqualTo(1), "the locked re-check must be the only managed walk");
+        }
+    }
+
+    [Test]
+    public void Known_managed_node_that_lost_its_reservation_is_still_admitted()
+    {
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
+        Fixture fixture = CreateAdmission(staticNodes: staticNodes);
+        Node managed = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        fixture.RoutingTable.TryGet(Arg.Is<ValueHash256>(hash => hash == managed.Id.Hash), out _)
+            .Returns(ci =>
+            {
+                ci[1] = managed;
+                return true;
+            });
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Another identity already holds the subnet...
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
+            // ...so the managed node's refresh fails and only its exemption can admit it.
+            Assert.That(fixture.Admission.TryAdmit(managed), Is.True);
+        }
+    }
+
+    [Test]
     public void Static_node_added_after_construction_is_exempt_on_first_contact()
     {
         List<NetworkNode> staticNodesList = [];

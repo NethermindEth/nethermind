@@ -93,22 +93,32 @@ internal sealed class DiscoveryNodeAdmission(
             return true;
         }
 
-        // Self and exempt nodes must not create a filter entry.
-        if (IsSelf(node) || IsExempt(node))
+        // Self and exempt nodes must not create a filter entry. The configuration-backed, per-call and persisted
+        // sources are checked here without touching the managers; manager membership is resolved once per
+        // admission below instead of on both sides of _admitLock, which duplicated the walk on the unknown path.
+        if (IsSelf(node) || IsExemptWithoutManagers(node))
         {
             _admitted.TryReserve(node.Id);
             return true;
         }
 
-        // Known nodes keep the refresh behavior of the old lifecycle-manager dictionary.
+        // Known nodes keep the refresh behavior of the old lifecycle-manager dictionary. The managed check stays
+        // ahead of RefreshKnownNode so a managed node that lost its reservation is not handed to the filter.
         if (IsKnown(node))
         {
+            if (IsManagedExempt(node.Id))
+            {
+                _admitted.TryReserve(node.Id);
+                return true;
+            }
+
             return RefreshKnownNode(node);
         }
 
         using Lock.Scope scope = _admitLock.EnterScope();
-        // Another thread may have admitted this node while we waited for the lock.
-        if (IsExempt(node))
+        // Another thread may have admitted this node, and an operator may have added it to a manager, while we
+        // waited for the lock.
+        if (IsExemptWithoutManagers(node) || IsManagedExempt(node.Id))
         {
             _admitted.TryReserve(node.Id);
             return true;
@@ -174,13 +184,12 @@ internal sealed class DiscoveryNodeAdmission(
 
     // Instance flags are evidence for this call only. Caching them by identity would keep the exemption
     // alive after the operator removes the node from its manager; lasting exemptions come from the
-    // configuration-backed set, and manager membership is re-read here.
-    private bool IsExempt(Node node)
+    // configuration-backed set, and manager membership is resolved live by IsManagedExempt.
+    private bool IsExemptWithoutManagers(Node node)
         => _exemptNodeIds.Contains(node.Id)
            || node.IsBootnode
            || node.IsStatic
            || node.IsTrusted
-           || IsManagedExempt(node.Id)
            || IsPersistedAtSameAddress(node);
 
     private bool IsPersistedAtSameAddress(Node node)
