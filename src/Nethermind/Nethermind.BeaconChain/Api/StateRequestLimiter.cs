@@ -111,6 +111,7 @@ internal sealed class StateRequestLimiter : IDisposable
         PathString path = c.Request.Path;
         bool largeResponse = path.StartsWithSegments("/eth/v2/beacon/blocks")
             || path.StartsWithSegments("/eth/v1/beacon/execution_payload_envelopes")
+            || path.StartsWithSegments("/eth/v1/beacon/headers")
             || path.StartsWithSegments("/eth/v1/beacon/blobs")
             || path.StartsWithSegments("/eth/v1/debug/fork_choice")
             || path.StartsWithSegments("/eth/v1/debug/beacon/fork_choice");

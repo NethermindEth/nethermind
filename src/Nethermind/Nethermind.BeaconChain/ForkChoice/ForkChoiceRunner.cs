@@ -1178,7 +1178,7 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} is not a member of committee {committeeIndex} at slot {slot}") { RejectGossip = true };
         RequireCachedKeys(state, [proof.AggregatorIndex]);
         RequireCachedKeys(state, vote.AttestingIndices);
-        if (!SignatureSets.TryGetValidatorKey(_pubkeys, proof.AggregatorIndex, out G1Affine key))
+        if (!SignatureSets.TryGetValidatorKey(_pubkeys, ValidatorsOf(state), proof.AggregatorIndex, out G1Affine key))
             // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The selection proof signature is valid".
             throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} has no valid public key") { RejectGossip = true };
 

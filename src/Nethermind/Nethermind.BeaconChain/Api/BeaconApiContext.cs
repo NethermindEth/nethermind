@@ -43,7 +43,9 @@ internal sealed record BeaconApiContext(
     DataColumnSidecarPool? ColumnPool = null)
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
-    public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
+    public BeaconApiContext ForRequest() => HeadSnapshots?.Current is { } snapshot
+        ? this with { StatusSource = new FrozenHead(snapshot), ForkChoiceSnapshot = snapshot.ForkChoice }
+        : this with { StatusSource = CaptureStartupHead(), ForkChoiceSnapshot = HeadSnapshots is null ? ForkChoiceSnapshots?.Current : null };
     /// <summary>The captured state of a checkpoint alias or the head's block post-state.</summary>
     internal ForkedBeaconState? GetHeldState(Hash256 blockRoot, string stateId) =>
         GetCheckpointState(stateId)?.State ?? (StatusSource as FrozenHead)?.GetState(blockRoot);
@@ -56,13 +58,8 @@ internal sealed record BeaconApiContext(
     public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });
 
     /// <summary>Freezes the published get_head view, or the startup status before publication (fork-choice.md).</summary>
-    public IBeaconChainStatusSource CaptureHead()
+    private IBeaconChainStatusSource CaptureStartupHead()
     {
-        if (HeadSnapshots?.Current is { } snapshot)
-        {
-            return new FrozenHead(snapshot);
-        }
-
         (StatusMessageV2 status, Hash256? fullHeadRoot) = StatusSource.CurrentHead;
         return new FrozenHead(new HeadSnapshot(status, fullHeadRoot, StatusSource.JustifiedRoot, StatusSource.ExecutionInSync));
     }

@@ -148,6 +148,31 @@ public class GloasBlockImporterTests
             "the last block builds on the middle payload, which lies after the latest valid hash");
     }
 
+    [Test]
+    public void Requested_fork_crossing_block_uses_its_parent_registry_after_a_sibling_populates_the_key_cache()
+    {
+        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xB1);
+        PubkeyCache pubkeys = new();
+        Validator[] validators = _chain.AnchorState.ValidatorBuffer!.Items;
+        int proposer = (int)block.Signed.Message!.ProposerIndex;
+        pubkeys.Build(validators[..proposer]);
+        Validator[] sibling = [.. validators];
+        sibling[proposer] = CreateActiveValidator(new BlsPublicKey(new Bls.P1(ValidatorKey(validators.Length)).Compress()));
+        pubkeys.Extend(sibling, proposer);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), pubkeys: pubkeys);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(importer.VerifyCachedProposerSignature(block.Forked), Is.Null);
+        Assert.That(importer.ImportRequested(block.Forked, block.Root, fetchedByRoot: false), Is.EqualTo(BlockImportResult.Imported));
+
+        BeaconChainStore store = _chain.CreateStore();
+        pubkeys.FinalizeRegistry(validators);
+        pubkeys.Persist(store);
+        PubkeyCache reloaded = new();
+        Assert.That(reloaded.TryLoad(store, validators), Is.True);
+        Assert.That(reloaded.GetPublicKey(proposer).Compress(), Is.EqualTo(validators[proposer].Pubkey.Bytes.ToArray()));
+    }
+
     /// <summary>Fork upgrades alias Fulu arrays; import must copy the parent so fork choice retains its original state.</summary>
     [Test]
     public void First_gloas_block_crosses_the_fork_on_a_copy_and_is_stored_in_its_own_shape()

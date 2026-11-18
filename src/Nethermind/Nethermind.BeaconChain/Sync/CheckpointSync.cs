@@ -163,6 +163,9 @@ public class CheckpointSync(
                 throw new InvalidDataException($"Anchor state at slot {state.Slot} has root {stateRoot}, but its block {blockRoot} names state root {blockStateRoot}.");
             }
 
+            if (block.Slot != 0)
+                VerifyAnchorSignature(state, block, blockRoot);
+
             CheckpointAnchor anchor = new(state, block, blockRoot, stateRoot);
             Persist(anchor, buffer.AsSpan(0, length), weakSubjectivityCheckpoint, checkpointStateSlot);
             if (_logger.IsInfo) _logger.Info($"Checkpoint sync complete: anchor block {blockRoot} at slot {latestBlockHeader.Slot}");
@@ -510,6 +513,29 @@ public class CheckpointSync(
         return block;
     }
 
+    private void VerifyAnchorSignature(ForkedBeaconState state, ForkedSignedBeaconBlock block, Hash256 blockRoot)
+    {
+        ulong epoch = spec.GetEpoch(block.Slot);
+        bool valid = (state, block) switch
+        {
+            (ForkedBeaconState.OfFulu fulu, ForkedSignedBeaconBlock.OfFulu signed) =>
+                Verify(fulu.State.ReadOnlyValidators, fulu.State.GetDomain(DomainType.BeaconProposer, epoch), signed.Block.Signature),
+            (ForkedBeaconState.OfGloas gloas, ForkedSignedBeaconBlock.OfGloas signed) =>
+                Verify(gloas.State.ReadOnlyValidators, gloas.State.GetDomain(DomainType.BeaconProposer, epoch), signed.Block.Signature),
+            _ => false,
+        };
+        if (!valid)
+            throw new InvalidDataException($"Anchor block {blockRoot} at slot {block.Slot} has an invalid proposer signature.");
+
+        bool Verify(ReadOnlySpan<Validator> validators, Hash256 domain, BlsSignature signature)
+        {
+            Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);
+            return block.ProposerIndex < (ulong)validators.Length
+                && BlsSignatureSet.TryKeyValidate(validators[(int)block.ProposerIndex].Pubkey.Bytes, publicKey)
+                && BlsSigner.Verify(publicKey, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+        }
+    }
+
     private Task<HttpResponseMessage> GetOctetStreamAsync(string path, CancellationToken cancellationToken) =>
         GetOctetStreamAsync(_httpClient, $"{EffectiveCheckpointSyncUrl.TrimEnd('/')}{path}", cancellationToken);
 
@@ -542,11 +568,12 @@ public class CheckpointSync(
 
     private void Persist(CheckpointAnchor anchor, ReadOnlySpan<byte> stateSsz, Checkpoint? weakSubjectivityCheckpoint, ulong checkpointStateSlot)
     {
+        BeaconBlockHeader header = LatestBlockHeader(anchor.State);
         store.PutState(anchor.BlockRoot, stateSsz);
-        store.PutForkedBlock(anchor.BlockRoot, anchor.Block);
+        store.StoreBlock(anchor.BlockRoot, anchor.Block, header.BodyRoot);
 
         // The anchor entry is written after the state, block and checkpoint sync record: its presence marks a fully persisted checkpoint.
-        ulong blockSlot = LatestBlockHeader(anchor.State).Slot;
+        ulong blockSlot = header.Slot;
         store.PutMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor, EncodeCheckpointSyncAnchorRecord(anchor.BlockRoot, blockSlot, checkpointStateSlot));
         store.SetAnchor(anchor.BlockRoot, blockSlot);
         if (weakSubjectivityCheckpoint is not null)

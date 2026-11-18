@@ -48,6 +48,7 @@ jobs:
             });
             const affectsEmbedded = path =>
               /^src\/Nethermind\/Nethermind\.(BeaconChain[^/]*|Network\.Libp2p[^/]*|Merge\.Plugin[^/]*|Serialization\.Ssz[^/]*|Analyzers[^/]*)\//.test(path) ||
+              /^src\/Nethermind\/Nethermind\.Runner\/(NethermindPlugins\.cs|Nethermind\.Runner\.csproj)$/.test(path) ||
               /(^|\/)(Directory\.(Build\.(props|targets)|Packages\.props)|global\.json|Dockerfile)$/.test(path) ||
               path === '.github/workflows/sync-pr-gate.yml';
             return files.length >= 3000 || files.some(file => affectsEmbedded(file.filename) || affectsEmbedded(file.previous_filename || ''))

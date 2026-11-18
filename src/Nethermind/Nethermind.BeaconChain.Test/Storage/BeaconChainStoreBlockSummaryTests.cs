@@ -92,6 +92,43 @@ public class BeaconChainStoreBlockSummaryTests
     }
 
     [Test]
+    public void Canonical_prune_commits_a_chain_in_two_batches_and_preserves_its_retained_children()
+    {
+        using InterruptedPruneDb db = new();
+        BeaconChainStore store = new(db, Sepolia with { GloasForkEpoch = 128 });
+        Hash256 parent = Hash256.Zero;
+        Hash256 sibling = Keccak.Compute("retained sibling");
+        for (ulong slot = 32; slot < 96; slot++)
+        {
+            SignedBeaconBlock block = CreateMinimalBlock(slot);
+            block.Message!.ParentRoot = parent;
+            Hash256 root = Keccak.Compute($"canonical {slot}");
+            store.PutBlock(root, block);
+            store.SetCanonicalRoot(slot, root);
+            if (slot == 95) store.PutBlock(sibling, block);
+            parent = root;
+        }
+
+        SignedBeaconBlock anchor = CreateMinimalBlock(96);
+        anchor.Message!.ParentRoot = parent;
+        Hash256 anchorRoot = Keccak.Compute("anchor");
+        store.PutBlock(anchorRoot, anchor);
+        store.SetAnchor(anchorRoot, 96);
+        int before = db.Batches;
+        store.PruneCanonicalBlocks(BeaconChainStore.MinEpochsForBlockRequests + 3, 96);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(db.Batches - before, Is.EqualTo(2));
+        Assert.That(store.TryGetChildren(parent, out Hash256[] children, out bool complete), Is.True);
+        Assert.That(complete, Is.False);
+        Assert.That(children, Is.EqualTo(new[] { anchorRoot }));
+        Assert.That(store.TryGetChildren(Keccak.Compute("canonical 94"), out children, out complete), Is.True);
+        Assert.That(complete, Is.False);
+        Assert.That(children, Is.EqualTo(new[] { sibling }));
+        Assert.That(store.TryGetChildren(Keccak.Compute("canonical 93"), out _, out _), Is.False);
+    }
+
+    [Test]
     public void An_interrupted_canonical_prune_hides_deleted_blocks_and_resumes_after_restart()
     {
         using InterruptedPruneDb db = new();
@@ -108,7 +145,7 @@ public class BeaconChainStoreBlockSummaryTests
         restarted.LowerBackfilledBlockFloor(0);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(restarted.HasBlock(first), Is.False);
+            Assert.That(restarted.HasBlock(first), Is.True);
             Assert.That(restarted.HasBlock(second), Is.True);
             Assert.That(restarted.TryGetEarliestBlockSlot(out ulong floor) ? (ulong?)floor : null, Is.EqualTo(96UL));
         }
@@ -117,6 +154,7 @@ public class BeaconChainStoreBlockSummaryTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(restarted.HasBlock(first), Is.False);
             Assert.That(restarted.HasBlock(second), Is.False);
             Assert.That(restarted.TryGetCanonicalRoot(32, out _), Is.False);
             Assert.That(restarted.TryGetCanonicalRoot(33, out _), Is.False);
@@ -394,8 +432,16 @@ public class BeaconChainStoreBlockSummaryTests
         return block;
     }
 
-    private sealed class InterruptedPruneDb : TestColumnsDb
+    private sealed class InterruptedPruneDb : TestColumnsDb, IColumnsDb<BeaconChainDbColumns>
     {
+        public int Batches { get; private set; }
+
+        IColumnsWriteBatch<BeaconChainDbColumns> IColumnsDb<BeaconChainDbColumns>.StartWriteBatch()
+        {
+            Batches++;
+            return base.StartWriteBatch();
+        }
+
         public InterruptedPruneIndex Index { get; } = new();
         protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.BlockIndex ? Index : base.CreateColumn(key);
     }
@@ -408,7 +454,7 @@ public class BeaconChainStoreBlockSummaryTests
             if (Interrupt && key.Length == sizeof(ulong) && BinaryPrimitives.ReadUInt64BigEndian(key) == 33)
             {
                 Interrupt = false;
-                throw new IOException("Interrupted after deleting the first canonical block");
+                throw new IOException("Interrupted while preparing the canonical deletion batch");
             }
             return base.Get(key, flags);
         }

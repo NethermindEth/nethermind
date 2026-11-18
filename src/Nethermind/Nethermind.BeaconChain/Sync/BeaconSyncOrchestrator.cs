@@ -51,7 +51,8 @@ public sealed class BeaconSyncOrchestrator(
     DataColumnSidecarPool? columnPool = null,
     ExecutionPayloadEnvelopePool? envelopePool = null,
     HeadSnapshotHolder? headSnapshots = null,
-    ColumnBackfill? columnBackfill = null)
+    ColumnBackfill? columnBackfill = null,
+    ForkChoiceSnapshotHolder? forkChoiceSnapshots = null)
 {
     private const int MaxBackfillDepth = 32;
 
@@ -160,7 +161,9 @@ public sealed class BeaconSyncOrchestrator(
 
     private readonly Dictionary<Hash256, RangeSync.ColumnFetchRotation> _columnFetchRotations = [];
 
-    private readonly HashSet<Hash256> _columnFetchesInFlight = [];
+    private readonly Dictionary<Hash256, Task> _columnFetchesInFlight = [];
+    private readonly Lock _columnFetchLock = new();
+    private bool _columnFetchesStopped;
 
     /// <summary>Deferred blocks whose fetch was running when a custodian was admitted; the fetch asks again when it ends short, as that custodian may not be in its rotation.</summary>
     private readonly HashSet<Hash256> _fetchAgainOnEnd = [];
@@ -239,6 +242,7 @@ public sealed class BeaconSyncOrchestrator(
     private HeadView? _lastHead;
     private bool _elInSync;
 
+    private (Hash256 Root, Hash256 ExecutionHash, bool Full)? _appliedValidHead;
     private (ForkchoiceHashes Hashes, long SentAtMs, PayloadStatusV1 Status)? _lastForkchoice;
     private ulong _forkchoiceHeadSlot;
 
@@ -365,23 +369,24 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="afterEngineKick">Runs once the execution layer has been pointed at the anchor and before any block is imported, so slow start-up work does not delay that first call.</param>
     public async Task RunAsync(ForkedBeaconState anchorState, ForkedSignedBeaconBlock anchorBlock, Hash256 anchorRoot, CancellationToken token, Action? afterEngineKick = null)
     {
-        using CancellationTokenSource timerCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task run = RunCoreAsync(anchorState, anchorBlock, anchorRoot, token, afterEngineKick);
-        Task timer = RunHeadSlotDelayTimerAsync(timerCancellation.Token);
+        using CancellationTokenSource runCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task run = RunCoreAsync(anchorState, anchorBlock, anchorRoot, runCancellation.Token, afterEngineKick);
+        Task timer = RunHeadSlotDelayTimerAsync(runCancellation.Token);
         try
         {
             await run;
         }
         finally
         {
-            await timerCancellation.CancelAsync();
+            await runCancellation.CancelAsync();
+            await StopColumnFetchesAsync();
             if (columnRouter is not null) await columnRouter.DisposeAsync();
             if (discovery is not null) await discovery.Stop();
             try
             {
                 await timer;
             }
-            catch (OperationCanceledException) when (timerCancellation.IsCancellationRequested)
+            catch (OperationCanceledException) when (runCancellation.IsCancellationRequested)
             {
                 if (_logger.IsTrace) _logger.Trace("Beacon head delay timer stopped.");
             }
@@ -518,6 +523,7 @@ public sealed class BeaconSyncOrchestrator(
         {
             headSnapshots.Current = new HeadSnapshot(anchorStatus, null, Hash256.Zero, false)
             {
+                ForkChoice = forkChoiceSnapshots?.Current,
                 State = headSnapshots.CaptureState ? ReadApiState(importer, anchorRoot, null) : null,
             };
         }
@@ -895,7 +901,7 @@ public sealed class BeaconSyncOrchestrator(
                 FetchDeferredColumnsFrom(admitted.Peer, token);
                 break;
             case ColumnFetchEndedItem ended:
-                _columnFetchesInFlight.Remove(ended.BlockRoot);
+                lock (_columnFetchLock) _columnFetchesInFlight.Remove(ended.BlockRoot);
                 if (_heldColumnFetches.Remove(ended.BlockRoot))
                 {
                     StartHeldColumnFetches(token);
@@ -1131,7 +1137,7 @@ public sealed class BeaconSyncOrchestrator(
             foreach (ulong column in custody.SampledColumns)
             {
                 if (!peerCustody.Custodies(column) || columnPool.TryGet(root, column, out _)) continue;
-                if (_columnFetchesInFlight.Contains(root))
+                if (_columnFetchesInFlight.ContainsKey(root))
                 {
                     _fetchAgainOnEnd.Add(root);
                 }
@@ -1412,37 +1418,60 @@ public sealed class BeaconSyncOrchestrator(
 
     private bool StartColumnFetch(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token, ForkedSignedBeaconBlock? refused = null)
     {
-        if (!_columnFetchesInFlight.Add(root))
+        TaskCompletionSource finished;
+        lock (_columnFetchLock)
         {
-            return false;
+            if (_columnFetchesStopped || _columnFetchesInFlight.ContainsKey(root))
+            {
+                return false;
+            }
+
+            finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _columnFetchesInFlight.Add(root, finished.Task);
         }
 
-        _ = RunColumnFetchAsync(root, fetch, token, refused);
+        _ = RunColumnFetchAsync(root, fetch, token, refused, finished);
         return true;
     }
 
-    /// <remarks>Touches no worker state: the fetched sidecars reach the pool, which wakes the worker, and the end is reported as a work item.</remarks>
-    private async Task RunColumnFetchAsync(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token, ForkedSignedBeaconBlock? refused)
+    internal Task StopColumnFetchesAsync()
     {
-        bool complete = false;
-        if (_logger.IsDebug) _logger.Debug($"By-root column fetch for {root} started");
-        long startedAt = Stopwatch.GetTimestamp();
-        try
+        lock (_columnFetchLock)
         {
-            complete = await fetch(token);
-            if (_logger.IsDebug) _logger.Debug($"By-root column fetch for {root} ended after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms, {(complete ? "every sampled column held" : "columns still missing")}");
+            _columnFetchesStopped = true;
+            return Task.WhenAll(_columnFetchesInFlight.Values);
         }
-        catch (Exception e)
-        {
-            if (!token.IsCancellationRequested && _logger.IsDebug) _logger.Debug($"By-root column fetch for {root} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms and is retried on the slot tick: {e.Message}");
-        }
+    }
 
+    /// <remarks>Touches no worker state: the fetched sidecars reach the pool, which wakes the worker, and the end is reported as a work item.</remarks>
+    private async Task RunColumnFetchAsync(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token, ForkedSignedBeaconBlock? refused, TaskCompletionSource finished)
+    {
         try
         {
-            await _work.Writer.WriteAsync(new ColumnFetchEndedItem(root, complete, refused), token);
+            bool complete = false;
+            if (_logger.IsDebug) _logger.Debug($"By-root column fetch for {root} started");
+            long startedAt = Stopwatch.GetTimestamp();
+            try
+            {
+                complete = await fetch(token);
+                if (_logger.IsDebug) _logger.Debug($"By-root column fetch for {root} ended after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms, {(complete ? "every sampled column held" : "columns still missing")}");
+            }
+            catch (Exception e)
+            {
+                if (!token.IsCancellationRequested && _logger.IsDebug) _logger.Debug($"By-root column fetch for {root} failed after {Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds:F0} ms and is retried on the slot tick: {e.Message}");
+            }
+
+            try
+            {
+                await _work.Writer.WriteAsync(new ColumnFetchEndedItem(root, complete, refused), token);
+            }
+            catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
+            {
+            }
         }
-        catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
+        finally
         {
+            finished.SetResult();
         }
     }
 
@@ -2722,10 +2751,13 @@ public sealed class BeaconSyncOrchestrator(
             if (status?.Status == PayloadStatus.Invalid)
             {
                 if (_logger.IsWarn) _logger.Warn($"Execution layer reported head {head.HeadRoot} INVALID (latest valid hash {status.LatestValidHash}); invalidating and re-running fork choice");
+                _elInSync = false;
+                Metrics.BeaconChainElInSync = 0;
                 ApplyForkchoiceVerdict(importer, head.HeadRoot, headExec, status);
                 head = importer.ComputeHead();
                 if (head.HeadExecutionHash is { } retryExec)
                 {
+                    PublishHead(importer, head, AdvertisedFinalizedEpoch(head.Finalized), false);
                     headExec = retryExec;
                     status = await ForkchoiceUpdatedAsync(head, retryExec, token);
                     if (status?.Status == PayloadStatus.Invalid)
@@ -2739,9 +2771,10 @@ public sealed class BeaconSyncOrchestrator(
             if (status is not null)
             {
                 // specs/bellatrix/optimistic-sync.md: a NOT_VALIDATED head and its ancestors become VALID on the engine's answer.
-                if (status.Status == PayloadStatus.Valid)
+                if (status.Status == PayloadStatus.Valid && _appliedValidHead != (head.HeadRoot, headExec, head.HeadPayloadFull))
                 {
-                    ApplyForkchoiceVerdict(importer, head.HeadRoot, headExec, status);
+                    if (ApplyForkchoiceVerdict(importer, head.HeadRoot, headExec, status))
+                        _appliedValidHead = (head.HeadRoot, headExec, head.HeadPayloadFull);
                     head = importer.ComputeHead();
                 }
 
@@ -2779,8 +2812,26 @@ public sealed class BeaconSyncOrchestrator(
         Metrics.BeaconChainFinalizedEpoch = finalizedEpoch;
         Metrics.BeaconChainJustifiedEpoch = head.Justified.Epoch;
         Metrics.BeaconChainElInSync = _elInSync ? 1 : 0;
+        PublishHead(importer, head, finalizedEpoch, _elInSync);
+
+        // A payload attestation is accepted for the wall slot and, within the clock disparity, its neighbours.
+        ulong wallSlot = slotClock.CurrentSlot;
+        for (ulong slot = wallSlot == 0 ? 0 : wallSlot - 1; slot <= wallSlot + 1; slot++)
+        {
+            gossipRouter.SetPtc(slot, PtcReader is { } reader ? reader(head.HeadRoot, slot) : (importer as BlockImporter)?.GetPtc(head.HeadRoot, slot));
+        }
+
+        // Topics exist only once the libp2p host has started.
+        if (!GossipStarted && p2p?.LocalPeerId is not null && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
+        {
+            StartGossip();
+        }
+    }
+
+    private void PublishHead(IBlockImporter importer, HeadView head, ulong finalizedEpoch, bool executionInSync)
+    {
         statusHolder.JustifiedRoot = head.Justified.Root;
-        statusHolder.ExecutionInSync = _elInSync;
+        statusHolder.ExecutionInSync = executionInSync;
         StatusMessageV2 headStatus = new()
         {
             ForkDigest = _currentDigest,
@@ -2795,25 +2846,13 @@ public sealed class BeaconSyncOrchestrator(
         {
             HeadSnapshot? previousSnapshot = headSnapshots.Current;
             bool capture = headSnapshots.CaptureState;
-            headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, _elInSync)
+            headSnapshots.Current = new HeadSnapshot(headStatus, fullHeadRoot, head.Justified.Root, executionInSync)
             {
+                ForkChoice = forkChoiceSnapshots?.Current,
                 State = capture ? ReadApiState(importer, head.HeadRoot, previousSnapshot) : null,
                 JustifiedState = capture ? ReadApiCheckpointState(importer, head.Justified, previousSnapshot) : null,
                 FinalizedState = capture ? ReadApiCheckpointState(importer, new CheckpointRef(finalizedEpoch, head.Finalized.Root), previousSnapshot) : null,
             };
-        }
-
-        // A payload attestation is accepted for the wall slot and, within the clock disparity, its neighbours.
-        ulong wallSlot = slotClock.CurrentSlot;
-        for (ulong slot = wallSlot == 0 ? 0 : wallSlot - 1; slot <= wallSlot + 1; slot++)
-        {
-            gossipRouter.SetPtc(slot, PtcReader is { } reader ? reader(head.HeadRoot, slot) : (importer as BlockImporter)?.GetPtc(head.HeadRoot, slot));
-        }
-
-        // Topics exist only once the libp2p host has started.
-        if (!GossipStarted && p2p?.LocalPeerId is not null && head.HeadSlot + GossipStartDistanceSlots >= slotClock.CurrentSlot)
-        {
-            StartGossip();
         }
     }
 
@@ -2838,15 +2877,17 @@ public sealed class BeaconSyncOrchestrator(
     }
 
     /// <summary>Applies the execution layer's forkchoice verdict for <paramref name="headRoot"/> to fork choice, dropping one that contradicts an earlier verdict.</summary>
-    private void ApplyForkchoiceVerdict(IBlockImporter importer, Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
+    private bool ApplyForkchoiceVerdict(IBlockImporter importer, Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)
     {
         try
         {
             importer.OnForkchoiceUpdated(headRoot, headExecutionHash, status);
+            return true;
         }
         catch (ProtoArrayException e)
         {
             if (_logger.IsError) _logger.Error($"Execution layer reported head {headRoot} {status.Status} (latest valid hash {status.LatestValidHash}) against an earlier verdict; ignoring it: {e.Message}");
+            return false;
         }
     }
 
@@ -2870,6 +2911,7 @@ public sealed class BeaconSyncOrchestrator(
             return last.Status;
         }
 
+        _appliedValidHead = null;
         PayloadStatusV1 status;
         Volatile.Write(ref _forkchoiceHeadSlot, head.HeadSlot);
         try

@@ -135,7 +135,7 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((int)response.StatusCode, Is.EqualTo(200));
         Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
-        if (rootOnly) Assert.That(blocks.ReadsCount, Is.EqualTo(reads), "serving the root and its flags only needs the indexed slot");
+        Assert.That(blocks.ReadsCount, Is.EqualTo(reads), "indexed roots and headers include the slot used for the response flags");
         Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(),
             Is.EqualTo(!withSnapshot || !checkpointVerified || newerStatus));
     }

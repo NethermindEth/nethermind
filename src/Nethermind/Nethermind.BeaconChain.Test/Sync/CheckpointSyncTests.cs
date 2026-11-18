@@ -159,6 +159,53 @@ public class CheckpointSyncTests
         }
     }
 
+    [Test]
+    public async Task Fulu_checkpoint_checks_the_proposers_key_after_genesis([Values] bool correctSigner)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        BeaconStateFulu state = chain.AnchorState.Clone();
+        SlotProcessing.ProcessSlots(state, 1, new EpochCache());
+        SignedBeaconBlock block = TestChain.CreateBlock(state.Slot, chain.AnchorRoot);
+        BeaconBlock message = block.Message!;
+        message.ProposerIndex = state.GetBeaconProposerIndex();
+        state.LatestBlockHeader = ImportableBlobBlock.HeaderFor(message).Message;
+        state.LatestBlockHeader!.StateRoot = Hash256.Zero;
+        message.StateRoot = SszRoots.HashTreeRoot(state);
+        Hash256 blockRoot = SszRoots.HashTreeRoot(message);
+        int proposer = (int)message.ProposerIndex;
+        int signer = correctSigner ? proposer : (proposer + 1) % state.ReadOnlyValidators.Length;
+        block.Signature = ImportableBlobBlock.Sign(GloasTestFixtures.ValidatorKey(signer), blockRoot, state.GetDomain(DomainType.BeaconProposer, 0));
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(BeaconStateFulu.Encode(state), new ForkedSignedBeaconBlock.OfFulu(block));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        if (correctSigner)
+            Assert.That((await sync.RunAsync(CancellationToken.None)).BlockRoot, Is.EqualTo(blockRoot));
+        else
+            Assert.That((await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!.Message, Does.Contain("proposer signature"));
+        Assert.That(store.TryGetForkedBlock(blockRoot, out _), Is.EqualTo(correctSigner));
+    }
+
+    [Test]
+    public async Task Anchor_with_another_blocks_signature_is_rejected_before_persistence()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        SignedBeaconBlockGloas wrongSignature = new() { Message = chain.First.Block.Message, Signature = chain.Voting[0].Block.Signature };
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(chain.First.PostState, new ForkedSignedBeaconBlock.OfGloas(wrongSignature));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        InvalidDataException refusal = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain("proposer signature"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+            Assert.That(store.TryGetForkedBlock(chain.First.Root, out _), Is.False);
+            Assert.That(store.TryGetState(chain.First.Root, out _), Is.False);
+        }
+    }
+
     [TestCase("https://user:secret@beacon.example:5052/path?token=1", "https://beacon.example:5052", TestName = "Credentials and path never reach the log")]
     [TestCase("beacon.example/relative", "<not a valid absolute URL>", TestName = "A relative URL does not throw")]
     [TestCase(null, "https://mainnet.checkpoint.sigp.io", TestName = "No configured URL shows the chain default")]

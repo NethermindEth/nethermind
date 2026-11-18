@@ -23,7 +23,7 @@ namespace Nethermind.BeaconChain.Crypto;
 /// </remarks>
 public class PubkeyCache
 {
-    private const byte FormatVersion = 1;
+    private const byte FormatVersion = 2;
     private const int ValidatorsPerChunk = 65_536;
 
     private const int ParallelCheckThreshold = 64;
@@ -39,6 +39,10 @@ public class PubkeyCache
 
     // Validators whose points the store holds from this instance, or -1 when unknown; the persisted prefix only ever grows on one chain.
     private int _persistedCount = -1;
+
+    private int _finalizedCount;
+    /// <summary>Validators whose indices identify the same keys on every descendant of the finalized checkpoint.</summary>
+    internal int FinalizedCount => Volatile.Read(ref _finalizedCount);
 
     private int _count;
     public int Count { get => Volatile.Read(ref _count); private set => Volatile.Write(ref _count, value); }
@@ -208,15 +212,17 @@ public class PubkeyCache
         }
     }
 
-    /// <summary>Decompresses all validator pubkeys into a fresh buffer.</summary>
+    /// <summary>Seeds the cache with the validator registry of the finalized anchor.</summary>
     /// <exception cref="InvalidOperationException">A pubkey does not decode or is the point at infinity, or the sample verification failed.</exception>
     public void Build(Validator[] validators)
     {
+        Volatile.Write(ref _finalizedCount, 0);
         _points = [];
         _subgroupChecks = [];
         Count = 0;
         _persistedCount = -1;
         Extend(validators, 0);
+        Volatile.Write(ref _finalizedCount, Count);
     }
 
     /// <summary>Extends the cache with validators appended to the registry since the last build.</summary>
@@ -226,6 +232,7 @@ public class PubkeyCache
     public void Extend(Validator[] validators, int fromIndex)
     {
         ArgumentOutOfRangeException.ThrowIfGreaterThan(fromIndex, Count);
+        if (fromIndex < FinalizedCount) Volatile.Write(ref _finalizedCount, fromIndex);
         _persistedCount = Math.Min(_persistedCount, fromIndex);
 
         bool reuse = fromIndex == Count && validators.Length <= _subgroupChecks.Length;
@@ -269,6 +276,20 @@ public class PubkeyCache
         }
     }
 
+    /// <summary>Reconciles keys appended on competing branches before publishing the newly finalized prefix.</summary>
+    internal void FinalizeRegistry(Validator[] validators)
+    {
+        for (int i = FinalizedCount; i < validators.Length; i++)
+        {
+            if (i >= Count || !SampleMatches(validators, i))
+            {
+                Extend(validators, i);
+                break;
+            }
+        }
+        Volatile.Write(ref _finalizedCount, validators.Length);
+    }
+
     /// <summary>Persists the point buffer to the store. The count entry is written last so an interrupted persist is not loadable.</summary>
     /// <remarks>Only the chunks from the last prefix this instance persisted or loaded onward are rewritten, and nothing when the count is unchanged.</remarks>
     public void Persist(BeaconChainStore store, int? validatorCount = null)
@@ -293,7 +314,7 @@ public class PubkeyCache
         _persistedCount = count;
     }
 
-    /// <summary>Loads a persisted cache matching the given registry, verifying a sample of entries.</summary>
+    /// <summary>Loads a persisted cache matching the finalized anchor registry, verifying a sample of entries.</summary>
     /// <returns><c>false</c> when nothing usable is persisted (missing, format/count mismatch, or corrupt) — rebuild instead.</returns>
     public bool TryLoad(BeaconChainStore store, Validator[] validators)
     {
@@ -323,6 +344,7 @@ public class PubkeyCache
             }
         }
 
+        Volatile.Write(ref _finalizedCount, 0);
         _points = points;
         _subgroupChecks = new byte[count];
         Count = count;
@@ -338,6 +360,7 @@ public class PubkeyCache
         _persistedCount = count;
         if (Count < validators.Length)
             Extend(validators, Count);
+        Volatile.Write(ref _finalizedCount, Count);
         return true;
     }
 

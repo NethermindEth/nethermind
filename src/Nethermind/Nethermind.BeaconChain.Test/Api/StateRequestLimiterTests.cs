@@ -429,12 +429,16 @@ public class StateRequestLimiterTests
     [TestCase("/eth/v1/beacon/states/root/validators", false)]
     [TestCase("/eth/v1/beacon/states/head/validators/root", false)]
     [TestCase("/eth/v2/debug/beacon/states/root", false)]
-    public async Task Only_routes_that_load_no_state_are_served_while_every_state_permit_is_held(string path, bool served)
+    [TestCase("/eth/v1/beacon/headers", false)]
+    [TestCase("/eth/v1/beacon/headers/head", false)]
+    public async Task Only_exempt_routes_are_served_while_all_request_permits_are_held(string path, bool served)
     {
         using StateRequestLimiter limiter = new(new BeaconApiConfig { MaxConcurrentStateRequests = 1, StateDownloadsPerMinutePerClient = 0 });
         TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task held = limiter.InvokeAsync(StateRequest(Download, "192.0.2.7"), _ => release.Task);
         Task query = limiter.InvokeAsync(StateRequest("/eth/v1/beacon/states/head/pending_consolidations", "192.0.2.7"), _ => release.Task);
+
+        Task large = limiter.InvokeAsync(StateRequest("/eth/v2/beacon/blocks/head", "192.0.2.7"), _ => release.Task);
 
         bool reached = false;
         DefaultHttpContext probe = StateRequest(path, "192.0.2.8");
@@ -444,8 +448,7 @@ public class StateRequestLimiterTests
             return Task.CompletedTask;
         });
         release.SetResult();
-        await held;
-        await query;
+        await Task.WhenAll(held, query, large);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(reached, Is.EqualTo(served));

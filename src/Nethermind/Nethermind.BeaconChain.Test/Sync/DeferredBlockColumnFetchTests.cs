@@ -1170,6 +1170,60 @@ public class DeferredBlockColumnFetchTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task Stopping_column_fetches_drains_active_replies_and_discards_late_replies([Values] bool processing, CancellationToken token)
+    {
+        await using Fixture fixture = Fixture.Create();
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using ManualResetEventSlim release = new();
+        TaskCompletionSource handling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        PendingColumnsPeer peer = new(fixture.Sampled);
+        fixture.Peers.Add(peer);
+        BeaconSyncOrchestrator orchestrator = fixture.CreateOrchestrator();
+        await orchestrator.ImportBlockAsync(new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), stop.Token);
+        await peer.Requested.Task.WaitAsync(token);
+        ulong column = fixture.Sampled[0];
+        fixture.SidecarPool.TryWatch(fixture.Chain.BlockRoot, [column], false, () =>
+        {
+            handling.SetResult();
+            release.Wait(token);
+        });
+        if (processing)
+        {
+            peer.Reply.SetResult([fixture.Chain.Columns[(int)column]]);
+            await handling.Task.WaitAsync(token);
+        }
+
+        await stop.CancelAsync();
+        Task stopping = orchestrator.StopColumnFetchesAsync();
+        try
+        {
+            if (processing) Assert.That(stopping.IsCompleted, Is.False);
+            else await stopping.WaitAsync(token);
+        }
+        finally
+        {
+            release.Set();
+            peer.Reply.TrySetResult([fixture.Chain.Columns[(int)column]]);
+            await stopping.WaitAsync(token);
+        }
+
+        Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, column, out _), Is.EqualTo(processing));
+    }
+
+    private sealed class PendingColumnsPeer(ulong[] custody) : TestPeer("custodian", ulong.MaxValue, new(custody, isAdvertised: true))
+    {
+        public TaskCompletionSource Requested { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource<IReadOnlyList<DataColumnSidecar>> Reply { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public override Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token)
+        {
+            Requested.TrySetResult();
+            return Reply.Task;
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task A_running_worker_fetches_for_an_admitted_custodian_and_leaves_the_pool_when_it_stops(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();

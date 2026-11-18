@@ -806,7 +806,7 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>fulu/p2p-interface.md: the header's proposer index is in the validator key cache and its signature verifies under <c>DOMAIN_BEACON_PROPOSER</c>.</summary>
     /// <remarks>
-    /// The key cache may briefly lag the head's registry, so an index outside it is unknown rather than invalid. The domain
+    /// Only the finalized registry prefix identifies the same proposer on every branch. The domain
     /// is the fork version scheduled for the header's epoch, which is what <c>get_domain</c> on the head state returns for it.
     /// </remarks>
     private HeaderSignature CheckHeaderSignature(BeaconBlockHeader header, Hash256 blockRoot, BlsSignature signature)
@@ -824,7 +824,7 @@ public sealed class ColumnGossipRouter(
         bool valid;
         try
         {
-            if (header.ProposerIndex >= (ulong)pubkeys.Count)
+            if (header.ProposerIndex >= (ulong)pubkeys.FinalizedCount)
             {
                 return HeaderSignature.UnknownProposer;
             }

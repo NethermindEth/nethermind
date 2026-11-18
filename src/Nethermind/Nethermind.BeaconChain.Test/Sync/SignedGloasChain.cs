@@ -126,10 +126,13 @@ internal sealed class SignedGloasChain(IBeaconStateHasher? hasher = null)
         return new Block(block, root, state, ValidEnvelope(state, bid.Message!, proposerKey, Presets.BuilderIndexSelfBuild, root));
     }
 
-    public BlockImporter CreateImporter(IEngineDriver engine, System.Func<Hash256, ExecutionPayloadBid, bool>? isEnvelopeDataAvailable = null, ForkChoiceSnapshotHolder? snapshots = null, BeaconChainStore? store = null, ILogManager? logManager = null, SlotClock? clock = null, FailedBlockRoots? failedBlocks = null, Block? gloasAnchor = null, FuluBlock? fuluAnchor = null, bool? enableFastConfirmation = false)
+    public BlockImporter CreateImporter(IEngineDriver engine, System.Func<Hash256, ExecutionPayloadBid, bool>? isEnvelopeDataAvailable = null, ForkChoiceSnapshotHolder? snapshots = null, BeaconChainStore? store = null, ILogManager? logManager = null, SlotClock? clock = null, FailedBlockRoots? failedBlocks = null, Block? gloasAnchor = null, FuluBlock? fuluAnchor = null, bool? enableFastConfirmation = false, PubkeyCache? pubkeys = null)
     {
-        PubkeyCache pubkeys = new();
-        pubkeys.Build((fuluAnchor?.PostState ?? AnchorState).Validators!);
+        if (pubkeys is null)
+        {
+            pubkeys = new PubkeyCache();
+            pubkeys.Build((fuluAnchor?.PostState ?? AnchorState).Validators!);
+        }
         return new BlockImporter(
             Spec,
             store ?? CreateStore(),

@@ -42,7 +42,7 @@ internal static class ResponseEnvelope
         if (ctx.ForkChoiceSnapshot is { } snapshot)
         {
             Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = IndexNodes(snapshot);
-            if (nodes.TryGetValue(root, out ForkChoiceSnapshotNode? node)) return node.ExecutionStatus == ExecutionStatus.Optimistic;
+            if (nodes.TryGetValue(root, out ForkChoiceSnapshotNode? node)) return node.ExecutionStatus is not (ExecutionStatus.Valid or ExecutionStatus.Irrelevant);
 
             // types/primitive.yaml ExecutionOptimistic: only a verified checkpoint verifies its canonical ancestors.
             ulong slot = blockSlot.GetValueOrDefault();
@@ -78,7 +78,7 @@ internal static class ResponseEnvelope
 
         if (IndexNodes(snapshot).TryGetValue(resolved.Root, out ForkChoiceSnapshotNode? node))
         {
-            return !node.PayloadValid;
+            return node.ExecutionStatus == ExecutionStatus.Invalid || !node.PayloadValid;
         }
 
         if (ctx.Store.IsExecutionPayloadValid(resolved.Root)) return false;

@@ -76,7 +76,8 @@ public sealed class BlockImporter : IBlockImporter
         if (_preparedSlot is { } held && held.Parent == headRoot && held.State.Slot == nextSlot) return;
         if (_states.GetHeldBlockState(headRoot) is not { } parent) return;
         BeaconStateFulu copy = parent.CloneForImport(_lineageCache.Hasher, headRoot);
-        EpochCache cache = new() { Hasher = _lineageCache.Hasher, SigningSpec = _spec };
+        EpochCache cache = headRoot == _states.LineageRoot ? _lineageCache.ForSpeculativeImport() : new EpochCache { Hasher = _lineageCache.Hasher };
+        cache.SigningSpec = _spec;
         SlotProcessing.ProcessSlots(copy, nextSlot, cache);
         _preparedSlot = new(headRoot, parent, copy, cache);
     }
@@ -415,18 +416,16 @@ public sealed class BlockImporter : IBlockImporter
     private bool? CheckGossipSignature(ForkedSignedBeaconBlock block)
     {
         Hash256 head = _runner.GetHead();
-        int? validatorCount = _states.GetGloasBlockState(head)?.ValidatorBuffer?.Items.Length ?? _states.GetHeldBlockState(head)?.ValidatorBuffer?.Items.Length;
+        Validator[]? validators = _states.GetGloasBlockState(head)?.ValidatorBuffer?.Items ?? _states.GetHeldBlockState(head)?.ValidatorBuffer?.Items;
         Hash256? domain = block is ForkedSignedBeaconBlock.OfGloas ? _gloasProposerDomain : _fuluProposerDomain;
-        if (validatorCount is null || domain is null)
+        if (validators is null || domain is null)
             return null;
-        ulong proposer = block.ProposerIndex;
-        if (proposer >= (ulong)validatorCount.Value)
+        if (block.ProposerIndex >= (ulong)validators.Length)
             return false;
-        if (proposer >= (ulong)_pubkeys.Count)
+        if (block.ProposerIndex >= (ulong)_pubkeys.Count)
             return null;
         BlsSignature signature = block is ForkedSignedBeaconBlock.OfGloas gloas ? gloas.Block.Signature : ((ForkedSignedBeaconBlock.OfFulu)block).Block.Signature;
-        return _pubkeys.TryGetValidPublicKey((int)proposer, out G1Affine key)
-            && BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(block.ComputeMessageRoot(), domain).Bytes);
+        return VerifyCachedProposerSignature(block.ComputeMessageRoot(), block.ProposerIndex, signature, domain, validators);
     }
 
     private bool HasInvalidGossipFields(ForkedSignedBeaconBlock block)
@@ -515,7 +514,9 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.UnknownParent;
         }
 
-        // An uncached key within the registry is checked by the transition; a known forgery must not buy a state copy.
+        if (verifySignatures)
+            proposerSignatureValid ??= VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain, parentState.ValidatorBuffer!.Items);
+
         if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.ReadOnlyValidators.Length
             || proposerSignatureValid == false))
         {
@@ -617,7 +618,7 @@ public sealed class BlockImporter : IBlockImporter
         {
             if (verifySignatures && executionStatus == ExecutionStatus.Valid)
                 _earlyFuluBlock = new(blockRoot, signedBlock.Signature, parentState, state,
-                    new EpochCache { Hasher = cache.Hasher, SigningSpec = _spec }, localColumns);
+                    cache.ForSpeculativeImport(), localColumns);
             return BlockImportResult.FutureSlot;
         }
 
@@ -643,7 +644,7 @@ public sealed class BlockImporter : IBlockImporter
 
         ApplyBodyOperations(block.Body!, blockRoot);
 
-        _store.PutBlock(blockRoot, signedBlock);
+        _store.StoreBlock(blockRoot, new ForkedSignedBeaconBlock.OfFulu(signedBlock), state.LatestBlockHeader!.BodyRoot);
         if (localColumns.Length > 0) PublishLocalColumns?.Invoke(blockRoot, localColumns);
         _unfinalized[blockRoot] = block.Slot;
 
@@ -720,8 +721,12 @@ public sealed class BlockImporter : IBlockImporter
             regenerationBudgetUsed = verifySignatures;
         }
 
-        if (verifySignatures && (gloasParent?.ValidatorBuffer?.Items.Length ?? fuluParent?.ValidatorBuffer?.Items.Length) is int validatorCount
-            && (block.ProposerIndex >= (ulong)validatorCount
+        Validator[]? validators = gloasParent?.ValidatorBuffer?.Items ?? fuluParent?.ValidatorBuffer?.Items;
+        if (verifySignatures && validators is not null)
+            proposerSignatureValid ??= VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain, validators);
+
+        if (verifySignatures && validators is not null
+            && (block.ProposerIndex >= (ulong)validators.Length
                 || proposerSignatureValid == false))
         {
             RejectGossip = true;
@@ -812,14 +817,14 @@ public sealed class BlockImporter : IBlockImporter
 
         ApplyBodyOperations(block.Body!, blockRoot);
 
-        _store.PutForkedBlock(blockRoot, forked);
+        _store.StoreBlock(blockRoot, forked, postState.LatestBlockHeader!.BodyRoot);
         _unfinalized[blockRoot] = block.Slot;
         _gloasLineageRoot = blockRoot;
         _gloasLineageCache = cache;
         return BlockImportResult.Imported;
     }
 
-    /// <summary>Checks a block signature against the cached proposer key without reading mutable fork-choice state.</summary>
+    /// <summary>Checks a block signature against the finalized proposer key without reading mutable fork-choice state.</summary>
     /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>
     internal bool? VerifyCachedProposerSignature(ForkedSignedBeaconBlock block) => block switch
     {
@@ -828,12 +833,24 @@ public sealed class BlockImporter : IBlockImporter
         _ => null,
     };
 
-    /// <summary>Runs phase0/beacon-chain.md verify_block_signature with the cached key of <paramref name="proposerIndex"/>, which no later state changes.</summary>
+    /// <summary>Verifies the proposer against the selected registry, or against the finalized prefix when the state is unavailable.</summary>
     /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>
-    private bool? VerifyCachedProposerSignature(Hash256 blockRoot, ulong proposerIndex, BlsSignature signature, Hash256? domain) =>
-        domain is null || proposerIndex >= (ulong)_pubkeys.Count || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out G1Affine key)
-            ? null
-            : BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+    private bool? VerifyCachedProposerSignature(Hash256 blockRoot, ulong proposerIndex, BlsSignature signature, Hash256? domain, Validator[]? validators = null)
+    {
+        if (domain is null)
+            return null;
+
+        G1Affine key;
+        if (validators is null)
+        {
+            if (proposerIndex >= (ulong)_pubkeys.FinalizedCount || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out key))
+                return null;
+        }
+        else if (!SignatureSets.TryGetValidatorKey(_pubkeys, validators, proposerIndex, out key))
+            return false;
+
+        return BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+    }
 
     private BlockImportResult? CheckProposerBeforeAdvance(Hash256 root, ulong slot, ulong proposer, ulong parentEpoch, ulong[] lookahead, bool budgetUsed, bool? proposerSignatureValid)
     {
@@ -967,6 +984,8 @@ public sealed class BlockImporter : IBlockImporter
             if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its ancestor {ancestorRoot} is no longer retained");
             return BlockImportResult.UnknownParent;
         }
+
+        proposerSignatureValid ??= VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain, ancestorState.ValidatorBuffer!.Items);
 
         string? refusal;
         try
@@ -1240,14 +1259,14 @@ public sealed class BlockImporter : IBlockImporter
         bool gloasFinalized = SignedBeaconBlockCodec.IsGloasSlot(finalizedSlot, _spec);
         if (gloasFinalized && _states.GetGloasBlockState(finalized.Root) is { } gloasState)
         {
-            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.ReadOnlyValidators.Length);
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.ValidatorBuffer!.Items);
             _states.PinGloas(finalized.Root, gloasState);
             // No Fulu block can extend the lineage below a Gloas finalized checkpoint; release its hasher trees and registry index.
             _lineageCache = new EpochCache();
         }
         else if (!gloasFinalized && _states.GetBlockState(finalized.Root) is { } finalizedState)
         {
-            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateFulu.Encode(finalizedState), finalizedState.ReadOnlyValidators.Length);
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateFulu.Encode(finalizedState), finalizedState.ValidatorBuffer!.Items);
         }
         else if (_logger.IsDebug)
         {
@@ -1273,14 +1292,12 @@ public sealed class BlockImporter : IBlockImporter
         }
     }
 
-    private void PersistAnchor(Hash256 root, ulong slot, byte[] stateSsz, int validatorCount)
+    private void PersistAnchor(Hash256 root, ulong slot, byte[] stateSsz, Validator[] validators)
     {
         _store.PutState(root, stateSsz);
         _store.SetAnchor(root, slot);
-        if (_pubkeys.Count >= validatorCount)
-        {
-            _pubkeys.Persist(_store, validatorCount);
-        }
+        _pubkeys.FinalizeRegistry(validators);
+        _pubkeys.Persist(_store, validators.Length);
     }
 
     /// <inheritdoc/>

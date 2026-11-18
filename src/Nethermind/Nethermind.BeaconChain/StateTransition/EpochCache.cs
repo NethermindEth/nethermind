@@ -97,8 +97,21 @@ public sealed class EpochCache
     }
 
     private (ulong Epoch, ulong Balance, Hash256 BoundaryRoot)? _totalActiveBalance;
-    private readonly CommitteeCacheLru _committees = new();
+    private readonly CommitteeCacheLru _committees;
     private (SyncCommittee Committee, int[] Indices)? _syncCommitteeIndices;
+
+    public EpochCache() : this(new CommitteeCacheLru()) { }
+
+    private EpochCache(CommitteeCacheLru committees) => _committees = committees;
+
+    // Speculative and committed states run on the same import worker. Shufflings can share an LRU keyed by decision root.
+    internal EpochCache ForSpeculativeImport() => new(_committees)
+    {
+        Hasher = Hasher,
+        SigningSpec = SigningSpec,
+        _totalActiveBalance = _totalActiveBalance,
+        _syncCommitteeIndices = _syncCommitteeIndices,
+    };
 
     /// <summary>Returns the validator index of each member of <paramref name="committee"/>, in committee order.</summary>
     /// <remarks>

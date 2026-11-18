@@ -796,7 +796,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, CustodiedColumns(missing, peerCustody), static (peer, ids, t) => peer.RequestDataColumnSidecarsByRootAsync(ids, t), token);
         }
 
-        IReadOnlyList<DataColumnSidecar>?[] replies = await Task.WhenAll(responses);
+        IReadOnlyList<DataColumnSidecar>?[] replies = await Task.WhenAll(responses).WaitAsync(token);
         Dictionary<Hash256, SignedBeaconBlock> blocksByRoot = new() { [blockRoot] = block };
         for (int i = 0; i < asked.Count; i++)
         {
@@ -889,7 +889,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             responses[i] = RequestColumnsByRootAsync(asked[i], blockRoot, requested[i], static (peer, ids, t) => peer.RequestGloasDataColumnSidecarsByRootAsync(ids, t), token);
         }
 
-        IReadOnlyList<DataColumnSidecarGloas>?[] replies = await Task.WhenAll(responses);
+        IReadOnlyList<DataColumnSidecarGloas>?[] replies = await Task.WhenAll(responses).WaitAsync(token);
         for (int i = 0; i < asked.Count; i++)
         {
             HashSet<(Hash256 Root, ulong Index)> rejected = [];

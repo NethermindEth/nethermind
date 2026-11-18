@@ -248,12 +248,13 @@ public sealed class BeaconChainService(
 
     /// <summary>Stops the driver and waits for its run loop to finish before dependencies can be disposed.</summary>
     /// <remarks>
-    /// Returns after <see cref="ShutdownHardTimeout"/> even if work has not drained, so an unresponsive
-    /// execution call cannot hold shutdown forever. Work still running then may fail as its databases are disposed.
+    /// An unresponsive execution call can outlive <see cref="ShutdownHardTimeout"/>. By-root sidecar
+    /// replies already being processed must finish before the sidecar store can be disposed.
     /// </remarks>
     public async Task StopAsync()
     {
         Stop();
+        Task columnFetches = orchestrator.StopColumnFetchesAsync();
         Task drain = DrainAsync();
         try
         {
@@ -270,6 +271,11 @@ public sealed class BeaconChainService(
             {
                 if (_logger.IsError) _logger.Error($"Embedded beacon chain driver did not stop within {ShutdownHardTimeout.TotalMinutes:0.#} min; continuing shutdown while its work still runs");
             }
+        }
+        finally
+        {
+            // A by-root reply may still be writing verified sidecars after its network request was cancelled.
+            await columnFetches;
         }
     }
 

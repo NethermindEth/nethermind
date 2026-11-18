@@ -119,6 +119,29 @@ public class BlockImporterTests
     }
 
     [Test]
+    public void Prepared_lineage_block_reuses_the_epoch_shuffling_and_sync_committee_indices()
+    {
+        UnsignedChain chain = UnsignedChain.Create();
+        BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool());
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, 1, 0xB1);
+        Assert.That(importer.Import(first.Block, first.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        BeaconStateFulu parent = ((ForkedBeaconState.OfFulu)importer.GetStateForApi(first.Root)!).State;
+        FieldInfo cacheField = typeof(BlockImporter).GetField("_lineageCache", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        EpochCache before = (EpochCache)cacheField.GetValue(importer)!;
+        CommitteeCache committees = before.GetCommitteeCache(parent, parent.GetCurrentEpoch());
+        int[] members = before.GetSyncCommitteeIndices(parent.CurrentSyncCommittee!, parent.ValidatorBuffer!.Items);
+
+        UnsignedChain.ChainBlock next = chain.Extend(first.Root, 2, 0xB2);
+        importer.PrepareNextSlot(first.Root, next.Block.Message!.Slot);
+        Assert.That(importer.Import(next.Block, next.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        BeaconStateFulu child = ((ForkedBeaconState.OfFulu)importer.GetStateForApi(next.Root)!).State;
+        EpochCache after = (EpochCache)cacheField.GetValue(importer)!;
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(after.GetCommitteeCache(child, child.GetCurrentEpoch()), Is.SameAs(committees));
+        Assert.That(after.GetSyncCommitteeIndices(child.CurrentSyncCommittee!, child.ValidatorBuffer!.Items), Is.SameAs(members));
+    }
+
+    [Test]
     public void Api_state_of_a_fulu_block_is_its_held_state_not_a_copy_and_never_a_store_read()
     {
         ImportableBlobBlock chain = ImportableBlobBlock.CreateWithoutBlobs();

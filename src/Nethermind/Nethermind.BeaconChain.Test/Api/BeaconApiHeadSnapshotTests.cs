@@ -319,6 +319,27 @@ public class BeaconApiHeadSnapshotTests
         Assert.That(after.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
     }
 
+    [Test]
+    public async Task Requests_use_the_published_fork_choice_and_treat_an_invalid_root_as_unverified()
+    {
+        HeadSnapshotHolder snapshots = new();
+        ForkChoiceSnapshotHolder forkChoice = new();
+        await using BeaconApiTestHost host = await BeaconApiTestHost.StartAsync(BeaconChainSpec.Mainnet, headSnapshots: snapshots, forkChoiceSnapshots: forkChoice);
+        Seed(host);
+        Publish(host, snapshots, forkChoice, finalizedEpoch: 0, executionInSync: true);
+        ForkChoiceSnapshot valid = forkChoice.Current!;
+        forkChoice.Current = valid with { Nodes = [valid.Nodes.Single() with { ExecutionStatus = ExecutionStatus.Invalid }] };
+
+        string path = $"/eth/v1/beacon/blocks/{Head}/root";
+        using JsonDocument held = await GetAsync(host, path);
+        snapshots.Current = snapshots.Current! with { ForkChoice = forkChoice.Current };
+        using JsonDocument invalid = await GetAsync(host, path);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(held.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
+        Assert.That(invalid.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.True);
+    }
+
     [TestCaseSource(nameof(EnvelopeRoutes))]
     public async Task The_published_snapshot_answers_even_when_the_status_holder_names_another_head(string path)
     {
@@ -435,9 +456,9 @@ public class BeaconApiHeadSnapshotTests
         host.StatusHolder.JustifiedRoot = Head;
         host.StatusHolder.ExecutionInSync = executionInSync;
         host.StatusHolder.Publish(status, null);
-        snapshots.Current = new HeadSnapshot(status, null, Head, executionInSync);
         forkChoice.Current = new ForkChoiceSnapshot(new CheckpointRef(0, Head), new CheckpointRef(finalizedEpoch, Head), Hash256.Zero,
             [new ForkChoiceSnapshotNode(Slot, Head, null, 0, finalizedEpoch, 0, executionInSync ? ExecutionStatus.Valid : ExecutionStatus.Optimistic, Head)]);
+        snapshots.Current = new HeadSnapshot(status, null, Head, executionInSync) { ForkChoice = forkChoice.Current };
     }
 
     private static async Task<JsonDocument> GetAsync(BeaconApiTestHost host, string path)

@@ -35,7 +35,7 @@ public class SignatureSetBoundsTests
     // Include uint64 indices whose low 32 bits alias valid validators; honest signatures make truncation observable.
     private static readonly ulong[] Indices = [KeyCount - 1, KeyCount, KeyCount + 1, uint.MaxValue, Wrap, Wrap + 1, ulong.MaxValue];
 
-    private static readonly Lazy<PubkeyCache> LargeCache = new(BuildLargeCache);
+    private static readonly Lazy<(PubkeyCache Cache, Validator[] Validators)> LargeCache = new(BuildLargeCache);
 
     [Test]
     public void An_index_outside_the_registry_is_refused_without_a_fault([Values] Verifier verifier, [ValueSource(nameof(Indices))] ulong index)
@@ -76,11 +76,12 @@ public class SignatureSetBoundsTests
     [Test]
     public void An_attestation_naming_more_validators_than_a_slot_holds_is_refused([Values] bool gloas, [Values(SignatureSets.MaxAttestingIndices, SignatureSets.MaxAttestingIndices + 1)] int count)
     {
-        PubkeyCache pubkeys = LargeCache.Value;
+        (PubkeyCache pubkeys, Validator[] validators) = LargeCache.Value;
         AttestationData data = Vote(1, 0, 1, 0x40);
         ulong[] indices = [.. Enumerable.Range(0, count).Select(static i => (ulong)i)];
         BeaconStateFulu fuluState = CreateFuluState(KeyCount);
         BeaconStateGloas gloasState = CreateGloasState(out _, out _);
+        fuluState.Validators = gloasState.Validators = validators;
         Hash256 domain = gloas ? gloasState.GetDomain(DomainType.BeaconAttester, 1) : fuluState.GetDomain(DomainType.BeaconAttester, 1);
         BlsSignature signature = SumOfMultiples(Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(data), domain), (ulong)count * ((ulong)count + 1) / 2);
 
@@ -146,7 +147,7 @@ public class SignatureSetBoundsTests
     }
 
     // Key i = (i+1)*key 0, so indices 0..n-1 sum to n(n+1)/2*key 0.
-    private static PubkeyCache BuildLargeCache()
+    private static (PubkeyCache, Validator[]) BuildLargeCache()
     {
         Bls.P1Affine key = new Bls.P1(ValidatorKey(0)).ToAffine();
         Bls.P1 multiple = new(new long[Bls.P1.Sz]);
@@ -159,7 +160,7 @@ public class SignatureSetBoundsTests
 
         PubkeyCache cache = new();
         cache.Build(validators);
-        return cache;
+        return (cache, validators);
     }
 
     private static BlsSignature SumOfMultiples(Hash256 signingRoot, ulong multiple)

@@ -134,7 +134,7 @@ internal static class BeaconEndpoints
             ? slotValue.ToString()
             : "head";
 
-        if (!BlockIdResolver.TryResolve(ctx, id, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
+        if (!TryResolveHeader(ctx, id, out Hash256? root, out SignedBeaconBlockHeader? header, out int errorStatus, out string? errorMessage))
         {
             // A slot with no canonical block is an empty list, not an error - but an outright bad
             // id (or head/finalized genuinely unset) still is.
@@ -146,11 +146,11 @@ internal static class BeaconEndpoints
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        HeaderEntryDto entry = BuildHeaderEntry(ctx, resolved);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
+        HeaderEntryDto entry = BuildHeaderEntry(ctx, root, header);
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, header.Message!.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, new[] { entry },
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
+            ResponseEnvelope.ExecutionOptimistic(ctx, root, header.Message!.Slot),
+            ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root),
             c.RequestAborted);
     }
 
@@ -196,12 +196,12 @@ internal static class BeaconEndpoints
         bool mixedForks = false;
         foreach (Hash256 childRoot in childRoots)
         {
-            if (!TryReadChild(ctx, childRoot, slotFilter, out ForkedSignedBeaconBlock? child)) continue;
+            if (!TryReadChild(ctx, childRoot, slotFilter, out SignedBeaconBlockHeader? child)) continue;
 
-            ulong childSlot = child.Slot;
-            entries.Add(BuildHeaderEntry(ctx, new ResolvedBlock(childRoot, child)));
+            ulong childSlot = child.Message!.Slot;
+            entries.Add(BuildHeaderEntry(ctx, childRoot, child));
             finalized &= ResponseEnvelope.IsFinalized(ctx, childSlot, childRoot);
-            optimistic |= ResponseEnvelope.ExecutionOptimistic(ctx, childRoot);
+            optimistic |= ResponseEnvelope.ExecutionOptimistic(ctx, childRoot, childSlot);
             BeaconFork childFork = ctx.Spec.ForkAtEpoch(ctx.Spec.GetEpoch(childSlot));
             mixedForks |= fork is not null && fork != childFork;
             fork = childFork;
@@ -224,18 +224,12 @@ internal static class BeaconEndpoints
     /// A child pruned after the index was read, or whose record is corrupt, is left out: one bad record
     /// must not turn the children this node can serve into a 500.
     /// </remarks>
-    private static bool TryReadChild(BeaconApiContext ctx, Hash256 childRoot, ulong? slotFilter, [NotNullWhen(true)] out ForkedSignedBeaconBlock? child)
+    private static bool TryReadChild(BeaconApiContext ctx, Hash256 childRoot, ulong? slotFilter, [NotNullWhen(true)] out SignedBeaconBlockHeader? child)
     {
         child = null;
         try
         {
-            // Read even without a filter: it also bounds the claimed size the full decompression allocates.
-            if (!ctx.Store.TryGetBlockSlot(childRoot, out ulong storedSlot) || (slotFilter is not null && storedSlot != slotFilter))
-            {
-                return false;
-            }
-
-            return ctx.Store.TryGetForkedBlock(childRoot, out child);
+            return ctx.Store.TryGetSignedHeader(childRoot, slotFilter, out child);
         }
         catch (Exception e) when (e is BeaconStateException or InvalidDataException)
         {
@@ -247,16 +241,16 @@ internal static class BeaconEndpoints
 
     private static Task HeaderById(HttpContext c, string blockId, BeaconApiContext ctx)
     {
-        if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
+        if (!TryResolveHeader(ctx, blockId, out Hash256? root, out SignedBeaconBlockHeader? header, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        HeaderEntryDto entry = BuildHeaderEntry(ctx, resolved);
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
+        HeaderEntryDto entry = BuildHeaderEntry(ctx, root, header);
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, header.Message!.Slot);
         return BeaconApiJson.WriteEnvelopeAsync(c, entry,
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
+            ResponseEnvelope.ExecutionOptimistic(ctx, root, header.Message!.Slot),
+            ResponseEnvelope.IsFinalized(ctx, header.Message!.Slot, root),
             c.RequestAborted);
     }
 
@@ -319,21 +313,24 @@ internal static class BeaconEndpoints
             });
     }
 
-    private static HeaderEntryDto BuildHeaderEntry(BeaconApiContext ctx, ResolvedBlock resolved)
+    private static bool TryResolveHeader(BeaconApiContext ctx, string id, [NotNullWhen(true)] out Hash256? root,
+        [NotNullWhen(true)] out SignedBeaconBlockHeader? header, out int errorStatus, out string? errorMessage)
     {
-        ForkedSignedBeaconBlock block = resolved.Block;
-        bool canonical = ctx.Store.TryGetCanonicalRoot(block.Slot, out Hash256? canonicalRoot) && canonicalRoot == resolved.Root;
-        Hash256 bodyRoot = resolved.ComputeBodyRoot();
+        header = null;
+        if (!IdResolver.TryResolveRoot(ctx, id, out root, out errorStatus, out errorMessage) || root is null) return false;
+        if (ctx.Store.TryGetSignedHeader(root, null, out header)) return true;
+        errorStatus = StatusCodes.Status404NotFound;
+        errorMessage = $"Block {root} is not retained by this node.";
+        return false;
+    }
 
-        BeaconBlockHeaderDto header = new(
-            block.Slot.ToString(),
-            block.ProposerIndex.ToString(),
-            block.ParentRoot.ToString(),
-            resolved.StateRoot.ToString(),
-            bodyRoot.ToString());
-
-        return new HeaderEntryDto(resolved.Root.ToString(), canonical,
-            new SignedHeaderDto(header, resolved.Signature.ToString()));
+    private static HeaderEntryDto BuildHeaderEntry(BeaconApiContext ctx, Hash256 root, SignedBeaconBlockHeader signed)
+    {
+        BeaconBlockHeader message = signed.Message!;
+        bool canonical = ctx.Store.TryGetCanonicalRoot(message.Slot, out Hash256? canonicalRoot) && canonicalRoot == root;
+        BeaconBlockHeaderDto header = new(message.Slot.ToString(), message.ProposerIndex.ToString(),
+            message.ParentRoot!.ToString(), message.StateRoot!.ToString(), message.BodyRoot!.ToString());
+        return new HeaderEntryDto(root.ToString(), canonical, new SignedHeaderDto(header, signed.Signature.ToString()));
     }
 
     private sealed record GenesisDto(

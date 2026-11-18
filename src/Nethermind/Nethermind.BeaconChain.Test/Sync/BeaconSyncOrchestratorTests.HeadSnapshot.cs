@@ -15,6 +15,60 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public partial class BeaconSyncOrchestratorTests
 {
     [Test]
+    public async Task Invalid_head_is_replaced_before_the_replacement_engine_call_completes([Values] bool replacementValid)
+    {
+        HeadSnapshotHolder snapshots = new();
+        Harness harness = CreateHarness(headSnapshots: snapshots);
+        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid });
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        HeadSnapshot oldHead = snapshots.Current!;
+        harness.Importer.Head = CreateHead(TestItem.KeccakC, 104, 3, TestItem.KeccakE);
+        harness.Engine.FcuResponses.Enqueue(PayloadStatusV1.Invalid(TestItem.KeccakF));
+        harness.Importer.HeadAfterInvalidation = CreateHead(TestItem.KeccakB, 103, 3, TestItem.KeccakD);
+        TaskCompletionSource<PayloadStatusV1> replacement = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Engine.OnCall = () =>
+        {
+            if (harness.Engine.FcuCalls.Count == 3) harness.Engine.PendingFcu = replacement.Task;
+        };
+
+        Task step = harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        try
+        {
+            using IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(step.IsCompleted, Is.False);
+            Assert.That(snapshots.Current!.Status.HeadRoot, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(snapshots.Current.ExecutionInSync, Is.False);
+            Assert.That(oldHead.Status.HeadRoot, Is.EqualTo(TestItem.KeccakA));
+        }
+        finally
+        {
+            replacement.SetResult(replacementValid ? new PayloadStatusV1 { Status = PayloadStatus.Valid } : PayloadStatusV1.Invalid(TestItem.KeccakF));
+            await step;
+        }
+
+        Assert.That(snapshots.Current!.ExecutionInSync, Is.EqualTo(replacementValid));
+    }
+
+    [Test]
+    public async Task Cached_valid_verdict_rescores_only_a_new_beacon_head_with_the_same_execution_hash()
+    {
+        Harness harness = CreateHarness();
+        harness.Engine.FcuResponses.Enqueue(new PayloadStatusV1 { Status = PayloadStatus.Valid });
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        int first = harness.Importer.ComputeHeadCalls;
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        int unchanged = harness.Importer.ComputeHeadCalls;
+        harness.Importer.Head = harness.Importer.Head with { HeadRoot = TestItem.KeccakB };
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(unchanged - first, Is.EqualTo(1));
+        Assert.That(harness.Importer.ComputeHeadCalls - unchanged, Is.EqualTo(2));
+        Assert.That(harness.Importer.ForkchoiceVerdicts.Select(v => v.Root), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakB }));
+        Assert.That(harness.Engine.FcuCalls, Has.Count.EqualTo(1));
+    }
+
+    [Test]
     public void Initialization_publishes_the_anchor_as_head_and_finalized([Values] bool captureState)
     {
         HeadSnapshotHolder snapshots = new() { CaptureState = captureState };
