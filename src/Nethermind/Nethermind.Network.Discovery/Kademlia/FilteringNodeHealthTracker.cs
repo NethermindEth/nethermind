@@ -14,9 +14,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// Sits in front of <see cref="INodeHealthTracker{TNode}"/> so every admission path is covered: inbound
 /// discovery messages, lookup results, and nodes fed in by external <see cref="INodeSource"/>s. A node
 /// already in the routing table is refreshed only while it still holds its address reservation; one that lost
-/// the reservation is filtered like any other node. Self, bootnodes, static/trusted nodes, and nodes loaded
-/// from the discovery database bypass the filter — the same exemptions the pre-Kademlia DiscoveryManager
-/// applied.
+/// the reservation is filtered like any other node. Self, bootnodes, and static/trusted nodes bypass the
+/// filter, as do nodes loaded from the discovery database while they still claim the persisted address.
 /// </remarks>
 internal sealed class FilteringNodeHealthTracker(
     INodeHealthTracker<Node> inner,

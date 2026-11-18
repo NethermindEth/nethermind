@@ -92,6 +92,56 @@ public class FilteringNodeHealthTrackerTests
     }
 
     [Test]
+    public void Persisted_node_at_another_address_does_not_bypass_filter()
+    {
+        (INodeHealthTracker<Node> tracker, INodeHealthTracker<Node> inner, _) = CreateTracker(
+            persisted: [new NetworkNode(TestItem.PublicKeyB, "203.0.113.20", 30303)]);
+
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyB, "203.0.113.21"));
+
+        inner.Received(1).OnIncomingMessageFrom(Arg.Any<Node>());
+    }
+
+    [Test]
+    public void Persisted_node_at_another_address_is_checked_again_after_being_admitted()
+    {
+        (INodeHealthTracker<Node> tracker, INodeHealthTracker<Node> inner, _) = CreateTracker(
+            persisted: [new NetworkNode(TestItem.PublicKeyB, "203.0.113.20", 30303)]);
+
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyB, "203.0.113.20"));
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyB, "203.0.113.21"));
+
+        inner.Received(2).OnIncomingMessageFrom(Arg.Any<Node>());
+    }
+
+    [Test]
+    public void Persisted_node_at_another_address_is_admitted_when_its_new_subnet_is_free()
+    {
+        (INodeHealthTracker<Node> tracker, INodeHealthTracker<Node> inner, _) = CreateTracker(
+            persisted: [new NetworkNode(TestItem.PublicKeyB, "203.0.113.20", 30303)]);
+
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyB, "203.0.113.20"));
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyB, "203.0.114.20"));
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyC, "203.0.114.21"));
+
+        inner.Received(2).OnIncomingMessageFrom(Arg.Any<Node>());
+    }
+
+    [Test]
+    public void Persisted_node_without_an_endpoint_is_not_exempt()
+    {
+        NetworkNode persisted = new(TestEnrBuilder.BuildSignedWithoutEndpoint(TestItem.PrivateKeyB).ToString());
+        (INodeHealthTracker<Node> tracker, INodeHealthTracker<Node> inner, _) = CreateTracker(persisted: [persisted]);
+
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
+        tracker.OnIncomingMessageFrom(CreateNode(TestItem.PublicKeyB, "203.0.113.11"));
+
+        inner.Received(1).OnIncomingMessageFrom(Arg.Any<Node>());
+    }
+
+    [Test]
     public void Trusted_static_and_bootnode_bypass_filter()
     {
         (INodeHealthTracker<Node> tracker, INodeHealthTracker<Node> inner, _) = CreateTracker();

@@ -25,17 +25,20 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// stream; it deliberately does not decide whether a discovery message is answered.
 /// <para>
 /// Exemption is tracked by node identity rather than by the flags on the instance being admitted, because
-/// a node rebuilt from a packet carries no flags. The identity set is built once from configuration and
-/// storage: self, bootnodes, configured static peers, and nodes persisted in the discovery database.
-/// Static and trusted nodes are resolved live from their managers, so a removal is observed on the next
-/// admission unless the identity is also exempt for an independent reason. Flags on an admitted instance
-/// are evidence for that call only and never create a lasting entitlement.
+/// a node rebuilt from a packet carries no flags. The identity set is built once from configuration: self,
+/// bootnodes, and configured static peers. Static and trusted nodes are resolved live from their managers,
+/// so a removal is observed on the next admission unless the identity is also exempt for an independent
+/// reason. Flags on an admitted instance are evidence for that call only and never create a lasting
+/// entitlement.
 /// </para>
 /// <para>
-/// Every routing-table node is persisted, so a node that was exempt in an earlier run is exempt from load
-/// in the next one, even if a static or trusted node was removed from its manager in between. Filtering
-/// persisted nodes at load could empty the routing table and hurt bootstrapping more than the subnet
-/// concentration this filter addresses.
+/// Every routing-table node is persisted, so filtering persisted nodes at load could empty the routing
+/// table and hurt bootstrapping more than the subnet concentration this filter addresses. A persisted
+/// node is therefore exempt only at the address stored with it: identity alone does not entitle an
+/// ordinary node to skip the filter after it reappears at another address, or persisted identities from
+/// different subnets could all bypass the subnet limit once they move into one subnet after a restart.
+/// An entry without a usable address cannot be exempted and is skipped, so it goes through the filter
+/// like any other node.
 /// </para>
 /// </remarks>
 internal sealed class DiscoveryNodeAdmission(
@@ -57,7 +60,10 @@ internal sealed class DiscoveryNodeAdmission(
     private readonly IStaticNodesManager? _staticNodes = staticNodes;
     private readonly ITrustedNodesManager? _trustedNodes = trustedNodes;
     private readonly HashSet<PublicKey> _exemptNodeIds = enabled
-        ? CreateExemptNodeIds(kademliaConfig, discoveryStorage, configuredStaticNodes)
+        ? CreateExemptNodeIds(kademliaConfig, configuredStaticNodes)
+        : [];
+    private readonly Dictionary<PublicKey, IPAddress> _persistedAddresses = enabled
+        ? CreatePersistedAddresses(discoveryStorage)
         : [];
     private readonly PublicKey? _selfId = kademliaConfig.CurrentNodeId?.Id;
     private readonly Lock _admitLock = new();
@@ -163,7 +169,12 @@ internal sealed class DiscoveryNodeAdmission(
            || node.IsBootnode
            || node.IsStatic
            || node.IsTrusted
-           || IsManagedExempt(node.Id);
+           || IsManagedExempt(node.Id)
+           || IsPersistedAtSameAddress(node);
+
+    private bool IsPersistedAtSameAddress(Node node)
+        => _persistedAddresses.TryGetValue(node.Id, out IPAddress? persistedAddress)
+           && persistedAddress.Equals(node.Address.Address);
 
     private bool IsManagedExempt(PublicKey nodeId)
     {
@@ -192,7 +203,6 @@ internal sealed class DiscoveryNodeAdmission(
 
     private static HashSet<PublicKey> CreateExemptNodeIds(
         KademliaConfig<Node> kademliaConfig,
-        INetworkStorage discoveryStorage,
         IEnumerable<NetworkNode>? configuredStaticNodes)
     {
         HashSet<PublicKey> exempt = [];
@@ -215,15 +225,21 @@ internal sealed class DiscoveryNodeAdmission(
             }
         }
 
-        // Every routing-table node is persisted, so this also re-exempts static or trusted nodes that were
-        // removed from their managers before this start. Filtering persisted nodes at load could empty a
-        // node's routing table and hurt bootstrapping more than the subnet concentration this filter
-        // addresses.
+        return exempt;
+    }
+
+    private static Dictionary<PublicKey, IPAddress> CreatePersistedAddresses(INetworkStorage discoveryStorage)
+    {
+        Dictionary<PublicKey, IPAddress> persistedAddresses = [];
         foreach (NetworkNode persistedNode in discoveryStorage.GetPersistedNodes())
         {
-            exempt.Add(persistedNode.NodeId);
+            IPAddress address = persistedNode.HostIp;
+            if (!address.Equals(IPAddress.None))
+            {
+                persistedAddresses[persistedNode.NodeId] = address;
+            }
         }
 
-        return exempt;
+        return persistedAddresses;
     }
 }
