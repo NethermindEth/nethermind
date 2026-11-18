@@ -29,7 +29,7 @@ internal sealed class VerifiedRecoveries
     {
         if (message.Length != 32 || signature.Length != 64) return false;
 
-        // The host records precompile calls in execution order.
+        // ECRECOVER hints come in call order; EIP-7702 authorization hints follow all of them, so those fall back to the search.
         int index = _next;
         if (index >= _recoveryIds.Length || !Matches(index, signature, recoveryId, message))
         {
