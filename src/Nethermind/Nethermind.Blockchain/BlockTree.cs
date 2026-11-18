@@ -88,6 +88,9 @@ namespace Nethermind.Blockchain
 
         private BlockHeader? _lowestInsertedHeader;
 
+        /// <inheritdoc/>
+        public bool StoredPivotDisabledUpdater { get; private set; }
+
         public BlockHeader? BestSuggestedBeaconHeader { get; private set; }
 
         public Block? BestSuggestedBeaconBody { get; private set; }
@@ -1512,13 +1515,51 @@ namespace Nethermind.Blockchain
             {
                 if (Logger.IsTrace) Logger.Trace($"Sync pivot updated from {SyncPivot} to {value}");
 
-                Span<byte> pivotData = stackalloc byte[38]; //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
-                RlpWriter writer = RlpWriter.ContentWriter(pivotData);
-                writer.Encode(value.BlockNumber);
-                writer.Encode(value.BlockHash);
-                _metadataDb.PutSpan(((long)MetadataDbKeys.UpdatedPivotData).ToBigEndianSpanWithoutLeadingZeros(out _), pivotData);
+                WriteSyncPivot(_metadataDb, value);
                 _syncPivot = value;
             }
+        }
+
+        /// <inheritdoc/>
+        public void ReplaceSyncPivot((ulong BlockNumber, Hash256 BlockHash) pivot)
+        {
+            if (Logger.IsTrace) Logger.Trace($"Sync pivot replaced from {SyncPivot} to {pivot}");
+
+            using (IWriteBatch batch = _metadataDb.StartWriteBatch())
+            {
+                try
+                {
+                    WriteSyncPivot(batch, pivot);
+                    Span<byte> hashRlp = stackalloc byte[Rlp.LengthOfKeccakRlp];
+                    batch.PutSpan(MetadataDbKeys.LowestInsertedFastHeaderHash, Rlp.Encode((Hash256?)null, hashRlp));
+                    batch.PutSpan(MetadataDbKeys.ReplacedSyncPivotHash, Rlp.Encode(pivot.BlockHash, hashRlp));
+                }
+                catch
+                {
+                    batch.Clear();
+                    throw;
+                }
+            }
+
+            _syncPivot = pivot;
+            _lowestInsertedHeader = null;
+            ResetExecutionHeaderProgress();
+        }
+
+        private void ResetExecutionHeaderProgress()
+        {
+            BestSuggestedBody = Head;
+            BestSuggestedHeader = Head?.Header;
+            BestKnownNumber = Head?.Number ?? 0;
+        }
+
+        private static void WriteSyncPivot(IWriteOnlyKeyValueStore store, (ulong BlockNumber, Hash256 BlockHash) pivot)
+        {
+            Span<byte> pivotData = stackalloc byte[Rlp.LengthOf(pivot.BlockNumber) + Rlp.LengthOfKeccakRlp];
+            RlpWriter writer = RlpWriter.ContentWriter(pivotData);
+            writer.Encode(pivot.BlockNumber);
+            writer.Encode(pivot.BlockHash);
+            store.PutSpan(((long)MetadataDbKeys.UpdatedPivotData).ToBigEndianSpanWithoutLeadingZeros(out _), pivotData);
         }
 
 
@@ -2223,6 +2264,8 @@ namespace Nethermind.Blockchain
         /// outside the lock with this call's own hashes.
         /// A <see cref="Keccak.Zero"/> hash means the caller does not know that block, so the previously known
         /// <see cref="FinalizedHash"/>/<see cref="SafeHash"/> is kept rather than cleared, matching other execution clients.
+        /// A kept safe block below a finalized block that moved past it is replaced with that finalized block, so the safe
+        /// block is never older than the finalized one.
         /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
@@ -2230,7 +2273,8 @@ namespace Nethermind.Blockchain
             using (_forkChoiceLock.EnterScope())
             {
                 if (finalizedBlockHash == Keccak.Zero) finalizedBlockHash = FinalizedHash ?? finalizedBlockHash;
-                if (safeBlockHash == Keccak.Zero) safeBlockHash = SafeHash ?? safeBlockHash;
+                bool safeKept = safeBlockHash == Keccak.Zero;
+                if (safeKept) safeBlockHash = SafeHash ?? safeBlockHash;
 
                 bool finalizedAdvanced = finalizedBlockHash is not null
                     && finalizedBlockHash != Keccak.Zero
@@ -2238,6 +2282,9 @@ namespace Nethermind.Blockchain
                 finalizedHeader = finalizedAdvanced
                     ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                     : null;
+
+                if (safeKept && finalizedHeader is not null && _headerStore.GetBlockNumber(safeBlockHash!) < finalizedHeader.Number)
+                    safeBlockHash = finalizedBlockHash;
 
                 PersistForkChoice(finalizedBlockHash, safeBlockHash);
 

@@ -47,6 +47,9 @@ namespace Nethermind.Blockchain
         /// </summary>
         BlockHeader? LowestInsertedHeader { get; set; }
 
+        /// <summary>Whether a sync pivot stored by an earlier run was loaded and turned the enabled pivot updater off.</summary>
+        bool StoredPivotDisabledUpdater => false;
+
         /// <summary>
         /// Lowest header number added in reverse beacon sync insert. Used to determine if BeaconHeaderSync is completed.
         /// </summary>
@@ -285,6 +288,15 @@ namespace Nethermind.Blockchain
         /// Before sync pivot, there is no guarantee that blocks and receipts are available or continuous.
         /// </summary>
         (ulong BlockNumber, Hash256 BlockHash) SyncPivot { get; set; }
+
+        /// <summary>
+        /// Replaces <see cref="SyncPivot"/> and discards the header sync progress of the old pivot: the pivot and the
+        /// cleared <see cref="LowestInsertedHeader"/> are written in one metadata batch, and the best suggested and best
+        /// known pointers move back to the head.
+        /// </summary>
+        /// <exception cref="NotSupportedException">The implementation does not support atomic pivot replacement.</exception>
+        void ReplaceSyncPivot((ulong BlockNumber, Hash256 BlockHash) pivot) =>
+            throw new NotSupportedException("This block tree does not support atomic pivot replacement.");
 
         /// <summary>Publishes the served-history floor surfaced by <see cref="IBlockFinder.LowestServedBlock"/>.
         /// A no-op everywhere except the live tree - read-only and overlay trees never own the floor.</summary>

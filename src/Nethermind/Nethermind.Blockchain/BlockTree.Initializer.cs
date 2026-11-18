@@ -194,6 +194,14 @@ public partial class BlockTree
 
     private void LoadBestKnown()
     {
+        if ((Head?.Number ?? 0UL) < SyncPivot.BlockNumber &&
+            DecodeMetadataKeccak(MetadataDbKeys.ReplacedSyncPivotHash) is { } replacedPivot &&
+            replacedPivot == SyncPivot.BlockHash)
+        {
+            LoadReplacedPivotProgress();
+            return;
+        }
+
         ulong pivotOrLowest = Math.Max(SyncPivot.BlockNumber, LowestInsertedHeader?.Number ?? 0);
         ulong left = (Head?.Number ?? 0) == 0
             ? pivotOrLowest.SaturatingSub(1)
@@ -227,6 +235,43 @@ public partial class BlockTree
             ?? FindHeaderAtLevel(bestSuggestedHeaderNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, findBeacon: false);
         BestSuggestedBody = FindBlock(bestSuggestedBodyNumber, BlockTreeLookupOptions.None)
             ?? FindBlockAtLevel(bestSuggestedBodyNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing, findBeacon: false);
+    }
+
+    private void LoadReplacedPivotProgress()
+    {
+        ResetExecutionHeaderProgress();
+        (ulong number, Hash256 hash) = SyncPivot;
+        const BlockTreeLookupOptions options = BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+        if (FindHeader(hash, options, blockNumber: number) is not { } pivot) return;
+
+        BestSuggestedHeader = pivot;
+        BestKnownNumber = number;
+        BestSuggestedBody = FindBlock(hash, options, blockNumber: number) ?? Head;
+
+        // Limit startup work to the nearby headers. The exact pivot remains a valid resume point when the
+        // highest header comes from another chain or its ancestry is missing.
+        const ulong maxResumeDistance = 65_536;
+        ulong right = number + Math.Min(maxResumeDistance, ulong.MaxValue - number);
+        ulong headerNumber = BinarySearchBlockNumber(number, right, HeaderExists) ?? number;
+        if (headerNumber <= number || FindHeaderAtLevel(headerNumber, options, findBeacon: false) is not { } candidate) return;
+
+        BlockHeader? ancestor = candidate;
+        Block? body = null;
+        int remainingBodyLookups = 128;
+        while (ancestor is not null && ancestor.Number > number)
+        {
+            if (body is null && remainingBodyLookups > 0)
+            {
+                remainingBodyLookups--;
+                body = FindBlock(ancestor.Hash!, options, blockNumber: ancestor.Number);
+            }
+            ancestor = FindHeader(ancestor.ParentHash, options, blockNumber: ancestor.Number - 1);
+        }
+
+        if (ancestor?.Hash != hash) return;
+        BestSuggestedHeader = candidate;
+        BestKnownNumber = candidate.Number;
+        BestSuggestedBody = body ?? BestSuggestedBody;
     }
 
     private BlockHeader? FindHeaderAtLevel(ulong blockNumber, BlockTreeLookupOptions options, bool findBeacon)
@@ -459,6 +504,7 @@ public partial class BlockTree
         }
 
         SyncPivot = (updatedPivotBlockNumber, updatedPivotBlockHash);
+        StoredPivotDisabledUpdater = _syncConfig.MaxAttemptsToUpdatePivot != 0;
         _syncConfig.MaxAttemptsToUpdatePivot = 0; // Disable pivot updater
 
         if (Logger.IsInfo) Logger.Info($"Pivot block has been set based on data from db. Pivot block number: {updatedPivotBlockNumber}, hash: {updatedPivotBlockHash}");

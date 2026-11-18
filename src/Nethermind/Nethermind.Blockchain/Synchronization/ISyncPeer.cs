@@ -18,10 +18,33 @@ namespace Nethermind.Blockchain.Synchronization
     {
         Node Node { get; }
 
+        /// <summary>Records that this peer supplied data accepted by full sync.</summary>
+        void NotifyUsefulSyncResponse() { }
+
         string Name { get; }
         string? ClientId => Node.ClientId;
         NodeClientType ClientType => Node?.ClientType ?? NodeClientType.Unknown;
         Hash256 HeadHash { get; set; }
+
+        /// <summary>Replaces the advertised head hash and number.</summary>
+        void SetHead(Hash256 hash, ulong number)
+        {
+            HeadHash = hash;
+            HeadNumber = number;
+        }
+
+        /// <summary>Replaces the head only if its current hash and number match the expected claim.</summary>
+        /// <remarks>The default comparison and update are not atomic. Implementers with concurrent head updates must override it.</remarks>
+        /// <returns>Whether the expected claim matched and was replaced.</returns>
+        bool TrySetHead(Hash256 expectedHash, ulong expectedNumber, Hash256 hash, ulong number)
+        {
+            if (HeadHash != expectedHash || HeadNumber != expectedNumber) return false;
+            SetHead(hash, number);
+            return true;
+        }
+
+        /// <summary>The inclusive lower bound of available bodies and receipts; headers may precede it.</summary>
+        ulong EarliestBlockNumber => 0;
 
         /// <summary>
         /// Total difficulty of the peer.
@@ -38,6 +61,12 @@ namespace Nethermind.Blockchain.Synchronization
         Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int maxBlocks, int skip, CancellationToken token);
         Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token);
+        /// <summary>Requests consecutive ancestor headers, starting with <paramref name="startHash"/>.</summary>
+        Task<IOwnedReadOnlyList<BlockHeader>?> GetAncestorHeaders(Hash256 startHash, int maxBlocks, CancellationToken token) =>
+            GetBlockHeaders(startHash, Math.Min(maxBlocks, 1), 0, token);
+        /// <summary>Requests headers in the chosen direction, or returns no batch when reverse requests are unsupported.</summary>
+        Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, bool reverse, CancellationToken token) =>
+            reverse ? Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(null) : GetBlockHeaders(startHash, maxBlocks, skip, token);
         /// <summary>
         /// Asks the peer for the header of <paramref name="hash"/>, or of its announced head when null.
         /// </summary>

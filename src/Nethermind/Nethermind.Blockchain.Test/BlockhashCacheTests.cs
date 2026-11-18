@@ -404,6 +404,114 @@ public class BlockhashCacheTests
         }
     }
 
+    [Test]
+    public async Task GetHash_with_overridden_number_does_not_change_cached_ancestors([Values(2ul, 1000ul)] ulong number)
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(300);
+        BlockHeader head = tree.FindHeader(299, BlockTreeLookupOptions.None)!;
+        BlockHeader overridden = head.Clone();
+        overridden.Number = number;
+
+        Hash256? hash = cache.GetHash(overridden, 2);
+        bool headCached = cache.Contains(head.Hash!);
+        Hash256[] childHashes = (await cache.Prefetch(Build.A.BlockHeader.WithParent(head).TestObject))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hash, Is.EqualTo(tree.FindHeader(297, BlockTreeLookupOptions.None)!.Hash));
+            Assert.That(headCached, Is.False);
+            Assert.That(childHashes, Has.Length.EqualTo((int)BlockhashCache.MaxDepth));
+            Assert.That(childHashes, Has.None.Null);
+            Assert.That(childHashes[3], Is.EqualTo(tree.FindHeader(296, BlockTreeLookupOptions.None)!.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Prefetch_with_overridden_number_keeps_full_ancestor_list([Values(0ul, 2ul, 1000ul)] ulong number, [Values] bool prefetchParent)
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(300);
+        BlockHeader head = tree.FindHeader(299, BlockTreeLookupOptions.None)!;
+        if (prefetchParent)
+        {
+            await cache.Prefetch(tree.FindHeader(298, BlockTreeLookupOptions.None)!);
+        }
+
+        BlockHeader overridden = head.Clone();
+        overridden.Number = number;
+        Hash256[]? overriddenHashes = await cache.Prefetch(overridden);
+        bool headCached = cache.Contains(head.Hash!);
+        Hash256[] childHashes = (await cache.Prefetch(Build.A.BlockHeader.WithParent(head).TestObject))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overriddenHashes, Is.Null.Or.EqualTo(AncestorHashes(tree, 298)));
+            Assert.That(headCached, Is.False);
+            Assert.That(childHashes, Is.EqualTo(AncestorHashes(tree, 299)));
+        }
+    }
+
+    [Test]
+    public async Task GetHash_with_number_above_chain_does_not_read_past_cached_ancestors()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(10);
+        BlockHeader head = tree.FindHeader(9, BlockTreeLookupOptions.None)!;
+        await cache.Prefetch(tree.FindHeader(8, BlockTreeLookupOptions.None)!);
+
+        BlockHeader overridden = head.Clone();
+        overridden.Number = 300;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetHash(overridden, 200), Is.Null);
+            Assert.That(cache.GetHash(overridden, 5), Is.EqualTo(tree.FindHeader(4, BlockTreeLookupOptions.None)!.Hash));
+        }
+    }
+
+    [Test]
+    public async Task Prefetch_with_number_above_chain_does_not_prune_cached_ancestors()
+    {
+        (BlockTree tree, BlockhashCache cache) = BuildTest(300);
+        BlockHeader head = tree.FindHeader(299, BlockTreeLookupOptions.None)!;
+        await cache.Prefetch(head);
+        BlockhashCache.Stats before = cache.GetStats();
+
+        BlockHeader overridden = head.Clone();
+        overridden.Number = 5000;
+        await cache.Prefetch(overridden);
+        await cache.PruningTask;
+
+        Assert.That(cache.GetStats(), Is.EqualTo(before));
+    }
+
+    [Test]
+    public async Task Prefetch_from_parent_hashes_keeps_pruning_old_blocks()
+    {
+        const ulong chainLength = BlockhashCache.MaxDepth * 8;
+        (BlockTree tree, BlockhashCache cache) = BuildTest(chainLength);
+        await cache.Prefetch(tree.FindHeader(BlockhashCache.MaxDepth + 10, BlockTreeLookupOptions.None)!);
+        Assert.That(cache.GetStats().Nodes, Is.EqualTo(FlatCacheItemLength));
+
+        for (ulong i = BlockhashCache.MaxDepth + 11; i < chainLength; i++)
+        {
+            await cache.Prefetch(tree.FindHeader(i, BlockTreeLookupOptions.None)!);
+        }
+
+        await cache.PruningTask;
+
+        Assert.That(cache.GetStats().Nodes, Is.Zero);
+    }
+
+    private static Hash256[] AncestorHashes(BlockTree tree, ulong first)
+    {
+        Hash256[] hashes = new Hash256[BlockhashCache.MaxDepth];
+        for (int i = 0; i < hashes.Length; i++)
+        {
+            hashes[i] = tree.FindHeader(first - (ulong)i, BlockTreeLookupOptions.None)!.Hash!;
+        }
+
+        return hashes;
+    }
+
     private static (BlockTree, BlockhashCache) BuildTest(ulong chainLength, IHeaderStore? headerStore = null)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;

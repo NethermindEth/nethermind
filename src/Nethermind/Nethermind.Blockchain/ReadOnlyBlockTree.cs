@@ -63,8 +63,8 @@ namespace Nethermind.Blockchain
 
         public void Insert(IEnumerable<Block> blocks) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(Insert)} calls");
 
+        // hacky while there is not special tree for RPC
         public void UpdateHeadBlock(Hash256 blockHash) =>
-            // hacky while there is not special tree for RPC
             _wrapped.UpdateHeadBlock(blockHash);
 
         /// <inheritdoc/>
@@ -213,6 +213,9 @@ namespace Nethermind.Blockchain
             get => _wrapped.SyncPivot;
             set { }
         }
+
+        /// <inheritdoc/>
+        public void ReplaceSyncPivot((ulong BlockNumber, Hash256 BlockHash) pivot) => throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(ReplaceSyncPivot)} calls");
 
         public bool IsProcessingBlock { get => _wrapped.IsProcessingBlock; set { } }
 

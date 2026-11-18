@@ -21,17 +21,20 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockhashCache>();
     private readonly ConcurrentDictionary<Hash256AsKey, CacheNode> _blocks = new();
-    private readonly LruCache<Hash256AsKey, Hash256[]> _flatCache = new(32, nameof(BlockhashCache));
+    private readonly LruCache<Hash256AsKey, (ulong Number, Hash256[] Hashes)> _flatCache = new(32, nameof(BlockhashCache));
     private readonly Lock _lock = new();
     public const ulong MaxDepth = BlockhashProvider.MaxDepth;
     private ulong _minBlock = ulong.MaxValue;
+    private ulong _maxVerifiedBlock;
     private Task _pruningTask = Task.CompletedTask;
+
+    internal Task PruningTask => Volatile.Read(ref _pruningTask);
 
     public Hash256? GetHash(BlockHeader headBlock, ulong depth) =>
         depth == 0 ? headBlock.Hash
         : depth == 1 ? headBlock.ParentHash
         : depth > MaxDepth ? null
-        : _flatCache.TryGet(headBlock.ParentHash!, out Hash256[] array) ? array[(int)depth - 2]
+        : _flatCache.TryGet(headBlock.ParentHash!, out (ulong Number, Hash256[] Hashes) entry) && entry.Hashes.Length > (int)depth - 2 ? entry.Hashes[(int)depth - 2]
         : Load(headBlock, depth, out _)?.Hash;
 
     private CacheNode? Load(BlockHeader blockHeader, ulong depth, out Hash256[]? hashes, CancellationToken cancellationToken = default)
@@ -78,6 +81,12 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
+        bool numberMatchesAncestors = blocks.Count > 1 && blocks[^1].Node.Number + skipped + (ulong)(blocks.Count - 1) == blockHeader.Number;
+        if (numberMatchesAncestors)
+        {
+            InterlockedEx.Max(ref _maxVerifiedBlock, blockHeader.Number);
+        }
+
         if (needToAddAny && !cancellationToken.IsCancellationRequested)
         {
             (CacheNode Node, bool NeedToAdd) parentNode = blocks[^1];
@@ -94,14 +103,14 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                 parentNode = current;
             }
 
-            if (parentNode.NeedToAdd)
+            if (parentNode.NeedToAdd && numberMatchesAncestors)
             {
                 _blocks.TryAdd(parentNode.Node.Hash, parentNode.Node);
             }
         }
 
         int ancestorCount = blocks.Count - 1;
-        if (ancestorCount == FlatCacheLength(blockHeader))
+        if (numberMatchesAncestors && ancestorCount == FlatCacheLength(blockHeader))
         {
             hashes = new Hash256[ancestorCount];
             for (int i = 1; i < blocks.Count; i++)
@@ -111,7 +120,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
             if (blockHeader.Hash is not null)
             {
-                _flatCache.Set(blockHeader.Hash, hashes);
+                _flatCache.Set(blockHeader.Hash, (blockHeader.Number, hashes));
             }
         }
 
@@ -133,23 +142,30 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             {
                 bool emptyHash = blockHeader.Hash is null;
 
-                if (emptyHash || !_flatCache.TryGet(blockHeader.Hash, out hashes))
+                if (!emptyHash && _flatCache.TryGet(blockHeader.Hash, out (ulong Number, Hash256[] Hashes) entry))
                 {
-                    if (_flatCache.TryGet(blockHeader.ParentHash, out Hash256[] parentHashes))
+                    hashes = entry.Hashes;
+                }
+                else if (_flatCache.TryGet(blockHeader.ParentHash, out (ulong Number, Hash256[] Hashes) parent))
+                {
+                    int length = (int)Math.Min(MaxDepth, (ulong)parent.Hashes.Length + 1);
+                    hashes = new Hash256[length];
+                    hashes[0] = blockHeader.ParentHash;
+                    Array.Copy(parent.Hashes, 0, hashes, 1, length - 1);
+                    ulong number = parent.Number + 1;
+                    if (blockHeader.Number == number)
                     {
-                        int length = FlatCacheLength(blockHeader);
-                        hashes = new Hash256[length];
-                        hashes[0] = blockHeader.ParentHash;
-                        Array.Copy(parentHashes, 0, hashes, 1, length - 1);
-                        if (!emptyHash)
-                        {
-                            _flatCache.Set(blockHeader.Hash, hashes);
-                        }
+                        InterlockedEx.Max(ref _maxVerifiedBlock, number);
                     }
-                    else
+
+                    if (!emptyHash)
                     {
-                        Load(blockHeader, MaxDepth, out hashes, cancellationToken);
+                        _flatCache.Set(blockHeader.Hash, (number, hashes));
                     }
+                }
+                else
+                {
+                    Load(blockHeader, MaxDepth, out hashes, cancellationToken);
                 }
             }
 
@@ -158,6 +174,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn($"Background fetch failed for block {blockHeader.Number}: {e.Message}");
+            hashes = null;
         }
 
         return hashes;
@@ -165,6 +182,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
 
     private void PruneInBackground(BlockHeader blockHeader)
     {
+        ulong number = Math.Min(blockHeader.Number, Volatile.Read(ref _maxVerifiedBlock));
         if (ShouldPrune())
         {
             lock (_lock)
@@ -175,7 +193,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
                     {
                         try
                         {
-                            PruneBefore(blockHeader.Number - MaxDepth * 2);
+                            PruneBefore(number - MaxDepth * 2);
                         }
                         catch (Exception e)
                         {
@@ -186,7 +204,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
             }
         }
 
-        bool ShouldPrune() => _minBlock != ulong.MaxValue && _minBlock + MaxDepth * 4 < blockHeader.Number && _pruningTask.IsCompleted;
+        bool ShouldPrune() => _minBlock != ulong.MaxValue && _minBlock + MaxDepth * 4 < number && _pruningTask.IsCompleted;
     }
 
     public int PruneBefore(ulong blockNumber)
@@ -246,6 +264,7 @@ public class BlockhashCache(IHeaderFinder headerFinder, ILogManager logManager) 
         _blocks.Clear();
         _flatCache.Clear();
         Interlocked.Exchange(ref _minBlock, ulong.MaxValue);
+        Interlocked.Exchange(ref _maxVerifiedBlock, 0);
     }
 
     public void Dispose() => Clear();

@@ -302,6 +302,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         get => _baseTree.SyncPivot;
         set => _baseTree.SyncPivot = value;
     }
+
+    /// <inheritdoc/>
+    public void ReplaceSyncPivot((ulong BlockNumber, Hash256 BlockHash) pivot) => _baseTree.ReplaceSyncPivot(pivot);
     public bool IsProcessingBlock { get => _baseTree.IsProcessingBlock; set => _baseTree.IsProcessingBlock = value; }
 
     public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
