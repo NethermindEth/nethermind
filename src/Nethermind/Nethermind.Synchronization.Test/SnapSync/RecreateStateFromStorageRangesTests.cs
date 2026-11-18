@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         private ContainerBuilder CreateContainerBuilder() =>
             new ContainerBuilder()
                 .AddModule(new TestSynchronizerModule(new TestSyncConfig()))
-                .AddKeyedSingleton<IDb>(DbNames.State, (_) => (IDb)new TestMemDb())
+                .AddKeyedSingleton<IDb>(DbNames.State, (_) => (IDb)new SnapshotableMemDb())
                 .AddSingleton<ISnapTestHelper, PatriciaSnapTestHelper>()
                 ;
 
@@ -210,6 +210,32 @@ namespace Nethermind.Synchronization.Test.SnapSync
         }
 
         [Test]
+        public void AddStorageRange_SlotWithEmptyValue_IsInvalidProof()
+        {
+            using IContainer container = CreateContainerBuilder().Build();
+            ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+
+            PathWithAccount pathWithAccount = new(TestItem.KeccakA, new Account(1, 1, new Hash256("0xeb8594ba5b3314111518b584bbd3801fb3aed5970bd8b47fd9ff744505fe101c"), TestItem.KeccakA).ToStruct());
+            using ByteArrayListAdapter proofs = new(new ArrayPoolList<byte[]>(2)
+            {
+                Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
+                Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e"),
+            });
+            (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
+                factory,
+                pathWithAccount,
+                [
+                    new PathWithStorageSlot(new ValueHash256("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"), Bytes.FromHexString("94654f75e491acf8c380d2a6906e67e2e56813665e")),
+                    new PathWithStorageSlot(ValueKeccak.MaxValue, []),
+                ],
+                Keccak.Zero,
+                null,
+                proofs: proofs);
+
+            Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
+        }
+
+        [Test]
         public void AddStorageRange_EmptySlots_ReturnsEmptySlots()
         {
             Hash256 account = TestItem.KeccakA;
@@ -254,7 +280,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
                 factory, account, slots, Keccak.Zero, null,
                 proofs);
 
-            Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProofNode));
+            Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
         }
 
         /// <summary>

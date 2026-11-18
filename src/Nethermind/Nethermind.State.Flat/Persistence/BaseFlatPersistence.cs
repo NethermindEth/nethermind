@@ -420,15 +420,24 @@ public static class BaseFlatPersistence
             BasePersistence.DeleteMatchingKeys(stateSnap, state, firstKey, lastKey, AccountKeyLength, flags);
         }
 
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            ScanStorageRange(addressHash, fromPath, toPath, storage);
+
+        /// <inheritdoc cref="BasePersistence.IHashedFlatWriteBatch.IsStorageRangeEmpty"/>
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            !ScanStorageRange(addressHash, fromPath, toPath, batch: null);
+
+        /// <param name="batch">Where the deletes go; null only probes.</param>
+        /// <returns>Whether a slot in the range was found.</returns>
         [SkipLocalsInit]
-        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+        private bool ScanStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath, IWriteBatch? batch)
         {
             Span<byte> firstKey = stackalloc byte[StorageKeyLength];
             Span<byte> lastKey = stackalloc byte[StorageKeyLength + 1];
             EncodeStorageKey(firstKey, addressHash, fromPath, fullAddressStorageKey);
             EncodeStorageKey(lastKey[..StorageKeyLength], addressHash, toPath, fullAddressStorageKey);
             lastKey[StorageKeyLength] = 0;
-            BasePersistence.DeleteMatchingKeys(storageSnap, storage, firstKey, lastKey,
+            return BasePersistence.DeleteMatchingKeys(storageSnap, batch, firstKey, lastKey,
                 StoragePrefixLength(fullAddressStorageKey) + StorageSlotKeySize, StorageAddressSuffix(addressHash, fullAddressStorageKey), flags);
         }
     }

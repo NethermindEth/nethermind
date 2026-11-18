@@ -50,20 +50,36 @@ public class FlatTreeSyncStoreTests
             if (seeder is not null) builder.AddSingleton<IHistoryPivotSeeder>(seeder);
         });
 
-    private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value)
+    private void WriteStorageDirectToDb(Address address, UInt256 slot, byte[] value) =>
+        _columnsDb.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(address, slot), ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
+
+    private bool HasStorageSlot(Address address, UInt256 slot) =>
+        _columnsDb.GetColumnDb(FlatDbColumns.Storage).KeyExists(StorageKey(address, slot));
+
+    private static ValueHash256 SlotHash(UInt256 slot)
     {
-        IDb storageDb = _columnsDb.GetColumnDb(FlatDbColumns.Storage);
-        ValueHash256 addrHash = ValueKeccak.Compute(address.Bytes);
         Span<byte> slotBytes = stackalloc byte[32];
         slot.ToBigEndian(slotBytes);
-        ValueHash256 slotHash = ValueKeccak.Compute(slotBytes);
+        return ValueKeccak.Compute(slotBytes);
+    }
+
+    private static UInt256 SlotWithFirstNibble(int nibble)
+    {
+        UInt256 slot = 0;
+        while (SlotHash(slot).Bytes[0] >> 4 != nibble) slot++;
+        return slot;
+    }
+
+    private static byte[] StorageKey(Address address, UInt256 slot)
+    {
+        ValueHash256 addrHash = ValueKeccak.Compute(address.Bytes);
+        ValueHash256 slotHash = SlotHash(slot);
 
         byte[] storageKey = new byte[52];
         addrHash.Bytes[..4].CopyTo(storageKey.AsSpan()[..4]);
         slotHash.Bytes.CopyTo(storageKey.AsSpan()[4..36]);
         addrHash.Bytes[4..20].CopyTo(storageKey.AsSpan()[36..52]);
-
-        storageDb.PutSpan(storageKey, ((ReadOnlySpan<byte>)value).WithoutLeadingZeros());
+        return storageKey;
     }
 
     private bool HasStorageEntries(Address address)
@@ -95,6 +111,315 @@ public class FlatTreeSyncStoreTests
         store.EnsureStorageEmpty(Keccak.Compute(address.Bytes));
 
         Assert.That(HasStorageEntries(address), Is.False, "Storage entries should be deleted after EnsureStorageEmpty");
+    }
+
+    private static readonly byte[] Leaf = Bytes.FromHexString("f838a120290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e5639594654f75e491acf8c380d2a6906e67e2e56813665e");
+
+    private static byte[] ExtensionWithKey123() => Bytes.FromHexString("e4821123a0" + new string('1', 64));
+
+    private static byte[] BranchWithChildren(params int[] nibbles)
+    {
+        string items = string.Concat(Enumerable.Range(0, 17).Select(i => nibbles.Contains(i) ? "a0" + new string('1', 64) : "80"));
+        int length = items.Length / 2;
+        return Bytes.FromHexString((length < 56 ? $"{0xc0 + length:x2}" : $"f8{length:x2}") + items);
+    }
+
+    private void WriteStorageNodes(Hash256 address, params string[] paths) => WriteStorageNodes(address, Leaf, paths);
+
+    private void WriteStorageNodes(Hash256 address, byte[] rlp, params string[] paths)
+    {
+        using IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync);
+        foreach (string path in paths)
+        {
+            writeBatch.SetStorageTrieNode(address, TreePath.FromHexString(path), rlp);
+        }
+    }
+
+    [Test]
+    public void InvalidateNode_drops_the_stored_node_at_its_path_and_keeps_its_children()
+    {
+        Hash256 address = Keccak.Compute(TestItem.AddressA.Bytes);
+        WriteStorageNodes(address, "", "0a");
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        ValueHash256 leafHash = ValueKeccak.Compute(Leaf);
+        byte[] branch = BranchWithChildren(0, 1);
+
+        Invalidate(store, address, "", branch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.NodeExists(address, TreePath.Empty, leafHash), Is.False);
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("0a"), leafHash), Is.True);
+        }
+    }
+
+    [Test]
+    public void InvalidateNode_keeps_the_stored_node_when_it_is_the_received_node()
+    {
+        Hash256 address = Keccak.Compute(TestItem.AddressA.Bytes);
+        WriteStorageNodes(address, "");
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        ValueHash256 leafHash = ValueKeccak.Compute(Leaf);
+
+        Invalidate(store, address, "", Leaf);
+
+        Assert.That(store.NodeExists(address, TreePath.Empty, leafHash), Is.True);
+    }
+
+    [Test]
+    public void SaveNode_after_InvalidateNode_deletes_only_below_children_the_replaced_node_had()
+    {
+        Address account = TestItem.AddressA;
+        Hash256 address = Keccak.Compute(account.Bytes);
+        WriteStorageNodes(address, BranchWithChildren(0, 1), "");
+        UInt256 droppedSlot = SlotWithFirstNibble(1);
+        UInt256 untouchedSlot = SlotWithFirstNibble(5);
+        WriteStorageDirectToDb(account, droppedSlot, [0x01]);
+        WriteStorageDirectToDb(account, untouchedSlot, [0x02]);
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        byte[] branch = BranchWithChildren(0);
+        ValueHash256 branchHash = ValueKeccak.Compute(branch);
+
+        Invalidate(store, address, "", branch);
+        store.SaveNode(address, TreePath.Empty, branchHash, branch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(HasStorageSlot(account, droppedSlot), Is.False);
+            Assert.That(HasStorageSlot(account, untouchedSlot), Is.True);
+            Assert.That(store.NodeExists(address, TreePath.Empty, branchHash), Is.True);
+        }
+    }
+
+    [Test]
+    public void SaveNode_after_two_different_received_nodes_deletes_below_every_empty_child()
+    {
+        Address account = TestItem.AddressA;
+        Hash256 address = Keccak.Compute(account.Bytes);
+        WriteStorageNodes(address, BranchWithChildren(0, 1), "");
+        UInt256 slot = SlotWithFirstNibble(5);
+        WriteStorageDirectToDb(account, slot, [0x02]);
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        byte[] interrupted = BranchWithChildren(0, 5);
+        byte[] branch = BranchWithChildren(0);
+        ValueHash256 branchHash = ValueKeccak.Compute(branch);
+
+        Invalidate(store, address, "", interrupted);
+        Invalidate(store, address, "", branch);
+        store.SaveNode(address, TreePath.Empty, branchHash, branch);
+
+        Assert.That(HasStorageSlot(account, slot), Is.False);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Extension_drops_the_stored_nodes_inside_its_key(bool invalidate)
+    {
+        Hash256 address = Keccak.Compute(TestItem.AddressA.Bytes);
+        WriteStorageNodes(address, "1", "12", "123");
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        byte[] extension = ExtensionWithKey123();
+        ValueHash256 leafHash = ValueKeccak.Compute(Leaf);
+
+        if (invalidate) Invalidate(store, address, "", extension);
+        else store.SaveNode(address, TreePath.Empty, ValueKeccak.Compute(extension), extension);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("1"), leafHash), Is.False);
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("12"), leafHash), Is.False);
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("123"), leafHash), Is.True);
+        }
+    }
+
+    private static readonly ValueHash256 KeyUnderP7 = new("0x17abaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+
+    private static byte[] RlpList(byte[] first, byte[] second)
+    {
+        int contentLength = first.Length + second.Length;
+        byte[] result = new byte[Rlp.LengthOfSequence(contentLength)];
+        int position = Rlp.StartSequence(result, 0, contentLength);
+        first.CopyTo(result, position);
+        second.CopyTo(result, position + first.Length);
+        return result;
+    }
+
+    private static byte[] LeafRlp(byte[] hexPrefixedKey, byte[] value) => RlpList(Rlp.Encode(hexPrefixedKey), Rlp.Encode(value));
+
+    private static byte[] RootLeaf(in ValueHash256 key, byte[] value) => LeafRlp([0x20, .. key.Bytes], value);
+
+    private static byte[] LeafBelow17(in ValueHash256 key, byte[] value) => LeafRlp([0x20, .. key.Bytes[1..]], value);
+
+    private static byte[] ExtensionWithKey17(in ValueHash256 child) => RlpList(Rlp.Encode(new byte[] { 0x00, 0x17 }), Rlp.Encode(child.Bytes));
+
+    private void UseRlpSlotEncoding()
+    {
+        _columnsDb.Dispose();
+        _columnsDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+        BasePersistence.SetSlotEncoding(_columnsDb.GetColumnDb(FlatDbColumns.Metadata), BasePersistence.SlotEncodingRlp);
+        _persistence = new RocksDbPersistence(_columnsDb, LimboLogs.Instance, NullTrieNodeLog.Instance);
+    }
+
+    private bool HasFlatEntry(Hash256? address, in ValueHash256 key)
+    {
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        UInt256 value = default;
+        return address is null ? reader.GetAccountRaw(key) is not null : reader.TryGetStorageRaw(address.ValueHash256, key, ref value);
+    }
+
+    private static void Save(FlatTreeSyncStore store, Hash256? address, string path, byte[] rlp) =>
+        store.SaveNode(address, path.Length == 0 ? TreePath.Empty : TreePath.FromHexString(path), ValueKeccak.Compute(rlp), rlp);
+
+    private static void Invalidate(FlatTreeSyncStore store, Hash256? address, string path, byte[] rlp)
+    {
+        TreePath treePath = path.Length == 0 ? TreePath.Empty : TreePath.FromHexString(path);
+        TrieNode node = new(NodeType.Unknown, rlp);
+        node.ResolveNode(NullTrieNodeResolver.Instance, treePath);
+        store.InvalidateNode(address, treePath, ValueKeccak.Compute(rlp), node);
+    }
+
+    public enum StaleEntryWriter { StorageLeaf, AccountLeaf, StorageExtension }
+
+    [Test]
+    public void Received_node_seen_again_after_its_path_was_emptied_deletes_below_every_child_it_lacks([Values] StaleEntryWriter writer)
+    {
+        UseRlpSlotEncoding();
+        Hash256? address = writer == StaleEntryWriter.AccountLeaf ? null : Keccak.Compute(TestItem.AddressA.Bytes);
+        byte[] stored = BranchWithChildren(0, 1);
+        using (IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            if (address is null) writeBatch.SetStateTrieNode(TreePath.FromHexString("1"), stored);
+            else writeBatch.SetStorageTrieNode(address, TreePath.FromHexString("1"), stored);
+        }
+
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        byte[] received = BranchWithChildren(0);
+        Invalidate(store, address, "1", received);
+
+        byte[] value = address is null ? AccountDecoder.Instance.Encode(Build.An.Account.WithBalance(1).TestObject) : Rlp.Encode(new byte[] { 0x01 });
+        switch (writer)
+        {
+            case StaleEntryWriter.StorageExtension:
+                byte[] leaf = LeafBelow17(KeyUnderP7, value);
+                Save(store, address, "17", leaf);
+                Save(store, address, "", ExtensionWithKey17(ValueKeccak.Compute(leaf)));
+                break;
+            default:
+                Save(store, address, "", RootLeaf(KeyUnderP7, value));
+                break;
+        }
+
+        Assert.That(HasFlatEntry(address, KeyUnderP7), Is.True, "guards the premise: the interrupted round wrote the entry under 1.7");
+
+        byte[] root = BranchWithChildren(1);
+        Invalidate(store, address, "", root);
+        Invalidate(store, address, "1", received);
+        Save(store, address, "1", received);
+        Save(store, address, "", root);
+
+        Assert.That(HasFlatEntry(address, KeyUnderP7), Is.False);
+    }
+
+    [Test]
+    public void InvalidateNode_with_a_leaf_drops_the_stored_subtree_at_its_path([Values] bool storage, [Values] bool storedIsSameLeaf)
+    {
+        Hash256? address = storage ? Keccak.Compute(TestItem.AddressA.Bytes) : null;
+        byte[] key = [0x20, .. KeyUnderP7.Bytes[1..]];
+        byte[] stored = storedIsSameLeaf ? LeafRlp(key, Rlp.Encode(new byte[] { 0x02 })) : BranchWithChildren(0xa);
+        using (IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            foreach ((string path, byte[] rlp) in new[] { ("1", stored), ("1a", Leaf) })
+            {
+                if (address is null) writeBatch.SetStateTrieNode(TreePath.FromHexString(path), rlp);
+                else writeBatch.SetStorageTrieNode(address, TreePath.FromHexString(path), rlp);
+            }
+        }
+
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        byte[] leaf = LeafRlp(key, Rlp.Encode(new byte[] { 0x01 }));
+        Invalidate(store, address, "1", leaf);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("1"), ValueKeccak.Compute(stored)), Is.False);
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("1a"), ValueKeccak.Compute(Leaf)), Is.EqualTo(storedIsSameLeaf));
+        }
+    }
+
+    [Test]
+    public void InvalidateNode_with_a_leaf_drops_stored_descendants_when_its_own_path_is_empty([Values] bool storage)
+    {
+        Hash256? address = storage ? Keccak.Compute(TestItem.AddressA.Bytes) : null;
+        using (IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            if (address is null) writeBatch.SetStateTrieNode(TreePath.FromHexString("1a"), Leaf);
+            else writeBatch.SetStorageTrieNode(address, TreePath.FromHexString("1a"), Leaf);
+        }
+
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        byte[] key = [0x20, .. KeyUnderP7.Bytes[1..]];
+        Invalidate(store, address, "1", LeafRlp(key, Rlp.Encode(new byte[] { 0x01 })));
+
+        Assert.That(store.NodeExists(address, TreePath.FromHexString("1a"), ValueKeccak.Compute(Leaf)), Is.False);
+    }
+
+    [Test]
+    public void Replaced_nodes_stay_bounded_over_interrupted_rounds()
+    {
+        UseRlpSlotEncoding();
+        Hash256 address = Keccak.Compute(TestItem.AddressA.Bytes);
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance) { MaxReplacedNodes = 4 };
+        byte[] stored = BranchWithChildren(0, 1);
+        byte[] received = BranchWithChildren(0);
+
+        for (int round = 0; round < 10; round++)
+        {
+            string path = round.ToString("x");
+            WriteStorageNodes(address, stored, path);
+            Invalidate(store, address, path, received);
+            Assert.That(store.ReplacedNodeCount, Is.LessThanOrEqualTo(4));
+        }
+
+        ValueHash256 slot = new("0x91abaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+        using (IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            writeBatch.SetStorageRawEncoded(address.ValueHash256, slot, Rlp.Encode(new byte[] { 0x01 }));
+        }
+
+        Assert.That(HasFlatEntry(address, slot), Is.True, "guards the premise");
+        Save(store, address, "9", received);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.ReplacedNodeCount, Is.EqualTo(4));
+            Assert.That(HasFlatEntry(address, slot), Is.False, "a path past the bound falls back to deleting outside the saved children");
+        }
+    }
+
+    [Test]
+    public void EnsureStorageEmpty_deletes_storage_trie_nodes()
+    {
+        Hash256 address = Keccak.Compute(TestItem.AddressA.Bytes);
+        byte[] node = [0xc2, 0x80, 0x80];
+        ValueHash256 nodeHash = ValueKeccak.Compute(node);
+        using (IPersistence.IWriteBatch writeBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            writeBatch.SetStorageTrieNode(address, TreePath.Empty, node);
+            writeBatch.SetStorageTrieNode(address, TreePath.FromHexString("0a"), node);
+            writeBatch.SetStorageTrieNode(address, TreePath.FromHexString("0a1b2c3d4e5f60718293"), node);
+        }
+
+        FlatTreeSyncStore store = new(_persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance);
+        Assert.That(store.NodeExists(address, TreePath.FromHexString("0a1b2c3d4e5f60718293"), nodeHash), Is.True);
+
+        store.EnsureStorageEmpty(address);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.NodeExists(address, TreePath.Empty, nodeHash), Is.False);
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("0a"), nodeHash), Is.False);
+            Assert.That(store.NodeExists(address, TreePath.FromHexString("0a1b2c3d4e5f60718293"), nodeHash), Is.False);
+        }
     }
 
     [Test]

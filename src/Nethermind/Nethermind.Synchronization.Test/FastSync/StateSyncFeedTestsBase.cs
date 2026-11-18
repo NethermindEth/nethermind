@@ -55,6 +55,8 @@ public abstract class StateSyncFeedTestsBase(
 
     public static (string Name, Action<StateTree, ITrieStore, IDb> Action)[] Scenarios => TrieScenarios.Scenarios;
 
+    protected virtual bool UseFlatDb => false;
+
     [SetUp]
     public void Setup()
     {
@@ -114,11 +116,12 @@ public abstract class StateSyncFeedTestsBase(
     {
         ContainerBuilder containerBuilder = new ContainerBuilder()
             // These tests exercise the patricia state-sync feed (trie-node download) directly and verify via
-            // PatriciaSnapTrieFactory/LocalDbContext, so they pin the patricia backend.
+            // PatriciaSnapTrieFactory/LocalDbContext, so they pin the patricia backend unless UseFlatDb is set.
             .AddModule(new TestNethermindModule(new ConfigProvider(new SyncConfig()
             {
-                FastSync = true
-            }, new FlatDbConfig { Enabled = false })))
+                FastSync = true,
+                SnapSync = UseFlatDb
+            }, new FlatDbConfig { Enabled = UseFlatDb })))
             .AddDecorator<ISyncConfig>((_, syncConfig) => // Need to be a decorator because `TestEnvironmentModule` override `SyncDispatcherAllocateTimeoutMs` for other tests, but we need specific value.
             {
                 syncConfig.SyncDispatcherAllocateTimeoutMs = syncDispatcherAllocateTimeoutMs; // there is a test for requested nodes which get affected if allocate timeout
@@ -139,9 +142,6 @@ public abstract class StateSyncFeedTestsBase(
             .AddKeyedSingleton<IDb>(DbNames.State, (_) => new TestMemDb())
             .AddSingleton<INodeStorage>((ctx) => new NodeStorage(ctx.ResolveNamed<IDb>(DbNames.State)))
 
-            .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
-            .AddSingleton<IStateSyncTestOperation, LocalDbContext>()
-
             // Substitute the sync mode selector so StateSyncRunner.RunStateSyncRounds'
             // WaitUntilMode(StateNodes) returns immediately in tests rather than
             // blocking on real MultiSyncModeSelector state transitions.
@@ -153,8 +153,7 @@ public abstract class StateSyncFeedTestsBase(
             })
 
             // Substitute progress resolver + beacon strategy so StateSyncPrecursorWait's
-            // close-to-head poll returns immediately (default test peers have HeadNumber=0
-            // so the real predicate would never be satisfied).
+            // close-to-head poll returns immediately in tests.
             .AddSingleton<ISyncProgressResolver>(static _ =>
             {
                 ISyncProgressResolver resolver = Substitute.For<ISyncProgressResolver>();
@@ -169,12 +168,47 @@ public abstract class StateSyncFeedTestsBase(
                 return strategy;
             });
 
+        if (UseFlatDb)
+        {
+            containerBuilder.AddSingleton<IStateSyncTestOperation, FlatLocalDbContext>();
+        }
+        else
+        {
+            containerBuilder
+                .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
+                .AddSingleton<IStateSyncTestOperation, LocalDbContext>();
+        }
+
         containerBuilder.RegisterBuildCallback((ctx) =>
         {
             ctx.Resolve<ISyncPeerPool>().Start();
         });
 
         return containerBuilder;
+    }
+
+    /// <summary>Runs a round until <paramref name="reached"/> completes, then cancels the round and waits until it drains.</summary>
+    protected async Task ActivateUntil(SafeContext safeContext, Task reached)
+    {
+        using CancellationTokenSource roundCancellation = CancellationTokenSource.CreateLinkedTokenSource(safeContext.CancellationToken);
+        Task feedTask = safeContext.RunFeed(roundCancellation.Token);
+
+        Task completed = await Task.WhenAny(reached, feedTask, Task.Delay(TimeoutLength));
+
+        await roundCancellation.CancelAsync();
+        try
+        {
+            await feedTask.WaitAsync(TimeSpan.FromMilliseconds(DrainTimeoutLength));
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (TimeoutException)
+        {
+            Assert.Fail($"State sync did not drain within {DrainTimeoutLength}ms of cancellation.");
+        }
+
+        Assert.That(completed, Is.SameAs(reached), "the round reached the expected point before it ended");
     }
 
     protected async Task ActivateAndWait(SafeContext safeContext, int timeout = TimeoutLength, bool failOnTimeout = true)
@@ -273,6 +307,7 @@ public abstract class StateSyncFeedTestsBase(
         private readonly ISnapServer _snapServer;
 
         private Hash256[]? _filter;
+        private Hash256[]? _withheldTrieNodes;
         private readonly Func<IReadOnlyList<Hash256>, Task<IByteArrayList>>? _executorResultFunction;
         private readonly long _maxRandomizedLatencyMs;
 
@@ -340,8 +375,14 @@ public abstract class StateSyncFeedTestsBase(
         public void SetFilter(Hash256[]? availableHashes) =>
             _filter = availableHashes;
 
-        public void SetBlockTree(IBlockTree blockTree) =>
+        public void SetBlockTree(IBlockTree blockTree)
+        {
             _blockTree = blockTree;
+            BlockHeader head = blockTree.Head!.Header;
+            HeadHash = head.Hash!;
+            HeadNumber = head.Number;
+            TotalDifficulty = head.TotalDifficulty;
+        }
 
         public override bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
         {
@@ -355,7 +396,7 @@ public abstract class StateSyncFeedTestsBase(
         }
 
         public override Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
-            Task.FromResult(_blockTree?.Head?.Header);
+            Task.FromResult(hash is null ? _blockTree?.Head?.Header : _blockTree?.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded));
 
         public override Task<IByteArrayList> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token) =>
             Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
@@ -367,11 +408,32 @@ public abstract class StateSyncFeedTestsBase(
                 AccountAndStoragePaths = Snap1ProtocolHandler.GetPathGroups(request),
             }, token);
 
-        public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token) =>
-            Task.FromResult(_snapServer.GetTrieNodes(
+        public override Task<IByteArrayList> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        {
+            IByteArrayList nodes = _snapServer.GetTrieNodes(
                 request.AccountAndStoragePaths,
                 request.RootHash,
-                token) ?? EmptyByteArrayList.Instance);
+                token) ?? EmptyByteArrayList.Instance;
+            return Task.FromResult(_withheldTrieNodes is null ? nodes : WithoutWithheld(nodes, _withheldTrieNodes));
+        }
+
+        public void SetWithheldTrieNodes(params Hash256[]? hashes) =>
+            _withheldTrieNodes = hashes;
+
+        private static IByteArrayList WithoutWithheld(IByteArrayList nodes, Hash256[] withheld)
+        {
+            using (nodes)
+            {
+                ArrayPoolList<byte[]> result = new(nodes.Count, nodes.Count);
+                for (int i = 0; i < nodes.Count; i++)
+                {
+                    byte[] node = nodes[i].ToArray();
+                    result[i] = withheld.Contains(Keccak.Compute(node)) ? [] : node;
+                }
+
+                return new ByteArrayListAdapter(result);
+            }
+        }
     }
 }
 

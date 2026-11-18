@@ -25,7 +25,33 @@ public class FlatTreeSyncStore(
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
 
+    private const int DefaultMaxReplacedNodes = 16_384;
+
+    private readonly Lock _replacedNodesLock = new();
+    private readonly Dictionary<(ValueHash256 Address, TreePath Path), ReplacedNode> _replacedNodes = [];
+
+    /// <summary>
+    /// The most replaced nodes kept. A node invalidated past this bound is not kept, and saving its path then deletes
+    /// everything outside the children of the saved node, as when the node before it is not known.
+    /// </summary>
+    internal int MaxReplacedNodes { get; init; } = DefaultMaxReplacedNodes;
+
+    internal int ReplacedNodeCount
+    {
+        get
+        {
+            lock (_replacedNodesLock)
+            {
+                return _replacedNodes.Count;
+            }
+        }
+    }
+
     internal readonly record struct DeletionRange(ValueHash256 From, ValueHash256 To);
+
+    /// <param name="ReceivedHash">The node received for the path and not saved yet.</param>
+    /// <param name="PreviousRlp">The node that was stored at the path before, or null when the data below the path is not known.</param>
+    private readonly record struct ReplacedNode(ValueHash256 ReceivedHash, byte[]? PreviousRlp);
 
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
@@ -49,7 +75,16 @@ public class FlatTreeSyncStore(
         TrieNode node = new(NodeType.Unknown, data.ToArray());
         node.ResolveNode(NullTrieNodeResolver.Instance, path);
 
-        TrieNode? existingNode = ReadExistingNode(reader, address, path);
+        bool wasReplaced;
+        ReplacedNode replaced;
+        lock (_replacedNodesLock)
+        {
+            wasReplaced = _replacedNodes.Remove((AddressKey(address), path), out replaced);
+        }
+
+        TrieNode? existingNode = wasReplaced
+            ? replaced.ReceivedHash == hash && replaced.PreviousRlp is not null ? ResolveNode(replaced.PreviousRlp, path) : null
+            : ReadExistingNode(reader, address, path);
 
         if (address is null)
         {
@@ -65,19 +100,104 @@ public class FlatTreeSyncStore(
             writeBatch.SetStorageTrieNode(address, path, data);
             FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
         }
+
+        if (node.IsExtension && !(existingNode is { NodeType: NodeType.Extension } && node.Key.SequenceEqual(existingNode.Key)))
+        {
+            DeleteNodesInsideKey(writeBatch, address, path, node);
+        }
     }
 
-    private static TrieNode? ReadExistingNode(IPersistence.IPersistenceReader reader, Hash256? address, TreePath path)
+    public void InvalidateNode(Hash256? address, in TreePath path, in ValueHash256 hash, TrieNode node)
+    {
+        if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
+
+        (ValueHash256 Address, TreePath Path) key = (AddressKey(address), path);
+        byte[]? storedRlp;
+        using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
+        {
+            storedRlp = ReadExistingRlp(reader, address, path);
+        }
+
+        if (storedRlp is not null && ValueKeccak.Compute(storedRlp) == hash) return;
+
+        lock (_replacedNodesLock)
+        {
+            if (storedRlp is not null)
+            {
+                if (_replacedNodes.Count < MaxReplacedNodes || _replacedNodes.ContainsKey(key))
+                {
+                    _replacedNodes[key] = new ReplacedNode(hash, storedRlp);
+                }
+            }
+            else if (_replacedNodes.ContainsKey(key))
+            {
+                _replacedNodes[key] = new ReplacedNode(hash, null);
+            }
+        }
+
+        if (storedRlp is null && !node.IsExtension && !node.IsLeaf) return;
+
+        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        if (node.IsLeaf && (storedRlp is null || !IsLeafWithKey(ResolveNode(storedRlp, path), node.Key!)))
+        {
+            DeleteTrieNodesBelow(writeBatch, address, path);
+        }
+        else if (storedRlp is not null)
+        {
+            DeleteTrieNode(writeBatch, address, path);
+        }
+        if (node.IsExtension) DeleteNodesInsideKey(writeBatch, address, path, node);
+    }
+
+    private static ValueHash256 AddressKey(Hash256? address) => address?.ValueHash256 ?? default;
+
+    private static TrieNode ResolveNode(byte[] rlp, in TreePath path)
+    {
+        TrieNode node = new(NodeType.Unknown, rlp);
+        node.ResolveNode(NullTrieNodeResolver.Instance, path);
+        return node;
+    }
+
+    private static void DeleteTrieNode(IPersistence.IWriteBatch writeBatch, Hash256? address, in TreePath path)
+    {
+        if (address is null)
+            writeBatch.DeleteStateTrieNode(path);
+        else
+            writeBatch.DeleteStorageTrieNode(address, path);
+    }
+
+    private static bool IsLeafWithKey(TrieNode node, byte[] key) => node.IsLeaf && node.Key.AsSpan().SequenceEqual(key);
+
+    /// <summary>Deletes the trie node at <paramref name="path"/> and every trie node below it.</summary>
+    private static void DeleteTrieNodesBelow(IPersistence.IWriteBatch writeBatch, Hash256? address, in TreePath path)
+    {
+        DeletionRange range = ComputeSubtreeRange(path);
+        if (address is null)
+            writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
+        else
+            writeBatch.DeleteStorageTrieNodeRange(address.ValueHash256, range.From, range.To);
+    }
+
+    private static void DeleteNodesInsideKey(IPersistence.IWriteBatch writeBatch, Hash256? address, in TreePath path, TrieNode extension)
+    {
+        TreePath insidePath = path;
+        for (int i = 0; i < extension.Key!.Length - 1; i++)
+        {
+            insidePath = insidePath.Append(extension.Key[i]);
+            DeleteTrieNode(writeBatch, address, insidePath);
+        }
+    }
+
+    private static TrieNode? ReadExistingNode(IPersistence.IPersistenceReader reader, Hash256? address, TreePath path) =>
+        ReadExistingRlp(reader, address, path) is { } existingData ? ResolveNode(existingData, path) : null;
+
+    private static byte[]? ReadExistingRlp(IPersistence.IPersistenceReader reader, Hash256? address, in TreePath path)
     {
         byte[]? existingData = null;
         _ = address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref existingData))
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref existingData));
-        if (existingData is null) return null;
-
-        TrieNode existingNode = new(NodeType.Unknown, existingData);
-        existingNode.ResolveNode(NullTrieNodeResolver.Instance, path);
-        return existingNode;
+        return existingData;
     }
 
     private void RequestStateDeletion(IPersistence.IWriteBatch writeBatch, in TreePath path, TrieNode newNode, TrieNode? existingNode)
@@ -232,17 +352,19 @@ public class FlatTreeSyncStore(
 
     public void EnsureStorageEmpty(in ValueHash256 address)
     {
-        // Only need to clean flat storage entries. Orphaned storage trie nodes are not a problem
-        // because the trie is always traversed from the account's storage root hash — when the
-        // account has EmptyTreeHash or the account no longer exists, no storage trie nodes will
-        // ever be reached.
+        // Storage trie nodes go too: NodeExists is keyed by path, so a later round would take a stale node as a complete subtree.
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         writeBatch.DeleteStorageRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
+        writeBatch.DeleteStorageTrieNodeRange(address, ValueKeccak.Zero, ValueKeccak.MaxValue);
     }
 
     public void FinalizeSync(BlockHeader pivotHeader)
     {
         if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
+        lock (_replacedNodesLock)
+        {
+            _replacedNodes.Clear();
+        }
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;

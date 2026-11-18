@@ -99,6 +99,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
         => new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, flags), to);
 
+    /// <inheritdoc/>
+    public IPersistence.IAtomicPersistenceBatch CreateAtomicWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
+        => new AtomicInvalidatingWriteBatch(this, _inner.CreateAtomicWriteBatch(from, to, flags), to);
+
     public void Flush() => _inner.Flush();
 
     public void Clear()
@@ -363,21 +367,30 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         }
     }
 
-    private sealed class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to)
+    private sealed class AtomicInvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IAtomicPersistenceBatch inner, StateId to)
+        : InvalidatingWriteBatch(parent, inner, to, atomic: true), IPersistence.IAtomicPersistenceBatch
+    {
+        public void Commit() => CommitAtomic();
+    }
+
+    private class InvalidatingWriteBatch(CarryForwardCachingPersistence parent, IPersistence.IWriteBatch inner, StateId to, bool atomic = false)
         : IPersistence.IWriteBatch
     {
         private HashSet<Address>? _writtenAccounts;
         private HashSet<(Address, UInt256)>? _writtenSlots;
         private bool _clearAll;
+        private bool _disposed;
 
         public void SelfDestruct(Address addr)
         {
+            ObjectDisposedException.ThrowIf(atomic && _disposed, this);
             _clearAll = true;
             inner.SelfDestruct(addr);
         }
 
         public void SetAccount(Address addr, Account? account)
         {
+            ObjectDisposedException.ThrowIf(atomic && _disposed, this);
             if (!_clearAll) TrackWrite(_writtenAccounts ??= parent.RentWrittenAccounts(), addr);
             inner.SetAccount(addr, account);
         }
@@ -390,6 +403,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
+            ObjectDisposedException.ThrowIf(atomic && _disposed, this);
             if (!_clearAll) TrackWrite(_writtenSlots ??= parent.RentWrittenSlots(), (addr, slot));
             inner.SetStorage(addr, slot, value);
         }
@@ -410,24 +424,28 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue)
         {
+            ObjectDisposedException.ThrowIf(atomic && _disposed, this);
             _clearAll = true;
             inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
         }
 
         public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account)
         {
+            ObjectDisposedException.ThrowIf(atomic && _disposed, this);
             _clearAll = true;
             inner.SetAccountRaw(addrHash, account);
         }
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
         {
+            ObjectDisposedException.ThrowIf(atomic && _disposed, this);
             _clearAll = true;
             inner.DeleteAccountRange(fromPath, toPath);
         }
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
         {
+            ObjectDisposedException.ThrowIf(atomic && _disposed, this);
             _clearAll = true;
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
         }
@@ -440,14 +458,57 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
+        /// <inheritdoc/>
+        public void DeleteStateTrieNode(in TreePath path) => inner.DeleteStateTrieNode(path);
+        /// <inheritdoc/>
+        public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path) => inner.DeleteStorageTrieNode(address, path);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) => inner.DeleteStorageTrieNodeRange(addressHash, from, to, beforeDelete);
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.IsStorageRangeEmpty(addressHash, from, to);
         public void SetMigrationCursor(in MigrationCursor? cursor) => inner.SetMigrationCursor(cursor);
 
         public void Dispose()
         {
+            if (atomic)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                try
+                {
+                    inner.Dispose();
+                }
+                finally
+                {
+                    ReturnWrittenSets();
+                }
+                return;
+            }
             inner.Dispose();
             parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            ReturnWrittenSets();
+        }
+
+        protected void CommitAtomic()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            try
+            {
+                ((IPersistence.IAtomicPersistenceBatch)inner).Commit();
+                parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            }
+            catch
+            {
+                parent.OnCommitted(to, null, null, clearAll: true);
+                throw;
+            }
+            finally
+            {
+                Dispose();
+            }
+        }
+
+        private void ReturnWrittenSets()
+        {
             parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
             _writtenAccounts = null;
             _writtenSlots = null;

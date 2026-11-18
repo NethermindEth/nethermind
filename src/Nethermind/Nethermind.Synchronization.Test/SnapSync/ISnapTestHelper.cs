@@ -19,5 +19,7 @@ public class PatriciaSnapTestHelper([KeyFilter(DbNames.State)] IDb stateDb) : IS
 {
     public int CountTrieNodes() => stateDb.GetAllKeys().Count();
     public bool TrieNodeKeyExists(Hash256 hash) => stateDb.KeyExists(hash.Bytes);
-    public long TrieNodeWritesCount => ((MemDb)stateDb).WritesCount;
+    public long TrieNodeWritesCount => stateDb is SnapshotableMemDb snapshotable
+        ? snapshotable.WritesCount
+        : ((MemDb)stateDb).WritesCount;
 }

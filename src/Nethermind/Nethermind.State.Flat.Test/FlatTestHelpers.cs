@@ -333,8 +333,10 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
 /// (NSubstitute's backing) throws <c>InvalidProgramException</c> when proxying methods with ref-struct parameters
 /// such as <c>scoped ReadOnlySpan&lt;byte&gt;</c>.
 /// </summary>
-public sealed class FakeWriteBatch : IPersistence.IWriteBatch
+public sealed class FakeWriteBatch : IPersistence.IAtomicPersistenceBatch
 {
+    public void Commit() { }
+
     public List<Address> SelfDestructCalls { get; } = [];
     public List<(Address Addr, Account? Account)> SetAccountCalls { get; } = [];
     public List<(Address Addr, UInt256 Slot, UInt256? Value)> SetStorageCalls { get; } = [];
@@ -348,6 +350,10 @@ public sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public List<(ValueHash256 From, ValueHash256 To)> DeleteStateTrieNodeRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
     public List<MigrationCursor?> SetMigrationCursorCalls { get; } = [];
+    public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> IsStorageRangeEmptyCalls { get; } = [];
+
+    /// <summary>What <see cref="IsStorageRangeEmpty"/> answers; false, as for a batch that cannot tell, unless set.</summary>
+    public bool StorageRangeEmpty { get; set; }
     public int DisposeCount { get; private set; }
 
     public void SelfDestruct(Address addr) => SelfDestructCalls.Add(addr);
@@ -377,8 +383,14 @@ public sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
         DeleteStateTrieNodeRangeCalls.Add((from, to));
 
-    public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+    public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) =>
         DeleteStorageTrieNodeRangeCalls.Add((addressHash, from, to));
+
+    public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to)
+    {
+        IsStorageRangeEmptyCalls.Add((addressHash, from, to));
+        return StorageRangeEmpty;
+    }
 
     public void SetMigrationCursor(in MigrationCursor? cursor) => SetMigrationCursorCalls.Add(cursor);
 

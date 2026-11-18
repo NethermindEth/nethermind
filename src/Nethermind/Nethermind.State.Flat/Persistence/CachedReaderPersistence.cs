@@ -97,6 +97,10 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
 
     public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => new ClearCacheOnWriteBatchComplete(_inner.CreateWriteBatch(from, to, flags), this);
 
+    /// <inheritdoc/>
+    public IPersistence.IAtomicPersistenceBatch CreateAtomicWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) =>
+        new AtomicClearCacheWriteBatch(_inner.CreateAtomicWriteBatch(from, to, flags), this);
+
     public void Flush() => _inner.Flush();
 
     public void Clear()
@@ -127,25 +131,74 @@ public class CachedReaderPersistence : IPersistence, IAsyncDisposable
         _cancelTokenSource.Dispose();
     }
 
+    private sealed class AtomicClearCacheWriteBatch(IPersistence.IAtomicPersistenceBatch inner, CachedReaderPersistence parent)
+        : ClearCacheOnWriteBatchComplete(inner, parent), IPersistence.IAtomicPersistenceBatch
+    {
+        private bool _disposed;
+
+        public void Commit()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            try
+            {
+                ((IPersistence.IAtomicPersistenceBatch)Inner).Commit();
+            }
+            finally
+            {
+                Dispose();
+            }
+        }
+
+        public override void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            try
+            {
+                Inner.Dispose();
+            }
+            catch (Exception exception)
+            {
+                if (Parent._logger.IsError) Parent._logger.Error("Failed to release the cached persistence transaction.", exception);
+            }
+            try
+            {
+                Parent.ClearReaderCache();
+            }
+            catch (Exception exception)
+            {
+                if (Parent._logger.IsError) Parent._logger.Error("Failed to release the cached persistence reader.", exception);
+            }
+        }
+    }
+
     private class ClearCacheOnWriteBatchComplete(IPersistence.IWriteBatch inner, CachedReaderPersistence parent)
         : IPersistence.IWriteBatch
     {
+        protected IPersistence.IWriteBatch Inner => inner;
+        protected CachedReaderPersistence Parent => parent;
+
         public void SelfDestruct(Address addr) => inner.SelfDestruct(addr);
         public void SetAccount(Address addr, Account? account) => inner.SetAccount(addr, account);
         public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => inner.SetSlimAccount(addr, slimRlp);
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => inner.SetStorage(addr, slot, value);
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);
         public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStorageTrieNode(address, path, rlp);
+        /// <inheritdoc/>
+        public void DeleteStateTrieNode(in TreePath path) => inner.DeleteStateTrieNode(path);
+        /// <inheritdoc/>
+        public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path) => inner.DeleteStorageTrieNode(address, path);
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
         public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => inner.SetAccountRaw(addrHash, account);
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteAccountRange(fromPath, toPath);
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => inner.DeleteStorageRange(addressHash, fromPath, toPath);
         public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) => inner.SelfDestructRange(fromPath, toPath, keptAccount);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => inner.DeleteStateTrieNodeRange(from, to);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.DeleteStorageTrieNodeRange(addressHash, from, to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) => inner.DeleteStorageTrieNodeRange(addressHash, from, to, beforeDelete);
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => inner.IsStorageRangeEmpty(addressHash, from, to);
         public void SetMigrationCursor(in MigrationCursor? cursor) => inner.SetMigrationCursor(cursor);
 
-        public void Dispose()
+        public virtual void Dispose()
         {
             inner.Dispose();
 

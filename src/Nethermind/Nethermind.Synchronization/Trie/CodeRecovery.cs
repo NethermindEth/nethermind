@@ -26,8 +26,17 @@ namespace Nethermind.Synchronization.Trie;
 /// Races a few peers against each other and takes the first response that hashes to the requested code hash,
 /// so a peer that serves nothing or serves the wrong bytes only loses its own attempt.
 /// </remarks>
-public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICodeRecovery
+public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager, INodeStatsManager? nodeStatsManager) : ICodeRecovery
 {
+    /// <summary>Creates bytecode recovery without transfer speed reporting.</summary>
+    public CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : this(peerPool, logManager, null)
+    {
+    }
+
+    private sealed record RecoveryResult(PeerInfo Peer, byte[] Code, long ElapsedMilliseconds);
+
+    internal TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
     // Pick by reduced latency instead of throughput
     private static readonly IPeerAllocationStrategy SnapPeerStrategy =
         new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(
@@ -49,23 +58,27 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
 
         if (_logger.IsDebug) _logger.Debug($"Recovering code {codeHash}");
 
-        using ArrayPoolList<Task<byte[]?>> concurrentAttempts = new(ConcurrentAttempt);
+        using ArrayPoolList<Task<RecoveryResult?>> concurrentAttempts = new(ConcurrentAttempt);
         for (int i = 0; i < ConcurrentAttempt; i++)
         {
             concurrentAttempts.Add(Attempt());
         }
 
-        byte[]? recovered = await Wait.AnyWhere(static result => result is not null, concurrentAttempts);
+        RecoveryResult? recovered = await Wait.AnyWhere(static result => result is not null, concurrentAttempts);
+        if (recovered is null && token.IsCancellationRequested) return null;
+        if (recovered is not null && recovered.Code.Length > 0)
+            nodeStatsManager?.ReportTransferSpeedEvent(recovered.Peer.SyncPeer.Node, TransferSpeedType.SnapRanges,
+                recovered.Code.Length / Math.Max(1, recovered.ElapsedMilliseconds));
         if (recovered is null)
         {
             if (_logger.IsWarn) _logger.Warn($"Failed to recover code {codeHash}");
         }
 
-        return recovered;
+        return recovered?.Code;
 
         // Completes with null rather than faulting. Wait.AnyWhere rethrows the first faulted task and
         // drops the rest, and Allocate/Free throw outside the reach of the inner handler.
-        async Task<byte[]?> Attempt()
+        async Task<RecoveryResult?> Attempt()
         {
             try
             {
@@ -73,8 +86,11 @@ public class CodeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : ICod
                 {
                     try
                     {
+                        long started = TimeProvider.GetTimestamp();
                         byte[]? result = await RecoverFromPeer(peer.SyncPeer, codeHash, token);
-                        if (result is not null) return result;
+                        if (token.IsCancellationRequested) return null;
+                        if (result is not null)
+                            return new RecoveryResult(peer, result, (long)TimeProvider.GetElapsedTime(started).TotalMilliseconds);
 
                         if (_logger.IsDebug) _logger.Debug($"Mark peer {peer:hide} weak");
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);

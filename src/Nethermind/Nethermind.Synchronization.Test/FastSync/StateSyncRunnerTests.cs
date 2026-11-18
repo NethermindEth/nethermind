@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -12,10 +13,15 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Core.Test.Threading;
 
 namespace Nethermind.Synchronization.Test.FastSync;
 
@@ -26,6 +32,37 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
     private ISnapSyncRunner _snapSyncRunner = null!;
     private ISnapTrieFactory _snapTrieFactory = null!;
     private IStateSyncPivot _pivot = null!;
+
+    [Test]
+    public async Task Precursor_wait_ignores_unserved_claims_and_preserves_beacon_target(
+        [Values(null, 100UL, 100000UL)] ulong? beaconTarget, [Values(0UL, 100000UL)] ulong servedHeight)
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        container.Resolve<ISyncProgressResolver>().FindBestHeader().Returns(100UL);
+        container.Resolve<IBeaconSyncStrategy>().GetTargetBlockHeight().Returns(beaconTarget);
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Node(TestItem.PublicKeyF, "127.0.0.1", 30303));
+        peer.IsInitialized.Returns(true);
+        BlockHeader response = Build.A.BlockHeader.WithNumber(100000).TestObject;
+        if (servedHeight != 0) container.Resolve<IBlockTree>().Insert(response, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        peer.HeadHash = response.Hash!;
+        peer.HeadNumber.Returns(ulong.MaxValue);
+        peer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(response));
+        ISyncPeerPool pool = container.Resolve<ISyncPeerPool>();
+        pool.AddPeer(peer);
+        container.Resolve<IPeerDifficultyRefreshPool>().UpdateSyncPeerHeadIfHeaderIsBetter(peer, (await peer.GetHeadBlockHeader(response.Hash!, default))!, Keccak.Zero);
+        using CancellationTokenSource cancellation = new();
+
+        Task wait = (Task)typeof(StateSyncRunner).GetMethod("StateSyncPrecursorWait", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(runner, [cancellation.Token])!;
+        bool completed = wait.IsCompletedSuccessfully;
+        await cancellation.CancelAsync();
+        try { await wait; }
+        catch (OperationCanceledException) { }
+
+        Assert.That(completed, Is.EqualTo((beaconTarget ?? servedHeight) != 100000UL));
+    }
 
     [Test]
     public async Task Heals_round_by_round_and_finalizes_at_the_last_pivot()
@@ -393,6 +430,22 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         _snapTrieFactory.Received(resumes ? 0 : 1).SaveCheckpoint(null);
     }
 
+    [Test]
+    public void Resumes_from_a_checkpoint_only_if_later_range_pivots_are_canonical([Values] bool canonical)
+    {
+        using IContainer container = BuildRunnerContainer();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        BlockHeader anchor = blockTree.FindHeader(10)!;
+        Hash256 laterHash = canonical ? blockTree.FindHeader(11)!.Hash! : TestItem.KeccakF;
+        ((ManualTimestamper)container.Resolve<ITimestamper>()).Set(DateTimeOffset.FromUnixTimeSeconds((long)anchor.Timestamp).UtcDateTime);
+        SnapCheckpoint checkpoint = CreateCheckpoint(anchor, [(11, laterHash)]);
+        _snapTrieFactory.LoadCheckpoint().Returns(SnapCheckpoint.Decode(checkpoint.Encode()));
+
+        Assert.That(runner.GetResumedAnchor()?.Hash, Is.EqualTo(canonical ? anchor.Hash : null));
+        _snapTrieFactory.Received(canonical ? 0 : 1).SaveCheckpoint(null);
+    }
+
     private IContainer BuildRunnerContainer()
     {
         _healing = Substitute.For<IBalHealing>();
@@ -412,10 +465,11 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
             .AddSingleton<IStateSyncPivot>(_pivot));
     }
 
-    private static SnapCheckpoint CreateCheckpoint(BlockHeader anchor) => new()
+    private static SnapCheckpoint CreateCheckpoint(BlockHeader anchor, (ulong Number, Hash256 Hash)[]? rangePivots = null) => new()
     {
         AnchorNumber = anchor.Number,
         AnchorHash = anchor.Hash!,
+        RangePivots = rangePivots ?? [],
         Partitions = [],
         StoragesToRetrieve = [],
         StorageRanges = [],
@@ -429,5 +483,48 @@ public class StateSyncRunnerTests : StateSyncFeedTestsBase
         IBlockAccessListStore balStore = container.Resolve<IBlockAccessListStore>();
         foreach (BlockHeader header in headers)
             balStore.Insert(header.Number, header.Hash!, new byte[] { 0xc0 });
+    }
+
+    [Test]
+    public async Task No_consensus_target_waits_for_headers_to_reach_served_height_minus_lag()
+    {
+        using IContainer container = PrepareDownloader(new RemoteDbContext(_logManager));
+        ISyncConfig config = container.Resolve<ISyncConfig>();
+        config.StateMinDistanceFromHead = 32;
+        config.HeaderStateDistance = 8;
+        container.Resolve<IBeaconSyncStrategy>().GetTargetBlockHeight().Returns((ulong?)null);
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Node(TestItem.PublicKeyF, "127.0.0.1", 30303));
+        peer.IsInitialized.Returns(true);
+        BlockHeader served = Build.A.BlockHeader.WithNumber(100000).TestObject;
+        container.Resolve<IBlockTree>().Insert(served, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        peer.HeadHash = served.Hash!;
+        peer.HeadNumber.Returns(100000UL);
+        peer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(served));
+        ISyncPeerPool pool = container.Resolve<ISyncPeerPool>();
+        pool.AddPeer(peer);
+        container.Resolve<IPeerDifficultyRefreshPool>().UpdateSyncPeerHeadIfHeaderIsBetter(peer, (await peer.GetHeadBlockHeader(served.Hash!, default))!, Keccak.Zero);
+        int header = 99959;
+        container.Resolve<ISyncProgressResolver>().FindBestHeader().Returns(_ => (ulong)Volatile.Read(ref header));
+        ManualTimeProvider clock = new();
+        StateSyncRunner runner = (StateSyncRunner)container.Resolve<IStateSyncRunner>();
+        runner.PrecursorTimeProvider = clock;
+        using CancellationTokenSource cancellation = new(TimeSpan.FromSeconds(10));
+        Task wait = (Task)typeof(StateSyncRunner).GetMethod("StateSyncPrecursorWait", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(runner, [cancellation.Token])!;
+        try
+        {
+            await clock.TimerCreated.WaitAsync(cancellation.Token);
+            Assert.That(wait.IsCompleted, Is.False, "a served head 41 blocks ahead exceeds the configured 40-block lag");
+            Volatile.Write(ref header, 99960);
+            clock.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+            await wait.WaitAsync(cancellation.Token);
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            try { await wait; }
+            catch (OperationCanceledException) { }
+        }
     }
 }

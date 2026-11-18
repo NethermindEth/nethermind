@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -30,6 +32,11 @@ public interface IPersistence
 {
     IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None);
     IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None);
+
+    /// <summary>Creates a batch which publishes atomically on commit and aborts on disposal.</summary>
+    /// <exception cref="NotSupportedException">The persistence backend cannot publish atomically.</exception>
+    IAtomicPersistenceBatch CreateAtomicWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) =>
+        ThrowAtomicWritesNotSupported();
 
     // Note: RocksdbPersistence already flush WAL on writing batch dispose. You don't need this unless you are skipping WAL.
     void Flush();
@@ -78,6 +85,21 @@ public interface IPersistence
         IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey);
         IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey);
         bool IsPreimageMode { get; }
+    }
+
+    /// <summary>An explicit atomic persistence transaction.</summary>
+    public interface IAtomicPersistenceBatch : IWriteBatch
+    {
+        /// <summary>Publishes all pending changes atomically.</summary>
+        void Commit();
+
+        /// <inheritdoc cref="IWriteBatch.IsStorageRangeEmpty"/>
+        /// <remarks>
+        /// Abstract here, unlike on <see cref="IWriteBatch"/>: snap sync writes every storage range through an atomic
+        /// batch, and a batch or wrapper that fell back to the default <c>false</c> would make it clean up every
+        /// boundary, which is several times slower. Every implementation must answer, or forward to the batch it wraps.
+        /// </remarks>
+        abstract bool IWriteBatch.IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
 
     /// <summary>A persistence reader that can start reading accounts and slots from its store ahead of use.</summary>
@@ -133,6 +155,14 @@ public interface IPersistence
         void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
 
+        /// <summary>Deletes the state trie node stored at <paramref name="path"/>, and only that node.</summary>
+        /// <exception cref="NotSupportedException">The write batch cannot delete a single trie node. This is the default.</exception>
+        void DeleteStateTrieNode(in TreePath path) => throw new NotSupportedException();
+
+        /// <summary>Deletes the node stored at <paramref name="path"/> in the storage trie of <paramref name="address"/>, and only that node.</summary>
+        /// <exception cref="NotSupportedException">The write batch cannot delete a single trie node. This is the default.</exception>
+        void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path) => throw new NotSupportedException();
+
         /// <summary>
         /// Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>), as produced
         /// during sync. When slot values are RLP-wrapped the bytes are stored verbatim; in raw mode the value is
@@ -165,7 +195,22 @@ public interface IPersistence
 
         /// <inheritdoc cref="DeleteStateTrieNodeRange"/>
         /// <remarks>Restricted to the storage trie of the account identified by <paramref name="addressHash"/>.</remarks>
-        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
+        /// <param name="beforeDelete">Called before removing any matching nodes.</param>
+        void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null);
+
+        /// <summary>
+        /// Whether <see cref="DeleteStorageRange"/> and <see cref="DeleteStorageTrieNodeRange"/> over the same range would
+        /// both find nothing to delete, as seen by the data this batch's range deletes scan. Then no node stored at a path
+        /// whose subtree is within the range exists there either.
+        /// </summary>
+        /// <remarks>
+        /// False when the batch cannot tell, the default, so a caller skips only deletes the batch proves are no-ops.
+        /// The answer comes from the snapshot the batch's range deletes scan, which the batch takes once, so it does not
+        /// change while the batch lives, and keys another batch writes after that snapshot are not seen. The range
+        /// deletes miss those keys too; only a blind single-node tombstone would have removed one, and only when that
+        /// other batch committed first.
+        /// </remarks>
+        bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => false;
 
         /// <summary>Saves the cursor of the HalfPath to flat migration with this batch's writes, or deletes it when <paramref name="cursor"/> is <c>null</c>.</summary>
         void SetMigrationCursor(in MigrationCursor? cursor);
@@ -186,4 +231,8 @@ public interface IPersistence
         ValueHash256 CurrentKey { get; }
         ReadOnlySpan<byte> CurrentValue { get; }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static IAtomicPersistenceBatch ThrowAtomicWritesNotSupported() =>
+        throw new NotSupportedException("Atomic persistence batches are not supported by this backend.");
 }

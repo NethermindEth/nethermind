@@ -17,7 +17,21 @@ namespace Nethermind.Synchronization.SnapSync
 
         AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response);
 
+        /// <summary>Verifies and stores the returned storage range.</summary>
+        /// <remarks>
+        /// Replacement providers control the returned classification. To preserve built-in stale-root recovery,
+        /// delegate to <see cref="SnapProvider"/>; the feed does not infer that recovery from pivot timing.
+        /// </remarks>
         AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response);
+
+        /// <summary>Applies the storage ranges and returns the first failure, if any.</summary>
+        /// <param name="madeProgress">Whether at least one account range was applied.</param>
+        AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response, out bool madeProgress)
+        {
+            AddRangeResult result = AddStorageRange(request, response);
+            madeProgress = result == AddRangeResult.OK;
+            return result;
+        }
 
         void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes);
 
@@ -28,7 +42,8 @@ namespace Nethermind.Synchronization.SnapSync
 
         /// <summary>Hands the request back, once per batch from <see cref="IsFinished"/>.</summary>
         /// <param name="responseHandled">False requeues the work; true means the handler already did.</param>
-        void ReleaseRequest(SnapSyncBatch batch, bool responseHandled);
+        /// <param name="madeRangeProgress">True if the response applied verified range progress.</param>
+        void ReleaseRequest(SnapSyncBatch batch, bool responseHandled, bool madeRangeProgress = false);
 
         bool IsSnapGetRangesFinished();
 

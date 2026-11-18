@@ -30,8 +30,14 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
             IOwnedReadOnlyList<(TreePath, byte[])>? res = await Wait.AnyWhere(
                 res => res != null,
                 nodeDataRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token),
-                snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token)
+                snapRangeRecovery.Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cts.Token, reportSpeed: false)
             );
+
+            if (cts.Token.IsCancellationRequested)
+            {
+                res?.Dispose();
+                return null;
+            }
 
             if (res is null)
             {
@@ -39,6 +45,7 @@ public class PathNodeRecovery(NodeDataRecovery nodeDataRecovery, SnapRangeRecove
             }
             else
             {
+                snapRangeRecovery.ReportAccepted(res);
                 if (_logger.IsWarn) _logger.Warn($"Fetched {res.Count} nodes to repair path {address ?? Hash256.Zero}:{fullPath} starting from {startingPath}");
             }
 

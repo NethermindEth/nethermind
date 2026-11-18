@@ -49,6 +49,7 @@ public class StateSyncRunner(
     private static readonly TimeSpan MaxResumedAnchorAge = TimeSpan.FromDays(1);
 
     private readonly ILogger _logger = logManager.GetClassLogger<StateSyncRunner>();
+    internal TimeProvider PrecursorTimeProvider { get; set; } = TimeProvider.System;
 
     public async Task Run(CancellationToken token)
     {
@@ -128,9 +129,14 @@ public class StateSyncRunner(
         if (anchor is not null && allowedBySyncPivot && blockTree.IsMainChain(anchor))
         {
             TimeSpan age = TimeSpan.FromSeconds(timestamper.UnixTime.Seconds.SaturatingSub(anchor.Timestamp));
-            if (syncConfig.StaticSnapPivot || age <= MaxResumedAnchorAge) return anchor;
-
-            if (_logger.IsWarn) _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {anchor.Number} ({anchor.Hash}), {age.TotalHours:N0} hours ago, past the {MaxResumedAnchorAge.TotalHours:N0} hours a resumed sync may start from.");
+            if (syncConfig.StaticSnapPivot || age <= MaxResumedAnchorAge)
+            {
+                if (RangePivotsAreCanonical(checkpoint)) return anchor;
+            }
+            else if (_logger.IsWarn)
+            {
+                _logger.Warn($"Not resuming the snap sync: its checkpoint starts from block {anchor.Number} ({anchor.Hash}), {age.TotalHours:N0} hours ago, past the {MaxResumedAnchorAge.TotalHours:N0} hours a resumed sync may start from.");
+            }
         }
         else if (_logger.IsWarn)
         {
@@ -139,6 +145,21 @@ public class StateSyncRunner(
 
         snapTrieFactory.SaveCheckpoint(null);
         return null;
+    }
+
+    private bool RangePivotsAreCanonical(SnapCheckpoint checkpoint)
+    {
+        foreach ((ulong number, Hash256 hash) in checkpoint.RangePivots)
+        {
+            if (hash == checkpoint.AnchorHash) continue;
+            BlockHeader? pivot = blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number);
+            if (pivot is not null && blockTree.IsMainChain(pivot)) continue;
+
+            if (_logger.IsWarn) _logger.Warn($"Not resuming the snap sync: block {number} ({hash}) supplied ranges and is no longer canonical.");
+            return false;
+        }
+
+        return true;
     }
 
     private async Task RunSnapSync(CancellationToken token)
@@ -379,15 +400,15 @@ public class StateSyncRunner(
             ulong peerBlock = 0;
             foreach (PeerInfo p in syncPeerPool.InitializedPeers)
             {
-                ulong peerHeadNumber = p.HeadNumber;
+                ulong peerHeadNumber = p.ServedHeadNumber;
                 if (peerHeadNumber > peerBlock) peerBlock = peerHeadNumber;
             }
             ulong targetBlock = beaconSyncStrategy.GetTargetBlockHeight() ?? peerBlock;
 
-            if (targetBlock >= header && (targetBlock - header) <= totalSyncLag)
+            if (targetBlock <= header || (targetBlock - header) <= totalSyncLag)
                 return;
 
-            await Task.Delay(1000, token);
+            await Task.Delay(TimeSpan.FromSeconds(1), PrecursorTimeProvider, token);
         }
     }
 }

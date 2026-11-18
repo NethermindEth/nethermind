@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -26,8 +26,26 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
 
-public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : IPathRecovery
+/// <summary>Fetches missing trie paths from hash-anchored snap range responses.</summary>
+public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager, INodeStatsManager? nodeStatsManager) : IPathRecovery
 {
+    /// <summary>Creates path recovery without transfer speed reporting.</summary>
+    public SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) : this(peerPool, logManager, null)
+    {
+    }
+
+    private sealed record RecoveryResult(PeerInfo Peer, IOwnedReadOnlyList<(TreePath, byte[])> Nodes, long ElapsedMilliseconds) : IOwnedReadOnlyList<(TreePath, byte[])>
+    {
+        public int Count => Nodes.Count;
+        public (TreePath, byte[]) this[int index] => Nodes[index];
+        public ReadOnlySpan<(TreePath, byte[])> AsSpan() => Nodes.AsSpan();
+        public IEnumerator<(TreePath, byte[])> GetEnumerator() => Nodes.GetEnumerator();
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+        public void Dispose() => Nodes.Dispose();
+    }
+
+    internal TimeProvider TimeProvider { get; init; } = TimeProvider.System;
+
     // Pick by reduced latency instead of throughput
     private static readonly IPeerAllocationStrategy SnapPeerStrategy =
         new SatelliteProtocolPeerAllocationStrategy<ISnapSyncPeer>(
@@ -39,22 +57,42 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
     private const int ConcurrentAttempt = 3;
     private readonly ILogger _logger = logManager.GetClassLogger<SnapRangeRecovery>();
 
-    public async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken)
+    /// <inheritdoc/>
+    public Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken) =>
+        Recover(rootHash, address, startingPath, startingNodeHash, fullPath, cancellationToken, reportSpeed: true);
+
+    internal void ReportAccepted(IOwnedReadOnlyList<(TreePath, byte[])> nodes)
+    {
+        if (nodes is not RecoveryResult recovered) return;
+        long bytes = 0;
+        foreach ((TreePath _, byte[] node) in recovered.Nodes) bytes += node.Length;
+        if (bytes > 0)
+            nodeStatsManager?.ReportTransferSpeedEvent(recovered.Peer.SyncPeer.Node, TransferSpeedType.SnapRanges,
+                bytes / Math.Max(1, recovered.ElapsedMilliseconds));
+    }
+
+    internal async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Recover(Hash256 rootHash, Hash256? address, TreePath startingPath, Hash256 startingNodeHash, Hash256 fullPath, CancellationToken cancellationToken, bool reportSpeed)
     {
         using AutoCancelTokenSource cts = cancellationToken.CreateChildTokenSource();
         CancellationToken token = cts.Token;
 
-        Task<IOwnedReadOnlyList<(TreePath, byte[])>?>[] concurrentAttempts = Enumerable.Range(0, ConcurrentAttempt)
-            .Select((_) => Attempt())
-            .ToArray();
+        Task<RecoveryResult?>[] concurrentAttempts = new Task<RecoveryResult?>[ConcurrentAttempt];
+        for (int i = 0; i < concurrentAttempts.Length; i++) concurrentAttempts[i] = Attempt();
 
-        return await Wait.AnyWhere(
-            result => result is not null,
-            concurrentAttempts);
+        RecoveryResult? recovered = await Wait.AnyWhere(static result => result is not null, concurrentAttempts);
+        if (token.IsCancellationRequested)
+        {
+            recovered?.Dispose();
+            return null;
+        }
+        if (recovered is null) return null;
+
+        if (reportSpeed) ReportAccepted(recovered);
+        return recovered;
 
         // Completes with null rather than faulting. Wait.AnyWhere rethrows the first faulted task and
         // drops the rest, and Allocate/Free throw outside the reach of the inner handler.
-        async Task<IOwnedReadOnlyList<(TreePath, byte[])>?> Attempt()
+        async Task<RecoveryResult?> Attempt()
         {
             try
             {
@@ -62,10 +100,17 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 {
                     try
                     {
-                        IOwnedReadOnlyList<(TreePath, byte[])> result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
+                        long started = TimeProvider.GetTimestamp();
+                        IOwnedReadOnlyList<(TreePath, byte[])>? result = await RecoverFromPeer(peer.SyncPeer, rootHash, address, startingPath, startingNodeHash,
                             fullPath,
                             token);
-                        if (result is not null) return result;
+                        if (token.IsCancellationRequested)
+                        {
+                            result?.Dispose();
+                            return null;
+                        }
+                        if (result is not null)
+                            return new RecoveryResult(peer, result, (long)TimeProvider.GetElapsedTime(started).TotalMilliseconds);
 
                         if (_logger.IsDebug) _logger.Debug($"Mark peer {peer:hide} weak");
                         peerPool.ReportWeakPeer(peer, AllocationContexts.Snap);
@@ -119,7 +164,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 queryPath,
                 queryPath);
 
-            AccountsAndProofs acc = await snapProtocol.GetAccountRange(accountRange, cancellationToken);
+            using AccountsAndProofs acc = await snapProtocol.GetAccountRange(accountRange, cancellationToken);
             if (acc.PathAndAccounts.Count == 0 && acc.Proofs.Count == 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Did not receive any path from {peer:hide}. {acc.Proofs.Count}");
@@ -139,7 +184,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         }
         else
         {
-            StorageRange storageRange = new()
+            using StorageRange storageRange = new()
             {
                 RootHash = rootHash,
                 Accounts = new ArrayPoolList<PathWithAccount>(1)
@@ -153,7 +198,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
                 LimitHash = queryPath,
             };
 
-            SlotsAndProofs res = await snapProtocol.GetStorageRange(storageRange, cancellationToken);
+            using SlotsAndProofs res = await snapProtocol.GetStorageRange(storageRange, cancellationToken);
             ReadOnlySpan<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = res.PathsAndSlots.AsSpan();
             ReadOnlySpan<PathWithStorageSlot> firstSlots = pathsAndSlots.Length == 0 ? [] : pathsAndSlots[0].AsSpan();
             if ((pathsAndSlots.Length == 0 || firstSlots.Length == 0) && res.Proofs.Count == 0)
@@ -183,73 +228,81 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
     {
         ArrayPoolList<(TreePath, byte[])> result = [with(1)];
 
-        ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
-        Dictionary<ValueHash256, byte[]> nodes = [];
-        for (int i = 0; i < proofs.Count; i++)
+        try
         {
-            byte[] proof = proofs[i].ToArray();
-            nodes[ValueKeccak.Compute(proof)] = proof;
-        }
-        nodes[ValueKeccak.Compute(value)] = value;
-
-        TreePath slotPathAsTreePath = new(slotPath, 64);
-        Stack<(TreePath, Hash256)> checkStack = new();
-        checkStack.Push((startingPath, startingNodeHash));
-
-        while (checkStack.TryPop(out (TreePath, Hash256) item))
-        {
-            TreePath currentPath = item.Item1;
-            Hash256 currentHash = item.Item2;
-
-            if (!nodes.TryGetValue(currentHash, out byte[]? rlp))
+            ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
+            Dictionary<ValueHash256, byte[]> nodes = [];
+            for (int i = 0; i < proofs.Count; i++)
             {
-                if (slotPathAsTreePath.Truncate(currentPath.Length) == currentPath)
+                byte[] proof = proofs[i].ToArray();
+                nodes[ValueKeccak.Compute(proof)] = proof;
+            }
+            nodes[ValueKeccak.Compute(value)] = value;
+
+            TreePath slotPathAsTreePath = new(slotPath, 64);
+            Stack<(TreePath, Hash256)> checkStack = new();
+            checkStack.Push((startingPath, startingNodeHash));
+
+            while (checkStack.TryPop(out (TreePath, Hash256) item))
+            {
+                TreePath currentPath = item.Item1;
+                Hash256 currentHash = item.Item2;
+
+                if (!nodes.TryGetValue(currentHash, out byte[]? rlp))
                 {
-                    // Try using the slot as a leaf with the remaining path as key
-                    TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new CappedArray<byte>(value));
-                    leafNode.ResolveNode(emptyResolver, currentPath);
-                    leafNode.ResolveKey(emptyResolver, ref currentPath);
-                    if (leafNode.Keccak == currentHash)
+                    if (slotPathAsTreePath.Truncate(currentPath.Length) == currentPath)
                     {
-                        rlp = leafNode.FullRlp.ToArray();
+                        // Try using the slot as a leaf with the remaining path as key
+                        TrieNode leafNode = TrieNodeFactory.CreateLeaf(slotPathAsTreePath.ToNibble()[currentPath.Length..], new CappedArray<byte>(value));
+                        leafNode.ResolveNode(emptyResolver, currentPath);
+                        leafNode.ResolveKey(emptyResolver, ref currentPath);
+                        if (leafNode.Keccak == currentHash)
+                        {
+                            rlp = leafNode.FullRlp.ToArray();
+                        }
                     }
                 }
-            }
 
-            // Eh.. what can you do?
-            if (rlp == null) continue;
+                // Eh.. what can you do?
+                if (rlp == null) continue;
 
-            result.Add((currentPath, rlp));
+                result.Add((currentPath, rlp));
 
-            TrieNode node = new(NodeType.Unknown, rlp);
-            node.ResolveNode(emptyResolver, currentPath);
+                TrieNode node = new(NodeType.Unknown, rlp);
+                node.ResolveNode(emptyResolver, currentPath);
 
-            if (_logger.IsTrace) _logger.Trace($"Traversing path {currentPath} with hash {currentHash}");
+                if (_logger.IsTrace) _logger.Trace($"Traversing path {currentPath} with hash {currentHash}");
 
-            if (node.IsBranch)
-            {
-                for (int i = 0; i < 16; i++)
+                if (node.IsBranch)
                 {
-                    Hash256? childHash = node.GetChildHash(i);
-                    if (childHash == null) continue;
-                    checkStack.Push((currentPath.Append(i), childHash));
+                    for (int i = 0; i < 16; i++)
+                    {
+                        Hash256? childHash = node.GetChildHash(i);
+                        if (childHash == null) continue;
+                        checkStack.Push((currentPath.Append(i), childHash));
+                    }
+                }
+                else if (node.IsExtension)
+                {
+                    checkStack.Push((currentPath.Append(node.Key), node.GetChildHash(1)));
+                }
+                else if (node.IsLeaf)
+                {
                 }
             }
-            else if (node.IsExtension)
-            {
-                checkStack.Push((currentPath.Append(node.Key), node.GetChildHash(1)));
-            }
-            else if (node.IsLeaf)
-            {
-            }
-        }
 
-        if (result.Count == 0)
+            if (result.Count == 0)
+            {
+                result.Dispose();
+                return null;
+            }
+            return result;
+        }
+        catch
         {
             result.Dispose();
-            return null;
+            throw;
         }
-        return result;
     }
 
 }

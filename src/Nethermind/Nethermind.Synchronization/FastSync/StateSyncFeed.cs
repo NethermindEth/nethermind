@@ -5,13 +5,18 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
+using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastSync
 {
-    public class StateSyncFeed(TreeSync treeSync, ILogManager logManager) : ISimpleSyncFeed<StateSyncBatch>
+    public class StateSyncFeed(INodeStatsManager? nodeStatsManager, TreeSync treeSync, ILogManager logManager) : ISimpleSyncFeed<StateSyncBatch>
     {
+        public StateSyncFeed(TreeSync treeSync, ILogManager logManager) : this(null, treeSync, logManager)
+        {
+        }
+
         private readonly ILogger _logger = logManager.GetClassLogger<StateSyncFeed>();
 
         public async Task<StateSyncBatch?> PrepareRequest(CancellationToken token)
@@ -41,8 +46,13 @@ namespace Nethermind.Synchronization.FastSync
 
         public SyncResponseHandlingResult HandleResponse(StateSyncBatch batch, PeerInfo? peer = null)
         {
-            using StateSyncBatch b = batch;
-            return treeSync.HandleResponse(b, peer);
+            SyncResponseHandlingResult result = treeSync.HandleResponse(batch, peer);
+            if (peer is not null && result != SyncResponseHandlingResult.InternalError && batch.ResponseInspected)
+            {
+                nodeStatsManager?.ReportTransferSpeedEvent(peer.SyncPeer.Node, TransferSpeedType.NodeData,
+                    batch.ValidatedBytes / Math.Max(1, batch.ResponseMilliseconds));
+            }
+            return result;
         }
     }
 }

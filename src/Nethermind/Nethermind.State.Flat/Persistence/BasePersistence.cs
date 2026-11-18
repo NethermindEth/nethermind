@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -34,6 +35,23 @@ namespace Nethermind.State.Flat.Persistence;
 /// </summary>
 public static class BasePersistence
 {
+    internal static IColumnDbSnapshot<FlatDbColumns> CreateWriteSnapshot(IColumnsDb<FlatDbColumns> db, in StateId from, in StateId to)
+    {
+        IColumnDbSnapshot<FlatDbColumns> snapshot = db.CreateSnapshot();
+        try
+        {
+            StateId currentState = ReadCurrentState(snapshot.GetColumn(FlatDbColumns.Metadata));
+            if (from != StateId.Sync && to != StateId.Sync && currentState != from)
+                ThrowSnapshotStateMismatch(from, currentState);
+            return snapshot;
+        }
+        catch
+        {
+            snapshot.Dispose();
+            throw;
+        }
+    }
+
     /// <summary>The index of sample <paramref name="sample"/> of <paramref name="sampleCount"/> spread evenly over <paramref name="length"/> keys.</summary>
     internal static int SampleIndex(int sample, int sampleCount, int length) => (int)((long)sample * length / sampleCount);
 
@@ -101,14 +119,14 @@ public static class BasePersistence
     }
 
     [SkipLocalsInit]
-    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId)
+    internal static void SetCurrentState(IWriteOnlyKeyValueStore kv, in StateId stateId, WriteFlags flags = WriteFlags.None)
     {
         Span<byte> bytes = stackalloc byte[8 + 32];
         BinaryPrimitives.WriteUInt64BigEndian(bytes[..8], stateId.BlockNumber);
         stateId.StateRoot.BytesAsSpan.CopyTo(bytes[8..]);
-        kv.PutSpan(CurrentStateKey, bytes);
+        kv.PutSpan(CurrentStateKey, bytes, flags);
         // A persisted state pointer means the sync that followed a wipe has completed.
-        kv.Remove(WipedForSyncKey);
+        kv.Set(WipedForSyncKey, null, flags);
     }
 
     internal static FlatLayout? ReadLayout(IReadOnlyKeyValueStore kv)
@@ -126,12 +144,12 @@ public static class BasePersistence
     /// Records the flat DB's on-disk format markers: the <see cref="FlatLayout"/> and the RLP slot encoding.
     /// Only for DBs on the current (RLP-wrapped) format; legacy raw DBs are never re-stamped.
     /// </summary>
-    internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout)
+    internal static void SetLayout(IWriteOnlyKeyValueStore kv, FlatLayout layout, WriteFlags flags = WriteFlags.None)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = (byte)layout;
-        kv.PutSpan(LayoutKey, bytes);
-        SetSlotEncoding(kv, SlotEncodingRlp);
+        kv.PutSpan(LayoutKey, bytes, flags);
+        SetSlotEncoding(kv, SlotEncodingRlp, flags);
     }
 
     /// <summary>
@@ -183,11 +201,11 @@ public static class BasePersistence
     }
 
     [SkipLocalsInit]
-    internal static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version)
+    internal static void SetSlotEncoding(IWriteOnlyKeyValueStore kv, byte version, WriteFlags flags = WriteFlags.None)
     {
         Span<byte> bytes = stackalloc byte[1];
         bytes[0] = version;
-        kv.PutSpan(SlotEncodingKey, bytes);
+        kv.PutSpan(SlotEncodingKey, bytes, flags);
     }
 
     /// <summary>
@@ -435,23 +453,31 @@ public static class BasePersistence
     /// <summary>
     /// Scan a key range and delete entries matching the address suffix at the given offset.
     /// </summary>
+    /// <param name="batch">Where the deletes go; null only probes, stopping at the first matching key.</param>
     /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
-    internal static void DeleteMatchingKeys(
+    /// <returns>Whether a matching key was found.</returns>
+    internal static bool DeleteMatchingKeys(
         ISortedKeyValueStore snap,
-        IWriteBatch batch,
+        IWriteBatch? batch,
         ReadOnlySpan<byte> firstKey,
         ReadOnlySpan<byte> lastKey,
         int suffixOffset,
         ReadOnlySpan<byte> expectedSuffix,
         WriteFlags flags)
     {
+        bool found = false;
         using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
         while (view.MoveNext())
         {
             ReadOnlySpan<byte> key = view.CurrentKey;
-            if (key.Length >= suffixOffset + expectedSuffix.Length && Bytes.AreEqual(key[suffixOffset..], expectedSuffix))
-                batch.Set(view.CurrentKey, null, flags);
+            if (key.Length < suffixOffset + expectedSuffix.Length || !Bytes.AreEqual(key[suffixOffset..], expectedSuffix)) continue;
+
+            found = true;
+            if (batch is null) break;
+            batch.Set(key, null, flags);
         }
+
+        return found;
     }
 
     /// <summary>
@@ -556,6 +582,9 @@ public static class BasePersistence
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        /// <summary>Whether <see cref="DeleteStorageRange"/> over the same arguments would find no slot to delete.</summary>
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
     }
 
     public interface IFlatReader
@@ -601,6 +630,9 @@ public static class BasePersistence
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
+
+        /// <inheritdoc cref="IHashedFlatWriteBatch.IsStorageRangeEmpty"/>
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath);
     }
 
     public interface ITrieReader
@@ -624,8 +656,15 @@ public static class BasePersistence
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStateTrieNode"/>
+        public void DeleteStateTrieNode(in TreePath path);
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStorageTrieNode"/>
+        public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null);
+
+        /// <summary>Whether <see cref="DeleteStorageTrieNodeRange"/> over the same range would find no node to delete.</summary>
+        public bool IsStorageTrieNodeRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
 
     public struct ToHashedWriteBatch<TWriteBatch>(
@@ -685,6 +724,9 @@ public static class BasePersistence
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             _flatWriteBatch.DeleteStorageRange(addressHash, fromPath, toPath);
+
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            _flatWriteBatch.IsStorageRangeEmpty(addressHash, fromPath, toPath);
     }
 
     public struct ToHashedFlatReader<TFlatReader>(
@@ -995,6 +1037,48 @@ public static class BasePersistence
             _flatReader.Prefetch(columns, accounts, slots, cancellationToken);
     }
 
+    internal sealed class AtomicWriteBatch<TFlatWriteBatch, TTrieWriteBatch>(
+        in TFlatWriteBatch flatWriteBatch,
+        TTrieWriteBatch trieWriteBatch,
+        IWriteOnlyKeyValueStore metadata,
+        AtomicPersistenceBatch transaction)
+        : IPersistence.IAtomicPersistenceBatch
+        where TFlatWriteBatch : struct, IFlatWriteBatch
+        where TTrieWriteBatch : struct, ITrieWriteBatch
+    {
+        private readonly WriteBatch<TFlatWriteBatch, TTrieWriteBatch> _inner = new(flatWriteBatch, trieWriteBatch, metadata, transaction);
+
+        private WriteBatch<TFlatWriteBatch, TTrieWriteBatch> Inner
+        {
+            get
+            {
+                transaction.EnsureOpen();
+                return _inner;
+            }
+        }
+
+        public void Commit() => transaction.Commit();
+        public void Dispose() => transaction.Dispose();
+
+        public void SelfDestruct(Address addr) => Inner.SelfDestruct(addr);
+        public void SetAccount(Address addr, Account? account) => Inner.SetAccount(addr, account);
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => Inner.SetSlimAccount(addr, slimRlp);
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => Inner.SetStorage(addr, slot, value);
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => Inner.SetStateTrieNode(path, rlp);
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => Inner.SetStorageTrieNode(address, path, rlp);
+        public void DeleteStateTrieNode(in TreePath path) => Inner.DeleteStateTrieNode(path);
+        public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path) => Inner.DeleteStorageTrieNode(address, path);
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => Inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => Inner.SetAccountRaw(addrHash, account);
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => Inner.DeleteAccountRange(fromPath, toPath);
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => Inner.DeleteStorageRange(addressHash, fromPath, toPath);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) => Inner.SelfDestructRange(fromPath, toPath, keptAccount);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => Inner.DeleteStateTrieNodeRange(from, to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) => Inner.DeleteStorageTrieNodeRange(addressHash, from, to, beforeDelete);
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => Inner.IsStorageRangeEmpty(addressHash, from, to);
+        public void SetMigrationCursor(in MigrationCursor? cursor) => Inner.SetMigrationCursor(cursor);
+    }
+
     public class WriteBatch<TFlatWriteBatch, TTrieWriteBatch>(
         in TFlatWriteBatch flatWriteBatch,
         TTrieWriteBatch trieWriteBatch,
@@ -1036,6 +1120,14 @@ public static class BasePersistence
         public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStateTrieNode"/>
+        public void DeleteStateTrieNode(in TreePath path) =>
+            _trieWriteBatch.DeleteStateTrieNode(path);
+
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStorageTrieNode"/>
+        public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path) =>
+            _trieWriteBatch.DeleteStorageTrieNode(address, path);
+
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriter.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
 
@@ -1051,9 +1143,16 @@ public static class BasePersistence
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
             _trieWriteBatch.DeleteStateTrieNodeRange(from, to);
 
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
-            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, from, to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) =>
+            _trieWriteBatch.DeleteStorageTrieNodeRange(addressHash, from, to, beforeDelete);
+
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+            _flatWriter.IsStorageRangeEmpty(addressHash, from, to) && _trieWriteBatch.IsStorageTrieNodeRangeEmpty(addressHash, from, to);
 
         public void SetMigrationCursor(in MigrationCursor? cursor) => WriteMigrationCursor(metadata, cursor);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowSnapshotStateMismatch(in StateId from, in StateId currentState) =>
+        throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
 }

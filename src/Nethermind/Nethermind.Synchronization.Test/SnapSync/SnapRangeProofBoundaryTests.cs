@@ -14,10 +14,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
@@ -189,7 +191,7 @@ public class SnapRangeProofBoundaryTests
 
     // The extension is the storage root: on its own it "proves" that no slot follows the origin.
     [Test]
-    public void AddStorageRange_ProofOfAbsenceOfOnlyTheRootExtension_IsAnInvalidProofAndTheAccountIsReprovenFromItsOrigin()
+    public void AddStorageRange_ProofOfAbsenceOfOnlyTheRootExtension_IsAnInvalidProofAndTheRangeIsRetriedFromItsOrigin()
     {
         Source source = new();
         ValueHash256 origin = RootExtensionSlot1;
@@ -204,11 +206,11 @@ public class SnapRangeProofBoundaryTests
         Assert.That(AnswerStorageContinuationWithProofOnly(snapProvider, progressTracker, source.AccountA, origin, proof),
             Is.EqualTo(AddRangeResult.InvalidProof));
 
-        progressTracker.IsFinished(out SnapSyncBatch? refresh);
-        using (refresh)
+        // An invalid proof is the serving peer's failure, so the range goes back to the storage queue from its origin.
+        progressTracker.IsFinished(out SnapSyncBatch? retry);
+        using (retry)
         {
-            Assert.That(refresh?.AccountsToRefreshRequest?.Paths[0].StorageStartingHash, Is.EqualTo(origin),
-                "the account is re-proven from its origin, not completed");
+            Assert.That(retry?.StorageRangeRequest?.StartingHash, Is.EqualTo(origin), "the range is retried from its origin, not completed");
         }
     }
 
@@ -318,8 +320,9 @@ public class SnapRangeProofBoundaryTests
         Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));
     }
 
-    // Only the missing-node exceptions show that the entries do not fit the proof. Any other failure of the bulk set,
-    // such as a local store error, is not the peer's doing and is thrown as it is.
+    // The tree holds only the proof nodes, so a trie failure of the bulk set means the entries or the proof nodes are
+    // malformed or do not fit the proof: the peer's doing. Any other failure, such as a local store error, is thrown
+    // as it is.
     [TestCaseSource(nameof(OtherBulkSetFailures))]
     public void VerifyAccountRange_BulkSetFailingForAnotherReason_ThrowsThatFailure(Func<Exception> createFailure)
     {
@@ -334,10 +337,22 @@ public class SnapRangeProofBoundaryTests
             Throws.Exception.SameAs(failure));
     }
 
+    [Test]
+    public void VerifyAccountRange_BulkSetTrieFailure_IsAnInvalidProof()
+    {
+        ISnapTree<PathWithAccount> tree = Substitute.For<ISnapTree<PathWithAccount>>();
+        tree.When(static t => t.BulkSetAndUpdateRootHash(Arg.Any<IReadOnlyList<PathWithAccount>>()))
+            .Do(static _ => throw new TrieException("A malformed proof node."));
+        ISnapTrieFactory factory = Substitute.For<ISnapTrieFactory>();
+        factory.CreateStateTree().Returns(tree);
+
+        Assert.That(SnapProviderHelper.VerifyAccountRange(
+                factory, TestItem.KeccakA, ValueKeccak.Zero, ValueKeccak.MaxValue, [MadeUpAccountBeforeD()], null),
+            Is.EqualTo(AddRangeResult.InvalidProof));
+    }
+
     private static IEnumerable<TestCaseData> OtherBulkSetFailures()
     {
-        yield return new TestCaseData((Func<Exception>)(static () => new TrieException("A local failure.")))
-            .SetName("{m}(TrieException)");
         yield return new TestCaseData((Func<Exception>)(static () => new InvalidOperationException("A local failure.")))
             .SetName("{m}(InvalidOperationException)");
     }
@@ -379,7 +394,8 @@ public class SnapRangeProofBoundaryTests
         Source source = new();
         using IContainer container = CreateContainer(source.StateRoot);
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
-        Synchronization.SnapSync.SnapSyncFeed feed = (Synchronization.SnapSync.SnapSyncFeed)container.Resolve<ISimpleSyncFeed<SnapSyncBatch>>();
+        // Built without the peer pool: the pool would gate every request on an allocatable peer, and none is registered.
+        Synchronization.SnapSync.SnapSyncFeed feed = new(container.Resolve<SnapProvider>(), LimboLogs.Instance);
         PeerInfo peer = new(Substitute.For<ISyncPeer>());
         // A success from another peer, so the feed does not take the failures below for a stale pivot of its only peer.
         feed.AnalyzeResponsePerPeer(AddRangeResult.OK, new PeerInfo(Substitute.For<ISyncPeer>()));
@@ -399,7 +415,8 @@ public class SnapRangeProofBoundaryTests
             results.Add(feed.HandleResponse(batch, peer));
         }
 
-        Assert.That(results, Is.EqualTo(Enumerable.Repeat(SyncResponseHandlingResult.OK, Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses)
+        // Each invalid range is no progress from the serving peer, and the one past the allowance marks it lesser quality.
+        Assert.That(results, Is.EqualTo(Enumerable.Repeat(SyncResponseHandlingResult.NoProgress, Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses)
             .Append(SyncResponseHandlingResult.LesserQuality)));
     }
 
@@ -463,7 +480,238 @@ public class SnapRangeProofBoundaryTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(refreshed.Account.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
+        // A verified refresh is recorded as the account's evidence at that root, never written into the shared entry.
+        using StorageRange probe = new() { Accounts = new ArrayPoolList<PathWithAccount>(1) { refreshed }, RootHash = source.StateRoot };
+        SnapProvider.AccountEvidence? evidence = snapProvider.CaptureStorageEvidence(probe).Accounts[0];
+        Assert.That(evidence?.Account?.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
+    }
+
+    private static readonly ValueHash256 DeletedKey = new("0x17aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    private static readonly ValueHash256 KeptKey = new("0x50aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+    private static readonly ValueHash256[] LaterKeys =
+    [
+        new("0x90aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        new("0xd0aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+    ];
+
+    // Range 1 at the first root writes every key. At the second root the key under nibble 1 is gone, and range 2 runs
+    // from after the kept key, so the root branch is its left boundary with an empty child where the deleted key was.
+    [Test]
+    public void AddStorageRange_AfterTheRootMoves_DeletesTheSlotTheNewRootNoLongerHas()
+    {
+        using FactoryScope scope = new(Backend.Flat);
+        ValueHash256 origin = KeptKey.IncrementPath();
+
+        Versioned first = Versioned.WithStorage(KeyA, [DeletedKey, KeptKey, .. LaterKeys]);
+        AssertOk(first.AddStorageRange(scope.Factory, ValueKeccak.Zero), "range 1");
+        Assert.That(scope.HasSlot(KeyA, DeletedKey), Is.True, "guards the premise: range 1 wrote the slot");
+
+        Versioned second = Versioned.WithStorage(KeyA, [KeptKey, .. LaterKeys]);
+        AssertOk(second.AddStorageRange(scope.Factory, origin), "range 2");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.HasSlot(KeyA, DeletedKey), Is.False);
+            Assert.That(scope.HasSlot(KeyA, KeptKey), Is.True);
+            Assert.That(scope.HasSlot(KeyA, LaterKeys[^1]), Is.True);
+        }
+    }
+
+    [Test]
+    public void AddAccountRange_AfterTheRootMoves_DeletesTheAccountTheNewRootNoLongerHas()
+    {
+        using FactoryScope scope = new(Backend.Flat);
+        ValueHash256 origin = KeptKey.IncrementPath();
+
+        Versioned first = Versioned.WithAccounts([DeletedKey, KeptKey, .. LaterKeys]);
+        AssertOk(first.AddAccountRange(scope.Factory, ValueKeccak.Zero), "range 1");
+        Assert.That(scope.HasAccount(DeletedKey), Is.True, "guards the premise: range 1 wrote the account");
+
+        Versioned second = Versioned.WithAccounts([KeptKey, .. LaterKeys]);
+        AssertOk(second.AddAccountRange(scope.Factory, origin), "range 2");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.HasAccount(DeletedKey), Is.False);
+            Assert.That(scope.HasAccount(KeptKey), Is.True);
+            Assert.That(scope.HasAccount(LaterKeys[^1]), Is.True);
+        }
+    }
+
+    [Test]
+    public void AddAccountRange_WhenAnExtensionFitsTheCommitBound_CleansOnlyItsOwnedPartition()
+    {
+        using FactoryScope scope = new(Backend.Flat);
+        ValueHash256 inside = TreePath.FromHexString("b0").ToLowerBoundPath();
+        ValueHash256 outside = TreePath.FromHexString("b3").ToLowerBoundPath();
+        ValueHash256 origin = TreePath.FromHexString("b10").ToLowerBoundPath();
+        ValueHash256 limit = TreePath.FromHexString("b2").ToUpperBoundPath();
+        AssertOk(Versioned.WithAccounts([inside, outside]).AddAccountRange(scope.Factory, ValueKeccak.Zero), "first root");
+
+        Source source = new();
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+            source.Server.GetAccountRanges(source.StateRoot, origin, limit, 1.MB, CancellationToken.None);
+        using (accounts)
+        using (proofs)
+        {
+            (AddRangeResult result, _, _, _, _) = SnapProviderHelper.AddAccountRange(
+                scope.Factory, 0, source.StateRoot, origin, limit, accounts, proofs, inside);
+            AssertOk(result, "bounded range");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.HasAccount(inside), Is.False);
+            Assert.That(scope.HasAccount(outside), Is.True);
+            Assert.That(scope.HasAccount(KeyB), Is.True);
+        }
+    }
+
+    [Test]
+    public void Complete_storage_root_replacement_removes_old_flat_slots([Values] bool singletonProof)
+    {
+        using FactoryScope scope = new(Backend.Flat);
+        Versioned first = Versioned.WithStorage(KeyA, [DeletedKey, KeptKey, .. LaterKeys]);
+        AssertOk(first.AddStorageRange(scope.Factory, ValueKeccak.Zero), "first root");
+        Assert.That(scope.HasSlot(KeyA, DeletedKey), Is.True);
+
+        Versioned second = Versioned.WithStorage(KeyA, [KeptKey]);
+        AssertOk(second.AddStorageRange(scope.Factory, ValueKeccak.Zero, singletonProof), "replacement root");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.HasSlot(KeyA, DeletedKey), Is.False);
+            Assert.That(scope.HasSlot(KeyA, KeptKey), Is.True);
+            Assert.That(scope.HasSlot(KeyA, LaterKeys[^1]), Is.False);
+        }
+    }
+
+    // Cleanup removes stale data the verified root no longer has; an account with nothing stored has none. Walking a
+    // complete tree anyway wrote two range deletes per slot, each scanning three columns, and a node tombstone for each
+    // nibble of every slot key: about 60 writes per slot, which made flat snap sync several times slower.
+    [Test]
+    public void AddStorageRange_CompleteTreeOfAnAccountWithNothingStored_DeletesNothing()
+    {
+        using FactoryScope scope = new(Backend.Flat);
+        ValueHash256[] slots = [.. Enumerable.Range(0, 64).Select(static i => ValueKeccak.Compute(BitConverter.GetBytes(i)))];
+        Versioned version = Versioned.WithStorage(KeyA, slots);
+        Assert.That(version.StorageRangeHasProof(ValueKeccak.Zero), Is.False, "guards the premise: a complete tree comes without a proof");
+
+        AssertOk(version.AddStorageRange(scope.Factory, ValueKeccak.Zero), "complete tree");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.HasSlot(KeyA, slots[^1]), Is.True, "guards the premise: the tree was committed");
+            Assert.That(scope.Deletes, Is.Zero);
+            Assert.That(scope.Probes, Is.EqualTo(1));
+        }
+    }
+
+    // The same for a proven range: its boundary nodes are cleaned one by one, and the empty cleanup bounds are found once.
+    [Test]
+    public void AddStorageRange_ProvenRangeOfAnAccountWithNothingStored_DeletesNothing()
+    {
+        using FactoryScope scope = new(Backend.Flat);
+        ValueHash256[] slots = [.. Enumerable.Range(0, 64).Select(static i => ValueKeccak.Compute(BitConverter.GetBytes(i)))];
+        ValueHash256 origin = new("0x8000000000000000000000000000000000000000000000000000000000000000");
+        Versioned version = Versioned.WithStorage(KeyA, slots);
+        Assert.That(version.StorageRangeHasProof(origin), Is.True, "guards the premise: a range from an origin comes with a proof");
+
+        AssertOk(version.AddStorageRange(scope.Factory, origin), "proven range");
+
+        ValueHash256 last = slots.Max();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.HasSlot(KeyA, last), Is.True, "guards the premise: the range was committed");
+            Assert.That(scope.Deletes, Is.Zero);
+            Assert.That(scope.Probes, Is.EqualTo(1));
+        }
+    }
+
+    private static void AssertOk(AddRangeResult result, string range) =>
+        Assert.That(result, Is.EqualTo(AddRangeResult.OK), range);
+
+    /// <summary>A state at one root, with an honest snap server over it.</summary>
+    private sealed class Versioned
+    {
+        private readonly SnapStateServer _server;
+        private readonly Hash256 _stateRoot;
+        private readonly PathWithAccount? _account;
+        private readonly byte[]? _singletonStorageProof;
+
+        private Versioned(TestRawTrieStore store, Hash256 stateRoot, PathWithAccount? account, byte[]? singletonStorageProof = null)
+        {
+            _server = new SnapStateServer(store.AsReadOnly(), LimboLogs.Instance);
+            _stateRoot = stateRoot;
+            _account = account;
+            _singletonStorageProof = singletonStorageProof;
+        }
+
+        public static Versioned WithStorage(in ValueHash256 accountPath, ValueHash256[] slots)
+        {
+            TestRawTrieStore store = new(new TestMemDb());
+            StorageTree storage = new(store.GetTrieStore(accountPath.ToCommitment()), LimboLogs.Instance);
+            foreach (ValueHash256 slot in slots) storage.Set(slot, Rlp.Encode(slot.Bytes[..4]), false);
+            byte[]? singletonStorageProof = null;
+            if (slots.Length == 1)
+            {
+                storage.UpdateRootHash();
+                singletonStorageProof = storage.RootRef!.FullRlp.AsSpan().ToArray();
+            }
+            storage.Commit();
+
+            Account account = Build.An.Account.WithBalance(1).TestObject.WithChangedStorageRoot(storage.RootHash);
+            StateTree state = new(store.GetTrieStore(null), LimboLogs.Instance);
+            state.Set(accountPath.ToCommitment(), account);
+            state.Commit();
+            return new Versioned(store, state.RootHash, new PathWithAccount(accountPath, account.ToStruct()), singletonStorageProof);
+        }
+
+        public static Versioned WithAccounts(ValueHash256[] paths)
+        {
+            TestRawTrieStore store = new(new TestMemDb());
+            StateTree state = new(store.GetTrieStore(null), LimboLogs.Instance);
+            foreach (ValueHash256 path in paths) state.Set(path.ToCommitment(), Build.An.Account.WithBalance(path.Bytes[0]).TestObject);
+            state.Commit();
+            return new Versioned(store, state.RootHash, null);
+        }
+
+        public AddRangeResult AddStorageRange(ISnapTrieFactory factory, in ValueHash256 origin, bool? singletonProof = null)
+        {
+            PathWithAccount account = _account!;
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) = _server.GetStorageRanges(
+                _stateRoot, [account], origin, ValueKeccak.MaxValue, 1.MB, CancellationToken.None);
+            try
+            {
+                using IByteArrayList? singleton = singletonProof == true ? Proofs([_singletonStorageProof!]) : null;
+                return SnapProviderHelper.AddStorageRange(factory, account, slots[0], origin, null,
+                    singletonProof is null ? proofs : singleton).result;
+            }
+            finally
+            {
+                slots.DisposeRecursive();
+                proofs?.Dispose();
+            }
+        }
+
+        public bool StorageRangeHasProof(in ValueHash256 origin)
+        {
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) = _server.GetStorageRanges(
+                _stateRoot, [_account!], origin, ValueKeccak.MaxValue, 1.MB, CancellationToken.None);
+            slots.DisposeRecursive();
+            using (proofs) return proofs is { Count: > 0 };
+        }
+
+        public AddRangeResult AddAccountRange(ISnapTrieFactory factory, in ValueHash256 origin)
+        {
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IByteArrayList proofs) =
+                _server.GetAccountRanges(_stateRoot, origin, ValueKeccak.MaxValue, 1.MB, CancellationToken.None);
+            using (accounts)
+            using (proofs)
+            {
+                return SnapProviderHelper.AddAccountRange(factory, 0, _stateRoot, origin, ValueKeccak.MaxValue, accounts, proofs).result;
+            }
+        }
     }
 
     private static PathWithAccount MadeUpAccountBeforeD() => new(KeyBeforeD, Build.An.Account.WithBalance(9).TestObject.ToStruct());
@@ -475,8 +723,9 @@ public class SnapRangeProofBoundaryTests
 
     private static IContainer CreateContainer(Hash256 stateRoot) => CreateContainerBuilder(stateRoot).Build();
 
+    // Patricia snap commits storage tries through atomic node batches, which a plain MemDb does not support.
     private static PatriciaSnapTrieFactory CreatePatriciaFactory() =>
-        new(new NodeStorage(new MemDb()), new MemDb(), LimboLogs.Instance);
+        new(new NodeStorage(new SnapshotableMemDb()), new MemDb(), LimboLogs.Instance);
 
     private static IByteArrayList Proofs(byte[][] nodes) => new ByteArrayListAdapter(nodes.ToPooledList());
 
@@ -554,6 +803,7 @@ public class SnapRangeProofBoundaryTests
     private sealed class FactoryScope : IDisposable
     {
         private readonly SnapshotableMemColumnsDb<FlatDbColumns>? _flatDb;
+        private readonly DeleteCountingPersistence? _persistence;
 
         public FactoryScope(Backend backend)
         {
@@ -564,14 +814,124 @@ public class SnapRangeProofBoundaryTests
             }
 
             _flatDb = new SnapshotableMemColumnsDb<FlatDbColumns>();
+            _persistence = new DeleteCountingPersistence(new RocksDbPersistence(_flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance));
             Factory = new FlatSnapTrieFactory(
-                new RocksDbPersistence(_flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance),
-                Substitute.For<IPersistenceManager>(), _flatDb, new MemDb(), new TestSyncConfig(), LimboLogs.Instance);
+                _persistence, Substitute.For<IPersistenceManager>(), _flatDb, new MemDb(), new TestSyncConfig(), LimboLogs.Instance);
         }
 
         public ISnapTrieFactory Factory { get; }
 
+        /// <summary>How many deletes, of single trie nodes or of ranges, the factory's write batches were given.</summary>
+        public int Deletes => _persistence!.Deletes;
+
+        /// <summary>How many times boundary cleanup asked a batch whether a storage range holds anything.</summary>
+        public int Probes => _persistence!.Probes;
+
+        /// <summary>Whether flat storage holds <paramref name="slot"/> of the account at <paramref name="account"/>.</summary>
+        public bool HasSlot(in ValueHash256 account, in ValueHash256 slot)
+        {
+            using IPersistence.IPersistenceReader reader = _persistence!.CreateReader();
+            UInt256 value = default;
+            return reader.TryGetStorageRaw(account, slot, ref value);
+        }
+
+        /// <summary>Whether flat state holds the account at <paramref name="path"/>.</summary>
+        public bool HasAccount(in ValueHash256 path)
+        {
+            using IPersistence.IPersistenceReader reader = _persistence!.CreateReader();
+            return reader.GetAccountRaw(path) is not null;
+        }
+
         public void Dispose() => _flatDb?.Dispose();
+    }
+
+    /// <summary>Counts the deletes, of single trie nodes or of ranges, and the emptiness probes given to the write batches of <paramref name="inner"/>.</summary>
+    private sealed class DeleteCountingPersistence(IPersistence inner) : IPersistence
+    {
+        private int _deletes;
+        private int _probes;
+        public int Deletes => _deletes;
+        public int Probes => _probes;
+
+        public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) =>
+            new Batch(inner.CreateWriteBatch(from, to, flags), this);
+        public IPersistence.IAtomicPersistenceBatch CreateAtomicWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) =>
+            new AtomicBatch(inner.CreateAtomicWriteBatch(from, to, flags), this);
+        public void Flush() => inner.Flush();
+        public void Clear() => inner.Clear();
+
+        private void Count() => Interlocked.Increment(ref _deletes);
+        private void CountProbe() => Interlocked.Increment(ref _probes);
+
+        private sealed class AtomicBatch(IPersistence.IAtomicPersistenceBatch batch, DeleteCountingPersistence counter)
+            : Batch(batch, counter), IPersistence.IAtomicPersistenceBatch
+        {
+            public void Commit() => ((IPersistence.IAtomicPersistenceBatch)Inner).Commit();
+        }
+
+        private class Batch(IPersistence.IWriteBatch batch, DeleteCountingPersistence counter) : IPersistence.IWriteBatch
+        {
+            protected IPersistence.IWriteBatch Inner => batch;
+
+            public void Dispose() => batch.Dispose();
+            public void SelfDestruct(Address addr) => batch.SelfDestruct(addr);
+            public void SetAccount(Address addr, Account? account) => batch.SetAccount(addr, account);
+            public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => batch.SetStorage(addr, slot, value);
+            public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => batch.SetStateTrieNode(path, rlp);
+            public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => batch.SetStorageTrieNode(address, path, rlp);
+            public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => batch.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+            public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => batch.SetAccountRaw(addrHash, account);
+            public void SetMigrationCursor(in MigrationCursor? cursor) => batch.SetMigrationCursor(cursor);
+
+            public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to)
+            {
+                counter.CountProbe();
+                return batch.IsStorageRangeEmpty(addressHash, from, to);
+            }
+
+            public void DeleteStateTrieNode(in TreePath path)
+            {
+                counter.Count();
+                batch.DeleteStateTrieNode(path);
+            }
+
+            public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path)
+            {
+                counter.Count();
+                batch.DeleteStorageTrieNode(address, path);
+            }
+
+            public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+            {
+                counter.Count();
+                batch.DeleteAccountRange(fromPath, toPath);
+            }
+
+            public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath)
+            {
+                counter.Count();
+                batch.DeleteStorageRange(addressHash, fromPath, toPath);
+            }
+
+            public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
+            {
+                counter.Count();
+                batch.SelfDestructRange(fromPath, toPath, keptAccount);
+            }
+
+            public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to)
+            {
+                counter.Count();
+                batch.DeleteStateTrieNodeRange(from, to);
+            }
+
+            public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null)
+            {
+                counter.Count();
+                batch.DeleteStorageTrieNodeRange(addressHash, from, to, beforeDelete);
+            }
+        }
     }
 
     /// <summary>The state described on the class, with an honest snap server over it.</summary>

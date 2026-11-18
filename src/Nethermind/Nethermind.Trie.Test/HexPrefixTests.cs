@@ -747,4 +747,19 @@ public class HexPrefixTests
             Assert.That(result11[2], Is.EqualTo(7));
         }
     }
+
+    [Test]
+    public void Missing_compact_path_prefix_is_a_trie_encoding_error() =>
+        Assert.Throws<TrieException>(() => HexPrefix.FromBytes([]));
+
+    [Test]
+    public void Empty_path_still_contains_a_prefix_byte([Values] bool leaf)
+    {
+        (byte[] key, bool isLeaf) = HexPrefix.FromBytes([leaf ? (byte)0x20 : (byte)0x00]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key, Is.Empty);
+            Assert.That(isLeaf, Is.EqualTo(leaf));
+        }
+    }
 }

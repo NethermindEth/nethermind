@@ -24,15 +24,18 @@ namespace Nethermind.Synchronization.SnapSync;
 /// </remarks>
 public sealed class SnapCheckpoint
 {
-    private const byte FormatVersion = 1;
+    private const byte FormatVersion = 2;
     private const int HashLength = 32;
 
-    /// <summary>The number of the lowest pivot any range of this sync was requested at.</summary>
+    /// <summary>The lowest pivot that supplied progress, or the lowest requested pivot before any progress.</summary>
     /// <remarks>Healing with block access lists replays from it, so it has to be at or below every root the data came from.</remarks>
     public required ulong AnchorNumber { get; init; }
 
     /// <summary>The hash of the block at <see cref="AnchorNumber"/>.</summary>
     public required Hash256 AnchorHash { get; init; }
+
+    /// <summary>The pivots of verified responses that contributed range progress to this checkpoint.</summary>
+    public (ulong Number, Hash256 Hash)[] RangePivots { get; init; } = [];
 
     /// <summary>How far each account range partition got, one entry per partition.</summary>
     public required AccountRangeProgress[] Partitions { get; init; }
@@ -91,6 +94,13 @@ public sealed class SnapCheckpoint
         writer.Write([FormatVersion]);
         WriteUInt64(writer, AnchorNumber);
         writer.Write(AnchorHash.Bytes);
+
+        WriteCount(writer, RangePivots.Length);
+        foreach ((ulong number, Hash256 hash) in RangePivots)
+        {
+            WriteUInt64(writer, number);
+            writer.Write(hash.Bytes);
+        }
 
         WriteCount(writer, Partitions.Length);
         foreach (AccountRangeProgress partition in Partitions)
@@ -155,6 +165,12 @@ public sealed class SnapCheckpoint
             ulong anchorNumber = reader.ReadUInt64();
             Hash256 anchorHash = new(reader.ReadHash());
 
+            (ulong Number, Hash256 Hash)[] rangePivots = new (ulong, Hash256)[reader.ReadCount(sizeof(ulong) + HashLength)];
+            for (int i = 0; i < rangePivots.Length; i++)
+            {
+                rangePivots[i] = (reader.ReadUInt64(), new Hash256(reader.ReadHash()));
+            }
+
             AccountRangeProgress[] partitions = new AccountRangeProgress[reader.ReadCount(2 * HashLength + 1)];
             for (int i = 0; i < partitions.Length; i++)
             {
@@ -208,6 +224,7 @@ public sealed class SnapCheckpoint
             {
                 AnchorNumber = anchorNumber,
                 AnchorHash = anchorHash,
+                RangePivots = rangePivots,
                 Partitions = partitions,
                 StoragesToRetrieve = storages,
                 StorageRanges = ranges,

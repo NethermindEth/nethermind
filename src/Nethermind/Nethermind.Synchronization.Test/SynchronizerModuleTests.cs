@@ -9,12 +9,16 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.State;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
@@ -22,6 +26,7 @@ using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,6 +34,34 @@ namespace Nethermind.Synchronization.Test;
 
 public class SynchronizerModuleTests
 {
+    [Test]
+    public void Snap_feed_records_only_verified_work_through_registered_stats_manager()
+    {
+        ISnapProvider provider = Substitute.For<ISnapProvider>();
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddModule(new SynchronizerModule(new TestSyncConfig()))
+            .AddSingleton(provider)
+            .AddSingleton(stats)
+            .Build();
+        ISimpleSyncFeed<SnapSyncBatch> feed = container.Resolve<ISimpleSyncFeed<SnapSyncBatch>>();
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        peer.Node.Returns(node);
+        byte[] code = new byte[256];
+        using SnapSyncBatch batch = new()
+        {
+            CodesRequest = new ArrayPoolList<ValueHash256>([ValueKeccak.Compute(code)]),
+            CodesResponse = new ByteArrayListAdapter(new ArrayPoolList<byte[]>([code])),
+            ResponseMilliseconds = 2
+        };
+
+        Assert.That(feed.HandleResponse(batch, new PeerInfo(peer)), Is.EqualTo(SyncResponseHandlingResult.OK));
+
+        stats.Received(1).ReportTransferSpeedEvent(node, TransferSpeedType.SnapRanges, 128);
+    }
+
     [Test]
     public void SyncPeerPool_should_use_INetworkConfig_MaxActivePeers()
     {

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
@@ -18,11 +20,16 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
 {
     public ValueHash256 UpperBound = ValueKeccak.MaxValue;
 
-    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => baseTrieStore.FindCachedOrUnknown(in path, hash);
+    public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
 
-    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.LoadRlp(in path, hash, flags);
+    public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        ThrowMissingProofNode(path, hash);
 
-    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => baseTrieStore.TryLoadRlp(in path, hash, flags);
+    [DoesNotReturn, StackTraceHidden]
+    private static byte[] ThrowMissingProofNode(in TreePath path, Hash256 hash) =>
+        throw new MissingTrieNodeException("Node missing from range proof", null, path, hash);
+
+    public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
 
     public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => throw new NotSupportedException("Get storage trie node resolver not supported");
 
@@ -30,16 +37,16 @@ public class SnapUpperBoundAdapter(IScopedTrieStore baseTrieStore) : IScopedTrie
 
     public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new BoundedSnapCommitter(baseTrieStore.BeginCommit(root, writeFlags), UpperBound);
 
+    internal static bool IsWithinUpperBound(TrieNode node, in TreePath path, in ValueHash256 upperBound) =>
+        (node.IsBranch ? path : path.Append(node.Key)).ToUpperBoundPath() <= upperBound;
+
     private sealed class BoundedSnapCommitter(ICommitter baseCommitter, ValueHash256 subtreeLimit) : ICommitter
     {
         public void Dispose() => baseCommitter.Dispose();
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {
-            if (node.IsBoundaryProofNode) return node;
-
-            ValueHash256 subtreeUpperRange = node.IsBranch ? path.ToUpperBoundPath() : path.Append(node.Key).ToUpperBoundPath();
-            if (subtreeUpperRange > subtreeLimit) return node;
+            if (node.IsBoundaryProofNode || !IsWithinUpperBound(node, path, subtreeLimit)) return node;
 
             node = baseCommitter.CommitNode(ref path, node);
             node.IsPersisted = true;

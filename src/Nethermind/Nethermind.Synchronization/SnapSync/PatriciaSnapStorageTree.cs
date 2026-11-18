@@ -10,7 +10,7 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.SnapSync;
 
-public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter adapter, INodeStorage nodeStorage, Hash256 address) : ISnapTree<PathWithStorageSlot>
+public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter adapter, INodeStorage nodeStorage, Hash256 address, INodeStorage.IAtomicNodeStorageBatch batch) : ISnapTree<PathWithStorageSlot>
 {
     public Hash256 RootHash => tree.RootHash;
 
@@ -26,7 +26,8 @@ public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter ada
     {
         adapter.UpperBound = upperBound;
         tree.Commit(writeFlags: WriteFlags.DisableWAL);
+        batch.Commit();
     }
 
-    public void Dispose() { } // No-op - Patricia doesn't own resources
+    public void Dispose() => batch.Dispose();
 }

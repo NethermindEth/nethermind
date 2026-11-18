@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -32,6 +33,7 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
+            long started = Stopwatch.GetTimestamp();
             Task<IByteArrayList>? task = null;
             HashList? hashList = null;
             GetTrieNodesRequest? getTrieNodesRequest = null;
@@ -73,6 +75,7 @@ namespace Nethermind.Synchronization.StateSync
             }
             finally
             {
+                batch.ResponseMilliseconds = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
                 if (hashList is not null) HashList.Return(hashList);
                 getTrieNodesRequest?.Dispose();
             }

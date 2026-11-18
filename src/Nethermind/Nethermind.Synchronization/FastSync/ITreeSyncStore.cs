@@ -30,6 +30,17 @@ public interface ITreeSyncStore
     void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data);
 
     /// <summary>
+    /// Called when a node is received that is saved only after its children. A store that keys nodes by path drops the
+    /// older node it holds at <paramref name="path"/>, so that the node cannot vouch for a subtree that an interrupted
+    /// round rewrote in part.
+    /// </summary>
+    /// <param name="address">Storage address for storage tries, null for state trie.</param>
+    /// <param name="path">The path to the received node in the trie.</param>
+    /// <param name="hash">The hash of the received node.</param>
+    /// <param name="node">The resolved trie node received for this path.</param>
+    void InvalidateNode(Hash256? address, in TreePath path, in ValueHash256 hash, TrieNode node) { }
+
+    /// <summary>
     /// Ensure all storage entries for the given address are deleted.
     /// Called when an account's storage root is EmptyTreeHash (e.g. after self-destruct).
     /// </summary>

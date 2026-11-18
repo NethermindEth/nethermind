@@ -1,26 +1,35 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -31,6 +40,239 @@ public class CarryForwardCachingPersistenceTests
     private static readonly StateId Basis0 = new(0, Keccak.EmptyTreeHash);
     private static readonly StateId Basis1 = new(1, Keccak.EmptyTreeHash);
     private static readonly Address Address = TestItem.AddressA;
+
+    public enum SnapshotAcquisitionFailure
+    {
+        None,
+        WrongState,
+        MetadataRead,
+        UnsupportedAtomic,
+        ThrowingAtomic
+    }
+
+    [Test]
+    public void Failed_atomic_acquisition_releases_snapshot_and_preserves_storage(
+        [Values(FlatLayout.Flat, FlatLayout.FlatInTrie)] FlatLayout layout,
+        [Values(SnapshotAcquisitionFailure.WrongState, SnapshotAcquisitionFailure.MetadataRead,
+            SnapshotAcquisitionFailure.UnsupportedAtomic, SnapshotAcquisitionFailure.ThrowingAtomic)] SnapshotAcquisitionFailure failure)
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        FaultingSnapshotColumns columns = new(db);
+        IPersistence persistence = layout == FlatLayout.Flat
+            ? new RocksDbPersistence(columns, LimboLogs.Instance, NullTrieNodeLog.Instance)
+            : new FlatInTriePersistence(columns, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        Account account = new(1, 100);
+        using (IPersistence.IWriteBatch seed = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync))
+        {
+            seed.SetAccount(Address, account);
+            seed.SetStorage(Address, UInt256.One, UInt256.One);
+        }
+        int snapshotsBefore = columns.SnapshotsCreated;
+        int disposalsBefore = columns.SnapshotDisposals;
+        int acquisitionsBefore = columns.AtomicAcquisitions;
+        StateId from = failure == SnapshotAcquisitionFailure.WrongState ? Basis0 : StateId.Sync;
+        StateId to = failure == SnapshotAcquisitionFailure.WrongState ? Basis1 : StateId.Sync;
+        columns.AcquisitionFailure = failure;
+        Type expected = failure switch
+        {
+            SnapshotAcquisitionFailure.WrongState => typeof(InvalidOperationException),
+            SnapshotAcquisitionFailure.UnsupportedAtomic => typeof(NotSupportedException),
+            _ => typeof(IOException)
+        };
+        try
+        {
+            Assert.Throws(expected, () => persistence.CreateAtomicWriteBatch(from, to));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(columns.SnapshotsCreated - snapshotsBefore, Is.EqualTo(1));
+                Assert.That(columns.SnapshotDisposals - disposalsBefore, Is.EqualTo(1));
+                Assert.That(columns.AtomicAcquisitions - acquisitionsBefore,
+                    Is.EqualTo(failure is SnapshotAcquisitionFailure.UnsupportedAtomic or SnapshotAcquisitionFailure.ThrowingAtomic ? 1 : 0));
+            }
+            columns.AcquisitionFailure = SnapshotAcquisitionFailure.None;
+            using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
+            {
+                UInt256 stored = default;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(reader.GetAccount(Address), Is.EqualTo(account));
+                    Assert.That(reader.TryGetSlot(Address, UInt256.One, ref stored), Is.True);
+                    Assert.That(stored, Is.EqualTo(UInt256.One));
+                    Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+                }
+            }
+            using (IPersistence.IAtomicPersistenceBatch retry = persistence.CreateAtomicWriteBatch(StateId.Sync, StateId.Sync))
+            {
+                retry.SetStorage(Address, UInt256.One, new UInt256(2));
+                retry.Commit();
+            }
+            using IPersistence.IPersistenceReader after = persistence.CreateReader();
+            UInt256 updated = default;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(after.GetAccount(Address), Is.EqualTo(account));
+                Assert.That(after.TryGetSlot(Address, UInt256.One, ref updated), Is.True);
+                Assert.That(updated, Is.EqualTo(new UInt256(2)));
+            }
+        }
+        finally
+        {
+            columns.ReleaseUndisposedSnapshots();
+        }
+    }
+
+    [Test]
+    public async Task Closed_atomic_batch_does_not_rent_written_sets_again()
+    {
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        await using CarryForwardCachingPersistence cache = new(persistence);
+        IPersistence.IAtomicPersistenceBatch batch = cache.CreateAtomicWriteBatch(StateId.Sync, StateId.Sync);
+        batch.SetAccount(Address, new Account(1, 100));
+        batch.SetStorage(Address, UInt256.One, UInt256.One);
+        batch.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.HasSpareWrittenAccounts, Is.True);
+            Assert.That(cache.HasSpareWrittenSlots, Is.True);
+        }
+        Assert.Throws<ObjectDisposedException>(() => batch.SetAccount(Address, null));
+        Assert.Throws<ObjectDisposedException>(() => batch.SetStorage(Address, UInt256.One, null));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.HasSpareWrittenAccounts, Is.True);
+            Assert.That(cache.HasSpareWrittenSlots, Is.True);
+        }
+    }
+
+    [Test]
+    public Task Published_atomic_writes_invalidate_both_caches_when_snapshot_cleanup_throws() =>
+        CheckPublishedWritesAfterSnapshotCleanupFailure(carryForward: true);
+
+    [Test]
+    public Task Published_atomic_writes_invalidate_cached_reader_before_caller_disposal() =>
+        CheckPublishedWritesAfterSnapshotCleanupFailure(carryForward: false);
+
+    private static async Task CheckPublishedWritesAfterSnapshotCleanupFailure(bool carryForward)
+    {
+        string path = Path.Combine("testdb", TestContext.CurrentContext.Test.ID);
+        Directory.CreateDirectory(path);
+        DbConfig config = new();
+        using HyperClockCacheWrapper blockCache = new();
+        RocksDbConfigFactory options = new(config, new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false);
+        RocksDbFactory factory = new(options, config, blockCache, new RealFileSystem(), LimboLogs.Instance, path);
+        using IColumnsDb<FlatDbColumns> db = factory.CreateColumnsDb<FlatDbColumns>(new DbSettings(DbNames.Flat, path) { DeleteOnStart = true });
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogManager logs = new OneLoggerLogManager(new ILogger(logger));
+        FaultingSnapshotColumns columns = new(db);
+        RocksDbPersistence persistence = new(columns, logs, NullTrieNodeLog.Instance);
+        using (IPersistence.IWriteBatch initial = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.None))
+        {
+            initial.SetAccount(Address, new Account(1, 100));
+            initial.SetStorage(Address, UInt256.One, UInt256.One);
+        }
+
+        await using CachedReaderPersistence readers = new(persistence, new NoExitSource(), logs);
+        await using CarryForwardCachingPersistence? carried = carryForward ? new(readers) : null;
+        IPersistence cache = (IPersistence?)carried ?? readers;
+        using IPersistence.IPersistenceReader old = readers.CreateReader();
+        using (IPersistence.IPersistenceReader reader = cache.CreateReader())
+        {
+            UInt256 value = default;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.GetAccount(Address), Is.Not.Null);
+                Assert.That(reader.TryGetSlot(Address, UInt256.One, ref value), Is.True);
+            }
+        }
+
+        columns.ThrowNextSnapshotCleanup = true;
+        using IPersistence.IAtomicPersistenceBatch batch = cache.CreateAtomicWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        batch.SetAccount(Address, null);
+        batch.SetStorage(Address, UInt256.One, null);
+        Assert.That(() => batch.Commit(), Throws.Nothing);
+        logger.Received(1).Error("Failed to release the persistence transaction.",
+            Arg.Is<Exception>(exception => exception is IOException && exception.Message == "Snapshot cleanup failed after publication."));
+
+        using IPersistence.IPersistenceReader direct = persistence.CreateReader();
+        using IPersistence.IPersistenceReader cached = cache.CreateReader();
+        UInt256 directValue = default;
+        UInt256 cachedValue = default;
+        UInt256 oldValue = default;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(direct.GetAccount(Address), Is.Null);
+            Assert.That(cached.GetAccount(Address), Is.Null);
+            Assert.That(direct.TryGetSlot(Address, UInt256.One, ref directValue), Is.False);
+            Assert.That(cached.TryGetSlot(Address, UInt256.One, ref cachedValue), Is.False);
+            Assert.That(old.GetAccount(Address), Is.EqualTo(new Account(1, 100)));
+            Assert.That(old.TryGetSlot(Address, UInt256.One, ref oldValue), Is.True);
+            Assert.That(oldValue, Is.EqualTo(UInt256.One));
+            Assert.That(columns.AtomicAcquisitions, Is.EqualTo(1));
+            Assert.That(() => batch.Commit(), Throws.TypeOf<ObjectDisposedException>());
+        }
+    }
+
+    private sealed class NoExitSource : IProcessExitSource
+    {
+        public CancellationToken Token => default;
+        public void Exit(int exitCode) { }
+    }
+
+    private sealed class FaultingSnapshotColumns(IColumnsDb<FlatDbColumns> inner) : IColumnsDb<FlatDbColumns>
+    {
+        public bool ThrowNextSnapshotCleanup;
+        public SnapshotAcquisitionFailure AcquisitionFailure;
+        public int SnapshotsCreated;
+        public int SnapshotDisposals;
+        public int AtomicAcquisitions;
+        private readonly List<Snapshot> _snapshots = [];
+        public IDb GetColumnDb(FlatDbColumns key) => inner.GetColumnDb(key);
+        public IEnumerable<FlatDbColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnsWriteBatch<FlatDbColumns> StartWriteBatch() => inner.StartWriteBatch();
+        public IAtomicColumnsWriteBatch<FlatDbColumns> StartAtomicWriteBatch()
+        {
+            AtomicAcquisitions++;
+            return AcquisitionFailure switch
+            {
+                SnapshotAcquisitionFailure.UnsupportedAtomic => throw new NotSupportedException("Atomic capability is unavailable."),
+                SnapshotAcquisitionFailure.ThrowingAtomic => throw new IOException("Atomic acquisition failed."),
+                _ => inner.StartAtomicWriteBatch()
+            };
+        }
+        public IColumnDbSnapshot<FlatDbColumns> CreateSnapshot()
+        {
+            bool fail = ThrowNextSnapshotCleanup;
+            ThrowNextSnapshotCleanup = false;
+            Snapshot snapshot = new(inner.CreateSnapshot(), fail, AcquisitionFailure == SnapshotAcquisitionFailure.MetadataRead, this);
+            SnapshotsCreated++;
+            _snapshots.Add(snapshot);
+            return snapshot;
+        }
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void Dispose() { }
+        public void ReleaseUndisposedSnapshots()
+        {
+            foreach (Snapshot snapshot in _snapshots)
+                if (!snapshot.Disposed) snapshot.Dispose();
+        }
+
+        private sealed class Snapshot(IColumnDbSnapshot<FlatDbColumns> inner, bool fail, bool failMetadata, FaultingSnapshotColumns owner) : IColumnDbSnapshot<FlatDbColumns>
+        {
+            public bool Disposed;
+            public IReadOnlyKeyValueStore GetColumn(FlatDbColumns key) => failMetadata && key == FlatDbColumns.Metadata
+                ? throw new IOException("Snapshot metadata read failed.") : inner.GetColumn(key);
+            public void Dispose()
+            {
+                owner.SnapshotDisposals++;
+                Disposed = true;
+                inner.Dispose();
+                if (fail) throw new System.IO.IOException("Snapshot cleanup failed after publication.");
+            }
+        }
+    }
 
     public enum CacheKind
     {
@@ -1093,7 +1335,7 @@ public class CarryForwardCachingPersistenceTests
             public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) { }
             public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
-            public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+            public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) { }
             public void SetMigrationCursor(in MigrationCursor? cursor) { }
 
             public void Dispose() => Volatile.Write(ref model._state, new State(block, _accounts.ToImmutable(), _slots.ToImmutable()));

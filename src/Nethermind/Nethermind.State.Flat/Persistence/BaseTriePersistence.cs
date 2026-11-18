@@ -228,6 +228,39 @@ public static class BaseTriePersistence
             }
         }
 
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStateTrieNode"/>
+        [SkipLocalsInit]
+        public void DeleteStateTrieNode(in TreePath path)
+        {
+            switch (path.Length)
+            {
+                case <= StateNodesTopThreshold:
+                    stateTopNodes.Set(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], path), null, flags);
+                    break;
+                case <= ShortenedPathThreshold:
+                    stateNodes.Set(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], path), null, flags);
+                    break;
+                default:
+                    fallbackNodes.Set(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), null, flags);
+                    break;
+            }
+        }
+
+        /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStorageTrieNode"/>
+        [SkipLocalsInit]
+        public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path)
+        {
+            switch (path.Length)
+            {
+                case <= ShortenedPathThreshold:
+                    storageNodes.Set(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, path), null, flags);
+                    break;
+                default:
+                    fallbackNodes.Set(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), null, flags);
+                    break;
+            }
+        }
+
         /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStateTrieNodeRange"/>
         [SkipLocalsInit]
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to)
@@ -265,8 +298,16 @@ public static class BaseTriePersistence
         }
 
         /// <inheritdoc cref="IPersistence.IWriteBatch.DeleteStorageTrieNodeRange"/>
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) =>
+            ScanStorageTrieNodeRange(addressHash, from, to, delete: true, beforeDelete);
+
+        /// <inheritdoc cref="BasePersistence.ITrieWriteBatch.IsStorageTrieNodeRangeEmpty"/>
+        public bool IsStorageTrieNodeRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
+            !ScanStorageTrieNodeRange(addressHash, from, to, delete: false, beforeDelete: null);
+
+        /// <returns>Whether a node contained in the range was found; a probe stops at the first.</returns>
         [SkipLocalsInit]
-        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to)
+        private bool ScanStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, bool delete, Action? beforeDelete)
         {
             // Storage trie nodes are stored across 2 columns based on path length:
             // - StorageNodes: path length 0-15 (28 byte keys)
@@ -279,18 +320,21 @@ public static class BaseTriePersistence
             EncodeShortenedStorageNodeKey(firstKeyBuf[..ShortenedStorageNodesKeyLength], addressHash, new TreePath(from, 0));
             EncodeShortenedStorageNodeKey(lastKeyBuf[..ShortenedStorageNodesKeyLength], addressHash, new TreePath(to, ShortenedPathThreshold));
             lastKeyBuf[ShortenedStorageNodesKeyLength] = 0;
-            DeleteContainedKeys(storageNodesSnap, storageNodes,
+            bool found = DeleteContainedKeys(storageNodesSnap, delete ? storageNodes : null,
                 firstKeyBuf[..ShortenedStorageNodesKeyLength], lastKeyBuf[..(ShortenedStorageNodesKeyLength + 1)],
                 ShortenedStorageNodesKeyLength, pathOffset: StoragePrefixPortion, pathBytes: ShortenedPathLength, packedLength: true,
-                from, to, flags, suffixOffset: StoragePrefixPortion + ShortenedPathLength, addressSuffix);
+                from, to, flags, suffixOffset: StoragePrefixPortion + ShortenedPathLength, addressSuffix, beforeDelete);
+            if (found && !delete) return true;
+            if (found) beforeDelete = null;
 
             EncodeFullStorageNodeKey(firstKeyBuf, addressHash, new TreePath(from, 0));
             EncodeFullStorageNodeKey(lastKeyBuf[..FullStorageNodesKeyLength], addressHash, new TreePath(to, 2 * FullPathLength));
             lastKeyBuf[FullStorageNodesKeyLength] = 0;
-            DeleteContainedKeys(fallbackNodesSnap, fallbackNodes,
+            bool foundLong = DeleteContainedKeys(fallbackNodesSnap, delete ? fallbackNodes : null,
                 firstKeyBuf, lastKeyBuf[..(FullStorageNodesKeyLength + 1)],
                 FullStorageNodesKeyLength, pathOffset: 1 + StoragePrefixPortion, pathBytes: FullPathLength, packedLength: false,
-                from, to, flags, suffixOffset: 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix);
+                from, to, flags, suffixOffset: 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, addressSuffix, beforeDelete);
+            return found || foundLong;
         }
     }
 
@@ -301,14 +345,17 @@ public static class BaseTriePersistence
     /// after the path); for storage columns an optional <paramref name="addressSuffix"/> must match at
     /// <paramref name="suffixOffset"/>.
     /// </summary>
+    /// <param name="batch">Where the deletes go; null only probes, stopping at the first contained key.</param>
+    /// <returns>Whether a contained key was found.</returns>
     [SkipLocalsInit]
-    private static void DeleteContainedKeys(
-        ISortedKeyValueStore snap, IWriteBatch batch,
+    private static bool DeleteContainedKeys(
+        ISortedKeyValueStore snap, IWriteBatch? batch,
         scoped ReadOnlySpan<byte> firstKey, scoped ReadOnlySpan<byte> lastKey,
         int keyLength, int pathOffset, int pathBytes, bool packedLength,
         in ValueHash256 from, in ValueHash256 to, WriteFlags flags,
-        int suffixOffset = -1, scoped ReadOnlySpan<byte> addressSuffix = default)
+        int suffixOffset = -1, scoped ReadOnlySpan<byte> addressSuffix = default, Action? beforeDelete = null)
     {
+        bool found = false;
         using ISortedView view = snap.GetViewBetween(firstKey, lastKey);
         Span<byte> value = stackalloc byte[FullPathLength];
         while (view.MoveNext())
@@ -330,8 +377,17 @@ public static class BaseTriePersistence
                 length = key[pathOffset + pathBytes];
             }
 
-            if (IsFullyContained(value, length, from, to)) batch.Set(key, null, flags);
+            if (!IsFullyContained(value, length, from, to)) continue;
+
+            found = true;
+            if (batch is null) break;
+
+            beforeDelete?.Invoke();
+            beforeDelete = null;
+            batch.Set(key, null, flags);
         }
+
+        return found;
     }
 
     /// <summary>Whether the subtree of the node at (<paramref name="value"/>, <paramref name="length"/>) is within <c>[from, to]</c>.</summary>

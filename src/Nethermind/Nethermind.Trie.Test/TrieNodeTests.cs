@@ -318,6 +318,23 @@ public class TrieNodeTests
         resolver.Received(1).TryLoadRlp(TreePath.Empty, hash, ReadFlags.None);
     }
 
+    [Test]
+    public void Try_resolve_propagates_local_resolver_faults([Values(0, 1, 2)] int faultKind)
+    {
+        Exception fault = faultKind switch
+        {
+            0 => new TrieException("local resolver unavailable"),
+            1 => new IndexOutOfRangeException("local resolver index"),
+            _ => new ArgumentOutOfRangeException("local resolver argument")
+        };
+        TrieNode node = new(NodeType.Unknown, Keccak.Zero);
+        ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
+        resolver.TryLoadRlp(TreePath.Empty, Keccak.Zero, ReadFlags.None).Returns(_ => throw fault);
+        TreePath path = TreePath.Empty;
+
+        Assert.That(Assert.Catch(() => node.TryResolveNode(resolver, ref path)), Is.SameAs(fault));
+    }
+
     // Warmer jobs resolve one shared node concurrently: a decode another job published while this load was in
     // flight must be kept, not replaced by a second decode of the same bytes.
     [Test]
@@ -720,6 +737,50 @@ public class TrieNodeTests
         {
             Assert.That(() => decoded.GetChildHash(0), Throws.InstanceOf<RlpReaderException>());
             Assert.That(() => decoded.GetChildHashAsValueKeccak(0, out _), Throws.InstanceOf<RlpReaderException>());
+        }
+    }
+
+    [Test]
+    public void Get_child_hash_of_an_empty_extension_child_remains_empty([Values] bool valueHash)
+    {
+        TrieNode node = new(NodeType.Extension, new byte[] { 0xc2, 0x80, 0x80 });
+        Assert.That(ReadChildHash(node, valueHash), Is.False);
+    }
+
+    [Test]
+    public void Resolving_a_two_item_node_without_a_compact_path_throws_a_trie_exception()
+    {
+        TrieNode node = new(NodeType.Unknown, new byte[] { 0xc2, 0x80, 0x80 });
+        Assert.That(() => node.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty), Throws.InstanceOf<TrieException>());
+    }
+
+    private static bool ReadChildHash(TrieNode node, bool valueHash) => valueHash
+        ? node.GetChildHashAsValueKeccak(0, out _)
+        : node.GetChildHash(0) is not null;
+
+    public enum ChildRead { Single, Range, Iterator }
+
+    [Test]
+    public void Complete_empty_branch_children_remain_readable([Values] ChildRead read) =>
+        Assert.That(ReadBranchChildren(Convert.FromHexString("d18080808080808080808080808080808080"), read), Is.Zero);
+
+    private static int ReadBranchChildren(byte[] bytes, ChildRead read)
+    {
+        TrieNode node = new(NodeType.Branch, bytes);
+        TreePath path = TreePath.Empty;
+        switch (read)
+        {
+            case ChildRead.Single:
+                return node.GetChild(NullTrieNodeResolver.Instance, ref path, 3) is null ? 0 : 1;
+            case ChildRead.Range:
+                TrieNode?[] children = new TrieNode?[16];
+                return node.ResolveAllChildBranch(NullTrieNodeResolver.Instance, ref path, children);
+            case ChildRead.Iterator:
+                TrieNode.ChildIterator iterator = node.CreateChildIterator();
+                path.AppendMut(3);
+                return iterator.GetChildWithChildPath(NullTrieNodeResolver.Instance, ref path, 3) is null ? 0 : 1;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(read));
         }
     }
 

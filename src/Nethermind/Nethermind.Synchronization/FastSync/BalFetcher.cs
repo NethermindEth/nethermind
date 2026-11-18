@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -28,7 +29,8 @@ public class BalFetcher(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
     ISyncConfig syncConfig,
-    ILogManager logManager)
+    ILogManager logManager,
+    INodeStatsManager? nodeStatsManager = null)
 {
     private const int WindowSize = 1024;
     private const int MaxNoProgressRounds = 50;
@@ -51,6 +53,7 @@ public class BalFetcher(
 
             int noProgress = 0;
             bool fetched = false;
+            OrderedDictionary<PeerInfo, int> emptyReplies = [];
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -86,15 +89,34 @@ public class BalFetcher(
                 int stored;
                 using (SyncPeerAllocation allocation = await peerPool.Allocate(new SkipAnsweredEmptyStrategy(this), AllocationContexts.State, _allocateTimeoutMs, token))
                 {
-                    if (allocation.Current is null)
+                    stored = 0;
+                    if (allocation.Current is not { } peer)
                     {
-                        // No eligible peer: let the ones that answered empty be asked again.
                         lock (_answeredEmptyLock) _answeredEmpty.Clear();
-                        stored = 0;
                     }
                     else
                     {
-                        stored = await FetchFromPeer(allocation.Current, missing, token);
+                        bool empty;
+                        (stored, empty) = await FetchFromPeer(peer, missing, token);
+                        if (empty)
+                        {
+                            lock (_answeredEmptyLock) _answeredEmpty.Add(peer);
+                            if (!emptyReplies.TryGetValue(peer, out int count))
+                            {
+                                if (emptyReplies.Count == WindowSize) emptyReplies.RemoveAt(0);
+                                emptyReplies.Add(peer, 0);
+                            }
+                            emptyReplies[peer] = ++count;
+                            if (count >= 3)
+                            {
+                                peerPool.ReportNoSyncProgress(peer, AllocationContexts.BlockAccessLists);
+                                peer.PutToSleep(AllocationContexts.BlockAccessLists, DateTime.UtcNow);
+                            }
+                        }
+                        else if (stored > 0 && emptyReplies.ContainsKey(peer))
+                        {
+                            emptyReplies[peer] = 0;
+                        }
                     }
                 }
 
@@ -108,15 +130,17 @@ public class BalFetcher(
         return true;
     }
 
-    private async Task<int> FetchFromPeer(PeerInfo peer, IReadOnlyList<BlockHeader> missing, CancellationToken token)
+    private async Task<(int Stored, bool Empty)> FetchFromPeer(PeerInfo peer, IReadOnlyList<BlockHeader> missing, CancellationToken token)
     {
         ISyncPeer syncPeer = peer.SyncPeer;
         bool snap2 = syncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer snap)
                      && snap.SnapProtocolVersion >= SnapVersions.Snap2;
-        if (!snap2 && !syncPeer.SupportsBlockAccessLists()) return 0;
+        if (!snap2 && !syncPeer.SupportsBlockAccessLists()) return (0, false);
 
         int requested = snap2 ? missing.Count : Math.Min(missing.Count, GethSyncLimits.MaxBodyFetch);
         int stored = 0;
+        long verifiedBytes = 0;
+        long startedAt = Stopwatch.GetTimestamp();
         string? invalidBalError = null;
         bool requestFailed = false;
         try
@@ -143,12 +167,24 @@ public class BalFetcher(
                 {
                     ReadOnlySpan<byte> rlp = i < response.Count ? response[i] : default;
                     if (rlp.IsEmpty) continue;
-                    if (TryStore(missing[i], rlp, out string? error)) stored++;
+                    if (TryStore(missing[i], rlp, out string? error))
+                    {
+                        stored++;
+                        verifiedBytes += rlp.Length;
+                    }
                     else invalidBalError ??= error;
                 }
             }
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (OperationCanceledException e) when (!token.IsCancellationRequested)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Timeout fetching block access lists from {peer:hide}: {e:hide}");
+            if (token.IsCancellationRequested) throw;
+            peerPool.ReportWeakPeer(peer, AllocationContexts.BlockAccessLists);
+            peer.PutToSleep(AllocationContexts.BlockAccessLists, DateTime.UtcNow);
+            return (0, false);
+        }
+        catch (OperationCanceledException) { throw; }
         catch (Exception e)
         {
             requestFailed = true;
@@ -157,10 +193,14 @@ public class BalFetcher(
 
         // An empty entry is a well-formed answer from a peer that does not have that BAL. A list that does not
         // match the header it was requested by is provable misbehaviour; a failed request may be an honest timeout.
+        if (snap2 && stored > 0)
+            nodeStatsManager?.ReportTransferSpeedEvent(syncPeer.Node, TransferSpeedType.BlockAccessLists,
+                verifiedBytes / Math.Max(1, (long)Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds));
+
         if (invalidBalError is not null) peerPool.ReportBreachOfProtocol(peer, DisconnectReason.InvalidTxOrUncle, $"invalid block access list: {invalidBalError}");
-        else if (requestFailed) peerPool.ReportWeakPeer(peer, AllocationContexts.State);
-        else if (stored == 0) lock (_answeredEmptyLock) _answeredEmpty.Add(peer);
-        return stored;
+        else if (requestFailed) peerPool.ReportWeakPeer(peer, AllocationContexts.BlockAccessLists);
+        else if (stored > 0) peer.RecordProgress(AllocationContexts.BlockAccessLists);
+        return (stored, stored == 0 && invalidBalError is null && !requestFailed);
     }
 
     private bool TryStore(BlockHeader header, ReadOnlySpan<byte> rlp, out string? error)
@@ -182,8 +222,9 @@ public class BalFetcher(
         : FilterPeerAllocationStrategy(strategy)
     {
         protected override bool Filter(PeerInfo peer) =>
-            (peer.SyncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snap)
+            !peer.IsAsleep(AllocationContexts.BlockAccessLists)
+            && ((peer.SyncPeer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer snap)
                 && snap.SnapProtocolVersion >= SnapVersions.Snap2)
-            || peer.SyncPeer.SupportsBlockAccessLists();
+                || peer.SyncPeer.SupportsBlockAccessLists());
     }
 }

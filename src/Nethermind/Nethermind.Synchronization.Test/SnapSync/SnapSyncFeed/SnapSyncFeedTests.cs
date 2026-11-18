@@ -6,12 +6,21 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using System.IO;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.SnapSync;
@@ -23,21 +32,150 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed;
 public class SnapSyncFeedTests
 {
     [Test]
-    public void WhenAccountRequestEmpty_ReturnNoProgress()
+    public void Code_response_must_match_a_requested_hash_to_count_as_progress([Values] bool matchesRequest)
+    {
+        byte[] code = new byte[256];
+        ValueHash256 requested = matchesRequest ? ValueKeccak.Compute(code) : Keccak.Zero.ValueHash256;
+        ISnapProvider provider = Substitute.For<ISnapProvider>();
+        (Synchronization.SnapSync.SnapSyncFeed feed, PeerInfo peer, NodeStatsLight stats) = CreateMeasuredFeed(provider);
+        using SnapSyncBatch batch = new()
+        {
+            CodesRequest = new ArrayPoolList<ValueHash256>([requested]),
+            CodesResponse = new ByteArrayListAdapter(new ArrayPoolList<byte[]>([code])),
+            ResponseMilliseconds = 2
+        };
+
+        Assert.That(feed.HandleResponse(batch, peer),
+            Is.EqualTo(matchesRequest ? SyncResponseHandlingResult.OK : SyncResponseHandlingResult.LesserQuality));
+        provider.Received(1).AddCodes(batch.CodesRequest, batch.CodesResponse);
+        Assert.That(stats.GetAverageTransferSpeed(TransferSpeedType.SnapRanges), Is.EqualTo(matchesRequest ? 32 : 0));
+    }
+
+    [Test]
+    public void Invalid_proof_never_improves_useful_transfer_speed([Values(AddRangeResult.OK, AddRangeResult.InvalidProof)] AddRangeResult result)
+    {
+        ISnapProvider provider = Substitute.For<ISnapProvider>();
+        provider.AddAccountRange(Arg.Any<AccountRange>(), Arg.Any<AccountsAndProofs>()).Returns(result);
+        (Synchronization.SnapSync.SnapSyncFeed feed, PeerInfo peer, NodeStatsLight stats) = CreateMeasuredFeed(provider);
+        using SnapSyncBatch batch = new()
+        {
+            AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.Zero),
+            AccountRangeResponse = new AccountsAndProofs
+            {
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>([new(Keccak.Zero, Nethermind.Core.Account.TotallyEmpty.ToStruct())])
+            },
+            ResponseMilliseconds = 1
+        };
+
+        feed.HandleResponse(batch, peer);
+
+        Assert.That(stats.GetAverageTransferSpeed(TransferSpeedType.SnapRanges) > 0, Is.EqualTo(result == AddRangeResult.OK));
+    }
+
+    private static (Synchronization.SnapSync.SnapSyncFeed Feed, PeerInfo Peer, NodeStatsLight Stats) CreateMeasuredFeed(ISnapProvider provider)
+    {
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        NodeStatsLight stats = new(node);
+        stats.AddTransferSpeedCaptureEvent(TransferSpeedType.SnapRanges, 0);
+        INodeStatsManager manager = Substitute.For<INodeStatsManager>();
+        manager.When(s => s.ReportTransferSpeedEvent(node, TransferSpeedType.SnapRanges, Arg.Any<long>()))
+            .Do(call => stats.AddTransferSpeedCaptureEvent(TransferSpeedType.SnapRanges, call.Arg<long>()));
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(node);
+        return (new(manager, provider, LimboLogs.Instance), new(peer), stats);
+    }
+
+    [Test]
+    public void Registered_provider_decorator_forwards_pivot_recovery()
+    {
+        ISnapProvider inner = Substitute.For<ISnapProvider>();
+        inner.AddAccountRange(Arg.Any<AccountRange>(), Arg.Any<AccountsAndProofs>()).Returns(AddRangeResult.ExpiredRootHash);
+        ContainerBuilder builder = new();
+        builder.RegisterInstance(inner).As<ISnapProvider>();
+        builder.RegisterDecorator<ISnapProvider>((_, _, provider) =>
+        {
+            ISnapProvider wrapper = Substitute.For<ISnapProvider>();
+            wrapper.AddAccountRange(Arg.Any<AccountRange>(), Arg.Any<AccountsAndProofs>()).Returns(call =>
+                provider.AddAccountRange(call.Arg<AccountRange>(), call.Arg<AccountsAndProofs>()));
+            wrapper.When(p => p.UpdatePivot()).Do(_ => provider.UpdatePivot());
+            return wrapper;
+        });
+        using IContainer container = builder.Build();
+        Synchronization.FastSync.IStateSyncPivot pivot = Substitute.For<Synchronization.FastSync.IStateSyncPivot>();
+        pivot.GetPivotHeader().Returns(Build.A.BlockHeader.WithStateRoot(TestItem.KeccakA).TestObject);
+        Synchronization.SnapSync.SnapSyncFeed feed = new(Substitute.For<INodeStatsManager>(),
+            container.Resolve<ISnapProvider>(), LimboLogs.Instance, new SnapRecoveryCoordinator(TimeProvider.System, pivot));
+        for (int i = 0; i <= Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses; i++)
+        {
+            SnapSyncBatch batch = new()
+            {
+                AccountRangeRequest = new AccountRange(TestItem.KeccakA, Keccak.Zero),
+                AccountRangeResponse = new AccountsAndProofs()
+            };
+            feed.HandleResponse(batch);
+        }
+        inner.Received(1).UpdatePivot();
+    }
+
+    [Test]
+    public void Expired_storage_root_is_neutral_only_when_proven_stale([Values(0, 1, 2)] int scenario)
+    {
+        using MemDb db = new();
+        StateTree state = new(new RawScopedTrieStore(db), LimboLogs.Instance);
+        using StorageRange source = ProgressTrackerTests.CreateRequest(1);
+        state.Set(source.Accounts[0].Path, source.Accounts[0].Account.ToAccount());
+        state.UpdateRootHash();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestSynchronizerModule(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 }))
+            .WithSuggestedHeaderOfStateRoot(state.RootHash).Build();
+        SnapProvider provider = container.Resolve<SnapProvider>();
+        ProgressTracker tracker = container.Resolve<ProgressTracker>();
+        tracker.IsFinished(out SnapSyncBatch? discovered);
+        Assert.That(provider.AddAccountRange(1, state.RootHash, ValueKeccak.Zero, source.Accounts), Is.EqualTo(AddRangeResult.OK));
+        provider.ReleaseRequest(discovered!, true);
+        discovered!.Dispose();
+        void AdvancePivot()
+        {
+            IBlockTree blockTree = container.Resolve<IBlockTree>();
+            BlockHeader header = Build.A.BlockHeader.WithNumber(129).WithStateRoot(TestItem.KeccakF).TestObject;
+            blockTree.BestSuggestedHeader.Returns(header);
+            blockTree.FindHeader(Arg.Any<ulong>()).Returns(header);
+            provider.UpdatePivot();
+        }
+        if (scenario == 0) AdvancePivot();
+        tracker.IsFinished(out SnapSyncBatch? batch);
+        if (scenario == 2) AdvancePivot();
+        batch!.StorageRangeResponse = new();
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        Synchronization.SnapSync.SnapSyncFeed feed = new(stats, provider, LimboLogs.Instance);
+        Assert.That(feed.HandleResponse(batch, new PeerInfo(syncPeer)),
+            Is.EqualTo(scenario == 1 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.Emptish));
+        if (scenario == 1) stats.Received(1).ReportTransferSpeedEvent(syncPeer.Node, TransferSpeedType.SnapRanges, 0);
+        else stats.DidNotReceive().ReportTransferSpeedEvent(syncPeer.Node, TransferSpeedType.SnapRanges, Arg.Any<long>());
+    }
+
+    [Test]
+    public void WhenStorageResponseAppliesOneRangeAndFailsAnother_ReportsTheAppliedProgress()
     {
         ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
         Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+        using SnapSyncBatch batch = new()
+        {
+            StorageRangeRequest = new StorageRange { Accounts = ArrayPoolList<PathWithAccount>.Empty() },
+            StorageRangeResponse = new SlotsAndProofs(),
+        };
+        snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse, out Arg.Any<bool>())
+            .Returns(call =>
+            {
+                call[2] = true;
+                return AddRangeResult.DifferentRootHash;
+            });
 
-        snapProvider.AddAccountRange(Arg.Any<AccountRange>(), Arg.Any<AccountsAndProofs>())
-            .Returns(AddRangeResult.ExpiredRootHash);
+        feed.HandleResponse(batch, null);
 
-        using SnapSyncBatch response = new();
-        response.AccountRangeRequest = new AccountRange(Keccak.Zero, Keccak.Zero);
-        response.AccountRangeResponse = new AccountsAndProofs();
-
-        PeerInfo peer = new(Substitute.For<ISyncPeer>());
-
-        Assert.That(feed.HandleResponse(response, peer), Is.EqualTo(SyncResponseHandlingResult.NoProgress));
+        snapProvider.Received(1).ReleaseRequest(batch, responseHandled: true, madeRangeProgress: true);
     }
 
     /// <summary>RefreshAccounts maps every verification failure to InvalidProof itself, so it can only
@@ -73,6 +211,7 @@ public class SnapSyncFeedTests
         AccountRange request = new(Keccak.Zero, Keccak.Zero);
         AccountsAndProofs response = new();
         using SnapSyncBatch batch = new() { AccountRangeRequest = request, AccountRangeResponse = response };
+        snapProvider.AddAccountRange(request, response).Returns(AddRangeResult.OK);
 
         feed.HandleResponse(batch, new PeerInfo(Substitute.For<ISyncPeer>()));
 
@@ -80,7 +219,7 @@ public class SnapSyncFeedTests
         {
             snapProvider.BeginResponse();
             snapProvider.AddAccountRange(request, response);
-            snapProvider.ReleaseRequest(batch, responseHandled: true);
+            snapProvider.ReleaseRequest(batch, responseHandled: true, madeRangeProgress: true);
             responseScope.Dispose();
         });
     }

@@ -6,26 +6,31 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Snap;
+using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager, TimeSpan? stallWarningThreshold = null) : ISimpleSyncFeed<SnapSyncBatch>
+    public class SnapSyncFeed(INodeStatsManager? nodeStatsManager, ISnapProvider snapProvider, ILogManager logManager,
+        TimeSpan? stallWarningThreshold = null) : ISimpleSyncFeed<SnapSyncBatch>
     {
+        public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager, TimeSpan? stallWarningThreshold = null)
+            : this(null, snapProvider, logManager, stallWarningThreshold)
+        {
+        }
+
         private readonly Lock _syncLock = new();
 
         internal const int AllowedInvalidResponses = 5;
         private readonly LinkedList<(PeerInfo peer, AddRangeResult result)> _resultLog = new();
-        // Guards the single-peer stale-pivot heuristic below: a pivot update wipes the result log, so a peer
-        // that keeps failing while staying the allocator's favorite would re-trip the same path forever without
-        // ever being punished. Holds the node the heuristic last fired for, cleared by the first useful range
-        // response from anyone; only that same node failing through a second streak is treated as the offender.
-        // Keyed on the node id rather than the PeerInfo instance, which the pool replaces on every reconnect -
-        // a peer that drops and comes back between two streaks would otherwise start over as a first offender.
-        private PublicKey? _stalePivotUpdateTrigger;
+        private ValueHash256? _unavailableRoot;
+        private int _eligibleUnavailableResponses;
 
         // A snap request that produced nothing usable is otherwise recorded only at Trace (a timeout) or in a
         // detailed-only metric (a bad range), while ProgressTracker keeps reporting the same percentage - so a
@@ -53,22 +58,48 @@ namespace Nethermind.Synchronization.SnapSync
         private const SnapSyncBatch EmptyBatch = null;
 
         private readonly ISnapProvider _snapProvider = snapProvider;
+        private readonly SnapRecoveryCoordinator _recovery = snapProvider is SnapProvider provider ? provider.Recovery : new(TimeProvider.System);
+
+        internal SnapSyncFeed(INodeStatsManager nodeStatsManager, ISnapProvider snapProvider, ILogManager logManager,
+            SnapRecoveryCoordinator recovery) : this(nodeStatsManager, snapProvider, logManager)
+            => _recovery = recovery;
 
         private readonly ILogger _logger = logManager.GetClassLogger<SnapSyncFeed>();
 
         public async Task<SnapSyncBatch?> PrepareRequest(CancellationToken token)
         {
+            SnapSyncBatch? pending = null;
             while (!token.IsCancellationRequested)
             {
+                Task readiness = _recovery.ReadinessSignal;
                 try
                 {
                     WarnIfStalled();
 
-                    bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
-
-                    if (request is not null)
+                    bool finished = false;
+                    if (pending is null)
                     {
-                        return request;
+                        finished = _snapProvider.IsFinished(out pending);
+                        if (pending is not null)
+                        {
+                            SnapSyncBatch owned = pending;
+                            owned.RecoveryContext = _recovery;
+                            owned.ProviderContext = _snapProvider;
+                            owned.SetTerminal(() =>
+                            {
+                                try { _snapProvider.ReleaseRequest(owned, false); }
+                                finally { owned.Dispose(); }
+                            });
+                        }
+                    }
+
+                    if (pending is not null)
+                    {
+                        bool rooted = pending.AccountRangeRequest is not null || pending.StorageRangeRequest is not null || pending.AccountsToRefreshRequest is not null;
+                        bool unknown = pending.StorageRangeRequest is { } storage && (_snapProvider is not SnapProvider provider || provider.IsUnknown(storage));
+                        if (_recovery.CanPrepare(rooted, unknown, pending.RecoveryCohort)) return pending;
+                        ((IDispatchTerminal)pending).CompleteDispatch();
+                        pending = null;
                     }
 
                     if (finished)
@@ -80,6 +111,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 catch (OperationCanceledException)
                 {
+                    (pending as IDispatchTerminal)?.CompleteDispatch();
                     OnRunEnded();
                     return EmptyBatch;
                 }
@@ -90,16 +122,19 @@ namespace Nethermind.Synchronization.SnapSync
 
                 try
                 {
-                    await Task.Delay(50, token);
+                    await _recovery.WaitForReadiness(readiness,
+                        pending?.CodesRequest is null && (pending is not null || _snapProvider is SnapProvider provider && provider.HasPendingRootWork), token);
                 }
                 catch (OperationCanceledException)
                 {
+                    (pending as IDispatchTerminal)?.CompleteDispatch();
                     // Awaited outside the try above, so this is the one run-ending exit that leaves by throwing.
                     OnRunEnded();
                     throw;
                 }
             }
 
+            (pending as IDispatchTerminal)?.CompleteDispatch();
             OnRunEnded();
             return EmptyBatch;
         }
@@ -134,30 +169,55 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             AddRangeResult result = AddRangeResult.OK;
-            // A code response carries no AddRangeResult of its own, so it would otherwise read as range success.
             bool isRangeResult = true;
+            bool madeStorageProgress = false;
             bool responseHandled = false;
+            long usefulBytes = 0;
+            bool neutral = false;
+            bool rootedBytes = false;
+            bool timedOut = false;
+            Hash256? requestedRoot = batch.AccountRangeRequest?.RootHash ?? batch.StorageRangeRequest?.RootHash ?? batch.AccountsToRefreshRequest?.RootHash;
 
             // Held until the request is released below, so that a checkpoint never sees the response half handled.
             using IDisposable? responseScope = _snapProvider.BeginResponse();
             try
             {
+                if (batch.LocalDeferred) return SyncResponseHandlingResult.NotAssigned;
                 if (batch.AccountRangeResponse is not null)
                 {
                     result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
+                    if (result == AddRangeResult.OK) usefulBytes = CountAccountBytes(batch.AccountRangeResponse);
                 }
                 else if (batch.StorageRangeResponse is not null)
                 {
-                    result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
+                    if (_snapProvider is SnapProvider provider)
+                    {
+                        result = provider.AddStorageRangeWithResult(batch.StorageRangeRequest, batch.StorageRangeResponse, out usefulBytes, out neutral, out rootedBytes,
+                            batch.DispatchEvidence, batch.RecoveryLease);
+                    }
+                    else
+                    {
+                        result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse, out madeStorageProgress);
+                        if (result == AddRangeResult.OK)
+                        {
+                            foreach (IOwnedReadOnlyList<PathWithStorageSlot> slots in batch.StorageRangeResponse.PathsAndSlots)
+                            {
+                                foreach (PathWithStorageSlot slot in slots) usefulBytes += 32 + slot.SlotRlpValue.Length;
+                            }
+                        }
+                    }
                 }
                 else if (batch.CodesResponse is not null)
                 {
                     isRangeResult = false;
-                    _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
+                    (int matched, long bytes) = AddCodes(batch.CodesRequest, batch.CodesResponse, out bool invalidResponse);
+                    usefulBytes = bytes;
+                    result = invalidResponse || matched == 0 ? AddRangeResult.InvalidProof : AddRangeResult.OK;
                 }
                 else if (batch.AccountsToRefreshResponse is not null)
                 {
                     result = _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
+                    if (result == AddRangeResult.OK) usefulBytes = CountAccountBytes(batch.AccountsToRefreshResponse);
                 }
                 else
                 {
@@ -174,187 +234,192 @@ namespace Nethermind.Synchronization.SnapSync
                     _logger.Trace($"SNAP - timeout {peer:hide}");
                     Interlocked.Increment(ref Metrics.SnapRequestTimeouts);
                     OnUnproductiveResponse("no response");
+                    timedOut = true;
                     return SyncResponseHandlingResult.LesserQuality;
                 }
 
                 responseHandled = true;
+                bool rootEligible = requestedRoot is not null && requestedRoot == _recovery.CurrentRoot;
+                bool retired = result == AddRangeResult.ExpiredRootHash && _recovery.TracksPivot && !rootEligible;
+                batch.RecoveryLease?.Classify(neutral, retired);
+                if (retired) neutral = true;
+                if (isRangeResult && _recovery.TracksPivot)
+                {
+                    bool verifiedRecovery = (result == AddRangeResult.OK || neutral) && usefulBytes > 0 &&
+                        (batch.StorageRangeRequest is null || rootedBytes);
+                    ObserveRootAvailability(requestedRoot, rootEligible && !neutral && result == AddRangeResult.ExpiredRootHash,
+                        rootEligible && verifiedRecovery);
+                }
+                if (neutral)
+                {
+                    if (usefulBytes > 0) OnProductiveResponse();
+                    return SyncResponseHandlingResult.Emptish;
+                }
             }
             finally
             {
+                if (timedOut) batch.RecoveryLease?.Classify(false, false);
+                if (peer is not null && (timedOut || responseHandled && (usefulBytes > 0 || !neutral && result != AddRangeResult.OK)))
+                {
+                    nodeStatsManager?.ReportTransferSpeedEvent(peer.SyncPeer.Node, TransferSpeedType.SnapRanges,
+                        usefulBytes / Math.Max(1, batch.ResponseMilliseconds));
+                }
                 // The one release of the request the scheduler handed out. It must run after the handler,
                 // or IsSnapGetRangesFinished could see empty queues and a zero count mid-scheduling.
-                _snapProvider.ReleaseRequest(batch, responseHandled);
-                batch.Dispose();
+                batch.Handled();
+                try { _snapProvider.ReleaseRequest(batch, responseHandled, responseHandled && isRangeResult && (result == AddRangeResult.OK || usefulBytes > 0 || madeStorageProgress)); }
+                finally
+                {
+                    batch.Dispose();
+                    if (!batch.DispatchOwned) ((IDispatchTerminal)batch).CompleteDispatch();
+                }
             }
 
-            return AnalyzeResponsePerPeer(result, peer, isRangeResult);
+            return AnalyzeResponsePerPeer(result, peer, isRangeResult,
+                unavailable: result == AddRangeResult.ExpiredRootHash && _recovery.TracksPivot,
+                productiveRange: usefulBytes > 0 || madeStorageProgress);
+        }
+
+        private void ObserveRootAvailability(Hash256? requestedRoot, bool unavailable, bool recovered)
+        {
+            lock (_syncLock)
+            {
+                ValueHash256? current = _recovery.CurrentRoot?.ValueHash256;
+                if (_unavailableRoot != current)
+                {
+                    _unavailableRoot = current;
+                    _eligibleUnavailableResponses = 0;
+                }
+                if (requestedRoot?.ValueHash256 != current) return;
+                if (recovered) _eligibleUnavailableResponses = 0;
+                else if (unavailable)
+                {
+                    _eligibleUnavailableResponses++;
+                    if (_eligibleUnavailableResponses % (AllowedInvalidResponses + 1) == 0)
+                    {
+                        _snapProvider.UpdatePivot();
+                        ValueHash256? updated = _recovery.CurrentRoot?.ValueHash256;
+                        if (updated != _unavailableRoot)
+                        {
+                            _unavailableRoot = updated;
+                            _eligibleUnavailableResponses = 0;
+                        }
+                    }
+                }
+            }
+        }
+
+        private static long CountAccountBytes(AccountsAndProofs response)
+        {
+            long bytes = 0;
+            foreach (PathWithAccount account in response.PathAndAccounts)
+            {
+                bytes += 32 + AccountDecoder.Instance.GetLength(account.Account);
+            }
+            return bytes;
+        }
+
+        private (int Matched, long Bytes) AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes, out bool invalidResponse)
+        {
+            if (_snapProvider is SnapProvider provider) return provider.AddCodesWithResult(requestedHashes, codes, out invalidResponse);
+
+            invalidResponse = false;
+            HashSet<ValueHash256> requested = [.. requestedHashes];
+            HashSet<ValueHash256> remaining = [.. requestedHashes];
+            int matched = 0;
+            long bytes = 0;
+            for (int i = 0; i < codes.Count; i++)
+            {
+                ValueHash256 hash = ValueKeccak.Compute(codes[i]);
+                if (!requested.Contains(hash)) invalidResponse = true;
+                else if (remaining.Remove(hash))
+                {
+                    matched++;
+                    bytes += codes[i].Length;
+                }
+            }
+            _snapProvider.AddCodes(requestedHashes, codes);
+            return (matched, bytes);
         }
 
         public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer) =>
             AnalyzeResponsePerPeer(result, peer, isRangeResult: true);
 
-        /// <param name="isRangeResult">Whether <paramref name="result"/> reflects range work. A code response
-        /// carries no <see cref="AddRangeResult"/> of its own and reads as OK even when it matched nothing, so it
-        /// must not count as the useful progress that clears the repeat-offender guard.</param>
-        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer, bool isRangeResult)
+        /// <param name="isRangeResult">Whether <paramref name="result"/> reflects range work. Code replies are
+        /// scored separately and cannot reset range failure history.</param>
+        public SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer, bool isRangeResult) =>
+            AnalyzeResponsePerPeer(result, peer, isRangeResult, unavailable: false, productiveRange: result == AddRangeResult.OK);
+
+        internal SyncResponseHandlingResult AnalyzeResponsePerPeer(AddRangeResult result, PeerInfo? peer,
+            bool isRangeResult, bool unavailable, bool productiveRange)
         {
-            if (peer is null)
+            if (!isRangeResult)
             {
-                return SyncResponseHandlingResult.OK;
+                if (result == AddRangeResult.OK) return SyncResponseHandlingResult.OK;
+                OnUnproductiveResponse("unmatched codes");
+                return SyncResponseHandlingResult.LesserQuality;
             }
-
-            int maxSize = 10 * AllowedInvalidResponses;
-            while (_resultLog.Count > maxSize)
+            if (productiveRange)
             {
-                lock (_syncLock)
+                OnProductiveResponse();
+                if (peer is not null && result == AddRangeResult.OK) RecordRangeResult(peer, AddRangeResult.OK);
+            }
+            if (result == AddRangeResult.OK) return SyncResponseHandlingResult.OK;
+            if (!productiveRange) OnUnproductiveResponse(result.ToString());
+            if (peer is null) return SyncResponseHandlingResult.NotAssigned;
+            // Only the request handler can establish unavailable-root evidence.
+            AddRangeResult attributed = unavailable ? AddRangeResult.ExpiredRootHash : AddRangeResult.InvalidProof;
+            lock (_syncLock)
+            {
+                RecordRangeResult(peer, attributed);
+                int failures = 0;
+                foreach ((PeerInfo owner, AddRangeResult entry) in _resultLog)
                 {
-                    if (_resultLog.Count > 0)
-                    {
-                        _resultLog.RemoveLast();
-                    }
+                    if (!SamePeer(owner, peer)) continue;
+                    if (entry == AddRangeResult.OK) break;
+                    if ((entry == AddRangeResult.ExpiredRootHash) == unavailable) failures++;
                 }
+                int threshold = unavailable ? 2 * (AllowedInvalidResponses + 1) : AllowedInvalidResponses + 1;
+                return failures >= threshold ? SyncResponseHandlingResult.LesserQuality : SyncResponseHandlingResult.NoProgress;
             }
+        }
 
+        private void RecordRangeResult(PeerInfo peer, AddRangeResult result)
+        {
             lock (_syncLock)
             {
                 _resultLog.AddFirst((peer, result));
+                if (_resultLog.Count > 10 * AllowedInvalidResponses) _resultLog.RemoveLast();
             }
+        }
 
-            if (result == AddRangeResult.OK)
+        private static bool SamePeer(PeerInfo first, PeerInfo second)
+        {
+            PublicKey? firstId = first.SyncPeer.Node?.Id;
+            PublicKey? secondId = second.SyncPeer.Node?.Id;
+            return firstId is not null && secondId is not null ? firstId.Equals(secondId) : ReferenceEquals(first, second);
+        }
+
+        private void OnProductiveResponse()
+        {
+            lock (_syncLock)
             {
-                if (isRangeResult)
-                {
-                    lock (_syncLock)
-                    {
-                        _stalePivotUpdateTrigger = null;
-                        _consecutiveUnproductiveResponses = 0;
-                        _lastUnproductiveReason = NoUnproductiveReason;
-                        Metrics.SnapConsecutiveUnproductiveResponses = 0;
-
-                        // Zero means no run is under way. ReleaseRequest, in the finally above, is what lets
-                        // IsFinished report the run over, so the dispatcher can end the run between there and
-                        // here - and a timestamp written after that would be charged to the next run.
-                        // Within a run this is always non-zero: WarnIfStalled starts the clock at the top of
-                        // PrepareRequest, before any batch can be handed out.
-                        if (_lastProductiveTimestamp != 0) _lastProductiveTimestamp = Stopwatch.GetTimestamp();
-                    }
-                }
-
-                return SyncResponseHandlingResult.OK;
-            }
-            else
-            {
-                OnUnproductiveResponse(result.ToString());
-
-                int allLastSuccess = 0;
-                int allLastFailures = 0;
-                int peerLastFailures = 0;
-                bool seenOtherPeer = false;
-
-                lock (_syncLock)
-                {
-                    // Scan the whole window first so the single-peer guard cannot fire
-                    // prematurely when a healthy peer's entries sit further back in the log
-                    // than the analyzed peer's recent failures.
-                    foreach ((PeerInfo peer, AddRangeResult _) probe in _resultLog)
-                    {
-                        if (probe.peer != peer)
-                        {
-                            seenOtherPeer = true;
-                            break;
-                        }
-                    }
-
-                    foreach ((PeerInfo peer, AddRangeResult result) item in _resultLog)
-                    {
-                        if (item.result == AddRangeResult.OK)
-                        {
-                            allLastSuccess++;
-
-                            if (item.peer == peer)
-                            {
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            allLastFailures++;
-
-                            if (item.peer == peer)
-                            {
-                                peerLastFailures++;
-
-                                if (peerLastFailures > AllowedInvalidResponses)
-                                {
-                                    // With a single peer in the entire window and no successes, the
-                                    // failure stream is more likely a stale pivot than a misbehaving
-                                    // peer — punishing the only available peer would stall sync. But when
-                                    // the pivot was already updated for this exact reason and nothing has
-                                    // succeeded since, the peer itself is the problem: without a punishment
-                                    // the allocator keeps picking the same fastest-but-useless peer and the
-                                    // heuristic loops forever on a wiped log.
-                                    if (!seenOtherPeer && allLastSuccess == 0)
-                                    {
-                                        PublicKey? peerNodeId = peer.SyncPeer?.Node?.Id;
-                                        bool repeatOffender = peerNodeId is not null && peerNodeId.Equals(_stalePivotUpdateTrigger);
-                                        // Armed on the request, not on the move: a pivot that declines to move is the
-                                        // case this guard is for, and the peer still has to be punished for it.
-                                        _stalePivotUpdateTrigger = peerNodeId;
-                                        _snapProvider.UpdatePivot();
-
-                                        _resultLog.Clear();
-
-                                        if (repeatOffender)
-                                        {
-                                            if (_logger.IsDebug) _logger.Debug($"SNAP - peer kept failing across a pivot update, punishing:{peer:hide}");
-                                            return SyncResponseHandlingResult.LesserQuality;
-                                        }
-
-                                        break;
-                                    }
-
-                                    if (allLastFailures == peerLastFailures)
-                                    {
-                                        _logger.Trace($"SNAP - peer to be punished:{peer:hide}");
-                                        return SyncResponseHandlingResult.LesserQuality;
-                                    }
-
-                                    if (allLastSuccess == 0 && allLastFailures > peerLastFailures)
-                                    {
-                                        _snapProvider.UpdatePivot();
-
-                                        _resultLog.Clear();
-
-                                        break;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (result == AddRangeResult.ExpiredRootHash)
-                {
-                    return SyncResponseHandlingResult.NoProgress;
-                }
-
-                return SyncResponseHandlingResult.OK;
+                _consecutiveUnproductiveResponses = 0;
+                _lastUnproductiveReason = NoUnproductiveReason;
+                Metrics.SnapConsecutiveUnproductiveResponses = 0;
+                if (_lastProductiveTimestamp != 0) _lastProductiveTimestamp = Stopwatch.GetTimestamp();
             }
         }
 
         /// <summary>Records a snap request that yielded no usable range.</summary>
-        /// <remarks>
-        /// A code response is not counted either way: it carries no <see cref="AddRangeResult"/>, so it neither
-        /// restarts the clock nor advances the streak. The codes-only tail of a sync is bounded, so this cannot
-        /// hold a warning open indefinitely.
-        /// </remarks>
         /// <param name="reason">Why the response was unusable - an <see cref="AddRangeResult"/> name, or that none arrived.</param>
-        private void OnUnproductiveResponse(string reason)
+        private int OnUnproductiveResponse(string reason)
         {
             lock (_syncLock)
             {
                 Metrics.SnapConsecutiveUnproductiveResponses = ++_consecutiveUnproductiveResponses;
                 _lastUnproductiveReason = reason;
+                return _consecutiveUnproductiveResponses;
             }
         }
 

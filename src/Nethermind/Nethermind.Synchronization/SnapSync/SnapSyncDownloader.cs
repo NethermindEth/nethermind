@@ -18,6 +18,13 @@ namespace Nethermind.Synchronization.SnapSync
     public class SnapSyncDownloader(ILogManager? logManager) : ISyncDownloader<SnapSyncBatch>
     {
         private readonly ILogger Logger = logManager.GetClassLogger<SnapSyncDownloader>();
+        private ISnapProvider? _provider;
+        private SnapRecoveryCoordinator? _recovery;
+
+        internal SnapSyncDownloader(ILogManager logManager, ISnapProvider provider, SnapRecoveryCoordinator recovery) : this(logManager)
+            => (_provider, _recovery) = (provider, recovery);
+
+        private TimeProvider ClockFor(SnapSyncBatch batch) => (batch.RecoveryContext ?? _recovery)?.TimeProvider ?? TimeProvider.System;
 
         public async Task Dispatch(PeerInfo peerInfo, SnapSyncBatch batch, CancellationToken cancellationToken)
         {
@@ -25,8 +32,30 @@ namespace Nethermind.Synchronization.SnapSync
 
             if (peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer handler))
             {
+                ISnapProvider? snapProvider = batch.ProviderContext ?? _provider;
+                SnapRecoveryCoordinator? recovery = batch.RecoveryContext ?? _recovery;
+                if (batch.StorageRangeRequest is { } storage && snapProvider is SnapProvider provider)
+                    batch.DispatchEvidence = provider.CaptureStorageEvidence(storage);
+                bool rooted = batch.AccountRangeRequest is not null || batch.StorageRangeRequest is not null || batch.AccountsToRefreshRequest is not null;
+                bool unknown = batch.StorageRangeRequest is not null &&
+                    (batch.DispatchEvidence?.IsUnknown ?? true);
+                if (rooted && recovery is not null)
+                {
+                    batch.RecoveryLease = recovery.TryReserve(peerInfo, unknown, batch.StorageRangeRequest?.Accounts.Count ?? 0, batch.RecoveryCohort);
+                    if (batch.RecoveryLease is null)
+                    {
+                        batch.LocalDeferred = true;
+                        return;
+                    }
+                }
+                // Timed on the clock that drives snap recovery, so a response's speed is measured on the same time
+                // base as its readiness and pivot windows rather than on an unrelated wall clock.
+                // Resolved again in finally rather than held in a local, so the clock is not hoisted into the async state machine.
+                long started = ClockFor(batch).GetTimestamp();
                 try
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (batch.RecoveryLease?.Sent() == false) { batch.LocalDeferred = true; return; }
                     if (batch.AccountRangeRequest is not null)
                     {
                         batch.AccountRangeResponse = await handler.GetAccountRange(batch.AccountRangeRequest, cancellationToken);
@@ -60,6 +89,10 @@ namespace Nethermind.Synchronization.SnapSync
                 catch (Exception e)
                 {
                     Logger.DebugError($"Error after dispatching the snap sync request. Request: {batch}", e);
+                }
+                finally
+                {
+                    batch.ResponseMilliseconds = (long)ClockFor(batch).GetElapsedTime(started).TotalMilliseconds;
                 }
             }
         }

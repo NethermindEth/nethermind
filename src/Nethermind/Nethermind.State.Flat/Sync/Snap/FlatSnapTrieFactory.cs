@@ -7,6 +7,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -33,20 +34,26 @@ public class FlatSnapTrieFactory(
     ISyncConfig syncConfig,
     ILogManager logManager) : ISnapTrieFactory
 {
-    private const int AccountKeyLength = 20;
     private const int MaxNodePathLength = 64;
 
     private readonly ILogger _logger = logManager.GetClassLogger<FlatSnapTrieFactory>();
+    private readonly Lock _checkpointLock = new();
+    private AccountRangeProgress[]? _savedPartitions;
+    private Action? _invalidateStorageCheckpoint;
+
+    private bool HasSavedCheckpoint => Volatile.Read(ref _savedPartitions) is not null;
 
     public void EnsureInitialize()
     {
         if (syncConfig.SnapResume && LoadCheckpoint() is { } checkpoint)
         {
+            SetSavedPartitions(checkpoint);
             DiscardWritesAfter(checkpoint);
             persistenceManager.ResetPersistedStateId();
             return;
         }
 
+        _savedPartitions = null;
         // Log before probing: on a database holding only tombstones from an earlier wipe, the probe itself can take a while.
         if (_logger.IsInfo) _logger.Info("Clearing database");
         if (_logger.IsWarn && HasAccounts())
@@ -60,11 +67,13 @@ public class FlatSnapTrieFactory(
         if (_logger.IsInfo) _logger.Info($"Cleared database in {Stopwatch.GetElapsedTime(startTime).TotalSeconds:N1}s");
     }
 
-    private bool HasAccounts()
+    private bool HasAccounts() => HasAccounts(ValueKeccak.Zero, ValueKeccak.MaxValue);
+
+    private bool HasAccounts(in ValueHash256 from, in ValueHash256 to)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
-        using IPersistence.IFlatIterator accounts = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
-        return accounts.MoveNext();
+        using IPersistence.IFlatIterator accounts = reader.CreateAccountIterator(from, to);
+        return accounts.MoveNext() || reader.GetAccountRaw(to) is not null;
     }
 
     public void FinalizeSync() => persistence.Flush();
@@ -110,6 +119,18 @@ public class FlatSnapTrieFactory(
 
     public void SaveCheckpoint(SnapCheckpoint? checkpoint)
     {
+        lock (_checkpointLock)
+        {
+            SaveCheckpointCore(checkpoint);
+            SetSavedPartitions(checkpoint);
+        }
+    }
+
+    private void SetSavedPartitions(SnapCheckpoint? checkpoint) =>
+        Volatile.Write(ref _savedPartitions, checkpoint?.Partitions.OrderBy(static p => p.AccountPathLimit).ToArray());
+
+    private void SaveCheckpointCore(SnapCheckpoint? checkpoint)
+    {
         if (checkpoint is not null)
         {
             // Snap writes skip the WAL, so only a flush makes the data the checkpoint covers durable. The persistence
@@ -121,6 +142,59 @@ public class FlatSnapTrieFactory(
         }
 
         BasePersistence.WriteSnapCheckpoint(flatDb, checkpoint?.Encode());
+    }
+
+    private void InvalidateCheckpointForRange(ValueHash256 from, ValueHash256 to, bool hasExactNode)
+    {
+        if (!HasSavedCheckpoint) return;
+        if (!hasExactNode)
+        {
+            // Use the same whole account keys as the delete. An account at a partial boundary survives it.
+            if (!FlatSnapStateTree.TryGetWholeAccountKeys(from, to, out ValueHash256 firstAccount, out ValueHash256 lastAccount)) return;
+            (from, to) = (firstAccount, lastAccount);
+        }
+
+        lock (_checkpointLock)
+        {
+            if (_savedPartitions is not { } partitions) return;
+
+            ValueHash256 start = ValueKeccak.Zero;
+            foreach (AccountRangeProgress partition in partitions)
+            {
+                if (start > to) break;
+                ValueHash256 first = from > start ? from : start;
+                ValueHash256 last = to < partition.AccountPathLimit ? to : partition.AccountPathLimit;
+                if (partition.MoreAccountsToRight && last >= partition.NextAccountPath)
+                {
+                    if (partition.NextAccountPath <= first)
+                    {
+                        start = partition.AccountPathLimit;
+                        continue;
+                    }
+                    last = partition.NextAccountPath.DecrementPath();
+                }
+
+                // Empty proof ranges are common at an unchanged root. A covered trie subtree has at
+                // least one account, so a range that has no accounts cannot remove saved progress.
+                if (first <= last && (hasExactNode || HasAccounts(first, last)))
+                {
+                    SaveCheckpointCore(null);
+                    Volatile.Write(ref _savedPartitions, null);
+                    return;
+                }
+                start = partition.AccountPathLimit;
+            }
+        }
+    }
+
+    private void InvalidateSavedCheckpoint()
+    {
+        lock (_checkpointLock)
+        {
+            if (_savedPartitions is null) return;
+            SaveCheckpointCore(null);
+            SetSavedPartitions(null);
+        }
     }
 
     /// <summary>Deletes everything snap sync wrote after <paramref name="checkpoint"/> was saved, keeping what it covers.</summary>
@@ -150,10 +224,10 @@ public class FlatSnapTrieFactory(
                 batch.DeleteStateTrieNodeRange(partition.NextAccountPath, partition.AccountPathLimit);
                 DeleteNodesReachingInto(reader, batch, address: null, partition.NextAccountPath, partition.AccountPathLimit);
 
-                if (TryGetFirstAccountKeyAtOrAfter(partition.NextAccountPath, out ValueHash256 firstAccount))
+                if (FlatSnapStateTree.TryGetWholeAccountKeys(partition.NextAccountPath, partition.AccountPathLimit, out ValueHash256 firstAccount, out ValueHash256 lastAccount))
                 {
-                    batch.DeleteAccountRange(firstAccount, partition.AccountPathLimit);
-                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit, null);
+                    batch.DeleteAccountRange(firstAccount, lastAccount);
+                    batch.SelfDestructRange(firstAccount, lastAccount, null);
                 }
             }
 
@@ -217,39 +291,103 @@ public class FlatSnapTrieFactory(
         keys[0] = keys[0].Append(nibbles);
     }
 
-    /// <summary>Finds the lowest path whose 20-byte account key no account below <paramref name="path"/> can share.</summary>
-    /// <remarks>
-    /// Accounts and their storage are keyed by the first 20 bytes of the path, so a range deleted from
-    /// <paramref name="path"/> itself would also take the account just below it, which shares those bytes.
-    /// </remarks>
-    /// <returns><c>false</c> when no such path exists.</returns>
-    private static bool TryGetFirstAccountKeyAtOrAfter(in ValueHash256 path, out ValueHash256 firstAccount)
-    {
-        firstAccount = path;
-        Span<byte> bytes = firstAccount.BytesAsSpan;
-        if (!bytes[AccountKeyLength..].ContainsAnyExcept((byte)0)) return true;
-
-        bytes[AccountKeyLength..].Clear();
-        for (int i = AccountKeyLength - 1; i >= 0; i--)
-        {
-            if (++bytes[i] != 0) return true;
-        }
-
-        return false;
-    }
-
     public ISnapTree<PathWithAccount> CreateStateTree()
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
         IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        return new FlatSnapStateTree(reader, writeBatch, syncConfig.EnableSnapDoubleWriteCheck, logManager)
+        {
+            BeforeCleanup = syncConfig.SnapResume ? InvalidateCheckpointForRange : null
+        };
     }
 
     public ISnapTree<PathWithStorageSlot> CreateStorageTree(in ValueHash256 accountPath)
     {
         IPersistence.IPersistenceReader reader = new LazyReader(persistence, ReaderFlags.Sync);
-        IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager);
+        IPersistence.IAtomicPersistenceBatch? writeBatch = null;
+        try
+        {
+            writeBatch = new LazyAtomicWriteBatch(persistence);
+            return new FlatSnapStorageTree(reader, writeBatch, accountPath.ToCommitment(), syncConfig.EnableSnapDoubleWriteCheck, logManager)
+            {
+                BeforeCleanup = HasSavedCheckpoint ? _invalidateStorageCheckpoint ??= InvalidateSavedCheckpoint : null,
+            };
+        }
+        catch
+        {
+            try
+            {
+                writeBatch?.Dispose();
+            }
+            finally
+            {
+                reader.Dispose();
+            }
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Defers the atomic write batch, and the snapshot its range deletes scan, until first use.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="IsStorageRangeEmpty"/> creates the inner batch like any other call, so the probe and the range deletes
+    /// it lets the tree skip read one snapshot, and its answer cannot differ from what those deletes would find. In a
+    /// storage tree the probe is the first call: the boundary cleanup it guards runs before the commit writes anything,
+    /// and the batch's own pending writes are never in its snapshot anyway. Taking the snapshot then rather than at tree
+    /// creation only lets sibling commits made in between show, which is safe for the reason given on
+    /// <see cref="LazyReader"/>.
+    /// </remarks>
+    private sealed class LazyAtomicWriteBatch(IPersistence persistence) : IPersistence.IAtomicPersistenceBatch
+    {
+        private IPersistence.IAtomicPersistenceBatch? _inner;
+        private bool _disposed;
+
+        private IPersistence.IAtomicPersistenceBatch Inner
+        {
+            get
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                return _inner ??= persistence.CreateAtomicWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+            }
+        }
+
+        public void SelfDestruct(Address addr) => Inner.SelfDestruct(addr);
+        public void SetAccount(Address addr, Account? account) => Inner.SetAccount(addr, account);
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) => Inner.SetSlimAccount(addr, slimRlp);
+        public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) => Inner.SetStorage(addr, slot, value);
+        public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => Inner.SetStateTrieNode(path, rlp);
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) => Inner.SetStorageTrieNode(address, path, rlp);
+        public void DeleteStateTrieNode(in TreePath path) => Inner.DeleteStateTrieNode(path);
+        public void DeleteStorageTrieNode(in ValueHash256 address, in TreePath path) => Inner.DeleteStorageTrieNode(address, path);
+        public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) => Inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => Inner.SetAccountRaw(addrHash, account);
+        public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) => Inner.DeleteAccountRange(fromPath, toPath);
+        public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) => Inner.DeleteStorageRange(addressHash, fromPath, toPath);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) => Inner.SelfDestructRange(fromPath, toPath, keptAccount);
+        public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) => Inner.DeleteStateTrieNodeRange(from, to);
+        public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to, Action? beforeDelete = null) => Inner.DeleteStorageTrieNodeRange(addressHash, from, to, beforeDelete);
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) => Inner.IsStorageRangeEmpty(addressHash, from, to);
+        public void SetMigrationCursor(in MigrationCursor? cursor) => Inner.SetMigrationCursor(cursor);
+
+        public void Commit()
+        {
+            try
+            {
+                Inner.Commit();
+            }
+            finally
+            {
+                Dispose();
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _inner?.Dispose();
+        }
     }
 
     /// <summary>

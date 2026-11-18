@@ -493,12 +493,20 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
     private void ConfigureSnapComponent(ContainerBuilder serviceCollection)
     {
         serviceCollection
-            .AddSingleton<ProgressTracker>()
+            .AddSingleton<ProgressTracker>(ctx => new ProgressTracker(ctx.Resolve<ISnapTrieFactory>(), syncConfig,
+                ctx.Resolve<IStateSyncPivot>(), ctx.Resolve<ILogManager>(), ctx.ResolveOptional<TimeProvider>() ?? TimeProvider.System))
             .AddSingleton<ISnapTrieFactory, PatriciaSnapTrieFactory>()
             .AddSingleton<ISnapProvider, SnapProvider>()
-            .AddSingleton<ISimpleSyncFeed<SnapSyncBatch>, SnapSyncFeed>()
-            .AddSingleton<ISyncDownloader<SnapSyncBatch>, SnapSyncDownloader>()
-            .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>, SnapSyncAllocationStrategyFactory>()
+            .AddSingleton<ISimpleSyncFeed<SnapSyncBatch>>(ctx =>
+            {
+                SnapRecoveryCoordinator recovery = ctx.Resolve<ProgressTracker>().Recovery;
+                recovery.PeerPool = ctx.Resolve<ISyncPeerPool>();
+                return new SnapSyncFeed(ctx.Resolve<INodeStatsManager>(), ctx.Resolve<ISnapProvider>(), ctx.Resolve<ILogManager>(), recovery);
+            })
+            .AddSingleton<ISyncDownloader<SnapSyncBatch>>(ctx => new SnapSyncDownloader(
+                ctx.Resolve<ILogManager>(), ctx.Resolve<ISnapProvider>(), ctx.Resolve<ProgressTracker>().Recovery))
+            .AddSingleton<IPeerAllocationStrategyFactory<SnapSyncBatch>>(ctx => new SnapSyncAllocationStrategyFactory(
+                ctx.Resolve<ProgressTracker>().Recovery, ctx.Resolve<ISnapProvider>()))
             .AddSingleton<ISnapSyncRunner, SnapSyncRunner>();
 
         serviceCollection.Register(static ctx => new SimpleDispatcher<SnapSyncBatch>(

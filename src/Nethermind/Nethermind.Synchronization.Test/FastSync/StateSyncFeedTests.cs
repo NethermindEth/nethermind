@@ -8,7 +8,9 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -16,6 +18,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Stats;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
@@ -39,6 +42,47 @@ namespace Nethermind.Synchronization.Test.FastSync
     {
         // Useful for set and forget run. But this test is taking a long time to have it set to other than 1.
         private const int TestRepeatCount = 1;
+
+        [Test]
+        public async Task Sparse_responses_distinguish_missing_nodes_from_invalid_data([Values] bool invalidNodes)
+        {
+            RemoteDbContext remote = new(_logManager);
+            remote.StateTree.Set(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakB).TestObject);
+            remote.StateTree.Commit();
+            INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+            await using IContainer container = PrepareDownloader(remote, configureBuilder: builder => builder.AddSingleton(stats));
+            SafeContext ctx = container.Resolve<SafeContext>();
+            ctx.TreeFeed.ResetStateRootToBestSuggested();
+            using StateSyncBatch? request = await ctx.TreeFeed.PrepareRequest();
+            PeerInfo peer = new(ctx.SyncPeerMocks[0]);
+            await container.Resolve<ISyncDownloader<StateSyncBatch>>().Dispatch(peer, request!, CancellationToken.None);
+            Assert.That(request!.RequestedNodes, Has.Count.EqualTo(1));
+            long validatedBytes = request.Responses![0].Length;
+            ArrayPoolList<byte[]> responses = [with(TreeSync.MaxRequestSize), request.Responses[0].ToArray()];
+            request.Responses.Dispose();
+            for (int i = 1; i < TreeSync.MaxRequestSize; i++)
+            {
+                request.RequestedNodes!.Add(new StateSyncItem(Keccak.Zero, null, TreePath.Empty, NodeDataType.Code));
+                responses.Add(invalidNodes ? [42] : []);
+            }
+            request.Responses = new ByteArrayListAdapter(responses);
+            request.ResponseMilliseconds = 1;
+            stats.ClearReceivedCalls();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.Feed.HandleResponse(request, peer),
+                    Is.EqualTo(invalidNodes ? SyncResponseHandlingResult.LesserQuality : SyncResponseHandlingResult.Emptish));
+
+                Assert.That(typeof(TreeSync).GetField("_hintsToResetRoot", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(ctx.TreeFeed),
+                    Is.EqualTo(invalidNodes ? 0 : 1));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(request.ValidatedBytes, Is.EqualTo(validatedBytes));
+                stats.Received(1).ReportTransferSpeedEvent(peer.SyncPeer.Node, TransferSpeedType.NodeData, validatedBytes);
+            }
+        }
 
         [Test]
         [TestCaseSource(nameof(Scenarios))]
@@ -441,7 +485,11 @@ namespace Nethermind.Synchronization.Test.FastSync
             Assert.That(request, Is.Not.Null);
 #pragma warning restore NUnit2045
 
-            Assert.That(ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>())), Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            ISyncPeer peer = Substitute.For<ISyncPeer>();
+            peer.Node.Returns(new Nethermind.Stats.Model.Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+            Assert.That(ctx.Feed.HandleResponse(request, new PeerInfo(peer)), Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
+            Assert.That((data.NotAssignedCount, data.NoResponseCount), Is.EqualTo((0L, 1L)));
         }
 
         [Test]
@@ -462,11 +510,13 @@ namespace Nethermind.Synchronization.Test.FastSync
 #pragma warning restore NUnit2045
 
             Assert.That(ctx.Feed.HandleResponse(request, peer: null), Is.EqualTo(SyncResponseHandlingResult.NotAssigned));
+            DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
+            Assert.That((data.NotAssignedCount, data.NoResponseCount), Is.EqualTo((1L, 0L)));
         }
 
         [Test]
         [Repeat(TestRepeatCount)]
-        public async Task RepairPossiblyMissingStorage()
+        public async Task RepairPossiblyMissingStorage([Values(0, 1, 3)] int sameRootResets, [Values] bool staticPivot)
         {
             RemoteDbContext remote = new(_logManager);
             remote.CodeDb[Keccak.Compute(TrieScenarios.Code0).Bytes] = TrieScenarios.Code0;
@@ -488,7 +538,16 @@ namespace Nethermind.Synchronization.Test.FastSync
             state.Set(TestItem.KeccakC, Build.An.Account.WithNonce(1).TestObject);
             state.Commit();
 
-            await using IContainer container = PrepareDownloader(remote);
+            TrackingTreeSyncStore? trackingStore = null;
+            await using IContainer container = PrepareDownloader(remote, configureBuilder: builder =>
+                builder.AddDecorator<ITreeSyncStore>((_, inner) => trackingStore = new TrackingTreeSyncStore(inner, [])));
+            container.Resolve<ISyncConfig>().StaticSnapPivot = staticPivot;
+            if (staticPivot)
+            {
+                IBlockTree blockTree = container.Resolve<IBlockTree>();
+                BlockHeader pivot = blockTree.BestSuggestedHeader!;
+                blockTree.SyncPivot = (pivot.Number, pivot.Hash!);
+            }
             IStateSyncTestOperation local = container.Resolve<IStateSyncTestOperation>();
 
             // Local state only have the state
@@ -503,9 +562,41 @@ namespace Nethermind.Synchronization.Test.FastSync
             container.Resolve<StateSyncPivot>().UpdatedStorages.Add(theAccount);
 
             SafeContext ctx = container.Resolve<SafeContext>();
+            ctx.TreeFeed.ResetStateRootToBestSuggested();
+            ISyncDownloader<StateSyncBatch> downloader = container.Resolve<ISyncDownloader<StateSyncBatch>>();
+            PeerInfo peer = new(ctx.SyncPeerMocks[0]);
+            ctx.SyncPeerMocks[0].SetFilter([state.RootHash]);
+            for (int i = 0; i <= sameRootResets; i++)
+            {
+                using StateSyncBatch? firstRequest = await ctx.TreeFeed.PrepareRequest();
+                Assert.That(firstRequest, Is.Not.Null);
+                using StateSyncBatch? request = firstRequest!.RequestedNodes!.Any(item => item.IsRoot)
+                    ? firstRequest
+                    : await ctx.TreeFeed.PrepareRequest();
+                Assert.That(request, Is.Not.Null);
+                Assert.That(request!.RequestedNodes!.Any(item => item.IsRoot), Is.True);
+                await downloader.Dispatch(peer, request!, ctx.CancellationToken);
+                ctx.TreeFeed.HandleResponse(request, peer);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(ctx.TreeFeed.IsRootSaved, Is.False);
+                    Assert.That(ctx.TreeFeed.IsSyncRoundFinished(), Is.False);
+                    Assert.That(trackingStore!.FinalizedCount, Is.Zero);
+                    Assert.That(trackingStore.SavedStateRoots, Is.Zero);
+                }
+
+                if (i < sameRootResets) ctx.TreeFeed.ResetStateRoot();
+            }
+            ctx.SyncPeerMocks[0].SetFilter(null);
             await ActivateAndWait(ctx);
 
             local.CompareTrees(remote, _logger, "END");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.TreeFeed.IsRootSaved, Is.True);
+                Assert.That(trackingStore!.FinalizedCount, Is.EqualTo(1));
+                Assert.That(trackingStore.SavedStateRoots, Is.EqualTo(1));
+            }
         }
 
         [Test]
@@ -584,10 +675,20 @@ namespace Nethermind.Synchronization.Test.FastSync
 
         private class TrackingTreeSyncStore(ITreeSyncStore inner, List<ValueHash256> clearedAddresses) : ITreeSyncStore
         {
+            public int SavedStateRoots { get; private set; }
+            public int FinalizedCount { get; private set; }
             public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => inner.NodeExists(address, path, hash);
-            public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data) => inner.SaveNode(address, path, hash, data);
+            public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)
+            {
+                if (address is null && path.Length == 0) SavedStateRoots++;
+                inner.SaveNode(address, path, hash, data);
+            }
             public void EnsureStorageEmpty(in ValueHash256 address) { clearedAddresses.Add(address); inner.EnsureStorageEmpty(address); }
-            public void FinalizeSync(BlockHeader pivotHeader) => inner.FinalizeSync(pivotHeader);
+            public void FinalizeSync(BlockHeader pivotHeader)
+            {
+                FinalizedCount++;
+                inner.FinalizeSync(pivotHeader);
+            }
             public ITreeSyncVerificationContext CreateVerificationContext(byte[] rootNodeData) => inner.CreateVerificationContext(rootNodeData);
         }
 

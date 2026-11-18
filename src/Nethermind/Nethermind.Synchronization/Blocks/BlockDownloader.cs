@@ -247,10 +247,12 @@ namespace Nethermind.Synchronization.Blocks
                         return null;
                     }
 
+                    entry.PeerInfo?.RecordServedHead(currentBlock.Number);
                     GC.KeepAlive(entry.ParentHeader); // ParentHeader is used with `Header.MaybeParent` to ensure reference is kept.
 
                     if (SuggestBlock(entry.PeerInfo, entry.Block, blockIndex == 0, shouldProcess, ShouldDownloadReceipts(entry.Header, shouldProcess, downloadReceipts), entry.Receipts))
                     {
+                        entry.PeerInfo?.SyncPeer.NotifyUsefulSyncResponse();
                         blocksSynced++;
                     }
                 }
@@ -521,6 +523,7 @@ namespace Nethermind.Synchronization.Blocks
 
         public SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer)
         {
+            response.VerifiedProgressContexts = AllocationContexts.None;
             using BlocksRequest _ = response;
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             BlockBody[]? bodies;
@@ -600,6 +603,7 @@ namespace Nethermind.Synchronization.Blocks
                 entry.PeerInfo = peer;
                 blocks.Add(block);
                 bodiesCount++;
+                peer?.RecordHistoryData(AllocationContexts.Bodies, block.Number);
             }
 
             if (bodyIndex < (bodies?.Length ?? 0))
@@ -695,6 +699,7 @@ namespace Nethermind.Synchronization.Blocks
                 entry.Receipts = receipts;
                 entry.PeerInfo = peer;
                 receiptsCount++;
+                peer?.RecordHistoryData(AllocationContexts.Receipts, block.Number);
             }
 
             long blockAccessListsBytes = 0;
@@ -736,6 +741,9 @@ namespace Nethermind.Synchronization.Blocks
                 }
             }
 
+            if (bodiesCount > 0) response.VerifiedProgressContexts |= AllocationContexts.Bodies;
+            if (receiptsCount > 0) response.VerifiedProgressContexts |= AllocationContexts.Receipts;
+            if (blockAccessListsCount > 0) response.VerifiedProgressContexts |= AllocationContexts.BlockAccessLists;
             HandleSyncRequestResult(response.DownloadTask, peer);
 
             return result;
@@ -961,11 +969,13 @@ namespace Nethermind.Synchronization.Blocks
         {
             void UpdatePeerInfo(PeerInfo peer, BlockHeader header)
             {
-                if (peer?.SyncPeer is not null && header.Hash is not null && header.TotalDifficulty is not null && _betterPeerStrategy.Compare(header, peer?.SyncPeer) > 0)
+                if (peer?.SyncPeer is not { } syncPeer || header.Hash is null || header.TotalDifficulty is null) return;
+                Hash256 expectedHash = syncPeer.HeadHash;
+                ulong expectedNumber = syncPeer.HeadNumber;
+                if (_betterPeerStrategy.Compare(header, syncPeer) > 0
+                    && syncPeer.TrySetHead(expectedHash, expectedNumber, header.Hash, header.Number))
                 {
-                    peer.SyncPeer.TotalDifficulty = header.TotalDifficulty.Value;
-                    peer.SyncPeer.HeadNumber = header.Number;
-                    peer.SyncPeer.HeadHash = header.Hash;
+                    syncPeer.TotalDifficulty = header.TotalDifficulty.Value;
                 }
             }
             string DescribePeer() => SensitiveLogMasking.Enabled ? "[redacted]" : peerInfo?.ToString() ?? string.Empty;
