@@ -175,8 +175,9 @@ public abstract class NodesManager(string path, ILogger logger)
             }
         }
 
-        // Create the directory if needed
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        // Create the directory if needed; a bare file name has none
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path):hide}");
 

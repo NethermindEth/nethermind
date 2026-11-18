@@ -19,7 +19,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
 
-/// <summary>Discovery contract shared by <see cref="StaticNodesManager"/> and <see cref="TrustedNodesManager"/>: every node added to the manager reaches the feed once, with the manager's flag.</summary>
+/// <summary>Discovery contract shared by <see cref="StaticNodesManager"/> and <see cref="TrustedNodesManager"/>: every node added to the manager reaches the feed once, with the manager's flag, and a missing nodes file is created.</summary>
 [Parallelizable(ParallelScope.Self)]
 public abstract class NodesManagerDiscoveryTests<TManager> where TManager : INodeSource
 {
@@ -30,6 +30,7 @@ public abstract class NodesManagerDiscoveryTests<TManager> where TManager : INod
     protected abstract Task InitAsync(TManager manager);
     protected abstract Task<bool> AddAsync(TManager manager, Enode enode);
     protected abstract Task<bool> RemoveAsync(TManager manager, Enode enode);
+    protected abstract IEnumerable<NetworkNode> Nodes(TManager manager);
     protected abstract bool HasFlag(Node node);
 
     [Test]
@@ -207,6 +208,26 @@ public abstract class NodesManagerDiscoveryTests<TManager> where TManager : INod
         await AssertOnlySentinelFollowsAsync(manager, feed);
     }
 
+    [Test]
+    public async Task Init_with_a_bare_file_name_creates_the_file()
+    {
+        string bareName = $"nodes-{Guid.NewGuid():N}.json";
+        try
+        {
+            TManager manager = CreateManager(bareName);
+            Assert.That(async () => await InitAsync(manager), Throws.Nothing, "a bare file name has no directory to create");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(File.Exists(bareName), Is.True, "created in the working directory");
+                Assert.That(Nodes(manager), Is.Empty);
+            }
+        }
+        finally
+        {
+            File.Delete(bareName);
+        }
+    }
+
     // The read starts before the add, so the sentinel can only come from the add feed, and nothing may come before it.
     private async Task AssertOnlySentinelFollowsAsync(TManager manager, Feed feed)
     {
@@ -291,6 +312,7 @@ public class StaticNodesManagerDiscoveryTests : NodesManagerDiscoveryTests<Stati
     protected override Task InitAsync(StaticNodesManager manager) => manager.InitAsync();
     protected override Task<bool> AddAsync(StaticNodesManager manager, Enode enode) => manager.AddAsync(new NetworkNode(enode), updateFile: false);
     protected override Task<bool> RemoveAsync(StaticNodesManager manager, Enode enode) => manager.RemoveAsync(new NetworkNode(enode), updateFile: false);
+    protected override IEnumerable<NetworkNode> Nodes(StaticNodesManager manager) => manager.Nodes;
     protected override bool HasFlag(Node node) => node.IsStatic;
 }
 
@@ -301,5 +323,6 @@ public class TrustedNodesManagerDiscoveryTests : NodesManagerDiscoveryTests<Trus
     protected override Task InitAsync(TrustedNodesManager manager) => manager.InitAsync();
     protected override Task<bool> AddAsync(TrustedNodesManager manager, Enode enode) => manager.AddAsync(enode, updateFile: false);
     protected override Task<bool> RemoveAsync(TrustedNodesManager manager, Enode enode) => manager.RemoveAsync(enode, updateFile: false);
+    protected override IEnumerable<NetworkNode> Nodes(TrustedNodesManager manager) => manager.Nodes;
     protected override bool HasFlag(Node node) => node.IsTrusted;
 }
