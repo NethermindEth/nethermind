@@ -1600,10 +1600,7 @@ public partial class EngineModuleTests
     /// A resend without that copy's list must not take its verdict; one with the same list takes it on that copy's
     /// verdict, before the copy commits.
     /// </summary>
-    [TestCase(false, true, TestName = "NewPayloadV6_does_not_answer_an_empty_list_resend_from_a_queued_copy_with_a_list")]
-    [TestCase(true, false, TestName = "NewPayloadV6_answers_a_same_list_resend_from_the_queued_copy")]
-    [NonParallelizable]
-    public async Task NewPayloadV6_answers_a_resend_after_a_timeout_against_its_own_list(bool resendSameList, bool satisfied)
+    internal async Task AssertPayloadResendAfterTimeout(bool resendSameList, bool satisfied)
     {
         const int budgetMs = 3_000;
         CommitWaitProbe probe = new();

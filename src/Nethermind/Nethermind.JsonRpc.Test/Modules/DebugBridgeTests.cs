@@ -1139,6 +1139,42 @@ public class DebugBridgeTests
         }
     }
 
+    /// <summary>A state served from history has the block's values but not its trie, so a witness over it is refused before anything runs.</summary>
+    [Test]
+    public async Task Execution_witness_over_state_without_trie_is_refused_before_execution()
+    {
+        IPersistenceManager persistence = Substitute.For<IPersistenceManager>();
+        await using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, Layout = FlatLayout.Flat }))
+            .AddSingleton(persistence)
+            .Build();
+        container.Resolve<IBlockProcessingPauseControl>().Pause();
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        Block genesis = Build.A.Block.WithNumber(0).TestObject;
+        Block parent = Build.A.Block.WithParent(genesis).WithStateRoot(TestItem.KeccakB).TestObject;
+        Block target = Build.A.Block.WithParent(parent).WithStateRoot(TestItem.KeccakC).TestObject;
+        Block head = Build.A.Block.WithParent(target).WithStateRoot(TestItem.KeccakA).TestObject;
+        foreach (Block block in new[] { genesis, parent, target, head })
+        {
+            AddToMainChain(blockTree, block);
+        }
+        persistence.GetCurrentPersistedStateId().Returns(new StateId(head.Header));
+        HistoryAvailability availability = container.Resolve<HistoryAvailability>();
+        byte format = container.Resolve<HistoryRowFormat>().FormatVersion;
+        using (IColumnsWriteBatch<FlatHistoryColumns> batch = container.Resolve<IColumnsDb<FlatHistoryColumns>>().StartWriteBatch())
+        {
+            HistoryAvailability.MarkBlock(batch.GetColumnBatch(FlatHistoryColumns.AvailableBlocks), parent.Number, parent.StateRoot!, format);
+            availability.PublishWatermark(head.Number, format);
+        }
+        Assert.That(container.Resolve<IWorldStateManager>().GlobalStateReader.HasStateForBlock(parent.Header), Is.True,
+            "precondition: the parent's values are served from history");
+
+        IDebugRpcModule debug = container.Resolve<IRpcModuleFactory<IDebugRpcModule>>().Create();
+
+        Assert.That(() => debug.debug_executionWitness(new BlockParameter(target.Number)),
+            Throws.TypeOf<StateNotRetainedException>().With.Message.Contains($"witness of block {target.Number}").And.Message.Contains($"trie of block {parent.Number}"));
+    }
+
     public enum Target { Unknown, HeaderOnly, CurrentHead, Ancestor, MissingState, AboveHead, SideBranch }
 
     [TestCase(Target.Unknown, false)]

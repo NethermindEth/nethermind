@@ -141,7 +141,7 @@ public sealed class NewPayloadWithWitnessHandler(
     }
 
     /// <summary>Rebuilds the witness of an already-processed block by re-executing it on its parent state.</summary>
-    /// <returns><c>null</c> when the block or its parent is not in the block tree, or the parent state is not available.</returns>
+    /// <returns><c>null</c> when the block or its parent is not in the block tree, or the parent state or its trie is not available.</returns>
     /// <remarks>newPayload answers VALID for a known block below finalized even after its state is pruned.</remarks>
     private Witness? GenerateWitness(Hash256 blockHash, string methodName)
     {

@@ -190,6 +190,7 @@ public partial class EngineModuleTests
         };
         @params = new[] { chain.JsonSerializer.Serialize(fcuState), null };
 
+        await chain.WaitForCommitted(expectedBlockHash);
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 

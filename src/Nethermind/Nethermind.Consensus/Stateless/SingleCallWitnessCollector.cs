@@ -47,6 +47,8 @@ public class SingleCallWitnessCollector(
 {
     public SingleCallWitnessResult ExecuteCallAndCollectWitness(BlockHeader blockHeader, Transaction transaction, CancellationToken cancellationToken = default)
     {
+        worldState.ThrowIfTrieUnavailable(blockHeader, blockHeader.Number);
+
         // Uses blockHeader (not parentHeader) intentionally: for a single call we want the
         // post-state of the target block. Block-level witness uses parentHeader because it
         // needs the pre-state to re-execute the block's transactions.

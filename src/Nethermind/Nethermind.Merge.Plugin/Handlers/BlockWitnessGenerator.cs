@@ -19,7 +19,7 @@ public sealed class BlockWitnessGenerator(
     IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
     Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessEnvFactory)
 {
-    /// <returns><c>null</c> when the parent is not in the block tree or its state is not available.</returns>
+    /// <returns><c>null</c> when the parent is not in the block tree or its state, or the state trie, is not available.</returns>
     /// <remarks>The block need not be in the block tree, so a payload still being built qualifies.</remarks>
     public Witness? Generate(Block block, CancellationToken token = default)
     {
@@ -33,6 +33,14 @@ public sealed class BlockWitnessGenerator(
         }
 
         using IWitnessGeneratingBlockProcessingEnvScope scope = witnessEnvFactory.Value.CreateScope();
-        return scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block, token);
+        try
+        {
+            return scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block, token);
+        }
+        catch (StateNotRetainedException)
+        {
+            // Values without a trie are not a state a witness can be walked over.
+            return null;
+        }
     }
 }

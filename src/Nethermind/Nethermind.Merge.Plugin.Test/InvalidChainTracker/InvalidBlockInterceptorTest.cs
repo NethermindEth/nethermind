@@ -83,25 +83,82 @@ public class InvalidBlockInterceptorTest
         _baseValidator.Received().Validate(header, parent, false, out Arg.Any<string?>(), validateHash);
     }
 
-    [TestCase(true, false)]
-    [TestCase(false, true)]
-    public void TestValidateProcessedBlock(bool baseReturnValue, bool isInvalidBlockReported)
+    /// <summary>
+    /// Every processing environment shares this validator, read-only ones included, so the outcome of an execution
+    /// is only forwarded here; the node's own import reports its failures through the processing queue.
+    /// </summary>
+    [Test]
+    public void TestValidateProcessedBlockOnlyForwards([Values] bool baseReturnValue)
     {
         Block block = Build.A.Block.TestObject;
         Block suggestedBlock = Build.A.Block.WithExtraData(new byte[] { 1 }).TestObject;
         TxReceipt[] txs = [];
         _baseValidator.ValidateProcessedBlock(block, txs, suggestedBlock, out _).Returns(baseReturnValue);
-        _invalidBlockInterceptor.ValidateProcessedBlock(block, txs, suggestedBlock);
 
-        _tracker.Received().SetChildParent(suggestedBlock.GetOrCalculateHash(), suggestedBlock.ParentHash!);
-        if (isInvalidBlockReported)
+        using (Assert.EnterMultipleScope())
         {
-            _tracker.Received().OnInvalidBlock(suggestedBlock.GetOrCalculateHash(), suggestedBlock.ParentHash);
+            Assert.That(_invalidBlockInterceptor.ValidateProcessedBlock(block, txs, suggestedBlock), Is.EqualTo(baseReturnValue));
+            Assert.That(_tracker.ReceivedCalls(), Is.Empty);
         }
-        else
+    }
+
+    [Test]
+    public void TestValidationInUntrackedScopeIsNotTracked([Values] bool baseReturnValue)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(baseReturnValue);
+        _baseValidator.Validate(block.Header, parent, false, out _).Returns(baseReturnValue);
+        _baseValidator.ValidateWithdrawals(block, out _).Returns(baseReturnValue);
+
+        using (UntrackedValidation.Begin())
+        using (Assert.EnterMultipleScope())
         {
-            _tracker.DidNotReceive().OnInvalidBlock(suggestedBlock.GetOrCalculateHash(), suggestedBlock.ParentHash);
+            Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.EqualTo(baseReturnValue));
+            Assert.That(_invalidBlockInterceptor.Validate(block.Header, parent, false, out _), Is.EqualTo(baseReturnValue));
+            Assert.That(_invalidBlockInterceptor.ValidateWithdrawals(block, out _), Is.EqualTo(baseReturnValue));
         }
+
+        Assert.That(_tracker.ReceivedCalls(), Is.Empty);
+
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
+        _tracker.Received().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
+    }
+
+    [Test]
+    public void TestDefaultUntrackedScopeEndsNothing()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(true);
+
+        default(UntrackedValidation.Scope).Dispose();
+        using (UntrackedValidation.Begin())
+        {
+            _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
+        }
+
+        Assert.That(_tracker.ReceivedCalls(), Is.Empty, "a default scope must not unbalance the depth");
+    }
+
+    [Test]
+    public void TestUntrackedScopeDisposedTwiceEndsOnlyItself()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(true);
+
+        UntrackedValidation.Scope scope = UntrackedValidation.Begin();
+        scope.Dispose();
+        scope.Dispose();
+        using (UntrackedValidation.Begin())
+        {
+            _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
+        }
+
+        Assert.That(_tracker.ReceivedCalls(), Is.Empty, "a scope disposed twice must not unbalance the depth");
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _);
+        _tracker.Received().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
     }
 
     [Test]

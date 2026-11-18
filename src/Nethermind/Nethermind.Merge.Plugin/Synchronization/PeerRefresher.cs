@@ -18,6 +18,7 @@ using Nethermind.Synchronization.Peers;
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Synchronization.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Benchmark")]
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -150,17 +151,17 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
             return;
         }
 
-        if (!CheckHeader(syncPeer, finalizedBlockHeader))
+        if (!CheckHeader(syncPeer, finalizedBlockHeader, finalizedBlockhash))
         {
             return;
         }
 
-        if (!CheckHeader(syncPeer, headParentBlockHeader))
+        if (!CheckHeader(syncPeer, headParentBlockHeader, headParentBlockhash))
         {
             return;
         }
 
-        if (!CheckHeader(syncPeer, headBlockHeader))
+        if (!CheckHeader(syncPeer, headBlockHeader, headBlockhash))
         {
             return;
         }
@@ -168,7 +169,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _syncPeerPool.SignalPeersChanged();
     }
 
-    private bool CheckHeader(ISyncPeer syncPeer, BlockHeader? header)
+    private bool CheckHeader(ISyncPeer syncPeer, BlockHeader? header, Hash256 requestedHash)
     {
         if (header is not null)
         {
@@ -178,7 +179,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
                 return false;
             }
 
-            _syncPeerPool.UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
+            _syncPeerPool.UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header, requestedHash);
         }
 
         return true;

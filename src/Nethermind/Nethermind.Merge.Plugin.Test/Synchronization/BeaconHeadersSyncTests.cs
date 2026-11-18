@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -28,15 +30,17 @@ using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 
+using System.IO;
+
 namespace Nethermind.Merge.Plugin.Test.Synchronization;
 
 [TestFixture]
 public class BeaconHeadersSyncTests
 {
-    private class Context
+    internal class Context
     {
         private BlockTreeBuilder? _blockTreeBuilder;
-        private BlockTreeBuilder BlockTreeBuilder => _blockTreeBuilder ??= Build.A.BlockTree()
+        internal BlockTreeBuilder BlockTreeBuilder => _blockTreeBuilder ??= Build.A.BlockTree()
             .WithSyncConfig(SyncConfig)
             .WithoutSettingHead;
 
@@ -324,6 +328,53 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
+    public async Task Tracker_only_connects_accepted_headers([Values(0, 3, 8)] int acceptedCount)
+    {
+        IInvalidChainTracker tracker = Substitute.For<IInvalidChainTracker>();
+        Context ctx = new() { InvalidChainTracker = tracker };
+        BlockTree expectedChain = Build.A.BlockTree().OfChainLength(10).TestObject;
+        BlockTree otherChain = Build.A.BlockTree().OfChainLength(10, splitVariant: 123).TestObject;
+        ctx.BeaconPivot = PreparePivot(9, new SyncConfig(), ctx.BlockTree, expectedChain.FindHeader(9, BlockTreeLookupOptions.None));
+        ctx.Feed.InitializeFeed();
+        using HeadersSyncBatch batch = (await ctx.Feed.PrepareRequest())!;
+        Assert.That(batch.RequestSize, Is.EqualTo(8));
+        BlockHeader[] response = TestRange.ULongRange(batch.StartNumber, batch.RequestSize)
+            .Select((number, index) => (index < batch.RequestSize - acceptedCount ? otherChain : expectedChain).FindHeader(number, BlockTreeLookupOptions.None)!)
+            .ToArray();
+        batch.Response = new ArrayPoolList<BlockHeader?>(response.Length, response);
+
+        ctx.Feed.HandleResponse(batch);
+
+        for (int i = 0; i < response.Length; i++)
+        {
+            BlockHeader header = response[i];
+            tracker.Received(i >= response.Length - acceptedCount ? 1 : 0).SetChildParent(header.Hash!, header.ParentHash!);
+        }
+        Assert.That(tracker.ReceivedCalls().Count(), Is.EqualTo(acceptedCount));
+    }
+
+    [Test]
+    public async Task Failed_header_insertion_does_not_publish_tracker_relationships()
+    {
+        IInvalidChainTracker tracker = Substitute.For<IInvalidChainTracker>();
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.CanAcceptNewBlocks.Returns(true);
+        blockTree.SyncPivot.Returns((0UL, Keccak.Zero));
+        blockTree.When(tree => tree.BulkInsertHeader(Arg.Any<IReadOnlyList<BlockHeader>>(), Arg.Any<BlockTreeInsertHeaderOptions>()))
+            .Do(_ => throw new InvalidOperationException("insertion failed"));
+        Context ctx = new() { BlockTree = blockTree, InvalidChainTracker = tracker };
+        BlockTree expectedChain = Build.A.BlockTree().OfChainLength(10).TestObject;
+        ctx.BeaconPivot = PreparePivot(9, new SyncConfig(), blockTree, expectedChain.FindHeader(9, BlockTreeLookupOptions.None));
+        ctx.Feed.InitializeFeed();
+        using HeadersSyncBatch batch = (await ctx.Feed.PrepareRequest())!;
+        BuildHeadersSyncBatchResponse(batch, expectedChain);
+
+        Assert.Throws<InvalidOperationException>(() => ctx.Feed.HandleResponse(batch));
+
+        tracker.DidNotReceiveWithAnyArgs().SetChildParent(default!, default!);
+    }
+
+    [Test]
     public void Feed_connect_invalid_chain()
     {
         Context ctx = new();
@@ -524,11 +575,69 @@ public class BeaconHeadersSyncTests
         batch.Response = new ArrayPoolList<BlockHeader?>(headers.Count, headers);
     }
 
-    private static IBeaconPivot PreparePivot(ulong blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
+    internal static IBeaconPivot PreparePivot(ulong blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
     {
         IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
         pivot.EnsurePivot(pivotHeader ?? Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         return pivot;
     }
 
+    [TestCase(0, true)]
+    [TestCase(3, true)]
+    [TestCase(8, true)]
+    [TestCase(8, false)]
+    public async Task Tracker_reaches_only_persisted_headers_after_bulk_insert(int persistedCount, bool fail)
+    {
+        using MemDb headersDb = new();
+        using MemDb numbersDb = new();
+        InterruptibleHeaderStore store = new(headersDb, numbersDb);
+        Context context = new();
+        context.BlockTreeBuilder.WithHeaderStore(store);
+        using InvalidChainTracker.InvalidChainTracker tracker = new(context.PoSSwitcher,
+            context.BlockTree, context.BlockCacheService, LimboLogs.Instance);
+        context.InvalidChainTracker = tracker;
+        BlockTree remote = Build.A.BlockTree().OfChainLength(10).TestObject;
+        context.BeaconPivot = PreparePivot(9, new SyncConfig(), context.BlockTree,
+            remote.FindHeader(9, BlockTreeLookupOptions.None));
+        context.Feed.InitializeFeed();
+        using HeadersSyncBatch batch = (await context.Feed.PrepareRequest())!;
+        Assert.That(batch.RequestSize, Is.EqualTo(8));
+        BlockHeader[] response = Enumerable.Range(0, batch.RequestSize)
+            .Select(index => remote.FindHeader(batch.StartNumber + (ulong)index, BlockTreeLookupOptions.None)!)
+            .ToArray();
+        batch.Response = new ArrayPoolList<BlockHeader?>(response.Length, response);
+        batch.MarkSent();
+        store.PersistedCount = persistedCount;
+        store.Fail = fail;
+
+        if (fail)
+            Assert.That(Assert.Throws<IOException>(() => context.Feed.HandleResponse(batch)), Is.SameAs(store.Failure));
+        else
+            context.Feed.HandleResponse(batch);
+
+        tracker.OnInvalidBlock(response[0].ParentHash!, TestItem.KeccakA);
+        for (int i = 0; i < response.Length; i++)
+        {
+            BlockHeader header = response[i];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.Get(header.Hash!, blockNumber: header.Number) is not null, Is.EqualTo(i < persistedCount));
+                Assert.That(tracker.IsOnKnownInvalidChain(header.Hash!, out _), Is.EqualTo(i < persistedCount));
+            }
+        }
+    }
+
+    private sealed class InterruptibleHeaderStore(IDb headersDb, IDb numbersDb)
+        : HeaderStore(headersDb, numbersDb), IHeaderStore
+    {
+        public int PersistedCount { get; set; } = int.MaxValue;
+        public bool Fail { get; set; }
+        public IOException Failure { get; } = new("Interrupted header batch");
+
+        void IHeaderStore.BulkInsert(IReadOnlyList<BlockHeader> headers)
+        {
+            for (int i = 0; i < headers.Count && i < PersistedCount; i++) Insert(headers[i]);
+            if (Fail) throw Failure;
+        }
+    }
 }

@@ -44,9 +44,12 @@ public class WitnessCollector(
         GetWitnessForExistingBlock(parentHeader, block, NullBlockTracer.Instance, token);
 
     /// <inheritdoc/>
+    /// <exception cref="Nethermind.State.StateNotRetainedException">The state trie at <paramref name="parentHeader"/> is not available.</exception>
     /// <exception cref="InvalidBlockException">Re-executing the block does not reproduce its header.</exception>
     public Witness GetWitnessForExistingBlock(BlockHeader parentHeader, Block block, IBlockTracer tracer, CancellationToken token = default)
     {
+        worldState.ThrowIfTrieUnavailable(parentHeader, block.Number);
+
         // The scope and the witness must share one parent: the witness walks the pre-state at parentHeader's root.
         using IDisposable scope = worldState.BeginScope(parentHeader);
 
@@ -66,7 +69,7 @@ public class WitnessCollector(
             IReleaseSpec spec = specProvider.GetSpec(header);
             (Block processed, TxReceipt[] receipts) = blockProcessor.ProcessOne(isolated,
                 ProcessingOptions.ReadOnlyChain | ProcessingOptions.NoValidation, tracer, spec, token);
-            ThrowIfNotReproduced(block, processed, receipts);
+            ThrowIfNotReproduced(parentHeader, block, processed, receipts);
             ThrowIfOverItemLimit(block, processed, spec);
 
             // Trusted inputs serialize the block's access list, which import may have released after storing it.
@@ -81,10 +84,13 @@ public class WitnessCollector(
     }
 
     /// <remarks>The header hash commits to every execution outcome the block validator compares.</remarks>
-    private void ThrowIfNotReproduced(Block block, Block processed, TxReceipt[] receipts)
+    private void ThrowIfNotReproduced(BlockHeader parentHeader, Block block, Block processed, TxReceipt[] receipts)
     {
         Hash256 expected = block.Hash ?? block.Header.CalculateHash();
         if (processed.Hash == expected) return;
+
+        // The trie can stop being available after the check before execution; that is reported the same way.
+        worldState.ThrowIfTrieUnavailable(parentHeader, block.Number);
 
         if (_logger.IsWarn) _logger.Warn($"Witness re-execution of block {block.ToString(Block.Format.FullHashAndNumber)} did not reproduce its header; the block is not marked invalid.");
         string error = BlockValidator.DescribeMismatch(processed, receipts, block, _logger)

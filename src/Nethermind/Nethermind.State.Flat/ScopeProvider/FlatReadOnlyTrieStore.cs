@@ -35,15 +35,27 @@ internal sealed class FlatReadOnlyTrieStore(IFlatDbManager flatDbManager) : IRea
     // ITrieStore
     public bool HasRoot(Hash256 stateRoot) => true;
 
-    public bool HasRoot(Hash256 stateRoot, ulong blockNumber) =>
-        flatDbManager.HasStateForBlock(new StateId(blockNumber, stateRoot));
+    /// <remarks>A historical state serves account and storage values without trie nodes, so this store cannot walk it.</remarks>
+    public bool HasRoot(Hash256 stateRoot, ulong blockNumber)
+    {
+        StateId stateId = new(blockNumber, stateRoot);
+        return !flatDbManager.IsHistoricalState(stateId) && flatDbManager.HasStateForBlock(stateId);
+    }
 
     public IDisposable BeginScope(BlockHeader? baseBlock)
     {
         // A single bundle slot: a nested scope would overwrite the outer one, leaking its lease and pulling the adapter from under it.
         if (_bundle is not null) throw new InvalidOperationException("Scope already open");
-        _bundle = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock))
+        ReadOnlySnapshotBundle bundle = flatDbManager.GatherReadOnlySnapshotBundle(new StateId(baseBlock))
             ?? throw new InvalidOperationException($"State at {baseBlock} not found");
+        // Decided on the bundle actually acquired: the state can turn historical after a HasRoot check.
+        if (bundle.IsHistorical)
+        {
+            bundle.Dispose();
+            throw new StateNotRetainedException($"The state trie of block {baseBlock?.Number} is not retained");
+        }
+
+        _bundle = bundle;
         _adapter = new ReadOnlyStateTrieStoreAdapter(_bundle);
         return new ScopeCleanup(this);
     }

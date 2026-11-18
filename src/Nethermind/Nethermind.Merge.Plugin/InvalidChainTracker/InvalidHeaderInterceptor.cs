@@ -24,6 +24,7 @@ public class InvalidHeaderInterceptor(
 
     private bool TrackValidationResult(BlockHeader header, bool result)
     {
+        if (UntrackedValidation.IsActive) return result;
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");

@@ -8,6 +8,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using NSubstitute;
@@ -44,6 +46,28 @@ public class FlatReadOnlyTrieStoreTests
 
         Assert.That(_store.HasRoot(TestItem.KeccakA, 42), Is.True);
         _flatDbManager.Received(1).HasStateForBlock(Arg.Any<StateId>());
+    }
+
+    [Test]
+    public void HasRoot_WithBlockNumber_IsFalseForHistoricalState()
+    {
+        _flatDbManager.HasStateForBlock(Arg.Any<StateId>()).Returns(true);
+        _flatDbManager.IsHistoricalState(Arg.Any<StateId>()).Returns(true);
+
+        Assert.That(_store.HasRoot(TestItem.KeccakA, 42), Is.False, "a historical state has values but no trie to walk");
+    }
+
+    [Test]
+    public void BeginScope_RefusesHistoricalBundle_AndReleasesIt()
+    {
+        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        _flatDbManager.GatherReadOnlySnapshotBundle(Arg.Any<StateId>()).Returns(_ => new ReadOnlySnapshotBundle(
+            new SnapshotPooledList(0), reader, recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null, isHistorical: true));
+
+        Assert.That(() => _store.BeginScope(Build.A.BlockHeader.TestObject), Throws.TypeOf<StateNotRetainedException>());
+        reader.Received(1).Dispose();
+        Assert.That(() => _store.FindCachedOrUnknown(null, TreePath.Empty, TestItem.KeccakA), Throws.InvalidOperationException,
+            "a refused scope leaves the store closed");
     }
 
     [Test]

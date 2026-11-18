@@ -47,10 +47,13 @@ public class PeerRefresherTests
 
         await WhenCalledWithCorrectHash();
 
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader);
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader);
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader);
-        _syncPeerPool.DidNotReceive().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader, _headBlockHeader.Hash!);
+            _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader, _headParentBlockHeader.Hash!);
+            _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader, _finalizedBlockHeader.Hash!);
+            _syncPeerPool.DidNotReceive().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+        }
     }
 
     [Test]
@@ -60,10 +63,13 @@ public class PeerRefresherTests
 
         await WhenCalledWithCorrectHash();
 
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader);
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader);
-        _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader);
-        _syncPeerPool.DidNotReceive().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader, _headBlockHeader.Hash!);
+            _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader, _headParentBlockHeader.Hash!);
+            _syncPeerPool.Received().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader, _finalizedBlockHeader.Hash!);
+            _syncPeerPool.DidNotReceive().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+        }
     }
 
     [Test]
@@ -71,10 +77,13 @@ public class PeerRefresherTests
     {
         await WhenCalledWithCorrectHash();
 
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader);
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader);
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader);
-        _syncPeerPool.Received().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+        using (Assert.EnterMultipleScope())
+        {
+            _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headBlockHeader, _headBlockHeader.Hash!);
+            _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _headParentBlockHeader, _headParentBlockHeader.Hash!);
+            _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, _finalizedBlockHeader, _finalizedBlockHeader.Hash!);
+            _syncPeerPool.Received().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+        }
     }
 
     [TestCase("headParentTwoHeaders", TestName = "Given_headParentResponseWithTwoHeadersAndWrongParent_thenShouldReportRefreshFailedAndNotUpdate")]
@@ -101,8 +110,11 @@ public class PeerRefresherTests
 
         await WhenCalledWithCorrectHash();
 
-        _syncPeerPool.Received().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
-        _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, wrongHeader);
+        using (Assert.EnterMultipleScope())
+        {
+            _syncPeerPool.Received().ReportRefreshFailed(_syncPeer, Arg.Any<string>());
+            _syncPeerPool.DidNotReceive().UpdateSyncPeerHeadIfHeaderIsBetter(_syncPeer, wrongHeader, Arg.Any<Nethermind.Core.Crypto.Hash256>());
+        }
     }
 
     private Task WhenCalledWithCorrectHash()

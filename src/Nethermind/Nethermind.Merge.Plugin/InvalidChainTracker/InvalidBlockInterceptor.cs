@@ -26,6 +26,7 @@ public class InvalidBlockInterceptor(
 
     private bool TrackValidationResult(BlockHeader header, bool result)
     {
+        if (UntrackedValidation.IsActive) return result;
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad header {header}");
@@ -46,6 +47,7 @@ public class InvalidBlockInterceptor(
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
         bool result = blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes);
+        if (UntrackedValidation.IsActive) return result;
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
@@ -62,29 +64,22 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock) => ValidateProcessedBlock(block, receipts, suggestedBlock, out _);
 
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
-    {
-        bool result = blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
-        if (!result)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {processedBlock}");
-            if (ShouldNotTrackInvalidation(processedBlock))
-            {
-                if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
-                return result;
-            }
-            invalidChainTracker.OnInvalidBlock(suggestedBlock.Hash!, suggestedBlock.ParentHash);
-        }
-        invalidChainTracker.SetChildParent(suggestedBlock.Hash!, suggestedBlock.ParentHash!);
-
-        return result;
-    }
+    /// <remarks>
+    /// Forwards only. Every block processing environment shares this validator, and an execution result depends on the
+    /// state it ran on, which only the node's own import is sure of. The import reports its execution failures itself:
+    /// the processing queue raises <c>InvalidBlock</c>, which <c>InvalidChainTracker.SetupBlockchainProcessorInterceptor</c>
+    /// subscribes to, and newPayload records the INVALID it answers. Guarded by
+    /// <c>EngineModuleTests.Queue_imported_post_execution_failure_marks_the_block_and_descendants_invalid</c>.
+    /// </remarks>
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error) =>
+        blockValidator.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
 
     private static bool ShouldNotTrackInvalidation(BlockHeader header) => !HeaderValidator.ValidateHash(header);
 
     public bool ValidateWithdrawals(Block block, out string? error)
     {
         bool result = blockValidator.ValidateWithdrawals(block, out error);
+        if (UntrackedValidation.IsActive) return result;
 
         if (!result)
         {

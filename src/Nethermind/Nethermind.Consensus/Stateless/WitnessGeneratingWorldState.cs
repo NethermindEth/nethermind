@@ -55,6 +55,23 @@ public class WitnessGeneratingWorldState(
         _transientDeployed.Clear();
     }
 
+    /// <summary>Fails when the state trie at <paramref name="baseBlock"/>, which the witness walks, is not available.</summary>
+    /// <remarks>
+    /// A state backend can serve a block's values without its trie. Executing there cannot compute state roots, and
+    /// the witness would carry nodes of another state.
+    /// </remarks>
+    /// <param name="baseBlock">The state the witness walks.</param>
+    /// <param name="witnessedBlock">The block the witness is requested for, named in the error.</param>
+    /// <exception cref="StateNotRetainedException">The trie at <paramref name="baseBlock"/> is not available.</exception>
+    internal void ThrowIfTrieUnavailable(BlockHeader baseBlock, ulong witnessedBlock)
+    {
+        if (!trieStore.HasRoot(baseBlock.StateRoot!, baseBlock.Number))
+        {
+            throw new StateNotRetainedException(
+                $"Execution witness of block {witnessedBlock} is not available: the state trie of block {baseBlock.Number} is not retained");
+        }
+    }
+
     public Witness GetWitness(BlockHeader parentHeader)
     {
         CollectingSink sink = new();
@@ -225,7 +242,15 @@ public class WitnessGeneratingWorldState(
 
     public override void RecordAccountAccess(Address address) => RecordEmptySlots(address);
 
-    public override void RecordBytecodeAccess(Address address) => GetCode(address);
+    public override void RecordBytecodeAccess(Address address)
+    {
+        RecordEmptySlots(address);
+        ValueHash256 codeHash = base.GetCodeHash(address);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256 || _bytecodes.ContainsKey(codeHash)
+            || _inBlockDeployed.Contains(codeHash) || _transientDeployed.Contains(codeHash)) return;
+
+        RecordBytecode(in codeHash, base.GetCode(address));
+    }
 
     public override bool IsContract(Address address)
     {

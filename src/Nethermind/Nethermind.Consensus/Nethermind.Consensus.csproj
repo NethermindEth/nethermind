@@ -12,7 +12,9 @@
   <ItemGroup>
     <InternalsVisibleTo Include="Ethereum.Test.Base" />
     <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
+    <InternalsVisibleTo Include="Nethermind.Flashbots" />
     <InternalsVisibleTo Include="Nethermind.JsonRpc" />
+    <InternalsVisibleTo Include="Nethermind.Merge.Plugin" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>
 

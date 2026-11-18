@@ -11,7 +11,6 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -20,10 +19,8 @@ using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
-using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
 

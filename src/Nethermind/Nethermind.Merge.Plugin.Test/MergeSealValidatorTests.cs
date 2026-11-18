@@ -43,6 +43,40 @@ public class MergeSealValidatorTests
             .OnValidateSeal()
             .BaseValidateSealShouldBeForced();
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Parent_authorization_for_sync_credit_reaches_the_pre_merge_validator(bool authorized)
+    {
+        ISealValidator consensus = Substitute.For<ISealValidator>();
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader child = Build.A.BlockHeader.WithParent(parent).TestObject;
+        consensus.RequiresParentForSyncCredit.Returns(true);
+        consensus.CanCreditChild(parent, child).Returns(authorized);
+        ISealValidator decorated = new InvalidHeaderSealInterceptor(
+            new MergeSealValidator(Substitute.For<IPoSSwitcher>(), consensus),
+            Substitute.For<IInvalidChainTracker>(), LimboLogs.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decorated.RequiresParentForSyncCredit, Is.True);
+            Assert.That(decorated.CanCreditChild(parent, child), Is.EqualTo(authorized));
+        }
+        consensus.Received(1).CanCreditChild(parent, child);
+    }
+
+    [Test]
+    public void Post_merge_child_cannot_earn_pre_transition_credit()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        BlockHeader child = Build.A.BlockHeader.WithParent(parent).TestObject;
+        IPoSSwitcher switcher = Substitute.For<IPoSSwitcher>();
+        switcher.IsPostMerge(child).Returns(true);
+        ISealValidator consensus = Substitute.For<ISealValidator>();
+        consensus.CanCreditChild(parent, child).Returns(true);
+
+        Assert.That(new MergeSealValidator(switcher, consensus).CanCreditChild(parent, child), Is.False);
+        consensus.DidNotReceive().CanCreditChild(parent, child);
+    }
+
     [Test]
     public void Hint_is_forwarded_through_the_whole_decoration_chain()
     {

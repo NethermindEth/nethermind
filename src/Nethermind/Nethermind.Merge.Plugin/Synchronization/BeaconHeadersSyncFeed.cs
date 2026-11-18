@@ -118,27 +118,16 @@ public sealed class BeaconHeadersSyncFeed(
         return base.PrepareRequest(cancellationToken);
     }
 
-    protected override int InsertHeaders(HeadersSyncBatch batch)
+    private void ConnectHeaderChainInInvalidChainTracker(IReadOnlyList<BlockHeader?> batchResponse, bool onlyPersisted = false)
     {
-        if (batch.Response is not null)
-        {
-            ConnectHeaderChainInInvalidChainTracker(batch.Response);
-        }
-
-        return base.InsertHeaders(batch);
-    }
-
-    private void ConnectHeaderChainInInvalidChainTracker(IReadOnlyList<BlockHeader?> batchResponse)
-    {
-        // Sometimes multiple consecutive block failed validation, but engine api need to know the earliest valid hash.
-        // Currently, HeadersSyncFeed insert header in reverse and break early on invalid header meaning header
-        // chain is not connected, so earlier invalid block in chain is not checked and reported even if later request
-        // get to it. So we are trying to connect them first. Note: This does not completely fix the issue.
         for (int i = 0; i < batchResponse.Count; i++)
         {
             BlockHeader? header = batchResponse[i];
             if (header?.Hash is not null)
             {
+                if (onlyPersisted && _blockTree.FindHeader(header.Hash,
+                    BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing,
+                    header.Number) is null) continue;
                 _invalidChainTracker.SetChildParent(header.Hash, header.ParentHash!);
             }
         }
@@ -191,7 +180,25 @@ public sealed class BeaconHeadersSyncFeed(
         AddBlockResult insertOutcome = AddBlockResult.Added;
         try
         {
-            _blockTree.BulkInsertHeader(headersToAdd, headerOptions);
+            try
+            {
+                _blockTree.BulkInsertHeader(headersToAdd, headerOptions);
+            }
+            catch
+            {
+                try
+                {
+                    ConnectHeaderChainInInvalidChainTracker(headersToAdd, onlyPersisted: true);
+                }
+                catch (Exception exception)
+                {
+                    if (_logger.IsError) _logger.Error("Failed to connect partially inserted beacon headers", exception);
+                }
+                throw;
+            }
+            // Connecting only inserted headers bounds unaccepted peer data, at the cost of latestValidHash
+            // propagation through headers that were validated but never inserted.
+            ConnectHeaderChainInInvalidChainTracker(headersToAdd);
         }
         finally
         {

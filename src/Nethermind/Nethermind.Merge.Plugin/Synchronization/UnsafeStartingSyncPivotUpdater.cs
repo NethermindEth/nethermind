@@ -11,6 +11,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Synchronization;
@@ -26,65 +27,119 @@ public class UnsafeStartingSyncPivotUpdater(
     ISyncProgressResolver syncProgressResolver,
     IBlockCacheService blockCacheService,
     IBeaconSyncStrategy beaconSyncStrategy,
-    ILogManager logManager)
+    ILogManager logManager,
+    TimeProvider? timeProvider = null)
     : StartingSyncPivotUpdater(blockTree, syncPeerPool, syncConfig, syncProgressResolver,
-        blockCacheService, beaconSyncStrategy, logManager)
+        blockCacheService, beaconSyncStrategy, logManager, timeProvider)
 {
+    private readonly ISyncPeerPool _ancestryPeers = syncPeerPool;
+    private readonly HashSet<PeerInfo> _deferredPeers = [];
+
+    protected override bool ReverifiesStoredPivot => true;
+
     protected override async Task<(Hash256 Hash, ulong Number)?> TryGetPivotData(CancellationToken cancellationToken)
     {
-        // getting potentially unsafe head block hash, because some chains (e.g. optimism) aren't providing finalized block hash until fully synced
-        Hash256? headBlockHash = _beaconSyncStrategy.GetHeadBlockHash();
-
-        if (headBlockHash is not null && headBlockHash != Keccak.Zero)
+        // These chains may not supply a finalized hash until sync completes, so anchor ancestry to the CL head.
+        Hash256? headHash = _beaconSyncStrategy.GetHeadBlockHash();
+        if (headHash is null || headHash == Keccak.Zero) return null;
+        AncestryPosition start = FindCachedPrefix(headHash, cancellationToken);
+        if (start.IsComplete)
         {
-            const string head = "head";
-            ulong headBlockNumber = TryGetBlockNumberFromBlockCache(headBlockHash, head)
-                                    ?? await TryGetFromPeers(headBlockHash, cancellationToken, head)
-                                    ?? 0UL;
+            return CompleteAncestry(start);
+        }
+        if (start.Hash is not { } missingHash || missingHash == Keccak.Zero) return null;
+        int count = (int)Reorganization.MaxDepth + 1 - start.Depth;
 
-            if (headBlockNumber > Reorganization.MaxDepth)
+        List<PeerInfo> peers = [];
+        List<PeerInfo> deferred = [];
+        foreach (PeerInfo peer in _ancestryPeers.InitializedPeers)
+        {
+            if (_deferredPeers.Contains(peer)) deferred.Add(peer);
+            else peers.Add(peer);
+        }
+        peers.AddRange(deferred);
+        _deferredPeers.IntersectWith(peers);
+        if (_logger.IsInfo) _logger.Info($"Checking pivot ancestry from CL head {headHash} with {peers.Count} peers");
+        foreach (PeerInfo peer in peers)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _deferredPeers.Add(peer);
+            using CancellationTokenSource timeout = new(Timeouts.Eth, AncestryTimeProvider);
+            using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+            try
             {
-                ulong potentialPivotBlockNumber = headBlockNumber - Reorganization.MaxDepth;
-
-                Hash256? potentialPivotBlockHash =
-                    TryGetPotentialPivotBlockNumberFromBlockCache(potentialPivotBlockNumber)
-                    ?? (await TryGetFromPeers(potentialPivotBlockNumber, cancellationToken))?.Hash;
-
-                if (potentialPivotBlockHash is not null && potentialPivotBlockHash != Keccak.Zero)
+                if (_logger.IsDebug) _logger.Debug($"Asking peer {peer} for reverse ancestry of {missingHash}");
+                using IOwnedReadOnlyList<BlockHeader>? headers = await RequestAncestry(peer.SyncPeer, missingHash, count, deadline.Token);
+                if (headers?.Count > count) continue;
+                AncestryPosition? pivot = await ResolveAncestry(start, peer.SyncPeer, headers, deadline.Token);
+                if (pivot is { } complete)
                 {
-                    UpdateAndPrintPotentialNewPivot(potentialPivotBlockHash);
-                    return (potentialPivotBlockHash, potentialPivotBlockNumber);
+                    return CompleteAncestry(complete);
                 }
             }
+            catch (Exception exception) when (exception is TimeoutException or ConcurrencyLimitReachedException ||
+                (exception is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Peer {peer} did not complete pivot ancestry: {exception}");
+            }
         }
-
         return null;
     }
 
-    private Task<BlockHeader?> TryGetFromPeers(ulong blockNumber, CancellationToken cancellationToken) =>
-        TryGetFromPeers(blockNumber, cancellationToken, static async (peer, number, token) =>
-        {
-            using IOwnedReadOnlyList<BlockHeader>? x = await peer.GetBlockHeaders(number, 1, 0, token);
-            ReadOnlySpan<BlockHeader> headers = x is null ? [] : x.AsSpan();
-            // Only accept the header that is actually at the requested number; a peer must not substitute another.
-            return headers.Length == 1 && headers[0].Number == number ? headers[0] : null;
-        });
-
-    private Hash256? TryGetPotentialPivotBlockNumberFromBlockCache(ulong potentialPivotBlockNumber)
+    private (Hash256 Hash, ulong Number) CompleteAncestry(AncestryPosition position)
     {
-        if (_logger.IsDebug) _logger.Debug("Looking for header of pivot block in block cache");
+        _deferredPeers.Clear();
+        UpdateAndPrintPotentialNewPivot(position.Hash!);
+        return (position.Hash!, position.Number!.Value);
+    }
 
-        foreach (KeyValuePair<Hash256AsKey, Block> kvp in _blockCacheService.BlockCache)
+    private AncestryPosition FindCachedPrefix(Hash256 headHash, CancellationToken cancellationToken)
+    {
+        AncestryPosition position = new(headHash, null, 0);
+        while (!position.IsComplete && position.Hash is { } hash && hash != Keccak.Zero)
         {
-            Block block = kvp.Value;
-            if (block.Number == potentialPivotBlockNumber && HeaderValidator.ValidateHash(block.Header))
-            {
-                if (_logger.IsInfo) _logger.Info($"Loaded potential pivot block {potentialPivotBlockNumber} from block cache. Hash: {block.Hash}");
-                return block.Hash;
-            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!_blockCacheService.BlockCache.TryGetValue(hash, out Block? block) || !TryAdvance(ref position, block.Header)) break;
         }
+        return position;
+    }
 
-        if (_logger.IsDebug) _logger.Debug("Header of pivot block not found in block cache");
-        return null;
+    private async Task<AncestryPosition?> ResolveAncestry(AncestryPosition position, ISyncPeer peer,
+        IOwnedReadOnlyList<BlockHeader>? headers, CancellationToken cancellationToken)
+    {
+        int prefixDepth = position.Depth;
+        while (!position.IsComplete)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (position.Hash is not { } hash || hash == Keccak.Zero) return null;
+            int index = position.Depth - prefixDepth;
+            BlockHeader? header = index < (headers?.Count ?? 0) ? headers![index] : null;
+            if (header is null)
+            {
+                if (index > 0 && _blockCacheService.BlockCache.TryGetValue(hash, out Block? block) && TryAdvance(ref position, block.Header)) continue;
+                if (_logger.IsDebug) _logger.Debug($"Asking peer {peer.Node} for missing pivot ancestor {hash}");
+                header = await peer.GetHeadBlockHeader(hash, cancellationToken).WaitAsync(cancellationToken);
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            if (header is null || !TryAdvance(ref position, header)) return null;
+        }
+        return position;
+    }
+
+    private static bool TryAdvance(ref AncestryPosition position, BlockHeader header)
+    {
+        if (header.Hash != position.Hash || (position.Number is { } number && header.Number != number)
+            || (position.Depth == 0 && header.Number <= Reorganization.MaxDepth) || !HeaderValidator.ValidateHash(header)) return false;
+
+        int depth = position.Depth + 1;
+        position = depth > (int)Reorganization.MaxDepth
+            ? new(header.Hash, header.Number, depth)
+            : new(header.ParentHash, header.Number - 1, depth);
+        return true;
+    }
+
+    private readonly record struct AncestryPosition(Hash256? Hash, ulong? Number, int Depth)
+    {
+        public bool IsComplete => Depth > (int)Reorganization.MaxDepth;
     }
 }

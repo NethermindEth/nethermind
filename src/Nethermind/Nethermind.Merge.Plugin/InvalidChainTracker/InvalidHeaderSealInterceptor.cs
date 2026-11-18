@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
 
@@ -12,11 +13,16 @@ public class InvalidHeaderSealInterceptor(ISealValidator baseValidator, IInvalid
 {
     private readonly ISealValidator _baseValidator = baseValidator;
     private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
-    private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderInterceptor>();
+    private readonly ILogger _logger = logManager.GetClassLogger<InvalidHeaderSealInterceptor>();
+
+    public bool RequiresParentForSyncCredit => _baseValidator.RequiresParentForSyncCredit;
+
+    public bool CanCreditChild(BlockHeader parent, BlockHeader child) => _baseValidator.CanCreditChild(parent, child);
 
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {
         bool result = _baseValidator.ValidateParams(parent, header, isUncle);
+        if (UntrackedValidation.IsActive) return result;
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a header with bad seal param {header}");
@@ -28,6 +34,7 @@ public class InvalidHeaderSealInterceptor(ISealValidator baseValidator, IInvalid
     public bool ValidateSeal(BlockHeader header, bool force)
     {
         bool result = _baseValidator.ValidateSeal(header, force);
+        if (UntrackedValidation.IsActive) return result;
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a header with bad seal {header}");

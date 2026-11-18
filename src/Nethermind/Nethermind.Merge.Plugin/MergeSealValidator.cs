@@ -12,6 +12,11 @@ public class MergeSealValidator(
     ISealValidator preMergeSealValidator)
     : ISealValidator
 {
+    public bool RequiresParentForSyncCredit => preMergeSealValidator.RequiresParentForSyncCredit;
+
+    public bool CanCreditChild(BlockHeader parent, BlockHeader child) =>
+        !poSSwitcher.IsPostMerge(child) && preMergeSealValidator.CanCreditChild(parent, child);
+
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle) =>
         poSSwitcher.IsPostMerge(header) || preMergeSealValidator.ValidateParams(parent, header, isUncle);
 

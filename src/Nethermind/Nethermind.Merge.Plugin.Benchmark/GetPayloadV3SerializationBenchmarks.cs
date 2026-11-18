@@ -20,7 +20,6 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
-using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
 

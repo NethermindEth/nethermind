@@ -10,7 +10,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
@@ -195,7 +194,7 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
         _poSSwitcher.TryUpdateTerminalBlock(currentHeader);
 
     // Used only in get block header in pre merge forward header provider, this hook stops pre merge forward header provider.
-    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
+    protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || base.ImprovementRequirementSatisfied(bestPeer)) &&
             !_poSSwitcher.HasEverReachedTerminalBlock();
 
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)

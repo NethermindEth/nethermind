@@ -11,6 +11,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Flashbots.Data;
@@ -106,6 +107,40 @@ public partial class FlashbotsModuleTests
         {
             Assert.That(result.Result.Error, Is.Null);
             Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Valid));
+        }
+    }
+
+    [Test]
+    public async Task ValidateBuilderSubmissionV3_KeepsTheVerdictOnARejectedHeaderToItself()
+    {
+        using BaseEngineModuleTests.MergeTestBlockchain chain = await CreateBlockChain(releaseSpec: Cancun.Instance, flashbotsConfig: new FlashbotsConfig { UseBalanceDiffProfit = true });
+        IFlashbotsRpcModule rpc = chain.Container.Resolve<IRpcModuleFactory<IFlashbotsRpcModule>>().Create();
+
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Hash256 parentBeaconBlockRoot = TestItem.KeccakE;
+        PayloadAttributes attributes = new()
+        {
+            Timestamp = parent.Timestamp + 12,
+            PrevRandao = TestItem.KeccakA,
+            SuggestedFeeRecipient = TestKeysAndAddress!.TestBuilderAddr,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = parentBeaconBlockRoot
+        };
+        string payloadId = chain.PayloadPreparationService.StartPreparingPayload(parent, attributes)!;
+        GetPayloadV3Result payload = (await chain.EngineRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!;
+        Block block = payload.ExecutionPayload.TryGetBlock().Data!;
+        // A timestamp equal to the parent's fails header validation, before any execution.
+        block.Header.Timestamp = parent.Timestamp;
+        block.Header.Hash = block.Header.CalculateHash();
+
+        ResultWrapper<FlashbotsResult> result = await rpc.flashbots_validateBuilderSubmissionV3(
+            BuildRequest(block, payload.BlobsBundle, expectedProfit: UInt256.Zero, parentBeaconBlockRoot));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(FlashbotsStatus.Invalid));
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
+                "the verdict on a submission stays with the handler");
         }
     }
 

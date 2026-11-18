@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.State.OverridableEnv;
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -260,7 +261,7 @@ public class ValidateSubmissionHandler(
             }
         }
 
-        if (!_blockValidator.ValidateSuggestedBlock(block, parentHeader, out error))
+        if (!ValidateSuggestedBlock(block, parentHeader, out error))
         {
             return false;
         }
@@ -298,6 +299,19 @@ public class ValidateSubmissionHandler(
         return false;
     }
 
+    // A submission is not a block this node imports, so its verdict stays with this handler.
+    private bool ValidateHeader(BlockHeader header, BlockHeader parentHeader, [NotNullWhen(false)] out string? error)
+    {
+        using UntrackedValidation.Scope _ = UntrackedValidation.Begin();
+        return _headerValidator.Validate(header, parentHeader, false, out error);
+    }
+
+    private bool ValidateSuggestedBlock(Block block, BlockHeader parentHeader, [NotNullWhen(false)] out string? error)
+    {
+        using UntrackedValidation.Scope _ = UntrackedValidation.Begin();
+        return _blockValidator.ValidateSuggestedBlock(block, parentHeader, out error);
+    }
+
     private bool RecoverSenderAddress(Block block, IReleaseSpec spec, out string? error)
     {
         foreach (Transaction tx in block.Transactions)
@@ -322,7 +336,7 @@ public class ValidateSubmissionHandler(
 
     private bool ValidateBlockMetadata(Block block, ulong registerGasLimit, BlockHeader parentHeader, IReleaseSpec releaseSpec, out string? error)
     {
-        if (!_headerValidator.Validate(block.Header, parentHeader, false, out error))
+        if (!ValidateHeader(block.Header, parentHeader, out error))
         {
             return false;
         }
