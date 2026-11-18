@@ -745,7 +745,9 @@ public partial class DebugRpcModuleTests
         using (GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
             new GethTraceOptions
             {
-                Timeout = TimeSpan.FromSeconds(seconds), DeadlineClock = clock, CaptureJavaScriptErrors = capture,
+                Timeout = TimeSpan.FromSeconds(seconds),
+                DeadlineClock = clock,
+                CaptureJavaScriptErrors = capture,
                 Tracer = "{fault:function(){},result:function(){return {};}}"
             }))
         {
