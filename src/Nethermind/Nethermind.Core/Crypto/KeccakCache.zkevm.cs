@@ -388,19 +388,21 @@ public static partial class KeccakCache
 
     /// <summary>A whole word of a key's input.</summary>
     /// <remarks>
-    /// Airbender reads it with plain loads: an unaligned read there tests the alignment of each half. Its callers take
-    /// only inputs <see cref="IsMemoizable"/> found aligned to four bytes, which every whole word then is.
+    /// Airbender and OpenVM's RV32 line read it with plain loads: an unaligned read there is tested or expanded per half.
+    /// Its callers take only inputs <see cref="IsMemoizable"/> found aligned to four bytes, which every whole word then is.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ReadKeyWord(ref byte word) =>
-        AirbenderFlag.IsActive ? Unsafe.As<byte, ulong>(ref word) : Unsafe.ReadUnaligned<ulong>(ref word);
+        ReadsAlignedWords ? Unsafe.As<byte, ulong>(ref word) : Unsafe.ReadUnaligned<ulong>(ref word);
 
     /// <summary>Whether an input of <paramref name="length"/> bytes at <paramref name="inputRef"/> goes through the memo.</summary>
-    /// <remarks>On Airbender an input must also be aligned to four bytes, as <see cref="ReadKeyWord"/> reads it.</remarks>
+    /// <remarks>Where <see cref="ReadKeyWord"/> reads plain words, an input must also be aligned to four bytes.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe bool IsMemoizable(ref byte inputRef, nuint length) =>
         length - MinMemoLength <= MaxMemoLength - MinMemoLength &&
-        (!AirbenderFlag.IsActive || ((nuint)Unsafe.AsPointer(ref inputRef) & (sizeof(uint) - 1)) == 0);
+        (!ReadsAlignedWords || ((nuint)Unsafe.AsPointer(ref inputRef) & (sizeof(uint) - 1)) == 0);
+
+    private static bool ReadsAlignedWords => AirbenderFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32;
 
     /// <summary>The input's slot in <see cref="Memo"/>.</summary>
     /// <remarks>

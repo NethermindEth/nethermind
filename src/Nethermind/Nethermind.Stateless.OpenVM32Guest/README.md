@@ -10,5 +10,6 @@ the RV32 runner of NethermindEth/bflat-openvm, which does not generate or
 verify proofs. The guest needs the standard VM configuration of the OpenVM SDK
 (`SdkVmConfig::standard()`), so the ELF is all that a host needs.
 
-Unlike the RV64 guest it has no division hint, which only the RV64 runner
-offers, and no MUL on the bigint extension (`mul.S` is RV64 code).
+Unlike the RV64 guest it has no division hint for MULMOD, which only the RV64
+runner offers. Its `mul.S` is the RV32 form of the RV64 guest's: the RV32
+platform passes handler arguments in `s1`-`s8`.

@@ -12,6 +12,10 @@ SRC_DIR := /nethermind/src
 GUEST_LIBC := openvm32
 GUEST_ARCH := riscv32
 GUEST_PACKAGE := Nethermind.OpenVM.Runtime
+
+# MUL on the bigint extension without the frame a call from managed code takes.
+GUEST_OBJECTS := mul.o
+GUEST_ASFLAGS := --target=riscv32-unknown-elf -march=rv32im -mabi=ilp32
 # The bflat image with the riscv32 target, as for the Airbender guest.
 BFLAT_IMAGE := nethermindeth/bflat-riscv64-11-riscv32:6f19b2372aaa412e227674255cbc11314f258028@sha256:15052345e030e87b51bc63eaf04b32626cb84a66627c1ee6aad0925fbe229a09
 
