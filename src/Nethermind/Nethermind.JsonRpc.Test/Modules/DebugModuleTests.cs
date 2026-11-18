@@ -1745,6 +1745,7 @@ public class DebugModuleTests
                 Assert.That(() => CreateModule().debug_getBadBlocks(file), Throws.InstanceOf<OperationCanceledException>());
                 Assert.That(resumedAfterTimeout, Is.False, "the write stops at the first block after the timeout");
                 Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
+                Assert.That(timeout.DisposeCount, Is.EqualTo(1), "the cancelled timeout source is disposed, not pooled");
             }
         }
         finally

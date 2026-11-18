@@ -1271,11 +1271,7 @@ public class DebugRpcModule(
         {
             using FileStream stream = new(temporaryFile, FileMode.CreateNew, FileAccess.Write);
             // The synchronous serializer takes no token, so the timeout is checked before each block, the unit of work.
-            EthereumJsonSerializer.SerializeToStream(stream, blocks.Select(block =>
-            {
-                token.ThrowIfCancellationRequested();
-                return ToBadBlock(block);
-            }));
+            EthereumJsonSerializer.SerializeToStream(stream, ToBadBlocksUntilCancelled(blocks, token));
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
@@ -1302,6 +1298,15 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<BadBlock>>.Success(null);
 
         BadBlock ToBadBlock(Block block) => new(block, true, specProvider, _blockDecoder, blockForRpcFactory);
+
+        IEnumerable<BadBlock> ToBadBlocksUntilCancelled(IEnumerable<Block> source, CancellationToken cancellationToken)
+        {
+            foreach (Block block in source)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return ToBadBlock(block);
+            }
+        }
 
         void DeleteTemporaryFile(string path)
         {
