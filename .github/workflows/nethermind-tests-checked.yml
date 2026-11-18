@@ -6,6 +6,7 @@ concurrency:
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [master]
   workflow_dispatch:
@@ -23,6 +24,8 @@ permissions:
 
 jobs:
   build:
+    # Draft pull requests run only the light checks; ready_for_review starts this workflow.
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/build-test-artifacts.yml
     with:
       matrix: '{"include":[{"rid":"linux-x64","os":"ubuntu-latest","variant":"release","build_args":""},{"rid":"linux-x64","os":"ubuntu-latest","variant":"checked","build_args":"-p:DefineConstants=TRACE%3BDEBUG"}]}'
@@ -345,6 +348,7 @@ jobs:
   # DEBUG defines; no-intrinsics disables hardware intrinsics at run time.
   pyspec-checked:
     name: EEST nethtest (checked)
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/run-nethtest.yml
     with:
       test_types: blockTest,stateTest,txTest
@@ -353,6 +357,7 @@ jobs:
 
   pyspec-no-intrinsics:
     name: EEST nethtest (no-intrinsics)
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/run-nethtest.yml
     with:
       test_types: blockTest,stateTest,txTest
@@ -362,7 +367,7 @@ jobs:
   tests-summary:
     name: Tests summary
     needs: [tests, tests-chunked, pyspec-checked, pyspec-no-intrinsics]
-    if: always()
+    if: always() && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Check result

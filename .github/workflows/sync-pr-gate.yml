@@ -2,6 +2,7 @@ name: Sync PR Gate (Hoodi)
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [master]
     # Syncs Hoodi with the PR's Docker image on a paid larger runner, so it only runs when the
     # PR can change that image or this gate. Not a required check, so skipping leaves no pending status.
@@ -33,7 +34,7 @@ permissions:
 jobs:
   sync-hoodi:
     name: "Sync hoodi (${{ matrix.mode }})"
-    if: github.event.pull_request.head.repo.fork == false
+    if: github.event.pull_request.head.repo.fork == false && !github.event.pull_request.draft
     runs-on: ubuntu-arm64-8-core
     timeout-minutes: 180
     strategy:

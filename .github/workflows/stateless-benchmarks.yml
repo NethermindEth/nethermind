@@ -8,6 +8,7 @@ name: Stateless benchmarks
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [master]
   workflow_dispatch:
@@ -31,6 +32,8 @@ env:
 jobs:
   measure:
     name: Measure guest cost
+    # Draft pull requests run only the light checks; ready_for_review starts this workflow.
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -245,6 +248,7 @@ jobs:
   # nothing keeps a baseline for it yet.
   measure-trusted:
     name: Measure trusted-input guest cost
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -333,7 +337,7 @@ jobs:
   comment:
     name: Publish comparison
     needs: measure
-    if: ${{ !cancelled() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ !cancelled() && github.event_name == 'pull_request' && !github.event.pull_request.draft && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
