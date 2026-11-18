@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -126,17 +127,27 @@ public class FlatTreeSyncStoreTests
         SaveRootAccountLeaf(store, removed);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
-            batch.SetAccountRaw(Keccak.Compute(held.Bytes), new Account(1, 1));
+            batch.SetAccountRaw(Keccak.Compute(held.Bytes), new AccountStruct(1, 1));
+            foreach (Address address in (Address[])[held, removed])
+            {
+                foreach (TreePath nodePath in StorageNodePaths) batch.SetStorageTrieNode(Keccak.Compute(address.Bytes), nodePath, StorageNodeRlp);
+            }
         }
         WriteStorageDirectToDb(held, 1, [0x01]);
         WriteStorageDirectToDb(removed, 1, [0x02]);
 
         SaveRootAccountLeaf(store, held);
 
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(HasStorageEntries(held), Is.True);
             Assert.That(HasStorageEntries(removed), Is.False);
+            foreach (TreePath nodePath in StorageNodePaths)
+            {
+                Assert.That(reader.LoadStorageRlp(Keccak.Compute(held.Bytes), nodePath, ReadFlags.None), Is.EqualTo(StorageNodeRlp), $"storage node {nodePath} of the held account");
+                Assert.That(reader.LoadStorageRlp(Keccak.Compute(removed.Bytes), nodePath, ReadFlags.None), Is.Null, $"storage node {nodePath} of the removed account");
+            }
         }
     }
 
@@ -159,6 +170,30 @@ public class FlatTreeSyncStoreTests
             Assert.That(HasStorageEntries(kept), Is.True);
         }
     }
+
+    [Test]
+    public void SaveNode_self_destructs_each_replaced_range_once_keeping_the_leaf_account()
+    {
+        Address kept = TestItem.AddressB;
+        using (FlatTestContainer container = CreateContainer(_persistence))
+        {
+            SaveRootAccountLeaf(container.Resolve<FlatTreeSyncStore>(), TestItem.AddressA);
+        }
+
+        FakeWriteBatch batch = new();
+        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
+        SaveRootAccountLeaf(recording.Resolve<FlatTreeSyncStore>(), kept);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.SelfDestructRangeCalls, Is.Not.Empty);
+            Assert.That(batch.SelfDestructRangeCalls, Has.Count.EqualTo(batch.DeleteAccountRangeCalls.Count));
+            Assert.That(batch.SelfDestructRangeCalls.Select(static call => call.KeptAccount), Is.All.EqualTo(Keccak.Compute(kept.Bytes).ValueHash256));
+        }
+    }
+
+    private static readonly byte[] StorageNodeRlp = [0xc2, 0x80, 0x80];
+    private static readonly TreePath[] StorageNodePaths = [TreePath.FromHexString("1"), TreePath.FromHexString("1111111111111111")];
 
     private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
     {
@@ -229,6 +264,17 @@ public class FlatTreeSyncStoreTests
         BlockHeader pivot = Build.A.BlockHeader.WithNumber(123).WithStateRoot(TestItem.KeccakA).TestObject;
 
         Assert.DoesNotThrow(() => store.FinalizeSync(pivot));
+    }
+
+    private sealed class BatchRecordingPersistence(IPersistence inner, FakeWriteBatch batch) : IPersistence
+    {
+        public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
+
+        public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) => batch;
+
+        public void Flush() => inner.Flush();
+
+        public void Clear() => inner.Clear();
     }
 
     private sealed class OrderRecordingPersistence(IPersistence inner, List<string> log) : IPersistence

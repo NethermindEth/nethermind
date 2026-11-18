@@ -251,6 +251,13 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     private BlockHeader? DecodeIfBloomMatches(ReadOnlySpan<byte> rlp, in ValueHash256 blockHash, Hash256? hash, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
     {
+        BlockHeader? header = DecodeIfBloomMatches(_headerDecoder, rlp, bloomMatches, out found);
+        if (header is not null) header.Hash = hash ?? new Hash256(in blockHash);
+        return header;
+    }
+
+    private static BlockHeader? DecodeIfBloomMatches(IHeaderDecoder decoder, ReadOnlySpan<byte> rlp, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
+    {
         found = rlp.Length != 0;
         if (!found) return null;
 
@@ -259,10 +266,73 @@ public class HeaderStore : IHeaderStore, IClearableCache
         if (bloomTested && !bloomMatches(bloom)) return null;
 
         RlpReader reader = new(rlp);
-        BlockHeader? header = _headerDecoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes);
+        BlockHeader? header = decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput | RlpBehaviors.ExcludeHashes);
         found = header is not null;
-        if (found) header!.Hash = hash ?? new Hash256(in blockHash);
         return found && (bloomTested || bloomMatches(header!.Bloom!.Bytes)) ? header : null;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The headers neither cached nor pending are read in one batch by their number-prefixed keys; one not found by
+    /// that key is then read by its hash.
+    /// </remarks>
+    public void GetIfBloomMatches(ReadOnlyMemory<ValueHash256> blockHashes, ReadOnlyMemory<ulong> blockNumbers, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found) =>
+        GetIfBloomMatches(blockHashes.Span, blockNumbers.Span, bloomMatches, headers.Span, found.Span);
+
+    private void GetIfBloomMatches(ReadOnlySpan<ValueHash256> blockHashes, ReadOnlySpan<ulong> blockNumbers, Func<ReadOnlySpan<byte>, bool> bloomMatches, Span<BlockHeader?> headers, Span<bool> found)
+    {
+        using ArrayPoolListRef<int> reads = new(blockHashes.Length);
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            BlockHeader? header = _headerCache.Get(in blockHashes[i]);
+            if (header is null && _pending is not null) _pending.TryGet(in blockHashes[i], out header);
+            if (header is null)
+            {
+                reads.Add(i);
+                continue;
+            }
+
+            found[i] = true;
+            headers[i] = bloomMatches(header.Bloom!.Bytes) ? header : null;
+        }
+
+        if (reads.Count == 0) return;
+
+        using ArrayPoolSpan<byte> keys = new(reads.Count * NumberPrefixedKeyLength);
+        for (int j = 0; j < reads.Count; j++)
+        {
+            int i = reads[j];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumbers[i], blockHashes[i], keys.Slice(j * NumberPrefixedKeyLength, NumberPrefixedKeyLength));
+        }
+
+        using ArrayPoolSpan<BloomMatch> matches = new(reads.Count);
+        _headerDb.GetMany<BloomMatch, BloomMatchDecoder>(keys, NumberPrefixedKeyLength, matches, new BloomMatchDecoder(_headerDecoder, bloomMatches));
+        for (int j = 0; j < reads.Count; j++)
+        {
+            int i = reads[j];
+            (BlockHeader? header, bool isFound) = matches[j];
+            if (!isFound)
+            {
+                header = ReadIfBloomMatches(blockHashes[i].Bytes, in blockHashes[i], null, bloomMatches, out isFound);
+            }
+            else if (header is not null)
+            {
+                header.Hash = new Hash256(in blockHashes[i]);
+            }
+
+            headers[i] = header;
+            found[i] = isFound;
+        }
+
+        // The rented array goes back to a shared pool, which must not keep the headers alive.
+        ((Span<BloomMatch>)matches).Clear();
+    }
+
+    private readonly record struct BloomMatch(BlockHeader? Header, bool Found);
+
+    private readonly struct BloomMatchDecoder(IHeaderDecoder decoder, Func<ReadOnlySpan<byte>, bool> bloomMatches) : IValueDecoder<BloomMatch>
+    {
+        public BloomMatch Decode(ReadOnlySpan<byte> buffer) => new(DecodeIfBloomMatches(decoder, buffer, bloomMatches, out bool found), found);
     }
 
     private static bool TryReadBloom(ReadOnlySpan<byte> headerRlp, out ReadOnlySpan<byte> bloom)

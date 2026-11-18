@@ -190,6 +190,39 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
+    public void Serves_full_receipts_response_as_decoded_ones()
+    {
+        const int count = 64;
+        TxReceipt[][] blocks = [.. Enumerable.Range(0, count).Select(static i => SoftLimitTestHelper.CreateLogHeavyReceipts(200 + i))];
+        Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
+        for (int i = 0; i < count; i++) _syncManager.GetReceipts(hashes[i]).Returns(blocks[i]);
+        IMessageSerializer<ReceiptsMessage69> serializer = new ReceiptsMessageSerializer69(_specProvider);
+        byte[]? response = null;
+        int servedCount = 0;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage69>()))
+            .Do(call =>
+            {
+                ReceiptsMessage69 message = (ReceiptsMessage69)call[0];
+                servedCount = message.EthMessage.TxReceipts.Count;
+                response = new byte[serializer.GetLength(message)];
+                serializer.Serialize(response, message);
+            });
+        HandleIncomingStatusMessage();
+
+        using GetReceiptsMessage66 request = new(1111, new(hashes.ToPooledList()));
+        HandleZeroMessage(request, Eth63MessageCode.GetReceipts);
+
+        using ReceiptsMessage69 decoded = new(1111, new(blocks[..servedCount].ToPooledList()));
+        byte[] expected = new byte[serializer.GetLength(decoded)];
+        serializer.Serialize(expected, decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Has.Length.GreaterThan(1024 * 1024));
+            Assert.That(response, Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
     public void Should_size_receipts_without_bloom_for_soft_message_size_limit()
     {
         const int count = 512;
