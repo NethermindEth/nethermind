@@ -53,6 +53,7 @@ Console.Title = ProductInfo.Name;
 Regex.CacheSize = 128;
 BlocksConfig.SetDefaultExtraDataWithVersion();
 
+// Set whenever the runner is not running, so a wait returns at once when there is nothing to stop.
 ManualResetEventSlim exit = new(true);
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
@@ -132,11 +133,8 @@ async Task<int> ConfigureAsync(string[] args)
         logger.Info($"Version: {ProductInfo.Version}");
     }
 
-    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-    {
-        processExitSource?.Exit(ExitCodes.SigTerm);
-        exit.Wait();
-    };
+    // Does not wait for the runner to stop: the thread that called Environment.Exit can be one the stop waits for.
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => processExitSource?.Exit(ExitCodes.SigTerm);
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
     PluginLoader pluginLoader = new(
@@ -159,7 +157,7 @@ async Task<int> ConfigureAsync(string[] args)
 
         AddConfigurationOptions(rootCommand);
 
-        rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+        rootCommand.SetAction((result, token) => RunUntilExitAsync(result, pluginLoader, token));
 
         parseResult = rootCommand.Parse(args);
         parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
@@ -178,7 +176,22 @@ async Task<int> ConfigureAsync(string[] args)
     finally
     {
         pluginLoader.LogDiagnostics();
+        // A signal during the runner's synchronous start ends the invocation before the runner returns.
         exit.Wait();
+    }
+}
+
+async Task<int> RunUntilExitAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
+{
+    exit.Reset();
+
+    try
+    {
+        return await RunAsync(parseResult, pluginLoader, cancellationToken);
+    }
+    finally
+    {
+        exit.Set();
     }
 }
 
@@ -290,8 +303,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     await ethereumRunner.StopAsync();
 
     logger.Info("Nethermind is shut down");
-
-    exit.Set();
 
     return processExitSource.ExitCode;
 }
