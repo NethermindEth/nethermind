@@ -169,7 +169,7 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 
 - Before the fork the slot equals the block number. With no missed slots it still does; otherwise find the slot through `eth/v2/beacon/blocks`.
 - `replay`: the `nethermind-replay` node (empty database, no peers, no CL, RPC `28546`, Engine `28551`) imports every canonical payload over the Engine API. At the proof slot it first sends a flipped, truncated or emptied proof, and the proof without its transaction.
-- Expected: four `INVALID … InvalidRecursiveStark` lines, `proof <about 326000> B … VALID` for the proof block (the size varies slightly per run), `replayed slots 1..N, failures 0`.
+- Expected: four `INVALID … Invalid block hash … does not match calculated hash` lines (the header commits to `keccak(stark_proof)` and the dependency hash, so any change to the proof or the transactions changes the block hash), `proof <about 255000> B … VALID` for the proof block (the size varies slightly per run), `replayed slots 1..N, failures 0`.
 
 ## 5. P2P sync
 
@@ -182,7 +182,7 @@ until curl -s -X POST -H 'content-type: application/json' --data "{\"jsonrpc\":\
 - Each pair starts empty and joins only through devp2p (static node: the original Nethermind's enode at its container IP, port 30303) and libp2p (`--libp2p-addresses`: the original beacon node's multiaddr, port 9000). `sync.sh` prints both.
 - `genesis`: Lighthouse range-syncs from genesis. `checkpoint`: Lighthouse starts from the original beacon node's finalized state; its Nethermind fetches all earlier history over devp2p.
 - Host ports: ELs `28547`, `28548`; beacon APIs `25053`, `25054`.
-- Wait until both new beacon nodes reach the head (`curl -s 127.0.0.1:25053/eth/v1/node/syncing`), then run `sync-check.sh`. Expected: identical hash, state root and receipts root for every block on all three ELs; the same raw proof block and `starkProof` (about 326 KB) everywhere; the same finalized head; `PASS`.
+- Wait until both new beacon nodes reach the head (`curl -s 127.0.0.1:25053/eth/v1/node/syncing`), then run `sync-check.sh`. Expected: identical hash, state root and receipts root for every block on all three ELs; the same raw proof block and `starkProof` (about 255 KB) everywhere; the same finalized head; `PASS`.
 
 ## Kurtosis
 
