@@ -166,6 +166,12 @@ public class PruningTrieStoreModule : Module
             return false;
         }
 
+        if (BasePersistence.ReadMigrationCursor(metadata) is not null)
+        {
+            if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB still reads what its migration has not copied yet from it.");
+            return false;
+        }
+
         // The activation policy may still wipe such a flat DB on this start, and its pointer does not survive the wipe.
         if (db.WasRepairedOnOpen || BasePersistence.ReadWipedForSync(metadata))
         {

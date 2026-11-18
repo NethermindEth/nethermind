@@ -1580,7 +1580,7 @@ public class DebugRpcModule(
         if (header is null)
         {
             error = GetFailureResult<TResult, BlockHeader>(
-                new SearchResult<BlockHeader>($"Cannot find header for block hash: {blockHash}", ErrorCodes.ResourceNotFound),
+                new SearchResult<BlockHeader>(badBlocksOnly ? $"bad block {blockHash} not found" : $"block {blockHash} not found", ErrorCodes.ResourceNotFound),
                 debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
