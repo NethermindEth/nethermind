@@ -1600,6 +1600,43 @@ public class Eth70ProtocolHandlerTests
         }
     }
 
+    [Test]
+    public void Serves_full_receipts_response_as_decoded_ones([Values(0L, 3L)] long firstBlockReceiptIndex)
+    {
+        const int count = 64;
+        TxReceipt[][] blocks = [.. Enumerable.Range(0, count).Select(static i => SoftLimitTestHelper.CreateLogHeavyReceipts(200 + i))];
+        Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
+        for (int i = 0; i < count; i++) _syncManager.GetReceipts(hashes[i]).Returns(blocks[i]);
+        ReceiptsMessageSerializer70 serializer = new(_specProvider);
+        byte[]? response = null;
+        int servedCount = 0;
+        bool lastBlockIncomplete = false;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call =>
+            {
+                ReceiptsMessage70 message = (ReceiptsMessage70)call[0];
+                servedCount = message.TxReceipts.Count;
+                lastBlockIncomplete = message.LastBlockIncomplete;
+                response = new byte[serializer.GetLength(message)];
+                serializer.Serialize(response, message);
+            });
+        HandleIncomingStatusMessage();
+
+        using GetReceiptsMessage70 request = new(1111, firstBlockReceiptIndex, hashes.ToPooledList());
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        TxReceipt[][] expectedBlocks = blocks[..servedCount];
+        expectedBlocks[0] = expectedBlocks[0][(int)firstBlockReceiptIndex..];
+        using ReceiptsMessage70 decoded = new(1111, expectedBlocks.ToPooledList(), lastBlockIncomplete);
+        byte[] expected = new byte[serializer.GetLength(decoded)];
+        serializer.Serialize(expected, decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Has.Length.GreaterThan(1024 * 1024));
+            Assert.That(response, Is.EqualTo(expected));
+        }
+    }
+
     private ReceiptsMessage70 RequestReceipts(params Hash256[] hashes)
     {
         using GetReceiptsMessage70 request = new(1111, 0, hashes.ToPooledList());

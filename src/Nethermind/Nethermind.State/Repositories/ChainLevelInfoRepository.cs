@@ -138,7 +138,7 @@ namespace Nethermind.State.Repositories
 
                 try
                 {
-                    return ReadMainChainBlock(slice, out blockHash, out totalDifficulty);
+                    return ReadMainChainBlock(_decoder, slice, out blockHash, out totalDifficulty);
                 }
                 finally
                 {
@@ -151,7 +151,7 @@ namespace Nethermind.State.Repositories
 
             try
             {
-                return ReadMainChainBlock(data, out blockHash, out totalDifficulty);
+                return ReadMainChainBlock(_decoder, data, out blockHash, out totalDifficulty);
             }
             finally
             {
@@ -159,14 +159,132 @@ namespace Nethermind.State.Repositories
             }
         }
 
-        private bool ReadMainChainBlock(ReadOnlySpan<byte> rlp, out ValueHash256 blockHash, out UInt256 totalDifficulty)
+        private static bool ReadMainChainBlock(IRlpDecoder<ChainLevelInfo> decoder, ReadOnlySpan<byte> rlp, out ValueHash256 blockHash, out UInt256 totalDifficulty)
         {
             if (rlp.Length == 0) return NotFound(out blockHash, out totalDifficulty);
             if (ChainLevelDecoder.TryReadMainChainBlock(rlp, out bool hasMainChainBlock, out blockHash, out totalDifficulty)) return hasMainChainBlock;
 
             RlpReader reader = new(rlp);
-            return IChainLevelInfoRepository.TryGetMainChainBlock(_decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput), out blockHash, out totalDifficulty);
+            return IChainLevelInfoRepository.TryGetMainChainBlock(decoder.Decode(ref reader, RlpBehaviors.AllowExtraBytes | RlpBehaviors.TrustedInput), out blockHash, out totalDifficulty);
         }
+
+        /// <inheritdoc/>
+        /// <remarks>The levels not in the cache are read in one batch when their keys have the same length.</remarks>
+        public void GetMainChainBlocksWithoutCaching(ReadOnlyMemory<ulong> blockNumbers, Memory<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> blocks) =>
+            GetMainChainBlocksWithoutCaching(blockNumbers.Span, blocks.Span);
+
+        private void GetMainChainBlocksWithoutCaching(ReadOnlySpan<ulong> blockNumbers, Span<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> blocks)
+        {
+            if (blockNumbers.IsEmpty) return;
+
+            int keyLength = GetKeyLength(blockNumbers[0]);
+            using ArrayPoolListRef<int> reads = new(blockNumbers.Length);
+            for (int i = 0; i < blockNumbers.Length; i++)
+            {
+                if (GetKeyLength(blockNumbers[i]) != keyLength)
+                {
+                    for (int k = 0; k < blockNumbers.Length; k++)
+                    {
+                        blocks[k] = TryGetMainChainBlockWithoutCaching(blockNumbers[k], out ValueHash256 blockHash, out UInt256 totalDifficulty)
+                            ? (blockHash, totalDifficulty)
+                            : default;
+                    }
+
+                    return;
+                }
+
+                if (_blockInfoCache.TryGetNoRefresh(new LevelNumber(blockNumbers[i]), out ChainLevelInfo? level))
+                {
+                    blocks[i] = MainChainBlockOf(level);
+                }
+                else
+                {
+                    reads.Add(i);
+                }
+            }
+
+            if (reads.Count == 0) return;
+
+            using ArrayPoolSpan<byte> keys = new(reads.Count * keyLength);
+            for (int j = 0; j < reads.Count; j++)
+            {
+                blockNumbers[reads[j]].ToBigEndianSpanWithoutLeadingZeros(out _).CopyTo(keys.Slice(j * keyLength, keyLength));
+            }
+
+            using ArrayPoolSpan<(ValueHash256, UInt256)> read = new(reads.Count);
+            _blockInfoDb.GetMany<(ValueHash256, UInt256), MainChainBlockDecoder>(keys, keyLength, read, new MainChainBlockDecoder(_decoder));
+            for (int j = 0; j < reads.Count; j++)
+            {
+                int i = reads[j];
+                // A level persisted while this read ran is newer than the one read.
+                blocks[i] = _blockInfoCache.TryGetNoRefresh(new LevelNumber(blockNumbers[i]), out ChainLevelInfo? cached)
+                    ? MainChainBlockOf(cached)
+                    : read[j];
+            }
+        }
+
+        private static (ValueHash256, UInt256) MainChainBlockOf(ChainLevelInfo? level) =>
+            IChainLevelInfoRepository.TryGetMainChainBlock(level, out ValueHash256 blockHash, out UInt256 totalDifficulty) ? (blockHash, totalDifficulty) : default;
+
+        private readonly struct MainChainBlockDecoder(IRlpDecoder<ChainLevelInfo> decoder) : IValueDecoder<(ValueHash256, UInt256)>
+        {
+            public (ValueHash256, UInt256) Decode(ReadOnlySpan<byte> buffer) =>
+                ReadMainChainBlock(decoder, buffer, out ValueHash256 blockHash, out UInt256 totalDifficulty) ? (blockHash, totalDifficulty) : default;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>The levels missing from the cache are read in one batch for each key length, and only their main
+        /// chain block is decoded where the encoding allows it.</remarks>
+        public void GetMainChainBlockHashesWithoutCaching(ReadOnlySpan<ulong> blockNumbers, Span<ValueHash256?> blockHashes)
+        {
+            ArgumentOutOfRangeException.ThrowIfNotEqual(blockHashes.Length, blockNumbers.Length);
+            using ArrayPoolListRef<int> missed = new(blockNumbers.Length);
+            for (int i = 0; i < blockNumbers.Length; i++)
+            {
+                if (_blockInfoCache.TryGetNoRefresh(new LevelNumber(blockNumbers[i]), out ChainLevelInfo? level))
+                {
+                    blockHashes[i] = GetMainChainBlockHash(level);
+                }
+                else
+                {
+                    missed.Add(i);
+                }
+            }
+
+            if (missed.Count == 0) return;
+
+            using ArrayPoolListRef<int> sameLength = new(missed.Count);
+            using ArrayPoolSpan<ValueHash256?> read = new(missed.Count);
+            using ArrayPoolSpan<byte> keys = new(missed.Count * sizeof(ulong));
+            for (int keyLength = 1; keyLength <= sizeof(ulong); keyLength++)
+            {
+                sameLength.Clear();
+                foreach (int index in missed.AsSpan())
+                {
+                    if (GetKeyLength(blockNumbers[index]) != keyLength) continue;
+                    blockNumbers[index].ToBigEndianSpanWithoutLeadingZeros(out _).CopyTo(keys.Slice(sameLength.Count * keyLength, keyLength));
+                    sameLength.Add(index);
+                }
+
+                if (sameLength.Count == 0) continue;
+
+                Span<ValueHash256?> hashes = ((Span<ValueHash256?>)read)[..sameLength.Count];
+                _blockInfoDb.GetMany(keys.Slice(0, sameLength.Count * keyLength), keyLength, hashes, new MainChainBlockHashDecoder(_decoder));
+                for (int i = 0; i < sameLength.Count; i++) blockHashes[sameLength[i]] = hashes[i];
+            }
+
+            foreach (int index in missed.AsSpan())
+            {
+                // A level persisted while this load ran is newer than the one read.
+                if (_blockInfoCache.TryGetNoRefresh(new LevelNumber(blockNumbers[index]), out ChainLevelInfo? cached))
+                {
+                    blockHashes[index] = GetMainChainBlockHash(cached);
+                }
+            }
+        }
+
+        private static ValueHash256? GetMainChainBlockHash(ChainLevelInfo? level) =>
+            IChainLevelInfoRepository.TryGetMainChainBlock(level, out ValueHash256 blockHash, out _) ? blockHash : (ValueHash256?)null;
 
         public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
         {
@@ -299,6 +417,20 @@ namespace Nethermind.State.Repositories
         }
 
         void IClearableCache.ClearCache() => _blockInfoCache.Clear();
+
+        private readonly struct MainChainBlockHashDecoder(IRlpDecoder<ChainLevelInfo> decoder) : IValueDecoder<ValueHash256?>
+        {
+            public ValueHash256? Decode(ReadOnlySpan<byte> buffer)
+            {
+                if (buffer.IsEmpty) return null;
+                if (ChainLevelDecoder.TryReadMainChainBlock(buffer, out bool hasMainChainBlock, out ValueHash256 blockHash, out _))
+                {
+                    return hasMainChainBlock ? blockHash : (ValueHash256?)null;
+                }
+
+                return GetMainChainBlockHash(new LevelDecoder(decoder).Decode(buffer));
+            }
+        }
 
         private readonly struct LevelDecoder(IRlpDecoder<ChainLevelInfo> decoder) : IValueDecoder<ChainLevelInfo?>
         {

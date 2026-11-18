@@ -410,7 +410,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
         }
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account)
         {
             _clearAll = true;
             inner.SetAccountRaw(addrHash, account);
@@ -428,10 +428,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             inner.DeleteStorageRange(addressHash, fromPath, toPath);
         }
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
             _clearAll = true;
-            inner.SelfDestructRange(fromPath, toPath);
+            inner.SelfDestructRange(fromPath, toPath, keptAccount);
         }
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) => inner.SetStateTrieNode(path, rlp);

@@ -666,6 +666,73 @@ namespace Nethermind.Blockchain
             return header;
         }
 
+        /// <inheritdoc/>
+        /// <remarks>The levels and headers outside the cached window are read in one batch each, without caching them.</remarks>
+        public void FindCanonicalHeadersIfBloomMatches(ulong firstBlockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found)
+        {
+            Span<BlockHeader?> headerSpan = headers.Span;
+            Span<bool> foundSpan = found.Span;
+            using ArrayPoolListRef<ulong> uncachedNumbers = new(headerSpan.Length);
+            using ArrayPoolListRef<int> uncachedIndexes = new(headerSpan.Length);
+            for (int i = 0; i < headerSpan.Length; i++)
+            {
+                ulong number = firstBlockNumber + (ulong)i;
+                if (ShouldCache(number))
+                {
+                    headerSpan[i] = FindCanonicalHeaderIfBloomMatches(number, bloomMatches, out foundSpan[i]);
+                }
+                else
+                {
+                    headerSpan[i] = null;
+                    foundSpan[i] = false;
+                    uncachedNumbers.Add(number);
+                    uncachedIndexes.Add(i);
+                }
+            }
+
+            if (uncachedNumbers.Count == 0) return;
+
+            int count = uncachedNumbers.Count;
+            using ArrayPoolSpan<ulong> numbers = new(count);
+            using ArrayPoolSpan<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> mainChainBlocks = new(count);
+            uncachedNumbers.AsSpan().CopyTo(numbers);
+            _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory(), mainChainBlocks.AsMemory());
+
+            using ArrayPoolSpan<ValueHash256> hashes = new(count);
+            using ArrayPoolSpan<UInt256> totalDifficulties = new(count);
+            using ArrayPoolSpan<int> indexes = new(count);
+            int stored = 0;
+            for (int i = 0; i < count; i++)
+            {
+                (ValueHash256 blockHash, UInt256 totalDifficulty) = mainChainBlocks[i];
+                if (blockHash == Keccak.Zero.ValueHash256) continue;
+
+                hashes[stored] = blockHash;
+                numbers[stored] = numbers[i];
+                totalDifficulties[stored] = totalDifficulty;
+                indexes[stored] = uncachedIndexes[i];
+                stored++;
+            }
+
+            using ArrayPoolSpan<BlockHeader?> storedHeaders = new(stored);
+            using ArrayPoolSpan<bool> storedFound = new(stored);
+            _headerStore.GetIfBloomMatches(hashes.AsReadOnlyMemory()[..stored], numbers.AsReadOnlyMemory()[..stored], bloomMatches, storedHeaders.AsMemory(), storedFound.AsMemory());
+            for (int i = 0; i < stored; i++)
+            {
+                BlockHeader? header = storedHeaders[i];
+                if (header is not null)
+                {
+                    header.Hash ??= new Hash256(in hashes[i]);
+                    SetTotalDifficultyFromBlockInfo(header, totalDifficulties[i]);
+                }
+
+                headerSpan[indexes[i]] = header;
+                foundSpan[indexes[i]] = storedFound[i];
+            }
+
+            ((Span<BlockHeader?>)storedHeaders).Clear();
+        }
+
         public Hash256? FindBlockHash(ulong blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
 
         public bool HasBlock(ulong blockNumber, Hash256 blockHash) => _blockStore.HasBlock(blockNumber, blockHash);
