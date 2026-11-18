@@ -885,6 +885,24 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(ColumnGossipRouter.ParkedColumnsPerProposer), "the retry meets exactly the flooding proposer's share of the queue");
     }
 
+    [Test]
+    public void Parked_key_counts_follow_replacement_eviction_and_clear()
+    {
+        ColumnGossipRouter.ParkedColumnCache cache = new(2);
+        DataColumnSidecar first = new() { SignedBlockHeader = new() { Message = new() { ProposerIndex = 1 } } };
+        DataColumnSidecar second = new() { SignedBlockHeader = new() { Message = new() { ProposerIndex = 2 } } };
+        cache.Store((ParentRoot, 0), [first]);
+        cache.Store((ParentRoot, 1), [second]);
+        cache.Store((ParentRoot, 0), [first, first]);
+        Assert.That(cache.KeysOf(1), Is.EqualTo(1));
+
+        cache.Store((ParentRoot, 2), [first]);
+        Assert.That((cache.KeysOf(1), cache.KeysOf(2)), Is.EqualTo((2, 0)));
+
+        cache.Clear();
+        Assert.That(cache.KeysOf(1), Is.Zero);
+    }
+
     private static byte[] UndecodableMessage => Snappy.CompressToArray([0x01, 0x02, 0x03]);
 
     private static DataColumnSidecar Altered(DataColumnSidecar honest, int variant)

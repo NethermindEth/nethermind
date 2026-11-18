@@ -214,7 +214,7 @@ public sealed class ColumnGossipRouter(
     private readonly Lock _kzgBatchesLock = new();
 
     // Signed sidecars whose expected proposer the published snapshot and lookahead cannot verify yet.
-    private readonly LruCache<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> _parkedColumns = new(ParkedColumnCacheSize, "beacon column gossip parked columns");
+    private readonly ParkedColumnCache _parkedColumns = new();
     private readonly Lock _parkedLock = new();
     private ForkChoiceSnapshot? _retriedSnapshot;
     private ProposerLookaheadSnapshot? _retriedLookahead;
@@ -878,7 +878,7 @@ public sealed class ColumnGossipRouter(
         lock (_parkedLock)
         {
             DataColumnSidecar[] copies = _parkedColumns.Get(key) ?? [];
-            if (copies.Length == 0 && ParkedKeysOf(sidecar.SignedBlockHeader!.Message!.ProposerIndex) >= ParkedColumnsPerProposer)
+            if (copies.Length == 0 && _parkedColumns.KeysOf(sidecar.SignedBlockHeader!.Message!.ProposerIndex) >= ParkedColumnsPerProposer)
             {
                 return;
             }
@@ -893,23 +893,30 @@ public sealed class ColumnGossipRouter(
 
             if (fromSource < KzgBatchesPerColumn && copies.Length < 16)
             {
-                _parkedColumns.Set(key, [.. copies, sidecar]);
+                _parkedColumns.Store(key, [.. copies, sidecar]);
             }
         }
     }
 
-    private int ParkedKeysOf(ulong proposerIndex)
+    internal sealed class ParkedColumnCache(int capacity = ParkedColumnCacheSize) : LruCache<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]>(capacity, "beacon column gossip parked columns")
     {
-        int keys = 0;
-        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in _parkedColumns.ToArray())
+        private readonly Dictionary<ulong, int> _keysPerProposer = [];
+
+        public int KeysOf(ulong proposer) => _keysPerProposer.GetValueOrDefault(proposer);
+
+        public void Store((Hash256, ulong) key, DataColumnSidecar[] copies)
         {
-            if (entry.Value[0].SignedBlockHeader!.Message!.ProposerIndex == proposerIndex)
-            {
-                keys++;
-            }
+            // Set evicts the old value on replacement as well as at capacity.
+            Set(key, copies);
+            ulong proposer = copies[0].SignedBlockHeader!.Message!.ProposerIndex;
+            _keysPerProposer[proposer] = KeysOf(proposer) + 1;
         }
 
-        return keys;
+        protected override void Evict(DataColumnSidecar[] copies)
+        {
+            ulong proposer = copies[0].SignedBlockHeader!.Message!.ProposerIndex;
+            if (--_keysPerProposer[proposer] == 0) _keysPerProposer.Remove(proposer);
+        }
     }
 
     /// <summary>Runs every queued sidecar through the checks again once a new fork-choice snapshot or proposer lookahead is published.</summary>
