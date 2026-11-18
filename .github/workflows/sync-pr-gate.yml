@@ -16,7 +16,6 @@ on:
       - 'Directory.Build.targets'
       - 'nuget.config'
       - 'global.json'
-      - '.github/actions/start-alloy/**'
       - '.github/workflows/sync-pr-gate.yml'
 
 concurrency:
@@ -156,16 +155,12 @@ jobs:
           FLATDB: ${{ matrix.flatdb }}
           CONSENSUS: ${{ matrix.consensus }}
         run: |
-          node_name="SyncPRGate-hoodi-${SYNC_MODE}-${CONSENSUS}-${GITHUB_RUN_ID}"
-          echo "node_name=$node_name" >> $GITHUB_ENV
-
           mkdir -p execution-data/logs/configs
           mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
           flags=("FlatDb.Enabled=$FLATDB" "Sync.NonValidatorNode=true"
             "Sync.DownloadBodiesInFastSync=false" "Sync.DownloadReceiptsInFastSync=false"
             "Sync.VerifyTrieOnStateSyncFinished=true" "Sync.SnapSync=true"
             "loggerConfigSource=/nethermind/data/logs/configs/customNLog.config"
-            "Metrics.NodeName=$node_name" "Metrics.Enabled=true"
             "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug")
           args=()
           if [[ "$CONSENSUS" == "Embedded" ]]; then
@@ -185,19 +180,6 @@ jobs:
             # does `docker compose pull` which fails for the locally-built image.
             docker compose up -d
           fi
-
-      - name: Start Grafana Alloy
-        continue-on-error: true
-        uses: ./.github/actions/start-alloy
-        with:
-          network: hoodi
-          node-name: ${{ env.node_name }}
-          loki-url: ${{ secrets.LOKI_URL }}
-          loki-username: ${{ secrets.LOKI_USERNAME }}
-          loki-password: ${{ secrets.LOKI_PASSWORD }}
-          prometheus-url: ${{ secrets.PROMETHEUS_URL }}
-          prometheus-username: ${{ secrets.PROMETHEUS_USERNAME }}
-          prometheus-password: ${{ secrets.PROMETHEUS_PASSWORD }}
 
       - name: Wait for hoodi to sync
         env:
@@ -232,10 +214,3 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
-
-      - name: Stop Grafana Alloy
-        if: always()
-        continue-on-error: true
-        run: |
-          docker stop -t 15 grafana-alloy 2>/dev/null || true
-          docker rm -f grafana-alloy 2>/dev/null || true
