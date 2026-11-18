@@ -1,0 +1,1 @@
+#define XKCP_has_KeccakP1600
