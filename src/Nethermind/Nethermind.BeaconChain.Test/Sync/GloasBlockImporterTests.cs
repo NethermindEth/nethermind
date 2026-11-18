@@ -20,6 +20,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
@@ -151,25 +152,34 @@ public class GloasBlockImporterTests
     [Test]
     public void Requested_fork_crossing_block_uses_its_parent_registry_after_a_sibling_populates_the_key_cache()
     {
-        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xB1);
+        SignedGloasChain.Block block = _chain.Next(null, 2 * ForkSlot, full: false, 0xB1);
         PubkeyCache pubkeys = new();
         Validator[] validators = _chain.AnchorState.ValidatorBuffer!.Items;
         int proposer = (int)block.Signed.Message!.ProposerIndex;
+        Assert.That(proposer, Is.InRange(1, validators.Length - 2), "cache reload samples the first and last keys");
         pubkeys.Build(validators[..proposer]);
         Validator[] sibling = [.. validators];
         sibling[proposer] = CreateActiveValidator(new BlsPublicKey(new Bls.P1(ValidatorKey(validators.Length)).Compress()));
         pubkeys.Extend(sibling, proposer);
-        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), pubkeys: pubkeys);
+        using MemColumnsDb<BeaconChainDbColumns> columns = new();
+        BeaconChainStore store = new(columns, _chain.Spec);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store, pubkeys: pubkeys);
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(importer.VerifyCachedProposerSignature(block.Forked), Is.Null);
         Assert.That(importer.ImportRequested(block.Forked, block.Root, fetchedByRoot: false), Is.EqualTo(BlockImportResult.Imported));
 
-        BeaconChainStore store = _chain.CreateStore();
-        pubkeys.FinalizeRegistry(validators);
-        pubkeys.Persist(store);
+        CheckpointRef finalized = new(_chain.Spec.GetEpoch(block.Forked.Slot), block.Root);
+        Finalize(importer, finalized);
+        importer.OnFinalized(finalized);
+
+        BeaconChainStore reopened = new(columns, _chain.Spec);
+        Assert.That(reopened.TryGetAnchor(out Hash256? root, out _), Is.True);
+        Assert.That(root, Is.EqualTo(block.Root));
+        Assert.That(reopened.TryGetState(root!, out byte[]? ssz), Is.True);
+        BeaconStateGloas.Decode(ssz!, out BeaconStateGloas state);
         PubkeyCache reloaded = new();
-        Assert.That(reloaded.TryLoad(store, validators), Is.True);
+        Assert.That(reloaded.TryLoad(reopened, state.ValidatorBuffer!.Items), Is.True);
         Assert.That(reloaded.GetPublicKey(proposer).Compress(), Is.EqualTo(validators[proposer].Pubkey.Bytes.ToArray()));
     }
 
