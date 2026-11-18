@@ -54,8 +54,6 @@ Console.Title = ProductInfo.Name;
 Regex.CacheSize = 128;
 BlocksConfig.SetDefaultExtraDataWithVersion();
 
-// Set whenever the runner is not running, so a wait returns at once when there is nothing to stop.
-ManualResetEventSlim exit = new(true);
 int cancellationExitCode = ExitCodes.SigInt;
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
@@ -159,7 +157,8 @@ async Task<int> ConfigureAsync(string[] args)
 
         AddConfigurationOptions(rootCommand);
 
-        rootCommand.SetAction((result, token) => RunUntilExitAsync(result, pluginLoader, token));
+        Task<int>? runner = null;
+        rootCommand.SetAction((result, token) => runner = RunUntilExitAsync(result, pluginLoader, token));
 
         parseResult = rootCommand.Parse(args);
         parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
@@ -173,13 +172,15 @@ async Task<int> ConfigureAsync(string[] args)
             return BasicOptions.ReportParseErrors(parseResult, logger);
         }
 
-        return await parseResult.InvokeAsync();
+        int exitCode = await parseResult.InvokeAsync();
+
+        // A signal during the runner's synchronous start ends the invocation with the signal's code while the runner
+        // still runs, so the runner's own result is awaited and reported instead.
+        return runner is null ? exitCode : await runner;
     }
     finally
     {
         pluginLoader.LogDiagnostics();
-        // A signal during the runner's synchronous start ends the invocation before the runner returns.
-        exit.Wait();
     }
 }
 
@@ -190,16 +191,7 @@ async Task<int> RunUntilExitAsync(ParseResult parseResult, PluginLoader pluginLo
     using PosixSignalRegistration sigTerm = PosixSignalRegistration.Create(
         PosixSignal.SIGTERM, _ => Volatile.Write(ref cancellationExitCode, ExitCodes.SigTerm));
 
-    exit.Reset();
-
-    try
-    {
-        return await RunAsync(parseResult, pluginLoader, cancellationToken);
-    }
-    finally
-    {
-        exit.Set();
-    }
+    return await RunAsync(parseResult, pluginLoader, cancellationToken);
 }
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
