@@ -66,10 +66,12 @@ namespace Nethermind.Facade
         IBlockAccessListStore balStore,
         ISpecProvider specProvider,
         IBlocksConfig blocksConfig,
-        IMiningConfig miningConfig)
+        IMiningConfig miningConfig,
+        RpcCallExecutionPolicy? rpcCallExecutionPolicy = null)
         : IBlockchainBridge
     {
         private readonly SimulateBridgeHelper _simulateBridgeHelper = new(blocksConfig, specProvider);
+        private readonly ExecutionOptions _callExecutionOptions = rpcCallExecutionPolicy?.Options ?? ExecutionOptions.CommitAndRestore;
 
         public Block? HeadBlock
         {
@@ -271,13 +273,11 @@ namespace Nethermind.Facade
         {
             CallOutputTracer tracer = new();
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
-            TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
-                ? tipAboveFeeCap
-                : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+            TransactionResult result = RunRestoringCall(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
 
             string? error = result.GetErrorMessage(tracer.Error);
             if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
-                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText, _callExecutionOptions))
             {
                 error = failureText;
             }
@@ -355,12 +355,19 @@ namespace Nethermind.Facade
         }
 
         public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
-            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken,
-            out bool executionReverted)
+            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride,
+            CancellationToken cancellationToken, out bool executionReverted) =>
+            EstimateFrameGas(header, tx, fillExecution, fillState, gasCap, errorMargin, maxFeeAt, stateOverride, blockOverride, underCallPolicy: false,
+                cancellationToken, out executionReverted);
+
+        public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
+            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, bool underCallPolicy,
+            CancellationToken cancellationToken, out bool executionReverted)
         {
             executionReverted = false;
             if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return Result<TxFrame[]>.Fail(error);
             BlockHeader executionHeader = header.Clone();
+            ExecutionOptions options = underCallPolicy ? _callExecutionOptions : ExecutionOptions.CommitAndRestore;
             // The requested block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
             {
@@ -370,14 +377,14 @@ namespace Nethermind.Facade
                 GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState);
                 scope.Component.RequestState.BlobBaseFeeOverride = blockOverride?.BlobBaseFee;
                 return estimator.EstimateFrameGas(tx, PrepareCall(scope.Component.WorldState, executionHeader, tx, blobBaseFeeOverride: blockOverride?.BlobBaseFee),
-                    fillExecution, fillState, gasCap, errorMargin, maxFeeAt, cancellationToken, out executionReverted);
+                    fillExecution, fillState, gasCap, errorMargin, maxFeeAt, options, cancellationToken, out executionReverted);
             }
             if (!shareableTxProcessorSource.TryBuild(executionHeader, out IReadOnlyTxProcessingScope? shared))
                 return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
             using IDisposable __ = shared;
             GasEstimator sharedEstimator = new(shared.TransactionProcessor, shared.WorldState);
             return sharedEstimator.EstimateFrameGas(tx, PrepareCall(shared.WorldState, executionHeader, tx, blobBaseFeeOverride: null),
-                fillExecution, fillState, gasCap, errorMargin, maxFeeAt, cancellationToken, out executionReverted);
+                fillExecution, fillState, gasCap, errorMargin, maxFeeAt, options, cancellationToken, out executionReverted);
         }
 
         private CallOutput EstimateGasShareable(BlockHeader header, Transaction tx, int errorMargin, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
@@ -527,7 +534,8 @@ namespace Nethermind.Facade
                 opcodeTracer?.Reset(previousAccessList);
                 outputTracer.Reset();
                 tx.AccessList = previousAccessList;
-                result = TryCallAndRestore(nonceSource, txProcessor, header, tx, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap: true);
+                BlockExecutionContext runContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
+                result = RunRestoringCall(txProcessor, tx, in runContext, tracer);
                 AccessList? discovered = opcodeTracer?.BuildAccessList() ?? accessTracer!.AccessList;
                 stop = !result.TransactionExecuted || HasConverged(previousAccessList, discovered);
                 previousAccessList = discovered;
@@ -538,7 +546,7 @@ namespace Nethermind.Facade
             {
                 // The transaction still carries the access list of the final run, so the rerun fails the same way.
                 BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
-                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, output.Error, cancellationToken, out string failureText))
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, output.Error, cancellationToken, out string failureText, _callExecutionOptions))
                 {
                     output.Error = failureText;
                 }
@@ -706,50 +714,24 @@ namespace Nethermind.Facade
             return previousCount == discoveredCount;
         }
 
-        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
+        /// <summary>Runs a restoring call of <c>eth_call</c> or <c>eth_createAccessList</c> under the chain's <see cref="RpcCallExecutionPolicy"/>.</summary>
+        /// <remarks>
+        /// Typed fee caps are left to the processor's virtual <c>BuyGas</c>, which validates them whether or not fees are charged,
+        /// so processor-specific exemptions such as the system sender's apply under every policy.
+        /// </remarks>
+        private TransactionResult RunRestoringCall(ITransactionProcessor txProcessor, Transaction tx, in BlockExecutionContext blockContext, ITxTracer tracer)
         {
+            if (TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap) return tipAboveFeeCap;
+
             try
             {
-                return txProcessor.CallAndRestore(transaction, in blockContext, tracer);
+                txProcessor.SetBlockExecutionContext(in blockContext);
+                return txProcessor.Process(tx, tracer, _callExecutionOptions);
             }
             catch (InsufficientBalanceException)
             {
                 return TransactionResult.InsufficientSenderBalance;
             }
-        }
-
-        private TransactionResult TryCallAndRestore(
-            IWorldState nonceSource,
-            ITransactionProcessor txProcessor,
-            BlockHeader blockHeader,
-            Transaction transaction,
-            UInt256? blobBaseFeeOverride,
-            ITxTracer tracer,
-            bool rejectsTipAboveFeeCap = false)
-        {
-            try
-            {
-                return CallAndRestore(nonceSource, txProcessor, blockHeader, transaction, blobBaseFeeOverride, tracer, rejectsTipAboveFeeCap);
-            }
-            catch (InsufficientBalanceException)
-            {
-                return TransactionResult.InsufficientSenderBalance;
-            }
-        }
-
-        private TransactionResult CallAndRestore(
-            IWorldState nonceSource,
-            ITransactionProcessor txProcessor,
-            BlockHeader blockHeader,
-            Transaction transaction,
-            UInt256? blobBaseFeeOverride,
-            ITxTracer tracer,
-            bool rejectsTipAboveFeeCap = false)
-        {
-            BlockExecutionContext blockExecutionContext = PrepareCall(nonceSource, blockHeader, transaction, blobBaseFeeOverride);
-            return rejectsTipAboveFeeCap && TipAboveFeeCap(transaction, blockExecutionContext.Spec) is { } tipAboveFeeCap
-                ? tipAboveFeeCap
-                : txProcessor.CallAndRestore(transaction, in blockExecutionContext, tracer);
         }
 
         /// <summary>Readies <paramref name="transaction"/> to run on top of <paramref name="blockHeader"/>, the call's own copy, and returns that block's execution context.</summary>
