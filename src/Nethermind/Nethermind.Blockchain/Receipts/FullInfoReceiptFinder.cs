@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain.Receipts
 
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
         {
-            TxReceipt[] receipts = _receiptStorage.Get(block);
+            TxReceipt[] receipts = _receiptStorage.Get(block, recover, recoverSender);
             if (recover && _receiptsRecovery.TryRecover(block, receipts, recoverSender) == ReceiptsRecoveryResult.NeedReinsert)
             {
                 _receiptStorage.Insert(block, receipts);

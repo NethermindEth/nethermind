@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -41,7 +42,7 @@ public sealed partial class OtsRpcModule
             SearchResult<Block> search = FindOtsBlock(parameter);
             if (search.IsError) return ResultWrapper<OtsBlockDetails?>.Fail(search);
             if (search.Object is not { } block) return ResultWrapper<OtsBlockDetails?>.Success(null);
-            TxReceipt[] receipts = receiptFinder.Get(block);
+            TxReceipt[] receipts = receiptFinder.Get(block, recoverSender: false);
             if (ValidateReceipts(block, receipts, ct) is { } receiptError)
                 return ResultWrapper<OtsBlockDetails?>.Fail(receiptError, ErrorCodes.ResourceUnavailable);
 
@@ -68,7 +69,7 @@ public sealed partial class OtsRpcModule
     }
 
     /// <inheritdoc />
-    public ResultWrapper<OtsBlockTransactions?> ots_getBlockTransactions(BlockParameter block, byte pageNumber, byte pageSize)
+    public ResultWrapper<OtsBlockTransactions?> ots_getBlockTransactions(BlockParameter block, UInt256 pageNumber, UInt256 pageSize)
     {
         if (block is null)
             return ResultWrapper<OtsBlockTransactions?>.Fail("A block is required.", ErrorCodes.InvalidParams);
@@ -81,13 +82,15 @@ public sealed partial class OtsRpcModule
             SearchResult<Block> search = FindOtsBlock(block);
             if (search.IsError) return ResultWrapper<OtsBlockTransactions?>.Fail(search);
             if (search.Object is not { } selected) return ResultWrapper<OtsBlockTransactions?>.Success(null);
-            TxReceipt[] receipts = receiptFinder.Get(selected);
+            TxReceipt[] receipts = receiptFinder.Get(selected, recoverSender: false);
             if (ValidateReceipts(selected, receipts, ct) is { } error)
                 return ResultWrapper<OtsBlockTransactions?>.Fail(error, ErrorCodes.ResourceUnavailable);
 
-            // Reference pages count backwards, but preserve ascending indices within each page.
-            int end = Math.Max(0, selected.Transactions.Length - pageNumber * pageSize);
-            int start = Math.Max(0, end - pageSize);
+            // Clamp before multiplying so even maximum-width quantities cannot overflow page bounds.
+            int count = selected.Transactions.Length;
+            int end = pageSize.IsZero || pageNumber > (UInt256)(uint)count / pageSize
+                ? 0 : count - (int)(pageNumber * pageSize);
+            int start = pageSize >= (UInt256)(uint)end ? 0 : end - (int)pageSize;
             TransactionForRpc[] transactions = new TransactionForRpc[end - start];
             Dictionary<string, object?>[] pageReceipts = new Dictionary<string, object?>[end - start];
             IReleaseSpec spec = specProvider.GetSpec(selected.Header);
@@ -96,10 +99,16 @@ public sealed partial class OtsRpcModule
                 ct.ThrowIfCancellationRequested();
                 Transaction tx = selected.Transactions[i];
                 TxReceipt receipt = receipts[i];
-                if (receipt.Sender is null || (tx.SenderAddress is { } sender && sender != receipt.Sender)
+                Address? sender = tx.SenderAddress;
+                if (sender is null) ethereumEcdsa.TryRecoverAddress(tx, out sender, !spec.ValidateChainId);
+                ct.ThrowIfCancellationRequested();
+                if (sender is null || (receipt.Sender is { } recordedSender && sender != recordedSender)
                     || receipt.Recipient != tx.To || receipt.TxType != tx.Type)
                     return ResultWrapper<OtsBlockTransactions?>.Fail("Stored receipt transaction metadata is inconsistent.", ErrorCodes.ResourceUnavailable);
-                tx.SenderAddress ??= receipt.Sender;
+                tx.SenderAddress ??= sender;
+                receipt.Sender ??= sender;
+                if (tx.CreatesTopLevelContract && receipt.ContractAddress is null)
+                    receipt.ContractAddress = ContractAddress.From(sender, tx.Nonce);
                 TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx, new(specProvider.ChainId,
                     selected.Hash!, selected.Number, i, selected.Timestamp, selected.BaseFeePerGas, spec, receipt, selected.Header.ExcessBlobGas));
                 if (rpcTx is not LegacyTransactionForRpc legacy)
@@ -142,8 +151,7 @@ public sealed partial class OtsRpcModule
     }
 
     private bool StillSelected(Block block, BlockParameter parameter) =>
-        parameter.Type == BlockParameterType.Pending
-        || (parameter.Type == BlockParameterType.BlockHash && !parameter.RequireCanonical)
+        (parameter.Type == BlockParameterType.BlockHash && !parameter.RequireCanonical)
         || blockFinder.IsMainChain(block.Header);
 
     private SearchResult<OtsIssuance> ReadIssuance(Block block, CancellationToken ct)

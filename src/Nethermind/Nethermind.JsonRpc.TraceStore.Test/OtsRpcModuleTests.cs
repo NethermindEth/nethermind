@@ -128,13 +128,13 @@ public class OtsRpcModuleTests
         })
     };
 
-    [TestCase(0, 2, new[] { 3, 4 })]
-    [TestCase(1, 2, new[] { 1, 2 })]
-    [TestCase(2, 2, new[] { 0 })]
-    [TestCase(3, 2, new int[0])]
-    [TestCase(255, 255, new int[0])]
-    [TestCase(0, 0, new int[0])]
-    public void Block_transaction_pages_count_from_end_and_keep_ascending_indices(byte page, byte size, int[] indices)
+    [TestCase(0ul, 2ul, new[] { 3, 4 })]
+    [TestCase(1ul, 2ul, new[] { 1, 2 })]
+    [TestCase(2ul, 2ul, new[] { 0 })]
+    [TestCase(3ul, 2ul, new int[0])]
+    [TestCase(255ul, 255ul, new int[0])]
+    [TestCase(0ul, 0ul, new int[0])]
+    public void Block_transaction_pages_count_from_end_and_keep_ascending_indices(ulong page, ulong size, int[] indices)
     {
         using Fixture f = new();
         ParityTraceAction[] calls = new ParityTraceAction[5];
@@ -146,25 +146,29 @@ public class OtsRpcModuleTests
         using JsonDocument json = Serialize(response);
         JsonElement result = json.RootElement.GetProperty("result");
         JsonElement summary = result.GetProperty("fullblock");
-        JsonElement[] transactions = summary.GetProperty("transactions").EnumerateArray().ToArray();
-        JsonElement[] receipts = result.GetProperty("receipts").EnumerateArray().ToArray();
+        JsonElement transactions = summary.GetProperty("transactions");
+        JsonElement receipts = result.GetProperty("receipts");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(summary.GetProperty("transactionCount").GetString(), Is.EqualTo("0x5"));
             Assert.That(summary.GetProperty("logsBloom").ValueKind, Is.EqualTo(JsonValueKind.Null));
-            Assert.That(transactions.Select(t => t.GetProperty("hash").GetString()), Is.EqualTo(indices.Select(i => block.Transactions[i].Hash!.ToString())));
-            Assert.That(receipts.Select(r => r.GetProperty("transactionHash").GetString()), Is.EqualTo(indices.Select(i => block.Transactions[i].Hash!.ToString())));
-            Assert.That(receipts.Select(r => r.GetProperty("transactionIndex").GetString()), Is.EqualTo(indices.Select(i => $"0x{i:x}")));
-            Assert.That(f.Receipts.Get(block).Select(r => r.Logs?.Length), Is.All.EqualTo(1));
+            Assert.That(transactions.GetArrayLength(), Is.EqualTo(indices.Length));
+            Assert.That(receipts.GetArrayLength(), Is.EqualTo(indices.Length));
         }
-        foreach (JsonElement receipt in receipts)
+        for (int i = 0; i < indices.Length; i++)
         {
+            string hash = block.Transactions[indices[i]].Hash!.ToString();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(receipt.GetProperty("logs").ValueKind, Is.EqualTo(JsonValueKind.Null));
-                Assert.That(receipt.GetProperty("logsBloom").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(transactions[i].GetProperty("hash").GetString(), Is.EqualTo(hash));
+                Assert.That(receipts[i].GetProperty("transactionHash").GetString(), Is.EqualTo(hash));
+                Assert.That(receipts[i].GetProperty("transactionIndex").GetString(), Is.EqualTo($"0x{indices[i]:x}"));
+                Assert.That(receipts[i].GetProperty("logs").ValueKind, Is.EqualTo(JsonValueKind.Null));
+                Assert.That(receipts[i].GetProperty("logsBloom").ValueKind, Is.EqualTo(JsonValueKind.Null));
             }
         }
+        foreach (TxReceipt receipt in f.Receipts.Get(block))
+            Assert.That(receipt.Logs?.Length, Is.EqualTo(1));
     }
 
     [Test]
@@ -438,14 +442,19 @@ public class OtsRpcModuleTests
 
     [Test]
     public void Block_transaction_pages_reject_missing_or_conflicting_transaction_metadata(
-        [Values("sender-missing", "sender-different", "recipient", "type")] string field)
+        [Values("sender-unrecoverable", "sender-different", "recipient", "type")] string field)
     {
         using Fixture f = new();
         Block block = f.Tree.Head!;
         Assert.That(block.Transactions[1].SenderAddress, Is.EqualTo(TestItem.AddressB));
         f.ReceiptFinder.AfterRead = receipts =>
         {
-            if (field == "sender-missing") receipts[1].Sender = null!;
+            if (field == "sender-unrecoverable")
+            {
+                block.Transactions[1].SenderAddress = null;
+                block.Transactions[1].Signature = null;
+                receipts[1].Sender = null!;
+            }
             if (field == "sender-different") receipts[1].Sender = TestItem.AddressF;
             if (field == "recipient") receipts[1].Recipient = TestItem.AddressF;
             if (field == "type") receipts[1].TxType = TxType.EIP1559;
@@ -495,7 +504,7 @@ public class OtsRpcModuleTests
     }
 
     [Test]
-    public async Task Block_pagination_dispatcher_accepts_quantities_and_rejects_out_of_range_pages([Values("0", "\"0x0\"", "-1", "256")] string page)
+    public async Task Block_pagination_dispatcher_accepts_quantities_and_rejects_invalid_pages([Values("0", "\"0x0\"", "-1", "\"0xgg\"")] string page)
     {
         using Fixture f = new();
         IJsonRpcService service = f.Container.Resolve<IJsonRpcService>();
@@ -508,10 +517,137 @@ public class OtsRpcModuleTests
             Params = args.RootElement
         }, new JsonRpcContext(RpcEndpoint.Http));
         using JsonDocument json = Serialize(response);
-        if (page is "-1" or "256")
+        if (page is "-1" or "\"0xgg\"")
             Assert.That(json.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams));
         else
             Assert.That(json.RootElement.GetProperty("result").GetProperty("receipts").GetArrayLength(), Is.EqualTo(1));
+    }
+
+    private static IEnumerable<TestCaseData> BlockPaginationQuantityCases()
+    {
+        string maxHex = $"\"0x{new string('f', 64)}\"";
+        (string Page, string Size, int Count, int First)[] cases =
+        [
+            ("256", "1", 1, 0),
+            ("\"0x100\"", "\"0x1\"", 1, 0),
+            ("0", "256", 256, 1),
+            ("\"0x0\"", "\"0x100\"", 256, 1),
+            ("0", maxHex, 257, 0),
+            (maxHex, "1", 0, 0),
+            (maxHex, maxHex, 0, 0),
+            (UInt256.MaxValue.ToString(), "0", 0, 0)
+        ];
+        foreach ((string page, string size, int count, int first) in cases)
+            yield return new TestCaseData(page, size, count, first);
+    }
+
+    [TestCaseSource(nameof(BlockPaginationQuantityCases))]
+    public async Task Block_pagination_accepts_wide_quantities_without_overflow(string page, string size, int count, int first)
+    {
+        using Fixture f = new();
+        ParityTraceAction[] calls = new ParityTraceAction[257];
+        for (int i = 0; i < calls.Length; i++) calls[i] = Call(TestItem.AddressA);
+        f.AddBlock(calls);
+        Block block = f.Blocks[^1];
+        using JsonDocument parameters = JsonDocument.Parse($"[\"0x{block.Number:x}\",{page},{size}]");
+        using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(new JsonRpcRequest
+        {
+            JsonRpc = "2.0", Id = 1, Method = "ots_getBlockTransactions", Params = parameters.RootElement
+        }, new JsonRpcContext(RpcEndpoint.Http));
+        using JsonDocument json = Serialize(response);
+        Assert.That(json.RootElement.TryGetProperty("result", out JsonElement result), Is.True, json.RootElement.ToString());
+        JsonElement transactions = result.GetProperty("fullblock").GetProperty("transactions");
+        JsonElement receipts = result.GetProperty("receipts");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(transactions.GetArrayLength(), Is.EqualTo(count));
+            Assert.That(receipts.GetArrayLength(), Is.EqualTo(count));
+        }
+        for (int i = 0; i < count; i++)
+        {
+            string hash = block.Transactions[first + i].Hash!.ToString();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(transactions[i].GetProperty("hash").GetString(), Is.EqualTo(hash));
+                Assert.That(receipts[i].GetProperty("transactionHash").GetString(), Is.EqualTo(hash));
+                Assert.That(receipts[i].GetProperty("transactionIndex").GetString(), Is.EqualTo($"0x{first + i:x}"));
+            }
+        }
+    }
+
+    [Test]
+    public void Block_tag_queries_detect_a_reorg_during_receipt_loading(
+        [Values("details", "transactions")] string method, [Values] bool pending)
+    {
+        using Fixture f = new();
+        Block block = f.Blocks[3];
+        f.Traces[3].Add(RewardTrace(block, "block", block.Beneficiary, 1));
+        f.Save(3);
+        f.ReceiptFinder.AfterRead = _ =>
+        {
+            Block sibling = Build.A.Block.WithParent(f.Blocks[2]).WithExtraData([1]).TestObject;
+            f.Tree.SuggestBlock(sibling);
+            Assert.That(f.Tree.TryUpdateMainChain(sibling.Header, true, true, sibling), Is.True);
+        };
+        BlockParameter selector = pending ? BlockParameter.Pending : BlockParameter.Latest;
+        using JsonRpcResponse response = method == "details"
+            ? f.Module.ots_getBlockDetails(selector) : f.Module.ots_getBlockTransactions(selector, 0, 1);
+        using JsonDocument json = Serialize(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(f.Tree.IsMainChain(block.Header), Is.False);
+            Assert.That(json.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        }
+    }
+
+    [Test]
+    public async Task Block_queries_recover_senders_only_for_the_selected_page(
+        [Values("details", "page", "empty")] string method, [Values] bool creation)
+    {
+        RecordingReceiptFinder? reader = null;
+        using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance, configure: builder => builder
+            .AddDecorator<IReceiptFinder>((_, inner) => reader ??= new RecordingReceiptFinder(inner)));
+        Transaction selected = creation ? CreatorDeployment(2) : ExecutionTransaction(2, TestItem.AddressF, [], 0);
+        await chain.AddBlock(ExecutionTransaction(0, TestItem.AddressF, [], 0),
+            ExecutionTransaction(1, TestItem.AddressF, [], 0), selected);
+        Block block = chain.BlockTree.FindBlock(chain.BlockTree.Head!.Number)!;
+        TxReceipt[] storedReceipts = chain.ReceiptStorage.Get(block);
+        Address? created = storedReceipts[^1].ContractAddress;
+        foreach (Transaction transaction in block.Transactions) transaction.SenderAddress = null;
+        foreach (TxReceipt receipt in storedReceipts)
+        {
+            receipt.Sender = null!;
+            receipt.ContractAddress = null;
+        }
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        using JsonRpcResponse response = method == "details"
+            ? module.ots_getBlockDetails(new BlockParameter(block.Number))
+            : module.ots_getBlockTransactions(new BlockParameter(block.Number), 0, method == "empty" ? UInt256.Zero : UInt256.One);
+        using JsonDocument json = Serialize(response);
+        bool success = json.RootElement.TryGetProperty("result", out JsonElement result);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(success, Is.True, json.RootElement.ToString());
+            Assert.That(reader!.LastRecoverSender, Is.False);
+        }
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            Address? expected = method == "page" && i == block.Transactions.Length - 1 ? TestItem.AddressB : null;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(block.Transactions[i].SenderAddress, Is.EqualTo(expected), $"transaction {i}");
+                Assert.That(storedReceipts[i].Sender, Is.EqualTo(expected), $"receipt {i}");
+            }
+        }
+        if (method == "page")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.GetProperty("receipts")[0].GetProperty("from").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
+                Assert.That(result.GetProperty("receipts")[0].GetProperty("contractAddress").GetString(), Is.EqualTo(created?.ToString()));
+                Assert.That(result.GetProperty("fullblock").GetProperty("transactions")[0].GetProperty("from").GetString(), Is.EqualTo(TestItem.AddressB.ToString()));
+            }
+        }
     }
 
     private static ParityLikeTxTrace RewardTrace(Block block, string type, Address? author, UInt256 value) => new()
@@ -2427,9 +2563,11 @@ public class OtsRpcModuleTests
     private sealed class RecordingReceiptFinder(IReceiptFinder inner) : IReceiptFinder
     {
         public Action<TxReceipt[]>? AfterRead { get; set; }
+        public bool? LastRecoverSender { get; private set; }
         public Hash256? FindBlockHash(Hash256 txHash) => inner.FindBlockHash(txHash);
         public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true)
         {
+            LastRecoverSender = recoverSender;
             TxReceipt[] receipts = inner.Get(block, recover, recoverSender);
             AfterRead?.Invoke(receipts);
             return receipts;

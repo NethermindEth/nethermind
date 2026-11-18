@@ -9,6 +9,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
@@ -31,6 +32,7 @@ public sealed partial class OtsRpcModule(
     IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
     IStateReader stateReader,
+    IEthereumEcdsa ethereumEcdsa,
     IBlockForRpcFactory blockForRpcFactory,
     Lazy<IRewardCalculator> rewardCalculator,
     ITraceStoreConfig traceStoreConfig,
