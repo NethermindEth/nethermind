@@ -194,6 +194,9 @@ public static partial class EvmInstructions
         ulong accountNonce = state.GetNonce(env.ExecutingAccount);
         if (accountNonce >= ulong.MaxValue)
         {
+            if (!TEip8037.IsActive && vm.IsTracingActions)
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, salt, EvmExceptionType.NonceOverflow);
+
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
@@ -387,7 +390,7 @@ public static partial class EvmInstructions
     }
 
     /// <summary>
-    /// Reports a creation that failed its depth or balance precheck as an action that entered no frame, with the
+    /// Reports a creation that failed its depth, balance or nonce precheck as an action that entered no frame, with the
     /// gas it would have forwarded, which returns at once. Only used before EIP-8037, which moves the precheck into
     /// the creating operation, so the creation has no frame of its own.
     /// </summary>

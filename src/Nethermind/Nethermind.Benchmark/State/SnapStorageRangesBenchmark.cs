@@ -64,7 +64,7 @@ public class SnapStorageRangesBenchmark
 
             Account account = new Account((UInt256)i).WithChangedStorageRoot(storageTree.RootHash);
             stateTree.Set(paths[i], account);
-            _accounts[i] = new PathWithAccount(paths[i], account);
+            _accounts[i] = new PathWithAccount(paths[i], account.ToStruct());
         }
 
         stateTree.Commit();

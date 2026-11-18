@@ -970,6 +970,37 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeadersIfBloomMatches_finds_what_the_single_lookup_finds([Values] bool bloomMatches)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        Block branch = Build.A.Block.WithParent(blockTree.Head!).TestObject;
+        blockTree.SuggestBlock(branch, BlockTreeSuggestOptions.None);
+        builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(Keccak.Zero, 1)));
+        builder.HeaderStore.Delete(blockTree.FindHash(2)!);
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+
+        BlockHeader?[] headers = new BlockHeader?[branch.Number + 2];
+        bool[] found = new bool[headers.Length];
+        blockTree.FindCanonicalHeadersIfBloomMatches(0, _ => bloomMatches, headers, found);
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            BlockHeader? expected = blockTree.FindCanonicalHeaderIfBloomMatches((ulong)i, _ => bloomMatches, out bool expectedFound);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found[i], Is.EqualTo(expectedFound), $"found {i}");
+                Assert.That(headers[i]?.Hash, Is.EqualTo(expected?.Hash), $"hash {i}");
+                Assert.That(headers[i]?.TotalDifficulty, Is.EqualTo(expected?.TotalDifficulty), $"total difficulty {i}");
+            }
+        }
+
+        Assert.That(found[1..3], Is.All.False, "a zero-hash level and a missing header are not found");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void FindCanonicalHeaderIfBloomMatches_does_not_cache_a_historical_level()
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);

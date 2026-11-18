@@ -169,7 +169,7 @@ public class SnapFlatStateServerTests
         RlpReaderException expected = Assert.Throws<RlpReaderException>(() => AccountDecoder.Instance.Decode(accountRlp))!;
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
-        PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
+        PathWithAccount[] accounts = [new(accountPath, AccountStruct.TotallyEmpty)];
 
         using (Assert.EnterMultipleScope())
         {
@@ -202,7 +202,7 @@ public class SnapFlatStateServerTests
         if (storageRanges)
         {
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
-                _server.GetStorageRanges(_rootHash, [new PathWithAccount(addressHash, account)], null, null, 4000, CancellationToken.None);
+                _server.GetStorageRanges(_rootHash, [new PathWithAccount(addressHash, account.ToStruct())], null, null, 4000, CancellationToken.None);
             using (proofs)
             {
                 Assert.That(slots, Has.Count.EqualTo(1));
@@ -252,7 +252,7 @@ public class SnapFlatStateServerTests
         ValueHash256 startingHash = new("0x4000000000000000000000000000000000000000000000000000000000000000");
         if (storageRanges)
         {
-            PathWithAccount[] accounts = [new(addressHash, account)];
+            PathWithAccount[] accounts = [new(addressHash, account.ToStruct())];
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> flatSlots, IByteArrayList? flatProofs) =
                 _server.GetStorageRanges(_rootHash, accounts, startingHash, null, 4000, CancellationToken.None);
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> trieSlots, IByteArrayList? trieProofs) =
@@ -280,7 +280,7 @@ public class SnapFlatStateServerTests
             using (trieProofs)
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(flatAccounts.Select(static a => (a.Path, a.Account!.Balance)), Is.EqualTo(trieAccounts.Select(static a => (a.Path, a.Account!.Balance))).And.Not.Empty);
+                Assert.That(flatAccounts.Select(static a => (a.Path, a.Account.Balance)), Is.EqualTo(trieAccounts.Select(static a => (a.Path, a.Account.Balance))).And.Not.Empty);
                 Assert.That(ToArrays(flatProofs), Is.EqualTo(ToArrays(trieProofs)).And.Not.Empty);
             }
         }
@@ -323,7 +323,7 @@ public class SnapFlatStateServerTests
         stateTree.Commit();
         SnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
         ISnapStateServer server = flat ? _server : trieServer;
-        PathWithAccount[] accounts = [new(addressHash, null), new(failingPath, null)];
+        PathWithAccount[] accounts = [new(addressHash, default), new(failingPath, default)];
 
         using SharedByteBufferRentals rentals = new(minimumLength: 1 << 19);
         Action request = failure == RangeFailure.MalformedAccountLeaf

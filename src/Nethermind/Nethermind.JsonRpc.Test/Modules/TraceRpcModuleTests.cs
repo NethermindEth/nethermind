@@ -579,6 +579,60 @@ public class TraceRpcModuleTests
         Assert.That(blockTree.LoadedBodies, Is.SupersetOf(range));
     }
 
+    [Test]
+    public async Task Trace_filter_finds_range_headers_while_writing_the_result([Values] bool streaming)
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        HeaderAfterBodyRecordingBlockTree blockTree = new(blockchain.BlockTree);
+        using ILifetimeScope scope = WithStateAvailability(blockchain, _ => true, blockTree);
+        ITraceRpcModule module = scope.Resolve<TraceModuleFactory>().Create();
+
+        string response = await RpcTest.TestSerializedRequest(module, "trace_filter", new { fromBlock = "0x1", toBlock = "latest" });
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(document.RootElement.TryGetProperty("result", out JsonElement result) ? result.GetArrayLength() : 0, Is.GreaterThan(0), response);
+            Assert.That(blockTree.HeadersFoundAfterFirstBody, Is.GreaterThan(0));
+        }
+    }
+
+    [Test]
+    public async Task Trace_block_with_cancellation_stops_on_a_canceled_token()
+    {
+        Context context = new();
+        await context.Build();
+        using TestRpcBlockchain blockchain = context.Blockchain;
+        blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = false;
+        ICancellableBlockTracer module = (ICancellableBlockTracer)context.TraceRpcModule;
+        using CancellationTokenSource cancellation = new();
+        await cancellation.CancelAsync();
+
+        Assert.Throws<OperationCanceledException>(() => module.TraceBlockWithCancellation(BlockParameter.Latest, null, cancellation.Token));
+    }
+
+    private sealed class HeaderAfterBodyRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
+    {
+        private bool _bodyLoaded;
+
+        public int HeadersFoundAfterFirstBody { get; private set; }
+
+        public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+        {
+            if (_bodyLoaded) HeadersFoundAfterFirstBody++;
+            return base.FindHeader(blockHash, options, blockNumber);
+        }
+
+        public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null)
+        {
+            _bodyLoaded = true;
+            return base.FindBlock(blockHash, options, blockNumber);
+        }
+    }
+
     private sealed class BodyLoadRecordingBlockTree(IBlockTree inner) : BlockTreeTestDouble(inner)
     {
         public List<Hash256> LoadedBodies { get; } = [];

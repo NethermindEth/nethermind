@@ -8012,14 +8012,16 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void SetCode_tx_has_authority_with_pending_transaction_is_rejected_then_is_accepted_after_tx_removal([Values] bool withRemoval)
+        public void SetCode_tx_has_authority_with_pending_transaction_is_rejected_then_is_accepted_after_tx_removal([Values] bool withRemoval, [Values] bool sentByAuthority)
         {
             ISpecProvider specProvider = GetPragueSpecProvider();
             TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
 
             PrivateKey signer = TestItem.PrivateKeyA;
+            PrivateKey sponsor = sentByAuthority ? signer : TestItem.PrivateKeyB;
             _stateProvider.CreateAccount(signer.Address, UInt256.MaxValue);
+            _stateProvider.CreateAccount(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
 
             EthereumEcdsa ecdsa = new(_specProvider.ChainId);
 
@@ -8040,6 +8042,19 @@ namespace Nethermind.TxPool.Test
                 _txPool.RemoveTransaction(firstTx.Hash);
             }
 
+            if (!sentByAuthority)
+            {
+                Transaction sponsorTx = Build.A.Transaction
+                    .WithNonce(0)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(9.GWei)
+                    .WithMaxPriorityFeePerGas(9.GWei)
+                    .WithGasLimit(GasCostOf.Transaction)
+                    .WithTo(TestItem.AddressB)
+                    .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
+                Assert.That(_txPool.SubmitTx(sponsorTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
             Transaction secondTx = Build.A.Transaction
                 .WithNonce(0)
                 .WithType(TxType.SetCode)
@@ -8048,10 +8063,49 @@ namespace Nethermind.TxPool.Test
                 .WithGasLimit(100_000)
                 .WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, 0))
                 .WithTo(TestItem.AddressB)
-                .SignedAndResolved(_ethereumEcdsa, signer).TestObject;
+                .SignedAndResolved(_ethereumEcdsa, sponsor).TestObject;
 
             result = _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast);
-            Assert.That(result, Is.EqualTo(withRemoval ? AcceptTxResult.Accepted : AcceptTxResult.DelegatorHasPendingTx));
+            Assert.That(result, Is.EqualTo(withRemoval || sentByAuthority ? AcceptTxResult.Accepted : AcceptTxResult.DelegatorHasPendingTx));
+        }
+
+        [TestCase(TxType.SetCode, 1, 0ul, true)]
+        [TestCase(TxType.EIP1559, 2, 0ul, false)]
+        [TestCase(TxType.EIP1559, 1, 1ul, false)]
+        public void Self_sponsored_SetCode_tx_replaces_pending_tx_only_when_it_is_the_authority_only_one(TxType pendingTxType, int pendingTxCount, ulong newTxNonce, bool accepted)
+        {
+            ISpecProvider specProvider = GetPragueSpecProvider();
+            TxPoolConfig txPoolConfig = new() { Size = 30, PersistentBlobStorageSize = 0 };
+            _txPool = CreatePool(txPoolConfig, specProvider);
+
+            PrivateKey signer = TestItem.PrivateKeyA;
+            _stateProvider.CreateAccount(signer.Address, UInt256.MaxValue);
+
+            EthereumEcdsa ecdsa = new(_specProvider.ChainId);
+
+            Transaction Tx(ulong nonce, TxType type, UInt256 fee)
+            {
+                TransactionBuilder<Transaction> builder = Build.A.Transaction
+                    .WithNonce(nonce)
+                    .WithType(type)
+                    .WithMaxFeePerGas(fee)
+                    .WithMaxPriorityFeePerGas(fee)
+                    .WithGasLimit(100_000)
+                    .WithTo(TestItem.AddressB);
+                if (type == TxType.SetCode)
+                {
+                    builder = builder.WithAuthorizationCode(ecdsa.Sign(signer, specProvider.ChainId, TestItem.AddressC, nonce + 1));
+                }
+                return builder.SignedAndResolved(_ethereumEcdsa, signer).TestObject;
+            }
+
+            for (int nonce = 0; nonce < pendingTxCount; nonce++)
+            {
+                Assert.That(_txPool.SubmitTx(Tx((ulong)nonce, pendingTxType, 10.GWei), TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            AcceptTxResult result = _txPool.SubmitTx(Tx(newTxNonce, TxType.SetCode, 20.GWei), TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.DelegatorHasPendingTx));
         }
 
         [Test]

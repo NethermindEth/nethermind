@@ -111,4 +111,68 @@ public class InFlightOperationsTests
             Assert.That(startedAfterWait, Is.Zero);
         }
     }
+
+    [Test]
+    public void RunWhenDrained_runs_once_when_the_last_operation_ends()
+    {
+        InFlightOperations operations = new();
+        operations.TryBegin();
+        operations.TryBegin();
+        operations.Close();
+        int runs = 0;
+
+        operations.RunWhenDrained(() => runs++);
+        operations.End();
+        Assert.That(runs, Is.Zero, "ran while an operation was pending");
+
+        operations.End();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(operations.TryBegin(), Is.False);
+            Assert.That(runs, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void RunWhenDrained_runs_at_once_when_nothing_is_pending()
+    {
+        InFlightOperations operations = new();
+        operations.Close();
+        int runs = 0;
+
+        operations.RunWhenDrained(() => runs++);
+
+        Assert.That(runs, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void RunWhenDrained_runs_once_when_the_last_operation_ends_concurrently([Values(1, 2, 8)] int pending)
+    {
+        for (int i = 0; i < 2000; i++)
+        {
+            InFlightOperations operations = new();
+            for (int j = 0; j < pending; j++) operations.TryBegin();
+            operations.Close();
+            int runs = 0;
+            using Barrier barrier = new(pending + 1);
+            Task[] ending = new Task[pending];
+            for (int j = 0; j < pending; j++)
+            {
+                ending[j] = Task.Run(() =>
+                {
+                    barrier.SignalAndWait();
+                    operations.TryBegin();
+                    operations.End();
+                });
+            }
+
+            barrier.SignalAndWait();
+            operations.RunWhenDrained(() => Interlocked.Increment(ref runs));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Task.WaitAll(ending, Long), "an operation never ended");
+                Assert.That(Volatile.Read(ref runs), Is.EqualTo(1), $"iteration {i}");
+            }
+        }
+    }
 }

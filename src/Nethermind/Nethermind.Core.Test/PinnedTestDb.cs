@@ -4,13 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using Nethermind.Core.Test;
-using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Test.Blocks;
+namespace Nethermind.Core.Test;
 
 /// <summary>A memory database that serves native slices from pinned copies and fills a copy with 0xff when it is released.</summary>
-internal sealed class PinnedTestDb : TestMemDb, IReadOnlyNativeKeyValueStore, IDisposable
+public sealed class PinnedTestDb : TestMemDb, IReadOnlyNativeKeyValueStore, IDisposable
 {
     private readonly Dictionary<nint, byte[]> _pins = [];
     public int NativeReads { get; private set; }
