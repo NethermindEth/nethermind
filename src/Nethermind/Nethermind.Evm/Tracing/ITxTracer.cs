@@ -433,6 +433,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
             ReportActionErrorDetails(error);
     }
 
+    /// <summary>Sets Geth's error text for the current creation, whose code deposit failed, before its <see cref="ReportActionError"/>.</summary>
+    /// <param name="error">The error Geth reports, such as <c>max code size exceeded</c>.</param>
+    /// <remarks>
+    /// The action error still reports <see cref="EvmExceptionType.OutOfGas"/> or <see cref="EvmExceptionType.InvalidCode"/>.
+    /// By default this is an action-only detail, see <see cref="ReportActionErrorDetails(string, bool)"/>; tracers that
+    /// write Geth's frame exits alongside instructions take it here.
+    /// </remarks>
+    void ReportCodeDepositError(string error) => ReportActionErrorDetails(error, actionOnly: true);
+
     /// <summary>
     /// Reports the remaining gas observed at an execution-segment boundary.
     /// </summary>
