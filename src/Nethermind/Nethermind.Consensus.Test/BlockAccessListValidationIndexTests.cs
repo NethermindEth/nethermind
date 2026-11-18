@@ -406,6 +406,56 @@ public class BlockAccessListValidationIndexTests
     }
 
     [Test]
+    public void RowChangesEqual_from_a_worker_agrees_with_ChangesEqual()
+    {
+        (ReadOnlyBlockAccessList suggested, BlockAccessListAtIndex[] slices) = SelfTransferBlock();
+        // Corrupt one generated row: tx 7 records a different coinbase balance than suggested declares.
+        slices[7] = new BlockAccessListAtIndex { Index = 8 };
+        Address sender7 = new(Keccak.Compute(BitConverter.GetBytes(7)).Bytes[..20]);
+        slices[7].AddBalanceChange(sender7, before: 1001, after: 1000 - 7);
+        slices[7].AddNonceChange(sender7, before: 0, after: 1);
+        slices[7].AddBalanceChange(TestItem.AddressA, before: 7, after: 999);
+
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, ConcurrentTxCount, _addressIndex);
+        using BlockAccessListValidationIndex generated = new(ConcurrentTxCount, _addressIndex, suggestedIndex, 0, 0);
+        bool[] rowEqual = new bool[ConcurrentTxCount];
+        System.Threading.Tasks.Parallel.For(0, ConcurrentTxCount, i =>
+        {
+            generated.TryAddConcurrent(slices[i]);
+            rowEqual[i] = generated.RowChangesEqual(suggestedIndex, (uint)(i + 1));
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < ConcurrentTxCount; i++)
+            {
+                uint row = (uint)(i + 1);
+                Assert.That(rowEqual[i], Is.EqualTo(generated.ChangesEqual(suggestedIndex, row)), $"row {row}");
+                Assert.That(rowEqual[i], Is.EqualTo(i != 7), $"row {row}");
+                Assert.That(generated.RowComparisonValid(suggestedIndex, row), Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void Serial_add_refuses_a_change_for_another_row_once_slices_were_indexed_concurrently()
+    {
+        ReadOnlyBlockAccessList suggested = Bal(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 1), new BalanceChange(2, 2)).TestObject);
+        using BlockAccessListValidationIndex suggestedIndex = BlockAccessListValidationIndex.Build(suggested, Header, txCount: 2, _addressIndex);
+        using BlockAccessListValidationIndex generated = new(2, _addressIndex, suggestedIndex, 0, 0);
+        BlockAccessListAtIndex own = new() { Index = 1 };
+        own.AddBalanceChange(TestItem.AddressA, before: 0, after: 1);
+        generated.TryAddConcurrent(own);
+
+        BlockAccessListAtIndex foreign = new() { Index = 1 }; // records at index 1 ...
+        foreign.AddBalanceChange(TestItem.AddressA, before: 1, after: 2);
+        foreign.Index = 2; // ... then is filed under index 2
+
+        Assert.That(() => generated.Add(foreign), Throws.InvalidOperationException);
+    }
+
+    [Test]
     public void TryAddConcurrent_refuses_undeclared_address_without_writing_and_serial_add_takes_it()
     {
         ReadOnlyBlockAccessList suggested = Bal(Account(TestItem.AddressA, balance: new BalanceChange(1, 5)));

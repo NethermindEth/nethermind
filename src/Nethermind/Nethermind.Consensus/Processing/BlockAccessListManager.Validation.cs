@@ -175,7 +175,7 @@ public partial class BlockAccessListManager
             _suggestedValidationIndex is null ||
             _generatedValidationIndex is null ||
             _hasGeneratedRequiredReadAccountMismatch ||
-            !_generatedValidationIndex.ChangesEqual(_suggestedValidationIndex, index))
+            !RowChangesEqual(_generatedValidationIndex, _suggestedValidationIndex, index))
         {
             return false;
         }
@@ -183,6 +183,21 @@ public partial class BlockAccessListManager
         ulong surplusReads = _suggestedChargeableStorageReads.SaturatingSub(_generatedChargeableStorageReads);
         ThrowIfStorageReadBudgetExceeded(block, surplusReads, validateStorageReads);
         return true;
+    }
+
+    /// <summary>
+    /// <see cref="BlockAccessListValidationIndex.ChangesEqual"/>, reusing the lane comparison the worker already made for
+    /// its own row; the index-wide flags are still checked here, in order.
+    /// </summary>
+    private bool RowChangesEqual(BlockAccessListValidationIndex generated, BlockAccessListValidationIndex suggested, uint index)
+    {
+        if (_precomputedRowIndex == index)
+        {
+            _precomputedRowIndex = uint.MaxValue;
+            return _precomputedRowEqual && generated.RowComparisonValid(suggested, index);
+        }
+
+        return generated.ChangesEqual(suggested, index);
     }
 
     /// <summary>
@@ -302,12 +317,18 @@ public partial class BlockAccessListManager
     /// transaction (see <see cref="BlockAccessListValidationIndex.TryAddConcurrent"/>) and records the order-independent
     /// per-slice facts; everything order-dependent (gas, cumulative read budget, fast/slow path) stays in order.
     /// </remarks>
-    private readonly struct SlicePrecompute(bool requiredReadAccountMissing, ulong chargeableStorageReads)
+    private readonly struct SlicePrecompute(bool requiredReadAccountMissing, ulong chargeableStorageReads, bool rowChangesEqual)
     {
         public readonly bool IsSet = true;
         public readonly bool RequiredReadAccountMissing = requiredReadAccountMissing;
         public readonly ulong ChargeableStorageReads = chargeableStorageReads;
+        // Lane equality of the slice's own row against the suggested BAL; only its slice writes that row.
+        public readonly bool RowChangesEqual = rowChangesEqual;
     }
+
+    // Row equality the worker computed for the slice registered last, consumed by the fast path for that index.
+    private uint _precomputedRowIndex = uint.MaxValue;
+    private bool _precomputedRowEqual;
 
     private SlicePrecompute[] _slicePrecompute = [];
 
@@ -329,8 +350,10 @@ public partial class BlockAccessListManager
         if (!generated.TryAddConcurrent(slice)) return; // the validator takes the full in-order path for this slice
 
         // An eligible slice has no storage reads, so only the coverage counter can add chargeable reads.
-        bool missing = _suggestedValidationIndex is { } suggested && HasRequiredReadAccountMissing(slice, suggested, frozenOnly: true);
-        _slicePrecompute[balIndex] = new SlicePrecompute(missing, slice.CoveredStorageReads);
+        BlockAccessListValidationIndex? suggested = _suggestedValidationIndex;
+        bool missing = suggested is not null && HasRequiredReadAccountMissing(slice, suggested, frozenOnly: true);
+        bool rowEqual = suggested is not null && generated.RowChangesEqual(suggested, balIndex);
+        _slicePrecompute[balIndex] = new SlicePrecompute(missing, slice.CoveredStorageReads, rowEqual);
     }
 
     private void RegisterGeneratedSlice(BlockAccessListAtIndex slice)
@@ -343,6 +366,8 @@ public partial class BlockAccessListManager
         if (slice.Index < (uint)_slicePrecompute.Length && _slicePrecompute[slice.Index] is { IsSet: true } pre)
         {
             _slicePrecompute[slice.Index] = default;
+            _precomputedRowIndex = slice.Index;
+            _precomputedRowEqual = pre.RowChangesEqual;
             _generatedChargeableStorageReads += pre.ChargeableStorageReads;
             if (_suggestedValidationIndex is not null && !_hasGeneratedRequiredReadAccountMismatch)
             {

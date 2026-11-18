@@ -145,8 +145,10 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         if (!_isMutable)
             throw new InvalidOperationException("Only generated validation indexes can be appended.");
 
+        bool concurrent = Volatile.Read(ref _concurrentSlices) != 0;
         foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
         {
+            if (concurrent) ThrowIfForeignRow(slice.Index, accountChanges);
             int accountOrdinal = _addressIndex.GetOrAdd(accountChanges.Address);
             MarkAccount(accountOrdinal);
 
@@ -188,6 +190,39 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
 
         _lanes.SortTouchedRows();
     }
+
+    // Number of slices indexed by TryAddConcurrent in this block. While non-zero a row may be in use by a worker.
+    private int _concurrentSlices;
+
+    /// <summary>
+    /// Rows are owned by the slice whose index they carry: a slice records every change at its own index. A change
+    /// for another row would race with the worker that owns it, so it is refused loudly rather than risked.
+    /// </summary>
+    private static void ThrowIfForeignRow(uint sliceIndex, AccountChangesAtIndex accountChanges)
+    {
+        bool foreign = accountChanges.BalanceChange is { } b && b.Index != sliceIndex
+            || accountChanges.NonceChange is { } n && n.Index != sliceIndex
+            || accountChanges.CodeChange is { } c && c.Index != sliceIndex;
+        if (!foreign)
+        {
+            foreach (KeyValuePair<UInt256, StorageChange> kv in accountChanges.StorageChanges)
+            {
+                if (kv.Value.Index != sliceIndex) { foreign = true; break; }
+            }
+        }
+
+        if (foreign)
+            throw new InvalidOperationException($"BAL slice {sliceIndex} carries a change for another row while slices are indexed concurrently.");
+    }
+
+    /// <summary>Lane equality of one row, without the index-wide flags <see cref="ChangesEqual"/> also checks.</summary>
+    /// <remarks>Safe on a worker for the row its slice owns, right after <see cref="TryAddConcurrent"/>.</remarks>
+    public bool RowChangesEqual(BlockAccessListValidationIndex other, uint index) =>
+        index <= _lastIndex && index <= other._lastIndex && _lanes.ChangesEqual(other._lanes, (int)index);
+
+    /// <summary>The index-wide part of <see cref="ChangesEqual"/>: false once either side holds a change past its last row.</summary>
+    public bool RowComparisonValid(BlockAccessListValidationIndex other, uint index) =>
+        index <= _lastIndex && index <= other._lastIndex && !_hasOutOfRangeChange && !other._hasOutOfRangeChange;
 
     private void RecordIfOverflow(bool added, uint index, Address address)
     {
@@ -231,6 +266,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
             if (accountChanges.CodeChange is { } c && c.Index != index) return false;
         }
 
+        Interlocked.Increment(ref _concurrentSlices);
         int row = (int)index;
         foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
         {
