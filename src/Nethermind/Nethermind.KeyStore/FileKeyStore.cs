@@ -155,7 +155,7 @@ namespace Nethermind.KeyStore
             {
                 case Scrypt:
                     if (kdfParams.N is not int n || kdfParams.R is not int r || kdfParams.P is not int p
-                        || n <= 0 || (n & (n - 1)) != 0 || r <= 0 || p <= 0)
+                        || !int.IsPow2(n) || r <= 0 || p <= 0)
                     {
                         return (null, Result.Fail("Incorrect key: scrypt requires a power-of-two n and positive r and p"));
                     }
@@ -176,6 +176,8 @@ namespace Nethermind.KeyStore
                     return (null, Result.Fail($"Unsupported algorithm: {kdf}"));
             }
 
+            // The definition takes the MAC key from bytes 16..31. The last 16 bytes are the same at dklen 32 and also
+            // match the key files Nethermind wrote with another dklen, so those stay readable.
             Span<byte> restoredMac = Keccak.Compute(derivedKey.Slice(dkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
             if (!CryptographicOperations.FixedTimeEquals(mac, restoredMac))
             {
@@ -284,7 +286,7 @@ namespace Nethermind.KeyStore
             int n = _config.KdfparamsN;
             int r = _config.KdfparamsR;
             int p = _config.KdfparamsP;
-            ValidateWriteSettings(kdf, cipherType, dkLen, saltLength);
+            ValidateWriteSettings(kdf, cipherType, dkLen, saltLength, n, r, p);
 
             byte[] salt = _cryptoRandom.GenerateRandomBytes(saltLength);
             byte[] passBytes = password.ToByteArray(_keyStoreEncoding);
@@ -400,7 +402,7 @@ namespace Nethermind.KeyStore
         /// reading its key files. Throws rather than failing the <see cref="Result"/>, which most callers do not check.
         /// </remarks>
         /// <exception cref="InvalidConfigurationException">A setting is not supported for new key files.</exception>
-        private static void ValidateWriteSettings(string? kdf, string? cipherType, int dkLen, int saltLength)
+        private static void ValidateWriteSettings(string? kdf, string? cipherType, int dkLen, int saltLength, int n, int r, int p)
         {
             if (kdf != Scrypt)
             {
@@ -420,6 +422,22 @@ namespace Nethermind.KeyStore
             if (saltLength < MinWriteSaltLength)
             {
                 throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsSaltLen), saltLength, $"use at least {MinWriteSaltLength}");
+            }
+
+            // The same rules as for reading a scrypt key file.
+            if (!int.IsPow2(n))
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsN), n, "use a power of two");
+            }
+
+            if (r <= 0)
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsR), r, "use at least 1");
+            }
+
+            if (p <= 0)
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsP), p, "use at least 1");
             }
 
             static InvalidConfigurationException UnsupportedWriteSetting(string setting, object? value, string rule) =>

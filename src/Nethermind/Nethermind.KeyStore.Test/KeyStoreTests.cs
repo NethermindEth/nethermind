@@ -436,6 +436,10 @@ public class KeyStoreTests
     [TestCase(nameof(IKeyStoreConfig.KdfparamsDklen), 31)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsDklen), 64)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsSaltLen), 15)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 3)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 0)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsR), 0)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsP), 0)]
     public void Unsupported_write_settings_throw_before_anything_is_written(string setting, object value)
     {
         using TempPath directory = TempPath.GetTempDirectory();
