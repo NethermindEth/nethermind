@@ -180,6 +180,32 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
+    public void GetMainChainBlockHashesWithoutCaching_reads_cached_and_stored_levels_in_request_order()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb db = CreateBatchDb(native: true, directory);
+        using IContainer container = CreateContainer(db);
+        IChainLevelInfoRepository repository = container.Resolve<IChainLevelInfoRepository>();
+        repository.PersistLevel(1, CreateBatchLevel(1));
+        repository.PersistLevel(256, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakD, 256)));
+        repository.PersistLevel(4, new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakE, 4)));
+        ((IClearableCache)repository).ClearCache();
+
+        using BatchWrite batch = repository.StartBatch();
+        repository.PersistLevel(2, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakC, 2)), batch);
+        Assert.That(db.Get(2UL.ToBigEndianSpanWithoutLeadingZeros(out _)), Is.Null, "precondition: the level written in the batch is only in the cache");
+
+        ulong[] numbers = [3, 2, 1, 256, 4, 2];
+        ValueHash256?[] hashes = new ValueHash256?[numbers.Length];
+        repository.GetMainChainBlockHashesWithoutCaching(numbers, hashes);
+
+        Assert.That(hashes, Is.EqualTo(new ValueHash256?[]
+        {
+            null, TestItem.KeccakC.ValueHash256, TestItem.KeccakA.ValueHash256, TestItem.KeccakD.ValueHash256, null, TestItem.KeccakC.ValueHash256
+        }));
+    }
+
+    [Test]
     public void MultiLoadLevel_WhenDecodeFails_AllowsTheNextBatch(
         [Values] bool native, [Values(2UL, 256UL)] ulong secondNumber)
     {
