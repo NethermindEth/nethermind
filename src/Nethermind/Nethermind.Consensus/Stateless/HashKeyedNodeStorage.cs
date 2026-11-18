@@ -65,11 +65,10 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         nint[] next = _next = new nint[count];
         NodeKey[] keys = _keys = new NodeKey[count];
         byte[][] values = _values = new byte[count][];
-        state.CopyTo(values);
         values[state.Length] = [128];
         keys[state.Length] = EmptyRootKey;
         // Hashed in a method of its own so the bucketing loop keeps its locals in registers.
-        HashNodes(values, state.Length, keys);
+        HashNodes(state, values, keys);
 
         // Unchecked: the mask keeps a bucket below bucketCount and every array is count long, while the
         // bounds checks would load each array's 32-bit length, a narrow access, per node.
@@ -102,14 +101,14 @@ internal sealed class HashKeyedNodeStorage : INodeStorage, INodeStorage.IWriteBa
         }
     }
 
-    /// <summary>Keys each of the first <paramref name="count"/> of <paramref name="nodes"/> by its keccak, at the same index of <paramref name="keys"/>.</summary>
+    /// <summary>Stores the witness nodes and their Keccak keys at matching indices.</summary>
     /// <remarks>Through <see cref="KeccakHash.ComputeHash256OfWitnessNodes"/>, which lets the commit re-hash an edited
     /// branch from its first changed rate block; <see cref="Find"/> tells it which node it hands out.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void HashNodes(byte[][] nodes, int count, Span<NodeKey> keys)
+    private static void HashNodes(ReadOnlySpan<byte[]> source, byte[][] nodes, Span<NodeKey> keys)
     {
         Debug.Assert(Unsafe.SizeOf<NodeKey>() == Unsafe.SizeOf<ValueHash256>(), "NodeKey is reinterpreted as its keccak");
-        KeccakHash.ComputeHash256OfWitnessNodes(nodes, count, MemoryMarshal.Cast<NodeKey, ValueHash256>(keys));
+        KeccakHash.ComputeHash256OfWitnessNodes(source, nodes, MemoryMarshal.Cast<NodeKey, ValueHash256>(keys));
     }
 
     /// <inheritdoc/>

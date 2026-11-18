@@ -161,12 +161,11 @@ public sealed partial class KeccakHash
     /// <remarks>See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination);
 
-    /// <summary>Computes the Keccak-256 digest of each of the first <paramref name="count"/> of <paramref name="nodes"/>
-    /// into the same index of <paramref name="hashes"/>.</summary>
-    /// <remarks>The guest keeps <paramref name="nodes"/>, which must not change afterwards, with the sponge states the
-    /// leading rate blocks of its nodes leave, so that a branch re-encoded from one of them is re-hashed from
-    /// its first changed block. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
-    internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes);
+    /// <summary>Copies the witness nodes into <paramref name="nodes"/> and fills <paramref name="hashes"/> with their
+    /// Keccak-256 digests in the same order.</summary>
+    /// <remarks>The guest groups nodes that retain sponge states at the front of its copy. It keeps that array to
+    /// resume hashing edited branches, so its entries must not change afterwards.</remarks>
+    internal static partial void ComputeHash256OfWitnessNodes(ReadOnlySpan<byte[]> source, byte[][] nodes, Span<ValueHash256> hashes);
 
     /// <summary>Notes that a node storage handed out entry <paramref name="tag"/> minus one of the nodes last passed
     /// to <see cref="ComputeHash256OfWitnessNodes"/>.</summary>

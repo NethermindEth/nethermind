@@ -18,6 +18,31 @@ public class KeccakAbsorbTests
     private const int StateBytes = 200;
 
     [Test]
+    public void Groups_checkpoint_nodes_without_losing_or_duplicating_entries([Range(0, 15)] int mask)
+    {
+        byte[][] nodes = new byte[4][];
+        int expectedCount = 0;
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            bool retained = (mask & (1 << i)) != 0;
+            nodes[i] = new byte[retained ? 532 : i + 1];
+            nodes[i][0] = (byte)i;
+            if (retained) expectedCount++;
+        }
+
+        byte[][] grouped = new byte[nodes.Length][];
+        int count = KeccakHash.GroupResumableNodes(nodes, grouped);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(count, Is.EqualTo(expectedCount));
+            Assert.That(grouped, Is.EquivalentTo(nodes));
+            for (int i = 0; i < nodes.Length; i++)
+                Assert.That(KeccakHash.IsResumable(grouped[i].Length), Is.EqualTo(i < count));
+        }
+    }
+
+    [Test]
     public unsafe void Short_absorb_zeroes_the_state_and_writes_the_message_and_its_pad_byte([Range(8, RateBytes - 1)] int length)
     {
         byte[] input = new byte[length];

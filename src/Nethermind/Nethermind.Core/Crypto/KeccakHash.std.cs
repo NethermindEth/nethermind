@@ -46,9 +46,10 @@ public sealed partial class KeccakHash
     }
 
     /// <inheritdoc cref="KeccakHash.ComputeHash256OfWitnessNodes" />
-    internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes)
+    internal static partial void ComputeHash256OfWitnessNodes(ReadOnlySpan<byte[]> source, byte[][] nodes, Span<ValueHash256> hashes)
     {
-        for (int i = 0; i < count; i++)
+        source.CopyTo(nodes);
+        for (int i = 0; i < source.Length; i++)
             hashes[i] = ComputeHash256(nodes[i]);
     }
 
