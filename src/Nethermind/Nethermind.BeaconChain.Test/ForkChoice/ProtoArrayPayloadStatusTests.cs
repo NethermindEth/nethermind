@@ -74,8 +74,12 @@ public class ProtoArrayPayloadStatusTests
         tree.OnBlock(Block(35, GetRoot(2), GetRoot(1), isGloas: true, parentBlockHash: GetRoot(1)), 35, Anchor, Anchor);
 
         bool[,] filtered = tree.FilterNodeTree(35, Anchor, finalized, new HashSet<Hash256> { GetRoot(0), GetRoot(1), GetRoot(2) });
+        int count = tree.Nodes.Count;
+        tree.ApplyScoreChanges(new ScoreDeltas(new long[count], new long[count], new long[count]), Anchor, finalized,
+            JustifiedBalances.FromEffectiveBalances([]), Hash256.Zero, 35);
 
         using System.IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(tree.Nodes[1].BestChild, Is.Null, "the child cannot inherit the parent's checkpoint shortcut during scoring");
         Assert.That(filtered[1, (int)ForkChoicePayloadStatus.Empty], Is.True);
         Assert.That(filtered[2, (int)ForkChoicePayloadStatus.Empty], Is.False);
     }

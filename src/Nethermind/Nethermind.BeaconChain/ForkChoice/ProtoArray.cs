@@ -19,6 +19,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     private ulong _previousProposerBoostScore;
     private bool?[] _leafViability = [];
     private bool[] _finalizedAncestry = [];
+    private bool[]? _scorePassAncestry;
 
     /// <summary>Do not prune unless the finalized block is at least this deep; small prunes waste time.</summary>
     public int PruneThreshold { get; set; } = ProtoArrayForkChoice.DefaultPruneThreshold;
@@ -112,6 +113,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
         // A second backward pass, separate from the weight-updating loop above, so the
         // best-child/best-descendant updates see a fully coherent set of weights.
+        _scorePassAncestry = null;
         for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
         {
             if (Nodes[nodeIndex].Parent is int parentIndex)
@@ -518,21 +520,27 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         int leafIndex = Nodes[nodeIndex].BestDescendant ?? nodeIndex;
         if (leafViability?[leafIndex] is bool cached) return cached;
 
-        bool viable = IsViableLeaf(Nodes[leafIndex], currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+        ProtoNode leaf = Nodes[leafIndex];
+        // Most leaves carry finality in their own checkpoints. Build the ancestry table once if a scoring pass needs it.
+        if (leafViability is not null && finalizedCheckpoint.Epoch != GenesisEpoch && !HasFinalizedCheckpoint(leaf, finalizedCheckpoint))
+            _scorePassAncestry ??= ComputeFinalizedAncestry(finalizedCheckpoint);
+
+        bool viable = IsViableLeaf(leaf, currentSlot, justifiedCheckpoint, finalizedCheckpoint,
+            leafViability is null ? null : _scorePassAncestry?[leafIndex]);
         if (leafViability is not null) leafViability[leafIndex] = viable;
         return viable;
     }
 
     /// <summary>Indicates if <paramref name="node"/> is kept by <c>filter_node_tree</c> as a leaf.</summary>
     /// <remarks>A node with a child that is not invalid is kept only through a kept child, never on its own checkpoints; specs/phase0/fork-choice.md <c>filter_node_tree</c>.</remarks>
-    private bool IsViableLeaf(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
+    private bool IsViableLeaf(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, bool? finalizedAncestry = null)
     {
         foreach (int child in node.Children)
         {
             if (Nodes[child].ExecutionStatus != ExecutionStatus.Invalid) return false;
         }
 
-        return NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+        return NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint, finalizedAncestry);
     }
 
     /// <summary>
