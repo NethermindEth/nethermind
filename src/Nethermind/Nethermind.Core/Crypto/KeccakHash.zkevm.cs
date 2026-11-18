@@ -661,10 +661,13 @@ public sealed partial class KeccakHash
     }
 
     /// <summary>Hashes a full branch into <paramref name="hash"/>, leaving the state after its second rate block in <paramref name="retained"/>.</summary>
+    /// <remarks>On SP1 this one checkpoint saves two permutations for edits to the last eight children.
+    /// The other checkpoints save one more permutation for fewer edits and take additional first-touch memory.</remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void ComputeHash532RetainingSecond(byte[] node, ref ulong retained, ref ValueHash256 hash)
     {
+        Debug.Assert(node.Length == Hash532InputLength);
         Unsafe.SkipInit(out KeccakState stateBuffer);
         ref ulong lane = ref Unsafe.As<KeccakState, ulong>(ref stateBuffer);
         ref ulong second = ref StrictAlignmentFlag.IsActive ? ref *AlignedDown((ulong*)Unsafe.AsPointer(ref retained)) : ref retained;
