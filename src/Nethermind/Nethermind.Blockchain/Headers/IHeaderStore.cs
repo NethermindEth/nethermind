@@ -34,6 +34,22 @@ public interface IHeaderStore : IHeaderFinder
         return true;
     }
 
+    /// <summary>Appends the headers of <paramref name="blockHashes"/>, as <see cref="TryAppendRlp"/> does each one.</summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="blockNumbers">The numbers of the blocks, one per hash.</param>
+    /// <param name="decoder">The decoder that encodes the headers.</param>
+    /// <param name="destination">The list the headers are appended to, in no particular order.</param>
+    /// <param name="items">Receives the range of <paramref name="destination"/> that holds each header, or the default range when it is not stored.</param>
+    /// <remarks>An implementation can read the headers in one batch.</remarks>
+    void AppendRlps(ReadOnlySpan<ValueHash256> blockHashes, ReadOnlySpan<ulong> blockNumbers, IHeaderDecoder decoder, ArrayPoolList<byte> destination, Span<Range> items)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            int start = destination.Count;
+            items[i] = TryAppendRlp(in blockHashes[i], blockNumbers[i], decoder, destination) ? start..destination.Count : default;
+        }
+    }
+
     /// <summary>
     /// Gets the header of <paramref name="blockHash"/> if <paramref name="bloomMatches"/> accepts its logs bloom, which
     /// is empty for a zero-length (EIP-7668) bloom.
