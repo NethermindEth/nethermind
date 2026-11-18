@@ -7,6 +7,7 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
@@ -555,10 +556,24 @@ namespace Nethermind.Trie
         /// at a time and copies it once more. An unaligned hash is read as the nine aligned words that hold it, shifted and
         /// merged. The last word can reach up to three bytes past the RLP when the hash ends it, but no further than the word
         /// that holds the hash's last byte, so the read stays in the array's allocation; those bytes are shifted out.
+        /// Where <see cref="StrictAlignmentFlag"/> is on, the JIT also reads a misaligned hash a byte at a time, so it is
+        /// read with <see cref="Bytes.ReadMisalignedWords"/> instead.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static unsafe Hash256 ReadChildHash(ReadOnlySpan<byte> hash)
         {
+            if (StrictAlignmentFlag.IsActive)
+            {
+                byte* source = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash));
+                if (((nuint)source & (sizeof(ulong) - 1)) == 0)
+                    return new(MemoryMarshal.Read<ValueHash256>(hash));
+
+                Hash256 read = new(default(ValueHash256));
+                // Written in place before anything else can read it: the new object is not yet shared.
+                Bytes.ReadMisalignedWords(source, (ulong*)Unsafe.AsPointer(ref Unsafe.AsRef(in read.ValueHash256)));
+                return read;
+            }
+
             if (IntPtr.Size != sizeof(uint))
                 return new(MemoryMarshal.Read<ValueHash256>(hash));
 
