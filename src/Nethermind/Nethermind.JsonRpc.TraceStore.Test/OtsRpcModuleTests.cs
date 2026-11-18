@@ -14,12 +14,15 @@ using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Consensus;
+using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -41,7 +44,9 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.State;
 using NUnit.Framework;
 using NSubstitute;
@@ -58,6 +63,71 @@ namespace Nethermind.JsonRpc.TraceStore.Test;
 
 public class OtsRpcModuleTests
 {
+    [Test]
+    public void Aura_nonissuance_queries_do_not_require_a_processing_scope()
+    {
+        ChainSpec chainSpec = CreateAuraChainSpec();
+        TraceStoreConfig traceConfig = new() { Enabled = true };
+        JsonRpcConfig rpcConfig = new() { EnabledModules = [ModuleType.Ots] };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(chainSpec))
+            .AddModule(new AuRaModule(chainSpec))
+            .AddModule(new TraceStorePlugin(traceConfig, rpcConfig).Module)
+            .AddSingleton<ITraceStoreConfig>(traceConfig)
+            .AddSingleton<IJsonRpcConfig>(rpcConfig)
+            .Build();
+
+        IOtsRpcModule module = container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
+        using ResultWrapper<int> apiLevel = module.ots_getApiLevel();
+        using ResultWrapper<OtsSearchResult> search = module.ots_searchTransactionsBefore(TestItem.AddressA, 0, 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(apiLevel.Result.ResultType, Is.EqualTo(ResultType.Success), apiLevel.Result.Error);
+            Assert.That(apiLevel.Data, Is.Zero);
+            Assert.That(search.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(search.Result.Error, Is.EqualTo("Chain head is unavailable."));
+        }
+        // AuRa's production reward graph requires a world-state scope that RPC does not supply.
+        DependencyResolutionException exception = Assert.Throws<DependencyResolutionException>(() => container.Resolve<IRewardCalculator>())!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.ToString(), Does.Contain("AuRaRewardCalculator"));
+            Assert.That(exception.ToString(), Does.Contain("IWorldStateScopeProvider"));
+        }
+    }
+
+    [Test]
+    public void Aura_block_details_fail_closed_without_a_processing_scope([Values] bool byHash)
+    {
+        using Fixture f = new(configure: builder => builder.AddModule(new AuRaModule(CreateAuraChainSpec())));
+        Block block = f.Blocks[3];
+        using ResultWrapper<OtsBlockDetails?> response = byHash
+            ? f.Module.ots_getBlockDetailsByHash(block.Hash!) : f.Module.ots_getBlockDetails(new BlockParameter(block.Number));
+        using ResultWrapper<OtsBlockTransactions?> page = f.Module.ots_getBlockTransactions(new BlockParameter(block.Number), 0, 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(response.Result.Error, Is.EqualTo("Block reward availability cannot be determined outside a processing scope."));
+            Assert.That(response.Data, Is.Null);
+            Assert.That(page.Result.ResultType, Is.EqualTo(ResultType.Success), page.Result.Error);
+            Assert.That(f.Serializer.Reads, Is.Zero);
+        }
+    }
+
+    private static ChainSpec CreateAuraChainSpec() => new()
+    {
+        SealEngineType = SealEngineType.AuRa,
+        Parameters = new ChainParameters(),
+        Allocations = [],
+        Genesis = Build.A.Block.WithDifficulty(0).WithBlobGasUsed(0).TestObject,
+        EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new AuRaChainSpecEngineParameters
+        {
+            StepDuration = { { 0, 3 } },
+            ValidatorsJson = new() { List = [Address.Zero] },
+            BlockRewardContractAddress = TestItem.AddressA
+        })
+    };
+
     [TestCase(0, 2, new[] { 3, 4 })]
     [TestCase(1, 2, new[] { 1, 2 })]
     [TestCase(2, 2, new[] { 0 })]
@@ -143,21 +213,26 @@ public class OtsRpcModuleTests
     }
 
     [Test]
-    public async Task Block_fees_include_base_fee_on_a_chain_without_execution_rewards()
+    public async Task Block_fees_include_base_fee_on_a_chain_without_execution_rewards([Values] bool pending)
     {
         using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance, configure: builder =>
             builder.WithGenesisPostProcessor((genesis, _) => genesis.Header.BaseFeePerGas = 1_000_000_000));
         Transaction tx = ExecutionTransaction(0, TestItem.AddressA, [], 0);
         Block block = await chain.AddBlock(tx);
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
-        using ResultWrapper<OtsBlockDetails?> response = module.ots_getBlockDetails(new BlockParameter(block.Number));
+        using ResultWrapper<OtsBlockDetails?> response = module.ots_getBlockDetails(pending ? BlockParameter.Pending : new BlockParameter(block.Number));
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
+        using JsonDocument json = Serialize(response);
+        JsonElement summary = json.RootElement.GetProperty("result").GetProperty("block");
         UInt256 expectedFees = tx.GasPrice * chain.ReceiptStorage.Get(block)[0].GasUsed;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.BaseFeePerGas, Is.GreaterThan(UInt256.Zero));
             Assert.That(response.Data!.TotalFees, Is.EqualTo(expectedFees));
             Assert.That(response.Data.Issuance.Issuance, Is.EqualTo(UInt256.Zero));
+            Assert.That(summary.GetProperty("hash").ValueKind, Is.EqualTo(pending ? JsonValueKind.Null : JsonValueKind.String));
+            Assert.That(summary.GetProperty("number").ValueKind, Is.EqualTo(pending ? JsonValueKind.Null : JsonValueKind.String));
+            Assert.That(summary.GetProperty("nonce").ValueKind, Is.EqualTo(pending ? JsonValueKind.Null : JsonValueKind.String));
         }
     }
 

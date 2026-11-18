@@ -32,7 +32,7 @@ public sealed partial class OtsRpcModule(
     ISpecProvider specProvider,
     IStateReader stateReader,
     IBlockForRpcFactory blockForRpcFactory,
-    IRewardCalculator rewardCalculator,
+    Lazy<IRewardCalculator> rewardCalculator,
     ITraceStoreConfig traceStoreConfig,
     IJsonRpcConfig rpcConfig,
     TraceAddressIndex? addressIndex = null) : IOtsRpcModule

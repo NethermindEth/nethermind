@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using Autofac.Core;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
@@ -105,6 +106,7 @@ public sealed partial class OtsRpcModule
                     return ResultWrapper<OtsBlockTransactions?>.Fail("This transaction type does not support an OTS input selector.", ErrorCodes.ResourceUnavailable);
                 if (legacy.Input is { Length: > 4 } input) legacy.Input = input.AsSpan(0, 4).ToArray();
                 transactions[i - start] = rpcTx;
+                // Avoid serializing large logs; the dictionary restores explicit nulls omitted by WhenWritingNull.
                 ReceiptForRpc rpcReceipt = new(tx.Hash!, receipt, selected.Timestamp, tx.GetGasInfo(spec, selected.Header))
                 {
                     Logs = null,
@@ -147,8 +149,18 @@ public sealed partial class OtsRpcModule
     private SearchResult<OtsIssuance> ReadIssuance(Block block, CancellationToken ct)
     {
         // EIP-3675 removes execution-layer block and uncle rewards after the merge.
-        if (block.IsGenesis || block.Header.IsPostMerge || !rewardCalculator.MayReward(block.Header))
+        if (block.IsGenesis || block.Header.IsPostMerge)
             return new(new OtsIssuance());
+        try
+        {
+            if (!rewardCalculator.Value.MayReward(block.Header))
+                return new(new OtsIssuance());
+        }
+        catch (DependencyResolutionException)
+        {
+            // Some consensus plugins require a processing world-state scope even to construct their calculator.
+            return new("Block reward availability cannot be determined outside a processing scope.", ErrorCodes.ResourceUnavailable);
+        }
         if ((traceStoreConfig.TraceTypes & ParityTraceTypes.Rewards) == 0)
             return new("Block issuance requires stored Rewards traces.", ErrorCodes.ResourceUnavailable);
         SearchResult<List<ParityLikeTxTrace>> stored = ReadTraces(block.Header);
