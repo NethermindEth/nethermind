@@ -16,7 +16,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Benchmark
 {

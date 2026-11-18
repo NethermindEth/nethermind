@@ -166,6 +166,13 @@ public class BlockTreeTestDouble : IBlockTree
         get => Inner?.SyncPivot ?? _syncPivot;
         set => _syncPivot = value;
     }
+
+    public virtual void ReplaceSyncPivot((ulong BlockNumber, Hash256 BlockHash) pivot)
+    {
+        if (Inner is not null) Inner.ReplaceSyncPivot(pivot);
+        _syncPivot = pivot;
+        _lowestInsertedHeader = null;
+    }
     public virtual bool IsProcessingBlock
     {
         get => Inner?.IsProcessingBlock ?? _isProcessingBlock;

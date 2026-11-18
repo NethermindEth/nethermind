@@ -63,8 +63,46 @@ namespace Nethermind.Core.Test
         public byte ProtocolVersion { get; } = default;
         public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId ?? string.Empty;
-        public Hash256 HeadHash { get; set; }
-        public ulong HeadNumber { get; set; }
+        private HeadClaim _head = new(null, 0);
+        private sealed record HeadClaim(Hash256? Hash, ulong Number);
+
+        public Hash256 HeadHash
+        {
+            get => Volatile.Read(ref _head).Hash!;
+            set
+            {
+                HeadClaim previous;
+                do
+                {
+                    previous = Volatile.Read(ref _head);
+                } while (!ReferenceEquals(Interlocked.CompareExchange(ref _head, new(value, previous.Number), previous), previous));
+            }
+        }
+
+        public ulong HeadNumber
+        {
+            get => Volatile.Read(ref _head).Number;
+            set
+            {
+                HeadClaim previous;
+                do
+                {
+                    previous = Volatile.Read(ref _head);
+                } while (!ReferenceEquals(Interlocked.CompareExchange(ref _head, new(previous.Hash, value), previous), previous));
+            }
+        }
+
+        /// <inheritdoc />
+        public void SetHead(Hash256 hash, ulong number) => Volatile.Write(ref _head, new(hash, number));
+
+        /// <inheritdoc />
+        public bool TrySetHead(Hash256 expectedHash, ulong expectedNumber, Hash256 hash, ulong number)
+        {
+            HeadClaim previous = Volatile.Read(ref _head);
+            return previous.Hash == expectedHash && previous.Number == expectedNumber
+                && ReferenceEquals(Interlocked.CompareExchange(ref _head, new(hash, number), previous), previous);
+        }
+
         public UInt256? TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -127,7 +165,8 @@ namespace Nethermind.Core.Test
             return Task.FromResult<IOwnedReadOnlyList<BlockHeader>>(result)!;
         }
 
-        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) => Task.FromResult(_remoteTree.Head?.Header);
+        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) =>
+            Task.FromResult(hash is null ? _remoteTree.Head?.Header : _remoteTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded));
 
         private readonly BlockingCollection<Action> _sendQueue = [];
 

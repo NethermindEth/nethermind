@@ -129,9 +129,10 @@ public class ShutterTxLoader(
             .AsParallel()
             .AsOrdered()
             .Select((tx, i) => (
-                DecryptSequencedTransaction(tx, decryptionKeysList[sortedKeyIndexes[i]]),
+                Tx: DecryptSequencedTransaction(tx, decryptionKeysList[sortedKeyIndexes[i]]),
                 tx.GasLimit))
-            .OfType<(Transaction, UInt256)>()
+            .Where(static decrypted => decrypted.Tx is not null)
+            .Select(static decrypted => (decrypted.Tx!, decrypted.GasLimit))
             .ToPooledList(sequencedTransactions.Count);
     }
 

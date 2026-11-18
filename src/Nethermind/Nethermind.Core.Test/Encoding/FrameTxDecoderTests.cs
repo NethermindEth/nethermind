@@ -101,6 +101,33 @@ public class FrameTxDecoderTests
     }
 
     [Test]
+    public void Valid_wrapped_payload_leaves_its_sibling_readable([Values] bool networkWrapper)
+    {
+        Transaction first = networkWrapper ? CreateBlobCarryingFrameTx(ProofVersion.V1, blobCount: 1) : CreateFrameTx();
+        Transaction second = CreateFrameTx();
+        second.Nonce++;
+        RlpBehaviors firstForm = networkWrapper ? RlpBehaviors.InMempoolForm : RlpBehaviors.None;
+        int secondLength = _txDecoder.GetLength(second, RlpBehaviors.None);
+        byte[] bytes = new byte[_txDecoder.GetLength(first, firstForm) + secondLength];
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
+        _txDecoder.Encode(ref writer, first, firstForm);
+        _txDecoder.Encode(ref writer, second);
+
+        RlpReader reader = new(bytes);
+        Transaction decodedFirst = _txDecoder.Decode(ref reader, firstForm)!;
+        Assert.That(reader.Remaining, Is.EqualTo(secondLength));
+        Transaction decodedSecond = _txDecoder.Decode(ref reader)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decodedFirst.SenderAddress, Is.EqualTo(first.SenderAddress));
+            Assert.That(decodedFirst.NetworkWrapper is not null, Is.EqualTo(networkWrapper));
+            Assert.That(decodedSecond.Nonce, Is.EqualTo(second.Nonce));
+            Assert.That(decodedSecond.SenderAddress, Is.EqualTo(second.SenderAddress));
+            Assert.That(reader.Remaining, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Roundtrip_BloblessFrameTx_InMempoolForm_HasNoWrapper()
     {
         Transaction tx = CreateFrameTx();

@@ -5,7 +5,6 @@ using System;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
-using Nethermind.Core.Container;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.CodeAnalysis;

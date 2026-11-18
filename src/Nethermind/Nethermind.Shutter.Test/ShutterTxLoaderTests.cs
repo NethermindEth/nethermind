@@ -78,16 +78,15 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
     }
 
     [Test]
-    public async Task Can_load_and_filter_transactions()
+    public async Task Can_load_and_filter_transactions([Values] bool filterByEon)
     {
         Random rnd = new(ShutterTestsCommon.Seed);
-        ShutterEventSimulatorHalfNextEon eventSimulator = new(
-            rnd,
-            ShutterTestsCommon.ChainId,
-            ShutterTestsCommon.Threshold,
-            ShutterTestsCommon.InitialSlot,
-            new(ShutterTestsCommon.Cfg.SequencerContractAddress!)
-        );
+        Address sequencer = new(ShutterTestsCommon.Cfg.SequencerContractAddress!);
+        ShutterEventSimulator eventSimulator = filterByEon
+            ? new ShutterEventSimulatorHalfNextEon(rnd, ShutterTestsCommon.ChainId, ShutterTestsCommon.Threshold,
+                ShutterTestsCommon.InitialSlot, sequencer)
+            : new ShutterEventSimulatorHalfInvalid(rnd, ShutterTestsCommon.ChainId, ShutterTestsCommon.Threshold,
+                ShutterTestsCommon.InitialSlot, sequencer);
 
         using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, null, eventSimulator).Build(ShutterTestsCommon.SpecProvider);
         IEngineRpcModule rpc = chain.EngineRpcModule;
