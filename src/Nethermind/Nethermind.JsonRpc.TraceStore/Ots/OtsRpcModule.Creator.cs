@@ -37,6 +37,7 @@ public sealed partial class OtsRpcModule
     {
         ct.ThrowIfCancellationRequested();
         hasCreationHistory = stateReader.TryGetAccount(head, address, out AccountStruct account) && account.HasCode;
+        ct.ThrowIfCancellationRequested();
         if (!blockFinder.IsMainChain(head)) return ChainChanged;
         if (!hasCreationHistory) return null;
         if (specProvider.GetSpec(head).IsEip7702Enabled)
@@ -53,46 +54,22 @@ public sealed partial class OtsRpcModule
 
     private ResultWrapper<OtsContractCreator?> FindContractCreator(Address address, Block head, CancellationToken ct)
     {
-        const int candidateBatchSize = 64;
-        TraceAddressIndex.Candidates? candidates = addressIndex?.FindCandidates(address, 1, head.Number, true, candidateBatchSize, ct);
-        TraceAddressIndex.Checkpoint? coverage = candidates?.Coverage;
-        Hash256? firstParent = candidates?.FirstParent;
-        int nextCandidate = 0;
-        bool crossedCoverage = false;
+        CreatorCandidateCursor cursor = new(addressIndex, address, head.Number, ct);
+        TraceAddressIndex.Checkpoint? coverage = cursor.Coverage;
         Block? previous = null;
         Stack<ParityTraceAction> stack = new();
-        for (ulong number = head.Number; number > 0; number--)
+        foreach (CreatorCandidate candidate in cursor.Read(ct))
         {
-            ct.ThrowIfCancellationRequested();
-            Hash256? indexedHash = null;
-            if (coverage is not null && number >= (ulong)coverage.From && number <= (ulong)coverage.To)
-            {
-                if (!crossedCoverage && previous is not null && previous.ParentHash != coverage.Hash)
-                    return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
-                crossedCoverage = true;
-                if (nextCandidate == candidates!.Blocks.Length && candidates.Blocks.Length == candidateBatchSize)
-                {
-                    candidates = addressIndex!.FindCandidates(address, 1, number, true, candidateBatchSize, ct);
-                    nextCandidate = 0;
-                    if (candidates is null || candidates.Coverage != coverage || candidates.FirstParent != firstParent)
-                        return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
-                }
-                if (nextCandidate == candidates!.Blocks.Length)
-                {
-                    number = (ulong)coverage.From - 1;
-                    if (number == 0) break;
-                }
-                else
-                {
-                    number = (ulong)candidates.Blocks[nextCandidate];
-                    indexedHash = candidates.Hashes[nextCandidate++];
-                }
-            }
+            (ulong number, Hash256? indexedHash, bool enteringCoverage, bool belowCoverage, string? error) = candidate;
+            if (error is not null) return ResultWrapper<OtsContractCreator?>.Fail(error, ErrorCodes.ResourceUnavailable);
+            if (enteringCoverage && previous is not null && previous.ParentHash != coverage!.Hash)
+                return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+            if (number == 0) break;
             Block? block = blockFinder.FindBlock(number);
             if (block is null)
                 return ResultWrapper<OtsContractCreator?>.Fail($"Block {number} is unavailable.", ErrorCodes.ResourceUnavailable);
             if (!blockFinder.IsMainChain(block.Header) || (indexedHash is not null && block.Hash != indexedHash)
-                || (crossedCoverage && coverage is not null && number == (ulong)coverage.From - 1 && block.Hash != firstParent)
+                || (belowCoverage && block.Hash != cursor.FirstParent)
                 || (previous is not null && (previous.Number == number + 1
                     ? previous.ParentHash != block.Hash : !blockFinder.IsMainChain(previous.Header))))
                 return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
@@ -116,6 +93,73 @@ public sealed partial class OtsRpcModule
             && (coverage is null || addressIndex!.IsCanonical(coverage))
             ? ResultWrapper<OtsContractCreator?>.Success(null)
             : ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
+    }
+
+    private readonly record struct CreatorCandidate(ulong Number, Hash256? IndexedHash,
+        bool EnteringCoverage, bool BelowCoverage, string? Error = null);
+
+    private sealed class CreatorCandidateCursor
+    {
+        private const int BatchSize = 64;
+        private readonly TraceAddressIndex? _index;
+        private readonly Address _address;
+        private readonly ulong _head;
+        private TraceAddressIndex.Candidates? _candidates;
+        public TraceAddressIndex.Checkpoint? Coverage { get; }
+        public Hash256? FirstParent { get; }
+
+        public CreatorCandidateCursor(TraceAddressIndex? index, Address address, ulong head, CancellationToken ct)
+        {
+            _index = index;
+            _address = address;
+            _head = head;
+            _candidates = index?.FindCandidates(address, 1, head, true, BatchSize, ct);
+            Coverage = _candidates?.Coverage;
+            FirstParent = _candidates?.FirstParent;
+        }
+
+        public IEnumerable<CreatorCandidate> Read(CancellationToken ct)
+        {
+            int next = 0;
+            bool crossedCoverage = false;
+            for (ulong number = _head; number > 0; number--)
+            {
+                ct.ThrowIfCancellationRequested();
+                Hash256? indexedHash = null;
+                bool enteringCoverage = false;
+                if (Coverage is not null && number >= (ulong)Coverage.From && number <= (ulong)Coverage.To)
+                {
+                    enteringCoverage = !crossedCoverage;
+                    crossedCoverage = true;
+                    if (next == _candidates!.Blocks.Length && _candidates.Blocks.Length == BatchSize)
+                    {
+                        _candidates = _index!.FindCandidates(_address, 1, number, true, BatchSize, ct);
+                        next = 0;
+                        if (_candidates is null || _candidates.Coverage != Coverage || _candidates.FirstParent != FirstParent)
+                        {
+                            yield return new(0, null, false, false, ChainChanged);
+                            yield break;
+                        }
+                    }
+                    if (next == _candidates!.Blocks.Length)
+                    {
+                        number = (ulong)Coverage.From - 1;
+                        if (number == 0)
+                        {
+                            yield return new(0, null, enteringCoverage, false);
+                            yield break;
+                        }
+                    }
+                    else
+                    {
+                        number = (ulong)_candidates.Blocks[next];
+                        indexedHash = _candidates.Hashes[next++];
+                    }
+                }
+                yield return new(number, indexedHash, enteringCoverage,
+                    crossedCoverage && Coverage is not null && number == (ulong)Coverage.From - 1);
+            }
+        }
     }
 
     private SearchResult<List<ParityLikeTxTrace>> ReadCreatorTraces(Block block, Address address, bool indexed, CancellationToken ct)
