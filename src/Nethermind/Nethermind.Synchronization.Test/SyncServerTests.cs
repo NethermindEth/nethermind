@@ -240,7 +240,7 @@ public class SyncServerTests
         byte[] knownKey = Bytes.Concat(known.Number.ToBigEndianByteArray(), known.Hash!.BytesToArray());
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((receipts ? headerDb : blockDb).Prefetches, Is.EqualTo(new[] { new[] { knownKey } }));
+            Assert.That((receipts ? headerDb : blockDb).Prefetches, OperatingSystem.IsLinux() ? Is.EqualTo(new[] { new[] { knownKey } }) : Is.Empty);
             Assert.That((receipts ? blockDb : headerDb).Prefetches, Is.Empty);
         }
     }

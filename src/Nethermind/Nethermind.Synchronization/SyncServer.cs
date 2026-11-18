@@ -604,17 +604,25 @@ namespace Nethermind.Synchronization
         /// Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.
         /// <see cref="FindBlockRlp"/> then reads each number again, which the block cache usually serves.
         /// Blocks that only have a legacy hash-keyed number are not prefetched.
+        /// Does nothing outside Linux, where the database does not read ahead, so a response that ends early reads no numbers it does not need.
         /// </remarks>
         public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
         {
+            if (!OperatingSystem.IsLinux()) return;
+
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
             _blockStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks)));
         }
 
         /// <inheritdoc/>
-        /// <remarks>Reads the block numbers in one batch, as <see cref="TryAppendReceipts"/> needs them to find the headers.</remarks>
+        /// <remarks>
+        /// Reads the block numbers in one batch, as <see cref="TryAppendReceipts"/> needs them to find the headers.
+        /// Does nothing outside Linux, as <see cref="PrefetchBlocks"/>.
+        /// </remarks>
         public void PrefetchReceipts(IReadOnlyList<Hash256> hashes, int start, int count)
         {
+            if (!OperatingSystem.IsLinux()) return;
+
             using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
             ReadOnlySpan<(ulong Number, ValueHash256 Hash)> known = blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks));
             _headerStore.Prefetch(known);
