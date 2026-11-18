@@ -311,6 +311,28 @@ public class StatelessInputGeneratorTests
     }
 
     [Test]
+    public void Single_request_group_keeps_its_requests_hash([Values] ExecutionRequestType type)
+    {
+        byte[] requests = new byte[1 + type switch
+        {
+            ExecutionRequestType.Deposit => ExecutionRequestExtensions.DepositRequestsBytesSize,
+            ExecutionRequestType.WithdrawalRequest => ExecutionRequestExtensions.WithdrawalRequestsBytesSize,
+            ExecutionRequestType.ConsolidationRequest => ExecutionRequestExtensions.ConsolidationRequestsBytesSize,
+            ExecutionRequestType.BuilderDepositRequest => ExecutionRequestExtensions.BuilderDepositRequestsBytesSize,
+            _ => ExecutionRequestExtensions.BuilderExitRequestsBytesSize
+        }];
+        requests[0] = (byte)type;
+        Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).TestObject;
+        block.ExecutionRequests = [requests];
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+
+        byte[] encoded = NewPayloadRequest<SszExecutionPayload>.Encode(NewPayloadRequest<SszExecutionPayload>.From(block, SszExecutionPayload.From(block)));
+        NewPayloadRequest<SszExecutionPayload>.Decode(encoded, out NewPayloadRequest<SszExecutionPayload> decoded);
+
+        Assert.That(decoded.ToBlock(requestsEnabled: true)!.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
+    }
+
+    [Test]
     public void Recovery_rejects_missing_or_unrelated_parent([Values] bool unrelatedParent)
     {
         Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).TestObject;
