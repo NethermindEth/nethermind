@@ -960,19 +960,22 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
+        /// <remarks>
+        /// Saturates at <see cref="uint.MaxValue"/>: a storage trie starts from the rightness of its account, so the sum
+        /// can pass 32 bits, and a wrapped value would queue a far-right node as a far-left one.
+        /// </remarks>
         private static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
         {
-            if (nodeType == NodeType.Branch)
+            // 16^(7 - level), the width of one child at this level; 1 from level 7 down
+            ulong childWidth = 1UL << (4 * Math.Max(0, 7 - currentStateSyncItem.Level));
+            ulong offset = nodeType switch
             {
-                return currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * (uint)childIndex;
-            }
+                NodeType.Branch => childWidth * (ulong)childIndex,
+                NodeType.Extension => childWidth * 16 - 1,
+                _ => throw new InvalidOperationException($"Not designed for {nodeType}")
+            };
 
-            if (nodeType == NodeType.Extension)
-            {
-                return currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * 16 - 1;
-            }
-
-            throw new InvalidOperationException($"Not designed for {nodeType}");
+            return (uint)Math.Min(currentStateSyncItem.Rightness + offset, uint.MaxValue);
         }
 
         /// <summary>
