@@ -238,16 +238,14 @@ namespace Nethermind.Consensus.Ethash
             return IsLessOrEqualThanTarget(result.Bytes, header.Difficulty);
         }
 
-        private readonly Stopwatch _cacheStopwatch = new();
-
         private IEthashDataSet BuildCache(uint epoch)
         {
             uint cacheSize = GetCacheSize(epoch);
             Hash256 seed = GetSeedHash(epoch);
             if (_logger.IsDebug) _logger.Debug($"Building ethash cache for epoch {epoch}");
-            _cacheStopwatch.Restart();
+            long started = Stopwatch.GetTimestamp();
             IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
-            _cacheStopwatch.Stop();
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
             if (_logger.IsDebug)
             {
                 string seedText = seed.Bytes.ToHexString(withZeroX: true);
@@ -255,7 +253,7 @@ namespace Nethermind.Consensus.Ethash
                 {
                     seedText = $"{seedText[..8]}...{seedText[^6..]}";
                 }
-                _logger.Debug($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+                _logger.Debug($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {(long)elapsed.TotalMilliseconds}ms");
             }
             return dataSet;
         }
