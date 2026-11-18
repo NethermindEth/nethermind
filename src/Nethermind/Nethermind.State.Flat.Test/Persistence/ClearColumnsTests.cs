@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NUnit.Framework;
@@ -97,6 +98,7 @@ public class ClearColumnsTests
         using IColumnsDb<FlatDbColumns> inner = new MemColumnsDb<FlatDbColumns>().CreateReadOnly(true);
         BasePersistence.SetCurrentState(inner.GetColumnDb(FlatDbColumns.Metadata),
             new StateId(123, new ValueHash256("0x1111111111111111111111111111111111111111111111111111111111111111")));
+        BasePersistence.WriteMigrationCursor(inner.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
         // More keys than one batch holds, so several chunks are committed before the pointer reset.
         const int keysPerColumn = 6_000;
         foreach (FlatDbColumns column in new[] { FlatDbColumns.Account, FlatDbColumns.Storage })
@@ -114,12 +116,13 @@ public class ClearColumnsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Events.Count(static e => e == WriteOrderSpyColumnsDb.CommitEvent), Is.GreaterThan(1));
-            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(3), "the wipe marker and the snap checkpoint deletion, then the pointer reset");
+            Assert.That(db.Events.Count(static e => e == nameof(FlatDbColumns.Metadata)), Is.EqualTo(4), "the wipe marker and the snap checkpoint and migration cursor deletions, then the pointer reset");
             Assert.That(db.Events[0], Is.EqualTo(nameof(FlatDbColumns.Metadata)));
             Assert.That(db.Events.IndexOf(WriteOrderSpyColumnsDb.CommitEvent), Is.LessThan(db.Events.LastIndexOf(nameof(FlatDbColumns.Metadata))));
             Assert.That(db.Events.TakeLast(2), Is.EqualTo(new[] { nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent }));
             Assert.That(BasePersistence.ReadCurrentState(inner.GetColumnDb(FlatDbColumns.Metadata)), Is.EqualTo(StateId.PreGenesis));
             Assert.That(BasePersistence.ReadWipedForSync(inner.GetColumnDb(FlatDbColumns.Metadata)), Is.True);
+            Assert.That(BasePersistence.ReadMigrationCursor(inner.GetColumnDb(FlatDbColumns.Metadata)), Is.Null);
         }
     }
 
@@ -148,7 +151,7 @@ public class ClearColumnsTests
 
         string[] expected =
         [
-            nameof(FlatDbColumns.Metadata), nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent,
+            nameof(FlatDbColumns.Metadata), nameof(FlatDbColumns.Metadata), nameof(FlatDbColumns.Metadata), WriteOrderSpyColumnsDb.CommitEvent,
             .. dataColumns.Select(static c => $"{nameof(IRangeRemovableKeyValueStore.RemoveRange)} {c}"),
             RangeRemovalSpyColumnsDb.SyncWalEvent,
             .. dataColumns.Select(static c => $"{nameof(IRangeRemovableKeyValueStore.ReclaimRange)} {c}"),
