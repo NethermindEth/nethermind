@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Reporting
         private (DateTime Time, ulong HeadTimestamp)? _lastCatchUpSample;
         private readonly TimeSpan _defaultReportingIntervals;
 
-        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ITimestamper timestamper, IBlocksConfig blocksConfig, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
+        public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, IBlockFinder blockFinder, ITimestamper timestamper, IBlocksConfig blocksConfig, ILogManager logManager, ITimerFactory? timerFactory = null)
         {
             _logger = logManager?.GetClassLogger<SyncReport>() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
