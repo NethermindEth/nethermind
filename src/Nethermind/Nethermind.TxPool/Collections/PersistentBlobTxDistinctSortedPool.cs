@@ -276,8 +276,10 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         bool readCompleted = false;
         try
         {
-            if (!_blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
-                || loadedTx is null)
+            bool loaded = _blobTxStorage is IBlobTxElidedReadStorage elidedReadStorage
+                ? elidedReadStorage.TryGetFullRecordWithoutBlobs(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx)
+                : _blobTxStorage.TryGet(hash, lightTx.SenderAddress, lightTx.Timestamp, out loadedTx);
+            if (!loaded || loadedTx is null)
             {
                 blobTx = default;
                 return false;
@@ -396,7 +398,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
     public override int TryGetBlobsAndProofsV1(
          byte[][] requestedBlobVersionedHashes,
          Span<byte[]?> blobs,
-         Span<ReadOnlyMemory<byte[]>> proofs)
+         Span<ReadOnlyMemory<byte>> proofs)
     {
         int found = 0;
         using ArrayPoolListRef<TxLookupKey> dbKeys = new(requestedBlobVersionedHashes.Length);
@@ -427,10 +429,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                         && cachedWrapper.HasFullBlobs())
                     {
                         blobs[i] = cachedWrapper.Blobs[indexOfBlob];
-                        proofs[i] = new ReadOnlyMemory<byte[]>(
-                            cachedWrapper.Proofs,
-                            Ckzg.CellsPerExtBlob * indexOfBlob,
-                            Ckzg.CellsPerExtBlob);
+                        proofs[i] = cachedWrapper.GetProofs(Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.CellsPerExtBlob);
                         found++;
                         break;
                     }
@@ -511,16 +510,13 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                     if (fullTx?.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1 } wrapper
                         || !wrapper.HasFullBlobs()
                         || (uint)blobIdx >= (uint)wrapper.Blobs.Length
-                        || Ckzg.CellsPerExtBlob * (blobIdx + 1) > wrapper.Proofs.Length)
+                        || Ckzg.CellsPerExtBlob * (blobIdx + 1) > wrapper.ProofCount)
                     {
                         continue;
                     }
 
                     blobs[outIdx] = wrapper.Blobs[blobIdx];
-                    proofs[outIdx] = new ReadOnlyMemory<byte[]>(
-                        wrapper.Proofs,
-                        Ckzg.CellsPerExtBlob * blobIdx,
-                        Ckzg.CellsPerExtBlob);
+                    proofs[outIdx] = wrapper.GetProofs(Ckzg.CellsPerExtBlob * blobIdx, Ckzg.CellsPerExtBlob);
                     found++;
 
                     if (cacheStorageResult)
@@ -575,7 +571,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
         else
         {
-            Dictionary<TxLookupKey, int> indices = new(count);
+            Dictionary<TxLookupKey, int> indices = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 if (!indices.TryGetValue(keys[i], out int index))
@@ -671,7 +667,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return false;
             }
 
-            candidates = new(Math.Min(txHashes.Count, MaxBlobCellCandidates));
+            candidates = [with(Math.Min(txHashes.Count, MaxBlobCellCandidates))];
             BlobCellMask capturedMask = BlobCellMask.Empty;
             foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
             {
@@ -705,7 +701,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
         }
 
         candidates.Sort(static (x, y) => y.AvailableMask.Count.CompareTo(x.AvailableMask.Count));
-        List<BlobCellsCandidate> loadedCandidates = new(Math.Min(candidates.Count, requestedMask.Count));
+        List<BlobCellsCandidate> loadedCandidates = [with(Math.Min(candidates.Count, requestedMask.Count))];
         BlobCellMask loadedMask = BlobCellMask.Empty;
         int candidateLoads = 0;
         for (int i = 0;

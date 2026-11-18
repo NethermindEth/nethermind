@@ -34,6 +34,22 @@ public interface IHeaderStore : IHeaderFinder
         return true;
     }
 
+    /// <summary>Appends the headers of <paramref name="blockHashes"/>, as <see cref="TryAppendRlp"/> does each one.</summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="blockNumbers">The numbers of the blocks, one per hash.</param>
+    /// <param name="decoder">The decoder that encodes the headers.</param>
+    /// <param name="destination">The list the headers are appended to, in no particular order.</param>
+    /// <param name="items">Receives the range of <paramref name="destination"/> that holds each header, or the default range when it is not stored.</param>
+    /// <remarks>An implementation can read the headers in one batch.</remarks>
+    void AppendRlps(ReadOnlySpan<ValueHash256> blockHashes, ReadOnlySpan<ulong> blockNumbers, IHeaderDecoder decoder, ArrayPoolList<byte> destination, Span<Range> items)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            int start = destination.Count;
+            items[i] = TryAppendRlp(in blockHashes[i], blockNumbers[i], decoder, destination) ? start..destination.Count : default;
+        }
+    }
+
     /// <summary>
     /// Gets the header of <paramref name="blockHash"/> if <paramref name="bloomMatches"/> accepts its logs bloom, which
     /// is empty for a zero-length (EIP-7668) bloom.
@@ -53,10 +69,39 @@ public interface IHeaderStore : IHeaderFinder
     /// <inheritdoc cref="GetIfBloomMatches(Hash256, ulong, Func{ReadOnlySpan{byte}, bool}, out bool)"/>
     BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
         GetIfBloomMatches(new Hash256(in blockHash), blockNumber, bloomMatches, out found);
+
+    /// <summary>
+    /// Gets the headers of <paramref name="blockHashes"/>, as
+    /// <see cref="GetIfBloomMatches(in ValueHash256, ulong, Func{ReadOnlySpan{byte}, bool}, out bool)"/> does each one.
+    /// </summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="blockNumbers">The numbers of the blocks, one per hash.</param>
+    /// <param name="bloomMatches">Tells whether a bloom is a match.</param>
+    /// <param name="headers">Receives each header whose bloom is a match, else <see langword="null"/>.</param>
+    /// <param name="found">Receives whether each header is stored, whether or not its bloom is a match.</param>
+    /// <remarks>An implementation can read the headers in one batch.</remarks>
+    void GetIfBloomMatches(ReadOnlyMemory<ValueHash256> blockHashes, ReadOnlyMemory<ulong> blockNumbers, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            headers.Span[i] = GetIfBloomMatches(in blockHashes.Span[i], blockNumbers.Span[i], bloomMatches, out found.Span[i]);
+        }
+    }
     void Cache(BlockHeader header);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, ulong blockNumber);
     ulong? GetBlockNumber(Hash256 blockHash);
+
+    /// <summary>Looks up the numbers of several blocks, as <see cref="GetBlockNumber"/> does for one.</summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="numbers">Receives the number of each block in order, or null for an unknown block.</param>
+    void GetBlockNumbers(ReadOnlySpan<ValueHash256> blockHashes, Span<ulong?> numbers)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            numbers[i] = GetBlockNumber(new Hash256(in blockHashes[i]));
+        }
+    }
 
     /// <summary>
     /// Returns up to <paramref name="count"/> consecutive headers ending at <paramref name="endBlockHash"/>,

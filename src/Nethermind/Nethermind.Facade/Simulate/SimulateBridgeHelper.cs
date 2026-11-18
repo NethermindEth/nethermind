@@ -58,7 +58,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
         CancellationToken cancellationToken)
     {
         int blockCount = payload.BlockStateCalls?.Count ?? 0;
-        List<SimulateBlockResult<TTrace>> list = new(blockCount);
+        List<SimulateBlockResult<TTrace>> list = [with(blockCount)];
         SimulateOutput<TTrace> result = new()
         {
             Items = list
@@ -138,6 +138,8 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     cancellationBlockTracer,
                     spec,
                     cancellationToken);
+
+                processedBlock.ExecutionRequests = null;
 
                 if (spec.IsEip1559Enabled && processedBlock.Header.BaseFeePerGas.IsZero)
                 {

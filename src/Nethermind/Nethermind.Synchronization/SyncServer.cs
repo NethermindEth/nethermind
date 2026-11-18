@@ -32,6 +32,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -60,6 +61,7 @@ namespace Nethermind.Synchronization
         private readonly ISpecProvider _specProvider;
         private readonly IHistoryPruner _historyPruner;
         private readonly ISyncPointers? _syncPointers;
+        private readonly IChainLevelInfoRepository? _chainLevelInfoRepository;
         private readonly ISyncConfig _syncConfig;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
@@ -96,9 +98,11 @@ namespace Nethermind.Synchronization
             IHistoryPruner historyPruner,
             ISpecProvider specProvider,
             ILogManager logManager,
-            ISyncPointers? syncPointers = null)
+            ISyncPointers? syncPointers = null,
+            IChainLevelInfoRepository? chainLevelInfoRepository = null)
         {
             _syncPointers = syncPointers;
+            _chainLevelInfoRepository = chainLevelInfoRepository;
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _syncConfig = config;
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
@@ -477,6 +481,8 @@ namespace Nethermind.Synchronization
         /// <remarks>
         /// Walks the chain with <see cref="HeaderWalk"/>, as <see cref="IBlockTree.FindHeaders"/> does, but copies each
         /// header as the header store holds it and reads the parent hash from that encoding, so no header is decoded.
+        /// A request with a skip on the main chain is first answered with two batched level reads and one batched header
+        /// read.
         /// </remarks>
         public IOwnedReadOnlyList<byte> FindHeadersRlp(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         {
@@ -485,9 +491,15 @@ namespace Nethermind.Synchronization
                 return ArrayPoolList<byte>.Empty();
             }
 
-            ArrayPoolList<byte> headers = new(numberOfBlocks * HeaderRlpLengthEstimate);
+            ArrayPoolList<byte> headers = [with(numberOfBlocks * HeaderRlpLengthEstimate)];
             try
             {
+                if (TryFindMainChainHeadersRlp(in hash.ValueHash256, number, numberOfBlocks, skip, reverse, headers) is { } mainChainHeaders)
+                {
+                    return mainChainHeaders;
+                }
+
+                headers.Clear();
                 EncodedHeaderSource source = new(_headerStore, _headerDecoder, headers);
                 using ArrayPoolList<Range> items = HeaderWalk.FindHeaders<Range, EncodedHeaderSource>(_blockTree, ref source, in hash.ValueHash256, number, numberOfBlocks, skip, reverse);
                 return InResponseOrder(headers, items.AsSpan());
@@ -497,6 +509,78 @@ namespace Nethermind.Synchronization
                 headers.Dispose();
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Finds the headers of a request with a skip whose numbers all resolve to main chain blocks, as the walk would
+        /// find them, with batched level reads and one batched header read.
+        /// </summary>
+        /// <returns>
+        /// The headers in response order, or <see langword="null"/>, with <paramref name="headers"/> still owned by the
+        /// caller, when the walk must answer: the request has no skip, the start header is not on the main chain, or
+        /// a reverse request meets a level without a main chain block.
+        /// </returns>
+        /// <remarks>
+        /// Without a skip, the walk finds the headers by parent hash, which needs no level read per header. A forward
+        /// request reads no level above the highest one the tree can have written, as such a level is missing. The start
+        /// level is read first, so a request that starts off the main chain reads only that level before the walk.
+        /// </remarks>
+        private ArrayPoolList<byte>? TryFindMainChainHeadersRlp(in ValueHash256 hash, ulong number, int numberOfBlocks, int skip, bool reverse, ArrayPoolList<byte> headers)
+        {
+            if (_chainLevelInfoRepository is null || skip <= 0) return null;
+
+            ulong step = (ulong)skip + 1;
+            ulong highestLevel = Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber);
+            ulong available = reverse ? number / step : highestLevel > number ? (highestLevel - number) / step : 0;
+            int count = (int)Math.Min((ulong)numberOfBlocks, available + 1);
+
+            using ArrayPoolSpan<ulong> numbers = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                ulong offset = (ulong)i * step;
+                numbers[i] = reverse ? number - offset : number + offset;
+            }
+
+            using ArrayPoolListRef<ValueHash256> hashes = new(count);
+            using (ArrayPoolSpan<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> mainChainBlocks = new(count))
+            {
+                _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory()[..1], mainChainBlocks.AsMemory()[..1]);
+                if (mainChainBlocks[0].BlockHash != hash) return null;
+
+                if (count > 1) _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory()[1..], mainChainBlocks.AsMemory()[1..]);
+                for (int i = 0; i < count; i++)
+                {
+                    ValueHash256 blockHash = mainChainBlocks[i].BlockHash;
+                    if (blockHash == Keccak.Zero.ValueHash256)
+                    {
+                        // A level without a main chain block ends a forward walk; a reverse walk would take the best one.
+                        if (reverse) return null;
+                        break;
+                    }
+
+                    hashes.Add(blockHash);
+                }
+
+                // A reorg during the read can mix branches. As the forward walk does, keep a header only while the one
+                // before it is still on the main chain.
+                int previousCount = hashes.Count - 1;
+                if (previousCount > 0)
+                {
+                    _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory()[..previousCount], mainChainBlocks.AsMemory()[..previousCount]);
+                    for (int i = 0; i < previousCount; i++)
+                    {
+                        if (mainChainBlocks[i].BlockHash != hashes[i])
+                        {
+                            hashes.Truncate(i + 1);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            using ArrayPoolList<Range> items = new(hashes.Count, hashes.Count);
+            _headerStore.AppendRlps(hashes.AsSpan(), ((ReadOnlySpan<ulong>)numbers)[..hashes.Count], _headerDecoder, headers, items.AsSpan());
+            return InResponseOrder(headers, items.AsSpan());
         }
 
         /// <summary>Returns the headers at <paramref name="items"/> up to the first one not found, in their order.</summary>
@@ -518,7 +602,7 @@ namespace Nethermind.Synchronization
                 return headers;
             }
 
-            ArrayPoolList<byte> ordered = new(headers.Count);
+            ArrayPoolList<byte> ordered = [with(headers.Count)];
             ReadOnlySpan<byte> encoded = headers.AsSpan();
             foreach (Range item in items[..count])
             {

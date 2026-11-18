@@ -181,7 +181,7 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV5Result?> result = await rpcModule.engine_getPayloadV5(Bytes.FromHexString(payloadId!));
         BlobsBundleV2 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
-            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
+            getPayloadResultBlobsBundle.Commitments, [.. getPayloadResultBlobsBundle.Proofs.SelectMany(static proof => proof)], ProofVersion.V1);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
@@ -274,7 +274,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new(requestSize);
+        List<byte[]> request = [with(requestSize)];
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -375,7 +375,7 @@ public partial class EngineModuleTests
             Assert.That(result.Data, Is.Not.Null);
             Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
             Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
-            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.SplitProofs().Chunk(128)));
         }
     }
 
@@ -405,7 +405,7 @@ public partial class EngineModuleTests
         {
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(executionPayload.BlockHash));
             Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(Ckzg.CellsPerExtBlob)));
+            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.SplitProofs().Chunk(Ckzg.CellsPerExtBlob)));
         }
     }
 
@@ -450,7 +450,7 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -477,7 +477,7 @@ public partial class EngineModuleTests
                 Assert.That(result.Data, Is.Not.Null);
                 Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
                 Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
-                Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+                Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.SplitProofs().Chunk(128)));
             }
         }
     }
@@ -499,7 +499,7 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -530,7 +530,7 @@ public partial class EngineModuleTests
                 {
                     Assert.That(result.Data!.ElementAt(i), Is.Not.Null);
                     Assert.That(result.Data!.ElementAt(i)!.Blob, Is.EqualTo(wrapper.Blobs[foundIndex]));
-                    Assert.That(result.Data!.ElementAt(i)!.Proofs, Is.EqualTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128)));
+                    Assert.That(result.Data!.ElementAt(i)!.Proofs, Is.EqualTo(wrapper.SplitProofs().Skip(foundIndex * 128).Take(128)));
                 }
                 foundIndex++;
             }
@@ -560,7 +560,7 @@ public partial class EngineModuleTests
     public async Task BlobsV2DirectResponse_WriteToAsync_produces_valid_json()
     {
         byte[]?[] blobs = [RandomBytes(16), null];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([RandomBytes(48), RandomBytes(48)]), default];
+        ReadOnlyMemory<byte>[] proofs = [RandomBytes(96), default];
 
         BlobsV2DirectResponse response = new(blobs, proofs, 2);
         await AssertStreamedJsonMatchesSerializer(response);
@@ -580,7 +580,7 @@ public partial class EngineModuleTests
     {
         byte[] blob = new byte[131072]; // 128KB
         byte[]?[] blobs = [blob];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([new byte[48]])];
+        ReadOnlyMemory<byte>[] proofs = [new byte[48]];
         BlobsV2DirectResponse response = new(blobs, proofs, 1);
 
         using CancellationTokenSource cts = new();

@@ -102,7 +102,7 @@ public class SnapFlatStateServerBenchmark
         stateId = CommitBlocks(persistence, addresses, storageAddress, stateId);
 
         _rootHash = stateId.StateRoot.ToCommitment();
-        _storageAccount = [new PathWithAccount(storageAddressHash, storageAccount)];
+        _storageAccount = [new PathWithAccount(storageAddressHash, storageAccount.ToStruct())];
         _server = new SnapFlatStateServer(new InMemoryFlatDbManager(persistence, _nodeRecordBuffer, _snapshots), new SingleStateRootIndex(stateId), NullLogManager.Instance);
     }
 
@@ -170,7 +170,7 @@ public class SnapFlatStateServerBenchmark
         // A write batch takes each key once, as block processing hands it the block's final values.
         static HashSet<int> DistinctIndices(Random random, int count, int maxExclusive)
         {
-            HashSet<int> indices = new(count);
+            HashSet<int> indices = [with(count)];
             while (indices.Count < count) indices.Add(random.Next(maxExclusive));
             return indices;
         }
@@ -215,7 +215,7 @@ public class SnapFlatStateServerBenchmark
     }
 
     /// <summary>Gathers bundles over the in-memory snapshots and persistence, as <see cref="FlatDbManager"/> does.</summary>
-    private sealed class InMemoryFlatDbManager(IPersistence persistence, INodeRecordBuffer nodeRecordBuffer, List<FlatSnapshot> snapshots) : IFlatDbManager
+    internal sealed class InMemoryFlatDbManager(IPersistence persistence, INodeRecordBuffer nodeRecordBuffer, List<FlatSnapshot> snapshots) : IFlatDbManager
     {
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) => GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
 
@@ -238,7 +238,7 @@ public class SnapFlatStateServerBenchmark
         public void AddSnapshot(FlatSnapshot snapshot, TransientResource transientResource) { }
     }
 
-    private sealed class SingleStateRootIndex(StateId stateId) : IFlatStateRootIndex
+    internal sealed class SingleStateRootIndex(StateId stateId) : IFlatStateRootIndex
     {
         public bool HasStateRoot(Hash256 stateRoot) => stateRoot.ValueHash256 == stateId.StateRoot;
 

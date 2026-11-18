@@ -69,7 +69,13 @@ public enum RlpBehaviors
     /// corrupted input still throws.
     /// </summary>
     /// <remarks>Never set it for input from the network, from RPC or from the Engine API.</remarks>
-    TrustedInput = 4096
+    TrustedInput = 4096,
+
+    /// <summary>
+    /// Decodes a blob sidecar without its blobs and, with <see cref="Storage"/>, without its cell mask and cells. The
+    /// commitments and proofs are kept.
+    /// </summary>
+    ExcludeBlobs = 8192
 }
 
 internal static class RlpBehaviorsExtensions

@@ -51,9 +51,6 @@ public static class PersistedSnapshotBuilder
         return a.Key.Slot.CompareTo(b.Key.Slot);
     };
 
-    private static readonly Comparison<ValueAddress> ValueAddressComparer = (a, b) =>
-        a.AsSpan.SequenceCompareTo(b.AsSpan);
-
     public static void Build<TWriter>(Snapshot snapshot, ref TWriter writer, BlobArenaWriter blobWriter, BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
@@ -61,10 +58,12 @@ public static class PersistedSnapshotBuilder
         // (off-heap) and read the node RLP from the buffer by its record pointer
         // at write time. PooledSet is used for the small Address dedup map so its
         // backing entry array is pool-rented rather than freshly allocated each block.
+        // uniqueAddresses is a pool-rented list of the snapshot's own Address instances;
+        // a large block can rent an array on the LOH, but the pool reuses it.
         NativeMemoryList<(TreePath Path, ulong Pointer)> stateTopKeys = null!, stateCompactKeys = null!, stateFallbackKeys = null!;
         NativeMemoryList<(ValueHash256 AddrHash, TreePath Path, ulong Pointer)> storTopKeys = null!, storCompactKeys = null!, storFallbackKeys = null!;
         NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages = null!;
-        NativeMemoryList<ValueAddress> uniqueAddresses = null!;
+        ArrayPoolList<Address> uniqueAddresses = null!;
 
         // Parallel extraction + sort: three independent jobs over disjoint collections. The node
         // iterators emit in key order, so each node sublist is sorted as it fills.
@@ -106,7 +105,7 @@ public static class PersistedSnapshotBuilder
                     seen.Add(kv.Key);
 
                 NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> storages =
-                    new(Math.Max(1, snapshot.StoragesCount));
+                    [with(Math.Max(1, snapshot.StoragesCount))];
                 foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
                 {
                     (Address addr, UInt256 slot) = kv.Key.Key;
@@ -114,10 +113,10 @@ public static class PersistedSnapshotBuilder
                     seen.Add(addr);
                 }
 
-                NativeMemoryList<ValueAddress> addresses = new(Math.Max(1, seen.Count));
+                ArrayPoolList<Address> addresses = [with(seen.Count)];
                 foreach (HashedKey<Address> addr in seen)
-                    addresses.Add(new ValueAddress(addr.Key.Bytes));
-                addresses.Sort(ValueAddressComparer);
+                    addresses.Add(addr.Key);
+                addresses.Sort(new AddressComparer());
 
                 storages.Sort(StoragesByAddressComparer);
 
@@ -207,7 +206,7 @@ public static class PersistedSnapshotBuilder
     private static void WritePerAddress<TWriter>(
         ref SortedTableBuilder<TWriter> table, Snapshot snapshot,
         NativeMemoryList<((ValueAddress Addr, UInt256 Slot) Key, UInt256? Value)> sortedStorages,
-        NativeMemoryList<ValueAddress> uniqueAddresses,
+        ArrayPoolList<Address> uniqueAddresses,
         BloomFilter bloom) where TWriter : IByteBufferWriter
     {
         // Slim-account RLP fits in 256 bytes; slot RLP (≤ RlpSlotValueBufferSize) reuses the same
@@ -220,9 +219,8 @@ public static class PersistedSnapshotBuilder
 
         for (int addrIdx = 0; addrIdx < uniqueAddresses.Count; addrIdx++)
         {
-            ValueAddress addrValue = uniqueAddresses[addrIdx];
-            ReadOnlySpan<byte> addressBytes = addrValue.AsSpan;
-            Address address = addrValue.ToAddress();
+            Address address = uniqueAddresses[addrIdx];
+            ReadOnlySpan<byte> addressBytes = address.Bytes;
 
             ulong addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(addressBytes);
             bloom.Add(addrBloomKey);

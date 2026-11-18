@@ -202,25 +202,32 @@ public class PrewarmerReadAheadSafetyTests(IReleaseSpec spec) : PrewarmerReadAhe
             RandomPacing = rng.Next(2) == 0;
             Block block = RandomColdTailBlock(rng);
             SeedPacing(rng.Next());
+            bool held = blockSeed % 2 == 0;
             try
             {
                 Run executed = Process(block, adapter: null);
-                Run run = ProcessWithSession(block);
+                int readAheadsBefore = PreWarmer.ReadAheadsStarted;
+                Run run = held ? ProcessWithSessionAfterReadAhead(block) : ProcessWithSession(block);
+                if (held)
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(PreWarmer.ReadAheadsStarted, Is.GreaterThan(readAheadsBefore), "precondition: the held block started a read-ahead");
+                        Assert.That(WarmingHoldTimeouts, Is.Zero, "precondition: the prewarmer's reads were let go by a read-ahead");
+                    }
+                }
+
                 AssertSameRun(run, executed);
             }
             catch (Exception)
             {
-                TestContext.Out.WriteLine($"Failing block seed {blockSeed} (block {i} of {blocks}, {Spec.Name}, random pacing {RandomPacing})");
+                TestContext.Out.WriteLine($"Failing block seed {blockSeed} (block {i} of {blocks}, {Spec.Name}, random pacing {RandomPacing}, held {held})");
                 throw;
             }
         }
 
         TestContext.Out.WriteLine($"{blocks} blocks, {Spec.Name}: read-aheads started {PreWarmer.ReadAheadsStarted}");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(PaceTimeouts, Is.Zero);
-            Assert.That(PreWarmer.ReadAheadsStarted, Is.GreaterThan(blocks / 2), "precondition: the read-ahead ran");
-        }
+        Assert.That(PaceTimeouts, Is.Zero);
     }
 }
 

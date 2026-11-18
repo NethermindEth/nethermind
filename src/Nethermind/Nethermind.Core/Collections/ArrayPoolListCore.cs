@@ -18,7 +18,7 @@ internal static class ArrayPoolListCore<T>
         int count,
         int itemsToAdd = 1)
     {
-        int newCount = count + itemsToAdd;
+        int newCount = checked(count + itemsToAdd);
 
         if (capacity == 0)
         {
@@ -27,14 +27,14 @@ internal static class ArrayPoolListCore<T>
         }
         else if (newCount > capacity)
         {
-            int newCapacity = capacity * 2;
-            if (newCapacity == 0) newCapacity = 1;
+            long newCapacity = capacity * 2L;
             while (newCount > newCapacity)
             {
                 newCapacity *= 2;
             }
 
-            T[] newArray = pool.Rent(newCapacity);
+            // Doubling stops at the largest array length; a count above it fails in Rent.
+            T[] newArray = pool.Rent((int)Math.Min(newCapacity, Math.Max(newCount, Array.MaxLength)));
             Array.Copy(array, 0, newArray, 0, count);
             T[] oldArray = Interlocked.Exchange(ref array, newArray);
             capacity = newArray.Length;

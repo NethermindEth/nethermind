@@ -17,7 +17,7 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
     {
-        private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = new(new EntryComparer());
+        private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = [with(new EntryComparer())];
         private readonly EntryComparer _entryComparer = new();
         private int _currentVersion = 0;
         private readonly SortedList<int, int> _activeSnapshotVersions = [];
@@ -33,24 +33,6 @@ namespace Nethermind.Db
         {
             get => Get(key);
             set => Set(key, value);
-        }
-
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-        {
-            get
-            {
-                KeyValuePair<byte[], byte[]?>[] result = new KeyValuePair<byte[], byte[]?>[keys.Length];
-                lock (_versionLock)
-                {
-                    ReadsCount += keys.Length;
-                    for (int i = 0; i < keys.Length; i++)
-                    {
-                        byte[] key = keys[i];
-                        result[i] = new KeyValuePair<byte[], byte[]?>(key, GetValueAtVersion(key, _currentVersion));
-                    }
-                }
-                return result;
-            }
         }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
@@ -689,7 +671,7 @@ namespace Nethermind.Db
         private sealed class MemDbWriteBatch(SnapshotableMemDb db) : IWriteBatch
         {
             private readonly SnapshotableMemDb _db = db;
-            private readonly ArrayPoolList<(byte[] Key, byte[]? Value, WriteFlags Flags)> _operations = new(16);
+            private readonly ArrayPoolList<(byte[] Key, byte[]? Value, WriteFlags Flags)> _operations = [with(16)];
             private bool _disposed;
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)

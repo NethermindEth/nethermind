@@ -95,7 +95,8 @@ public static class PersistedSnapshotMerger
             // Cached for the current per-address group: its address (for change detection + bloom keys) and
             // the self-destruct truncation barrier, resolved when the group's self-destruct record is seen
             // (it sorts before the slots it filters) and -1 when the group has none.
-            Address? curAddr = null;
+            ValueAddress curAddr = default;
+            bool inGroup = false;
             ulong addrBloomKey = 0;
             int barrier = -1;
             // Sticky across the whole merge, never reset per group: one storage clear anywhere in the
@@ -143,10 +144,11 @@ public static class PersistedSnapshotMerger
                 // On entering a new per-address group, cache its address + bloom key and reset the barrier;
                 // the account sorts first, then the self-destruct record (if any), which sets the barrier
                 // before the slots.
-                if (isPerAddr && (curAddr is null || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr.Bytes)))
+                if (isPerAddr && (!inGroup || !PersistedSnapshotKey.PerAddressAddress(key).SequenceEqual(curAddr.AsSpan)))
                 {
-                    curAddr = new Address(PersistedSnapshotKey.PerAddressAddress(key));
-                    addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(curAddr);
+                    curAddr = new ValueAddress(PersistedSnapshotKey.PerAddressAddress(key));
+                    inGroup = true;
+                    addrBloomKey = PersistedSnapshotBloomBuilder.AddressKey(curAddr.AsSpan);
                     // addrKey is the single key the reader probes for this address's account, self-destruct,
                     // and the address half of every slot lookup — add it once per group, not per record.
                     bloom.Add(addrBloomKey);
