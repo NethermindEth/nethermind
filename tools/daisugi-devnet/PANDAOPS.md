@@ -20,7 +20,7 @@ Tested file: [`kurtosis/network_params.yaml`](kurtosis/network_params.yaml), wit
 | `el_extra_params` | `--TxPool.FrameTxMaxVerifyGas=500000`, `--TxPool.BlobsSupport=Disabled` | keep both |
 | `network_id` | 1337 | a new chain ID |
 | `preregistered_validator_keys_mnemonic` | the public ethereum-package test mnemonic | a private mnemonic |
-| `seconds_per_slot` | 2 | keep 2 (others not tested) |
+| `seconds_per_slot` | 12 | 12 (2 and 6 also tested). Nethermind's `--Blocks.SecondsPerSlot` must match: its default is 12, and ethereum-package sets it for other values |
 | `genesis_gaslimit`, `max_payload_size` | 60000000, 20971520 | keep |
 | `electra_fork_epoch` | 0 | keep |
 | `fulu_fork_epoch`, `gloas_fork_epoch`, `bpo_1..5_epoch` | 18446744073709551615 | keep |
@@ -87,6 +87,6 @@ Local runs need a Docker host that is not a Swarm node and has port 8081 free (K
 
 ## 6. Not tested
 
-`additional_services` (Dora, spamoor and others), checkpoint sync, ethereum-package or generator revisions other than the pinned ones, slot times other than 2 s, arm64. Block explorers and other tooling were not tried against the Daisugi fork (fork version `0xd0000038`).
+`additional_services` (Dora, spamoor and others), checkpoint sync, ethereum-package or generator revisions other than the pinned ones, slot times other than 2, 6 and 12 s, arm64. Block explorers and other tooling were not tried against the Daisugi fork (fork version `0xd0000038`).
 
 Agree with Nethermind on the Daisugi fork epoch and the chain ID before generating the genesis.

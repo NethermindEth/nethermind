@@ -193,7 +193,7 @@ tools/daisugi-devnet/kurtosis/run.sh daisugi
 ```
 
 - Needs Kurtosis, the two images from step 1 (`daisugi/nethermind:af50ed1917`, `daisugi/lighthouse:eip8288-lean`), plus .NET SDK as for `pq.sh`. The Docker host must be no Swarm node: Kurtosis matches its network by the name `bridge` and fails on `docker_gwbridge`. Its engine binds host port 8081.
-- `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 2 s slots, chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
+- `network_params.yaml`: Nethermind and Lighthouse images, 64 validators, 12 s slots as on the shared network (finality past the fork takes about 45 minutes; the Compose devnet keeps 2 s), chain ID 1337, Electra at genesis, the 8141 verifier and 8250 nonce manager predeploys, and `DAISUGI_FORK_EPOCH` 3.
 - `genesis.Dockerfile` wraps the pinned genesis generator. After it runs, the wrapper sets `eip8141PrototypeTime` to genesis, sets `eip8288PrototypeTime` to the Daisugi fork slot, drops the Osaka/Amsterdam/Bogota times, appends `DAISUGI_FORK_VERSION` `0xd0000038`, and removes `SECONDS_PER_SLOT`. Lighthouse rejects `SECONDS_PER_SLOT` together with `SLOT_DURATION_MS`.
 - ethereum-package starts the beacon node with `sh -c`, so the Lighthouse image needs a shell: the image from step 1 has one.
 - `run.sh` writes `NETHERMIND_IMAGE` and `LIGHTHOUSE_IMAGE` into a copy of `network_params.yaml` under `kurtosis/run/`. It finds ports and containers by the enclave's UUID and stops when any of them is missing or the beacon API is not up within 120 s.

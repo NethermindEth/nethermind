@@ -16,7 +16,7 @@ participants:
 network_params:
   network_id: "1337"
   preset: mainnet
-  seconds_per_slot: 2
+  seconds_per_slot: 12
   genesis_delay: 20
   genesis_gaslimit: 60000000
   preregistered_validator_keys_mnemonic: "giant issue aisle success illegal bike spike question tent bar rely arctic volcano long crawl hungry vocal artwork sniff fantasy very lucky have athlete"

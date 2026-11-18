@@ -105,3 +105,5 @@ Repeated on 2026-11-18 with the images EthPandaOps' builder makes: Lighthouse fr
 - Late joiner from genesis: `sync-check.sh` on 4 ELs and 4 CLs PASS, blocks 0..560 identical, proofs byte-identical.
 - Logs: no `block hash mismatch`, no beacon `ERRO`/`CRIT`, no invalid blocks on the ELs.
 - AA-PQ guide on the same enclave, browser test of the NiceTry extension: 4/15 on `d4fa4d6` (the shown address differs from the sending one), 15/15 with asanso/AA-PQ#15.
+
+Slot times, 2026-11-18, same images, `NODES=3`: at 6 s and at 12 s, `check.sh` PASS (0 missed slots after the fork), `pq.sh` PASS for sphincs, stark and mixed, the late joiner's `sync-check.sh` PASS on 4 ELs and 4 CLs, no mismatch or beacon errors, and the AA-PQ wallet browser test 15/15 (106 s at 6 s, 135 s at 12 s). ethereum-package passes `--Blocks.SecondsPerSlot` to Nethermind for slots other than 12; adding it again makes Nethermind refuse to start.
