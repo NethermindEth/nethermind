@@ -13,21 +13,33 @@ using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using Snappier;
@@ -36,6 +48,172 @@ namespace Nethermind.Network.Test.Rlpx;
 
 public class ZeroNettyP2PHandlerTests
 {
+    public enum PeerPrivilege { None, Static, Trusted }
+
+    [Test]
+    public void Malformed_status_is_rejected_inside_transport(
+        [Values(68, 69)] byte version, [Values] bool snappy, [Values] PeerPrivilege privilege, [Values] bool scalarIsList)
+    {
+        using PooledBufferLeakDetector detector = new();
+        TestLogger logger = new() { IsDebug = false };
+        OneLoggerLogManager logManager = new(new ILogger(logger));
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        Session session = CreateInitializedSession(context, logManager, privilege);
+        MessageSerializationService serializer = new(
+            SerializerInfo.Create(new StatusMessageSerializer()), SerializerInfo.Create(new StatusMessageSerializer69()));
+        using Eth68ProtocolHandler protocol = CreateEthHandler(session, version, serializer, logManager);
+        session.AddProtocolHandler(protocol);
+        bool initialized = false;
+        protocol.ProtocolInitialized += (_, _) => initialized = true;
+        List<DisconnectEventArgs> disconnected = [];
+        session.Disconnecting += (_, eventArgs) => disconnected.Add(eventArgs);
+        ZeroNettyP2PHandler handler = new(session, logManager);
+        if (snappy) handler.EnableSnappy();
+        byte[] oversizedScalar = new byte[version == 68 ? 33 : 5];
+        oversizedScalar.AsSpan().Fill(1);
+        byte[] malformedScalar = scalarIsList ? RlpTestHelper.OfEmptyList : Rlp.Encode(oversizedScalar);
+        byte[] forkId = RlpTestHelper.EncodeSequence(version == 68 ? Rlp.Encode(new byte[4]) : malformedScalar, RlpTestHelper.OfEmptyByteArray);
+        byte[] payload = version == 68
+            ? RlpTestHelper.EncodeSequence(Rlp.Encode(version), Rlp.Encode(1UL), malformedScalar,
+                Rlp.Encode(TestItem.KeccakA), Rlp.Encode(TestItem.KeccakB), forkId)
+            : RlpTestHelper.EncodeSequence(Rlp.Encode(version), Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakB),
+                forkId, RlpTestHelper.OfEmptyByteArray, Rlp.Encode(1UL), Rlp.Encode(TestItem.KeccakA));
+        bool limit = version == 68 && !scalarIsList;
+        bool disconnect = limit || privilege == PeerPrivilege.None;
+        DisconnectReason expectedReason = limit ? DisconnectReason.MessageLimitsBreached : DisconnectReason.Exception;
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, payload, 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteBytes(payload)) { PacketType = 0x10 };
+        try
+        {
+            handler.ChannelRead(context, packet);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(initialized, Is.False);
+                Assert.That(protocol.HeadHash, Is.Null);
+                Assert.That(disconnected, Has.Count.EqualTo(disconnect ? 1 : 0));
+                Assert.That(disconnected.Select(static args => args.DisconnectReason), Is.EqualTo(disconnect ? [expectedReason] : Array.Empty<DisconnectReason>()));
+                Assert.That(disconnected.Select(static args => args.DisconnectType), Is.EqualTo(disconnect ? [DisconnectType.Local] : Array.Empty<DisconnectType>()));
+                Assert.That(logger.LogList, Has.Some.Contains("Failed to deserialize message StatusMessage"));
+                Assert.That(packet.ReferenceCount, Is.Zero);
+            }
+            if (disconnect) context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+            else context.Received(1).FireExceptionCaught(Arg.Any<RlpReaderException>());
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+            session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test cleanup");
+            session.Dispose();
+        }
+    }
+
+    [Test]
+    public void Transport_rlp_limits_preserve_privileged_peer_policy([Values] bool snappy, [Values] PeerPrivilege privilege)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = privilege == PeerPrivilege.Static,
+            IsTrusted = privilege == PeerPrivilege.Trusted,
+        });
+        RlpLimitException exception = new("message exceeds decode limits");
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(_ => throw exception);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, [0xc0], 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteByte(0xc0)) { PacketType = 0x10 };
+        try
+        {
+            handler.ChannelRead(context, packet);
+            if (privilege == PeerPrivilege.None)
+            {
+                session.Received(1).InitiateDisconnect(DisconnectReason.MessageLimitsBreached, Arg.Any<string>());
+                context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+            }
+            else
+            {
+                session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+                context.Received(1).FireExceptionCaught(exception);
+            }
+            Assert.That(packet.ReferenceCount, Is.Zero);
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+        }
+    }
+
+    [Test]
+    public void Rlp_limit_disconnect_is_preserved_without_a_second_disconnect([Values] bool snappy)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        Session session = CreateInitializedSession(context, LimboLogs.Instance, PeerPrivilege.Trusted);
+        IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+        serializer.Deserialize<StatusMessage>(Arg.Any<ZeroPacket>()).Returns(_ => throw new RlpLimitException("status exceeds decode limits"));
+        using Eth68ProtocolHandler protocol = CreateEthHandler(session, 68, serializer, LimboLogs.Instance);
+        session.AddProtocolHandler(protocol);
+        List<DisconnectEventArgs> disconnected = [];
+        session.Disconnecting += (_, eventArgs) => disconnected.Add(eventArgs);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, [0xc0], 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteByte(0xc0)) { PacketType = 0x10 };
+        try
+        {
+            handler.ChannelRead(context, packet);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disconnected.Select(static args => args.DisconnectReason), Is.EqualTo(new[] { DisconnectReason.MessageLimitsBreached }));
+                Assert.That(disconnected.Select(static args => args.Details), Is.EqualTo(new[] { "status exceeds decode limits" }));
+                Assert.That(packet.ReferenceCount, Is.Zero);
+            }
+            context.DidNotReceive().FireExceptionCaught(Arg.Any<Exception>());
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+            session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test cleanup");
+            session.Dispose();
+        }
+    }
+
+    [Test]
+    public void Internal_consumer_errors_are_not_handled_as_malformed_peer_data([Values] bool snappy, [Values] bool rlp)
+    {
+        using PooledBufferLeakDetector detector = new();
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(detector.Allocator);
+        ISession session = Substitute.For<ISession>();
+        Exception exception = rlp ? new TestInternalRlpReaderException() : new TestInternalNethermindException();
+        session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(_ => throw exception);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+        NettyBufferPacket packet = snappy
+            ? CreateCompressedPacket(detector.Allocator, [0xc0], 0x10)
+            : new NettyBufferPacket(detector.Allocator.Buffer().WriteByte(0xc0)) { PacketType = 0x10 };
+        try
+        {
+            Assert.That(Assert.Catch(() => handler.ChannelRead(context, packet)), Is.SameAs(exception));
+            session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            Assert.That(packet.ReferenceCount, Is.Zero);
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+        }
+    }
+
     [Test]
     [TestCaseSource(nameof(ExceptionDisconnectCases))]
     public void When_exception_is_thrown_send_disconnect_message(Exception exception, DisconnectReason expectedReason)
@@ -53,6 +231,7 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
+        yield return new TestCaseData(new RlpLimitException("message exceeds decode limits"), DisconnectReason.MessageLimitsBreached).SetName("RLP_limit_uses_message_limits_reason");
         yield return new TestCaseData(new SocketException((int)SocketError.ConnectionReset), DisconnectReason.ConnectionReset).SetName("Connection_reset_uses_connection_reset_reason");
     }
 
@@ -743,6 +922,41 @@ public class ZeroNettyP2PHandlerTests
         return new NettyBufferPacket(buffer) { PacketType = packetType };
     }
 
+    private static Session CreateInitializedSession(IChannelHandlerContext context, ILogManager logManager, PeerPrivilege privilege)
+    {
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
+        {
+            IsStatic = privilege == PeerPrivilege.Static,
+            IsTrusted = privilege == PeerPrivilege.Trusted
+        };
+        Session session = new(30303, node, context.Channel, NullDisconnectsAnalyzer.Instance, logManager);
+        IProtocolHandler p2p = Substitute.For<IProtocolHandler>();
+        p2p.ProtocolCode.Returns(Protocol.P2P);
+        p2p.Name.Returns(Protocol.P2P);
+        p2p.MessageIdSpaceSize.Returns(0x10);
+        session.AddProtocolHandler(p2p);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, context, Substitute.For<IPacketSender>());
+        return session;
+    }
+
+    private static Eth68ProtocolHandler CreateEthHandler(ISession session, byte version,
+        IMessageSerializationService serializer, ILogManager logManager)
+    {
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        ISyncServer sync = Substitute.For<ISyncServer>();
+        ITxPool txPool = Substitute.For<ITxPool>();
+        IGossipPolicy gossip = Substitute.For<IGossipPolicy>();
+        IForkInfo forks = Substitute.For<IForkInfo>();
+        ITxPoolConfig txConfig = Substitute.For<ITxPoolConfig>();
+        IChainHeadSpecProvider spec = Substitute.For<IChainHeadSpecProvider>();
+        return version == 68
+            ? new Eth68ProtocolHandler(session, serializer, stats, sync, RunImmediatelyScheduler.Instance,
+                txPool, gossip, forks, logManager, txConfig, spec)
+            : new Eth69ProtocolHandler(session, serializer, stats, sync, RunImmediatelyScheduler.Instance,
+                txPool, gossip, forks, logManager, txConfig, spec);
+    }
+
     private static void AssertPacket(ZeroPacket packet, byte[] payload, byte packetType)
     {
         using (Assert.EnterMultipleScope())
@@ -773,4 +987,6 @@ public class ZeroNettyP2PHandlerTests
     {
 
     }
+
+    private class TestInternalRlpReaderException() : RlpReaderException("internal decoder failure"), IInternalNethermindException;
 }

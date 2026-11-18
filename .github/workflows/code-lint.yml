@@ -93,6 +93,9 @@ jobs:
       - name: Run script test suites
         run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/ci
 
+      - name: Check light-client deployment
+        run: dotnet run --file tools/LightClient/tests/test-deployment.cs
+
   zisk-bench-scripts:
     name: Test zkVM benchmark scripts
     runs-on: ubuntu-latest
@@ -198,12 +201,7 @@ jobs:
       # is silently empty. Neither is visible in the Dockerfile diff, only on a built image, so
       # this builds the final stage of every published Dockerfile and inspects the result.
       - name: Check the published images' OCI labels
-        run: |
-          if [[ -f scripts/check-docker-labels.cs ]]; then
-            dotnet run --file scripts/check-docker-labels.cs
-          else
-            scripts/check-docker-labels.sh
-          fi
+        run: dotnet run --file scripts/check-docker-labels.cs
 
   ci-script-lint:
     name: Check C# CI scripts
