@@ -93,6 +93,7 @@ jobs:
             # on the critical path of every PR. The patterns of each suite partition its tests:
             # "Invalid NewPayload, <field>" splits at the field's first letter (most fields start
             # with T, for Transaction), and the i-other shards take every other I* name.
+            # Re-Execute Payload runs alone because a loaded runner can miss Hive's fixed one-second wait.
             # engine-(auth|[^acw]) catches exchange-capabilities and any future engine suites.
             # The suites that finish in seconds share a job, as most of a job is image builds.
             # ethereum/graphql is left to manual runs: Nethermind serves no GraphQL, so it can only fail.
