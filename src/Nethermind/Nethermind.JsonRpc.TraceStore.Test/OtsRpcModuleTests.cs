@@ -30,6 +30,7 @@ using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
@@ -126,10 +127,19 @@ public class OtsRpcModuleTests
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
         using JsonDocument json = Serialize(response);
         JsonElement entries = json.RootElement.GetProperty("result");
+        int[] types = [0, 1, 2, 3, 0];
+        Address[] destinations = [TestItem.AddressD, TestItem.AddressF, TestItem.AddressC, TestItem.AddressD, PrecompiledAddresses.Identity];
+        Assert.That(response.Data, Has.Count.EqualTo(types.Length));
+        for (int i = 0; i < types.Length; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.Data[i].Type, Is.EqualTo(types[i]));
+                Assert.That(response.Data[i].To, Is.EqualTo(destinations[i]));
+            }
+        }
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(response.Data.Select(o => o.Type), Is.EqualTo(new[] { 0, 1, 2, 3, 0 }));
-            Assert.That(response.Data.Select(o => o.To), Is.EqualTo(new[] { TestItem.AddressD, TestItem.AddressF, TestItem.AddressC, TestItem.AddressD, PrecompiledAddresses.Identity }));
             Assert.That(entries[0].GetProperty("type").GetInt32(), Is.Zero);
             Assert.That(entries[0].GetProperty("value").GetString(), Is.EqualTo("0x7"));
             Assert.That(entries[1].GetProperty("value").GetString(), Is.EqualTo("0x0"));
@@ -176,6 +186,56 @@ public class OtsRpcModuleTests
         using JsonDocument json = Serialize(response);
         int expected = failure == "unknown" ? ErrorCodes.ResourceNotFound : ErrorCodes.ResourceUnavailable;
         Assert.That(json.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Creator_no_code_fast_path_honors_cancellation_after_account_read()
+    {
+        using NonceFixture f = await NonceFixture.Create();
+        using CancellationTokenSource timeout = new();
+        f.RpcConfig.Timeout = Timeout.Infinite;
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
+        try
+        {
+            f.StateReader.AfterRead = timeout.Cancel;
+            Assert.Throws<OperationCanceledException>(() =>
+            {
+                using ResultWrapper<OtsContractCreator?> response = f.Module.ots_getContractCreator(TestItem.AddressF);
+            });
+            Assert.That(() => _ = timeout.Token, Throws.TypeOf<ObjectDisposedException>());
+        }
+        finally { JsonRpcConfigExtension.EndTimeoutInFlow(timeout); }
+    }
+
+    [Test]
+    public async Task High_sender_nonce_lookup_binds_and_finds_an_executed_transaction([Values] bool hex, [Values] bool unused)
+    {
+        const ulong nonce = (ulong)long.MaxValue + 10;
+        using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance, configure: builder => builder
+            .AddScoped<IGenesisPostProcessor, HighNonceGenesis>()
+            .AddSingleton<IJsonRpcConfig>(new JsonRpcConfig { EnabledModules = [ModuleType.Ots] })
+            .AddSingleton<IJsonRpcService, JsonRpcService>());
+        Transaction transaction = ExecutionTransaction(nonce, TestItem.AddressF, [], 0);
+        Block block = await chain.AddBlock(transaction);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.ReceiptStorage.Get(block)[0].StatusCode, Is.EqualTo(1));
+            Assert.That(chain.StateReader.GetNonce(block.Header, TestItem.AddressB), Is.EqualTo(nonce + 1));
+        }
+        ulong requested = unused ? nonce + 1 : nonce;
+        string quantity = hex ? $"\"0x{requested:x}\"" : requested.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        using JsonDocument args = JsonDocument.Parse($"[\"{TestItem.AddressB}\",{quantity}]");
+        using JsonRpcResponse response = await chain.Container.Resolve<IJsonRpcService>().SendRequestAsync(
+            new JsonRpcRequest { JsonRpc = "2.0", Id = 1, Method = "ots_getTransactionBySenderAndNonce", Params = args.RootElement },
+            new JsonRpcContext(RpcEndpoint.Http));
+        using JsonDocument json = Serialize(response);
+        if (!json.RootElement.TryGetProperty("result", out JsonElement result)) Assert.Fail(json.RootElement.ToString());
+        Assert.That(result.GetString(), Is.EqualTo(unused ? null : transaction.Hash!.ToString()));
+    }
+
+    private sealed class HighNonceGenesis(IWorldState state) : IGenesisPostProcessor
+    {
+        public void PostProcess(Block block) => state.SetNonce(TestItem.AddressB, (ulong)long.MaxValue + 10);
     }
 
     [Test]
@@ -255,10 +315,11 @@ public class OtsRpcModuleTests
     }
 
     [Test]
-    public async Task Sender_nonce_lookup_recovers_missing_senders_from_receipts()
+    public async Task Sender_nonce_lookup_recovers_missing_senders_without_receipts()
     {
         using NonceFixture f = await NonceFixture.Create();
-        _ = f.Receipts.Get(f.Blocks[3]);
+        f.Receipts.RemoveReceipts(f.Blocks[3]);
+        f.ReceiptFinder.AfterRead = _ => Assert.Fail("Sender lookup must not read receipts.");
         foreach (Transaction transaction in f.Tree.FindBlock(3)!.Transactions) transaction.SenderAddress = null;
         using ResultWrapper<Hash256?> response = f.Module.ots_getTransactionBySenderAndNonce(TestItem.AddressB, 31);
         using (Assert.EnterMultipleScope())
@@ -293,22 +354,17 @@ public class OtsRpcModuleTests
     }
 
     [Test]
-    public async Task Sender_recovery_requires_consistent_receipts([Values("missing", "index", "number", "hash", "sender")] string failure)
+    public async Task Sender_recovery_requires_a_recoverable_signature([Values] bool missing)
     {
         using NonceFixture f = await NonceFixture.Create();
-        Block block = f.Tree.FindBlock(3)!;
-        _ = f.Receipts.Get(block);
-        if (failure == "missing") f.Receipts.RemoveReceipts(block);
-        f.ReceiptFinder.AfterRead = receipts =>
+        Transaction transaction = f.Tree.FindBlock(3)!.Transactions[1];
+        transaction.SenderAddress = null;
+        transaction.Signature = missing ? null : new Signature(new byte[64], 0);
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            if (failure == "index") receipts[1].Index = 0;
-            if (failure == "number") receipts[1].BlockNumber = 2;
-            if (failure == "hash") receipts[1].TxHash = TestItem.KeccakH;
-            if (failure == "sender") receipts[1].Sender = null!;
-        };
-        foreach (Transaction transaction in block.Transactions) transaction.SenderAddress = null;
-        using ResultWrapper<Hash256?> response = f.Module.ots_getTransactionBySenderAndNonce(TestItem.AddressB, 31);
-        Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            using ResultWrapper<Hash256?> response = f.Module.ots_getTransactionBySenderAndNonce(TestItem.AddressB, 31);
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+        }
     }
 
     [Test]
@@ -316,14 +372,8 @@ public class OtsRpcModuleTests
     {
         using NonceFixture f = await NonceFixture.Create();
         Block sibling = await f.CreateSibling();
-        Block block = f.Tree.FindBlock(3)!;
-        _ = f.Receipts.Get(block);
-        foreach (Transaction transaction in block.Transactions) transaction.SenderAddress = null;
-        f.ReceiptFinder.AfterRead = receipts =>
-        {
-            if (!matchingSender) receipts[1].Sender = TestItem.AddressF;
-            f.Tree.TryUpdateMainChain(sibling.Header, true, true, sibling);
-        };
+        f.PrepareSenderRecovery(matchingSender);
+        f.Ecdsa.AfterRecover = () => f.Tree.TryUpdateMainChain(sibling.Header, true, true, sibling);
         using ResultWrapper<Hash256?> response = f.Module.ots_getTransactionBySenderAndNonce(TestItem.AddressB, 31);
         Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
     }
@@ -332,15 +382,13 @@ public class OtsRpcModuleTests
     public async Task Sender_recovery_cancellation_disposes_the_borrowed_timeout()
     {
         using NonceFixture f = await NonceFixture.Create();
-        Block block = f.Tree.FindBlock(3)!;
-        _ = f.Receipts.Get(block);
-        foreach (Transaction transaction in block.Transactions) transaction.SenderAddress = null;
+        f.PrepareSenderRecovery(true);
         using CancellationTokenSource timeout = new();
         f.RpcConfig.Timeout = Timeout.Infinite;
         JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
         try
         {
-            f.ReceiptFinder.AfterRead = _ => timeout.Cancel();
+            f.Ecdsa.AfterRecover = timeout.Cancel;
             Assert.Throws<OperationCanceledException>(() =>
             {
                 using ResultWrapper<Hash256?> response = f.Module.ots_getTransactionBySenderAndNonce(TestItem.AddressB, 31);
@@ -398,9 +446,7 @@ public class OtsRpcModuleTests
     public async Task Has_code_reads_the_selected_historical_state([Values] bool deployed, [Values] bool historical)
     {
         using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance);
-        Transaction deployment = ExecutionTransaction(0, null, Prepare.EvmCode.ForInitOf([(byte)Instruction.STOP]).Done, 0);
-        Block block = await chain.AddBlock(deployment);
-        Address contract = chain.ReceiptStorage.Get(block)[0].ContractAddress!;
+        (_, _, Address contract) = await DeployCreator(chain);
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using ResultWrapper<bool> response = module.ots_hasCode(deployed ? contract : TestItem.AddressF,
             historical ? new BlockParameter(0ul) : BlockParameter.Latest);
@@ -457,9 +503,7 @@ public class OtsRpcModuleTests
     public async Task Contract_creator_returns_direct_deployer_and_null_for_addresses_without_code([Values] bool contract)
     {
         using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance);
-        Transaction deployment = ExecutionTransaction(0, null, Prepare.EvmCode.ForInitOf([(byte)Instruction.STOP]).Done, 0);
-        Block block = await chain.AddBlock(deployment);
-        Address created = chain.ReceiptStorage.Get(block)[0].ContractAddress!;
+        (Transaction deployment, _, Address created) = await DeployCreator(chain);
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using ResultWrapper<OtsContractCreator?> response = module.ots_getContractCreator(contract ? created : TestItem.AddressF);
         Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success), response.Result.Error);
@@ -545,6 +589,13 @@ public class OtsRpcModuleTests
         int count = 0;
         while (await index.BuildNextAsync(CancellationToken.None))
             Assert.That(++count, Is.LessThanOrEqualTo(chain.BlockTree.Head!.Number));
+    }
+
+    private static async Task<(Transaction Transaction, Block Block, Address Address)> DeployCreator(BasicTestBlockchain chain)
+    {
+        Transaction transaction = CreatorDeployment(0);
+        Block block = await chain.AddBlock(transaction);
+        return (transaction, block, chain.ReceiptStorage.Get(block)[0].ContractAddress!);
     }
 
     private static Transaction CreatorDeployment(ulong nonce) =>
@@ -703,9 +754,7 @@ public class OtsRpcModuleTests
         [Values("root-address", "nested-address", "body", "trace", "duplicate")] string missing)
     {
         using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance);
-        Transaction deployment = ExecutionTransaction(0, null, Prepare.EvmCode.ForInitOf([(byte)Instruction.STOP]).Done, 0);
-        Block block = await chain.AddBlock(deployment);
-        Address created = chain.ReceiptStorage.Get(block)[0].ContractAddress!;
+        (Transaction deployment, Block block, Address created) = await DeployCreator(chain);
         ParityLikeTxTrace trace = ReadExecutionTrace(chain, block);
         if (missing == "root-address")
         {
@@ -738,9 +787,7 @@ public class OtsRpcModuleTests
     public async Task Contract_creator_excludes_creations_under_a_failed_ancestor([Values] bool ancestorReverts)
     {
         using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance);
-        Transaction deployment = ExecutionTransaction(0, null, Prepare.EvmCode.ForInitOf([(byte)Instruction.STOP]).Done, 0);
-        Block deploymentBlock = await chain.AddBlock(deployment);
-        Address created = chain.ReceiptStorage.Get(deploymentBlock)[0].ContractAddress!;
+        (Transaction deployment, _, Address created) = await DeployCreator(chain);
         Transaction later = ExecutionTransaction(1, TestItem.AddressF, [], 0);
         Block laterBlock = await chain.AddBlock(later);
         ParityLikeTxTrace trace = ReadExecutionTrace(chain, laterBlock);
@@ -765,9 +812,7 @@ public class OtsRpcModuleTests
     public async Task Creator_scan_honors_reorgs_and_cancellation([Values] bool cancel)
     {
         using BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance, recordReads: true);
-        Transaction deployment = ExecutionTransaction(0, null, Prepare.EvmCode.ForInitOf([(byte)Instruction.STOP]).Done, 0);
-        Block block = await chain.AddBlock(deployment);
-        Address created = chain.ReceiptStorage.Get(block)[0].ContractAddress!;
+        (_, Block block, Address created) = await DeployCreator(chain);
         RecordingSerializer serializer = (RecordingSerializer)chain.Container.Resolve<ITraceSerializer<ParityLikeTxTrace>>();
         IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using CancellationTokenSource timeout = new();
@@ -1408,9 +1453,12 @@ public class OtsRpcModuleTests
             Assert.That(operations.Result.ResultType, Is.EqualTo(ResultType.Success), operations.Result.Error);
             Assert.That(error.Result.ResultType, Is.EqualTo(ResultType.Success), error.Result.Error);
         }
+        Assert.That(operations.Data, Has.Count.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(operations.Data.Select(o => (o.Type, o.To, o.Value)), Is.EqualTo(new[] { (0, TestItem.AddressD, UInt256.One) }));
+            Assert.That(operations.Data[0].Type, Is.Zero);
+            Assert.That(operations.Data[0].To, Is.EqualTo(TestItem.AddressD));
+            Assert.That(operations.Data[0].Value, Is.EqualTo(UInt256.One));
             Assert.That(error.Data, Is.Empty);
             Assert.That(history.Data.Txs.Select(t => t.Hash), Is.EqualTo(new[] { tx.Hash }));
             Assert.That(history.Data.Receipts[0].Status, Is.EqualTo(revert ? 0 : 1));
@@ -1872,12 +1920,14 @@ public class OtsRpcModuleTests
 
     private sealed class NonceFixture(BasicTestBlockchain chain) : IDisposable
     {
+        private static int _recoveryPayload;
         public ILifetimeScope Container => chain.Container;
         public IBlockTree Tree => chain.BlockTree;
         public IReceiptStorage Receipts => chain.ReceiptStorage;
         public IJsonRpcConfig RpcConfig => Container.Resolve<IJsonRpcConfig>();
         public RecordingReceiptFinder ReceiptFinder => (RecordingReceiptFinder)Container.Resolve<IReceiptFinder>();
         public RecordingStateReader StateReader => (RecordingStateReader)Container.Resolve<IStateReader>();
+        public RecordingEcdsa Ecdsa => (RecordingEcdsa)Container.Resolve<IEthereumEcdsa>();
         public RecordingSerializer Serializer => (RecordingSerializer)Container.Resolve<ITraceSerializer<ParityLikeTxTrace>>();
         public IOtsRpcModule Module { get; } = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         public List<Block> Blocks { get; } = [chain.BlockTree.Head!];
@@ -1886,9 +1936,11 @@ public class OtsRpcModuleTests
         {
             RecordingReceiptFinder? receipts = null;
             RecordingStateReader? state = null;
+            RecordingEcdsa? ecdsa = null;
             BasicTestBlockchain chain = await CreateExecutionChain(Shanghai.Instance, recordReads: true, configure: builder => builder
                 .AddDecorator<IReceiptFinder>((_, inner) => receipts ??= new RecordingReceiptFinder(inner))
-                .AddDecorator<IStateReader>((_, inner) => state ??= new RecordingStateReader(inner)));
+                .AddDecorator<IStateReader>((_, inner) => state ??= new RecordingStateReader(inner))
+                .AddDecorator<IEthereumEcdsa>((_, inner) => ecdsa ??= new RecordingEcdsa(inner)));
             NonceFixture fixture = new(chain);
             try
             {
@@ -1904,9 +1956,33 @@ public class OtsRpcModuleTests
             catch { fixture.Dispose(); throw; }
         }
 
+        public void PrepareSenderRecovery(bool matchingSender)
+        {
+            Transaction transaction = Build.A.Transaction.WithNonce(31).WithTo(TestItem.AddressF)
+                .WithData(BitConverter.GetBytes(Interlocked.Increment(ref _recoveryPayload)))
+                .SignedAndResolved(Ecdsa, matchingSender ? TestItem.PrivateKeyB : TestItem.PrivateKeyF).TestObject;
+            transaction.SenderAddress = null;
+            Tree.FindBlock(3)!.Transactions[1] = transaction;
+        }
+
         public Task<Block> CreateSibling() => chain.AddBlockFromParent(Blocks[2].Header);
 
         public void Dispose() => chain.Dispose();
+    }
+
+    private sealed class RecordingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
+    {
+        public Action? AfterRecover { get; set; }
+        public ulong ChainId => inner.ChainId;
+        public Signature Sign(PrivateKey key, in ValueHash256 message) => inner.Sign(key, in message);
+        public Address? RecoverAddress(Signature signature, in ValueHash256 message)
+        {
+            Address? address = inner.RecoverAddress(signature, in message);
+            AfterRecover?.Invoke();
+            return address;
+        }
+        public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverPublicKey(signature, in message);
+        public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) => inner.RecoverCompressedPublicKey(signature, in message);
     }
 
     private sealed class RecordingStateReader(IStateReader inner) : IStateReader

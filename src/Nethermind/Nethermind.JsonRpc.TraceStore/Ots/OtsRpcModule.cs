@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
@@ -29,6 +30,7 @@ public sealed partial class OtsRpcModule(
     IReceiptFinder receiptFinder,
     ISpecProvider specProvider,
     IStateReader stateReader,
+    IEthereumEcdsa ethereumEcdsa,
     ITraceStoreConfig traceStoreConfig,
     IJsonRpcConfig rpcConfig,
     TraceAddressIndex? addressIndex = null) : IOtsRpcModule

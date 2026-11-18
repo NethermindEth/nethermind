@@ -5,6 +5,8 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc.TraceStore.Ots;
@@ -207,7 +209,6 @@ public sealed partial class OtsRpcModule
     private string? FindSenderTransactionInBlock(Block block, Address sender, ulong nonce, CancellationToken ct, out Transaction? match)
     {
         match = null;
-        TxReceipt[]? receipts = null;
         for (int index = 0; index < block.Transactions.Length; index++)
         {
             ct.ThrowIfCancellationRequested();
@@ -216,13 +217,9 @@ public sealed partial class OtsRpcModule
             Address? recoveredSender = transaction.SenderAddress;
             if (recoveredSender is null)
             {
-                if (receipts is null)
-                {
-                    receipts = receiptFinder.Get(block);
-                    if (ValidateReceipts(block, receipts, ct) is { } error) return error;
-                }
-                recoveredSender = receipts[index].Sender;
-                if (recoveredSender is null) return "Transaction sender is unavailable.";
+                bool recovered = ethereumEcdsa.TryRecoverAddress(transaction, out recoveredSender, !specProvider.GetSpec(block.Header).ValidateChainId);
+                ct.ThrowIfCancellationRequested();
+                if (!recovered) return "Transaction sender is unavailable.";
             }
             if (recoveredSender != sender) continue;
             match = transaction;

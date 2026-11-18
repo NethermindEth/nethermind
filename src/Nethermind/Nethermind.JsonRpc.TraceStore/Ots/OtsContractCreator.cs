@@ -9,6 +9,8 @@ namespace Nethermind.JsonRpc.TraceStore.Ots;
 /// <summary>The creation transaction and immediate creator of a deployed contract.</summary>
 public sealed class OtsContractCreator
 {
+    /// <summary>The hash of the transaction that created the contract.</summary>
     public required Hash256 Hash { get; init; }
+    /// <summary>The immediate creator, which may be a factory contract.</summary>
     public required Address Creator { get; init; }
 }
