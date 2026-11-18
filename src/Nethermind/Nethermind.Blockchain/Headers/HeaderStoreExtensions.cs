@@ -11,18 +11,22 @@ namespace Nethermind.Blockchain.Headers;
 public static class HeaderStoreExtensions
 {
     /// <summary>Puts the number and hash of each known block of <paramref name="count"/> hashes from <paramref name="start"/> in <paramref name="blocks"/>, in order.</summary>
-    /// <remarks>Looks up the block numbers in one batch.</remarks>
+    /// <remarks>Looks up the block numbers in one batch. A null hash, which an engine API request can hold, is not known.</remarks>
     /// <returns>The number of known blocks.</returns>
-    public static int GetKnownBlocks(this IHeaderStore headerStore, IReadOnlyList<Hash256> hashes, int start, int count, Span<(ulong Number, ValueHash256 Hash)> blocks)
+    public static int GetKnownBlocks(this IHeaderStore headerStore, IReadOnlyList<Hash256?> hashes, int start, int count, Span<(ulong Number, ValueHash256 Hash)> blocks)
     {
         using ArrayPoolSpan<ValueHash256> blockHashes = new(count);
-        for (int i = 0; i < count; i++) blockHashes[i] = hashes[start + i].ValueHash256;
+        int requested = 0;
+        for (int i = 0; i < count; i++)
+        {
+            if (hashes[start + i] is { } hash) blockHashes[requested++] = hash.ValueHash256;
+        }
 
-        using ArrayPoolSpan<ulong?> numbers = new(count);
-        headerStore.GetBlockNumbers(blockHashes, numbers);
+        using ArrayPoolSpan<ulong?> numbers = new(requested);
+        headerStore.GetBlockNumbers(blockHashes.Slice(0, requested), numbers);
 
         int known = 0;
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < requested; i++)
         {
             if (numbers[i] is { } number) blocks[known++] = (number, blockHashes[i]);
         }

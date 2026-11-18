@@ -656,6 +656,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV2Result?>> response = await chain.EngineRpcModule.engine_getPayloadBodiesByHashV2([
             blockHashes.ElementAt(1),
+            null!,
             blockHashes.ElementAt(2),
             Hash256.Zero
         ]);
@@ -663,8 +664,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Success));
-            Assert.That(response.Data.Count, Is.EqualTo(3));
-            Assert.That(response.Data.ElementAt(2), Is.Null);
+            Assert.That(response.Data.Select(static body => body is null), Is.EqualTo(new[] { false, true, false, true }));
         }
     }
 

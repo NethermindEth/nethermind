@@ -340,11 +340,11 @@ public partial class EngineModuleTests
         chain.AddTransactions(txs);
 
         ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        Hash256[] blockHashes = [executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash];
+        Hash256[] blockHashes = [executionPayload1.BlockHash, TestItem.KeccakA, null!, executionPayload2.BlockHash];
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV1(blockHashes).Data;
         ExecutionPayloadBodyV1Result?[] expected = {
-            new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
+            new(Array.Empty<Transaction>(), withdrawals), null, null, new(txs, withdrawals)
         };
 
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));

@@ -1089,7 +1089,7 @@ public class BlockTreeTests
         BlockHeader third = tree.FindHeader(3UL, BlockTreeLookupOptions.RequireCanonical)!;
         BlockHeader first = tree.FindHeader(1UL, BlockTreeLookupOptions.RequireCanonical)!;
 
-        tree.PrefetchHeaders([third.Hash!, TestItem.KeccakA, first.Hash!]);
+        tree.PrefetchHeaders([third.Hash!, TestItem.KeccakA, null!, first.Hash!]);
 
         byte[][] keys = [.. new[] { third, first }.Select(static h => Bytes.Concat(h.Number.ToBigEndianByteArray(), h.Hash!.BytesToArray()))];
         Assert.That(headersDb.Prefetches, Is.EqualTo(new[] { keys }));
