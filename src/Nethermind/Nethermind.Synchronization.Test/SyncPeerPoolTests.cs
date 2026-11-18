@@ -596,18 +596,68 @@ public class SyncPeerPoolTests
         }
     }
 
-    [Test]
-    public async Task Will_remove_peer_if_times_out_on_init()
+    private static IEnumerable<TestCaseData> RefreshFailures()
+    {
+        yield return new TestCaseData(new TimeoutException(), false).SetArgDisplayNames("timeout");
+        yield return new TestCaseData(new AggregateException(new TimeoutException()), false).SetArgDisplayNames("faulted with timeout");
+        yield return new TestCaseData(new AggregateException(new TaskCanceledException()), false).SetArgDisplayNames("faulted with cancellation");
+        yield return new TestCaseData(new AggregateException(new AggregateException(new TimeoutException())), false).SetArgDisplayNames("nested timeout");
+        yield return new TestCaseData(null, true).SetArgDisplayNames("no exception");
+        yield return new TestCaseData(new AggregateException(new InvalidOperationException()), true).SetArgDisplayNames("faulted with other");
+        yield return new TestCaseData(new AggregateException(new TimeoutException(), new InvalidOperationException()), true).SetArgDisplayNames("timeout and other");
+        yield return new TestCaseData(new Exception("wrapper", new TimeoutException()), true).SetArgDisplayNames("timeout wrapped by a non-aggregate");
+    }
+
+    [TestCaseSource(nameof(RefreshFailures))]
+    public async Task Disconnects_on_refresh_failure_unless_it_is_a_timeout_or_cancellation(Exception? failure, bool shouldDisconnect)
     {
         await using Context ctx = new();
         SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
+
+        ctx.Pool.ReportRefreshFailed(peer, "test", failure);
+
+        Assert.That(peer.DisconnectRequested, Is.EqualTo(shouldDisconnect));
+    }
+
+    [Test]
+    public async Task Puts_to_sleep_a_peer_whose_head_requests_keep_timing_out()
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        PeerInfo peerInfo = ctx.Pool.InitializedPeers.Single();
+
+        for (int i = 0; i < PeerInfo.SleepThreshold; i++)
+        {
+            ctx.Pool.ReportRefreshFailed(peers[0], "faulted", new AggregateException(new TimeoutException()));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peers[0].DisconnectRequested, Is.False);
+            Assert.That(peerInfo.SleepingContexts, Is.EqualTo(AllocationContexts.All));
+        }
+    }
+
+    [Test]
+    public async Task Keeps_peer_whose_head_request_times_out_on_init()
+    {
+        await using Context ctx = new();
+        Task refreshFinished = WhenRefreshFinishes(ctx);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { HeadHash = TestItem.KeccakA };
+        // Makes the head request fault with a TimeoutException.
         peer.SetHeaderResponseTime(int.MaxValue);
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        // The refresh goes through several thread-pool hops, as in It_is_fine_to_fail_init.
-        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
-        Assert.That(peer.DisconnectRequested, Is.True);
+        await refreshFinished.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.DisconnectRequested, Is.False);
+            Assert.That(peer.IsInitialized, Is.False);
+            Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
+        }
+        ctx.Stats.Received(1).ReportSyncEvent(peer.Node, NodeStatsEventType.SyncInitFailed);
     }
 
     [Test]
@@ -1007,6 +1057,21 @@ public class SyncPeerPoolTests
 
         await WaitForPeersInitialization(ctx);
         return peers;
+    }
+
+    /// <summary>
+    /// Completes when a refresh continuation has run to its end. After the outcome is reported and the
+    /// cancellation source unregistered, the pool offers its best block to a peer with the same total
+    /// difficulty, also after a failed refresh.
+    /// </summary>
+    private static Task WhenRefreshFinishes(Context ctx)
+    {
+        Block best = Build.A.Block.WithTotalDifficulty(1L).TestObject; // SimpleSyncPeerMock.TotalDifficulty is 1
+        ctx.BlockTree.BestSuggestedHeader.Returns(best.Header);
+        ctx.BlockTree.FindBlock(best.Hash!, BlockTreeLookupOptions.None).Returns(best);
+        TaskCompletionSource finished = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ctx.Pool.NotifyPeerBlock += (_, _) => finished.TrySetResult();
+        return finished.Task;
     }
 
     private async Task WaitForPeersInitialization(Context ctx)
