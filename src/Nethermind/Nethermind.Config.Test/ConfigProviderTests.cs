@@ -50,6 +50,7 @@ namespace Nethermind.Config.Test
         [TestCase(typeof(string[]), "a,", new[] { "a", "" })]
         [TestCase(typeof(string[]), """[""]""", new[] { "" })]
         [TestCase(typeof(string[]), "\"", new[] { "\"" })]
+        [TestCase(typeof(string[]), "\"\",a", new[] { "", "a" })]
         public void ParseValue_parses_arrays(Type type, string valueString, IEnumerable expected) =>
             Assert.That(ConfigSourceHelper.ParseValue(type, valueString, "Category", "Name"), Is.EqualTo(expected).AsCollection);
 
