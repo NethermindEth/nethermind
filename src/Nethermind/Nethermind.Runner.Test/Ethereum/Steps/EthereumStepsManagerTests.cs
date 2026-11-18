@@ -315,6 +315,42 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 Throws.TypeOf<StepDependencyException>().With.Message.EqualTo("Steps depend on each other in a cycle: CycleStepA, CycleStepB."));
         }
 
+        // The cycle check runs on the graph that will execute: after target pruning and after skipped steps are cleared.
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Target_outside_a_dependency_cycle_runs(CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(StepA), command: null, [typeof(StepA), typeof(CycleStepA), typeof(CycleStepB)]);
+
+            await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            Assert.That(container.Resolve<StepA>().WasExecuted, Is.True);
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Dependency_cycle_broken_by_a_skipped_step_runs(CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(typeof(CycleStepA), typeof(CycleStepB));
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeThrough(typeof(CycleStepA), cancellationToken, typeof(CycleStepB)),
+                Throws.Nothing);
+        }
+
+        [Test]
+        public async Task Dependency_cycle_behind_a_target_fails_the_run([Values] bool through)
+        {
+            await using IContainer container = through
+                ? CreateNethermindEnvironment(typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle))
+                : CreateNethermindEnvironment(typeof(StepAfterCycle), command: null, [typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle)]);
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
+            EthereumStepsManager manager = container.Resolve<EthereumStepsManager>();
+
+            Assert.That(async () => await (through ? manager.InitializeThrough(typeof(StepAfterCycle), source.Token) : manager.InitializeAll(source.Token)),
+                Throws.TypeOf<StepDependencyException>().With.Message.EqualTo("Steps depend on each other in a cycle: CycleStepA, CycleStepB."));
+        }
+
         [Test]
         public async Task With_constructor_without_nethermind_api()
         {
