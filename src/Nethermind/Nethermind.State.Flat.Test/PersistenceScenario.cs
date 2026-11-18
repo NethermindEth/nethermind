@@ -123,10 +123,12 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
     }
 
     [Test]
-    public void TestCanWriteAccount()
+    public void TestCanWriteAccount([Values] bool asSlimRlp)
     {
         Account acc = TestItem.GenerateIndexedAccount(0);
         Address address = TestItem.AddressA;
+        Account contract = new(1, 2, TestItem.KeccakA, TestItem.KeccakB);
+        Address contractAddress = TestItem.AddressB;
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
         {
@@ -135,12 +137,23 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
 
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetAccount(address, acc);
+            if (asSlimRlp)
+            {
+                writer.SetSlimAccount(address, AccountDecoder.Slim.Encode(acc));
+                writer.SetSlimAccount(contractAddress, AccountDecoder.Slim.Encode(contract));
+            }
+            else
+            {
+                writer.SetAccount(address, acc);
+                writer.SetAccount(contractAddress, contract);
+            }
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.GetAccount(address), Is.EqualTo(acc));
+            Assert.That(reader.GetAccount(contractAddress), Is.EqualTo(contract));
         }
     }
 
@@ -349,7 +362,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Test raw account operations
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetAccountRaw(addrHash, acc);
+            writer.SetAccountRaw(addrHash, acc.ToStruct());
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Core.Buffers;
@@ -16,7 +17,7 @@ public class TransactionTests
     [Test]
     public void Wrapper_equality_ignores_pool_ownership()
     {
-        ShardBlobNetworkWrapper wrapper = new([[1]], [[2]], [[3]], ProofVersion.V0);
+        ShardBlobNetworkWrapper wrapper = new([[1]], [[2]], [3], ProofVersion.V0);
         ShardBlobNetworkWrapper pooled = wrapper with { PooledBuffers = new(wrapper.Blobs) };
         using (Assert.EnterMultipleScope())
         {
@@ -27,7 +28,7 @@ public class TransactionTests
             Assert.That(pooled == wrapper, Is.True);
             Assert.That(pooled.Equals(wrapper with { Blobs = [[1]] }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Commitments = [[2]] }), Is.False);
-            Assert.That(pooled.Equals(wrapper with { Proofs = [[3]] }), Is.False);
+            Assert.That(pooled.Equals(wrapper with { Proofs = [3] }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Version = ProofVersion.V1 }), Is.False);
             Assert.That(pooled.Equals(wrapper with { CellMask = BlobCellMask.Full }), Is.False);
             Assert.That(pooled.Equals(wrapper with { Cells = [[4]] }), Is.False);
@@ -97,12 +98,12 @@ public class TransactionTests
     public void ShardBlobNetworkWrapper_should_preserve_legacy_constructor_and_deconstructor()
     {
         Type wrapperType = typeof(ShardBlobNetworkWrapper);
-        Type[] constructorParameters = [typeof(byte[][]), typeof(byte[][]), typeof(byte[][]), typeof(ProofVersion)];
+        Type[] constructorParameters = [typeof(byte[][]), typeof(byte[][]), typeof(byte[]), typeof(ProofVersion)];
         Type[] deconstructorParameters =
         [
             typeof(byte[][]).MakeByRefType(),
             typeof(byte[][]).MakeByRefType(),
-            typeof(byte[][]).MakeByRefType(),
+            typeof(byte[]).MakeByRefType(),
             typeof(ProofVersion).MakeByRefType(),
         ];
 
@@ -257,6 +258,21 @@ public class TransactionTests
             Assert.That(copy.Hash, Is.EqualTo(Keccak.Compute(encoded)));
             Assert.That(source.Hash, Is.EqualTo(copy.Hash));
             Assert.That(source.Nonce, Is.EqualTo(5UL));
+        }
+    }
+
+    [Test]
+    public void TryJoinProofs_joins_only_proofs_of_48_bytes([Values(null, 0, 47, 48, 49)] int? lastProofLength)
+    {
+        byte[] first = Enumerable.Repeat((byte)1, ShardBlobNetworkWrapper.BytesPerProof).ToArray();
+        byte[]? last = lastProofLength is { } length ? Enumerable.Repeat((byte)2, length).ToArray() : null;
+
+        bool joined = ShardBlobNetworkWrapper.TryJoinProofs([first, last], out byte[]? proofs);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(joined, Is.EqualTo(lastProofLength == ShardBlobNetworkWrapper.BytesPerProof));
+            Assert.That(proofs, Is.EqualTo(joined ? first.Concat(last!).ToArray() : null));
         }
     }
 }

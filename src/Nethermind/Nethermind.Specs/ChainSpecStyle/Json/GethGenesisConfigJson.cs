@@ -58,10 +58,16 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? CancunTime { get => GetTime(); set => SetTime(value); }
     public ulong? PragueTime { get => GetTime(); set => SetTime(value); }
     public ulong? OsakaTime { get => GetTime(); set => SetTime(value); }
+    // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
+    public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo2Time { get => GetTime(); set => SetTime(value); }
     public ulong? AmsterdamTime { get => GetTime(); set => SetTime(value); }
     // Devnet fork on top of Amsterdam. The genesis generator emits this as bogotaTime; the fork
     // class is Bogota.
     public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo3Time { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo4Time { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo5Time { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
@@ -74,13 +80,6 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Eip4758PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for the bogota-devnet-2 EIP set, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
     public ulong? BogotaDevnet2Time { get => GetTime(); set => SetTime(value); }
-
-    // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
-    public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo2Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo3Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo4Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo5Time { get => GetTime(); set => SetTime(value); }
 
     public UInt256? TerminalTotalDifficulty { get; set; }
     public bool? TerminalTotalDifficultyPassed { get; set; }

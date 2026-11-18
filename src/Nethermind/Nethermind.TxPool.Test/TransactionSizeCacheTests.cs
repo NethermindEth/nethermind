@@ -19,8 +19,7 @@ public class TransactionSizeCacheTests
         ShardBlobNetworkWrapper original = mempoolTx.NetworkWrapper!;
         int sizeBeforeTranslation = mempoolTx.GetLength();
 
-        byte[][] moreProofs = new byte[original.Proofs.Length + 4][];
-        for (int i = 0; i < moreProofs.Length; i++) moreProofs[i] = new byte[48];
+        byte[] moreProofs = new byte[original.Proofs.Length + 4 * ShardBlobNetworkWrapper.BytesPerProof];
         MempoolTransaction translated = mempoolTx with { NetworkWrapper = new ShardBlobNetworkWrapper(original.Blobs, original.Commitments, moreProofs, ProofVersion.V1) };
 
         Assert.That(translated.GetLength(), Is.Not.EqualTo(sizeBeforeTranslation));

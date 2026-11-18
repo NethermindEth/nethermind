@@ -17,93 +17,136 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private readonly ConcurrentDictionary<string, Subscription> _subscriptions =
             new();
-        private readonly ConcurrentDictionary<string, HashSet<Subscription>> _subscriptionsByJsonRpcClient =
+        private readonly ConcurrentDictionary<string, ClientSubscriptions> _subscriptionsByJsonRpcClient =
             new();
 
-        private readonly Lock _admissionLock = new();
+        private int _subscriptionCount;
 
         public string AddSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionType, string? args = null)
         {
-            lock (_admissionLock)
+            Subscription? subscription = null;
+            try
             {
-                ThrowIfLimitReached(jsonRpcDuplexClient);
-                Subscription subscription = _subscriptionFactory.CreateSubscription(jsonRpcDuplexClient, subscriptionType, args);
-                AddToDictionary(subscription);
-                AddOrUpdateClientsBag(subscription);
-
+                subscription = Admit(jsonRpcDuplexClient, subscriptionType, args, out ClientSubscriptions clientSubscriptions);
+                Register(jsonRpcDuplexClient, clientSubscriptions, subscription);
                 return subscription.Id;
+            }
+            finally
+            {
+                // Closed is raised once, after the client is marked closed, so a subscription registered after it would
+                // never be disposed. Checking the flag after hooking means either the handler runs or this sees it closed.
+                if (jsonRpcDuplexClient.IsClosed) RemoveSubscriptionsOfClosedClient(jsonRpcDuplexClient, subscription);
             }
         }
 
-        private void ThrowIfLimitReached(IJsonRpcDuplexClient client)
+        private Subscription Admit(IJsonRpcDuplexClient client, string subscriptionType, string? args, out ClientSubscriptions clientSubscriptions)
+        {
+            clientSubscriptions = GetOrCreateClientSubscriptions(client);
+            clientSubscriptions.ReserveSlot(jsonRpcConfig.MaxSubscriptionsPerConnection);
+            try
+            {
+                ReserveNodeSlot(client);
+            }
+            catch
+            {
+                clientSubscriptions.ReleaseSlot();
+                throw;
+            }
+
+            try
+            {
+                return _subscriptionFactory.CreateSubscription(client, subscriptionType, args);
+            }
+            catch
+            {
+                clientSubscriptions.ReleaseSlot();
+                Interlocked.Decrement(ref _subscriptionCount);
+                throw;
+            }
+        }
+
+        private void ReserveNodeSlot(IJsonRpcDuplexClient client)
         {
             int maxSubscriptions = jsonRpcConfig.MaxSubscriptions;
-            if (maxSubscriptions > 0 && !client.IsAuthenticated && _subscriptions.Count >= maxSubscriptions)
+            if (client.IsAuthenticated)
+            {
+                Interlocked.Increment(ref _subscriptionCount);
+            }
+            else if (!TryReserve(ref _subscriptionCount, maxSubscriptions))
             {
                 throw new LimitExceededException($"Too many subscriptions. The node limit is {maxSubscriptions}.");
             }
+        }
 
-            int maxPerConnection = jsonRpcConfig.MaxSubscriptionsPerConnection;
-            if (maxPerConnection > 0 && _subscriptionsByJsonRpcClient.TryGetValue(client.Id, out HashSet<Subscription>? bag))
+        private static bool TryReserve(ref int count, int limit)
+        {
+            if (limit <= 0)
             {
-                int count;
-                lock (bag)
-                {
-                    count = bag.Count;
-                }
+                Interlocked.Increment(ref count);
+                return true;
+            }
 
-                if (count >= maxPerConnection)
-                {
-                    throw new LimitExceededException($"Too many subscriptions. The connection limit is {maxPerConnection}.");
-                }
+            while (true)
+            {
+                int current = Volatile.Read(ref count);
+                if (current >= limit) return false;
+                if (Interlocked.CompareExchange(ref count, current + 1, current) == current) return true;
             }
         }
 
-        private void AddToDictionary(Subscription subscription)
+        private void Register(IJsonRpcDuplexClient client, ClientSubscriptions clientSubscriptions, Subscription subscription)
         {
-            if (_subscriptions.TryAdd(subscription.Id, subscription))
+            clientSubscriptions.Subscriptions[subscription.Id] = subscription;
+            if (!_subscriptions.TryAdd(subscription.Id, subscription))
             {
-                if (_logger.IsTrace) _logger.Trace("Added subscription to dictionary _subscriptions.");
-            }
-            else if (_logger.IsDebug) _logger.Debug($"Failed trying to add subscription {subscription.Id} to dictionary _subscriptions.");
-        }
-
-        private void AddOrUpdateClientsBag(Subscription subscription)
-        {
-            IJsonRpcDuplexClient client = subscription.JsonRpcDuplexClient;
-            JoinOrCreateClientsBag(subscription, client);
-
-            // Closed is raised once, after the client is marked closed, so a subscription registered after it would
-            // never be disposed. Checking the flag after hooking means either the handler runs or this sees it closed.
-            if (client.IsClosed) RemoveSubscriptionsOfClosedClient(client, subscription);
-        }
-
-        private void JoinOrCreateClientsBag(Subscription subscription, IJsonRpcDuplexClient client)
-        {
-            // A connection processes its requests concurrently, so its first two subscriptions can race to create the
-            // bag: only the caller whose bag was stored hooks Closed, and the other joins the stored bag.
-            HashSet<Subscription> created = [subscription];
-            HashSet<Subscription> bag = _subscriptionsByJsonRpcClient.GetOrAdd(client.Id, created);
-            if (ReferenceEquals(bag, created))
-            {
-                client.Closed += OnJsonRpcDuplexClientClosed;
-                if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
+                clientSubscriptions.TryRemove(subscription);
+                Interlocked.Decrement(ref _subscriptionCount);
+                subscription.Dispose();
+                if (_logger.IsDebug) _logger.Debug($"Failed trying to add subscription {subscription.Id} to dictionary _subscriptions.");
                 return;
             }
 
-            lock (bag)
+            if (!IsRegistered(client, clientSubscriptions))
             {
-                bag.Add(subscription);
+                if (TryRemoveFromDictionary(subscription.Id, out _)) subscription.Dispose();
+                return;
             }
-            if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} added to client's subscriptions bag.");
+
+            if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} added to client's subscriptions.");
         }
 
-        private void RemoveSubscriptionsOfClosedClient(IJsonRpcDuplexClient client, Subscription subscription)
+        private bool IsRegistered(IJsonRpcDuplexClient client, ClientSubscriptions clientSubscriptions) =>
+            _subscriptionsByJsonRpcClient.TryGetValue(client.Id, out ClientSubscriptions? current) && ReferenceEquals(current, clientSubscriptions);
+
+        private ClientSubscriptions GetOrCreateClientSubscriptions(IJsonRpcDuplexClient client)
+        {
+            if (_subscriptionsByJsonRpcClient.TryGetValue(client.Id, out ClientSubscriptions? existing)) return existing;
+
+            // A connection processes its requests concurrently, so its first two subscriptions can race to create the
+            // client's entry: only the caller whose entry was stored hooks Closed, and the other joins the stored entry.
+            ClientSubscriptions created = new();
+            ClientSubscriptions clientSubscriptions = _subscriptionsByJsonRpcClient.GetOrAdd(client.Id, created);
+            if (ReferenceEquals(clientSubscriptions, created))
+            {
+                client.Closed += OnJsonRpcDuplexClientClosed;
+                if (_logger.IsTrace) _logger.Trace($"Created subscriptions of client {client.Id}.");
+            }
+
+            return clientSubscriptions;
+        }
+
+        private bool TryRemoveFromDictionary(string subscriptionId, out Subscription? subscription)
+        {
+            if (!_subscriptions.TryRemove(subscriptionId, out subscription)) return false;
+            Interlocked.Decrement(ref _subscriptionCount);
+            return true;
+        }
+
+        private void RemoveSubscriptionsOfClosedClient(IJsonRpcDuplexClient client, Subscription? subscription)
         {
             client.Closed -= OnJsonRpcDuplexClientClosed;
             RemoveClientSubscriptions(client);
-            // The bag this joined may already have been removed and disposed by the Closed handler.
-            if (_subscriptions.TryRemove(subscription.Id, out _)) subscription.Dispose();
+            if (subscription is not null && TryRemoveFromDictionary(subscription.Id, out _)) subscription.Dispose();
         }
 
         private void OnJsonRpcDuplexClientClosed(object? sender, EventArgs e)
@@ -115,74 +158,90 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         public bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId)
         {
-            if (_subscriptions.TryGetValue(subscriptionId, out Subscription subscription)
+            if (_subscriptions.TryGetValue(subscriptionId, out Subscription? subscription)
                 && subscription is not null
                 && subscription.JsonRpcDuplexClient.Id == jsonRpcDuplexClient.Id)
             {
-                subscription.Dispose();
-                RemoveFromClientsBag(subscription);
-                RemoveFromDictionary(subscriptionId);
+                RemoveFromClient(subscription);
+                RemoveFromDictionary(subscription);
                 return true;
             }
             if (_logger.IsDebug) _logger.Debug($"Failed trying to unsubscribe {subscriptionId}.");
             return false;
         }
 
-        private void RemoveFromClientsBag(Subscription subscription)
+        private void RemoveFromClient(Subscription subscription)
         {
-            if (!_subscriptionsByJsonRpcClient.TryGetValue(subscription.JsonRpcDuplexClient.Id, out HashSet<Subscription> clientsSubscriptionsBag))
+            if (!_subscriptionsByJsonRpcClient.TryGetValue(subscription.JsonRpcDuplexClient.Id, out ClientSubscriptions? clientSubscriptions))
             {
-                if (_logger.IsDebug) _logger.Debug($"Failed trying to find subscription {subscription.Id} in subscriptions bag of client {subscription.JsonRpcDuplexClient.Id}.");
+                if (_logger.IsDebug) _logger.Debug($"Failed trying to find subscription {subscription.Id} in subscriptions of client {subscription.JsonRpcDuplexClient.Id}.");
                 return;
             }
 
-            bool removed;
-            lock (clientsSubscriptionsBag)
+            if (!clientSubscriptions.TryRemove(subscription))
             {
-                removed = clientsSubscriptionsBag.Remove(subscription);
+                if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscription.Id} from client's subscriptions.");
             }
-
-            if (!removed)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscription.Id} from client's subscriptions bag.");
-            }
-            else if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from client's subscriptions bag.");
+            else if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from client's subscriptions.");
         }
 
-        private void RemoveFromDictionary(string subscriptionId)
+        private void RemoveFromDictionary(Subscription subscription)
         {
-            if (_subscriptions.TryRemove(subscriptionId, out _))
+            if (TryRemoveFromDictionary(subscription.Id, out _))
             {
-                if (_logger.IsTrace) _logger.Trace($"Subscription {subscriptionId} removed from dictionary _subscriptions.");
+                subscription.Dispose();
+                if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from dictionary _subscriptions.");
             }
-            else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionId} from dictionary _subscriptions.");
+            else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscription.Id} from dictionary _subscriptions.");
         }
 
         public void RemoveClientSubscriptions(IJsonRpcDuplexClient jsonRpcDuplexClient)
         {
             string clientId = jsonRpcDuplexClient.Id;
-            if (_subscriptionsByJsonRpcClient.TryRemove(clientId, out HashSet<Subscription> subscriptionsBag))
+            if (_subscriptionsByJsonRpcClient.TryRemove(clientId, out ClientSubscriptions? clientSubscriptions))
             {
-                DisposeAndRemoveFromDictionary(subscriptionsBag);
+                DisposeAndRemoveFromDictionary(clientSubscriptions);
                 if (_logger.IsTrace) _logger.Trace($"Client {clientId} removed from dictionary _subscriptionsByJsonRpcClient.");
             }
             else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove client {clientId} from dictionary _subscriptionsByJsonRpcClient.");
         }
 
-        private void DisposeAndRemoveFromDictionary(HashSet<Subscription> subscriptionsBag)
+        private void DisposeAndRemoveFromDictionary(ClientSubscriptions clientSubscriptions)
         {
-            lock (subscriptionsBag)
+            foreach (KeyValuePair<string, Subscription> entry in clientSubscriptions.Subscriptions)
             {
-                foreach (Subscription subscriptionInBag in subscriptionsBag)
+                string subscriptionId = entry.Key;
+                if (TryRemoveFromDictionary(subscriptionId, out Subscription? subscription)
+                    && subscription is not null)
                 {
-                    if (_subscriptions.TryRemove(subscriptionInBag.Id, out Subscription subscription)
-                       && subscription is not null)
-                    {
-                        subscription.Dispose();
-                        if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from dictionary _subscriptions.");
-                    }
-                    else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionInBag.Id} from dictionary _subscriptions.");
+                    subscription.Dispose();
+                    if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} removed from dictionary _subscriptions.");
                 }
+                else if (_logger.IsDebug) _logger.Debug($"Failed trying to remove subscription {subscriptionId} from dictionary _subscriptions.");
+            }
+        }
+
+        private sealed class ClientSubscriptions
+        {
+            private int _count;
+
+            public ConcurrentDictionary<string, Subscription> Subscriptions { get; } = new(concurrencyLevel: 1, capacity: 4);
+
+            public void ReserveSlot(int maxPerConnection)
+            {
+                if (!TryReserve(ref _count, maxPerConnection))
+                {
+                    throw new LimitExceededException($"Too many subscriptions. The connection limit is {maxPerConnection}.");
+                }
+            }
+
+            public void ReleaseSlot() => Interlocked.Decrement(ref _count);
+
+            public bool TryRemove(Subscription subscription)
+            {
+                if (!Subscriptions.TryRemove(KeyValuePair.Create(subscription.Id, subscription))) return false;
+                ReleaseSlot();
+                return true;
             }
         }
     }

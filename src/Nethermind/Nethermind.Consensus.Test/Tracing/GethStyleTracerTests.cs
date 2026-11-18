@@ -528,7 +528,8 @@ public class GethStyleTracerTests
             Substitute.For<IOverridableEnv<GethStyleTracer.BlockProcessingComponents>>(),
             NullPrefixStateSeedSource.Instance,
             Substitute.For<IOverridableCodeInfoRepository>(),
-            LimboLogs.Instance);
+            LimboLogs.Instance,
+            NoPoS.Instance);
 
 #pragma warning disable CS0618
         InvalidOperationException exception = Assert.Throws<InvalidOperationException>(() =>

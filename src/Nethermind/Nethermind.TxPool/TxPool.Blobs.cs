@@ -46,17 +46,17 @@ namespace Nethermind.TxPool
             }
 
             blob = wrapper.Blobs[blobIndex];
-            proof = wrapper.Proofs[blobIndex];
+            proof = wrapper.GetProofs(blobIndex).ToArray();
             return true;
         }
 
         public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
+            out ReadOnlyMemory<byte> cellProofs)
             => _blobTransactions.TryGetBlobAndProofV1(blobVersionedHash, out blob, out cellProofs);
 
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs)
         {
             int found = _blobTransactions.TryGetBlobsAndProofsV1(requestedBlobVersionedHashes, blobs, proofs);
             return found == requestedBlobVersionedHashes.Length || _includedBlobLocations is null
@@ -198,7 +198,7 @@ namespace Nethermind.TxPool
         /// <returns>The number of entries filled.</returns>
         /// <remarks>Requests are grouped by row, so a row holding several requested blobs is read and decoded once.</remarks>
         private int FillIncludedBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs)
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs)
         {
             using ArrayPoolListRef<IncludedBlobRead> reads = new(requestedBlobVersionedHashes.Length, requestedBlobVersionedHashes.Length);
             using ArrayPoolListRef<MempoolTransaction?> rows = ReadIncludedBlobRows(requestedBlobVersionedHashes, blobs, reads.AsSpan(), out int readCount);
@@ -210,7 +210,7 @@ namespace Nethermind.TxPool
                         ProofVersion.V1, out ShardBlobNetworkWrapper? wrapper))
                 {
                     blobs[read.OutputIndex] = wrapper.Blobs[read.BlobIndex];
-                    proofs[read.OutputIndex] = new ReadOnlyMemory<byte[]>(wrapper.Proofs, Ckzg.CellsPerExtBlob * read.BlobIndex, Ckzg.CellsPerExtBlob);
+                    proofs[read.OutputIndex] = wrapper.GetProofs(Ckzg.CellsPerExtBlob * read.BlobIndex, Ckzg.CellsPerExtBlob);
                     filled++;
                 }
             }
@@ -282,7 +282,7 @@ namespace Nethermind.TxPool
                 && rowWrapper.Version == requiredVersion
                 && rowWrapper.HasFullBlobs()
                 && blobIndex < rowWrapper.Blobs.Length
-                && rowWrapper.Proofs.Length / proofsPerBlob > blobIndex)
+                && rowWrapper.ProofCount / proofsPerBlob > blobIndex)
             {
                 Interlocked.Increment(ref Metrics.IncludedBlobsServed);
                 wrapper = rowWrapper;

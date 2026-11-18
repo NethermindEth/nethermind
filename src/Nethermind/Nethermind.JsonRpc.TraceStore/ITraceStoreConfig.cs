@@ -11,6 +11,14 @@ public interface ITraceStoreConfig : IConfig
     [ConfigItem(Description = "Whether to enable the TraceStore plugin. If enabled, traces come from the database whenever possible.", DefaultValue = "false")]
     public bool Enabled { get; set; }
 
+    /// <summary>RocksDB options appended to global defaults for stored traces. Empty by default.</summary>
+    [ConfigItem(Description = "Semicolon-terminated RocksDB options for stored traces, appended to the global RocksDB defaults.", DefaultValue = "")]
+    string RocksDbOptions { get; set; }
+
+    /// <summary>RocksDB options appended after global additional options for stored traces. Empty by default.</summary>
+    [ConfigItem(Description = "Semicolon-terminated RocksDB options for stored traces, appended after the global additional RocksDB options.", DefaultValue = "")]
+    string AdditionalRocksDbOptions { get; set; }
+
     [ConfigItem(Description = "The number of blocks to store, counting from the head. If `0`, all traces of the processed blocks are stored.", DefaultValue = "10000")]
     public ulong BlocksToKeep { get; set; }
 

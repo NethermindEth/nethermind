@@ -64,7 +64,7 @@ namespace Nethermind.TxPool
             }
 
             int commitmentsLength = GetFixedByteStringsSequenceLength(wrapper.Commitments.Length, Ckzg.BytesPerCommitment);
-            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.Proofs.Length, Ckzg.BytesPerProof);
+            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.ProofCount, Ckzg.BytesPerProof);
             if (commitmentsLength == 0 || proofsLength == 0)
             {
                 return 0;

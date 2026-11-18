@@ -6193,7 +6193,7 @@ public class Eth72ProtocolHandlerTests
         ShardBlobNetworkWrapper wrapper = transaction.NetworkWrapper!;
         int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs);
+            + Rlp.LengthOf(wrapper.SplitProofs());
         return transaction.Transaction.GetLength() + Rlp.LengthOfSequence(sidecarContentLength);
     }
 
@@ -6274,15 +6274,10 @@ public class Eth72ProtocolHandlerTests
     private static MempoolTransaction CorruptSparseBlobProof(MempoolTransaction tx, BlobCellMask cellMask)
     {
         ShardBlobNetworkWrapper wrapper = tx.NetworkWrapper!;
-        byte[][] proofs = new byte[wrapper.Proofs.Length][];
-        for (int i = 0; i < proofs.Length; i++)
-        {
-            proofs[i] = [.. wrapper.Proofs[i]];
-        }
-
+        byte[] proofs = [.. wrapper.Proofs];
         foreach (int cellIndex in cellMask.EnumerateSetBits())
         {
-            proofs[cellIndex][0] ^= 1;
+            proofs[cellIndex * ShardBlobNetworkWrapper.BytesPerProof] ^= 1;
             break;
         }
 

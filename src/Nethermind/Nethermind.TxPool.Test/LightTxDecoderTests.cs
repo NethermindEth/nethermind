@@ -70,7 +70,7 @@ public class LightTxDecoderTests
     [Test]
     public void Round_trip_preserves_the_proof_version([Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version)
     {
-        MempoolTransaction tx = BlobCarryingTx(TxType.Blob) with { NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], version) };
+        MempoolTransaction tx = BlobCarryingTx(TxType.Blob) with { NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [3], version) };
 
         Assert.That(((LightTransaction)LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).Transaction).ProofVersion, Is.EqualTo(version));
     }
@@ -572,7 +572,7 @@ public class LightTxDecoderTests
         }
 
         tx.Hash = tx.CalculateHash();
-        return new MempoolTransaction(tx, new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], ProofVersion.V1)) { PoolIndex = 11 };
+        return new MempoolTransaction(tx, new ShardBlobNetworkWrapper([[1]], [[2]], [3], ProofVersion.V1)) { PoolIndex = 11 };
     }
 
     [Test]
@@ -672,7 +672,7 @@ public class LightTxDecoderTests
             (proofVersion is ProofVersion.V1 ? 1 : 0)               // wrapper_version
             + RlpTestHelper.OfEmptyList.Length                                // elided blobs
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs);
+            + Rlp.LengthOf(wrapper.SplitProofs());
 
         using (Assert.EnterMultipleScope())
         {

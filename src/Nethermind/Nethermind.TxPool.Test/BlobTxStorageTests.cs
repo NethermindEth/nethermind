@@ -169,7 +169,7 @@ public class BlobTxStorageTests
         MempoolTransaction tx = CreateBlobTransaction();
         storage.Add(tx);
         ShardBlobNetworkWrapper wrapper = tx.NetworkWrapper!;
-        wrapper.Proofs[0][0] ^= 1;
+        wrapper.Proofs[0] ^= 1;
         using ArrayPoolListRef<MempoolTransaction> transactions = new(1, tx);
 
         storage.AddBlobTransactionsFromBlock(358, transactions);
@@ -731,7 +731,7 @@ public class BlobTxStorageTests
         byte[][] versionedHashes = new byte[blobCount][];
         byte[][] blobs = new byte[blobCount][];
         byte[][] commitments = new byte[blobCount][];
-        byte[][] proofs = new byte[proofsCount][];
+        byte[] proofs = new byte[proofsCount * Ckzg.BytesPerProof];
         for (int i = 0; i < blobCount; i++)
         {
             byte[] hash = new byte[Eip4844Constants.BytesPerBlobVersionedHash];
@@ -743,7 +743,7 @@ public class BlobTxStorageTests
         }
         for (int i = 0; i < proofsCount; i++)
         {
-            proofs[i] = [(byte)(i + 2)];
+            proofs[i * Ckzg.BytesPerProof] = (byte)(i + 2);
         }
 
         Transaction tx = new()
@@ -943,6 +943,79 @@ public class BlobTxStorageTests
         {
             Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out MempoolTransaction tx), Is.False);
             Assert.That(tx, Is.Null);
+        }
+    }
+
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    public void TryGetFullRecordWithoutBlobs_should_match_the_elided_full_read(bool cellProofs, bool partial)
+    {
+        MempoolTransaction tx = partial
+            ? CreateV1BlobTransactions(1)[0]
+            : CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: cellProofs ? Osaka.Instance : Cancun.Instance);
+
+        byte[] expectedRecord = PersistMetadataRecord(tx, storage =>
+            storage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out MempoolTransaction read) ? BlobTransactionPayload.Elide(read) : null);
+        MempoolTransaction elided = null;
+        byte[] actualRecord = PersistMetadataRecord(tx, storage =>
+            ((IBlobTxElidedReadStorage)storage).TryGetFullRecordWithoutBlobs(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out elided) ? elided : null);
+
+        ShardBlobNetworkWrapper wrapper = elided!.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actualRecord, Is.EqualTo(expectedRecord));
+            Assert.That(BlobTransactionPayload.Elide(elided), Is.SameAs(elided));
+            Assert.That(elided.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(elided.SenderAddress, Is.EqualTo(tx.SenderAddress));
+            Assert.That(elided.Timestamp, Is.EqualTo(tx.Timestamp));
+            Assert.That(wrapper.Blobs, Is.Empty);
+            Assert.That(wrapper.Commitments, Is.EqualTo(tx.NetworkWrapper!.Commitments));
+            Assert.That(wrapper.Proofs, Is.EqualTo(tx.NetworkWrapper!.Proofs));
+            Assert.That(wrapper.CellMask, Is.EqualTo(BlobCellMask.Empty));
+            Assert.That(wrapper.Cells, Is.Null);
+        }
+
+        static byte[] PersistMetadataRecord(MempoolTransaction tx, Func<IBlobTxStorage, MempoolTransaction> read)
+        {
+            MemColumnsDb<BlobTxsColumns> columnsDb = new();
+            IDb fullBlobTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
+            using IContainer container = CreateStorageContainer(columnsDb);
+            IBlobTxStorage storage = container.Resolve<IBlobTxStorage>();
+            storage.Add(tx);
+            byte[] elidedKey = [0x01, .. tx.Hash!.Bytes];
+            fullBlobTxsDb.Remove(elidedKey);
+
+            ((IBlobTxMetadataStorage)storage).AddWithoutBlobs(read(storage)!);
+            return fullBlobTxsDb.Get(elidedKey)!;
+        }
+    }
+
+    [Test]
+    public void TryGet_should_release_the_read_record([Values] bool withoutBlobs)
+    {
+        using TrackingColumnsDb db = new();
+        using IContainer container = CreateStorageContainer(db);
+        IBlobTxStorage blobTxStorage = container.Resolve<IBlobTxStorage>();
+        IBlobTxMetadataStorage metadataStorage = (IBlobTxMetadataStorage)blobTxStorage;
+        MempoolTransaction tx = CreateBlobTransaction();
+        blobTxStorage.Add(tx);
+
+        bool found = withoutBlobs
+            ? metadataStorage.TryGetWithoutBlobs(tx.Hash!, tx.SenderAddress!, out MempoolTransaction read)
+            : blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out read);
+        bool missingFound = withoutBlobs
+            ? metadataStorage.TryGetWithoutBlobs(TestItem.KeccakC, tx.SenderAddress!, out MempoolTransaction missing)
+            : blobTxStorage.TryGet(TestItem.KeccakC, tx.SenderAddress!, tx.Timestamp, out missing);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(read.Hash, Is.EqualTo(tx.Hash));
+            Assert.That(read.SenderAddress, Is.EqualTo(tx.SenderAddress));
+            Assert.That(missingFound, Is.False);
+            Assert.That(missing, Is.Null);
+            Assert.That(db.ActiveSpans, Is.Zero);
         }
     }
 
@@ -1313,6 +1386,12 @@ public class BlobTxStorageTests
         .WithMaxPriorityFeePerGas(1.GWei)
         .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), signer).MempoolTestObject;
 
+    private static IContainer CreateStorageContainer(IColumnsDb<BlobTxsColumns> db) =>
+        new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(db)
+            .Build();
+
     private sealed class TrackingColumnsDb : IColumnsDb<BlobTxsColumns>
     {
         private readonly MemColumnsDb<BlobTxsColumns> _inner = new();
@@ -1421,8 +1500,6 @@ public class BlobTxStorageTests
     {
         public string Name => inner.Name;
         public int ActiveSpans { get; private set; }
-
-        public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => inner[keys];
 
         public byte[] Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
 

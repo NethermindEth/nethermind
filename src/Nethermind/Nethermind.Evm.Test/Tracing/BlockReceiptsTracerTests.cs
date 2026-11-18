@@ -19,6 +19,52 @@ namespace Nethermind.Evm.Test.Tracing
     public class BlockReceiptsTracerTests
     {
         [Test]
+        public void Forwards_action_error_detail_scope([Values] bool nested, [Values] bool actionOnly)
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            ITxTracer leaf = Substitute.For<ITxTracer>();
+            IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+            blockTracer.StartNewTxTrace(transaction).Returns(leaf);
+            using BlockReceiptsTracer? inner = nested ? new() : null;
+            if (inner is not null)
+            {
+                inner.SetOtherTracer(blockTracer);
+                blockTracer = inner;
+            }
+            using BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(blockTracer);
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(transaction).TestObject);
+            tracer.StartNewTxTrace(transaction);
+
+            tracer.ReportActionErrorDetails("fault", actionOnly);
+
+            leaf.Received(1).ReportActionErrorDetails("fault", actionOnly);
+        }
+
+        [Test]
+        public void Forwards_code_deposit_error([Values] bool nested)
+        {
+            Transaction transaction = Build.A.Transaction.TestObject;
+            ITxTracer leaf = Substitute.For<ITxTracer>();
+            IBlockTracer blockTracer = Substitute.For<IBlockTracer>();
+            blockTracer.StartNewTxTrace(transaction).Returns(leaf);
+            using BlockReceiptsTracer? inner = nested ? new() : null;
+            if (inner is not null)
+            {
+                inner.SetOtherTracer(blockTracer);
+                blockTracer = inner;
+            }
+            using BlockReceiptsTracer tracer = new();
+            tracer.SetOtherTracer(blockTracer);
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(transaction).TestObject);
+            tracer.StartNewTxTrace(transaction);
+
+            tracer.ReportCodeDepositError("max code size exceeded");
+
+            leaf.Received(1).ReportCodeDepositError("max code size exceeded");
+        }
+
+        [Test]
         public void Forwards_current_transaction_cancellation([Values] bool nested)
         {
             using CancellationTokenSource cancellation = new();

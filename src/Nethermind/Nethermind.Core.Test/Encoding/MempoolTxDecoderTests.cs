@@ -110,7 +110,50 @@ public partial class MempoolTxDecoderTests
         RlpReader reader = new(encoded);
         MempoolTransaction decoded = _decoder.Decode(ref reader)!;
 
-        Assert.That(decoded.NetworkWrapper!.Proofs, Has.Length.EqualTo(BlobCellProofsCountLimit));
+        Assert.That(decoded.NetworkWrapper!.ProofCount, Is.EqualTo(BlobCellProofsCountLimit));
+    }
+
+    [Test]
+    public void Proofs_encode_as_a_list_of_proof_strings_and_round_trip([Values] ProofVersion version, [Values] bool storage)
+    {
+        MempoolTransaction mempoolTx = BuildBlobTransaction(version is ProofVersion.V1 ? Osaka.Instance : Cancun.Instance);
+        ShardBlobNetworkWrapper wrapper = mempoolTx.NetworkWrapper!;
+        RlpBehaviors behaviors = storage ? RlpBehaviors.Storage : RlpBehaviors.None;
+
+        byte[] encoded = _decoder.Encode(mempoolTx, behaviors);
+        RlpReader reader = new(encoded);
+        MempoolTransaction decoded = _decoder.Decode(ref reader, behaviors)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(encoded.AsSpan().IndexOf(RlpTestHelper.EncodeSequence([.. wrapper.SplitProofs().Select(static proof => Rlp.Encode(proof))])), Is.GreaterThan(0));
+            Assert.That(decoded.NetworkWrapper!.Proofs, Is.EqualTo(wrapper.Proofs));
+            Assert.That(_decoder.Encode(decoded, behaviors), Is.EqualTo(encoded));
+            Assert.That(_decoder.GetLength(mempoolTx, behaviors), Is.EqualTo(encoded.Length));
+        }
+    }
+
+    [Test]
+    public void Decode_rejects_a_proof_that_is_not_48_bytes([Values(0, 47, 49)] int proofLength)
+    {
+        MempoolTransaction mempoolTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Cancun.Instance)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .SignedAndResolved()
+            .MempoolTestObject;
+        ShardBlobNetworkWrapper wrapper = mempoolTx.NetworkWrapper!;
+        byte[] payload = TxDecoder.Instance.Encode(mempoolTx.Transaction, RlpBehaviors.SkipTypedWrapping);
+        byte[] tampered = Bytes.Concat((byte)TxType.Blob, RlpTestHelper.EncodeSequence(
+            payload[1..],
+            RlpTestHelper.EncodeSequence([.. wrapper.Blobs.Select(static blob => Rlp.Encode(blob))]),
+            RlpTestHelper.EncodeSequence([.. wrapper.Commitments.Select(static commitment => Rlp.Encode(commitment))]),
+            RlpTestHelper.EncodeSequence(Rlp.Encode(new byte[proofLength]))));
+
+        Assert.That(() =>
+        {
+            RlpReader reader = new(tampered);
+            _decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
+        }, Throws.InstanceOf<RlpReaderException>());
     }
 
     [Test]
@@ -230,7 +273,7 @@ public partial class MempoolTxDecoderTests
                 .WithChainId(TestBlockchainIds.ChainId)
                 .SignedAndResolved()
                 .TestObject,
-            new ShardBlobNetworkWrapper(CreateEmptyByteArrays(blobsCount), CreateEmptyByteArrays(commitmentsCount), CreateEmptyByteArrays(proofsCount), version));
+            new ShardBlobNetworkWrapper(CreateEmptyByteArrays(blobsCount), CreateEmptyByteArrays(commitmentsCount), new byte[proofsCount * Ckzg.BytesPerProof], version));
 
     private static byte[][] CreateEmptyByteArrays(int count) => [.. Enumerable.Repeat(Array.Empty<byte>(), count)];
 }

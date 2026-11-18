@@ -998,7 +998,7 @@ public class LogFinderTests
         {
             Assert.That(logs, Is.Empty);
             index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
-            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeaderIfBloomMatches(default, default!, out _);
+            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeadersIfBloomMatches(default, default!, default, default);
         }
     }
 
@@ -1319,7 +1319,7 @@ public class LogFinderTests
             }
 
             public readonly void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
+                ReadOnlySpan<byte> transactionHashBytes, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
                 _cancellation!.Cancel();
 
             public readonly IEnumerable<FilterLog> Complete() => [];

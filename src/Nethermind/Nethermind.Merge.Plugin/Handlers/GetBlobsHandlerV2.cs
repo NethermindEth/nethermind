@@ -47,7 +47,7 @@ public class GetBlobsHandlerV2(ITxPool txPool, IEthSyncingInfo? ethSyncingInfo) 
         }
 
         ArrayPoolList<byte[]?> blobs = new(n, n);
-        ArrayPoolList<ReadOnlyMemory<byte[]>> proofs = new(n, n);
+        ArrayPoolList<ReadOnlyMemory<byte>> proofs = new(n, n);
         try
         {
             int count = txPool.TryGetBlobsAndProofsV1(request.BlobVersionedHashes, blobs.AsSpan(), proofs.AsSpan());

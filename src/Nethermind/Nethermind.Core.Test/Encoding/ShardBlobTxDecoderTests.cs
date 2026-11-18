@@ -39,7 +39,7 @@ public class ShardBlobTxDecoderTests
     }
 
     [Test]
-    public void V1_length_validation_rejects_null_commitments_and_proofs()
+    public void V1_length_validation_rejects_null_commitments_and_short_proofs()
     {
         ShardBlobNetworkWrapper wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
         wrapper.Commitments[0] = null!;
@@ -47,7 +47,7 @@ public class ShardBlobTxDecoderTests
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
 
         wrapper = CreateV1SparseWrapperWithoutCells(blobCount: 1);
-        wrapper.Proofs[0] = null!;
+        wrapper = wrapper with { Proofs = wrapper.Proofs[..^1] };
 
         Assert.That(IBlobProofsManager.For(ProofVersion.V1).ValidateLengths(wrapper), Is.False);
     }
@@ -82,14 +82,10 @@ public class ShardBlobTxDecoderTests
     private static ShardBlobNetworkWrapper CreateV1SparseWrapperWithoutCells(int blobCount)
     {
         byte[][] commitments = new byte[blobCount][];
-        byte[][] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob][];
+        byte[] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
         for (int i = 0; i < blobCount; i++)
         {
             commitments[i] = new byte[Ckzg.BytesPerCommitment];
-            for (int cellIndex = 0; cellIndex < Ckzg.CellsPerExtBlob; cellIndex++)
-            {
-                proofs[i * Ckzg.CellsPerExtBlob + cellIndex] = new byte[Ckzg.BytesPerProof];
-            }
         }
 
         return new ShardBlobNetworkWrapper([], commitments, proofs, ProofVersion.V1);

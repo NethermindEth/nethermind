@@ -18,6 +18,7 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -296,6 +297,7 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
     public abstract Account? GetAccount(Address address);
     public abstract bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
     public abstract StateId CurrentState { get; }
+    public abstract MigrationCursor? GetMigrationCursor();
     public abstract byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
     public abstract byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
     public abstract byte[]? GetAccountRaw(in ValueHash256 addrHash);
@@ -311,6 +313,12 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
     bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
         Pass(TryLoadStorageRlp(address, path, flags), action, arg);
 
+    bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+        Pass(TryLoadStateRlp(path, flags), action, arg);
+
+    bool IPersistence.IPersistenceReader.TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
+        Pass(TryLoadStorageRlp(new Hash256(address), path, flags), action, arg);
+
     private static bool Pass<TArg>(byte[]? rlp, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         if (rlp is null) return false;
@@ -325,20 +333,21 @@ public abstract class SubstitutablePersistenceReader : IPersistence.IPersistence
 /// (NSubstitute's backing) throws <c>InvalidProgramException</c> when proxying methods with ref-struct parameters
 /// such as <c>scoped ReadOnlySpan&lt;byte&gt;</c>.
 /// </summary>
-internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
+public sealed class FakeWriteBatch : IPersistence.IWriteBatch
 {
     public List<Address> SelfDestructCalls { get; } = [];
     public List<(Address Addr, Account? Account)> SetAccountCalls { get; } = [];
     public List<(Address Addr, UInt256 Slot, UInt256? Value)> SetStorageCalls { get; } = [];
     public List<(TreePath Path, byte[] Rlp)> SetStateTrieNodeCalls { get; } = [];
-    public List<(Hash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
+    public List<(ValueHash256 Address, TreePath Path, byte[] Rlp)> SetStorageTrieNodeCalls { get; } = [];
     public List<(ValueHash256 AddrHash, ValueHash256 SlotHash, byte[] RlpValue)> SetStorageRawEncodedCalls { get; } = [];
-    public List<(ValueHash256 AddrHash, Account Account)> SetAccountRawCalls { get; } = [];
+    public List<(ValueHash256 AddrHash, AccountStruct Account)> SetAccountRawCalls { get; } = [];
     public List<(ValueHash256 FromPath, ValueHash256 ToPath)> DeleteAccountRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 FromPath, ValueHash256 ToPath)> DeleteStorageRangeCalls { get; } = [];
-    public List<(ValueHash256 FromPath, ValueHash256 ToPath)> SelfDestructRangeCalls { get; } = [];
+    public List<(ValueHash256 FromPath, ValueHash256 ToPath, ValueHash256? KeptAccount)> SelfDestructRangeCalls { get; } = [];
     public List<(ValueHash256 From, ValueHash256 To)> DeleteStateTrieNodeRangeCalls { get; } = [];
     public List<(ValueHash256 AddressHash, ValueHash256 From, ValueHash256 To)> DeleteStorageTrieNodeRangeCalls { get; } = [];
+    public List<MigrationCursor?> SetMigrationCursorCalls { get; } = [];
     public int DisposeCount { get; private set; }
 
     public void SelfDestruct(Address addr) => SelfDestructCalls.Add(addr);
@@ -348,13 +357,13 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStateTrieNodeCalls.Add((path, rlp.ToArray()));
 
-    public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
+    public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
         SetStorageTrieNodeCalls.Add((address, path, rlp.ToArray()));
 
     public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
         SetStorageRawEncodedCalls.Add((addrHash, slotHash, rlpValue.ToArray()));
 
-    public void SetAccountRaw(in ValueHash256 addrHash, Account account) => SetAccountRawCalls.Add((addrHash, account));
+    public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) => SetAccountRawCalls.Add((addrHash, account));
 
     public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
         DeleteAccountRangeCalls.Add((fromPath, toPath));
@@ -362,14 +371,16 @@ internal sealed class FakeWriteBatch : IPersistence.IWriteBatch
     public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
         DeleteStorageRangeCalls.Add((addressHash, fromPath, toPath));
 
-    public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
-        SelfDestructRangeCalls.Add((fromPath, toPath));
+    public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) =>
+        SelfDestructRangeCalls.Add((fromPath, toPath, keptAccount));
 
     public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) =>
         DeleteStateTrieNodeRangeCalls.Add((from, to));
 
     public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) =>
         DeleteStorageTrieNodeRangeCalls.Add((addressHash, from, to));
+
+    public void SetMigrationCursor(in MigrationCursor? cursor) => SetMigrationCursorCalls.Add(cursor);
 
     public void Dispose() => DisposeCount++;
 }
@@ -518,7 +529,7 @@ internal static class SharedBloomScenarios
             List<ulong> keys = [];
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
-                ulong addressKey = PersistedSnapshotBloomBuilder.AddressKey(entry.Address);
+                ulong addressKey = PersistedSnapshotBloomBuilder.AddressKey(entry.Address.AsSpan);
                 keys.Add(addressKey);
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots) keys.Add(PersistedSnapshotBloomBuilder.SlotKey(addressKey, slot.Slot));
             }

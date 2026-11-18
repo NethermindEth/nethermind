@@ -84,8 +84,12 @@ public class FlatTreeSyncStore(
     {
         RefList16<DeletionRange> ranges = new();
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
+        if (ranges.Count == 0) return;
+
+        ValueHash256? keptAccount = newNode.IsLeaf ? path.Append(newNode.Key).ToLowerBoundPath() : null;
         foreach (DeletionRange range in ranges.AsSpan())
         {
+            writeBatch.SelfDestructRange(range.From, range.To, keptAccount);
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }

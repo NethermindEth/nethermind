@@ -2,23 +2,32 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Stateless;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -76,13 +85,114 @@ public class StatelessExecutingWorldStateTests
         [Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next) =>
         Assert.That(() => ExecuteExtcodesize(next, targetCode: null, gasLimit: 100_000), Throws.Nothing);
 
-    /// <summary>Runs a transaction calling a contract that applies EXTCODESIZE to a target and then <paramref name="next"/>.</summary>
-    /// <param name="targetCode">The target's code, removed from the code database before execution; <see langword="null"/> for an account without code.</param>
-    private static void ExecuteExtcodesize(Instruction next, byte[] targetCode, ulong gasLimit)
+    /// <summary>
+    /// A call to a precompile's address runs the precompile, but EXTCODESIZE reads the code an account there holds, so
+    /// that code must be in the witness too, whatever operation follows.
+    /// </summary>
+    [Test]
+    public void Extcodesize_of_code_at_a_precompile_address_missing_from_the_witness_fails(
+        [Values(Instruction.ISZERO, Instruction.GT, Instruction.EQ, Instruction.POP)] Instruction next) =>
+        Assert.That(() => ExecuteExtcodesize(next, Prepare.EvmCode.Op(Instruction.STOP).Done, 100_000, PrecompiledAddresses.Identity), Throws.InvalidOperationException);
+
+    /// <summary>
+    /// EXTCODESIZE and EXTCODECOPY of a precompile's address read the account there, code or none, so the witness of
+    /// a transaction running them proves that account, present or absent, also when block processing captures it
+    /// through its precompile cache, and stateless execution of that witness finds no code.
+    /// </summary>
+    [Test]
+    public void Witness_of_a_code_read_at_a_precompile_address_without_code_proves_the_account(
+        [Values] bool copy, [Values] bool accountExists, [Values] bool precompileCache, [Values] bool guest)
     {
         IReleaseSpec spec = Prague.Instance;
         TestSpecProvider specProvider = new(spec);
-        Address target = TestItem.AddressB;
+        Address target = PrecompiledAddresses.Identity;
+        Address caller = TestItem.AddressC;
+        // The copy goes over a filled word, so its zeros show; EXTCODESIZE followed by PUSH1 does not fuse.
+        byte[] callerCode = (copy
+                ? Prepare.EvmCode.PushData(UInt256.MaxValue).PushData(0).Op(Instruction.MSTORE)
+                    .PushData(32).PushData(0).PushData(0).PushData(target).Op(Instruction.EXTCODECOPY)
+                : Prepare.EvmCode.PushData(target).Op(Instruction.EXTCODESIZE).PushData(0).Op(Instruction.MSTORE))
+            .Return(32, 0).Done;
+
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(specProvider)
+            .Build();
+        IWorldStateManager manager = container.Resolve<IWorldStateManager>();
+        // Block processing captures a witness under its main processing modules, the precompile cache among them; RPC's
+        // witness generation goes without.
+        using ILifetimeScope processing = container.BeginLifetimeScope(builder =>
+        {
+            builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState);
+            if (precompileCache) builder.AddModule(container.Resolve<IMainProcessingModule[]>());
+        });
+        IWorldState inner = processing.Resolve<IWorldState>();
+        BlockHeader parent;
+        using (inner.BeginScope(IWorldState.PreGenesis))
+        {
+            inner.CreateAccount(TestItem.AddressA, 1.Ether);
+            if (accountExists) inner.CreateAccount(target, 1);
+            // Enough other accounts that the proofs the transaction needs anyway do not cover the target's path.
+            for (int i = 0; i < 100; i++) inner.CreateAccount(Address.FromNumber((UInt256)(0x1000 + i)), 1);
+            inner.CreateAccount(caller, 0);
+            inner.InsertCode(caller, callerCode, spec);
+            inner.Commit(spec);
+            inner.CommitTree(0);
+            parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(inner.StateRoot).TestObject;
+        }
+
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithBaseFee(0).WithExcessBlobGas(0).TestObject;
+        Transaction tx = Build.A.Transaction.WithTo(caller).WithGasLimit(100_000).WithGasPrice(1)
+            .SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
+        IHeaderStore headerStore = container.Resolve<IHeaderStore>();
+        headerStore.Insert(parent);
+        // Built as the witness envs build theirs, over the block processing world state.
+        WitnessGeneratingWorldState capturing = new(inner, manager.GlobalStateReader, manager.CreateReadOnlyTrieStore(), new WitnessHeaderRecorder(), headerStore);
+        Witness witness;
+        using (capturing.BeginScope(parent))
+        {
+            Assert.That(Run(processing, capturing), Is.EqualTo(new byte[32]), "result while capturing");
+            capturing.Commit(spec);
+            witness = capturing.GetWitness(parent);
+        }
+
+        using (witness)
+        {
+            Assert.That(witness.Keys, Has.Some.EqualTo(target.Bytes.ToArray()), "account recorded");
+            IWorldState stateless = guest
+                ? new GuestWorldState(new TrieStoreScopeProvider(WitnessNodeStorage.CreateTrieStore(witness.State), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance))
+                : new StatelessBlockProcessingEnv(witness, specProvider, Always.Valid, LimboLogs.Instance).WorldState;
+            using IDisposable scope = stateless.BeginScope(parent);
+            using (Assert.EnterMultipleScope())
+            {
+                // Read through the witness alone, so a node missing from the account's path throws.
+                Assert.That(stateless.GetCodeHash(target), Is.EqualTo(Keccak.OfAnEmptyString.ValueHash256), "account proved");
+                // Without the precompile cache, as the stateless env executes.
+                Assert.That(Run(container, stateless), Is.EqualTo(new byte[32]), "result in stateless execution");
+            }
+        }
+
+        byte[] Run(ILifetimeScope parentScope, IWorldState state)
+        {
+            // The world state registered by instance and every code lookup sent to it, as the witness envs do.
+            using ILifetimeScope execution = parentScope.BeginLifetimeScope(builder => builder
+                .AddScoped<IWorldState>(state)
+                .AddScoped<ICodeCache>(NoopCodeCache.Instance));
+            CallOutputTracer tracer = new();
+            execution.Resolve<ITransactionProcessor>().Execute(tx, new BlockExecutionContext(header, spec), tracer);
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success), tracer.Error);
+            return tracer.ReturnValue;
+        }
+    }
+
+    /// <summary>Runs a transaction calling a contract that applies EXTCODESIZE to a target and then <paramref name="next"/>.</summary>
+    /// <param name="targetCode">The target's code, removed from the code database before execution; <see langword="null"/> for an account without code.</param>
+    /// <param name="targetAddress">The target; an ordinary account when <see langword="null"/>.</param>
+    private static void ExecuteExtcodesize(Instruction next, byte[] targetCode, ulong gasLimit, Address targetAddress = null)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        TestSpecProvider specProvider = new(spec);
+        Address target = targetAddress ?? TestItem.AddressB;
         Address caller = TestItem.AddressC;
         byte[] callerCode = Prepare.EvmCode.PushData(0).PushData(target).Op(Instruction.EXTCODESIZE).Op(next).Op(Instruction.STOP).Done;
 

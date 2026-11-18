@@ -225,7 +225,7 @@ public class Eth68ProtocolHandlerTests
         ShardBlobNetworkWrapper wrapper = tx.NetworkWrapper!;
         int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs);
+            + Rlp.LengthOf(wrapper.SplitProofs());
         int gethSizeEstimate = tx.Transaction.GetLength() + Rlp.LengthOfSequence(sidecarContentLength);
         Assert.That(gethSizeEstimate, Is.Not.EqualTo(tx.GetLength()));
         using NewPooledTransactionHashesMessage68 hashesMsg = new(

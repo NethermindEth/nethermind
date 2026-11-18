@@ -198,6 +198,9 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
+    [ConfigItem(Description = "The maximum number of `eth_call`, `eth_estimateGas` and `eth_createAccessList` requests that execute at a time, with or without overrides. A request above this number waits for a free slot for up to `JsonRpc.Timeout` and then fails with a `ModuleTimeout` JSON-RPC error. Waiting requests do not hold a thread and count toward `JsonRpc.RequestQueueLimit`; a request that would exceed it fails at once with a `LimitExceeded` JSON-RPC error. `0` or negative disables the limit. Defaults to four times the number of logical processors.")]
+    int? EthCallMaxConcurrentRequests { get; set; }
+
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     public string JwtSecretFile { get; set; }
 
@@ -233,6 +236,15 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
+
+    [ConfigItem(Description = "The max total size, in bytes, of HTTP JSON-RPC responses to unauthenticated URLs that are written but not yet sent. One response alone can use all of it. While a remote address has other unsent responses, it can hold at most 1/16 of it. IPv6 addresses are grouped by their /64 prefix, and a connection without a known address counts alone. A response that would go above either limit is not sent and its connection is closed; responses already in progress are not affected. Streamed results are not counted when `BufferResponses` is off, and bytes that a streamed result flushes are released when the streamed result ends. A batch that reaches `MaxBatchResponseBodySize` first, when that value is not above the share of one address, ends with the batch limit errors instead. Behind a reverse proxy all callers share the proxy's address, so rely on the proxy's limits or raise this value. `0` or negative to disable this limit.", DefaultValue = "536870912")]
+    long MaxUnsentResponsesSize { get; set; }
+
+    [ConfigItem(Description = "The max number of HTTP JSON-RPC responses to unauthenticated URLs that one remote address, or one IPv6 /64 prefix, can have with more than 1 MiB written but not yet sent. Smaller responses, and responses still being written below that size, are not counted. A further response above 1 MiB is not sent and its connection is closed. Behind a reverse proxy all callers share the proxy's address, so rely on the proxy's limits or raise this value. `0` or negative to disable. Ignored when `MaxUnsentResponsesSize` is disabled.", DefaultValue = "8")]
+    int MaxUnsentResponsesPerAddress { get; set; }
+
+    [ConfigItem(Description = "The min rate, in bytes per second, at which a caller of an unauthenticated HTTP JSON-RPC URL must read a response, after a grace period of 10 seconds. The server closes the connection of a caller that reads more slowly. `0` disables the rate, also the server default one.", DefaultValue = "65536")]
+    int MinResponseDataRate { get; set; }
 
     [ConfigItem(Description = "The max block count limit for the `eth_simulate` JSON-RPC method.", DefaultValue = "256")]
     long? MaxSimulateBlocksCap { get; set; }
