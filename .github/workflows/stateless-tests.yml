@@ -241,7 +241,7 @@ jobs:
           set -euo pipefail
           # make verify on Airbender also checks the digest it publishes in
           # x10-x17, which is what gets proven there.
-          make ${{ matrix.vm == 'airbender' && 'verify' || 'run' }} INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=${{ matrix.input }} EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
+          make ${{ matrix.vm == 'airbender' && 'verify' || 'run' }} INPUT="${{ steps.expected.outputs.input }}" GUEST_INPUT=${{ matrix.input }} EXPECTED_DIGEST="${{ steps.expected.outputs.digest }}" OPENVM_ARGS="${{ matrix.vm == 'openvm32' && '--execute-only' || '' }}" 2>&1 | tee "$RUNNER_TEMP/run.log"
           grep -q "${{ steps.expected.outputs.output }}" "$RUNNER_TEMP/run.log" || \
             { echo "::error::Output mismatch"; exit 1; }
           # The line above is a debug print on OpenVM. What gets proven is the

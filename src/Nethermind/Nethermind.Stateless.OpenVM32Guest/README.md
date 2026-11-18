@@ -10,5 +10,9 @@ the RV32 runner of NethermindEth/bflat-openvm, which does not generate or
 verify proofs. The guest needs the standard VM configuration of the OpenVM SDK
 (`SdkVmConfig::standard()`), so the ELF is all that a host needs.
 
+Use `make run INPUT=<file> OPENVM_ARGS=--execute-only` to skip proving-key
+setup and cost metering, as correctness CI does. Omit `OPENVM_ARGS` to report
+instruction counts and trace costs.
+
 Unlike the RV64 guest it has no division hint, which only the RV64 runner
 offers, and no MUL on the bigint extension (`mul.S` is RV64 code).

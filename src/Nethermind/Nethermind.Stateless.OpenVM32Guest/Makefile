@@ -29,6 +29,7 @@ GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SHARED_SRC_DIR)/Input.$(GUEST_IN
 # OPENVM_RUNNER overrides it with a host binary of the same harness.
 OPENVM_IMAGE ?=
 OPENVM_RUNNER ?=
+OPENVM_ARGS ?=
 
 run:
 	@$(REQUIRE_INPUT)
@@ -37,7 +38,7 @@ ifeq ($(strip $(OPENVM_RUNNER)),)
 	docker run --rm -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		$(OPENVM_IMAGE) \
-		/n/$(GUEST_NAME) /n/$(INPUT).raw
+		$(OPENVM_ARGS) /n/$(GUEST_NAME) /n/$(INPUT).raw
 else
-	$(OPENVM_RUNNER) $(GUEST_DIR)/bin/$(GUEST_NAME) $(GUEST_DIR)/bin/$(INPUT).raw
+	$(OPENVM_RUNNER) $(OPENVM_ARGS) $(GUEST_DIR)/bin/$(GUEST_NAME) $(GUEST_DIR)/bin/$(INPUT).raw
 endif
