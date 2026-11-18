@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nethermind.Api;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -45,8 +46,27 @@ namespace Nethermind.Config.Test
         [TestCase(typeof(string[]), "a,b", new[] { "a", "b" })]
         [TestCase(typeof(int[]), "[1, 2]", new[] { 1, 2 })]
         [TestCase(typeof(int[]), "1,2", new[] { 1, 2 })]
+        [TestCase(typeof(string[]), "", new[] { "" })] // an explicit empty item, e.g. an empty password
+        [TestCase(typeof(string[]), "a,", new[] { "a", "" })]
+        [TestCase(typeof(string[]), """[""]""", new[] { "" })]
+        [TestCase(typeof(string[]), "\"", new[] { "\"" })]
         public void ParseValue_parses_arrays(Type type, string valueString, IEnumerable expected) =>
             Assert.That(ConfigSourceHelper.ParseValue(type, valueString, "Category", "Name"), Is.EqualTo(expected).AsCollection);
+
+        [TestCase(typeof(int), "0x10", 16)]
+        [TestCase(typeof(uint), "0xFFFFFFFF", uint.MaxValue)]
+        [TestCase(typeof(ulong), "0xFFFFFFFFFFFFFFFF", ulong.MaxValue)]
+        [TestCase(typeof(long), "0xFFFFFFFFFFFFFFFF", -1L)]
+        [TestCase(typeof(bool), "0x1", true)]
+        [TestCase(typeof(string), "0x10", "0x10")]
+        public void ParseValue_parses_hex_through_64_bit_integers(Type type, string valueString, object expected) =>
+            Assert.That(ConfigSourceHelper.ParseValue(type, valueString, "Category", "Name"), Is.EqualTo(expected).And.TypeOf(type));
+
+        [TestCase(typeof(int), "0xFFFFFFFF")]
+        [TestCase(typeof(int), "0X10")]
+        public void ParseValue_rejects_out_of_range_and_upper_case_prefixed_hex(Type type, string valueString) =>
+            Assert.That(() => ConfigSourceHelper.ParseValue(type, valueString, "Category", "Name"),
+                Throws.TypeOf<System.Configuration.ConfigurationErrorsException>());
     }
 
     [TestFixture]
@@ -145,6 +165,30 @@ namespace Nethermind.Config.Test
             IConfigProvider configProvider = new ConfigProvider(blocksConfig);
 
             Assert.That(configProvider.GetConfig<IBlocksConfig>().MinGasPrice, Is.EqualTo((UInt256)12345));
+        }
+
+        [TestCase('a', 32, true)]
+        [TestCase('a', 33, false)]
+        [TestCase('€', 11, false)] // 11 characters, 33 UTF-8 bytes
+        public void ExtraData_is_limited_to_32_bytes(char character, int count, bool accepted)
+        {
+            string extraData = new(character, count);
+            BlocksConfig config = new() { ExtraData = "previous" };
+
+            if (accepted)
+            {
+                config.ExtraData = extraData;
+                Assert.That(config.ExtraData, Is.EqualTo(extraData));
+                return;
+            }
+
+            InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() => config.ExtraData = extraData)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(exception.Message, Does.Contain(extraData));
+                Assert.That(exception.ExitCode, Is.EqualTo(ExitCodes.TooLongExtraData));
+                Assert.That(config.ExtraData, Is.EqualTo("previous"));
+            }
         }
     }
 
