@@ -101,7 +101,7 @@ public sealed partial class OtsRpcModule
                     return ResultWrapper<OtsBlockTransactions?>.Fail("Stored receipt transaction metadata is inconsistent.", ErrorCodes.ResourceUnavailable);
                 tx.SenderAddress ??= receipt.Sender;
                 TransactionForRpc rpcTx = TransactionForRpc.FromTransaction(tx, new(specProvider.ChainId,
-                    selected.Hash!, selected.Number, i, selected.Timestamp, selected.BaseFeePerGas, receipt));
+                    selected.Hash!, selected.Number, i, selected.Timestamp, selected.BaseFeePerGas, spec, receipt, selected.Header.ExcessBlobGas));
                 if (rpcTx is not LegacyTransactionForRpc legacy)
                     return ResultWrapper<OtsBlockTransactions?>.Fail("This transaction type does not support an OTS input selector.", ErrorCodes.ResourceUnavailable);
                 if (legacy.Input is { Length: > 4 } input) legacy.Input = input.AsSpan(0, 4).ToArray();
