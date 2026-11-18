@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -19,10 +20,16 @@ public class ProcessExitSource : IProcessExitSource
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly TaskCompletionSource _exitResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ProcessExitSource(CancellationToken cancellationToken)
+    public ProcessExitSource(CancellationToken cancellationToken) : this(cancellationToken, static () => ExitCodes.SigInt) { }
+
+    /// <param name="cancellationToken">Cancelling it exits with the code from <paramref name="cancellationExitCode"/>.</param>
+    /// <param name="cancellationExitCode">Gives the exit code when <paramref name="cancellationToken"/> is cancelled; called at that moment.</param>
+    public ProcessExitSource(CancellationToken cancellationToken, Func<int> cancellationExitCode)
     {
+        ArgumentNullException.ThrowIfNull(cancellationExitCode);
+
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _cancellationTokenSource.Token.Register(() => Exit(ExitCodes.SigInt));
+        _cancellationTokenSource.Token.Register(() => Exit(cancellationExitCode()));
     }
 
     public void Exit(int exitCode)

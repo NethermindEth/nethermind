@@ -50,6 +50,19 @@ public partial class RunnerProcessTests
         await AssertStoppedWith(runner, ExitCodes.SigTerm);
     }
 
+    [Test]
+    [Platform(Exclude = "Win")]
+    public async Task Sigterm_stops_the_node_with_its_exit_code()
+    {
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+        using RunnerProcess runner = StartIsolatedNode(dataDirectory.Path);
+
+        await runner.WaitForOutputAsync("Initialization Completed");
+        runner.Terminate();
+
+        await AssertStoppedWith(runner, ExitCodes.SigTerm);
+    }
+
     /// <summary>Starts a node with no peers, no discovery and every listener on the loopback interface.</summary>
     private static RunnerProcess StartIsolatedNode(string dataDirectory)
     {

@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -55,6 +56,7 @@ BlocksConfig.SetDefaultExtraDataWithVersion();
 
 // Set whenever the runner is not running, so a wait returns at once when there is nothing to stop.
 ManualResetEventSlim exit = new(true);
+int cancellationExitCode = ExitCodes.SigInt;
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 string unhandledError = "A critical error has occurred";
@@ -183,6 +185,11 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunUntilExitAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
+    // The handlers of a signal run from the last registered to the first, so this one runs before the handler that
+    // System.CommandLine registered before invoking this action, which cancels the token.
+    using PosixSignalRegistration sigTerm = PosixSignalRegistration.Create(
+        PosixSignal.SIGTERM, _ => Volatile.Write(ref cancellationExitCode, ExitCodes.SigTerm));
+
     exit.Reset();
 
     try
@@ -277,7 +284,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
-    processExitSource = new(cancellationToken);
+    processExitSource = new(cancellationToken, () => Volatile.Read(ref cancellationExitCode));
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
     EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
