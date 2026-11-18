@@ -103,7 +103,6 @@ namespace Nethermind.Synchronization.Blocks
             averageSpeed /= peersCount;
             if (bestDiffPeer.Info.TotalDifficulty is { } bestPeerTD) // Try to compare by TD if present
             {
-                averageSpeed /= peersCount;
                 UInt256 difficultyDifference = bestPeerTD > localTotalDiff
                     ? bestPeerTD - localTotalDiff
                     : UInt256.Zero;
@@ -126,7 +125,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 // at least 16 blocks
                 if (blockDifference > 0
-                    && (blockDifference >= localNumber + minBlocksDiff
+                    && (blockDifference >= minBlocksDiff
                         || bestDiffPeer.TransferSpeed > averageSpeed))
                 {
                     return bestDiffPeer.Info;
