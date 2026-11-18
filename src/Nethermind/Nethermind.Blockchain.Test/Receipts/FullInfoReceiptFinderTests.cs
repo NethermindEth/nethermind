@@ -52,6 +52,20 @@ public class FullInfoReceiptFinderTests
         receiptStorage.Received(1).Insert(block, receipts);
     }
 
+    [Test]
+    public void Get_by_block_forwards_recovery_flags([Values] bool recover, [Values] bool recoverSender)
+    {
+        Block block = BuildBlock();
+        TxReceipt[] receipts = [];
+        FullInfoReceiptFinder finder = CreateFinder(block, receipts, out IReceiptStorage receiptStorage, out _);
+        receiptStorage.Get(block, recover, recoverSender).Returns(receipts);
+
+        TxReceipt[] result = finder.Get(block, recover, recoverSender);
+
+        Assert.That(result, Is.SameAs(receipts));
+        receiptStorage.Received(1).Get(block, recover, recoverSender);
+    }
+
     private static Block BuildBlock() => Build.A.Block.WithTransactions(Build.A.Transaction.Signed().TestObject).TestObject;
 
     private static FullInfoReceiptFinder CreateFinder(Block block, TxReceipt[] receipts, out IReceiptStorage receiptStorage, out IBlockFinder blockFinder)

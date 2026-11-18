@@ -4,6 +4,7 @@
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Serialization.Json;
 
@@ -37,6 +38,23 @@ public interface IOtsRpcModule : IRpcModule
     /// <summary>Returns the transaction and direct creator of an extant contract, or null for an address without code.</summary>
     [JsonRpcMethod(Description = "Finds the latest successful creation of a contract in canonical stored history.", IsImplemented = true, IsSharable = false, ResultCanBeNull = true)]
     ResultWrapper<OtsContractCreator?> ots_getContractCreator(Address address);
+
+    /// <summary>Returns summarized block data, issuance and execution fees, or null for an unknown block.</summary>
+    [JsonRpcMethod(Description = "Returns block details using stored receipts and reward traces. Missing history is an error.", IsImplemented = true, IsSharable = false, ResultCanBeNull = true)]
+    ResultWrapper<OtsBlockDetails?> ots_getBlockDetails(BlockParameter block);
+
+    /// <summary>Returns summarized block details selected by hash.</summary>
+    [JsonRpcMethod(Description = "Returns block details by hash, including noncanonical blocks when their history is available.", IsImplemented = true, IsSharable = false, ResultCanBeNull = true)]
+    ResultWrapper<OtsBlockDetails?> ots_getBlockDetailsByHash(Hash256 blockHash);
+
+    /// <summary>Returns a page counted from the end of a block, in ascending transaction-index order.</summary>
+    /// <param name="block">The block number, tag or hash to select.</param>
+    /// <param name="pageNumber">The zero-based unsigned page number; pages beyond the block return an empty page.</param>
+    /// <param name="pageSize">The requested unsigned page size; zero returns an empty page.</param>
+    [JsonRpcMethod(Description = "Returns transactions with four-byte input selectors and receipts without logs or blooms.", IsImplemented = true, IsSharable = false, ResultCanBeNull = true)]
+    ResultWrapper<OtsBlockTransactions?> ots_getBlockTransactions(BlockParameter block,
+        [JsonRpcParameter(ConverterType = typeof(UInt256Converter))] UInt256 pageNumber,
+        [JsonRpcParameter(ConverterType = typeof(UInt256Converter))] UInt256 pageSize);
 
     /// <summary>Searches before an exclusive block cursor; zero starts at the current head.</summary>
     [JsonRpcMethod(Description = "Searches stored call involvement backwards, returning whole blocks of matches in descending order. Missing traces are an error.", IsImplemented = true, IsSharable = false)]
