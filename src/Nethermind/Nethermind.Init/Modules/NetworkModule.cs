@@ -1,13 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Autofac;
+using Autofac.Core;
+using Autofac.Core.Registration;
+using Autofac.Core.Resolving.Pipeline;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Container;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -39,11 +48,39 @@ namespace Nethermind.Init.Modules;
 
 public class NetworkModule(IConfigProvider configProvider) : Module
 {
+    private const int MinimumSchedulerCapacity = 7680;
+
+    private static void ValidateSchedulerCapacity(int? capacity)
+    {
+        if (capacity is < MinimumSchedulerCapacity)
+            ThrowInsufficientSchedulerCapacity();
+    }
+
+    protected override void AttachToComponentRegistration(IComponentRegistryBuilder componentRegistry, IComponentRegistration registration)
+    {
+        base.AttachToComponentRegistration(componentRegistry, registration);
+        if (!configProvider.GetConfig<ISyncConfig>().NetworkingEnabled) return;
+        foreach (Service service in registration.Services)
+        {
+            if (service is not TypedService typedService || typedService.ServiceType != typeof(IBackgroundTaskScheduler)) continue;
+            registration.PipelineBuilding += (_, pipeline) => pipeline.Use(PipelinePhase.Activation, MiddlewareInsertionMode.StartOfPhase, (context, next) =>
+            {
+                next(context);
+                ValidateSchedulerCapacity(((IBackgroundTaskScheduler)context.Instance!).QueueCapacity);
+            });
+            break;
+        }
+    }
+
     protected override void Load(ContainerBuilder builder)
     {
+        ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
+        if (syncConfig.NetworkingEnabled)
+            ValidateSchedulerCapacity(configProvider.GetConfig<IInitConfig>().BackgroundTaskMaxNumber);
         base.Load(builder);
+        builder.RegisterInstance<TimeProvider>(TimeProvider.System).ExternallyOwned().PreserveExistingDefaults();
         builder
-            .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))
+            .AddModule(new SynchronizerModule(syncConfig))
             .AddSingleton<SyncedTxGossipPolicy>()
             .AddLast<ITxGossipPolicy>(ctx => ctx.Resolve<SyncedTxGossipPolicy>())
             .AddSingleton<ITxGossipPolicySource, TxGossipPolicySource>()
@@ -52,6 +89,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             // Default block-gossip policy. Merge decorates it (MergeGossipPolicy); Optimism/Taiko replace it.
             .AddSingleton<IGossipPolicy>(Policy.FullGossip)
             .AddSingleton<IIPResolver, IPResolver>()
+            .AddSingleton<LocalAddressSource>()
+            .AddSingleton<PeerAddressPolicy>()
             .AddSingleton<NetworkListenerState>()
 
             .AddSingleton<EnodeProvider>()
@@ -63,7 +102,11 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddSingleton<IDisconnectsAnalyzer, MetricsDisconnectsAnalyzer>()
             .AddSingleton<ISessionMonitor, SessionMonitor>()
             .AddSingleton<IPrivilegedIpProvider, PrivilegedIpProvider>()
-            .AddSingleton<IRlpxHost, RlpxHost>()
+            .AddAdvance<RlpxHost>(registration => registration
+                .UsingConstructor(typeof(PeerAddressPolicy), typeof(IMessageSerializationService), typeof(Handshake.IHandshakeService),
+                    typeof(ISessionMonitor), typeof(IDisconnectsAnalyzer), typeof(INetworkConfig), typeof(IIPResolver),
+                    typeof(IPrivilegedIpProvider), typeof(ILogManager), typeof(NetworkListenerState), typeof(IChannelFactory))
+                .As<IRlpxHost>().AsSelf().SingleInstance())
             .AddSingleton<Handshake.IHandshakeService, Handshake.HandshakeService>()
 
             .AddSingleton<INodeStatsManager>(ctx => new NodeStatsManager(
@@ -215,4 +258,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             }
         }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInsufficientSchedulerCapacity() =>
+        throw new InvalidConfigurationException($"Init.BackgroundTaskMaxNumber and the network scheduler queue capacity must be at least {MinimumSchedulerCapacity} when networking is enabled.", ExitCodes.ForbiddenOptionValue);
 }

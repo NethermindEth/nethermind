@@ -62,6 +62,53 @@ namespace Nethermind.Db
 
         public IColumnsWriteBatch<TKey> StartWriteBatch() => new AtomicColumnsWriteBatch(this);
 
+        /// <inheritdoc/>
+        public IAtomicColumnsWriteBatch<TKey> StartAtomicWriteBatch() => new AbortableColumnsWriteBatch(this);
+
+        private sealed class AbortableColumnsWriteBatch(SnapshotableMemColumnsDb<TKey> columnsDb) : IAtomicColumnsWriteBatch<TKey>
+        {
+            private readonly Dictionary<TKey, SnapshotableMemDb.AtomicMemDbWriteBatch> _batches = [];
+            private bool _disposed;
+
+            public IWriteBatch GetColumnBatch(TKey key)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (!_batches.TryGetValue(key, out SnapshotableMemDb.AtomicMemDbWriteBatch? batch))
+                {
+                    batch = (SnapshotableMemDb.AtomicMemDbWriteBatch)((SnapshotableMemDb)columnsDb.GetColumnDb(key)).StartAtomicWriteBatch();
+                    _batches.Add(key, batch);
+                }
+                return batch;
+            }
+
+            public void Clear()
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                foreach (SnapshotableMemDb.AtomicMemDbWriteBatch batch in _batches.Values) batch.Clear();
+            }
+
+            public void Commit()
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                using Lock.Scope _ = columnsDb._commitLock.EnterScope();
+                try
+                {
+                    SnapshotableMemDb.AtomicMemDbWriteBatch.CommitAll(new List<SnapshotableMemDb.AtomicMemDbWriteBatch>(_batches.Values));
+                }
+                finally
+                {
+                    Dispose();
+                }
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                foreach (SnapshotableMemDb.AtomicMemDbWriteBatch batch in _batches.Values) batch.Dispose();
+            }
+        }
+
         public IColumnDbSnapshot<TKey> CreateSnapshot()
         {
             Dictionary<TKey, IKeyValueStoreSnapshot> snapshots = [];

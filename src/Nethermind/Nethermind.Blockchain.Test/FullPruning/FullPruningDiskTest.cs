@@ -130,7 +130,7 @@ public class FullPruningDiskTest
             IChainEstimations chainEstimations,
             ILogManager logManager)
             : FullPruner(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree,
-                stateBoundary, stateBoundaryReader, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
+                stateBoundary, stateBoundaryReader, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager, () => true)
         {
             public EventWaitHandle WaitHandle { get; } = new ManualResetEvent(false);
 

@@ -3,16 +3,28 @@
 
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.FullPruning;
+using Nethermind.JsonRpc.Modules.Admin;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Db.FullPruning;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Snap;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
 using NUnit.Framework;
@@ -32,7 +44,8 @@ public class PruningTrieStoreModuleTests
         FlatHasData = 4,
         ImportFromPruningTrieState = 8,
         Repaired = 16,
-        WipedForSync = 32
+        WipedForSync = 32,
+        Migrating = 64
     }
 
     [TestCase(Flags.None, false, Description = "Flag off -> keep")]
@@ -43,6 +56,7 @@ public class PruningTrieStoreModuleTests
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.ImportFromPruningTrieState, true, Description = "Import finished and left configured -> drop; the fallback boundary stops reading the trie once flat is populated")]
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Repaired, false, Description = "Repaired flat may be wiped on this start -> keep")]
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.WipedForSync, false, Description = "Interrupted wipe is redone on this start -> keep")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Migrating, false, Description = "Flat still reads what its migration has not copied -> keep")]
     public void Drops_only_when_flat_owns_a_populated_store(Flags flags, bool expected)
     {
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
@@ -106,6 +120,164 @@ public class PruningTrieStoreModuleTests
 
         logger.DidNotReceive().Warn(Arg.Any<string>());
         logger.Received(1).Info(Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Pruning_trigger_defers_during_state_sync_and_starts_after_completion(
+        [Values(SyncMode.StateNodes, SyncMode.StateNodes | SyncMode.FastHeaders)] SyncMode syncing)
+    {
+        using TempPath tempPath = TempPath.GetTempDirectory();
+        ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
+        selector.Current.Returns(syncing);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        ILogManager logs = new OneLoggerLogManager(new ILogger(logger));
+        const string refusal = "Full pruning is delayed while state synchronization is running.";
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IDbFactory>(new FreshPathMemDbFactory(tempPath.Path))
+            .AddSingleton(selector)
+            .AddSingleton(logs)
+            .Intercept<IFlatDbConfig>(config => config.Enabled = false)
+            .Intercept<IPruningConfig>(config =>
+            {
+                config.Mode = PruningMode.Full;
+                config.AvailableSpaceCheckEnabled = false;
+            })
+            .Build();
+        IPruningTrieStateAdminRpcModule admin = container.Resolve<IPruningTrieStateAdminRpcModule>();
+        FullPruningDb db = (FullPruningDb)container.ResolveKeyed<IDb>(DbNames.State);
+        int starts = 0;
+        TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        db.PruningStarted += (_, _) => starts++;
+        db.PruningFinished += (_, _) => completed.TrySetResult();
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admin.admin_prune().Data, Is.EqualTo(PruningStatus.Delayed));
+                Assert.That(starts, Is.Zero);
+                Assert.That(db.CanStartPruning, Is.True);
+            }
+            logger.Received(1).Info(refusal);
+            selector.Current.Returns(SyncMode.Full);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admin.admin_prune().Data, Is.EqualTo(PruningStatus.Starting));
+                Assert.That(starts, Is.EqualTo(1));
+            }
+            logger.Received(1).Info(refusal);
+        }
+        finally
+        {
+            container.Resolve<IProcessExitSource>().Exit(ExitCodes.Ok);
+            if (starts != 0)
+            {
+                using CancellationTokenSource watchdog = new(TimeSpan.FromSeconds(10));
+                await completed.Task.WaitAsync(watchdog.Token);
+            }
+        }
+        Assert.That(db.CanStartPruning, Is.True);
+    }
+
+    [Test]
+    public void Patricia_world_state_activation_defers_real_sync_selector_resolution()
+    {
+        using TempPath tempPath = TempPath.GetTempDirectory();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IDbFactory>(new FreshPathMemDbFactory(tempPath.Path))
+            .Intercept<IFlatDbConfig>(config => config.Enabled = false)
+            .Intercept<IPruningConfig>(config => config.Mode = PruningMode.Full)
+            .Build();
+        IWorldStateManager worldState = container.Resolve<IWorldStateManager>();
+        ISyncModeSelector selector = container.Resolve<ISyncModeSelector>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(worldState, Is.SameAs(container.Resolve<IWorldStateManager>()));
+            Assert.That(selector, Is.SameAs(container.Resolve<ISyncModeSelector>()));
+        }
+    }
+
+    [Test]
+    public void Diagnostic_state_supports_atomic_abort_and_patricia_retry_through_production_modules()
+    {
+        using TempPath tempPath = TempPath.GetTempDirectory();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IDbFactory>(new FreshPathMemDbFactory(tempPath.Path))
+            .Intercept<IFlatDbConfig>(config => config.Enabled = false)
+            .Build();
+        IDb state = container.ResolveKeyed<IDb>(DbNames.State);
+        ISnapTrieFactory factory = container.Resolve<ISnapTrieFactory>();
+        Assert.That(factory, Is.InstanceOf<PatriciaSnapTrieFactory>());
+        AssertAtomicAbortAndRetry(container, state, factory);
+        FullPruningDb pruningDb = (FullPruningDb)state;
+        Assert.That(pruningDb.TryStartPruning(out IPruningContext pruning), Is.True);
+        using (pruning)
+        {
+            pruning.Set([255], [43]);
+            pruning.Set([254], [1]);
+            pruning.Commit();
+        }
+        AssertAtomicAbortAndRetry(container, state, factory);
+    }
+
+    [TestCase("State", true)]
+    [TestCase("sTaTe0", true)]
+    [TestCase("State1", true)]
+    [TestCase("state2147483647", true)]
+    [TestCase("StateFoo", false)]
+    [TestCase("State-1", false)]
+    [TestCase("State+1", false)]
+    [TestCase("State1x", false)]
+    [TestCase("blocks", false)]
+    public void Diagnostic_factory_limits_atomic_capability_to_state_databases(string name, bool atomic)
+    {
+        using IDb db = new MemDbFactory().CreateDb(new DbSettings(name, name));
+        Assert.That(db, Is.TypeOf(atomic ? typeof(SnapshotableMemDb) : typeof(MemDb)));
+    }
+
+    private static void AssertAtomicAbortAndRetry(IContainer container, IDb state, ISnapTrieFactory factory)
+    {
+        byte[] seedKey = [255];
+        byte[] pendingKey = [254];
+        state.Set(seedKey, [42]);
+        state.Set(pendingKey, null);
+        IAtomicWriteBatch acquired = null;
+        Assert.That(() => acquired = state.StartAtomicWriteBatch(), Throws.Nothing);
+        using (IAtomicWriteBatch aborted = acquired!)
+        {
+            aborted.Set(seedKey, [43]);
+            aborted.Set(pendingKey, [1]);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.Get(seedKey), Is.EqualTo(new byte[] { 42 }));
+            Assert.That(state.Get(pendingKey), Is.Null);
+        }
+        using (IAtomicWriteBatch retry = state.StartAtomicWriteBatch())
+        {
+            retry.Set(seedKey, [43]);
+            retry.Set(pendingKey, [1]);
+            retry.Commit();
+        }
+        Hash256 address = Keccak.Compute("diagnostic-storage-account");
+        Hash256 root;
+        using (ISnapTree<PathWithStorageSlot> storage = factory.CreateStorageTree(address.ValueHash256))
+        {
+            storage.BulkSetAndUpdateRootHash([new PathWithStorageSlot(ValueKeccak.Zero, [1])]);
+            root = storage.RootHash;
+            storage.Commit(ValueKeccak.MaxValue);
+        }
+        byte[] persisted = container.Resolve<INodeStorage>().Get(address, TreePath.Empty, root.ValueHash256);
+        Assert.That(persisted, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Keccak.Compute(persisted!), Is.EqualTo(root));
+            Assert.That(state.Get(seedKey), Is.EqualTo(new byte[] { 43 }));
+            Assert.That(state.Get(pendingKey), Is.EqualTo(new byte[] { 1 }));
+        }
     }
 
     [Test]
@@ -176,6 +348,16 @@ public class PruningTrieStoreModuleTests
         }
     }
 
+    private sealed class FreshPathMemDbFactory(string basePath) : IDbFactory
+    {
+        private readonly MemDbFactory _factory = new();
+
+        public IDb CreateDb(DbSettings settings) => _factory.CreateDb(settings);
+        public IColumnsDb<T> CreateColumnsDb<T>(string name) where T : struct, Enum => _factory.CreateColumnsDb<T>(name);
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings settings) where T : struct, Enum => _factory.CreateColumnsDb<T>(settings);
+        public string GetFullDbPath(DbSettings settings) => Path.Combine(basePath, settings.DbPath);
+    }
+
     private static IContainer Container(Flags flags, IDbFactory dbFactory) => new ContainerBuilder()
         .AddModule(new TestNethermindModule())
         .Intercept<IFlatDbConfig>((cfg) =>
@@ -213,6 +395,8 @@ public class PruningTrieStoreModuleTests
         FlatStateActivationPolicyTests.SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
         if (flags.HasFlag(Flags.FlatHasData))
             new RocksDbPersistence(flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
+        if (flags.HasFlag(Flags.Migrating))
+            BasePersistence.WriteMigrationCursor(flatDb.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
         if (flags.HasFlag(Flags.WipedForSync))
             FlatStateActivationPolicyTests.MarkWipedForSync(flatDb);
         return flatDb;

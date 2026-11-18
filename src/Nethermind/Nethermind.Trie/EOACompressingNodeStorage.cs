@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,10 +22,38 @@ internal sealed class EOACompressingNodeStorage(INodeStorage nodeStorage) : INod
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
         => Decompress(nodeStorage.Get(address, in path, in keccak, readFlags));
 
+    public bool TryGet<TArg>(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct =>
+        nodeStorage.TryGet(in address, in path, in keccak, readFlags, static (value, read) =>
+        {
+            if (!IsCompressed(value))
+            {
+                read.Action(value, read.Arg);
+                return;
+            }
+
+            // Only EOA accounts are compressed, so the decompressed value fits the stack.
+            int length = DecompressedLength(value);
+            Span<byte> decompressed = length <= MaxStackDecompressedLength ? stackalloc byte[length] : new byte[length];
+            Decompress(value, decompressed);
+            read.Action(decompressed, read.Arg);
+        }, new SpanActionRead<TArg>(action, arg));
+
+    private const int MaxStackDecompressedLength = 256;
+
+    private readonly ref struct SpanActionRead<TArg>(ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    {
+        public readonly ReadOnlySpanAction<byte, TArg> Action = action;
+        public readonly TArg Arg = arg;
+    }
+
     public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
         => nodeStorage.Set(address, in path, in hash, Compress(data, stackalloc byte[data.Length]), writeFlags);
 
     public INodeStorage.IWriteBatch StartWriteBatch() => new WriteBatch(nodeStorage.StartWriteBatch());
+
+    /// <inheritdoc/>
+    public INodeStorage.IAtomicNodeStorageBatch StartAtomicWriteBatch() => new AtomicWriteBatch(nodeStorage.StartAtomicWriteBatch());
 
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 hash)
         => nodeStorage.KeyExists(in address, in path, in hash);
@@ -33,12 +62,18 @@ internal sealed class EOACompressingNodeStorage(INodeStorage nodeStorage) : INod
 
     public void Compact() => nodeStorage.Compact();
 
-    private sealed class WriteBatch(INodeStorage.IWriteBatch writeBatch) : INodeStorage.IWriteBatch
+    private class WriteBatch(INodeStorage.IWriteBatch writeBatch) : INodeStorage.IWriteBatch
     {
         public void Dispose() => writeBatch.Dispose();
 
         public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
             => writeBatch.Set(address, in path, in currentNodeKeccak, Compress(data, stackalloc byte[data.Length]), writeFlags);
+    }
+
+    private sealed class AtomicWriteBatch(INodeStorage.IAtomicNodeStorageBatch writeBatch)
+        : WriteBatch(writeBatch), INodeStorage.IAtomicNodeStorageBatch
+    {
+        public void Commit() => writeBatch.Commit();
     }
 
     /// <summary>
@@ -77,18 +112,24 @@ internal sealed class EOACompressingNodeStorage(INodeStorage nodeStorage) : INod
     [return: NotNullIfNotNull(nameof(bytes))]
     private static byte[]? Decompress(byte[]? bytes)
     {
-        if (bytes is null || bytes.Length == 0 || (bytes[PreambleIndex] != PreambleValue))
+        if (bytes is null || !IsCompressed(bytes))
         {
             return bytes;
         }
 
-        // decompress, removing preamble and adding the empty at the end
-        byte[] decompressed = new byte[bytes.Length - PreambleLength + EmptyCodeHashStorageRoot.Length];
-        Span<byte> span = decompressed.AsSpan();
-
-        bytes.AsSpan(PreambleLength).CopyTo(span);
-        EmptyCodeHashStorageRoot.CopyTo(span[^EmptyCodeHashStorageRoot.Length..]);
-
+        byte[] decompressed = new byte[DecompressedLength(bytes)];
+        Decompress(bytes, decompressed);
         return decompressed;
+    }
+
+    private static bool IsCompressed(ReadOnlySpan<byte> bytes) => bytes.Length != 0 && bytes[PreambleIndex] == PreambleValue;
+
+    private static int DecompressedLength(ReadOnlySpan<byte> compressed) => compressed.Length - PreambleLength + EmptyCodeHashStorageRoot.Length;
+
+    // decompress, removing preamble and adding the empty at the end
+    private static void Decompress(ReadOnlySpan<byte> compressed, Span<byte> decompressed)
+    {
+        compressed[PreambleLength..].CopyTo(decompressed);
+        EmptyCodeHashStorageRoot.CopyTo(decompressed[^EmptyCodeHashStorageRoot.Length..]);
     }
 }

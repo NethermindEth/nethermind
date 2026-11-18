@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -44,9 +45,52 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public void DeleteObsoleteKeys_should_return_base_strategy_value_after_pruning_finished()
         {
             _basePruningStrategy.DeleteObsoleteKeys.Returns(true);
-            _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
-            _fullPruningDb.PruningFinished += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
+            IPruningContext context = Substitute.For<IPruningContext>();
+            _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(context, true));
+            _fullPruningDb.PruningFinished += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(context, true));
             Assert.That(_strategy.DeleteObsoleteKeys, Is.True);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Late_old_finish_preserves_new_pruning_strategy_protection()
+        {
+            using FullPruningDb db = new(new DbSettings(DbNames.State, DbNames.State), new MemDbFactory());
+            IPruningContext? oldContext = null;
+            IPruningContext? newContext = null;
+            db.PruningFinished += (_, e) =>
+            {
+                if (ReferenceEquals(e.Context, oldContext))
+                {
+                    Assert.That(db.TryStartPruning(false, out newContext), Is.True);
+                }
+            };
+            _basePruningStrategy.DeleteObsoleteKeys.Returns(true);
+            _basePruningStrategy.ShouldPruneDirtyNode(Arg.Any<TrieStoreState>()).Returns(false);
+            using PruningTriggerPruningStrategy strategy = new(db, _basePruningStrategy, PruningBoundary);
+            TrieStoreState state = new(100, 200, 500, 300);
+            Assert.That(db.TryStartPruning(false, out oldContext), Is.True);
+            try
+            {
+                oldContext!.Dispose();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(newContext, Is.Not.Null);
+                    Assert.That(strategy.DeleteObsoleteKeys, Is.False);
+                    Assert.That(strategy.ShouldPruneDirtyNode(state), Is.True);
+                }
+                newContext!.Dispose();
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(strategy.DeleteObsoleteKeys, Is.True);
+                    Assert.That(strategy.ShouldPruneDirtyNode(state), Is.False);
+                }
+            }
+            finally
+            {
+                oldContext?.Dispose();
+                newContext?.Dispose();
+            }
         }
 
         // The highest-risk surface of the #13199 fix is the path it must NOT change: a node that never runs full
@@ -67,8 +111,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TrieStoreState state = new(100, 200, 500, 300);
             _basePruningStrategy.ShouldPruneDirtyNode(state).Returns(baseSaysPrune);
-            _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
-            _fullPruningDb.PruningFinished += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(Substitute.For<IPruningContext>(), true));
+            IPruningContext context = Substitute.For<IPruningContext>();
+            _fullPruningDb.PruningStarted += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(context, true));
+            _fullPruningDb.PruningFinished += Raise.Event<EventHandler<PruningEventArgs>>(null, new PruningEventArgs(context, true));
             Assert.That(_strategy.ShouldPruneDirtyNode(state), Is.EqualTo(baseSaysPrune),
                 "the forced branch must not outlive the prune that justified it");
         }

@@ -430,6 +430,10 @@ namespace Nethermind.Trie
             {
                 return DecodeRlp(rlp.AsSpan(), bufferPool, out _);
             }
+            catch (TrieException)
+            {
+                return false;
+            }
             catch (IndexOutOfRangeException)
             {
                 return false;
@@ -515,6 +519,8 @@ namespace Nethermind.Trie
             NodeRlpReader reader = new(data);
             reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> keySpan);
             int keyEnd = position;
+            // A malformed node, such as one in a peer's proof, must fail as a trie error rather than an index error.
+            if (keySpan.IsEmpty) throw new TrieException("A compact trie path must contain a prefix byte.");
             if ((keySpan[0] & 0x20) != 0)
             {
                 reader.DecodeByteArraySpan(ref position, out ReadOnlySpan<byte> valueSpan);
@@ -663,8 +669,11 @@ namespace Nethermind.Trie
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsChildHashNext(NodeRlpReader nodeRlp, int position)
-            => nodeRlp.Data[position] == NodeRlpReader.KeccakRlpPrefix
+        {
+            if ((uint)position >= (uint)nodeRlp.Data.Length) throw new TrieException("Missing child prefix.");
+            return nodeRlp.Data[position] == NodeRlpReader.KeccakRlpPrefix
                 || nodeRlp.PeekPrefixAndContentLength(position).ContentLength == Hash256.Size;
+        }
 
         public byte[]? GetInlineNodeRlp(int i)
         {
@@ -1336,6 +1345,7 @@ namespace Nethermind.Trie
                 NodeRlpReader nodeRlp = new(rlp);
                 int position = SeekChildPosition(nodeRlp, i);
 
+                if ((uint)position >= (uint)nodeRlp.Data.Length) throw new TrieException("Missing child prefix.");
                 switch (nodeRlp.Data[position])
                 {
                     case 0:
@@ -1405,6 +1415,7 @@ namespace Nethermind.Trie
             path.AppendMut(0);
             for (int i = 0; i < 16; i++)
             {
+                if ((uint)position >= (uint)nodeRlp.Data.Length) throw new TrieException("Missing child prefix.");
                 switch (nodeRlp.Data[position])
                 {
                     case 0:
@@ -1521,6 +1532,7 @@ namespace Nethermind.Trie
                             _currentStreamIndex = i;
                         }
 
+                        if ((uint)position >= (uint)nodeRlp.Data.Length) throw new TrieException("Missing child prefix.");
                         switch (nodeRlp.Data[position])
                         {
                             case 0:

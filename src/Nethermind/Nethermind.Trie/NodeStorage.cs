@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -110,17 +112,7 @@ public class NodeStorage(
             return EmptyTreeHashBytes;
         }
 
-        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
-        {
-            if (address is null && path.Length > TopStateBoundary)
-            {
-                readFlags |= ReadFlags.HintReadAhead2;
-            }
-            else if (address is not null)
-            {
-                readFlags |= ReadFlags.HintReadAhead3;
-            }
-        }
+        readFlags = WithReadAhead(address is not null, path, readFlags);
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
@@ -131,6 +123,44 @@ public class NodeStorage(
 
         return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+    }
+
+    /// <inheritdoc/>
+    [SkipLocalsInit]
+    public bool TryGet<TArg>(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct
+    {
+        if (keccak == Keccak.EmptyTreeHash.ValueHash256)
+        {
+            action(EmptyTreeHashBytes, arg);
+            return true;
+        }
+
+        readFlags = WithReadAhead(address is not null, path, readFlags);
+
+        Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
+        return Scheme == INodeStorage.KeyScheme.HalfPath
+            ? _keyValueStore.TryGet(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg)
+              || _keyValueStore.TryGet(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+            : _keyValueStore.TryGet(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+              || _keyValueStore.TryGet(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg);
+    }
+
+    private ReadFlags WithReadAhead(bool isStorage, in TreePath path, ReadFlags readFlags)
+    {
+        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
+        {
+            if (!isStorage && path.Length > TopStateBoundary)
+            {
+                readFlags |= ReadFlags.HintReadAhead2;
+            }
+            else if (isStorage)
+            {
+                readFlags |= ReadFlags.HintReadAhead3;
+            }
+        }
+
+        return readFlags;
     }
 
     [SkipLocalsInit]
@@ -159,6 +189,14 @@ public class NodeStorage(
             : new InMemoryWriteBatch(_keyValueStore);
 
         return new WriteBatch(batch, this);
+    }
+
+    /// <inheritdoc/>
+    public INodeStorage.IAtomicNodeStorageBatch StartAtomicWriteBatch()
+    {
+        if (_keyValueStore is not IKeyValueStoreWithBatching withBatching)
+            return ThrowAtomicWritesNotSupported();
+        return new AtomicWriteBatch(withBatching.StartAtomicWriteBatch(), this);
     }
 
     [SkipLocalsInit]
@@ -195,6 +233,12 @@ public class NodeStorage(
         }
     }
 
+    private sealed class AtomicWriteBatch(IAtomicWriteBatch writeBatch, NodeStorage nodeStorage)
+        : WriteBatch(writeBatch, nodeStorage), INodeStorage.IAtomicNodeStorageBatch
+    {
+        public void Commit() => writeBatch.Commit();
+    }
+
     private class WriteBatch(IWriteBatch writeBatch, NodeStorage nodeStorage) : INodeStorage.IWriteBatch
     {
         public void Dispose() => writeBatch.Dispose();
@@ -208,4 +252,8 @@ public class NodeStorage(
             }
         }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static INodeStorage.IAtomicNodeStorageBatch ThrowAtomicWritesNotSupported() =>
+        throw new NotSupportedException("The backing store does not support atomic node writes.");
 }

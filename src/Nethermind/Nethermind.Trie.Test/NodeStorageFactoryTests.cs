@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -92,7 +93,41 @@ public class NodeStorageFactoryTests
             Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakA), Is.EqualTo(node));
             Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakB), Is.EqualTo(node));
             Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakC), Is.EqualTo(node));
+            Assert.That(ReadWithSpanAction(nodeStorage, TestItem.KeccakA), Is.EqualTo(node));
+            Assert.That(ReadWithSpanAction(nodeStorage, TestItem.KeccakC), Is.EqualTo(node));
         }
+    }
+
+    [Test]
+    public void WrapKeyValueStore_AtomicBatchCompressesAndWritesOnlyOnCommit()
+    {
+        SnapshotableMemDb db = new();
+        INodeStorage nodeStorage = new NodeStorageFactory(INodeStorage.KeyScheme.Hash, LimboLogs.Instance).WrapKeyValueStore(db);
+        byte[] node = Bytes.FromHexString(EoaNodeHex);
+
+        using (INodeStorage.IAtomicNodeStorageBatch aborted = nodeStorage.StartAtomicWriteBatch())
+        {
+            aborted.Set(null, TreePath.Empty, TestItem.KeccakA, node, WriteFlags.None);
+        }
+        using (INodeStorage.IAtomicNodeStorageBatch committed = nodeStorage.StartAtomicWriteBatch())
+        {
+            committed.Set(null, TreePath.Empty, TestItem.KeccakB, node, WriteFlags.None);
+            committed.Commit();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db[TestItem.KeccakA.Bytes], Is.Null);
+            Assert.That(db[TestItem.KeccakB.Bytes], Is.EqualTo(Bytes.FromHexString("0x00f8448001")));
+            Assert.That(nodeStorage.Get(null, TreePath.Empty, TestItem.KeccakB), Is.EqualTo(node));
+        }
+    }
+
+    private static byte[]? ReadWithSpanAction(INodeStorage nodeStorage, Hash256 hash)
+    {
+        byte[]? rlp = null;
+        nodeStorage.TryGet(null, TreePath.Empty, hash, ReadFlags.None, static (span, result) => result[0] = span.ToArray(), new Span<byte[]?>(ref rlp));
+        return rlp;
     }
 
     private MemDb PrepareMemDbWithKeyScheme(INodeStorage.KeyScheme? scheme)

@@ -45,7 +45,11 @@ namespace Nethermind.Trie
             return stack;
         }
 
-        private static void ReturnTraverseStack(TraverseStack stack) => _threadStaticTraverseStack = stack;
+        private static void ReturnTraverseStack(TraverseStack stack)
+        {
+            stack.Clear();
+            _threadStaticTraverseStack = stack;
+        }
         public readonly IScopedTrieStore TrieStore;
         public ICappedArrayPool? _bufferPool;
 

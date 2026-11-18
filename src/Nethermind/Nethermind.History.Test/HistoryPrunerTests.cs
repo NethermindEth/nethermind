@@ -317,7 +317,7 @@ public class HistoryPrunerTests
         TaskCompletionSource deleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockAccessListStore balStore = Substitute.For<IBlockAccessListStore>();
         balStore.When(static s => s.DeleteRange(Arg.Any<ulong>(), Arg.Any<ulong>())).Do(_ => deleted.TrySetResult());
-        await using BackgroundTaskScheduler scheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 1, 16, LimboLogs.Instance);
+        await using BackgroundTaskScheduler scheduler = new(Substitute.For<IBranchProcessor>(), Substitute.For<IChainHeadInfoProvider>(), 1, 8192, LimboLogs.Instance);
         using IContainer container = CreateBalOnlyContainer(Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), balStore, scheduler: scheduler);
         HistoryPruner pruner = (HistoryPruner)container.Resolve<IHistoryPruner>();
 

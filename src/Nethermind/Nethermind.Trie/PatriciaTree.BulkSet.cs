@@ -66,7 +66,18 @@ public partial class PatriciaTree
             : null;
 
         TraverseStack traverseStack = GetTraverseStack();
+        try
+        {
+            BulkSetEntries(entries, flags, traverseStack);
+        }
+        finally
+        {
+            ReturnTraverseStack(traverseStack);
+        }
+    }
 
+    private void BulkSetEntries(in ArrayPoolListRef<BulkSetEntry> entries, Flags flags, TraverseStack traverseStack)
+    {
         TreePath path = TreePath.Empty;
 
         // Small-batch fast path: skip the ArrayPool<BulkSetEntry>.Rent of a sort buffer and
@@ -91,7 +102,6 @@ public partial class PatriciaTree
                 flags);
             RootRef = newRoot;
             _writeBeforeCommit += entries.Count;
-            ReturnTraverseStack(traverseStack);
             return;
         }
 
@@ -118,7 +128,6 @@ public partial class PatriciaTree
         RootRef = newRoot2;
 
         _writeBeforeCommit += entries.Count;
-        ReturnTraverseStack(traverseStack);
     }
 
     /// <summary>Lets the build adjust the flags of a bulk set; the guest never parallelizes one.</summary>

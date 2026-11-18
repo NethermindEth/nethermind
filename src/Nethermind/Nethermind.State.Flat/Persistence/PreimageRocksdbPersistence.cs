@@ -158,6 +158,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
+            batch.GetColumnBatch(FlatDbColumns.Metadata),
             new Reactive.AnonymousDisposable(() =>
             {
                 // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
@@ -254,6 +255,9 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
             throw new NotSupportedException("Snap sync not supported in preimage mode");
 
         public void DeleteStorageRange(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
+            throw new NotSupportedException("Snap sync not supported in preimage mode");
+
+        public bool IsStorageRangeEmpty(in ValueHash256 addressHash, in ValueHash256 fromPath, in ValueHash256 toPath) =>
             throw new NotSupportedException("Snap sync not supported in preimage mode");
 
         public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) =>

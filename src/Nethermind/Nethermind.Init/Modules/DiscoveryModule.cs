@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -19,6 +21,7 @@ using Nethermind.Network.Dns;
 using Nethermind.Network.Enr;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stats;
 
 namespace Nethermind.Init.Modules;
 
@@ -36,6 +39,8 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .SingleInstance();
 
         builder.RegisterType<NodesLoader>()
+            .UsingConstructor(typeof(INetworkConfig), typeof(INodeStatsManager), typeof(INetworkStorage), typeof(IEnode),
+                typeof(ILogManager), typeof(NodesLoaderOptions), typeof(PeerAddressPolicy))
             .AsSelf()
             .WithAttributeFiltering()
             .SingleInstance();
@@ -46,7 +51,10 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
                 CreateEnrDiscovery(ethereumEcdsa, forkInfo, logManager))
 
             // Allow feeding discovery app bootnodes from enr. Need `Run` to be called.
-            .AddSingleton<NodeSourceToDiscV4Feeder>()
+            .AddAdvance<NodeSourceToDiscV4Feeder>(registration => registration
+                .UsingConstructor(typeof(INodeSource), typeof(IDiscoveryApp), typeof(IProcessExitSource),
+                    typeof(NetworkListenerState), typeof(ILogManager), typeof(PeerAddressPolicy), typeof(int))
+                .SingleInstance())
             .AddKeyedSingleton<INodeSource>(NodeSourceToDiscV4Feeder.SourceKey, ctx => ctx.Resolve<EnrDiscovery>())
 
             // Uses by RPC also.
@@ -65,7 +73,11 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             .AddComposite<INodeSource, CompositeNodeSource>()
 
             // The actual thing that uses the INodeSource(s)
-            .AddSingleton<IPeerPool, PeerPool>()
+            .AddAdvance<PeerPool>(registration => registration
+                .UsingConstructor(typeof(INodeSource), typeof(INodeStatsManager), typeof(INetworkStorage),
+                    typeof(INetworkConfig), typeof(ILogManager), typeof(ITrustedNodesManager), typeof(TimeProvider), typeof(PeerAddressPolicy))
+                .WithParameter(new TypedParameter(typeof(TimeProvider), TimeProvider.System))
+                .As<IPeerPool>().AsSelf().SingleInstance())
             .AddSingleton<IPeerManager, PeerManager>()
 
             // Some config migration
@@ -126,8 +138,16 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
             // DiscoveryApp and DiscoveryV5App implement IStoppableService via IDiscoveryApp,
             // but their lifecycle is owned by CompositeDiscoveryApp. Mark ExternallyOwned so
             // ServiceStopperMiddleware does not double-stop them.
-            builder.RegisterType<DiscoveryV5App>().AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
-            builder.RegisterType<DiscoveryApp>().AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
+            builder.RegisterType<DiscoveryV5App>()
+                .UsingConstructor(typeof(PeerAddressPolicy), typeof(ILifetimeScope), typeof(IProtectedPrivateKey), typeof(IEnode),
+                    typeof(IIPResolver), typeof(INetworkConfig), typeof(IDiscoveryConfig), typeof(IProcessExitSource),
+                    typeof(ILogManager), typeof(NetworkListenerState), typeof(Action<ContainerBuilder>))
+                .AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
+            builder.RegisterType<DiscoveryApp>()
+                .UsingConstructor(typeof(PeerAddressPolicy), typeof(ILifetimeScope), typeof(IEnode), typeof(INetworkConfig),
+                    typeof(IDiscoveryConfig), typeof(IIPResolver), typeof(IProcessExitSource), typeof(ILogManager),
+                    typeof(NetworkListenerState), typeof(Action<ContainerBuilder>))
+                .AsSelf().WithAttributeFiltering().SingleInstance().ExternallyOwned();
         }
 
 

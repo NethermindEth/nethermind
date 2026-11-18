@@ -119,4 +119,5 @@ public class DbModule(
 
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => baseDbFactory.CreateColumnsDb<T>(dbSettings).CreateReadOnly(true);
     }
+
 }

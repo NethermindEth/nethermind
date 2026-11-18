@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
@@ -20,6 +21,7 @@ public static partial class HexPrefix
     {
         // The first nibble flags a leaf (0x2) and an odd nibble count (0x1), whose first nibble then shares the byte. Only
         // these two bits are read, as the execution specs' compact_to_nibbles does.
+        if (bytes.IsEmpty) ThrowEmptyCompactPath();
         int flags = bytes[0];
         return (2 * bytes.Length - ((flags & 0x10) != 0 ? 1 : 2), (flags & 0x20) != 0);
     }
@@ -280,4 +282,8 @@ public static partial class HexPrefix
     }
 
     private static byte[] CreateTripleNibblePath(int index) => [(byte)(index >> 8), (byte)((index >> 4) & 0xF), (byte)(index & 0xF)];
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowEmptyCompactPath() =>
+        throw new TrieException("A compact trie path must contain a prefix byte.");
 }

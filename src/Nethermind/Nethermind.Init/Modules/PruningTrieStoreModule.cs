@@ -19,6 +19,7 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Healing;
+using Nethermind.Stats;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -123,9 +124,9 @@ public class PruningTrieStoreModule : Module
             .AddSingleton<FullStateFinder>()
             .AddSingleton<PatriciaSnapTrieFactory>()
             .AddSingleton<PatriciaTreeSyncStore>()
-            .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager>((peerPool, nodeStorage, logManager) => new PathNodeRecovery(
+            .AddSingleton<IPathRecovery, ISyncPeerPool, INodeStorage, ILogManager, INodeStatsManager>((peerPool, nodeStorage, logManager, nodeStatsManager) => new PathNodeRecovery(
                 new NodeDataRecovery(peerPool!, nodeStorage, logManager),
-                new SnapRangeRecovery(peerPool!, logManager),
+                new SnapRangeRecovery(peerPool!, logManager, nodeStatsManager),
                 logManager
             ))
             .AddSingleton<ICodeRecovery, CodeRecovery>()
@@ -163,6 +164,12 @@ public class PruningTrieStoreModule : Module
         if (currentState == StateId.PreGenesis)
         {
             if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB is empty, so the node would be left without any state.");
+            return false;
+        }
+
+        if (BasePersistence.ReadMigrationCursor(metadata) is not null)
+        {
+            if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB still reads what its migration has not copied yet from it.");
             return false;
         }
 

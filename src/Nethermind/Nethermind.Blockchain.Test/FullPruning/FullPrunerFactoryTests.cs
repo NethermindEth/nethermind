@@ -16,6 +16,7 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Init;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -84,7 +85,8 @@ public class FullPrunerFactoryTests
             new Testably.Abstractions.RealFileSystem(),
             timerFactory,
             new CompositePruningTrigger(),
-            new OneLoggerLogManager(new(logger)));
+            new OneLoggerLogManager(new(logger)),
+            new Lazy<ISyncModeSelector>(() => Substitute.For<ISyncModeSelector>()));
 
         using FullPruner? pruner = factory.Create(Substitute.For<IWorldStateManager>(), Substitute.For<IPruningTrieStore>());
 

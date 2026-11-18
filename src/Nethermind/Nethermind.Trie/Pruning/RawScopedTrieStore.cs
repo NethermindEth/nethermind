@@ -8,8 +8,17 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null) : IScopedTrieStore
+/// <summary>Resolves trie nodes and stages commits in the supplied batch when present.</summary>
+/// <param name="nodeStorage">Node storage for reads and ordinary commits.</param>
+/// <param name="address">Storage trie address, or null for the state trie.</param>
+/// <param name="writeBatch">An externally owned batch; committers do not dispose it.</param>
+public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address, INodeStorage.IWriteBatch? writeBatch) : IScopedTrieStore
 {
+    /// <summary>Creates a trie store whose committers own their write batches.</summary>
+    /// <param name="nodeStorage">Node storage for reads and commits.</param>
+    /// <param name="address">Storage trie address, or null for the state trie.</param>
+    public RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = null) : this(nodeStorage, address, null) { }
+
     public RawScopedTrieStore(IKeyValueStoreWithBatching kv, Hash256? address = null) : this(new NodeStorage(kv), address)
     {
     }
@@ -31,13 +40,18 @@ public class RawScopedTrieStore(INodeStorage nodeStorage, Hash256? address = nul
 
     public INodeStorage.KeyScheme Scheme => nodeStorage.Scheme;
 
-    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags);
+    public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new Committer(nodeStorage, address, writeFlags, writeBatch);
 
-    public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : ICommitter
+    public class Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags, INodeStorage.IWriteBatch? writeBatch) : ICommitter
     {
-        INodeStorage.IWriteBatch _writeBatch = nodeStorage.StartWriteBatch();
+        public Committer(INodeStorage nodeStorage, Hash256? address, WriteFlags writeFlags) : this(nodeStorage, address, writeFlags, null) { }
 
-        public void Dispose() => _writeBatch.Dispose();
+        INodeStorage.IWriteBatch _writeBatch = writeBatch ?? nodeStorage.StartWriteBatch();
+
+        public void Dispose()
+        {
+            if (writeBatch is null) _writeBatch.Dispose();
+        }
 
         public TrieNode CommitNode(ref TreePath path, TrieNode node)
         {

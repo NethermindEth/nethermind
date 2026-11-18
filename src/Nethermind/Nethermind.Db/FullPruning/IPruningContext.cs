@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Db.FullPruning
@@ -11,6 +12,9 @@ namespace Nethermind.Db.FullPruning
     /// </summary>
     public interface IPruningContext : IKeyValueStoreWithBatching, IDisposable
     {
+        /// <summary>Signals when the database copy has been superseded.</summary>
+        CancellationToken Superseded => CancellationToken.None;
+
         /// <summary>
         /// Commits pruning, marking the end of cloning state to new DB.
         /// </summary>

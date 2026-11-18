@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO.Abstractions;
 using System.Linq;
 using Nethermind.Api;
@@ -14,6 +15,7 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -32,7 +34,8 @@ public class FullPrunerFactory(
     IFileSystem fileSystem,
     ITimerFactory timerFactory,
     CompositePruningTrigger compositePruningTrigger,
-    ILogManager logManager
+    ILogManager logManager,
+    Lazy<ISyncModeSelector> syncModeSelector
 ) : IFullPrunerFactory
 {
     private readonly ILogger _logger = logManager.GetClassLogger<FullPrunerFactory>();
@@ -69,7 +72,8 @@ public class FullPrunerFactory(
             chainEstimations,
             drive,
             trieStore,
-            logManager);
+            logManager,
+            () => (syncModeSelector.Value.Current & SyncMode.StateNodes) == 0);
     }
 
     private IPruningTrigger? CreateAutomaticTrigger(string dbPath, IChainEstimations chainEstimations)

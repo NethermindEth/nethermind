@@ -65,26 +65,37 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
         }
     }
 
-    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags)
+    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags) => CreateWriteBatch(from, to, flags, atomic: false);
+
+    private void MarkLayoutCommitted() => Volatile.Write(ref _layoutPersisted, 1);
+
+    /// <inheritdoc/>
+    public IPersistence.IAtomicPersistenceBatch CreateAtomicWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None) =>
+        (IPersistence.IAtomicPersistenceBatch)CreateWriteBatch(from, to, flags, atomic: true);
+
+    private IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags, bool atomic)
     {
         // Sync and import batches scan the trie columns for range deletes, so the log is merged into RocksDB before
         // the snapshot they scan is taken, and they bypass it.
-        bool bypass = from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL);
+        bool bypass = atomic || from == StateId.Sync || to == StateId.Sync || flags.HasFlag(WriteFlags.DisableWAL);
         if (bypass) trieNodeLog.Drain();
 
-        IColumnDbSnapshot<FlatDbColumns> dbSnap = db.CreateSnapshot();
-        StateId currentState = BasePersistence.ReadCurrentState(dbSnap.GetColumn(FlatDbColumns.Metadata));
-        if (from != StateId.Sync && to != StateId.Sync && currentState != from)
+        IColumnDbSnapshot<FlatDbColumns> dbSnap = BasePersistence.CreateWriteSnapshot(db, from, to);
+        IColumnsWriteBatch<FlatDbColumns> batch;
+        try
+        {
+            batch = atomic ? db.StartAtomicWriteBatch() : db.StartWriteBatch();
+        }
+        catch
         {
             dbSnap.Dispose();
-            throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, Db state: {currentState}");
+            throw;
         }
 
-        IColumnsWriteBatch<FlatDbColumns> batch = db.StartWriteBatch();
         ITrieNodeLog.IWriteBatch logBatch;
         try
         {
-            logBatch = trieNodeLog.StartWriteBatch(batch, bypass);
+            logBatch = atomic ? NullTrieNodeLog.Instance : trieNodeLog.StartWriteBatch(batch, bypass);
         }
         catch
         {
@@ -94,29 +105,30 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
             throw;
         }
 
-        IWriteBatch accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
-        IWriteBatch storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
-        IWriteBatch stateTopNodesBatch = logBatch.Wrap(FlatDbColumns.StateTopNodes, _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags));
-        IWriteBatch stateNodesBatch = logBatch.Wrap(FlatDbColumns.StateNodes, _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags));
-        IWriteBatch storageNodesBatch = logBatch.Wrap(FlatDbColumns.StorageNodes, _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags));
-        IWriteBatch fallbackNodesBatch = logBatch.Wrap(FlatDbColumns.FallbackNodes, _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags));
+        try
+        {
+            IWriteBatch accountBatch = _adjuster.Wrap(batch, FlatDbColumns.Account, flags);
+            IWriteBatch storageBatch = _adjuster.Wrap(batch, FlatDbColumns.Storage, flags);
+            IWriteBatch stateTopNodesBatch = logBatch.Wrap(FlatDbColumns.StateTopNodes, _adjuster.Wrap(batch, FlatDbColumns.StateTopNodes, flags));
+            IWriteBatch stateNodesBatch = logBatch.Wrap(FlatDbColumns.StateNodes, _adjuster.Wrap(batch, FlatDbColumns.StateNodes, flags));
+            IWriteBatch storageNodesBatch = logBatch.Wrap(FlatDbColumns.StorageNodes, _adjuster.Wrap(batch, FlatDbColumns.StorageNodes, flags));
+            IWriteBatch fallbackNodesBatch = logBatch.Wrap(FlatDbColumns.FallbackNodes, _adjuster.Wrap(batch, FlatDbColumns.FallbackNodes, flags));
 
-        BaseTriePersistence.WriteBatch trieWriteBatch = new(
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
-            (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
-            stateTopNodesBatch,
-            stateNodesBatch,
-            storageNodesBatch,
-            fallbackNodesBatch,
-            flags);
+            BaseTriePersistence.WriteBatch trieWriteBatch = new(
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateTopNodes),
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StateNodes),
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.StorageNodes),
+                (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.FallbackNodes),
+                stateTopNodesBatch,
+                stateNodesBatch,
+                storageNodesBatch,
+                fallbackNodesBatch,
+                flags);
 
-        StateId fromCopy = from;
-        StateId toCopy = to;
+            StateId fromCopy = from;
+            StateId toCopy = to;
 
-        return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
-            new BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>(
+            BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch> flatWriteBatch = new(
                 new BaseFlatPersistence.WriteBatch(
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Account),
                     (ISortedKeyValueStore)dbSnap.GetColumn(FlatDbColumns.Storage),
@@ -125,45 +137,70 @@ public class RocksDbPersistence(IColumnsDb<FlatDbColumns> db, ILogManager logMan
                     flags,
                     rlpWrapSlots: _rlpWrapSlots
                 )
-            ),
-            trieWriteBatch,
-            new Reactive.AnonymousDisposable(() =>
+            );
+            IWriteOnlyKeyValueStore metadata = batch.GetColumnBatch(FlatDbColumns.Metadata);
+            if (atomic)
             {
-                // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
-                // confirmed to the log only once RocksDB has committed and flushed its WAL.
-                bool batchWritten = false;
-                try
+                AtomicPersistenceBatch transaction = new((IAtomicColumnsWriteBatch<FlatDbColumns>)batch, dbSnap, from, to, FlatLayout.Flat, _rlpWrapSlots && Volatile.Read(ref _layoutPersisted) == 0, MarkLayoutCommitted, db, flags, _adjuster, logManager.GetClassLogger<RocksDbPersistence>());
+                return new BasePersistence.AtomicWriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(flatWriteBatch, trieWriteBatch, metadata, transaction);
+            }
+
+            return new BasePersistence.WriteBatch<BasePersistence.ToHashedWriteBatch<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
+                flatWriteBatch,
+                trieWriteBatch,
+                metadata,
+                new Reactive.AnonymousDisposable(() =>
                 {
-                    logBatch.Commit();
-                    if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
-                        BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
-                    if (_rlpWrapSlots)
-                        BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
-                    batchWritten = true;
-                    batch.Dispose();
-                    if (!flags.HasFlag(WriteFlags.DisableWAL))
+                    // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
+                    // confirmed to the log only once RocksDB has committed and flushed its WAL.
+                    bool batchWritten = false;
+                    try
                     {
-                        // A log-backed batch needs the sync to throw, so a version RocksDB did not make durable is never confirmed;
-                        // without the log the WAL flush keeps its previous error handling.
-                        if (bypass || trieNodeLog is NullTrieNodeLog) db.Flush(onlyWal: true);
-                        else db.SyncWal();
-                    }
-                    logBatch.Confirm();
-                }
-                finally
-                {
-                    if (!batchWritten)
-                    {
-                        // The log side failed, so nothing of this batch may reach RocksDB.
-                        batch.Clear();
+                        logBatch.Commit();
+                        if (fromCopy != StateId.Sync && toCopy != StateId.Sync)
+                            BasePersistence.SetCurrentState(batch.GetColumnBatch(FlatDbColumns.Metadata), toCopy);
+                        if (_rlpWrapSlots)
+                            BasePersistence.RecordLayoutOnFirstBatch(batch.GetColumnBatch(FlatDbColumns.Metadata), ref _layoutPersisted, FlatLayout.Flat);
+                        batchWritten = true;
                         batch.Dispose();
+                        if (!flags.HasFlag(WriteFlags.DisableWAL))
+                        {
+                            // A log-backed batch needs the sync to throw, so a version RocksDB did not make durable is never confirmed;
+                            // without the log the WAL flush keeps its previous error handling.
+                            if (bypass || trieNodeLog is NullTrieNodeLog) db.Flush(onlyWal: true);
+                            else db.SyncWal();
+                        }
+                        logBatch.Confirm();
                     }
-                    dbSnap.Dispose();
-                    _adjuster.OnBatchDisposed();
-                    logBatch.Dispose();
-                }
-            })
-        );
+                    finally
+                    {
+                        if (!batchWritten)
+                        {
+                            // The log side failed, so nothing of this batch may reach RocksDB.
+                            batch.Clear();
+                            batch.Dispose();
+                        }
+                        dbSnap.Dispose();
+                        _adjuster.OnBatchDisposed();
+                        logBatch.Dispose();
+                    }
+                })
+            );
+        }
+        catch
+        {
+            try
+            {
+                batch.Clear();
+                batch.Dispose();
+            }
+            finally
+            {
+                logBatch.Dispose();
+                dbSnap.Dispose();
+            }
+            throw;
+        }
     }
 
 }

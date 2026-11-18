@@ -9,7 +9,20 @@ namespace Nethermind.Db
     {
         public IColumnsDb<T> CreateColumnsDb<T>(string dbName) where T : struct, Enum => new SnapshotableMemColumnsDb<T>(dbName);
 
-        public IDb CreateDb(DbSettings dbSettings) => new MemDb(dbSettings.DbName);
+        public IDb CreateDb(DbSettings dbSettings) => IsStateDb(dbSettings.DbName)
+            ? new SnapshotableMemDb(dbSettings.DbName)
+            : new MemDb(dbSettings.DbName);
+
+        private static bool IsStateDb(string name)
+        {
+            if (!name.StartsWith(DbNames.State, StringComparison.OrdinalIgnoreCase)) return false;
+            ReadOnlySpan<char> suffix = name.AsSpan(DbNames.State.Length);
+            foreach (char digit in suffix)
+            {
+                if (digit is < '0' or > '9') return false;
+            }
+            return true;
+        }
 
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => new SnapshotableMemColumnsDb<T>(dbSettings.DbName);
     }

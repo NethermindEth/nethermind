@@ -349,7 +349,8 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
                 chainEstimations ?? _chainEstimations,
                 DriveInfo,
                 trieStore,
-                logManager ?? LimboLogs.Instance);
+                logManager ?? LimboLogs.Instance,
+                () => true);
         }
 
         public async Task RunFullPruning()

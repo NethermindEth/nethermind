@@ -17,7 +17,7 @@ namespace Nethermind.Db
     /// </summary>
     public class SnapshotableMemDb(string name = nameof(SnapshotableMemDb), bool neverPrune = false) : IFullDb, ISortedKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore
     {
-        private readonly SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = [with(new EntryComparer())];
+        private SortedSet<(byte[] Key, int Version, byte[]? Value)> _db = [with(new EntryComparer())];
         private readonly EntryComparer _entryComparer = new();
         private int _currentVersion = 0;
         private readonly SortedList<int, int> _activeSnapshotVersions = [];
@@ -58,10 +58,7 @@ namespace Nethermind.Db
                 _currentVersion++;
                 AddOrReplace((keyArray, _currentVersion, value));
 
-                if (!_neverPrune && _activeSnapshotVersions.Count == 0)
-                {
-                    RemovePreviousVersions(keyArray, _currentVersion);
-                }
+                PruneKeyHistory(keyArray, _currentVersion, value);
             }
         }
 
@@ -93,6 +90,169 @@ namespace Nethermind.Db
         }
 
         public IWriteBatch StartWriteBatch() => new MemDbWriteBatch(this);
+
+        /// <inheritdoc/>
+        /// <remarks>Recovery after allocation or stack exhaustion during commit is unsupported.</remarks>
+        public IAtomicWriteBatch StartAtomicWriteBatch() => new AtomicMemDbWriteBatch(this);
+
+        internal sealed class AtomicMemDbWriteBatch(SnapshotableMemDb db) : IAtomicWriteBatch
+        {
+            private readonly List<(byte[] Key, byte[]? Value)> _operations = [];
+            private bool _disposed;
+
+            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _operations.Add((key.ToArray(), value?.ToArray()));
+            }
+
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _operations.Add((key.ToArray(), value.ToArray()));
+            }
+            public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => PutSpan(key, value, flags);
+
+            public void Clear()
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                _operations.Clear();
+            }
+
+            public void Dispose()
+            {
+                _disposed = true;
+                _operations.Clear();
+            }
+
+            public void Commit()
+            {
+                try
+                {
+                    CommitAll([this]);
+                }
+                finally
+                {
+                    Dispose();
+                }
+            }
+
+            internal static void CommitAll(IReadOnlyList<AtomicMemDbWriteBatch> batches)
+            {
+                LockAndCommit(0);
+
+                void LockAndCommit(int index)
+                {
+                    if (index < batches.Count)
+                    {
+                        AtomicMemDbWriteBatch batch = batches[index];
+                        ObjectDisposedException.ThrowIf(batch._disposed, batch);
+                        lock (batch.Database._versionLock) LockAndCommit(index + 1);
+                        return;
+                    }
+
+                    int[] versions = new int[batches.Count];
+                    for (int i = 0; i < batches.Count; i++)
+                    {
+                        versions[i] = checked(batches[i].Database._currentVersion + 1);
+                    }
+
+                    PreparedWrites[] prepared = new PreparedWrites[batches.Count];
+                    int entryCount = 0;
+                    for (int i = 0; i < batches.Count; i++)
+                    {
+                        prepared[i] = batches[i].Prepare(versions[i]);
+                        entryCount = checked(entryCount + prepared[i].Entries.Length);
+                    }
+
+                    (SnapshotableMemDb Database, (byte[] Key, int Version, byte[]? Value) Entry)[] inserted =
+                        new (SnapshotableMemDb, (byte[], int, byte[]?))[entryCount];
+                    int insertedCount = 0;
+                    try
+                    {
+                        foreach (PreparedWrites writes in prepared)
+                        {
+                            foreach ((byte[] Key, int Version, byte[]? Value) entry in writes.Entries)
+                            {
+                                if (writes.Database._db.Add(entry)) inserted[insertedCount++] = (writes.Database, entry);
+                            }
+                        }
+                    }
+                    // Allocation failure can interrupt SortedSet rebalancing.
+                    catch (Exception exception) when (exception is not (OutOfMemoryException or StackOverflowException))
+                    {
+                        for (int i = insertedCount - 1; i >= 0; i--)
+                        {
+                            inserted[i].Database._db.Remove(inserted[i].Entry);
+                        }
+                        throw;
+                    }
+
+                    foreach (PreparedWrites writes in prepared)
+                    {
+                        foreach ((byte[] Key, int Version, byte[]? Value) entry in writes.Removals) writes.Database._db.Remove(entry);
+                    }
+
+                    foreach (PreparedWrites writes in prepared)
+                    {
+                        writes.Database._currentVersion = writes.Version;
+                        writes.Database.WritesCount += writes.OperationCount;
+                    }
+                    foreach (AtomicMemDbWriteBatch batch in batches) batch.Dispose();
+                }
+            }
+
+            private PreparedWrites Prepare(int version)
+            {
+                SnapshotableMemDb database = Database;
+                SortedDictionary<byte[], byte[]?> values = [with(Bytes.Comparer)];
+                foreach ((byte[] key, byte[]? value) in _operations) values[key] = value;
+                (byte[] Key, int Version, byte[]? Value)[] entries = new (byte[], int, byte[]?)[values.Count];
+                List<(byte[] Key, int Version, byte[]? Value)> removals = [];
+                int[] snapshots = database._neverPrune ? [] : new int[database._activeSnapshotVersions.Count];
+                if (!database._neverPrune)
+                {
+                    database._activeSnapshotVersions.Keys.CopyTo(snapshots, 0);
+                    Array.Sort(snapshots);
+                    Array.Reverse(snapshots);
+                }
+                int index = 0;
+                foreach ((byte[] key, byte[]? value) in values)
+                {
+                    (byte[] Key, int Version, byte[]? Value) entry = (key, version, value);
+                    entries[index++] = entry;
+                    if (database._neverPrune) continue;
+
+                    List<(byte[] Key, int Version, byte[]? Value)> history = [entry];
+                    foreach ((byte[] Key, int Version, byte[]? Value) old in database._db.GetViewBetween((key, 0, null), (key, int.MaxValue, null)).Reverse())
+                    {
+                        history.Add(old);
+                    }
+                    List<(byte[] Key, int Version, byte[]? Value)> tombstones = [];
+                    int snapshotIndex = 0;
+                    bool hasValue = false;
+                    for (int i = 0; i < history.Count; i++)
+                    {
+                        (byte[] Key, int Version, byte[]? Value) candidate = history[i];
+                        bool keep = RetainVersion(i == 0, candidate.Version, snapshots, ref snapshotIndex);
+                        if (!keep) removals.Add(candidate);
+                        else if (candidate.Value is null) tombstones.Add(candidate);
+                        else hasValue = true;
+                    }
+                    if (!hasValue) removals.AddRange(tombstones);
+                }
+                return new PreparedWrites(database, version, _operations.Count, entries, removals.ToArray());
+            }
+
+            private readonly record struct PreparedWrites(
+                SnapshotableMemDb Database,
+                int Version,
+                int OperationCount,
+                (byte[] Key, int Version, byte[]? Value)[] Entries,
+                (byte[] Key, int Version, byte[]? Value)[] Removals);
+
+            private SnapshotableMemDb Database => db;
+        }
 
         public void Flush(bool onlyWal = false) { }
 
@@ -264,16 +424,7 @@ namespace Nethermind.Db
                     return;
                 }
 
-                // Fast path: no active snapshots - keep only latest version per key
-                if (_activeSnapshotVersions.Count == 0)
-                {
-                    KeepOnlyLatestVersions();
-                    return;
-                }
-
-                // Slow path: prune versions older than oldest active snapshot
-                int minVersion = _activeSnapshotVersions.Keys[0];
-                PruneVersionsOlderThan(minVersion);
+                PruneObsoleteVersions(_db);
             }
         }
 
@@ -363,61 +514,56 @@ namespace Nethermind.Db
             return null;
         }
 
-        /// <summary>
-        /// Removes all versions except the latest for each key.
-        /// Called when there are no active snapshots.
-        /// </summary>
-        private void KeepOnlyLatestVersions()
+        private void PruneKeyHistory(byte[] key, int version, byte[]? value)
         {
-            using ArrayPoolList<(byte[] Key, int Version, byte[]? Value)> toRemove = new(_db.Count);
-            (byte[] Key, int Version, byte[]? Value) prev = default;
-
-            foreach ((byte[] Key, int Version, byte[]? Value) entry in _db)
+            if (_neverPrune) return;
+            if (_activeSnapshotVersions.Count == 0)
             {
-                if (prev.Key is not null && prev.Key.AsSpan().SequenceCompareTo(entry.Key) == 0)
-                {
-                    toRemove.Add(prev);
-                }
-
-                prev = entry;
+                RemovePreviousVersions(key, version);
+                if (value is null) _db.Remove((key, version, null));
+                return;
             }
-
-            foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove)
-            {
-                _db.Remove(entry);
-            }
+            PruneObsoleteVersions(_db.GetViewBetween((key, 0, null), (key, int.MaxValue, null)));
         }
 
-        /// <summary>
-        /// Removes old versions per key, keeping the latest version below minVersion
-        /// so that snapshots at or after that version can still resolve the key.
-        /// </summary>
-        private void PruneVersionsOlderThan(int minVersion)
+        private void PruneObsoleteVersions(SortedSet<(byte[] Key, int Version, byte[]? Value)> entries)
         {
-            using ArrayPoolList<(byte[] Key, int Version, byte[]? Value)> toRemove = new(_db.Count);
-            byte[]? prevKey = null;
-            int prevVersion = 0;
-            byte[]? prevValue = null;
-
-            foreach ((byte[] Key, int Version, byte[]? Value) entry in _db)
+            if (_neverPrune) return;
+            int[] snapshots = _activeSnapshotVersions.Keys.OrderDescending().ToArray();
+            using ArrayPoolList<(byte[] Key, int Version, byte[]? Value)> toRemove = new(entries.Count);
+            using ArrayPoolList<(byte[] Key, int Version, byte[]? Value)> tombstones = new(16);
+            byte[]? previousKey = null;
+            int snapshotIndex = 0;
+            bool hasValue = false;
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in entries.Reverse())
             {
-                if (entry.Version < minVersion &&
-                    prevKey is not null &&
-                    prevKey.AsSpan().SequenceCompareTo(entry.Key) == 0)
+                bool latest = previousKey is null || !previousKey.AsSpan().SequenceEqual(entry.Key);
+                if (latest)
                 {
-                    // Same key, older entry — the current entry supersedes the previous one
-                    toRemove.Add((prevKey, prevVersion, prevValue));
+                    if (!hasValue) foreach ((byte[] Key, int Version, byte[]? Value) tombstone in tombstones) toRemove.Add(tombstone);
+                    tombstones.Clear();
+                    hasValue = false;
+                    previousKey = entry.Key;
+                    snapshotIndex = 0;
                 }
-
-                prevKey = entry.Key;
-                prevVersion = entry.Version;
-                prevValue = entry.Value;
+                bool keep = RetainVersion(latest, entry.Version, snapshots, ref snapshotIndex);
+                if (!keep) toRemove.Add(entry);
+                else if (entry.Value is null) tombstones.Add(entry);
+                else hasValue = true;
             }
+            if (!hasValue) foreach ((byte[] Key, int Version, byte[]? Value) tombstone in tombstones) toRemove.Add(tombstone);
+            foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove) entries.Remove(entry);
+        }
 
-            foreach ((byte[] Key, int Version, byte[]? Value) entry in toRemove)
+        private static bool RetainVersion(bool latest, int version, int[] snapshots, ref int snapshotIndex)
+        {
+            bool keep = latest;
+            while (snapshotIndex < snapshots.Length && version <= snapshots[snapshotIndex])
             {
-                _db.Remove(entry);
+                keep = true;
+                snapshotIndex++;
             }
+            return keep;
         }
 
         /// <summary>
@@ -706,6 +852,7 @@ namespace Nethermind.Db
                         foreach ((byte[] key, byte[]? value, WriteFlags _) in _operations)
                         {
                             _db.AddOrReplace((key, batchVersion, value));
+                            _db.PruneKeyHistory(key, batchVersion, value);
                         }
 
                         _db.WritesCount += _operations.Count;
