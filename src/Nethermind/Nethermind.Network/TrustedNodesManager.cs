@@ -10,7 +10,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 
 namespace Nethermind.Network;
@@ -18,13 +17,6 @@ namespace Nethermind.Network;
 public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager)
     : NodesManager(trustedNodesPath, logManager.GetClassLogger<TrustedNodesManager>()), ITrustedNodesManager
 {
-    private readonly Channel<Node> _nodeChannel = Channel.CreateBounded<Node>(
-    new BoundedChannelOptions(1 << 16)  // capacity of 2^16 = 65536
-    {
-        // "Wait" to have writers wait until there is space.
-        FullMode = BoundedChannelFullMode.Wait
-    });
-
     public IEnumerable<NetworkNode> Nodes => _nodes.Select(static kvp => kvp.Value);
 
     public async Task InitAsync()
@@ -38,17 +30,9 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        // yield existing nodes.
-        foreach (KeyValuePair<PublicKey, NetworkNode> kvp in _nodes)
+        await foreach (NetworkNode node in DiscoverNetworkNodes(cancellationToken))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return new Node(kvp.Value) { IsTrusted = true };
-        }
-
-        // yield new nodes as they are added via the channel
-        await foreach (Node node in _nodeChannel.Reader.ReadAllAsync(cancellationToken))
-        {
-            yield return node;
+            yield return new Node(node) { IsTrusted = true };
         }
     }
 
@@ -57,12 +41,6 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         NetworkNode networkNode = new(enode);
         bool added = TryAddNode(networkNode);
         if (_logger.IsInfo) _logger.Info($"Trusted node {(added ? "added" : "was already added")}: {enode:hide}");
-
-        if (added)
-        {
-            // Publish the newly added node to the channel so DiscoverNodes will yield it.
-            await _nodeChannel.Writer.WriteAsync(new Node(networkNode) { IsTrusted = true }, cancellationToken);
-        }
 
         return await PersistAsync(added, networkNode, updateFile, cancellationToken);
     }
