@@ -315,13 +315,15 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     {
         Hash256 keccak = node.Keccak ?? ThrowUnknownHash(node);
         TrieStoreDirtyNodesCache.Key key = new(address, path, keccak);
-        TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber)).Node;
+        TrieNode cachedNodeCopy = shard.GetOrAdd(in key, new TrieStoreDirtyNodesCache.NodeRecord(node, blockNumber), out TrieNode? replaced).Node;
         if (!ReferenceEquals(cachedNodeCopy, node))
         {
             Metrics.ReplacedNodesCount++;
         }
         else
         {
+            // The persisted node this one took the place of has left the cache, so it stops being counted.
+            if (replaced is not null) shard.DecrementMemory(replaced);
             shard.IncrementMemory(node);
         }
 
