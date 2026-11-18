@@ -523,6 +523,7 @@ public class KeyStoreTests
         yield return Case("scrypt with r 0", Scrypt(1024, 0, 1), invalidScrypt);
         yield return Case("scrypt with p 0", Scrypt(1024, 8, 0), invalidScrypt);
         yield return Case("dklen 15", static crypto => crypto.KDFParams.DkLen = 15, "Unsupported dklen: 15");
+        yield return Case("dklen 64 with a MAC of neither layout", static crypto => (crypto.KDFParams.DkLen, crypto.MAC) = (64, new string('0', 64)), "Incorrect MAC");
 
         static TestCaseData Case(string name, Action<Crypto> corrupt, string error)
         {
