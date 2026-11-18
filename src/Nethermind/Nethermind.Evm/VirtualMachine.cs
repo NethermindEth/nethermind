@@ -1479,7 +1479,7 @@ public partial class VirtualMachine<TGasPolicy>(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TraceCodeDepositError(string error) => _txTracer.ReportActionErrorDetails(error, actionOnly: true);
+    private void TraceCodeDepositError(string error) => _txTracer.ReportCodeDepositError(error);
 
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);

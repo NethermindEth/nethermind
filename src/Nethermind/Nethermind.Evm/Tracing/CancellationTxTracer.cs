@@ -461,6 +461,14 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
+    /// <inheritdoc/>
+    public void ReportCodeDepositError(string error)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingActions)
+            innerTracer.ReportCodeDepositError(error);
+    }
+
     public void ReportActionRemainingGas(ulong gas)
     {
         ThrowIfCancellationRequestedUnlessTracingInstructions();

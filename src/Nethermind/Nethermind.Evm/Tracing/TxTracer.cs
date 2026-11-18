@@ -84,6 +84,7 @@ public abstract class TxTracer : ITxTracer
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     { }
     public virtual void ReportActionErrorDetails(string error) { }
+    public virtual void ReportCodeDepositError(string error) => ((ITxTracer)this).ReportActionErrorDetails(error, actionOnly: true);
     public virtual void ReportActionRemainingGas(ulong gas) { }
     public virtual void ReportPrecompileAccountRead(Address address) { }
     public virtual void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
