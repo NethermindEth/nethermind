@@ -3267,6 +3267,8 @@ namespace Nethermind.TxPool.Test
         [Test]
         public async Task HashCacheSize_bounds_the_known_tx_hashes_kept_after_a_new_head()
         {
+            // Capacity eight is a single eight-way set that fills vacant ways before evicting, so once more than
+            // eight hashes are pooled it holds exactly eight of them.
             const int hashCacheSize = 8;
             const int txCount = 64;
             _txPool = CreatePool(new TxPoolConfig { HashCacheSize = hashCacheSize });
@@ -3275,12 +3277,12 @@ namespace Nethermind.TxPool.Test
             {
                 txs[i] = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
                 EnsureSenderBalance(txs[i]);
-                _txPool.SubmitTx(txs[i], TxHandlingOptions.PersistentBroadcast);
+                Assert.That(_txPool.SubmitTx(txs[i], TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
             }
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
 
-            Assert.That(txs.Count(tx => _txPool.IsKnown(tx.Hash)), Is.InRange(1, hashCacheSize));
+            Assert.That(txs.Count(tx => _txPool.IsKnown(tx.Hash)), Is.EqualTo(hashCacheSize));
         }
 
         [Test]
