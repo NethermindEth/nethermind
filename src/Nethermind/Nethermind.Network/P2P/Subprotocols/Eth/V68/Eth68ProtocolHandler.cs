@@ -498,7 +498,7 @@ public class Eth68ProtocolHandler(ISession session,
         int sidecarContentLength = checked(
             Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs));
+            + Rlp.LengthOfSequence(wrapper.ProofCount * Rlp.LengthOfByteString(ShardBlobNetworkWrapper.BytesPerProof, firstByte: 0)));
         return checked(tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength));
     }
 

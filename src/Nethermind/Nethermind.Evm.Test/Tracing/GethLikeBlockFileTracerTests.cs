@@ -19,12 +19,14 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
@@ -463,6 +465,104 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         long boundary = Encoding.UTF8.GetByteCount(string.Join('\n', records[..boundaryRecords])) + 1;
         int expectedRecords = boundaryRecords + (offset == 0 ? 1 : 0);
         Assert.That(TraceFile(code, boundary + offset), Is.EqualTo(string.Join('\n', records[..expectedRecords]) + "\n"));
+    }
+
+    [TestCase(Instruction.CALL, "0x0", "insufficient balance for transfer")]
+    [TestCase(Instruction.CREATE, "0x0", "insufficient balance for transfer")]
+    [TestCase(Instruction.CREATE, "0xb4a5", "contract address collision")]
+    [TestCase(Instruction.CREATE, "0x0", "nonce uint64 overflow")]
+    public void Rejected_action_exit_follows_its_opcode(Instruction operation, string gasUsed, string error)
+    {
+        bool collides = error == "contract address collision";
+        if (collides)
+        {
+            TestState.CreateAccount(ContractAddress.From(Recipient, 0), 0, nonce: 1);
+            TestState.Commit(Spec);
+        }
+        else if (error == "nonce uint64 overflow")
+        {
+            TestState.CreateAccount(Recipient, 100.Ether, nonce: ulong.MaxValue);
+            TestState.Commit(Spec);
+        }
+
+        UInt256 value = error == "insufficient balance for transfer" ? UInt256.MaxValue : UInt256.Zero;
+        Prepare code = operation == Instruction.CALL
+            ? Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, value)
+            : Prepare.EvmCode.Create([(byte)Instruction.STOP], value);
+        string[] records = TraceFile(code.Op(Instruction.POP).Op(Instruction.STOP).Done).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int operationRecord = Array.FindIndex(records, record => record.Contains($"\"opName\":\"{operation}\""));
+        Assert.That(operationRecord, Is.InRange(0, records.Length - 3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[operationRecord], Does.Not.Contain("\"error\""));
+            Assert.That(records[operationRecord + 1], Is.EqualTo($"{{\"output\":\"\",\"gasUsed\":\"{gasUsed}\",\"error\":\"{error}\"}}"));
+            Assert.That(records[operationRecord + 2], Does.Contain("\"opName\":\"POP\""));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(2));
+        }
+    }
+
+    /// <summary>
+    /// The program of <see cref="VirtualMachineTests.Call_at_max_depth_reports_depth_error"/>: at depth 1025 its
+    /// self-call, its two identity precompile calls and its creation all fail the depth precheck.
+    /// </summary>
+    [Test]
+    public void Depth_rejected_actions_exit_without_an_opcode_error()
+    {
+        byte[] code = Bytes.FromHexString("0x60006000600060006000306102005a03f1603c576000600060006000600060046000f1506000600060006000600160046000f150600060006000f0505b00");
+        (Block block, Transaction transaction) = PrepareTx((ForkActivation)MainnetSpecProvider.HomesteadBlockNumber, 2_000_000, code);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        MockFileSystem fileSystem = new();
+        fileSystem.Initialize();
+        using GethLikeBlockFileTracer tracer = new(block, GethTraceOptions.Default with { DisableStack = true }, fileSystem, spec);
+        IBlockTracer blockTracer = tracer;
+        blockTracer.StartNewBlockTrace(block);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), blockTracer.StartNewTxTrace(transaction));
+        blockTracer.EndTxTrace();
+        blockTracer.EndBlockTrace();
+
+        string[] records = fileSystem.File.ReadAllText(tracer.FileNames.Single()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        const string depthExit = "{\"output\":\"\",\"gasUsed\":\"0x0\",\"error\":\"max call depth exceeded\"}";
+        string?[] rejected = Enumerable.Range(1, records.Length - 1).Where(i => records[i] == depthExit).Select(i => OpName(records[i - 1])).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejected, Is.EqualTo(new[] { "CALL", "CALL", "CALL", "CREATE" }));
+            Assert.That(records.Where(record => record.Contains("\"opName\":\"CALL\"") || record.Contains("\"opName\":\"CREATE\"")), Has.None.Contains("\"error\""));
+        }
+
+        static string? OpName(string record)
+        {
+            using JsonDocument document = JsonDocument.Parse(record);
+            return document.RootElement.GetProperty("opName").GetString();
+        }
+    }
+
+    [TestCase("root", true)]
+    [TestCase("nested", true)]
+    [TestCase("outOfGas", false)]
+    [TestCase("static", false)]
+    public void SelfDestruct_exit_follows_completed_opcode(string scenario, bool completes)
+    {
+        byte[] selfDestruct = Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, selfDestruct, Spec);
+        TestState.Commit(Spec);
+        Prepare caller = scenario switch
+        {
+            "nested" => Prepare.EvmCode.Call(TestItem.AddressC, 50_000),
+            "outOfGas" => Prepare.EvmCode.Call(TestItem.AddressC, 10_000),
+            _ => Prepare.EvmCode.StaticCall(TestItem.AddressC, 50_000)
+        };
+        byte[] code = scenario == "root" ? selfDestruct : caller.Op(Instruction.POP).Op(Instruction.STOP).Done;
+        string[] records = TraceFile(code).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        int selfDestructRecord = Array.FindIndex(records, record => record.Contains("\"opName\":\"SELFDESTRUCT\""));
+        Assert.That(selfDestructRecord, Is.InRange(0, records.Length - 2));
+        const string selfDestructExit = "{\"output\":\"\",\"gasUsed\":\"0x0\"}";
+        int frames = scenario == "root" ? 1 : 2;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records[selfDestructRecord + 1], completes ? Is.EqualTo(selfDestructExit) : Is.Not.EqualTo(selfDestructExit));
+            Assert.That(records.Count(record => record.StartsWith("{\"output\"")), Is.EqualTo(frames + (completes ? 1 : 0)));
+        }
     }
 
     [Test]
