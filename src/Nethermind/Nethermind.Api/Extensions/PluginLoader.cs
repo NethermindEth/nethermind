@@ -115,7 +115,8 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        string[] pluginOrder = pluginConfig.PluginOrder;
+        // A null order (e.g. --Plugin.PluginOrder null) is no order.
+        string[] pluginOrder = pluginConfig.PluginOrder ?? [];
         Dictionary<string, int> pluginPriorities = new(pluginOrder.Length, StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < pluginOrder.Length; i++)
         {

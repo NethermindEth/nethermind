@@ -182,6 +182,19 @@ public class PluginLoaderTests
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
     }
 
+    [Test]
+    public void Null_order_sorts_like_no_order()
+    {
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
+            typeof(HivePlugin), typeof(EthashPlugin), typeof(CliquePlugin));
+        loader.Load();
+
+        // The text "null" parses to a null order.
+        loader.OrderPlugins(new PluginConfig { PluginOrder = null });
+
+        Assert.That(loader.PluginTypes, Is.EqualTo(new[] { typeof(CliquePlugin), typeof(EthashPlugin), typeof(HivePlugin) }).AsCollection);
+    }
+
     [TestCase("Hive", "Clique", "Hive")]
     [TestCase("Hive", "Clique", "hive")]
     [TestCase("Absent", "Hive", "ABSENT")] // a plugin that is not loaded
