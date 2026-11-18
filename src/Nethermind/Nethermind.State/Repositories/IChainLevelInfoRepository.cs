@@ -55,5 +55,16 @@ namespace Nethermind.State.Repositories
         /// <summary>Loads the levels of <paramref name="blockNumbers"/> in order, as <see cref="LoadLevelWithoutCaching"/> does; <see langword="null"/> for a missing level.</summary>
         /// <remarks>The levels not in the cache are read in one batch.</remarks>
         IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers);
+
+        /// <summary>Reads the main chain block hash of each level as <see cref="TryGetMainChainBlockWithoutCaching"/> does.</summary>
+        /// <param name="blockNumbers">The numbers of the levels.</param>
+        /// <param name="blockHashes">Receives the hash of each main chain block, or <see langword="null"/> when the level has none.</param>
+        void GetMainChainBlockHashesWithoutCaching(ReadOnlySpan<ulong> blockNumbers, Span<ValueHash256?> blockHashes)
+        {
+            for (int i = 0; i < blockNumbers.Length; i++)
+            {
+                blockHashes[i] = TryGetMainChainBlockWithoutCaching(blockNumbers[i], out ValueHash256 blockHash, out _) ? blockHash : (ValueHash256?)null;
+            }
+        }
     }
 }

@@ -127,7 +127,7 @@ public class FlatTreeSyncStoreTests
         SaveRootAccountLeaf(store, removed);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
-            batch.SetAccountRaw(Keccak.Compute(held.Bytes), new Account(1, 1));
+            batch.SetAccountRaw(Keccak.Compute(held.Bytes), new AccountStruct(1, 1));
             foreach (Address address in (Address[])[held, removed])
             {
                 foreach (TreePath nodePath in StorageNodePaths) batch.SetStorageTrieNode(Keccak.Compute(address.Bytes), nodePath, StorageNodeRlp);

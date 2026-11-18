@@ -6,7 +6,6 @@ using System.Globalization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
@@ -183,8 +182,8 @@ public class Importer(
         {
             if (address is null)
             {
-                RlpReader accountReader = new(leafValue);
-                Account acc = AccountDecoder.Instance.Decode(ref accountReader, RlpBehaviors.TrustedInput)!;
+                if (!AccountDecoder.Instance.TryDecodeStruct<OffFlag>(leafValue, out AccountStruct acc))
+                    throw new InvalidOperationException($"Invalid account leaf at {fullPath}");
                 writeBatch.SetAccountRaw(fullPath, acc);
             }
             else

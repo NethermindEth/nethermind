@@ -624,6 +624,72 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, maxBlock: lastBlock - reorgDepth);
         }
 
+        [Test]
+        public async Task Set_ReorgBeyondRevertableDepth_CapsIndexAcrossRestart_Test()
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts reorged = testData.Batches.SelectMany(b => b).ToArray()[^((int)maxReorgDepth + 1)];
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(reorged), Throws.TypeOf<LogIndexStateException>());
+            }
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth))
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(logIndexStorage.MaxBlockNumber, Is.Null, "queries must not use the index once a reorg could not be reverted");
+                    await Assert.ThatAsync(() => logIndexStorage.AddReceiptsAsync([reorged], false), Throws.TypeOf<LogIndexStateException>());
+                }
+            }
+        }
+
+        [Test]
+        public async Task Set_ReorgBelowRevertedMaxBlock_ThrowsBeyondPeakDepth_Test([Values] bool restart)
+        {
+            const ulong maxReorgDepth = 4;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+
+            ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            await AddReceiptsAsync(logIndexStorage, testData.Batches);
+            await logIndexStorage.RemoveReorgedAsync(blocks[^1]);
+
+            if (restart)
+            {
+                await logIndexStorage.DisposeAsync();
+                logIndexStorage = CreateLogIndexStorage(maxReorgDepth: maxReorgDepth);
+            }
+
+            await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)maxReorgDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
+        [Test]
+        public async Task Set_Compact_ReorgBeyondFirstDepth_AfterDepthRaised_Throws_Test([Values] bool depthRecorded)
+        {
+            const ulong firstDepth = 4;
+            const ulong raisedDepth = firstDepth * 2;
+            BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: firstDepth, dbFactory: dbFactory))
+            {
+                await AddReceiptsAsync(logIndexStorage, testData.Batches);
+                await CompactAsync(logIndexStorage);
+
+                // As an index written before the depth was recorded
+                if (!depthRecorded)
+                    _root.GetColumnDb(LogIndexColumns.Meta).Remove("mrd"u8);
+            }
+
+            // A second open at the raised depth must not replace the smallest depth the index has run with
+            await CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory).DisposeAsync();
+
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory))
+                await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)firstDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
+        }
+
         [Combinatorial]
         public async Task Set_PeriodicReorg_Get_Test(
             [Values(10, 70)] int reorgFrequency,
@@ -660,7 +726,6 @@ namespace Nethermind.Db.Test.LogIndex
             VerifyReceipts(logIndexStorage, testData, excludedBlocks: allReorgBlocks, addedBlocks: allAddedBlocks);
         }
 
-        [Ignore("Not supported, but is probably not needed.")]
         [Combinatorial]
         public async Task Set_ConsecutiveReorgsLast_Get_Test(
             [Values(new[] { 2, 1 }, new[] { 1, 2 })] int[] reorgDepths,

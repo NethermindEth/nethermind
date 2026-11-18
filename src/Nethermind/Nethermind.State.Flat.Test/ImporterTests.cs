@@ -87,6 +87,15 @@ public class ImporterTests
     }
 
     [Test]
+    public void Copy_RejectsAccountLeafCarryingNoAccount()
+    {
+        _stateTree.Set(TestItem.KeccakA.Bytes, Bytes.FromHexString("c1"));
+        _stateTree.Commit();
+
+        Assert.That(async () => await _importer.Copy(new StateId(0, _stateTree.RootHash)), Throws.InvalidOperationException);
+    }
+
+    [Test]
     public async Task Copy_AdvancesPersistenceCurrentStateToTarget()
     {
         SeedTree(3);
