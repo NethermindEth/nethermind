@@ -727,7 +727,8 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
     /// twin over the same reservation carrying a lease on <paramref name="sharedBloom"/>, so its own
     /// bloom is freed once it drains. Skips the snapshot already on the shared bloom and any extending
     /// below <paramref name="from"/> (whose keys the shared bloom does not cover — sharing it would
-    /// produce false negatives).
+    /// produce false negatives). Containment is necessary, not sufficient: the caller shares only a
+    /// bloom that covers the range (see <see cref="ISnapshotRepository.ShareBloomAcrossRange"/>).
     /// </summary>
     private void ShareBloomAt(in StateId at, in StateId from, in StateId to,
         RefCountedBloomFilter sharedBloom, BlobArenaManager blobs, SnapshotTier tier)
@@ -738,7 +739,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using (s)
         {
             if (ReferenceEquals(s.BloomRef, sharedBloom)) return;   // the big snapshot itself / already shared
-            if (Height(s.From) < Height(from)) return;              // extends below window → not a subset
+            if (Height(s.From) < Height(from)) return;              // extends below window → keys outside the range
             if (Height(s.To) > Height(to)) return;                  // belt-and-suspenders (true on a backward walk)
             sharedBloom.AcquireLease();
             using PersistedSnapshot twin = new(s.From, s.To, s.Reservation, blobs, tier, sharedBloom);
@@ -1102,7 +1103,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         using PooledSet<StateId> seen = new();
         // visited owns a lease on every retained edge; GatherChain re-leases the winning path before the
         // finally releases all of them.
-        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = new(estimatedSize);
+        ArrayPoolList<(IDisposable snapshot, int parentIndex)> visited = [with(estimatedSize)];
         try
         {
             int winnerIndex = -1;

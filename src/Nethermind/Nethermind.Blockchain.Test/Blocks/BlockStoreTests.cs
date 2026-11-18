@@ -2,18 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
-using System.Runtime.InteropServices;
+using System.Buffers;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using NSubstitute;
@@ -55,19 +56,94 @@ public class BlockStoreTests
     }
 
     [Test]
+    public void Test_insert_of_encoded_body_stores_the_encoded_block([Values] bool withWithdrawals)
+    {
+        TestMemDb db = new();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.Signed().TestObjectNTimes(2))
+            .WithUncles(Build.A.BlockHeader.TestObject)
+            .WithWithdrawals(withWithdrawals ? [Build.A.Withdrawal.TestObject] : null)
+            .TestObject;
+
+        store.Insert(block.Header, BlockBodyDecoder.Instance.Encode(block.Body), WriteFlags.DisableWAL);
+
+        byte[] expected = new BlockDecoder().Encode(block);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.GetRlp(block.Number, block.Hash!), Is.EqualTo(expected));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(expected));
+        }
+        db.KeyWasWrittenWithFlags(Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray()), WriteFlags.DisableWAL);
+    }
+
+    [Test]
     public void Test_can_get_block_that_was_stored_with_hash([Values] bool cached)
     {
         TestMemDb db = new();
         BlockStore store = new(db);
 
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
 
         // Probe before the read so the cached case cannot be satisfied by an entry Get itself populated.
         Assert.That(store.HasBlock(block.Number, block.Hash!), Is.True);
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+    }
+
+    [Test]
+    public async Task GetRlps_reads_each_block_as_GetRlp_does([Values] bool batching, [Values(16, 1024 * 1024)] int segmentSize)
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db, deferredWriter: writer);
+        BlockDecoder decoder = new();
+        Block stored = Build.A.Block.WithNumber(1).TestObject;
+        Block hashKeyed = Build.A.Block.WithNumber(2).TestObject;
+        Block pending = Build.A.Block.WithNumber(3).TestObject;
+        Block missing = Build.A.Block.WithNumber(4).TestObject;
+        store.Insert(stored);
+        db[hashKeyed.Hash!.Bytes] = decoder.Encode(hashKeyed);
+        store.InsertDeferred(pending);
+
+        using PooledSegmentedBuffer destination = new(segmentSize);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[5];
+        store.GetRlps(
+            [(missing.Number, missing.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256), (pending.Number, pending.Hash!.ValueHash256), (hashKeyed.Number, hashKeyed.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256)],
+            destination,
+            found);
+        byte[]?[] rlps = Array.ConvertAll(found, rlp => rlp?.ToArray());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlps, Is.EqualTo(new[] { null, decoder.Encode(stored), decoder.Encode(pending), decoder.Encode(hashKeyed), decoder.Encode(stored) }));
+            if (db is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void GetRlps_reads_an_empty_value_as_missing_as_GetOwnedRlp_does([Values] bool batching, [Values] bool hashKeyed)
+    {
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        byte[] encoded = new BlockDecoder().Encode(block);
+        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
+        db[block.Hash!.Bytes] = hashKeyed ? encoded : [];
+
+        using PooledSegmentedBuffer destination = new(1024);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[1];
+        store.GetRlps([(block.Number, block.Hash!.ValueHash256)], destination, found);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found[0]?.ToArray(), Is.EqualTo(hashKeyed ? encoded : null));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(found[0]?.ToArray()));
+        }
     }
 
     [Test]
@@ -162,7 +238,7 @@ public class BlockStoreTests
             .WithTransactions(3, MainnetSpecProvider.Instance)
             .TestObject;
 
-        if (legacy) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        if (legacy) db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
         else store.Insert(block);
 
         ReceiptRecoveryBlock retrieved = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
@@ -191,6 +267,34 @@ public class BlockStoreTests
             {
                 Assert.That(pinned.NativeReads, Is.EqualTo(legacy ? 2 : 1));
                 Assert.That(pinned.Released, Is.EqualTo(1));
+                Assert.That(pinned.LiveHandles, Is.Zero);
+            }
+        }
+    }
+
+    [Test]
+    public void Test_getOwnedRlp_returns_the_stored_block_and_releases_it([Values] bool native, [Values] bool legacy)
+    {
+        using TestMemDb db = native ? new PinnedTestDb() : new TestMemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(3, MainnetSpecProvider.Instance)
+            .TestObject;
+        byte[] expected = new BlockDecoder().Encode(block);
+
+        if (legacy) db[block.Hash!.Bytes] = expected;
+        else store.Insert(block);
+
+        using (MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!))
+        {
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(expected));
+        }
+
+        if (db is PinnedTestDb pinned)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pinned.NativeReads, Is.EqualTo(legacy ? 2 : 1));
                 Assert.That(pinned.LiveHandles, Is.Zero);
             }
         }
@@ -230,7 +334,7 @@ public class BlockStoreTests
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
         db[NumberedKey(block)] = [];
-        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block).Bytes;
+        db[block.Hash!.Bytes] = new BlockDecoder().Encode(block);
         ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash)!.Value;
         try
         {
@@ -255,7 +359,7 @@ public class BlockStoreTests
         BlockStore store = new(db);
         Transaction tx = Build.A.Transaction.WithData([1, 2, 3]).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-        byte[] expected = TxDecoder.Instance.Encode(tx).Bytes;
+        byte[] expected = TxDecoder.Instance.Encode(tx);
         store.Insert(block);
         ReceiptRecoveryBlock recovery = store.GetReceiptRecoveryBlock(block.Number, block.Hash!)!.Value;
         Transaction escaped;
@@ -270,7 +374,7 @@ public class BlockStoreTests
             recovery.Dispose();
             recovery.Dispose();
         }
-        Assert.That(TxDecoder.Instance.Encode(escaped).Bytes, Is.EqualTo(expected));
+        Assert.That(TxDecoder.Instance.Encode(escaped), Is.EqualTo(expected));
         if (db is PinnedTestDb pinned)
         {
             Assert.That(() => recovery.GetTransaction(0), Throws.InstanceOf<ObjectDisposedException>());
@@ -291,7 +395,7 @@ public class BlockStoreTests
         db[NumberedKey(block)] = nullBlock ? [0xc0] : [0x01];
 
         if (nullBlock) Assert.That(store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Is.Null);
-        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Throws.InstanceOf<RlpException>());
+        else Assert.That(() => store.GetReceiptRecoveryBlock(block.Number, block.Hash!), Throws.InstanceOf<RlpReaderException>());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.Released, Is.EqualTo(1));
@@ -327,42 +431,6 @@ public class BlockStoreTests
     }
 
     private static byte[] NumberedKey(Block block) => Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
-
-    private sealed class PinnedTestDb : TestMemDb, IReadOnlyNativeKeyValueStore, IDisposable
-    {
-        private readonly Dictionary<nint, byte[]> _pins = [];
-        public int NativeReads { get; private set; }
-        public int Released { get; private set; }
-        public int LiveHandles => _pins.Count;
-
-        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
-        {
-            NativeReads++;
-            handle = 0;
-            byte[]? value = Get(key, flags);
-            if (value is null) return null;
-            byte[] bytes = (byte[])value.Clone();
-            GCHandle pin = GCHandle.Alloc(bytes, GCHandleType.Pinned);
-            handle = GCHandle.ToIntPtr(pin);
-            _pins.Add(handle, bytes);
-            return bytes;
-        }
-
-        public void DangerousReleaseHandle(nint handle)
-        {
-            if (!_pins.Remove(handle, out byte[]? bytes)) throw new InvalidOperationException("Native handle released twice.");
-            bytes.AsSpan().Fill(0xff);
-            GCHandle.FromIntPtr(handle).Free();
-            Released++;
-        }
-
-        public new void Dispose()
-        {
-            foreach (nint handle in _pins.Keys) GCHandle.FromIntPtr(handle).Free();
-            _pins.Clear();
-            base.Dispose();
-        }
-    }
 
     [Test]
     public void Test_DeleteRanges_takes_every_range_and_keeps_the_heights_between()

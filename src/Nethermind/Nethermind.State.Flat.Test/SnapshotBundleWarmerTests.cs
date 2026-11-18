@@ -296,34 +296,6 @@ public class SnapshotBundleWarmerTests
         }
     }
 
-    // Persisted RLP is trusted to be the requested node, but bytes that are not a trie node are never warmed.
-    [Test]
-    public void Warm_up_does_not_warm_an_invalid_node([Values] bool storage, [Values("c28001", "f8")] string persistedRlpHex)
-    {
-        Hash256? address = storage ? TestItem.KeccakC : null;
-        byte[] persistedRlp = Bytes.FromHexString(persistedRlpHex);
-        (ValueHash256 Hash, ulong Pointer) root = (ValueKeccak.Compute(persistedRlp), 0);
-        NodeReader reader = new(new Dictionary<TreePath, byte[]> { [TreePath.Empty] = persistedRlp });
-        using SnapshotBundle bundle = NewBundle(reader);
-
-        bundle.WarmUp(address, root, ValueKeccak.Zero, forDelete: false);
-
-        (Snapshot? snapshot, TransientResource? retired) = bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null);
-        try
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(reader.Reads, Is.EqualTo(1));
-                Assert.That(retired!.WarmedNodeBuffer.Count, Is.Zero);
-            }
-        }
-        finally
-        {
-            snapshot?.Dispose();
-            retired?.ReleaseLease();
-        }
-    }
-
     // Dispose releases the transient back to the pool while warm-ups may still be queued. One that arrives after that must
     // return without reading anything rather than touch the recycled resource, or spin waiting for a transient that will never
     // be replaced, which is what the bounded wait here asserts.
@@ -616,7 +588,6 @@ public class SnapshotBundleWarmerTests
             Assert.That(firstWarmUp, concurrent ? Is.GreaterThanOrEqualTo(persisted.Count) : Is.EqualTo(persisted.Count));
             Assert.That(secondWarmUp, Is.Zero, "the position index reuses every warmed record");
             Assert.That(reader.Reads, Is.EqualTo(readsBeforeBulkSet));
-            Assert.That(reader.OwnedReads, Is.Zero, "warming and demand loading must use the borrowed-span API");
             Assert.That(trie.RootHash, Is.EqualTo(expected.RootHash));
         }
 
@@ -678,20 +649,8 @@ public class SnapshotBundleWarmerTests
         ManualResetEventSlim? release = null) : NoopPersistenceReader, IPersistence.IPersistenceReader
     {
         private int _reads;
-        private int _ownedReads;
 
         public int Reads => Volatile.Read(ref _reads);
-        public int OwnedReads => Volatile.Read(ref _ownedReads);
-
-        byte[]? IPersistence.IPersistenceReader.TryLoadStateRlp(in TreePath path, ReadFlags flags) => LoadOwned(path);
-
-        byte[]? IPersistence.IPersistenceReader.TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => LoadOwned(path);
-
-        private byte[]? LoadOwned(in TreePath path)
-        {
-            Interlocked.Increment(ref _ownedReads);
-            return Load(path);
-        }
 
         bool IPersistence.IPersistenceReader.TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) =>
             Load(path, action, arg);

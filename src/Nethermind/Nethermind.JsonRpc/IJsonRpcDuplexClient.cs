@@ -16,5 +16,7 @@ namespace Nethermind.JsonRpc
         /// <summary>Whether this client reports that it has closed.</summary>
         /// <remarks>Legacy implementations that do not expose closed state return false.</remarks>
         bool IsClosed => false;
+
+        bool IsAuthenticated => false;
     }
 }

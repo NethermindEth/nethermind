@@ -159,7 +159,7 @@ public partial class EngineModuleTests
             Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
         }
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
-            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V0);
+            getPayloadResultBlobsBundle.Commitments, [.. getPayloadResultBlobsBundle.Proofs.SelectMany(static proof => proof)], ProofVersion.V0);
         Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
 
@@ -173,7 +173,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
+        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors)).ToArray();
         Hash256[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).Select(h => new Hash256(h!)).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
@@ -265,7 +265,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         Block? b = payload.TryGetBlock().Data;
-        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping);
         txRlp[0] = 100; // set TxType to 100
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
@@ -957,7 +957,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new(requestSize);
+        List<byte[]> request = [with(requestSize)];
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -1019,7 +1019,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-            Assert.That(result.Data.Select(static b => b!.Proof), Is.EqualTo(wrapper.Proofs));
+            Assert.That(result.Data.Select(static b => b!.Proof), Is.EqualTo(wrapper.SplitProofs()));
         }
     }
 
@@ -1061,8 +1061,8 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
-        List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
+        List<BlobAndProofV1?> blobsAndProofs = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -1070,7 +1070,7 @@ public partial class EngineModuleTests
             bool addActualHash = i % 10 == 0;
 
             blobsAndProofs.Add(addActualHash && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.Proofs[actualIndex])
+                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.GetProofs(actualIndex).ToArray())
                 : null);
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
@@ -1086,7 +1086,7 @@ public partial class EngineModuleTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(resultBlobsAndProofs[i]!.Blob, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]));
-                    Assert.That(resultBlobsAndProofs[i]!.Proof, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]));
+                    Assert.That(resultBlobsAndProofs[i]!.Proof, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).GetProofs(i / 10).ToArray()));
                 }
             }
             else
@@ -1114,7 +1114,7 @@ public partial class EngineModuleTests
     {
         const int Count = 16;
         byte[]?[] blobs = new byte[Count][];
-        ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[Count];
+        ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[Count];
         BlobsV2DirectResponse response = new(blobs, proofs, Count);
 
         FlushCountingBufferWriter writer = new();
@@ -1133,7 +1133,7 @@ public partial class EngineModuleTests
     {
         byte[] blob = RandomBytes((int)Eip4844Constants.GasPerBlob);
         byte[]?[] blobs = [blob];
-        ReadOnlyMemory<byte[]>[] proofs = [Array.Empty<byte[]>()];
+        ReadOnlyMemory<byte>[] proofs = [Array.Empty<byte>()];
         BlobsV2DirectResponse response = new(blobs, proofs, 1);
 
         FlushCountingBufferWriter writer = new();

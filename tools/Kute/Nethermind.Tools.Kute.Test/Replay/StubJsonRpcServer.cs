@@ -210,7 +210,7 @@ public sealed class StubJsonRpcServer : IAsyncDisposable
     /// <summary>Reads one request, returning its body, or <see langword="null"/> if the peer closed.</summary>
     private static async Task<string?> ReadRequestAsync(NetworkStream stream, CancellationToken token)
     {
-        List<byte> head = new(512);
+        List<byte> head = [with(512)];
         byte[] one = new byte[1];
         int matched = 0;
 

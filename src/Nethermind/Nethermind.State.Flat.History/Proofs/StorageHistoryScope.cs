@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
@@ -79,14 +80,14 @@ internal sealed class StorageHistoryScope(
 
     protected override byte[]? DecodeLeafValue(scoped ReadOnlySpan<byte> storedValue)
     {
-        if (!rlpWrapSlots) return storedValue.IsZero() ? null : Rlp.Encode(storedValue.WithoutLeadingZeros()).Bytes;
+        if (!rlpWrapSlots) return storedValue.IsZero() ? null : Rlp.Encode(storedValue.WithoutLeadingZeros());
 
         try
         {
             RlpReader reader = new(storedValue);
-            return reader.DecodeByteArraySpan().IsZero() ? null : storedValue.ToArray();
+            return reader.DecodeByteArraySpan<OffFlag>().IsZero() ? null : storedValue.ToArray();
         }
-        catch (Exception e) when (e is RlpException or InvalidDataException)
+        catch (Exception e) when (e is RlpReaderException or InvalidDataException)
         {
             throw new StateUnavailableException(e.Message);
         }

@@ -403,7 +403,7 @@ public class HistoryReaderTests
         }
         HistoryColumnsWriter.MarkBlockV3(history, 10, Keccak.EmptyTreeHash);
         HistoryColumnsWriter.SetWatermarkV3(history, 20);
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
+        FlatDbConfig config = new() { Layout = FlatLayout.Flat, HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         List<TrackedView> views = [];
         HookedColumns<FlatHistoryColumns> observed = new(history,
             storage ? FlatHistoryColumns.StorageHistory : FlatHistoryColumns.AccountHistory, static () => { }, view =>
@@ -507,7 +507,6 @@ public class HistoryReaderTests
 
         public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
         public string Name => inner.Name;
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);

@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 
@@ -232,7 +233,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         // Pinned before the snapshot so a generation merged and deleted in between stays readable, bound after it
         // so the view serves exactly the log version the snapshot's metadata confirms. The second level is pinned after
         // the first, so a generation the first level dropped before its pin is already published in the second level.
-        ArrayPoolList<TrieNodeLogView> views = new(_shards.Length + _secondLevelShards.Length);
+        ArrayPoolList<TrieNodeLogView> views = [with(_shards.Length + _secondLevelShards.Length)];
         IColumnDbSnapshot<FlatDbColumns>? snapshot = null;
         try
         {
@@ -255,7 +256,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     {
         if (bypass) return NullTrieNodeLog.Instance;
 
-        ArrayPoolList<TrieNodeLogWriteBatch> batches = new(_shards.Length);
+        ArrayPoolList<TrieNodeLogWriteBatch> batches = [with(_shards.Length)];
         try
         {
             foreach (TrieNodeLogShard shard in _shards) batches.Add(shard.StartWriteBatch());
@@ -357,6 +358,14 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
                 TryGet(key, out byte[]? value) ? value : inner.Get(key, flags);
 
+            public bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+            {
+                if (!TryGet(key, out byte[]? value)) return inner.TryGet(key, flags, action, arg);
+                if (value is null) return false;
+                action(value, arg);
+                return true;
+            }
+
             public bool KeyExists(ReadOnlySpan<byte> key) =>
                 TryGet(key, out byte[]? value) ? value is not null : inner.KeyExists(key);
 
@@ -389,7 +398,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             _log = log;
             _rocksDbBatch = rocksDbBatch;
             _batches = batches;
-            _writers = new ArrayPoolList<ShardWriter>(batches.Count);
+            _writers = [with(batches.Count)];
             foreach (TrieNodeLogWriteBatch batch in batches) _writers.Add(new ShardWriter(batch, log._logger));
         }
 
@@ -449,7 +458,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
                 else batch.Stage(column, key, value, delete: false);
             }
 
-            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => batch.Stage(column, key, value, delete: false);
+            public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => batch.Stage(column, key, value, delete: value.IsNull());
 
             public void Remove(ReadOnlySpan<byte> key) => batch.Stage(column, key, default, delete: true);
 

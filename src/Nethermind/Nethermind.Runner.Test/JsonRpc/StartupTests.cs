@@ -26,6 +26,7 @@ using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Primitives;
@@ -46,6 +47,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
 using JsonRpcMetrics = Nethermind.JsonRpc.Metrics;
+using QueuedRentalFixture = Nethermind.JsonRpc.Test.QueuedRentalFixture;
 
 namespace Nethermind.Runner.Test.JsonRpc;
 
@@ -1059,7 +1061,8 @@ public class StartupTests
         long? maxRequestBodySize = null,
         Startup? startup = null,
         bool isAuthenticated = false,
-        Action<DefaultHttpContext>? configureContext = null)
+        Action<DefaultHttpContext>? configureContext = null,
+        string[]? enabledModules = null)
     {
         DefaultHttpContext ctx = new()
         {
@@ -1077,10 +1080,514 @@ public class StartupTests
         MemoryStream responseBody = new();
         ctx.Features.Set<IHttpResponseBodyFeature>(new StreamResponseBodyFeature(responseBody));
 
-        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, [ModuleType.Engine], maxRequestBodySize);
+        JsonRpcUrl url = new("http", "127.0.0.1", 0, RpcEndpoint.Http, isAuthenticated, enabledModules ?? [ModuleType.Engine], maxRequestBodySize);
         await (startup ?? Startup).ProcessJsonRpcRequestCoreAsync(ctx, url);
 
         return (Encoding.UTF8.GetString(responseBody.ToArray()), ctx.Response.StatusCode);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_SetsMinResponseDataRateOnlyForUnauthenticatedUrls([Values] bool isAuthenticated, [Values(0, 65536)] int minResponseDataRate)
+    {
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig { EnabledModules = [ModuleType.Engine], MinResponseDataRate = minResponseDataRate });
+        (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext();
+        MinDataRate serverDefault = new(240, TimeSpan.FromSeconds(5));
+        MinResponseDataRateFeature dataRate = new() { MinDataRate = serverDefault };
+        context.Features.Set<IHttpMinResponseDataRateFeature>(dataRate);
+        sent.SetResult();
+        JsonRpcUrl url = isAuthenticated ? new("http", "127.0.0.1", 0, RpcEndpoint.Http, true, [ModuleType.Engine]) : UnauthenticatedEngineUrl;
+
+        await startup.ProcessJsonRpcRequestCoreAsync(context, url).WaitAsync(TimeSpan.FromSeconds(10));
+
+        if (isAuthenticated)
+        {
+            Assert.That(dataRate.MinDataRate, Is.SameAs(serverDefault));
+        }
+        else if (minResponseDataRate == 0)
+        {
+            Assert.That(dataRate.MinDataRate, Is.Null);
+        }
+        else
+        {
+            Assert.That(dataRate.MinDataRate?.BytesPerSecond, Is.EqualTo(minResponseDataRate));
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ServesOtherCallersWhileAResponseIsUnsent()
+    {
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig { EnabledModules = [ModuleType.Engine], Timeout = 60_000 });
+        (DefaultHttpContext unread, TaskCompletionSource sent) = CreateUnreadContext();
+
+        Task unreadProcessing = startup.ProcessJsonRpcRequestCoreAsync(unread, UnauthenticatedEngineUrl);
+        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
+        bool unreadPending = !unreadProcessing.IsCompleted;
+        sent.SetResult();
+        await unreadProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unreadPending, Is.True);
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        }
+        AssertArrayResultResponse(response);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_AppliesTheAddressShareOnlyWhenTheAddressHasOtherUnsentResponses([Values] bool otherUnsent)
+    {
+        int responseSize = await SingleResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * (responseSize - 1)
+        });
+        IPAddress address = IPAddress.Parse("10.0.0.9");
+        (DefaultHttpContext held, TaskCompletionSource heldSent) = CreateUnreadContext(remoteAddress: address);
+        (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(remoteAddress: address);
+
+        Task heldProcessing = otherUnsent ? startup.ProcessJsonRpcRequestCoreAsync(held, UnauthenticatedEngineUrl) : Task.CompletedTask;
+        Task nextProcessing = startup.ProcessJsonRpcRequestCoreAsync(next, UnauthenticatedEngineUrl);
+        nextSent.TrySetResult();
+        heldSent.TrySetResult();
+        await Task.WhenAll(heldProcessing, nextProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldSent.Task.IsFaulted, Is.False);
+            Assert.That(nextSent.Task.IsFaulted, Is.EqualTo(otherUnsent));
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_RejectsANewResponseWhenUnsentResponsesFillTheNodeLimit()
+    {
+        int responseSize = await SingleResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
+        });
+        List<(Task Processing, TaskCompletionSource Sent)> pending = [];
+        for (int i = 0; i < 16; i++)
+        {
+            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext();
+            pending.Add((startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl), sent));
+        }
+
+        (DefaultHttpContext rejected, TaskCompletionSource rejectedSent) = CreateUnreadContext();
+        await startup.ProcessJsonRpcRequestCoreAsync(rejected, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        bool allPending = pending.TrueForAll(static item => !item.Processing.IsCompleted);
+        foreach ((Task processing, TaskCompletionSource sent) in pending)
+        {
+            sent.SetResult();
+            await processing.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        (string response, int status) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest(), startup: startup);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allPending, Is.True);
+            Assert.That(rejectedSent.Task.IsFaulted, Is.True);
+            Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False);
+            Assert.That(status, Is.EqualTo(StatusCodes.Status200OK));
+        }
+        AssertArrayResultResponse(response);
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ReleasesTheConnectionShareWhenTheSendEnds()
+    {
+        int responseSize = await SingleResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
+        });
+        string connectionId = Guid.NewGuid().ToString();
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(connectionId: connectionId);
+        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext(connectionId: connectionId);
+
+        Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
+        firstSent.SetResult();
+        await firstProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+        Task secondProcessing = startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl);
+        secondSent.SetResult();
+        await secondProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(secondSent.Task.IsFaulted, Is.False);
+    }
+
+    [TestCase("10.0.0.1", "10.0.0.1", "10.0.0.2")]
+    [TestCase("2001:db8::1", "2001:db8::2:3", "2001:db8:0:1::1")]
+    [TestCase("::ffff:10.0.0.5", "10.0.0.5", "10.0.0.6")]
+    public async Task ProcessJsonRpcRequest_SharesTheUnsentLimitAcrossConnectionsOfOneCaller(string firstAddress, string sameCallerAddress, string otherAddress)
+    {
+        int responseSize = await SingleResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * responseSize + responseSize / 2
+        });
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse(firstAddress));
+        (DefaultHttpContext second, TaskCompletionSource secondSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse(sameCallerAddress));
+        (DefaultHttpContext other, TaskCompletionSource otherSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse(otherAddress));
+
+        Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
+        await startup.ProcessJsonRpcRequestCoreAsync(second, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        Task otherProcessing = startup.ProcessJsonRpcRequestCoreAsync(other, UnauthenticatedEngineUrl);
+        firstSent.SetResult();
+        otherSent.SetResult();
+        await Task.WhenAll(firstProcessing, otherProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondSent.Task.IsFaulted, Is.True);
+            Assert.That(firstSent.Task.IsFaulted, Is.False);
+            Assert.That(otherSent.Task.IsFaulted, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_LimitsLargeUnsentResponsesPerAddress()
+    {
+        Startup startup = CreateStartup(NoAuthentication.Instance, CreateLargeResultEngineModule(), new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesPerAddress = 2
+        });
+        string request = CreateJsonRpcRequest(GetBlobsV2Method);
+        IPAddress address = IPAddress.Parse("10.0.0.3");
+        List<(Task Processing, TaskCompletionSource Sent)> pending = [];
+        for (int i = 0; i < 2; i++)
+        {
+            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(request, remoteAddress: address);
+            pending.Add((startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl), sent));
+        }
+
+        (DefaultHttpContext rejected, TaskCompletionSource rejectedSent) = CreateUnreadContext(request, remoteAddress: address);
+        await startup.ProcessJsonRpcRequestCoreAsync(rejected, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        foreach ((Task processing, TaskCompletionSource sent) in pending)
+        {
+            sent.SetResult();
+            await processing.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        (DefaultHttpContext next, TaskCompletionSource nextSent) = CreateUnreadContext(request, remoteAddress: address);
+        Task nextProcessing = startup.ProcessJsonRpcRequestCoreAsync(next, UnauthenticatedEngineUrl);
+        nextSent.SetResult();
+        await nextProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rejectedSent.Task.IsFaulted, Is.True);
+            Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False);
+            Assert.That(nextSent.Task.IsFaulted, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_DoesNotCountSmallUnsentResponsesAgainstTheAddressLimit()
+    {
+        const int responses = 12;
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Engine], BufferResponses = true };
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: config);
+        IPAddress address = IPAddress.Loopback;
+        List<(Task Processing, TaskCompletionSource Sent)> pending = [];
+        for (int i = 0; i < responses; i++)
+        {
+            (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(CreateBlobsBatchRequest(4), remoteAddress: address);
+            pending.Add((startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl), sent));
+        }
+
+        bool allPending = pending.TrueForAll(static item => !item.Processing.IsCompleted);
+        foreach ((Task processing, TaskCompletionSource sent) in pending)
+        {
+            sent.TrySetResult();
+            await processing.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.MaxUnsentResponsesPerAddress, Is.LessThan(responses));
+            Assert.That(allPending, Is.True);
+            Assert.That(pending.Select(static item => item.Sent.Task.IsFaulted), Is.All.False);
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ReleasesAnUnbufferedResponseWhenItsSendEnds([Values] SendOutcome outcome)
+    {
+        int responseSize = await CapabilitiesResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, CreateCapabilitiesEngineModule(), new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = false,
+            MaxUnsentResponsesSize = 16 * (responseSize + responseSize / 2)
+        });
+        IPAddress address = IPAddress.Parse("10.0.0.5");
+        TaskCompletionSource firstCompleting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext first, TaskCompletionSource firstSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address, completing: firstCompleting);
+        (DefaultHttpContext refused, TaskCompletionSource refusedSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address);
+        (DefaultHttpContext after, TaskCompletionSource afterSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address);
+
+        Task firstProcessing = startup.ProcessJsonRpcRequestCoreAsync(first, UnauthenticatedEngineUrl);
+        await firstCompleting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await startup.ProcessJsonRpcRequestCoreAsync(refused, UnauthenticatedEngineUrl).WaitAsync(TimeSpan.FromSeconds(10));
+        bool firstPending = !firstProcessing.IsCompleted;
+        switch (outcome)
+        {
+            case SendOutcome.Sent:
+                firstSent.SetResult();
+                break;
+            case SendOutcome.Failed:
+                firstSent.SetException(new IOException("reset"));
+                break;
+            case SendOutcome.Cancelled:
+                firstSent.SetCanceled();
+                break;
+        }
+
+        await firstProcessing.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        Task afterProcessing = startup.ProcessJsonRpcRequestCoreAsync(after, UnauthenticatedEngineUrl);
+        afterSent.SetResult();
+        await afterProcessing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstPending, Is.True);
+            Assert.That(firstProcessing.IsCompleted, Is.True);
+            Assert.That(refusedSent.Task.IsFaulted, Is.True);
+            Assert.That(afterSent.Task.IsFaulted, Is.False);
+        }
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_ReleasesBatchBytesThatAStreamedItemFlushed([Values] bool streamedItemFlushes)
+    {
+        int responseSize = await CapabilitiesResponseSize();
+        Startup startup = CreateStartup(NoAuthentication.Instance, CreateCapabilitiesEngineModule(streamedItemFlushes), new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = false,
+            MaxUnsentResponsesSize = 16 * (responseSize + responseSize / 2)
+        });
+        IPAddress address = IPAddress.Parse("10.0.0.6");
+        TaskCompletionSource batchCompleting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        (DefaultHttpContext batch, TaskCompletionSource batchSent) = CreateUnreadContext($"[{CapabilitiesRequest},{CreateJsonRpcRequest(GetBlobsV2Method, idJson: "2")}]", remoteAddress: address, completing: batchCompleting);
+        (DefaultHttpContext single, TaskCompletionSource singleSent) = CreateUnreadContext(CapabilitiesRequest, remoteAddress: address);
+
+        Task batchProcessing = startup.ProcessJsonRpcRequestCoreAsync(batch, UnauthenticatedEngineUrl);
+        await batchCompleting.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task singleProcessing = startup.ProcessJsonRpcRequestCoreAsync(single, UnauthenticatedEngineUrl);
+        singleSent.TrySetResult();
+        batchSent.TrySetResult();
+        await Task.WhenAll(batchProcessing, singleProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batchSent.Task.IsFaulted, Is.False);
+            Assert.That(singleSent.Task.IsFaulted, Is.EqualTo(!streamedItemFlushes));
+        }
+    }
+
+    public enum SendOutcome
+    {
+        Sent,
+        Failed,
+        Cancelled
+    }
+
+    private static readonly string CapabilitiesRequest = CreateJsonRpcRequest("engine_exchangeCapabilities", paramsJson: "[[\"engine_newPayloadV4\"]]");
+
+    private static readonly string[] Capabilities = Enumerable.Range(0, 64).Select(static i => $"engine_capability{i:D4}").ToArray();
+
+    private static IEngineRpcModule CreateCapabilitiesEngineModule(bool streamedItemFlushes = true)
+    {
+        IEngineRpcModule engineModule = CreateEngineModule();
+        engineModule
+            .engine_exchangeCapabilities(Arg.Any<IEnumerable<string>>())
+            .Returns(_ => ResultWrapper<IReadOnlyList<string>>.Success(Capabilities));
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(_ => Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new ProbeBlobStreamableResult(async (writer, cancellationToken) =>
+            {
+                writer.Write("[null"u8);
+                if (streamedItemFlushes) await writer.FlushAsync(cancellationToken);
+                writer.Write("]"u8);
+            }))));
+        return engineModule;
+    }
+
+    private static async Task<int> CapabilitiesResponseSize()
+    {
+        (string single, _) = await ProcessJsonRpcRequestWithStatus(CapabilitiesRequest, startup: CreateStartup(engineModule: CreateCapabilitiesEngineModule()));
+        return Encoding.UTF8.GetByteCount(single);
+    }
+
+    private static readonly byte[] LargeResult = Encoding.UTF8.GetBytes("[" + string.Concat(Enumerable.Repeat("null,", (int)(UnsentResponseCounter.CountedResponseBytes / 5) + 1)) + "null]");
+
+    private static IEngineRpcModule CreateLargeResultEngineModule()
+    {
+        IEngineRpcModule engineModule = CreateEngineModule();
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(_ => Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(new ProbeBlobStreamableResult(static (writer, _) =>
+            {
+                writer.Write(LargeResult);
+                return ValueTask.CompletedTask;
+            }))));
+        return engineModule;
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_DoesNotCountAWrappedStreamedResultAgainstTheShare()
+    {
+        const int items = 1024;
+        ProbeBlobStreamableResult streamableResult = new(static async (writer, cancellationToken) =>
+        {
+            writer.Write("["u8);
+            for (int i = 0; i < items; i++) writer.Write("null,"u8);
+            await writer.FlushAsync(cancellationToken);
+            writer.Write("null]"u8);
+        });
+        IEngineRpcModule engineModule = Substitute.For<IEngineRpcModule>();
+        engineModule
+            .engine_getBlobsV2(Arg.Any<byte[][]>())
+            .Returns(Task.FromResult(ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>.Success(streamableResult)));
+        Startup startup = CreateStartup(NoAuthentication.Instance, engineModule, new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            MaxUnsentResponsesSize = 16 * 64
+        });
+        (DefaultHttpContext context, TaskCompletionSource sent) = CreateUnreadContext(CreateJsonRpcRequest(GetBlobsV2Method));
+
+        Task processing = startup.ProcessJsonRpcRequestCoreAsync(context, UnauthenticatedEngineUrl);
+        sent.TrySetResult();
+        await processing.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(sent.Task.IsFaulted, Is.False);
+        AssertJsonResponse(ReadUnreadBody(context), static root => Assert.That(root.GetProperty("result").GetArrayLength(), Is.EqualTo(items + 1)));
+    }
+
+    [Test]
+    public async Task ProcessJsonRpcRequest_BatchLimitEndsTheBatchBeforeTheShareClosesTheConnection([Values] bool batchLimitRaised)
+    {
+        const int batchSize = 22;
+        int responseSize = await SingleResponseSize();
+        long share = 20 * responseSize + responseSize / 2;
+        Startup startup = CreateStartup(NoAuthentication.Instance, rpcConfig: new JsonRpcConfig
+        {
+            EnabledModules = [ModuleType.Engine],
+            BufferResponses = true,
+            MaxUnsentResponsesSize = 16 * share,
+            MaxBatchResponseBodySize = batchLimitRaised ? 16 * share : share
+        });
+        IPAddress batchAddress = IPAddress.Parse("10.0.0.7");
+        (DefaultHttpContext held, TaskCompletionSource heldSent) = CreateUnreadContext(remoteAddress: batchAddress);
+        (DefaultHttpContext batch, TaskCompletionSource batchSent) = CreateUnreadContext(CreateBlobsBatchRequest(batchSize), remoteAddress: batchAddress);
+        (DefaultHttpContext other, TaskCompletionSource otherSent) = CreateUnreadContext(remoteAddress: IPAddress.Parse("10.0.0.8"));
+
+        Task heldProcessing = startup.ProcessJsonRpcRequestCoreAsync(held, UnauthenticatedEngineUrl);
+        Task batchProcessing = startup.ProcessJsonRpcRequestCoreAsync(batch, UnauthenticatedEngineUrl);
+        Task otherProcessing = startup.ProcessJsonRpcRequestCoreAsync(other, UnauthenticatedEngineUrl);
+        batchSent.TrySetResult();
+        otherSent.TrySetResult();
+        heldSent.TrySetResult();
+        await Task.WhenAll(heldProcessing, batchProcessing, otherProcessing).WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(heldSent.Task.IsFaulted, Is.False);
+            Assert.That(batchSent.Task.IsFaulted, Is.EqualTo(batchLimitRaised));
+            Assert.That(otherSent.Task.IsFaulted, Is.False);
+        }
+
+        if (!batchLimitRaised)
+        {
+            AssertJsonResponse(ReadUnreadBody(batch), static root =>
+            {
+                Assert.That(root.GetArrayLength(), Is.EqualTo(batchSize));
+                AssertArrayResult(root[0], 1);
+                Assert.That(root[batchSize - 1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+            });
+        }
+    }
+
+    private static string ReadUnreadBody(DefaultHttpContext context) =>
+        Encoding.UTF8.GetString(((MemoryStream)context.Features.Get<IHttpResponseBodyFeature>()!.Stream).ToArray());
+
+    private static async Task<int> SingleResponseSize()
+    {
+        (string single, _) = await ProcessJsonRpcRequestWithStatus(CreateJsonRpcRequest());
+        return Encoding.UTF8.GetByteCount(single);
+    }
+
+    private sealed class MinResponseDataRateFeature : IHttpMinResponseDataRateFeature
+    {
+        public MinDataRate? MinDataRate { get; set; }
+    }
+
+    private static readonly JsonRpcUrl UnauthenticatedEngineUrl = new("http", "127.0.0.1", 0, RpcEndpoint.Http, false, [ModuleType.Engine]);
+
+    private static (DefaultHttpContext Context, TaskCompletionSource Sent) CreateUnreadContext(string? requestJson = null, string? connectionId = null, IPAddress? remoteAddress = null, TaskCompletionSource? completing = null)
+    {
+        TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        byte[] request = Encoding.UTF8.GetBytes(requestJson ?? CreateJsonRpcRequest());
+        DefaultHttpContext context = new();
+        context.Connection.Id = connectionId ?? Guid.NewGuid().ToString();
+        context.Connection.RemoteIpAddress = remoteAddress;
+        context.Request.Method = "POST";
+        context.Request.ContentType = "application/json";
+        context.Request.Body = new MemoryStream(request);
+        context.Request.ContentLength = request.Length;
+        context.Request.Protocol = "HTTP/1.1";
+        MemoryStream body = new();
+        IHttpResponseBodyFeature bodyFeature = Substitute.For<IHttpResponseBodyFeature>();
+        bodyFeature.Stream.Returns(body);
+        bodyFeature.Writer.Returns(PipeWriter.Create(body, new StreamPipeWriterOptions(leaveOpen: true)));
+        bodyFeature.CompleteAsync().Returns(_ =>
+        {
+            completing?.TrySetResult();
+            return sent.Task;
+        });
+        context.Features.Set(bodyFeature);
+        IHttpRequestLifetimeFeature lifetime = Substitute.For<IHttpRequestLifetimeFeature>();
+        lifetime.When(static feature => feature.Abort()).Do(_ => sent.TrySetException(new IOException("aborted")));
+        context.Features.Set(lifetime);
+        return (context, sent);
+    }
+
+    [Test]
+    public async Task Aborted_queued_request_is_neither_executed_nor_answered([Values] bool batch, [Values] bool bufferResponses, [Values] bool isAuthenticated)
+    {
+        using QueuedRentalFixture fixture = new(new JsonRpcConfig { BufferResponses = bufferResponses });
+        Startup startup = new(fixture.CreateProcessor(), fixture.Service, Substitute.For<IJsonRpcLocalStats>(), new EthereumJsonSerializer(), fixture.Config, NoAuthentication.Instance);
+        // In the batch an earlier item is answered first, so there is a started response that must not be finished.
+        byte[] request = Encoding.UTF8.GetBytes(batch
+            ? $"[{CreateJsonRpcRequest("unknown_method")},{QueuedRentalFixture.Request("2")}]"
+            : QueuedRentalFixture.Request());
+        QueuedRentalFixture.IProbeRpcModule held = fixture.Hold();
+        using CancellationTokenSource abort = new();
+
+        Task<(string Response, int StatusCode)> processing = ProcessJsonRpcRequestWithStatus(new MemoryStream(request), request.Length,
+            startup: startup, isAuthenticated: isAuthenticated, configureContext: ctx => ctx.RequestAborted = abort.Token, enabledModules: [ModuleType.Eth]);
+        await fixture.WaitUntilQueued(1);
+        await abort.CancelAsync();
+        (string response, _) = await processing.WaitAsync(QueuedRentalFixture.Watchdog);
+        await fixture.ReleaseAndAssertUsable(held);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.Empty);
+            Assert.That(fixture.Invocations, Is.Zero);
+        }
     }
 
     private static string CreateJsonRpcRequest(string method = GetBlobsV1Method, string idJson = "1", string paramsJson = "[[]]") =>

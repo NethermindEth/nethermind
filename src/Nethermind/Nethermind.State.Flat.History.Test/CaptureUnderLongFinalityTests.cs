@@ -85,7 +85,7 @@ public class CaptureUnderLongFinalityTests
             IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
             reader.CurrentState.Returns(_previous);
             persistence.CreateReader().Returns(reader);
-            persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(Substitute.For<IPersistence.IWriteBatch>());
+            persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>()).Returns(new Nethermind.State.Flat.Test.FakeWriteBatch());
             Tier = new FlatTestContainer(config, finalizedStateProvider: finalized, configure: builder => builder
                 .AddSingleton<IColumnsDb<FlatDbColumns>>(new SnapshotableMemColumnsDb<FlatDbColumns>())
                 .AddSingleton<IColumnsDb<FlatHistoryColumns>>(new SnapshotableMemColumnsDb<FlatHistoryColumns>())

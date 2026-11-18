@@ -10,9 +10,11 @@ using System.Runtime.Intrinsics.X86;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Specs.Forks;
@@ -48,7 +50,7 @@ public class TxTrieTests(bool useEip2718)
 
         using TrackingCappedArrayPool pool = new();
         TxTrie expected = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
-        for (int i = 0; i < count; i++) expected.Set(Rlp.Encode(i).Bytes, values[i]);
+        for (int i = 0; i < count; i++) expected.Set(Rlp.Encode(i), values[i]);
         expected.UpdateRootHash(canBeParallel: false);
         Assert.That(calculator.Calculate(minItemsForParallel: IndexedTrieRoot.MinReceiptsForParallelRootHash),
             Is.EqualTo(expected.RootHash));
@@ -83,7 +85,7 @@ public class TxTrieTests(bool useEip2718)
             byte[] value = new byte[i == outlierIndex ? outlierLength : 125 + (allOtherValuesEligible ? i % 120 : i) * 17];
             BinaryPrimitives.WriteInt32LittleEndian(value, i);
             values[i] = value;
-            expected.Set(Rlp.Encode(i).Bytes, value);
+            expected.Set(Rlp.Encode(i), value);
         }
         expected.UpdateRootHash(canBeParallel: false);
 
@@ -111,7 +113,7 @@ public class TxTrieTests(bool useEip2718)
             byte[] value = new byte[actualLength];
             random.NextBytes(value);
             values[i] = value;
-            expected.Set(Rlp.Encode(i).Bytes, value);
+            expected.Set(Rlp.Encode(i), value);
         }
         expected.UpdateRootHash(canBeParallel: false);
 
@@ -146,7 +148,7 @@ public class TxTrieTests(bool useEip2718)
                 Assert.That(references[i], Is.EqualTo(original[i]));
                 continue;
             }
-            RlpWriter writer = new(branch);
+            RlpWriter writer = RlpWriter.ContentWriter(branch);
             writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
             for (int j = 0; j < 16; j++) writer.Encode(original[i + j].Value);
             writer.Encode(ReadOnlySpan<byte>.Empty);
@@ -192,7 +194,7 @@ public class TxTrieTests(bool useEip2718)
                 }
                 continue;
             }
-            RlpWriter writer = new(branch);
+            RlpWriter writer = RlpWriter.ContentWriter(branch);
             writer.StartSequence(16 * Rlp.LengthOfKeccakRlp + 1);
             for (int j = 0; j < 16; j++) writer.Encode(original[start + j].Value);
             writer.Encode(ReadOnlySpan<byte>.Empty);
@@ -210,8 +212,7 @@ public class TxTrieTests(bool useEip2718)
             if (lengthCalls is not null) Interlocked.Increment(ref lengthCalls[BinaryPrimitives.ReadInt32LittleEndian(item)]);
             return reportedLength ?? item.Length;
         }
-        public void Encode<TWriter>(ref TWriter writer, byte[] item)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(item);
+        public void Encode(ref RlpWriter writer, byte[] item) => writer.WriteEncoded(item);
     }
 
     [Test]
@@ -224,7 +225,7 @@ public class TxTrieTests(bool useEip2718)
             Transaction transaction = Build.A.Transaction.WithNonce(i).WithType(useEip2718 ? (TxType)(i % 5) : TxType.Legacy)
                 .WithData(new byte[i % 128]).WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1).WithAuthorizationCodeIfAuthorizationListTx()
                 .WithSignature(new Signature(new byte[64], 0)).TestObject;
-            encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+            encoded[i] = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
             if (cached) transaction.SetPreHashMemoryNoLock(encoded[i]);
             transactions[i] = transaction;
         }
@@ -255,7 +256,7 @@ public class TxTrieTests(bool useEip2718)
             byte[] value = new byte[sparse && i % 3 == 0 ? 0 : length];
             random.NextBytes(value);
             encoded[i] = sparse && i % 6 == 0 ? null! : value;
-            trie.Set(Rlp.Encode(i).Bytes, value);
+            trie.Set(Rlp.Encode(i), value);
         }
         trie.UpdateRootHash(canBeParallel: false);
 
@@ -272,7 +273,7 @@ public class TxTrieTests(bool useEip2718)
         Array.Fill(encoded, new byte[] { 1 });
         using TrackingCappedArrayPool pool = new();
         TxTrie trie = new(ReadOnlySpan<Transaction>.Empty, bufferPool: pool, canBeParallel: false);
-        for (int i = 0; i < count; i++) trie.Set(Rlp.Encode(i).Bytes, encoded[i]);
+        for (int i = 0; i < count; i++) trie.Set(Rlp.Encode(i), encoded[i]);
         trie.UpdateRootHash(canBeParallel: false);
 
         Assert.That(TxTrie.CalculateRoot(encoded), Is.EqualTo(trie.RootHash));
@@ -283,7 +284,7 @@ public class TxTrieTests(bool useEip2718)
     public void Cached_rlp_slice_takes_precedence_and_is_preserved(int count)
     {
         Transaction transaction = Build.A.Transaction.TestObject;
-        byte[] encoded = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] encoded = Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping);
         byte[] buffer = new byte[encoded.Length + 2];
         buffer[0] = buffer[^1] = 0xff;
         encoded.CopyTo(buffer.AsSpan(1));
@@ -315,7 +316,7 @@ public class TxTrieTests(bool useEip2718)
         transactions[^1] = transaction;
         Hash256 expected = TxTrie.CalculateRoot(transactions);
         transaction.Type = (TxType)127;
-        Assert.Throws<RlpException>(() => TxTrie.CalculateRoot(transactions));
+        Assert.Throws<RlpReaderException>(() => TxTrie.CalculateRoot(transactions));
 
         transaction.Type = TxType.Legacy;
         Assert.That(TxTrie.CalculateRoot(transactions), Is.EqualTo(expected));
@@ -389,7 +390,7 @@ public class TxTrieTests(bool useEip2718)
         ];
 
         byte[][] encodedTransactions = transactions
-            .Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes)
+            .Select(static tx => Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping))
             .ToArray();
 
         Hash256 decodedRoot = TxTrie.CalculateRoot(transactions);
@@ -424,7 +425,7 @@ public class TxTrieTests(bool useEip2718)
             Hash256 proofHash = Keccak.Compute(proof[i - 1]);
             if (i > 1)
             {
-                if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
+                if (!proof[i - 2].ToHexString().Contains(proofHash.ToString(false)))
                 {
                     throw new InvalidDataException();
                 }
@@ -460,7 +461,7 @@ public class TxTrieCodecTests
     {
         using TestTxDecoder decoder = new();
         Transaction cached = Build.A.Transaction.TestObject;
-        using OverwritingMemoryOwner owner = new(Rlp.Encode(cached, RlpBehaviors.SkipTypedWrapping).Bytes);
+        using OverwritingMemoryOwner owner = new(Rlp.Encode(cached, RlpBehaviors.SkipTypedWrapping));
         cached.SetPreHashMemoryNoLock(owner.Memory, owner);
         Transaction[] transactions = new Transaction[128];
         Array.Fill(transactions, Build.A.Transaction.TestObject);
@@ -535,8 +536,8 @@ public class TxTrieCodecTests
         public TestTxDecoder() => TxDecoder.Instance.RegisterDecoder(this);
         public void Dispose() => TxDecoder.Instance.RegisterDecoder(Type, null!);
 
-        public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-            ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
+        public void Decode(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
+            ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
 
         public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
             bool isEip155Enabled = false, ulong chainId = 0)
@@ -545,9 +546,8 @@ public class TxTrieCodecTests
             return 3;
         }
 
-        public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        public void Encode(Transaction transaction, ref RlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
             bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
-            where TWriter : struct, IRlpWriteBackend, allows ref struct
         {
             using (Assert.EnterMultipleScope())
             {
@@ -556,8 +556,9 @@ public class TxTrieCodecTests
             }
             writer.WriteByte((byte)Type);
             OnEncode?.Invoke();
-            writer.StartSequence(1);
+            RlpSequence sequence = writer.StartSequence(1);
             writer.WriteByte(1);
+            writer.EndSequence(sequence);
         }
     }
 }

@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Era1.Exceptions;
@@ -182,7 +183,9 @@ public class EraImporter(
             if (_logger.IsTrace) _logger.Trace($"Importing block {blockNumber}");
             cancellation.ThrowIfCancellationRequested();
 
-            (Block? block, TxReceipt[]? receipt) = await eraStore.FindBlockAndReceipts(blockNumber, cancellation: cancellation);
+            (Block? block, ArrayPoolList<byte>? body, TxReceipt[]? receipt) = await eraStore.FindEncodedBlockAndReceipts(blockNumber, cancellation: cancellation);
+            using ArrayPoolList<byte>? _ = body;
+
             if (block is null)
             {
                 throw new EraImportException($"Unable to find block info for block {blockNumber}");
@@ -215,16 +218,17 @@ public class EraImporter(
                 blockTree.ForkChoiceUpdated(block.Hash, blockTree.SafeHash);
             }
             else
-                InsertBlockAndReceipts(block, receipt, to);
+                InsertBlockAndReceipts(block, body!.AsSpan(), receipt, to);
 
             progress.Update(Interlocked.Increment(ref blocksProcessed));
         }
     }
 
-    private void InsertBlockAndReceipts(Block b, TxReceipt[] r, ulong lastBlockNumber)
+    /// <param name="body">The encoded body of <paramref name="b"/>, stored as it is.</param>
+    private void InsertBlockAndReceipts(Block b, ReadOnlySpan<byte> body, TxReceipt[] r, ulong lastBlockNumber)
     {
         if (blockTree.FindBlock(b.Number) is null)
-            blockTree.Insert(b, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
+            blockTree.Insert(b.Header, body, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
         if (!receiptStorage.HasBlock(b.Number, b.Hash!))
             receiptStorage.Insert(b, r, true, writeFlags: WriteFlags.DisableWAL, lastBlockNumber: lastBlockNumber);
     }

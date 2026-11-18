@@ -18,7 +18,7 @@ using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Prestate;
 
-public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter
+public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingFilter, ITraceOperationStart
 {
     public const string PrestateTracer = "prestateTracer";
 
@@ -36,6 +36,8 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
+    // As in Geth, a storage opcode that fails before it executes reads no slot, so the slot it added is dropped.
+    private UInt256? _slotAddedByOperation;
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = [];
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _poststate;
     private readonly HashSet<AddressAsKey> _createdAccounts;
@@ -235,6 +237,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
 
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
+        _slotAddedByOperation = null;
 
         IsTracingMemory = _op is Instruction.CREATE2 or Instruction.TCREATE;
         IsTracingStack = RequiresStack(_op)
@@ -267,9 +270,12 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             case Instruction.SLOAD:
             case Instruction.SSTORE:
-                if (stackLen >= 1 && _transientCreates?.Contains(_executingAccount!) != true)
+                // As in Geth, an SSTORE missing its value underflows before it executes and reads no slot.
+                if (stackLen >= (_op == Instruction.SSTORE ? 2 : 1) && _transientCreates?.Contains(_executingAccount!) != true)
                 {
                     UInt256 index = stack.PeekUInt256(0);
+                    if (_prestate[_executingAccount!].Storage?.ContainsKey(index) != true)
+                        _slotAddedByOperation = index;
                     LookupStorage(_executingAccount!, index);
                 }
                 break;
@@ -345,6 +351,17 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                     _createdAccounts.Add(address);
                 break;
         }
+    }
+
+    /// <inheritdoc/>
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) { }
+
+    /// <inheritdoc/>
+    public void ReportOperationReady(ulong gasCost, string? error)
+    {
+        if (error is not null && _slotAddedByOperation is UInt256 slot)
+            _prestate[_executingAccount!].Storage?.Remove(slot);
+        _slotAddedByOperation = null;
     }
 
     /// <remarks>

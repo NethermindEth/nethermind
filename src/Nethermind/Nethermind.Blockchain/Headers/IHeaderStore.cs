@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Headers;
 
@@ -20,6 +21,18 @@ public interface IHeaderStore : IHeaderFinder
     void InsertDeferred(BlockHeader header) => Insert(header);
     void BulkInsert(IReadOnlyList<BlockHeader> headers);
     BlockHeader? Get(Hash256 blockHash, bool shouldCache, ulong? blockNumber = null);
+
+    /// <summary>Appends the header of <paramref name="blockHash"/>, encoded by <paramref name="decoder"/>, to <paramref name="destination"/>.</summary>
+    /// <returns><see langword="false"/> when the header is not stored.</returns>
+    /// <remarks>An implementation can copy the stored encoding without a decode when the store encodes as <paramref name="decoder"/> does.</remarks>
+    bool TryAppendRlp(in ValueHash256 blockHash, ulong blockNumber, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
+    {
+        if (Get(new Hash256(in blockHash), shouldCache: false, blockNumber) is not { } header) return false;
+
+        using ArrayPoolSpan<byte> rlp = decoder.EncodeToArrayPoolSpan(header);
+        destination.AddRange(rlp);
+        return true;
+    }
 
     /// <summary>
     /// Gets the header of <paramref name="blockHash"/> if <paramref name="bloomMatches"/> accepts its logs bloom, which
@@ -36,10 +49,43 @@ public interface IHeaderStore : IHeaderFinder
         found = header is not null;
         return found && bloomMatches(header!.Bloom!.Bytes) ? header : null;
     }
+
+    /// <inheritdoc cref="GetIfBloomMatches(Hash256, ulong, Func{ReadOnlySpan{byte}, bool}, out bool)"/>
+    BlockHeader? GetIfBloomMatches(in ValueHash256 blockHash, ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found) =>
+        GetIfBloomMatches(new Hash256(in blockHash), blockNumber, bloomMatches, out found);
+
+    /// <summary>
+    /// Gets the headers of <paramref name="blockHashes"/>, as
+    /// <see cref="GetIfBloomMatches(in ValueHash256, ulong, Func{ReadOnlySpan{byte}, bool}, out bool)"/> does each one.
+    /// </summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="blockNumbers">The numbers of the blocks, one per hash.</param>
+    /// <param name="bloomMatches">Tells whether a bloom is a match.</param>
+    /// <param name="headers">Receives each header whose bloom is a match, else <see langword="null"/>.</param>
+    /// <param name="found">Receives whether each header is stored, whether or not its bloom is a match.</param>
+    /// <remarks>An implementation can read the headers in one batch.</remarks>
+    void GetIfBloomMatches(ReadOnlyMemory<ValueHash256> blockHashes, ReadOnlyMemory<ulong> blockNumbers, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            headers.Span[i] = GetIfBloomMatches(in blockHashes.Span[i], blockNumbers.Span[i], bloomMatches, out found.Span[i]);
+        }
+    }
     void Cache(BlockHeader header);
     void Delete(Hash256 blockHash);
     void InsertBlockNumber(Hash256 blockHash, ulong blockNumber);
     ulong? GetBlockNumber(Hash256 blockHash);
+
+    /// <summary>Looks up the numbers of several blocks, as <see cref="GetBlockNumber"/> does for one.</summary>
+    /// <param name="blockHashes">The hashes of the blocks.</param>
+    /// <param name="numbers">Receives the number of each block in order, or null for an unknown block.</param>
+    void GetBlockNumbers(ReadOnlySpan<ValueHash256> blockHashes, Span<ulong?> numbers)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            numbers[i] = GetBlockNumber(new Hash256(in blockHashes[i]));
+        }
+    }
 
     /// <summary>
     /// Returns up to <paramref name="count"/> consecutive headers ending at <paramref name="endBlockHash"/>,

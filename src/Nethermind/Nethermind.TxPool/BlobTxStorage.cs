@@ -18,11 +18,13 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.TxPool;
 
-public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage, IProcessedBlobTxStorage
+public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? logManager = null) : IBlobTxStorage, IBlobTxMetadataStorage, ISpecChangeValidationStorage, IAtomicBlobTxStorage, IProcessedBlobTxStorage, IBlobTxNetworkFormStorage, IBlobTxElidedReadStorage
 {
     private const int TransactionLockCount = 64;
     private const int ProcessedTransactionKeyLength = sizeof(ulong) + sizeof(int);
@@ -45,13 +47,27 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
 
     public BlobTxStorage() : this(new MemColumnsDb<BlobTxsColumns>()) { }
 
-    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction)
+    public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction) =>
+        TryGetFullTx(hash, sender, timestamp, RlpBehaviors.None, out transaction);
+
+    /// <inheritdoc/>
+    bool IBlobTxElidedReadStorage.TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction) =>
+        TryGetFullTx(hash, sender, timestamp, RlpBehaviors.ExcludeBlobs, out transaction);
+
+    private bool TryGetFullTx(in ValueHash256 hash, Address sender, in UInt256 timestamp, RlpBehaviors extraBehaviors, [NotNullWhen(true)] out Transaction? transaction)
     {
         Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
         GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
 
-        byte[]? txBytes = _fullBlobTxsDb.Get(txHashPrefixed);
-        return TryDecodeFullTx(txBytes, sender, timestamp, out transaction);
+        Span<byte> txBytes = _fullBlobTxsDb.GetSpan(txHashPrefixed);
+        try
+        {
+            return TryDecodeFullTx(txBytes, sender, timestamp, extraBehaviors, out transaction);
+        }
+        finally
+        {
+            _fullBlobTxsDb.DangerousReleaseMemory(txBytes);
+        }
     }
 
     /// <inheritdoc/>
@@ -60,21 +76,62 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         Span<byte> elidedKey = stackalloc byte[ElidedTxKeyLength];
         GetElidedTxKey(hash, elidedKey);
 
-        byte[]? elidedBytes = _fullBlobTxsDb.Get(elidedKey);
-        if (elidedBytes is not null)
+        Span<byte> elidedBytes = _fullBlobTxsDb.GetSpan(elidedKey);
+        try
         {
-            transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
-            if (transaction is null)
+            if (!elidedBytes.IsNull())
             {
-                return false;
+                transaction = Rlp.Decode<Transaction>(elidedBytes, RlpBehaviors.InMempoolForm);
+                if (transaction is null)
+                {
+                    return false;
+                }
+
+                transaction.SenderAddress = sender;
+                return true;
             }
 
-            transaction.SenderAddress = sender;
-            return true;
+            transaction = default;
+            return false;
+        }
+        finally
+        {
+            _fullBlobTxsDb.DangerousReleaseMemory(elidedBytes);
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <see cref="BlobTxDecoder.TryGetNetworkForm"/> writes the network form. A database that pins its values gives
+    /// the record without a copy.
+    /// </remarks>
+    bool IBlobTxNetworkFormStorage.TryGetNetworkForm(in ValueHash256 hash, in UInt256 timestamp, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm)
+    {
+        Span<byte> txHashPrefixed = stackalloc byte[FullTxKeyLength];
+        GetHashPrefixedByTimestamp(timestamp, hash, txHashPrefixed);
+
+        if (_fullBlobTxsDb is IReadOnlyNativeKeyValueStore native)
+        {
+            ReadOnlySpan<byte> pinned = native.GetNativeSlice(txHashPrefixed, out IntPtr handle);
+            try
+            {
+                return BlobTxDecoder.TryGetNetworkForm(pinned, out networkForm);
+            }
+            finally
+            {
+                if (handle != 0) native.DangerousReleaseHandle(handle);
+            }
         }
 
-        transaction = default;
-        return false;
+        ReadOnlySpan<byte> record = _fullBlobTxsDb.GetSpan(txHashPrefixed);
+        try
+        {
+            return BlobTxDecoder.TryGetNetworkForm(record, out networkForm);
+        }
+        finally
+        {
+            _fullBlobTxsDb.DangerousReleaseMemory(record);
+        }
     }
 
     public int TryGetMany(TxLookupKey[] keys, int count, Transaction?[] results)
@@ -126,9 +183,9 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                 {
                     transaction = LightTxDecoder.Decode(txBytes);
                 }
-                // A truncated record surfaces from RlpReader's unchecked Span.Slice, not as an RlpException, so the
+                // A truncated record surfaces from RlpReader's unchecked Span.Slice, not as an RlpReaderException, so the
                 // filter spans every root a corrupt record is known to decode into.
-                catch (Exception e) when (e is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+                catch (Exception e) when (e is RlpReaderException or ArgumentOutOfRangeException or IndexOutOfRangeException)
                 {
                     skipped++;
                     firstFailure ??= $"{e.GetType().Name}: {e.Message}";
@@ -421,7 +478,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
             if (encoded[0] != 0)
             {
                 RlpReader ctx = new(encoded);
-                blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+                blockBlobTransactions = _txDecoder.DecodeNonNullArray(ref ctx, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
                 return true;
             }
 
@@ -445,7 +502,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
                     return false;
                 }
                 transactions[i] = DecodeProcessedTransaction(payload.GetSpan())
-                    ?? throw new RlpException($"Null processed blob transaction {i} for block {blockNumber}.");
+                    ?? throw new RlpReaderException($"Null processed blob transaction {i} for block {blockNumber}.");
             }
             blockBlobTransactions = transactions;
             return true;
@@ -534,7 +591,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
     private static Transaction? DecodeProcessedTransaction(ReadOnlySpan<byte> payload)
     {
         RlpReader reader = new(payload);
-        return _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+        return _txDecoder.Decode(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
     }
 
     // A row that fails to decode as RLP reads as a miss, so a lock-free reader does not throw on it. Other failures still propagate.
@@ -544,7 +601,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         {
             transaction = DecodeProcessedTransaction(payload);
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             transaction = null;
         }
@@ -585,21 +642,22 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         foreach (Transaction transaction in transactions)
         {
             BinaryPrimitives.WriteInt32BigEndian(transactionIndex, index++);
-            RlpWriter writer = new(buffer);
+            RlpWriter writer = RlpWriter.ContentWriter(buffer);
             _txDecoder.EncodeTx(ref writer, transaction, behaviors, forSigning: false, isEip155Enabled: false, chainId: 0);
-            batch.PutSpan(key, buffer[..writer.Position]);
+            batch.PutSpan(key, buffer[..writer.Length]);
         }
     }
 
     private static bool TryDecodeFullTx(
-        byte[]? txBytes,
+        Span<byte> txBytes,
         Address sender,
         in UInt256 timestamp,
+        RlpBehaviors extraBehaviors,
         [NotNullWhen(true)] out Transaction? transaction)
     {
-        if (txBytes is not null)
+        if (!txBytes.IsNull())
         {
-            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            transaction = Rlp.Decode<Transaction>(txBytes, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput | extraBehaviors);
             if (transaction is null)
             {
                 return false;
@@ -619,7 +677,7 @@ public class BlobTxStorage(IColumnsDb<BlobTxsColumns> database, ILogManager? log
         public Transaction? Decode(ReadOnlySpan<byte> buffer)
         {
             RlpReader reader = new(buffer);
-            return Rlp.Decode<Transaction>(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+            return Rlp.Decode<Transaction>(ref reader, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage | RlpBehaviors.TrustedInput);
         }
     }
 

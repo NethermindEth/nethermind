@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Producers;
@@ -19,12 +20,11 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 
@@ -491,6 +491,7 @@ public partial class EngineModuleTests
             ];
 
             Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
+            await AssertStreamedJsonMatchesSerializer((PayloadBodiesV1DirectResponse)payloadBodies);
         }
 
         // Second branch
@@ -525,48 +526,37 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(PayloadBodiesByRangeNullTrimTestCases))]
     public async Task getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies(
-        (Func<CallInfo, Block?> Impl,
+        (Func<ulong, Block?> Impl,
+            ulong[] PrunedBodies,
             IReadOnlyList<ExecutionPayloadBodyV1Result?> Outcome) input)
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
-        IBlockStore? blockStore = Substitute.For<IBlockStore>();
-        BlockDecoder blockDecoder = new();
-
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
-        blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(i => GetHeader(input.Impl(i)));
-        blockStore.GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>())
-            .Returns(i =>
-            {
-                Block? block = input.Impl(i);
-                return block is null ? null : blockDecoder.Encode(block).Bytes;
-            });
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
             builder
                 .AddSingleton<IBlockTree>(blockTree)
-                .AddSingleton<IBlockStore>(blockStore)
                 .AddSingleton(new TestBlockchain.Configuration()
                 {
                     SuggestGenesisOnStart = false,
                 }));
+
+        IChainLevelInfoRepository chainLevels = chain.Container.Resolve<IChainLevelInfoRepository>();
+        IBlockStore blockStore = chain.Container.Resolve<IBlockStore>();
+        for (ulong number = 1; number <= 5; number++)
+        {
+            if (input.Impl(number) is not { } block) continue;
+
+            chainLevels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(block.GetOrCalculateHash(), 0)));
+            if (!input.PrunedBodies.Contains(number)) blockStore.Insert(block);
+        }
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(input.Outcome))).Using(JToken.EqualityComparer));
-
-        static BlockHeader? GetHeader(Block? block)
-        {
-            if (block is null)
-            {
-                return null;
-            }
-
-            block.Header.Hash = block.GetOrCalculateHash();
-            return block.Header;
-        }
+        await AssertStreamedJsonMatchesSerializer((PayloadBodiesV1DirectResponse)payloadBodies);
     }
 
     [Test]
@@ -974,16 +964,17 @@ public partial class EngineModuleTests
 
     protected static IEnumerable<TestCaseData> PayloadBodiesByRangeNullTrimTestCases()
     {
-        static TestCaseData Case(string name, Func<CallInfo, Block?> blockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> expectedBodies) =>
-            new TestCaseData(((Func<CallInfo, Block?> BlockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, expectedBodies))
+        static TestCaseData Case(string name, Func<ulong, Block?> blockFinder, ulong[] prunedBodies, IReadOnlyList<ExecutionPayloadBodyV1Result?> expectedBodies) =>
+            new TestCaseData(((Func<ulong, Block?> BlockFinder, ulong[] PrunedBodies, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, prunedBodies, expectedBodies))
                 .SetName(name);
 
-        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<ulong>(0)).TestObject;
+        static Block BuildBlock(ulong number) => Build.A.Block.WithNumber(number).TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
-        yield return Case("AllMissing", _ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
-        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<ulong>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
-        yield return Case("AllPresent", BuildBlock, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
+        yield return Case("AllMissing", _ => null, [], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
+        yield return Case("EveryOtherBlockMissing", n => n % 2 == 0 ? BuildBlock(n) : null, [], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return Case("AllPresent", BuildBlock, [], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
+        yield return Case("BodiesPruned", BuildBlock, [1, 2, 5], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, result, result, null]);
     }
 
     protected static IEnumerable<TestCaseData> PayloadIdTestCases()

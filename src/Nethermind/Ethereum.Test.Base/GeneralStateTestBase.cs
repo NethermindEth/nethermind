@@ -72,7 +72,7 @@ namespace Ethereum.Test.Base
             _logger.Info($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(test.LoadFailure, Is.Null, "test data loading failure");
+                Assert.That(test.LoadFailure, Is.Null, $"test data loading failure in {test.Name}");
                 Assert.That(test.Transaction, Is.Not.Null, "there is no transaction in the test");
             }
 
@@ -101,7 +101,6 @@ namespace Ethereum.Test.Base
             await using IContainer container = new ContainerBuilder()
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
-                .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
                 .Build();

@@ -156,8 +156,8 @@ public class Importer(
         {
             if (address is null)
             {
-                RlpReader accountReader = new(leafValue);
-                Account acc = _accountDecoder.Decode(ref accountReader)!;
+                if (!_accountDecoder.TryDecodeStruct<OffFlag>(leafValue, out AccountStruct acc))
+                    throw new InvalidOperationException($"Invalid account leaf at {fullPath}");
                 writeBatch.SetAccountRaw(fullPath, acc);
             }
             else

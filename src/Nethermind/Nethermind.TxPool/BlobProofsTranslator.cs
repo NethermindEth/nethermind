@@ -39,21 +39,14 @@ internal static class BlobProofsTranslator
 
     private static bool TryConvertBlobProofsToCellProofs(Transaction tx, ShardBlobNetworkWrapper wrapper)
     {
-        byte[][] cellProofs = new byte[Ckzg.CellsPerExtBlob * wrapper.Blobs.Length][];
+        const int proofsPerBlobLength = Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof;
+        byte[] cellProofs = new byte[proofsPerBlobLength * wrapper.Blobs.Length];
 
         try
         {
             for (int blobIndex = 0; blobIndex < wrapper.Blobs.Length; blobIndex++)
             {
-                using ArrayPoolSpan<byte> cellProofsOfOneBlob = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
-                KzgPolynomialCommitments.ComputeCellProofs(wrapper.Blobs[blobIndex], cellProofsOfOneBlob);
-
-                for (int i = 0; i < Ckzg.CellsPerExtBlob; i++)
-                {
-                    byte[] cellProof = new byte[Ckzg.BytesPerProof];
-                    cellProofsOfOneBlob.Slice(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof).CopyTo(cellProof);
-                    cellProofs[blobIndex * Ckzg.CellsPerExtBlob + i] = cellProof;
-                }
+                KzgPolynomialCommitments.ComputeCellProofs(wrapper.Blobs[blobIndex], cellProofs.AsSpan(blobIndex * proofsPerBlobLength, proofsPerBlobLength));
             }
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
@@ -68,15 +61,13 @@ internal static class BlobProofsTranslator
 
     private static bool TryConvertCellProofsToBlobProofs(Transaction tx, ShardBlobNetworkWrapper wrapper)
     {
-        byte[][] proofs = new byte[wrapper.Blobs.Length][];
+        byte[] proofs = new byte[wrapper.Blobs.Length * Ckzg.BytesPerProof];
 
         try
         {
             for (int i = 0; i < wrapper.Blobs.Length; i++)
             {
-                byte[] proof = new byte[Ckzg.BytesPerProof];
-                KzgPolynomialCommitments.ComputeBlobProof(wrapper.Blobs[i], wrapper.Commitments[i], proof);
-                proofs[i] = proof;
+                KzgPolynomialCommitments.ComputeBlobProof(wrapper.Blobs[i], wrapper.Commitments[i], proofs.AsSpan(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
             }
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)

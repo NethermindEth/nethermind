@@ -5,6 +5,8 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols;
 using System;
+using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -27,7 +29,6 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Network;
-using Snappier;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
 using Channel = System.Threading.Channels.Channel;
@@ -37,6 +38,10 @@ namespace Nethermind.Optimism.CL.P2P;
 public class OptimismCLP2P : IDisposable
 {
     private const int MaxGossipSize = 10485760;
+    // 65-byte signature followed by at least one payload byte, as in op-node's gossip validation
+    private const int MinGossipSize = 66;
+    private const int MessageDomainLength = 4;
+    private const int MessageIdLength = 20;
 
     private readonly ServiceProvider _serviceProvider;
     private readonly ILogger _logger;
@@ -78,7 +83,7 @@ public class OptimismCLP2P : IDisposable
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
             .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, logManager))
-            .AddLibp2p(builder => builder.WithPubsub().AddAppLayerProtocol<PayloadByNumberProtocol>())
+            .AddLibp2p(builder => builder.WithPubsub().AddProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
@@ -91,6 +96,7 @@ public class OptimismCLP2P : IDisposable
                 LowestDegree = 2,
                 HighestDegree = 6,
                 LazyDegree = 3,
+                MaxRpcBytes = MaxGossipSize,
                 DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
                 GetMessageId = CalculateMessageId
             })
@@ -261,15 +267,18 @@ public class OptimismCLP2P : IDisposable
 
     private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out ExecutionPayloadV3 payload)
     {
-        int length = Snappy.GetUncompressedLength(msg);
-        if (length is < 65 or > MaxGossipSize)
+        if (!TryGetDecompressedLength(msg, out int length) || length < MinGossipSize)
         {
             payload = null;
             return false;
         }
 
         using ArrayPoolListRef<byte> decompressed = new(length, length);
-        Snappy.Decompress(msg, decompressed.AsSpan());
+        if (!GoSnappy.TryDecode(msg, decompressed.AsSpan()))
+        {
+            payload = null;
+            return false;
+        }
 
         Span<byte> signature = decompressed.AsSpan()[..65];
         ReadOnlySpan<byte> payloadData = decompressed.AsSpan()[65..];
@@ -327,7 +336,7 @@ public class OptimismCLP2P : IDisposable
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;
         _blocksV2Topic = _router.GetTopic(_blocksV2TopicId);
-        _blocksV2Topic.OnMessage += msg => OnMessage(msg, token);
+        _blocksV2Topic.OnMessage += (_, msg) => OnMessage(msg, token);
         try
         {
             await _localPeer.StartListenAsync([address], token);
@@ -350,13 +359,44 @@ public class OptimismCLP2P : IDisposable
         await MainLoop(token);
     }
 
-    private MessageId CalculateMessageId(Message message)
+    private static ReadOnlySpan<byte> MessageDomainValidSnappy => [0x01, 0x00, 0x00, 0x00];
+    private static ReadOnlySpan<byte> MessageDomainInvalidSnappy => [0x00, 0x00, 0x00, 0x00];
+
+    // OP Stack rollup node p2p specification: gossipsub message ID computation
+    internal static MessageId CalculateMessageId(Message message)
     {
-        IncrementalHash sha256 = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        sha256.AppendData(BitConverter.GetBytes((ulong)message.Topic.Length));
-        sha256.AppendData(Encoding.ASCII.GetBytes(message.Topic));
-        sha256.AppendData(message.Data.Span);
-        return new MessageId(sha256.GetHashAndReset());
+        ReadOnlySpan<byte> data = message.Data.Span;
+        string topic = message.Topic;
+        int topicLength = Encoding.UTF8.GetByteCount(topic);
+        int headerLength = MessageDomainLength + sizeof(ulong) + topicLength;
+        int decompressedLength = TryGetDecompressedLength(data, out int length) ? length : -1;
+
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(headerLength + Math.Max(decompressedLength, data.Length));
+        Span<byte> payload = buffer.AsSpan(headerLength);
+        ReadOnlySpan<byte> domain = MessageDomainValidSnappy;
+        int payloadLength = decompressedLength;
+        if (decompressedLength < 0 || !GoSnappy.TryDecode(data, payload[..decompressedLength]))
+        {
+            domain = MessageDomainInvalidSnappy;
+            data.CopyTo(payload);
+            payloadLength = data.Length;
+        }
+
+        domain.CopyTo(buffer);
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer.AsSpan(MessageDomainLength), (ulong)topicLength);
+        Encoding.UTF8.GetBytes(topic, buffer.AsSpan(MessageDomainLength + sizeof(ulong), topicLength));
+
+        Span<byte> hash = stackalloc byte[SHA256.HashSizeInBytes];
+        SHA256.HashData(buffer.AsSpan(0, headerLength + payloadLength), hash);
+        ArrayPool<byte>.Shared.Return(buffer);
+        return new MessageId(hash[..MessageIdLength].ToArray());
+    }
+
+    private static bool TryGetDecompressedLength(ReadOnlySpan<byte> data, out int length)
+    {
+        bool isValid = GoSnappy.TryReadDecodedLength(data, out uint decodedLength, out _) && decodedLength <= MaxGossipSize;
+        length = isValid ? (int)decodedLength : 0;
+        return isValid;
     }
 
     public void Reset(ulong headNumber) => _headNumber = headNumber;
