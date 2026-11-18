@@ -88,8 +88,8 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 
     private static ParsedTraceDuration Parse(ReadOnlySpan<char> value)
     {
-        if (TryParseGoDuration(value, out TimeSpan result) || TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result)) return new(result);
-        return new(null, $"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').", new string(value));
+        if (TryParseGoDuration(value, out TimeSpan result)) return new(result);
+        return new(null, $"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s').", new string(value));
     }
 
     public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)

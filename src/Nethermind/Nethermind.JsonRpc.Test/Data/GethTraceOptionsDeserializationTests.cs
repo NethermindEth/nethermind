@@ -58,7 +58,8 @@ public class GethTraceOptionsDeserializationTests
 
     [TestCase("bad", null)]
     [TestCase("5s", 5)]
-    [TestCase("00:00:05", 5)]
+    [TestCase("00:00:05", null)]
+    [TestCase("5", null)]
     [TestCase("\\u0035s", 5)]
     public void ByNumber_options_defer_duration_parsing(string timeout, int? seconds)
     {

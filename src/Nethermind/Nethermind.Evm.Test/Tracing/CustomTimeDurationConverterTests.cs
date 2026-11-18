@@ -146,20 +146,15 @@ public class CustomTimeDurationConverterTests
         }
     }
 
-    private static IEnumerable<TestCaseData> ValidCSharpTimeSpanCases() =>
-    [
-        new TestCaseData("\"00:00:05\"", TimeSpan.FromSeconds(5)).SetName("hh_mm_ss"),
-        new TestCaseData("\"01:30:00\"", TimeSpan.FromMinutes(90)).SetName("hours_and_minutes"),
-        new TestCaseData("\"00:00:00.100\"", TimeSpan.FromMilliseconds(100)).SetName("with_fractional_seconds"),
-        new TestCaseData("\"1.02:03:04\"", new TimeSpan(1, 2, 3, 4)).SetName("days_hours_minutes_seconds"),
-    ];
-
-    [TestCaseSource(nameof(ValidCSharpTimeSpanCases))]
-    public void read_csharp_timespan_format_parses_correctly(string json, TimeSpan? expected) =>
-        Assert.That(Deserialize(json), Is.EqualTo(expected));
-
     private static IEnumerable<TestCaseData> InvalidDurationCases() =>
     [
+        new TestCaseData("\"5\"").SetName("unitless_days"),
+        new TestCaseData("\"00:00:05\"").SetName("hh_mm_ss"),
+        new TestCaseData("\"01:30:00\"").SetName("timespan_hours_and_minutes"),
+        new TestCaseData("\"00:00:00.100\"").SetName("timespan_fractional_seconds"),
+        new TestCaseData("\"1.02:03:04\"").SetName("days_hours_minutes_seconds"),
+        new TestCaseData("\" 5s\"").SetName("leading_space"),
+        new TestCaseData("\"5s \"").SetName("trailing_space"),
         new TestCaseData("\"abc\"").SetName("not_a_duration"),
         new TestCaseData("\"9223372036854775808ns\"").SetName("above_max_nanoseconds"),
         new TestCaseData("\"-9223372036854775809ns\"").SetName("below_min_nanoseconds"),
