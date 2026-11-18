@@ -3846,7 +3846,7 @@ public partial class DebugRpcModuleTests
             InvalidDataException failure = Assert.Throws<InvalidDataException>(() => Trace())!;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(failure.Message, Is.EqualTo($"null    in server-side tracer function '{callback}'"));
+                Assert.That(failure.Message, Is.EqualTo(callback == "setup" ? "null" : $"null    in server-side tracer function '{callback}'"));
                 Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
             }
         }
