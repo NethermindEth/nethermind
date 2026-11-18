@@ -29,6 +29,7 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     private bool _captureStopped;
     private string? _errorDetails;
     private Instruction _lastOpcode;
+    private string? _codeDepositError;
     private bool _hasPendingActionEnd;
     private ulong _pendingActionEndGas;
     private string? _pendingActionEndError;
@@ -187,7 +188,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        CompleteAction(0, default, _errorDetails ?? GetActionErrorDescription(evmExceptionType));
+        string? error = _errorDetails ?? _codeDepositError ?? GetActionErrorDescription(evmExceptionType);
+        _codeDepositError = null;
+        CompleteAction(0, default, error);
     }
 
     /// <summary>Returns the error Geth reports for an action that ended with <paramref name="error"/>.</summary>
@@ -219,6 +222,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
         base.ReportSelfDestruct(address, balance, refundAddress);
         DeferActionEnd(0, null);
     }
+
+    /// <inheritdoc/>
+    public override void ReportCodeDepositError(string error) => _codeDepositError = error;
 
     /// <inheritdoc/>
     /// <remarks>
