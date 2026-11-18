@@ -165,7 +165,7 @@ internal static class InputExtractor
                     // A trusted input reports another result than the fixture's, so only a stateless input gets one
                     byte[]? expected = !trusted && block.TryGetProperty(OutputBytesProperty, out JsonElement outputBytes) &&
                         outputBytes.ValueKind == JsonValueKind.String
-                            ? Convert.FromHexString(outputBytes.GetString().AsSpan(2))
+                            ? DecodeOutput(outputBytes.GetString()!)
                             : null;
                     (byte[] buffer, int dataLength) = DecodeInput(inputBytes);
 
@@ -266,6 +266,12 @@ internal static class InputExtractor
 
         return (buffer, dataLength);
     }
+
+    /// <exception cref="FormatException">The result is not a 0x-prefixed even-length hex string.</exception>
+    private static byte[] DecodeOutput(string hex) =>
+        hex.StartsWith("0x", StringComparison.Ordinal)
+            ? Convert.FromHexString(hex.AsSpan(2))
+            : throw new FormatException($"{OutputBytesProperty} must be 0x-prefixed");
 
     private static string GetOutputFileName(string testName, int blockIndex, int blockCount, int maxLength, string extension)
     {

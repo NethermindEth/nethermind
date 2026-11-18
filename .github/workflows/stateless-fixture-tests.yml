@@ -47,7 +47,7 @@ jobs:
           dotnet run --project tools/StatelessInputGen/StatelessInputGen.csproj -c release -- \
             fixture --source "$RUNNER_TEMP/fixtures/blockchain_tests" --output "$RUNNER_TEMP/inputs" > "$RUNNER_TEMP/extract.log"
           # The first invalid block of each test function: the rest are mostly parameter sweeps of the same
-          # failure, and a block costs SP1 about 30 s
+          # failure, and a block costs SP1 about 100 s
           mkdir invalid
           count=0
           grep -E '^[^ ]+ [0-9a-f]{86} [0-9a-f]{64} [^ ]+$' "$RUNNER_TEMP/extract.log" | \
@@ -69,7 +69,7 @@ jobs:
           retention-days: 1
 
   test:
-    name: ${{ matrix.vm }} invalid blocks ${{ matrix.shard }}/4
+    name: ${{ matrix.vm }} invalid blocks ${{ matrix.shard }}/${{ matrix.shards }}
     needs: [guests, fixtures]
     runs-on: ubuntu-latest
     permissions:
@@ -79,19 +79,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        vm: [zisk, sp1, openvm]
-        shard: [1, 2, 3, 4]
+        # The SP1 runner builds its prover for every block, about 100 s on a hosted runner, so only SP1 is sharded
+        vm: [sp1]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+        shards: [12]
         include:
-          - vm: zisk
-            project: Nethermind.Stateless.ZiskGuest
-            minutes: 15
-          # About 30 s a block, nearly all of it the runner's start
           - vm: sp1
             project: Nethermind.Stateless.Sp1Guest
             minutes: 60
+          - vm: zisk
+            project: Nethermind.Stateless.ZiskGuest
+            shard: 1
+            shards: 1
+            minutes: 30
           - vm: openvm
             project: Nethermind.Stateless.OpenVMGuest
-            minutes: 15
+            shard: 1
+            shards: 1
+            minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -144,7 +149,7 @@ jobs:
               echo "::error::$test: the guest exited with $status or did not report $output"
               failures+=("$test")
             fi
-          done < <(awk -v shard=${{ matrix.shard }} '(NR - 1) % 4 == shard - 1' bin/cases.txt)
+          done < <(awk -v shard=${{ matrix.shard }} -v shards=${{ matrix.shards }} '(NR - 1) % shards == shard - 1' bin/cases.txt)
           if [ ${#failures[@]} -ne 0 ]; then
             printf '### %s: %d failing blocks\n\n' "${{ matrix.vm }}" ${#failures[@]} >> "$GITHUB_STEP_SUMMARY"
             printf -- '- `%s`\n' "${failures[@]}" >> "$GITHUB_STEP_SUMMARY"
