@@ -158,6 +158,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         return new BasePersistence.WriteBatch<FakeHashWriter<BaseFlatPersistence.WriteBatch>, BaseTriePersistence.WriteBatch>(
             flatWriter,
             trieWriteBatch,
+            batch.GetColumnBatch(FlatDbColumns.Metadata),
             new Reactive.AnonymousDisposable(() =>
             {
                 // The log is made durable and its version put into this batch's metadata before RocksDB commits, and
@@ -247,7 +248,7 @@ public class PreimageRocksdbPersistence(IColumnsDb<FlatDbColumns> db, ILogManage
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) =>
             throw new InvalidOperationException("Raw operations not available in preimage mode");
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>

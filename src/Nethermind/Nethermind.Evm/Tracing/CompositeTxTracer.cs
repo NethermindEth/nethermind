@@ -536,6 +536,17 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxR
         }
     }
 
+    /// <inheritdoc/>
+    public void ReportCodeDepositError(string error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+                innerTracer.ReportCodeDepositError(error);
+        }
+    }
+
     public void ReportActionRemainingGas(ulong gas)
     {
         for (int index = 0; index < _txTracers.Length; index++)
