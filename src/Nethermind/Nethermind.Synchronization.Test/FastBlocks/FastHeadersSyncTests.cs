@@ -22,6 +22,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
@@ -1355,8 +1356,167 @@ public class FastHeadersSyncTests
         TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
         BlockTreeBuilder builder = SharedDbsBlockTreeBuilderFactory(syncConfig)();
         IBlockTree localBlockTree = builder.TestObject;
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
         ulong lowestInsertedNumber = pivot.Number - 100;
-        // A failed chain level read below the inserted part makes the whole range be queued again after a partial insert.
+        (HeadersSyncFeed feed, HeadersSyncBatch requestedAgain) =
+            await RequestAgainAfterPartialInsert(remoteBlockTree, builder, syncConfig, syncPeerPool, lowestInsertedNumber);
+        using (feed)
+        using (requestedAgain)
+        {
+            PeerInfo otherChainPeer = new(Substitute.For<ISyncPeer>());
+            Hash256 otherHeaderHash = AnswerWithOtherChain(requestedAgain, lowestInsertedNumber, otherChainPeer);
+            feed.HandleResponse(requestedAgain);
+
+            Hash256 lowestInsertedHash = remoteBlockTree.FindHeader(lowestInsertedNumber, BlockTreeLookupOptions.None)!.Hash!;
+            using (Assert.EnterMultipleScope())
+            {
+                AssertNotInserted(localBlockTree, lowestInsertedNumber, otherHeaderHash);
+                Assert.That(localBlockTree.FindCanonicalBlockInfo(lowestInsertedNumber)?.BlockHash, Is.EqualTo(lowestInsertedHash));
+                Assert.That(localBlockTree.LowestInsertedHeader?.Hash, Is.EqualTo(lowestInsertedHash));
+            }
+            syncPeerPool.Received().ReportBreachOfProtocol(otherChainPeer, DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
+            await AssertSyncCompletes(remoteBlockTree, localBlockTree, feed, lowestInsertedNumber);
+        }
+    }
+
+    [Test]
+    public async Task Inserts_the_rest_of_a_response_that_ends_at_the_lowest_inserted_header()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
+        BlockTreeBuilder builder = SharedDbsBlockTreeBuilderFactory(syncConfig)();
+        IBlockTree localBlockTree = builder.TestObject;
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        // Only the top header of the range is inserted before the whole range is queued again.
+        (HeadersSyncFeed feed, HeadersSyncBatch requestedAgain) =
+            await RequestAgainAfterPartialInsert(remoteBlockTree, builder, syncConfig, syncPeerPool, pivot.Number);
+        using (feed)
+        using (requestedAgain)
+        {
+            ulong startNumber = requestedAgain.StartNumber;
+            int belowStoredCount = (int)(pivot.Number - startNumber);
+            // Read before the response is handled: the feed sets the total difficulty on the header objects of the response.
+            UInt256?[] expectedTotalDifficulties = Enumerable.Range(0, belowStoredCount)
+                .Select(i => remoteBlockTree.FindHeader(startNumber + (ulong)i, BlockTreeLookupOptions.None)!.TotalDifficulty)
+                .ToArray();
+            AnswerFrom(remoteBlockTree, requestedAgain, new PeerInfo(Substitute.For<ISyncPeer>()));
+            SyncResponseHandlingResult result = feed.HandleResponse(requestedAgain);
+
+            UInt256?[] storedTotalDifficulties = Enumerable.Range(0, belowStoredCount)
+                .Select(i => localBlockTree.FindCanonicalBlockInfo(startNumber + (ulong)i)?.TotalDifficulty)
+                .ToArray();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+                Assert.That(localBlockTree.LowestInsertedHeader?.Number, Is.EqualTo(startNumber), "the headers below the stored one are inserted");
+                Assert.That(storedTotalDifficulties, Is.EqualTo(expectedTotalDifficulties), "total difficulty of the headers below the stored one");
+            }
+            syncPeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            await AssertSyncCompletes(remoteBlockTree, localBlockTree, feed, pivot.Number);
+        }
+    }
+
+    [Test]
+    public async Task Inserts_a_response_ending_at_the_lowest_inserted_header_when_it_is_the_expected_header()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
+        IBlockTree localBlockTree = Build.A.BlockTree().WithoutSettingHead.WithSyncConfig(syncConfig).TestObject;
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        using TestableHeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, new NullSyncReport(), LimboLogs.Instance);
+        feed.InitializeFeed();
+        // The pivot is both the lowest inserted header and the header expected next.
+        feed.PinnedLowestInserted = pivot;
+
+        using HeadersSyncBatch batch = (await feed.PrepareRequest())!;
+        ulong startNumber = batch.StartNumber;
+        AnswerFrom(remoteBlockTree, batch, new PeerInfo(Substitute.For<ISyncPeer>()));
+        SyncResponseHandlingResult result = feed.HandleResponse(batch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(localBlockTree.LowestInsertedHeader?.Number, Is.EqualTo(startNumber), "the whole response is inserted");
+        }
+        syncPeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Counts_the_lowest_inserted_header_when_the_header_below_it_is_rejected()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
+        BlockTreeBuilder builder = SharedDbsBlockTreeBuilderFactory(syncConfig)();
+        IBlockTree localBlockTree = builder.TestObject;
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        (HeadersSyncFeed feed, HeadersSyncBatch requestedAgain) =
+            await RequestAgainAfterPartialInsert(remoteBlockTree, builder, syncConfig, syncPeerPool, pivot.Number);
+        using (feed)
+        using (requestedAgain)
+        {
+            // The top header is the stored pivot; the headers below it are not on the synced chain.
+            List<BlockHeader?> headers = BuildOtherChain(requestedAgain.StartNumber, pivot.Number - 1);
+            headers.Add(remoteBlockTree.FindHeader(pivot.Number, BlockTreeLookupOptions.None));
+            PeerInfo otherChainPeer = new(Substitute.For<ISyncPeer>());
+            requestedAgain.Response = headers.ToPooledList();
+            requestedAgain.ResponseSourcePeer = otherChainPeer;
+            SyncResponseHandlingResult result = feed.HandleResponse(requestedAgain);
+
+            using HeadersSyncBatch? next = await feed.PrepareRequest();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+                Assert.That(next?.EndNumber, Is.EqualTo(pivot.Number - 1), "only the range below the stored header is requested again");
+                Assert.That(localBlockTree.LowestInsertedHeader?.Number, Is.EqualTo(pivot.Number));
+            }
+            syncPeerPool.Received(1).ReportBreachOfProtocol(otherChainPeer, DisconnectReason.HeaderBatchOnDifferentBranch, Arg.Any<string>());
+            syncPeerPool.DidNotReceive().ReportNoSyncProgress(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+        }
+    }
+
+    [Test]
+    public async Task Validates_the_header_below_a_stored_lowest_inserted_header_against_the_expected_header()
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
+        IBlockTree localBlockTree = Build.A.BlockTree().WithoutSettingHead.WithSyncConfig(syncConfig).TestObject;
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        using TestableHeadersSyncFeed feed = new(localBlockTree, syncPeerPool, syncConfig, new NullSyncReport(), LimboLogs.Instance);
+        feed.InitializeFeed();
+        // The lowest inserted header is below the pivot while the header expected next is still the pivot.
+        ulong lowestInsertedNumber = pivot.Number - 1;
+        feed.PinnedLowestInserted = remoteBlockTree.FindHeader(lowestInsertedNumber, BlockTreeLookupOptions.None);
+
+        using HeadersSyncBatch batch = (await feed.PrepareRequest())!;
+        List<BlockHeader?> headers = [];
+        for (ulong number = batch.StartNumber; number <= batch.EndNumber; number++)
+        {
+            headers.Add(number <= lowestInsertedNumber ? remoteBlockTree.FindHeader(number, BlockTreeLookupOptions.None) : null);
+        }
+        batch.Response = headers.ToPooledList();
+        batch.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+        feed.HandleResponse(batch);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(localBlockTree.LowestInsertedHeader, Is.Null, "nothing is inserted before the expected header");
+            Assert.That(Dependencies(feed), Does.ContainKey(lowestInsertedNumber - 1), "the headers below the stored one wait for the expected header");
+        }
+        syncPeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// Inserts the first requested range from <paramref name="lowestInsertedNumber"/> up and fails the chain level read
+    /// just below it, which queues the whole range again after the partial insert.
+    /// </summary>
+    /// <returns>The feed and the whole range, requested again.</returns>
+    private static async Task<(HeadersSyncFeed Feed, HeadersSyncBatch RequestedAgain)> RequestAgainAfterPartialInsert(
+        IBlockTree remoteBlockTree, BlockTreeBuilder builder, TestSyncConfig syncConfig, ISyncPeerPool syncPeerPool, ulong lowestInsertedNumber)
+    {
         IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
         bool readFailed = false;
         chainLevelInfoRepository.LoadLevel(Arg.Any<ulong>()).Returns(call =>
@@ -1366,42 +1526,28 @@ public class FastHeadersSyncTests
             readFailed = true;
             throw new IOException("read failed");
         });
-        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
-        PeerInfo peer = new(Substitute.For<ISyncPeer>());
-        using HeadersSyncFeed feed = CreateFeed(builder, syncConfig, Substitute.For<IPoSSwitcher>(), syncPeerPool, chainLevelInfoRepository);
+        HeadersSyncFeed feed = CreateFeed(builder, syncConfig, Substitute.For<IPoSSwitcher>(), syncPeerPool, chainLevelInfoRepository);
         feed.InitializeFeed();
 
         using HeadersSyncBatch first = (await feed.PrepareRequest())!;
-        // The response carries only the upper part of the range.
         List<BlockHeader?> upperPart = [];
         for (ulong number = first.StartNumber; number <= first.EndNumber; number++)
         {
             upperPart.Add(number >= lowestInsertedNumber ? remoteBlockTree.FindHeader(number, BlockTreeLookupOptions.None) : null);
         }
         first.Response = upperPart.ToPooledList();
-        first.ResponseSourcePeer = peer;
+        first.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
         Assert.Throws<IOException>(() => feed.HandleResponse(first));
-        Assert.That(localBlockTree.LowestInsertedHeader?.Number, Is.EqualTo(lowestInsertedNumber));
+        Assert.That(builder.TestObject.LowestInsertedHeader?.Number, Is.EqualTo(lowestInsertedNumber));
 
-        using HeadersSyncBatch requestedAgain = (await feed.PrepareRequest())!;
+        HeadersSyncBatch requestedAgain = (await feed.PrepareRequest())!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(requestedAgain.StartNumber, Is.EqualTo(first.StartNumber));
-            Assert.That(requestedAgain.EndNumber, Is.EqualTo(pivot.Number));
+            Assert.That(requestedAgain.EndNumber, Is.EqualTo(first.EndNumber));
         }
-        PeerInfo otherChainPeer = new(Substitute.For<ISyncPeer>());
-        Hash256 otherHeaderHash = AnswerWithOtherChain(requestedAgain, lowestInsertedNumber, otherChainPeer);
-        feed.HandleResponse(requestedAgain);
 
-        Hash256 lowestInsertedHash = remoteBlockTree.FindHeader(lowestInsertedNumber, BlockTreeLookupOptions.None)!.Hash!;
-        using (Assert.EnterMultipleScope())
-        {
-            AssertNotInserted(localBlockTree, lowestInsertedNumber, otherHeaderHash);
-            Assert.That(localBlockTree.FindCanonicalBlockInfo(lowestInsertedNumber)?.BlockHash, Is.EqualTo(lowestInsertedHash));
-            Assert.That(localBlockTree.LowestInsertedHeader?.Hash, Is.EqualTo(lowestInsertedHash));
-        }
-        syncPeerPool.Received().ReportBreachOfProtocol(otherChainPeer, DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
-        await AssertSyncCompletes(remoteBlockTree, localBlockTree, feed, lowestInsertedNumber);
+        return (feed, requestedAgain);
     }
 
     private static TestSyncConfig CreatePivotSyncConfig(BlockHeader pivot) => new()
