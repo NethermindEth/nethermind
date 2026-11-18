@@ -54,5 +54,19 @@ public class ProcessExitSource : IProcessExitSource
 
     public Task ExitTask => _exitResult.Task;
 
-    public CancellationToken Token => _cancellationTokenSource?.Token ?? _cancelledToken;
+    public CancellationToken Token
+    {
+        get
+        {
+            try
+            {
+                return _cancellationTokenSource?.Token ?? _cancelledToken;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Read just before Exit swapped the source out; Exit has cancelled it before disposing it.
+                return _cancelledToken;
+            }
+        }
+    }
 }

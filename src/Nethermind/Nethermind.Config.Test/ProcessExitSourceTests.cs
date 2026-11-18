@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Reflection;
 using System.Threading;
 using NUnit.Framework;
 
@@ -67,5 +68,42 @@ public class ProcessExitSourceTests
         exitSource.Exit(ExitCodes.SigTerm);
 
         Assert.That(exitSource.ExitCode, Is.EqualTo(7));
+    }
+
+    [Test]
+    public void Token_after_exit_is_cancelled_and_usable()
+    {
+        ProcessExitSource exitSource = new(CancellationToken.None);
+
+        exitSource.Exit(0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitSource.Token.IsCancellationRequested, Is.True);
+            Assert.That(exitSource.Token.WaitHandle.WaitOne(0), Is.True);
+        }
+    }
+
+    [Test]
+    public void Token_read_from_a_source_that_exit_disposed_is_cancelled()
+    {
+        ProcessExitSource exitSource = new(CancellationToken.None);
+        FieldInfo sourceField = typeof(ProcessExitSource).GetField("_cancellationTokenSource", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        object? source = sourceField.GetValue(exitSource);
+        exitSource.Exit(0);
+
+        // What a reader sees when it loaded the source just before Exit swapped it out, cancelled and disposed it.
+        sourceField.SetValue(exitSource, source);
+        try
+        {
+            CancellationToken token = default;
+
+            Assert.That(() => token = exitSource.Token, Throws.Nothing);
+            Assert.That(token.IsCancellationRequested, Is.True);
+        }
+        finally
+        {
+            sourceField.SetValue(exitSource, null);
+        }
     }
 }
