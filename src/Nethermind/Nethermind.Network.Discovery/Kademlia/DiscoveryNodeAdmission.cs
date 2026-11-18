@@ -73,7 +73,7 @@ internal sealed class DiscoveryNodeAdmission(
     /// <remarks>
     /// Safe to call from both the adapter gate and the routing-table decorator for the same message: a node
     /// admitted by the first call is recognized as known by the second. Self and exempt nodes bypass the
-    /// filter without consuming IP capacity. A known node refreshes its own address window, but only while it
+    /// filter without creating a filter entry. A known node refreshes its own address window, but only while it
     /// still holds that reservation: identity proves who the sender is, not that it owns an address in the
     /// subnet it now claims, so a node that moves to a different address or whose window was taken over by
     /// another identity must pass the filter again. The admitted cache is smaller than the address filter, so
@@ -84,7 +84,16 @@ internal sealed class DiscoveryNodeAdmission(
     {
         if (!_enabled) return true;
 
-        // Self and exempt nodes must not consume the filter's IP capacity.
+        // A known node that still owns its address reservation has already passed the filter, so it needs no
+        // exemption check. Exempt nodes never create a reservation, so they still reach IsExempt before
+        // AdmitAddress could create one; a node that became exempt while it still held one keeps refreshing it
+        // until it is evicted or expires.
+        if (IsKnown(node) && _filter.TryRefresh(node.Address.Address, node.Id))
+        {
+            return true;
+        }
+
+        // Self and exempt nodes must not create a filter entry.
         if (IsSelf(node) || IsExempt(node))
         {
             _admitted.TryReserve(node.Id);

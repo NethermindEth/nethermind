@@ -370,6 +370,32 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Known_node_with_a_live_reservation_does_not_scan_managed_nodes()
+    {
+        int scans = 0;
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns(_ =>
+        {
+            scans++;
+            return new NetworkNode[] { new(TestItem.PublicKeyA, "203.0.113.10", 30303) };
+        });
+        Fixture fixture = CreateAdmission(staticNodes: staticNodes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
+            Assert.That(scans, Is.GreaterThan(0), "first contact must still check managed exemption");
+        }
+
+        scans = 0;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
+            Assert.That(scans, Is.Zero, "a known node that still owns its reservation must not scan managed nodes");
+        }
+    }
+
+    [Test]
     public void Static_node_added_after_construction_is_exempt_on_first_contact()
     {
         List<NetworkNode> staticNodesList = [];
