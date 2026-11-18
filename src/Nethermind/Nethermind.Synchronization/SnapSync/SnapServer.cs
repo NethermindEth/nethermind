@@ -26,6 +26,7 @@ public sealed class SnapServer(
 {
     private const long HardResponseByteLimit = ISnapStateServer.HardResponseByteLimit;
     private const int AccessListReadChunkSize = 16;
+    private const int AccessListSizeEstimate = 128 * 1024;
 
     public bool CanServe => stateServer.CanServe;
 
@@ -97,12 +98,12 @@ public sealed class SnapServer(
             byteLimit = HardResponseByteLimit;
 
         long currentByteCount = 0;
-        // Both buffers are sized from the first stored list, so a request that finds no list rents nothing for them.
+        // The response buffer is sized from the first stored list and the batch buffer at the first read, so a request
+        // for unknown hashes rents nothing for them.
         DeferredRlpItemList.Builder? builder = null;
         DeferredRlpItemList.Builder.Writer writer = default;
         int missingBeforeFirstList = 0;
         ArrayPoolList<byte> lists = new(0);
-        int batchCapacity = 0;
         Span<ValueHash256> hashes = stackalloc ValueHash256[AccessListReadChunkSize];
         Span<ulong?> numbers = stackalloc ulong?[AccessListReadChunkSize];
         Span<ValueHash256> knownHashes = stackalloc ValueHash256[AccessListReadChunkSize];
@@ -147,10 +148,11 @@ public sealed class SnapServer(
                         if (batchEnd == read) batchEnd = read + Math.Min(Math.Clamp(listReads, 1, AccessListReadChunkSize), known - read);
                         int batch = batchEnd - read;
                         if (currentByteCount > 0) batch = (int)Math.Min(batch, (byteLimit - currentByteCount) * listReads / currentByteCount + 1);
-                        if (lists.Capacity < batchCapacity)
+                        if (lists.Capacity == 0)
                         {
+                            // A batch grows only to the lists read before it, so to at most half of the hashes.
                             lists.Dispose();
-                            lists = [with(batchCapacity)];
+                            lists = [with(GetAccessListsCapacity(Math.Clamp(blockHashes.Count / 2, 1, AccessListReadChunkSize), AccessListSizeEstimate, byteLimit))];
                         }
 
                         lists.Clear();
@@ -172,8 +174,6 @@ public sealed class SnapServer(
                     {
                         builder = new(blockHashes.Count, GetAccessListsCapacity(blockHashes.Count, span.Length, byteLimit));
                         writer = BeginAccessLists(builder, missingBeforeFirstList);
-                        // A batch grows only to the lists read before it, so to at most half of the hashes.
-                        batchCapacity = GetAccessListsCapacity(Math.Clamp(blockHashes.Count / 2, 1, AccessListReadChunkSize), span.Length, byteLimit);
                     }
 
                     writer.WriteValue(span);
