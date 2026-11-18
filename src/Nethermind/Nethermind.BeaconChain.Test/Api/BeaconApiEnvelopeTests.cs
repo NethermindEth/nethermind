@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
@@ -102,7 +103,7 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
 
     [Test]
     public async Task Pruned_history_requires_a_verified_checkpoint(
-        [Values] bool withSnapshot, [Values] bool checkpointVerified, [Values] bool newerStatus)
+        [Values] bool withSnapshot, [Values] bool checkpointVerified, [Values] bool newerStatus, [Values] bool rootOnly)
     {
         const ulong start = 13_200_000;
         Hash256 root = TestRoot(40);
@@ -127,11 +128,14 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         host.SetStatus(newerCheckpointRoot, newerStatus ? newerCheckpointRoot : checkpointRoot,
             checkpoint.Epoch + (newerStatus ? 1UL : 0UL));
 
-        using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        MemDb blocks = (MemDb)host.Db.GetColumnDb(BeaconChainDbColumns.Blocks);
+        long reads = blocks.ReadsCount;
+        using HttpResponseMessage response = await host.Client.GetAsync(rootOnly ? $"/eth/v1/beacon/blocks/{root}/root" : $"/eth/v1/beacon/headers/{root}");
         using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((int)response.StatusCode, Is.EqualTo(200));
         Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
+        if (rootOnly) Assert.That(blocks.ReadsCount, Is.EqualTo(reads), "serving the root and its flags only needs the indexed slot");
         Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(),
             Is.EqualTo(!withSnapshot || !checkpointVerified || newerStatus));
     }

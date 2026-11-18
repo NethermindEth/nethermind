@@ -332,14 +332,17 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>Reads the stored slot and bid for gloas/p2p-interface.md sidecar validation without decoding the block.</summary>
     /// <returns><c>false</c> when the block was stored before the summary index existed, or the entry is malformed; <see cref="PutBlockSummary"/> then backfills it.</returns>
     /// <remarks>Written in the same batch as the block, so a stored block has one unless it predates the index.</remarks>
-    internal bool TryGetBlockSummary(Hash256 root, out StoredBlockSummary summary)
+    internal bool TryGetBlockSummary(Hash256 root, out StoredBlockSummary summary) =>
+        TryDecodeBlockSummary(ReadBlockSummary(root), out summary);
+
+    private byte[]? ReadBlockSummary(Hash256 root)
     {
         Span<byte> key = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, key);
-        return TryDecodeBlockSummary(_blockIndex.Get(key), out summary);
+        return _blockIndex.Get(key);
     }
 
-    private static bool TryDecodeBlockSummary(byte[]? value, out StoredBlockSummary summary)
+    private static bool TryReadSummarySlot([NotNullWhen(true)] byte[]? value, out ulong slot)
     {
         if (value is null
             || value.Length < BlockSummaryHeaderLength
@@ -347,6 +350,18 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             || value[0] > GloasBlockSummary
             || (value[0] == FuluBlockSummary && value.Length != BlockSummaryHeaderLength)
             || (value.Length - BlockSummaryHeaderLength) % SszKzgCommitment.KzgCommitmentLength != 0)
+        {
+            slot = 0;
+            return false;
+        }
+
+        slot = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(1));
+        return true;
+    }
+
+    private static bool TryDecodeBlockSummary(byte[]? value, out StoredBlockSummary summary)
+    {
+        if (!TryReadSummarySlot(value, out ulong slot))
         {
             summary = default;
             return false;
@@ -358,7 +373,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             commitments[i] = SszKzgCommitment.FromSpan(value.AsSpan(BlockSummaryHeaderLength + i * SszKzgCommitment.KzgCommitmentLength, SszKzgCommitment.KzgCommitmentLength));
         }
 
-        summary = new StoredBlockSummary(BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(1)), value[0] == GloasBlockSummary, commitments);
+        summary = new StoredBlockSummary(slot, value[0] == GloasBlockSummary, commitments);
         return true;
     }
 
@@ -432,6 +447,21 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock fulu);
         block = new ForkedSignedBeaconBlock.OfFulu(fulu);
         return true;
+    }
+
+    /// <summary>Resolves a retained block's slot from its summary, falling back to the block for older records.</summary>
+    internal bool TryGetRetainedBlockSlot(Hash256 root, out ulong slot)
+    {
+        if (TryReadSummarySlot(ReadBlockSummary(root), out slot)) return HasBlock(root);
+
+        if (TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
+        {
+            slot = block.Slot;
+            return true;
+        }
+
+        slot = 0;
+        return false;
     }
 
     /// <summary>Reads a stored block's slot from its SSZ prefix, decompressing only that prefix.</summary>

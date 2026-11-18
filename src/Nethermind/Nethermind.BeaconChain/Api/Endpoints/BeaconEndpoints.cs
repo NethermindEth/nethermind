@@ -262,15 +262,18 @@ internal static class BeaconEndpoints
 
     private static Task BlockRoot(HttpContext c, string blockId, BeaconApiContext ctx)
     {
-        if (!BlockIdResolver.TryResolve(ctx, blockId, out ResolvedBlock resolved, out int errorStatus, out string? errorMessage))
+        if (!IdResolver.TryResolveRoot(ctx, blockId, out Hash256? root, out int errorStatus, out string? errorMessage))
         {
             return ApiErrors.Write(c, errorStatus, errorMessage!, c.RequestAborted);
         }
 
-        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, resolved.Slot);
-        return BeaconApiJson.WriteEnvelopeAsync(c, new RootDto(resolved.Root.ToString()),
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, resolved.Slot, resolved.Root),
+        if (!ctx.Store.TryGetRetainedBlockSlot(root!, out ulong slot))
+            return ApiErrors.Write(c, StatusCodes.Status404NotFound, $"Block {root} is not retained by this node.", c.RequestAborted);
+
+        ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, slot);
+        return BeaconApiJson.WriteEnvelopeAsync(c, new RootDto(root!.ToString()),
+            ResponseEnvelope.ExecutionOptimistic(ctx, root, slot),
+            ResponseEnvelope.IsFinalized(ctx, slot, root),
             c.RequestAborted);
     }
 

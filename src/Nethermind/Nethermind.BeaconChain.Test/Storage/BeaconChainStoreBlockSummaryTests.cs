@@ -239,6 +239,7 @@ public class BeaconChainStoreBlockSummaryTests
 
         _store.AdvancePrunedThroughSlot(0);
         bool before = _store.TryGetBlockSummary(GloasRoot, out _);
+        Assert.That(_store.TryGetRetainedBlockSlot(GloasRoot, out ulong slot) && slot == block.Message!.Slot, Is.True);
 
         StoredBlockSummary written = _store.PutBlockSummary(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(block));
 
@@ -373,6 +374,15 @@ public class BeaconChainStoreBlockSummaryTests
             if (slot <= anchorSlot) finalizedSummaries++;
             return root;
         }
+    }
+
+    [Test]
+    public void A_summary_without_its_block_cannot_resolve_a_retained_slot()
+    {
+        _store.PutForkedBlock(GloasRoot, new ForkedSignedBeaconBlock.OfGloas(BlockWithBlobs()));
+        _db.GetColumnDb(BeaconChainDbColumns.Blocks).Remove(GloasRoot.Bytes);
+
+        Assert.That(_store.TryGetRetainedBlockSlot(GloasRoot, out _), Is.False);
     }
 
     private static byte[] SummaryKey() => new[] { BeaconChainStore.BlockSummaryKeyPrefix }.Concat(GloasRoot.Bytes.ToArray()).ToArray();
