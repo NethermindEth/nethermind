@@ -13,6 +13,7 @@ concurrency:
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [master]
   workflow_dispatch:
@@ -31,6 +32,8 @@ permissions:
 
 jobs:
   build:
+    # Draft pull requests run only the light checks; ready_for_review starts this workflow.
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/build-test-artifacts.yml
     with:
       matrix: >-
@@ -280,7 +283,7 @@ jobs:
   tests-summary:
     name: Tests summary
     needs: [tests, tests-spec, tests-chunked]
-    if: always()
+    if: always() && github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     steps:
       - name: Check result

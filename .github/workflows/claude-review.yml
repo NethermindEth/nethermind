@@ -2,7 +2,7 @@
 #
 # This workflow has two modes:
 #
-#   1. Review path — triggered automatically on same-repository PR open / ready-for-review,
+#   1. Review path — triggered automatically on same-repository non-draft PR open / ready-for-review,
 #      and manually when a trusted maintainer comments a variant of "@claude review". Runs
 #      Claude with a fixed review prompt, captures a structured `mergeable` verdict via
 #      --json-schema, and posts a `claude-review/reviewed` commit status that branch
@@ -53,6 +53,7 @@ jobs:
     if: |
       (github.event_name == 'pull_request' && (
         github.event.pull_request.head.repo.full_name == github.repository &&
+        !github.event.pull_request.draft &&
         (
           (github.event.action == 'unlabeled' && github.event.label.name == 'wip') ||
           (

@@ -6,6 +6,7 @@ concurrency:
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [master]
   workflow_dispatch:
@@ -207,6 +208,8 @@ jobs:
   # so they start right away instead of waiting for the build.
   tests-native:
     name: Run ${{ matrix.project.name || matrix.project }}${{ matrix.chunk && format(' ({0})', matrix.chunk) || '' }} (${{ matrix.runner }})
+    # Draft pull requests skip the macOS/Windows, chunked fixture, EEST and Hive jobs; ready_for_review runs them.
+    if: github.event.pull_request.draft != true
     runs-on: ${{ matrix.runner }}
     # A pack runs several projects one after another, so a hang in its last project needs more room to be dumped.
     timeout-minutes: ${{ matrix.project.list && 25 || 15 }}
@@ -324,6 +327,7 @@ jobs:
 
   tests-chunked:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    if: github.event.pull_request.draft != true
     needs: build
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
@@ -424,6 +428,7 @@ jobs:
 
   tests-chunked-native:
     name: Run ${{ matrix.test.project }}${{ matrix.test.label && format(' [{0}]', matrix.test.label) || '' }} (${{ matrix.test.chunk }}) (${{ matrix.runner }})
+    if: github.event.pull_request.draft != true
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     strategy:
@@ -442,6 +447,7 @@ jobs:
   # not propagate into called workflows, so nethermind-tests-trie.yml adds no EEST job.
   nethtest:
     name: EEST nethtest
+    if: github.event.pull_request.draft != true
     uses: ./.github/workflows/run-nethtest.yml
     with:
       test_types: engineTest,blockTest,stateTest,syncTest,txTest,zkevmTest,focilTest,frameTest,frameBlockTest,frameTxTest
@@ -485,14 +491,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check result
+        env:
+          HEAVY_RESULT: ${{ github.event.pull_request.draft == true && 'skipped' || 'success' }}
         run: |
           [[ \
             "${{ needs.tests.result }}" == "success" && \
-            "${{ needs.tests-native.result }}" == "success" && \
+            "${{ needs.tests-native.result }}" == "$HEAVY_RESULT" && \
             "${{ needs.tests-spec.result }}" == "success" && \
-            "${{ needs.tests-chunked.result }}" == "success" && \
-            "${{ needs.tests-chunked-native.result }}" == "success" && \
-            "${{ needs.nethtest.result }}" == "success" && \
+            "${{ needs.tests-chunked.result }}" == "$HEAVY_RESULT" && \
+            "${{ needs.tests-chunked-native.result }}" == "$HEAVY_RESULT" && \
+            "${{ needs.nethtest.result }}" == "$HEAVY_RESULT" && \
             "${{ needs.matrix-guard.result }}" == "success" \
           ]]
 
@@ -535,5 +543,5 @@ jobs:
 
   hive-tests:
     name: Hive tests
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft != true
     uses: ./.github/workflows/hive-tests.yml

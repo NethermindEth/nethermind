@@ -10,6 +10,7 @@ on:
       - master
       - feat/integration-framework
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches:
       - master
   workflow_dispatch:
@@ -26,6 +27,8 @@ defaults:
 jobs:
   e2e-tests:
     name: Run E2E (workers=${{ inputs.workers || '4' }})
+    # Draft pull requests run only the light checks; ready_for_review starts this workflow.
+    if: github.event.pull_request.draft != true
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
