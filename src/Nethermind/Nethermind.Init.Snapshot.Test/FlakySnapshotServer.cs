@@ -100,9 +100,11 @@ internal sealed class FlakySnapshotServer : IDisposable
                 return;
             }
 
-            Task handler = Task.Run(() => HandleAsync(context));
+            // Track the handler before it starts, so Dispose always waits for a handler that has already run.
+            Task<Task> handler = new(() => HandleAsync(context));
             lock (_handlers)
-                _handlers.Add(handler);
+                _handlers.Add(handler.Unwrap());
+            handler.Start(TaskScheduler.Default);
         }
     }
 
