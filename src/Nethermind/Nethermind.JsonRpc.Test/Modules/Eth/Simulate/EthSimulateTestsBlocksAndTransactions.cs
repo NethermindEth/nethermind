@@ -1531,10 +1531,15 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
-    [Test]
-    public async Task eth_simulateV1_accepts_null_account_override([Values("null", "{}")] string accountOverride)
+    /// <remarks>Any override of a precompile's address, even <c>null</c>, turns it into an empty account, so the
+    /// identity precompile echoes its input only when no override is given.</remarks>
+    [TestCase("null", "0x")]
+    [TestCase("{}", "0x")]
+    [TestCase(null, "0x1234")]
+    public async Task eth_simulateV1_accepts_null_account_override(string? accountOverride, string expectedReturnData)
     {
-        string payloadJson = $$"""{"blockStateCalls":[{"stateOverrides":{"0x0000000000000000000000000000000000000010":{{accountOverride}}},"calls":[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000010"}]}]}""";
+        string stateOverrides = accountOverride is null ? "" : $"\"stateOverrides\":{{\"0x0000000000000000000000000000000000000004\":{accountOverride}}},";
+        string payloadJson = $$"""{"blockStateCalls":[{{{stateOverrides}}"calls":[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000004","input":"0x1234"}]}]}""";
         SimulatePayload<TransactionForRpc> payload = new EthereumJsonSerializer().Deserialize<SimulatePayload<TransactionForRpc>>(payloadJson)!;
         using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
@@ -1544,7 +1549,7 @@ public class EthSimulateTestsBlocksAndTransactions
 #pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
 #pragma warning restore NUnit2045
-        Assert.That(result.Data, Has.Count.EqualTo(1));
+        Assert.That(result.Data.Single().Calls.Single().ReturnData, Is.EqualTo(Bytes.FromHexString(expectedReturnData)));
     }
 
     // PUSH1 0, PUSH1 0, PUSH1 0, CREATE, PUSH1 0, MSTORE, PUSH1 32, PUSH1 0, RETURN: returns the created address, or zero on a collision.
