@@ -144,7 +144,7 @@ public class TrustedInputTests
     }
 
     [Test]
-    public async Task Input_in_native_memory_at_any_offset_validates_as_the_array_does([Values(0, 4)] int misalignment)
+    public async Task Input_in_native_memory_at_any_offset_validates_as_the_array_does([Range(0, 7)] int misalignment)
     {
         (byte[] input, Block block) = await CreateInput(amsterdam: false);
         StatelessValidationResult expected = Execute(input);

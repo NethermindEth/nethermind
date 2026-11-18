@@ -10,6 +10,8 @@ namespace Nethermind.Stateless.Execution.IO;
 
 public static partial class TrustedInput
 {
+    private static bool PlaceStateNodesInInput => false;
+
     /// <summary>Uses the item where it lies in the input when the guest allows it, else copies it.</summary>
     /// <remarks>
     /// Only where the input is read into writable memory that outlives the run, nothing ever moves or collects an
@@ -20,10 +22,10 @@ public static partial class TrustedInput
     /// Not ZisK, whose input region is read-only. An item is used in place only at an 8-aligned address: SP1 rejects
     /// misaligned accesses, and its witness-node keccak rounds an array's data pointer down to 8 without testing it.
     /// </remarks>
-    private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length)
+    private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length, bool isState)
     {
         ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
-        return (AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive) && IsAligned(ref first)
+        return (AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive || (isState && PlaceStateNodesInInput)) && IsAligned(ref first)
             ? ArrayAt(ref first, length)
             : data.Slice(start, length).ToArray();
     }
