@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -12,6 +13,37 @@ public static partial class TrustedInput
 {
     private static bool PlaceStateNodesInInput => false;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static partial byte[][] ReadStateNodes(ReadOnlySpan<byte> data) =>
+        PlaceStateNodesInInput ? ReadAlignedStateNodes(data) : ReadItems(data, StateNodesList, 0);
+
+    private static byte[][] ReadAlignedStateNodes(ReadOnlySpan<byte> data)
+    {
+        ref byte input = ref MemoryMarshal.GetReference(data);
+        if (!IsAligned(ref input)) return ReadItems(data, StateNodesList, 0);
+
+        (int position, int count) = ListStart(data, StateNodesList);
+        // Only write prefixes beyond the scalar sections and before the code list. RV32 copies
+        // transactions and witness headers, and separately addressed sections can overlap.
+        ReadOnlySpan<byte> tail = data[position..];
+        if (Section(data, BlockHeaderSection).Overlaps(tail) || Section(data, WithdrawalsSection).Overlaps(tail)
+            || Section(data, BlockAccessListSection).Overlaps(tail) || Section(data, SenderHintsSection).Overlaps(tail)
+            || Section(data, RecoveryHintsSection).Overlaps(tail))
+            return ReadItems(data, StateNodesList, 0);
+
+        int codeList = BinaryPrimitives.ReadInt32LittleEndian(data[CodesList..]);
+        byte[][] items = new byte[count][];
+        for (int i = 0; i < items.Length; i++)
+        {
+            int length = ItemLength(data, position, 0);
+            int start = position + ItemPrefixLength;
+            items[i] = start <= codeList ? ArrayAt(ref Unsafe.Add(ref input, start), length) : data.Slice(start, length).ToArray();
+            position += ItemStride(length, 0);
+        }
+
+        return items;
+    }
+
     /// <summary>Uses the item where it lies in the input when the guest allows it, else copies it.</summary>
     /// <remarks>
     /// Only where the input is read into writable memory that outlives the run, nothing ever moves or collects an
@@ -22,10 +54,10 @@ public static partial class TrustedInput
     /// Not ZisK, whose input region is read-only. An item is used in place only at an 8-aligned address: SP1 rejects
     /// misaligned accesses, and its witness-node keccak rounds an array's data pointer down to 8 without testing it.
     /// </remarks>
-    private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length, bool isState)
+    private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length)
     {
         ref byte first = ref Unsafe.Add(ref MemoryMarshal.GetReference(data), start);
-        return (AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive || (isState && PlaceStateNodesInInput)) && IsAligned(ref first)
+        return (AirbenderFlag.IsActive || FirstTouchMemoryFlag.IsActive || OpenVmFlag.IsActive) && IsAligned(ref first)
             ? ArrayAt(ref first, length)
             : data.Slice(start, length).ToArray();
     }

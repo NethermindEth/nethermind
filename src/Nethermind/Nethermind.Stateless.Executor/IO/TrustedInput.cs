@@ -347,28 +347,25 @@ public static partial class TrustedInput
         if (recoveryHints.Length % RecoveryHintLength != 0)
             throw new ArgumentException("Recovery hints are not whole", nameof(data));
 
+        Witness witness = new()
+        {
+            Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
+            State = new ItemList(ReadStateNodes(data)),
+            Codes = ReadCodes(data),
+            Keys = ArrayPoolList<byte[]>.Empty()
+        };
+
         ForkActivation activation = new(header.Number, header.Timestamp);
         ISpecProvider specProvider = StatelessSpecProvider.Create(chainId, fork, activation);
         Withdrawal[]? withdrawals = withdrawalsRlp.IsEmpty ? null : DecodeWithdrawals(withdrawalsRlp);
         byte[]? encodedBlockAccessList = blockAccessListRlp.IsEmpty ? null : blockAccessListRlp.ToArray();
 
-        byte[] senderHintBytes = senderHints.ToArray();
-        byte[] recoveryHintBytes = recoveryHints.ToArray();
-        // RV32 may overwrite state item prefixes once the other sections have been consumed.
-        Witness witness = new()
-        {
-            Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
-            Codes = ReadCodes(data),
-            Keys = ArrayPoolList<byte[]>.Empty(),
-            State = new ItemList(ReadItems(data, StateNodesList, 0))
-        };
-
         return new TrustedPayload(
             GetBlock: () => CreateBlock(header, transactions, withdrawals, encodedBlockAccessList),
             Witness: witness,
             EncodedTransactions: transactions,
-            SenderHints: senderHintBytes,
-            RecoveryHints: recoveryHintBytes,
+            SenderHints: senderHints.ToArray(),
+            RecoveryHints: recoveryHints.ToArray(),
             ChainId: chainId,
             SchemaId: schemaId,
             BlockHash: blockHash,
@@ -424,7 +421,7 @@ public static partial class TrustedInput
         for (int i = 0; i < items.Length; i++)
         {
             int length = ItemLength(data, position, padding);
-            items[i] = Item(data, position + ItemPrefixLength, length, isState: field == StateNodesList);
+            items[i] = Item(data, position + ItemPrefixLength, length);
             position += ItemStride(length, padding);
         }
 
@@ -511,9 +508,11 @@ public static partial class TrustedInput
         return position;
     }
 
+    private static partial byte[][] ReadStateNodes(ReadOnlySpan<byte> data);
+
     /// <summary>The <paramref name="length"/>-byte item at <paramref name="start"/> as an array.</summary>
     /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
-    private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length, bool isState);
+    private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length);
 
     /// <summary>The <paramref name="length"/>-byte code at <paramref name="start"/>, followed by its execution padding.</summary>
     /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
