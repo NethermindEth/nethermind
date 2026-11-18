@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.Persistence;
@@ -41,6 +42,15 @@ public interface IPersistence
         // Note: It can return true while setting outValue to zero. This is because there is a distinction between
         // zero and missing to conform to a potential verkle need.
         bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue);
+
+        /// <summary>How far the migration into flat had copied when this reader's snapshot was taken, or <c>null</c> when its flat state is complete.</summary>
+        /// <remarks>
+        /// An account or slot the cursor has not passed must be read by walking the trie, as <see cref="GetAccount"/> and
+        /// <see cref="TryGetSlot"/> may miss it; the trie nodes are still read through this reader. It is fixed for the reader's
+        /// lifetime, so a caller can read it once.
+        /// </remarks>
+        MigrationCursor? GetMigrationCursor();
+
         StateId CurrentState { get; }
 
         /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
@@ -50,6 +60,16 @@ public interface IPersistence
         /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> to <paramref name="action"/>, which must not keep it.</summary>
         /// <returns>Whether the node was found.</returns>
         bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
+        /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> whose hash is <paramref name="hash"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <remarks>A store keyed by path alone may ignore <paramref name="hash"/>; a hash-keyed fallback needs it to find the node.</remarks>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
+
+        /// <summary>Passes the RLP of the storage trie node at <paramref name="path"/> whose hash is <paramref name="hash"/> to <paramref name="action"/>, which must not keep it.</summary>
+        /// <inheritdoc cref="TryLoadStateRlp{TArg}(in TreePath, in ValueHash256, ReadFlags, ReadOnlySpanAction{byte, TArg}, TArg)" path="/remarks"/>
+        /// <returns>Whether the node was found.</returns>
+        bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct;
 
         // Raw operations are used in importer
         byte[]? GetAccountRaw(in ValueHash256 addrHash);
@@ -146,6 +166,9 @@ public interface IPersistence
         /// <inheritdoc cref="DeleteStateTrieNodeRange"/>
         /// <remarks>Restricted to the storage trie of the account identified by <paramref name="addressHash"/>.</remarks>
         void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
+
+        /// <summary>Saves the cursor of the HalfPath to flat migration with this batch's writes, or deletes it when <paramref name="cursor"/> is <c>null</c>.</summary>
+        void SetMigrationCursor(in MigrationCursor? cursor);
     }
 
     /// <summary>
