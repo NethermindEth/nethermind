@@ -9,6 +9,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5;
 using NSubstitute;
@@ -34,6 +35,94 @@ public class DiscoveryV5TransportTests
 
     [TearDown]
     public void CleanUp() => _transport.Close();
+
+    [Test]
+    [NonParallelizable]
+    public void Full_queue_counts_drops_without_warning_flood()
+    {
+        TestLogger logger = new() { IsWarn = true, IsTrace = false };
+        DiscoveryV5Transport transport = new(new OneLoggerLogManager(new ILogger(logger)))
+        {
+            ChallengeLimiter = new(int.MaxValue, TimeSpan.FromDays(1)),
+            SourceLimiter = new(NodeFilter.AcceptAll)
+        };
+        long before = Interlocked.Read(ref Metrics.DiscoveryV5MessagesDropped);
+        try
+        {
+            for (int i = 0; i < 1056; i++)
+                transport.Receive(PooledUdpReceiveResult.Copy(new byte[] { 1 }, new IPEndPoint(IPAddress.Loopback, 30303)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Interlocked.Read(ref Metrics.DiscoveryV5MessagesDropped) - before, Is.EqualTo(32));
+                Assert.That(logger.LogList, Is.Empty);
+            }
+        }
+        finally
+        {
+            transport.Close();
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Cheap_packets_do_not_consume_the_expensive_work_budget(CancellationToken token)
+    {
+        ManualTimeProvider time = new();
+        _transport.Close();
+        _transport = new(LimboLogs.Instance)
+        {
+            ChallengeLimiter = new(512, TimeSpan.FromMilliseconds(100), time),
+            SourceLimiter = new(32, 8192, TimeSpan.FromMilliseconds(100), time)
+        };
+        Task<int> received = Drain(token);
+        for (int i = 0; i < 513; i++)
+        {
+            IPEndPoint source = new(new IPAddress(new byte[] { 8, 8, (byte)(i >> 8), (byte)i }), 30303);
+            _transport.Receive(PooledUdpReceiveResult.Copy(new byte[] { 1 }, source));
+        }
+        _transport.Close();
+        Assert.That(await received, Is.EqualTo(513));
+
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Source_limits_share_ipv6_prefixes_and_expire(CancellationToken token)
+    {
+        ManualTimeProvider time = new();
+        _transport.Close();
+        _transport = new(LimboLogs.Instance)
+        {
+            ChallengeLimiter = new(2, TimeSpan.FromMilliseconds(100), time),
+            SourceLimiter = new(1, 8, TimeSpan.FromMilliseconds(100), time)
+        };
+        Task<int> received = Drain(token);
+        Send("2001:4860:1:2::1");
+        Send("2001:4860:1:2::2");
+        Send("8.8.8.8");
+        Send("8.8.4.4");
+        time.Advance(TimeSpan.FromMilliseconds(99));
+        Send("8.8.8.8");
+        time.Advance(TimeSpan.FromMilliseconds(1));
+        Send("8.8.8.8");
+        Send("8.8.4.4");
+        _transport.Close();
+        Assert.That(await received, Is.EqualTo(5));
+
+        void Send(string address) => _transport.Receive(PooledUdpReceiveResult.Copy(
+            new byte[] { 1 }, new IPEndPoint(IPAddress.Parse(address), 30303)));
+    }
+
+    private async Task<int> Drain(CancellationToken token)
+    {
+        int count = 0;
+        await foreach (PooledUdpReceiveResult packet in _transport.ReadMessagesAsync(token))
+        {
+            packet.Dispose();
+            count++;
+        }
+        return count;
+    }
 
     [Test]
     public async Task SendsThroughBoundSocket()

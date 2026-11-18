@@ -36,9 +36,11 @@ public sealed class XdcKademliaAdapter(
     IProcessExitSource processExitSource,
     IEcdsa ecdsa,
     ILogManager logManager,
-    NetworkListenerState listenerState)
-    : KademliaAdapter(kademlia, routingTable, nodeHealthTracker, discoveryConfig, kademliaConfig, nodeRecordProvider, ipResolver, nodeStatsManager, timestamper, processExitSource, ecdsa, logManager, listenerState)
+    NetworkListenerState listenerState,
+    PeerAddressPolicy addressPolicy)
+    : KademliaAdapter(kademlia, routingTable, nodeHealthTracker, discoveryConfig, kademliaConfig, nodeRecordProvider, ipResolver, nodeStatsManager, timestamper, processExitSource, ecdsa, logManager, listenerState, addressPolicy)
 {
+
     protected override Task RefreshRemoteRecordIfNewer(Node node, ulong? advertisedSequence, CancellationToken token)
         => Task.CompletedTask;
 }

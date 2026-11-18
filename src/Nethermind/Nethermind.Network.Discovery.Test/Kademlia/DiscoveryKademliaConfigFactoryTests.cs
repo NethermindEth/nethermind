@@ -53,6 +53,35 @@ public class DiscoveryKademliaConfigFactoryTests
     }
 
     [Test]
+    public void RoutingTableRefresh_ShouldRetainValidationOnlyForSameEndpoint(
+        [Values] bool changedAddress, [Values] bool changedPort, [Values] bool freshlyValidated)
+    {
+        Node currentNode = new(TestItem.PublicKeyA, "192.0.2.10", 30304, true);
+        Node existing = new(TestItem.PublicKeyB, "192.0.2.11", 30304) { ValidatedProtocol = true };
+        Node incoming = new(TestItem.PublicKeyB, changedAddress ? "192.0.2.12" : "::ffff:192.0.2.11", 30304,
+            discoveryPort: changedPort ? 30305 : 30304)
+        {
+            ValidatedProtocol = freshlyValidated ? true : null
+        };
+        DiscoveryLiveness.Mark(existing);
+        if (freshlyValidated) DiscoveryLiveness.Mark(incoming);
+        KademliaConfig<Node> config = DiscoveryKademliaConfigFactory.Create(currentNode, [], new DiscoveryConfig());
+        KBucketTree<Node, ValueHash256> tree = new(config,
+            new FromKeyNodeHashProvider<PublicKey, Node, ValueHash256>(new PublicKeyKeyOperator()),
+            ValueHash256KademliaDistance.Instance);
+        tree.TryAddOrRefresh(existing.Id.Hash, existing, out _);
+
+        tree.TryAddOrRefresh(incoming.Id.Hash, incoming, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.TryGet(incoming.Id.Hash.ValueHash256, out Node? stored), Is.True);
+            Assert.That(stored!.ValidatedProtocol == true, Is.EqualTo(freshlyValidated || (!changedAddress && !changedPort)));
+            Assert.That(DiscoveryLiveness.IsRecent(stored), Is.EqualTo(freshlyValidated || (!changedAddress && !changedPort)));
+        }
+    }
+
+    [Test]
     public void RoutingTableRefresh_ShouldRetainNewerVerifiedEnrState()
     {
         Node currentNode = new(TestItem.PublicKeyA, "192.0.2.10", 30304, true);
@@ -88,7 +117,8 @@ public class DiscoveryKademliaConfigFactoryTests
         Node stored = storedNode!;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stored, Is.SameAs(incoming));
+            Assert.That(stored, Is.SameAs(existing));
+            Assert.That(stored.DiscoveryAddress, Is.EqualTo(existing.DiscoveryAddress));
             Assert.That(stored.Enr, Is.SameAs(newerRecord));
             Assert.That(stored.IsVerifiedEnr(newerRecord), Is.True);
             Assert.That(stored.HighestObservedEnrSequence, Is.EqualTo(newerRecord.EnrSequence));

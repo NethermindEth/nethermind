@@ -10,6 +10,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Logging;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
@@ -17,18 +18,35 @@ namespace Nethermind.Network;
 public class CompositeNodeSource : INodeSource, IDisposable
 {
     private readonly INodeSource[] _nodeSources;
+    private readonly ILogger _logger;
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         using CancellationTokenSource disposeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         CancellationToken feedToken = disposeCts.Token;
         Channel<Node> ch = Channel.CreateBounded<Node>(1);
+        int remainingSources = _nodeSources.Length;
+        if (remainingSources == 0) ch.Writer.TryComplete();
 
         using ArrayPoolList<Task> feedTasks = _nodeSources.Select(async innerSource =>
         {
-            await foreach (Node node in innerSource.DiscoverNodes(feedToken))
+            try
             {
-                await ch.Writer.WriteAsync(node, feedToken);
+                await foreach (Node node in innerSource.DiscoverNodes(feedToken))
+                {
+                    await ch.Writer.WriteAsync(node, feedToken);
+                }
+            }
+            catch (OperationCanceledException) when (feedToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Node source {innerSource.GetType().Name} failed.", ex);
+            }
+            finally
+            {
+                if (Interlocked.Decrement(ref remainingSources) == 0) ch.Writer.TryComplete();
             }
         }).ToPooledList(_nodeSources.Length * 16);
 
@@ -55,9 +73,15 @@ public class CompositeNodeSource : INodeSource, IDisposable
 
     public event EventHandler<NodeEventArgs>? NodeRemoved;
 
-    public CompositeNodeSource(params INodeSource[] nodeSources)
+    public CompositeNodeSource(params INodeSource[] nodeSources) : this(nodeSources, LimboLogs.Instance)
+    {
+    }
+
+    /// <summary>Combines node sources and logs failures without stopping other sources.</summary>
+    public CompositeNodeSource(INodeSource[] nodeSources, ILogManager logManager)
     {
         _nodeSources = nodeSources;
+        _logger = logManager.GetClassLogger<CompositeNodeSource>();
         foreach (INodeSource nodeSource in nodeSources)
         {
             nodeSource.NodeRemoved += NodeSourceOnNodeRemoved;

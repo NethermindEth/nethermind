@@ -19,6 +19,14 @@ namespace Nethermind.Network.P2P
         SessionState BestStateReached { get; }
         bool IsClosing { get; }
 
+        /// <summary>Gets whether outbound packets can currently be queued.</summary>
+        /// <remarks>Session decorators must forward transport writability; the default refuses cell requests.</remarks>
+        bool IsChannelWritable => false;
+
+        /// <summary>Gets the inbound packet tracker shared with the transport pipeline.</summary>
+        /// <remarks>Decorators must forward the tracker. The closed default disables correlated cell requests.</remarks>
+        PacketReceiptTracker InboundReceipts => PacketReceiptTracker.Closed;
+
         /// <summary>
         /// Gets whether the transport channel has closed before delayed disconnect bookkeeping completes.
         /// </summary>
@@ -66,6 +74,12 @@ namespace Nethermind.Network.P2P
         void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details);
 
         void Handshake(PublicKey handshakeRemoteNodeId);
+
+        /// <summary>
+        /// Marks an accepted Hello so pending inbound admission can be released.
+        /// </summary>
+        /// <remarks>The default does not release pending inbound admission after Hello; slots remain held until disconnect. Sessions owning admission slots must override it, and decorators must forward it.</remarks>
+        void MarkAuthenticated() { }
 
         void StartTrackingSession();
 

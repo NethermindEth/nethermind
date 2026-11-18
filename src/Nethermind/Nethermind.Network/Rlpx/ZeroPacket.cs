@@ -13,6 +13,8 @@ namespace Nethermind.Network.Rlpx
     {
         public string? Protocol { get; set; }
         public byte PacketType { get; set; }
+        internal long ReceiptSequence { get; set; }
+        internal DateTimeOffset? ReceivedAt { get; set; }
 
         /// <summary>The message bytes, after the packet type.</summary>
         /// <remarks>

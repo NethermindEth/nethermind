@@ -10,7 +10,6 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Kademlia;
-using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Bootnode;

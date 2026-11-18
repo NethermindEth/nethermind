@@ -144,8 +144,11 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
         // completion — the drain after a worker finishes, and (via LookupNodes) on reaching maxResults.
         // `callerToken` is the real caller/shutdown token, used to tell an expected teardown failure from
         // a genuine one; it is never cancelled by normal completion.
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using CancellationTokenSource deadline = new(config.LookupTimeout, config.TimeProvider);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(token, deadline.Token);
         token = cts.Token;
+        int queryLimit = Math.Max(1, config.LookupQueryLimit);
+        int seenLimit = Math.Max(1, config.LookupSeenLimit);
 
         HashSet<TKadKey> seen = [];
 
@@ -170,6 +173,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
 
         foreach (TNode node in routingTable.GetKNearestNeighbour(targetHash))
         {
+            if (seen.Count >= seenLimit || token.IsCancellationRequested) break;
             TKadKey nodeHash = nodeHashProvider.GetHash(node);
             if (!seen.Add(nodeHash))
             {
@@ -267,11 +271,19 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
                 }
 
                 TNode[]? ret = await request;
-                if (ret is null) return null;
+                if (ret is null)
+                {
+                    if (!token.IsCancellationRequested) nodeHealthTracker.OnRequestFailed(node);
+                    return null;
+                }
 
                 nodeHealthTracker.OnIncomingMessageFrom(node);
 
                 return ret;
+            }
+            catch (KademliaRequestNotSentException)
+            {
+                return null;
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested)
             {
@@ -284,7 +296,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             }
             catch (Exception e)
             {
-                nodeHealthTracker.OnRequestFailed(node);
+                if (!token.IsCancellationRequested) nodeHealthTracker.OnRequestFailed(node);
                 // Expected-and-quiet: a failure after the caller's token is cancelled (teardown, in whatever
                 // shape DotNetty raises), or a transport failure (unreachable host, torn-down channel —
                 // ClosedChannelException derives from IOException). Anything else is a genuine fault and
@@ -317,6 +329,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
 
                 Interlocked.Increment(ref queryingTask);
                 (hash, node) = bestSeen.Dequeue();
+                if (routingTable.TryGet(hash, out TNode? known) && config.IsVerified(known)) node = known;
                 return true;
             }
         }
@@ -333,6 +346,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
 
                 foreach (TNode neighbour in neighbours)
                 {
+                    if (seen.Count >= seenLimit || token.IsCancellationRequested) break;
                     TKadKey neighbourHash = nodeHashProvider.GetHash(neighbour);
 
                     if (!seen.Add(neighbourHash)) continue;
@@ -382,6 +396,7 @@ public class LookupKNearestNeighbour<TKey, TNode, TKadKey>(
             lock (queueLock)
             {
                 round = Interlocked.Increment(ref currentRound);
+                if (round > queryLimit) return true;
                 if (finalResult.Count >= k && round - closestNodeRound >= (config.Alpha * 2))
                 {
                     // No closer node for more than or equal to _alpha*2 round.

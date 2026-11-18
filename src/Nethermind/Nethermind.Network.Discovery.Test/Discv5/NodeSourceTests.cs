@@ -22,6 +22,21 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 
 public class NodeSourceTests
 {
+    private readonly List<PeerAddressPolicy> _ownedPolicies = [];
+
+    private PeerAddressPolicy OwnPolicy(PeerAddressPolicy policy)
+    {
+        _ownedPolicies.Add(policy);
+        return policy;
+    }
+
+    [TearDown]
+    public void DisposePolicies()
+    {
+        foreach (PeerAddressPolicy policy in _ownedPolicies) policy.Dispose();
+        _ownedPolicies.Clear();
+    }
+
     private const uint CompatibleForkHash = 0x11111111;
     private const uint IncompatibleForkHash = 0x22222222;
 
@@ -94,10 +109,10 @@ public class NodeSourceTests
     public async Task DiscoverNodes_ShouldPreserveSelectedDiscoveryAddressFamily(CancellationToken token)
     {
         PrivateKey privateKey = TestItem.PrivateKeys[1];
-        IPAddress ip6 = IPAddress.Parse("2001:db8::1");
+        IPAddress ip6 = IPAddress.Parse("2001:4860::1");
         NodeRecord enr = TestEnrBuilder.BuildSigned(
             privateKey,
-            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("8.8.8.1"),
             tcpPort: 30303,
             udpPort: 30304,
             configureExtras: record =>
@@ -129,8 +144,8 @@ public class NodeSourceTests
     public async Task DiscoverNodes_ShouldFallBackToAnotherTcpAddressFamily(CancellationToken token)
     {
         PrivateKey privateKey = TestItem.PrivateKeys[1];
-        IPAddress ip4 = IPAddress.Parse("192.0.2.1");
-        IPAddress ip6 = IPAddress.Parse("2001:db8::1");
+        IPAddress ip4 = IPAddress.Parse("8.8.8.1");
+        IPAddress ip6 = IPAddress.Parse("2001:4860::1");
         NodeRecord enr = TestEnrBuilder.BuildSigned(
             privateKey,
             ip4,
@@ -264,7 +279,8 @@ public class NodeSourceTests
             new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
             ExecutionLayerDiscv5RecordFilter.Instance,
             CreateForkInfo(),
-            LimboLogs.Instance);
+            LimboLogs.Instance, OwnPolicy(new PeerAddressPolicy(new IIPResolver.NethermindIp(IPAddress.Any, CreateNode(0).DiscoveryAddress.Address),
+                new LocalAddressSource(LimboLogs.Instance, () => []))));
 
         await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
 
@@ -276,7 +292,40 @@ public class NodeSourceTests
         }
     }
 
-    private static NodeSource CreateSource(IKademlia<PublicKey, Node> kademlia)
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Public_discovery_cannot_relay_private_tcp_family(
+        [Values("::1", "fe80::1", "fc00::1")] string tcpAddress, CancellationToken token)
+    {
+        NodeRecord record = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyB, IPAddress.Parse("8.8.8.8"),
+            tcpPort: null, udpPort: 30304, configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(IPAddress.Parse(tcpAddress)));
+                enr.SetEntry(new Tcp6Entry(8551));
+                enr.SetEntry(new EthEntry(new ForkId(CompatibleForkHash, 0).HashBytes, 0));
+            });
+        Assert.That(Node.TryFromDiscoveryEnr(record, AddressFamily.InterNetwork, out Node? rejected), Is.True);
+        Node accepted = CreateNode(2);
+        IKademlia<PublicKey, Node> kademlia = Substitute.For<IKademlia<PublicKey, Node>>();
+        kademlia.IterateNodes().Returns([rejected!, accepted]);
+        NodeSource source = CreateSource(kademlia);
+        await using IAsyncEnumerator<Node> enumerator = source.DiscoverNodes(token).GetAsyncEnumerator(token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await enumerator.MoveNextAsync(), Is.True);
+            Assert.That(enumerator.Current.Id, Is.EqualTo(accepted.Id));
+        }
+    }
+
+    private NodeSource CreateSource(IKademlia<PublicKey, Node> kademlia)
+    {
+        Node self = CreateNode(0);
+        PeerAddressPolicy policy = OwnPolicy(new PeerAddressPolicy(new IIPResolver.NethermindIp(IPAddress.Any, self.DiscoveryAddress.Address),
+            new LocalAddressSource(LimboLogs.Instance, () => [])));
+        return CreateSource(kademlia, self, policy);
+    }
+
+    internal static NodeSource CreateSource(IKademlia<PublicKey, Node> kademlia, Node self, PeerAddressPolicy addressPolicy)
     {
         IKademliaDiscovery<PublicKey, Node> discovery = Substitute.For<IKademliaDiscovery<PublicKey, Node>>();
         discovery.DiscoverNodes(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -286,10 +335,10 @@ public class NodeSourceTests
             kademlia,
             discovery,
             new DiscoveryConfig { ConcurrentDiscoveryJob = 0 },
-            new KademliaConfig<Node> { CurrentNodeId = CreateNode(0) },
+            new KademliaConfig<Node> { CurrentNodeId = self ?? CreateNode(0) },
             ExecutionLayerDiscv5RecordFilter.Instance,
             CreateForkInfo(),
-            LimboLogs.Instance);
+            LimboLogs.Instance, addressPolicy);
     }
 
     private static IForkInfo CreateForkInfo()

@@ -40,7 +40,8 @@ public class KademliaModule<TKey, TNode, TKadKey> : Module
             .AddSingleton<IKademliaDiscovery<TKey, TNode>, RandomWalkKademliaDiscovery<TKey, TNode, TKadKey>>()
             .AddSingleton<ILookupAlgo<TNode, TKadKey>, LookupKNearestNeighbour<TKey, TNode, TKadKey>>()
             .AddSingleton<INodeHashProvider<TNode, TKadKey>, FromKeyNodeHashProvider<TKey, TNode, TKadKey>>()
-            .AddSingleton<IRoutingTable<TNode, TKadKey>, KBucketTree<TNode, TKadKey>>()
+            .AddSingleton<IHealthRoutingTable<TNode, TKadKey>, KBucketTree<TNode, TKadKey>>()
+            .Bind<IRoutingTable<TNode, TKadKey>, IHealthRoutingTable<TNode, TKadKey>>()
             .AddSingleton<INodeHealthTracker<TNode>, NodeHealthTracker<TKey, TNode, TKadKey>>();
     }
 }

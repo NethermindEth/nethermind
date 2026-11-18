@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Text;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -14,7 +15,12 @@ namespace Nethermind.Network.Enr
         /// </summary>
         public abstract string Key { get; }
 
-        internal int GetRlpLength() => Rlp.LengthOf(Key) + GetRlpLengthOfValue();
+        internal virtual string SortKey => GetSortKey(Key);
+
+        // EIP-778 orders raw key bytes. Latin-1 maps each byte to one ordinal code unit.
+        internal static string GetSortKey(string key) => Ascii.IsValid(key) ? key : Encoding.Latin1.GetString(Encoding.UTF8.GetBytes(key));
+
+        internal virtual int GetRlpLength() => Rlp.LengthOf(Key) + GetRlpLengthOfValue();
 
         /// <summary>
         /// Needed for optimized RLP serialization.
@@ -25,7 +31,7 @@ namespace Nethermind.Network.Enr
         /// <summary>
         /// Encodes the entry into a value RLP writer.
         /// </summary>
-        public void Encode(ref RlpWriter writer)
+        public virtual void Encode(ref RlpWriter writer)
         {
             writer.Encode(Key);
             EncodeValue(ref writer);

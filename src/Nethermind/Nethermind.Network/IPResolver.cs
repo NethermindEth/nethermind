@@ -50,6 +50,8 @@ public class IPResolver : IIPResolver, IAsyncDisposable
 
     /// <inheritdoc/>
     public event EventHandler? Changed;
+    /// <inheritdoc/>
+    public event EventHandler<IIPResolver.NethermindIp>? Resolved;
 
     public IPResolver(INetworkConfig networkConfig, ILogManager logManager)
         : this(networkConfig, logManager, externalIpSources: null)
@@ -80,6 +82,8 @@ public class IPResolver : IIPResolver, IAsyncDisposable
     {
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed), this);
         Task<IIPResolver.NethermindIp>? task = Volatile.Read(ref _resolveTask);
+        TaskCompletionSource<IIPResolver.NethermindIp>? completion = null;
+        TaskCompletionSource? workerCompletion = null;
         if (task is null || task.IsFaulted || task.IsCanceled)
         {
             lock (_lock)
@@ -90,12 +94,15 @@ public class IPResolver : IIPResolver, IAsyncDisposable
                 {
                     // The shared resolution is never bound to one caller's token. Per-call cancellation is
                     // honored by WaitAsync below, without cancelling or faulting the cached operation.
-                    TaskCompletionSource<IIPResolver.NethermindIp> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
                     task = _resolveTask = completion.Task;
-                    _resolutionWorker = CompleteResolution(completion);
+                    workerCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                    _resolutionWorker = workerCompletion.Task;
                 }
             }
         }
+
+        if (completion is not null) _ = CompleteResolution(completion, workerCompletion!);
 
         return new ValueTask<IIPResolver.NethermindIp>(task.WaitAsync(cancellationToken));
     }
@@ -145,7 +152,7 @@ public class IPResolver : IIPResolver, IAsyncDisposable
         _shutdown.Dispose();
     }
 
-    private async Task CompleteResolution(TaskCompletionSource<IIPResolver.NethermindIp> completion)
+    private async Task CompleteResolution(TaskCompletionSource<IIPResolver.NethermindIp> completion, TaskCompletionSource workerCompletion)
     {
         try
         {
@@ -165,18 +172,27 @@ public class IPResolver : IIPResolver, IAsyncDisposable
             }
 
             completion.SetResult(result);
+            OnResolved(result);
         }
         catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
         {
-            completion.SetCanceled(_shutdown.Token);
+            completion.TrySetCanceled(_shutdown.Token);
         }
         catch (Exception e)
         {
-            completion.SetException(e);
+            completion.TrySetException(e);
         }
         finally
         {
-            ScheduleRefresh();
+            try
+            {
+                ScheduleRefresh();
+                workerCompletion.SetResult();
+            }
+            catch (Exception exception)
+            {
+                workerCompletion.SetException(exception);
+            }
         }
     }
 
@@ -186,6 +202,7 @@ public class IPResolver : IIPResolver, IAsyncDisposable
         {
             IIPResolver.NethermindIp result = await ResolveAndRecord(_shutdown.Token);
             Volatile.Write(ref _resolveTask, Task.FromResult(result));
+            OnResolved(result);
             if (result != previous)
             {
                 OnChanged();
@@ -219,6 +236,21 @@ public class IPResolver : IIPResolver, IAsyncDisposable
         _retryUnresolvedResolution = _consecutiveUnresolvedResolutionAttempts is > 0 and < UnresolvedFastAttemptLimit;
         _usesAutomaticResolution = usedAutomaticResolution;
         return result;
+    }
+
+    private void OnResolved(IIPResolver.NethermindIp result)
+    {
+        foreach (Delegate subscriber in Resolved?.GetInvocationList() ?? [])
+        {
+            try
+            {
+                ((EventHandler<IIPResolver.NethermindIp>)subscriber)(this, result);
+            }
+            catch (Exception exception)
+            {
+                if (_logger.IsError) _logger.Error($"An {nameof(IIPResolver)} resolution subscriber failed.", exception);
+            }
+        }
     }
 
     private void OnChanged()

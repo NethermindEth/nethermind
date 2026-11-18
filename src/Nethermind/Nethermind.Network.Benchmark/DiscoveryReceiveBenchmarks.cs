@@ -5,11 +5,17 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using Autofac;
 using BenchmarkDotNet.Attributes;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Stats.Model;
+using NSubstitute;
 
 namespace Nethermind.Network.Benchmarks;
 
@@ -23,32 +29,59 @@ namespace Nethermind.Network.Benchmarks;
 /// </remarks>
 public class DiscoveryReceiveBenchmarks
 {
+    public enum Classification
+    {
+        Bypass,
+        UnsupportedType,
+        CandidateMdc
+    }
+
+    [Params(256, 1280)]
+    public int PacketSize { get; set; }
+
+    [Params(Classification.Bypass, Classification.UnsupportedType, Classification.CandidateMdc)]
+    public Classification Path { get; set; }
+
     private const int DatagramsPerInvoke = 64;
     private static readonly TimeSpan ReceiveTimeout = TimeSpan.FromSeconds(10);
 
-    private readonly byte[] _datagram = new byte[256];
+    private byte[] _datagram = null!;
     private readonly ManualResetEventSlim _allReceived = new();
     private DiscoveryConnectionsPool _pool = null!;
     private Socket _sender = null!;
     private SocketAddress _listenerAddress = null!;
     private int _remaining;
+    private IContainer _container = null!;
+    private DiscoveryHandler _handler = null!;
 
     [GlobalSetup]
     public void GlobalSetup()
     {
+        _datagram = new byte[PacketSize];
+        _datagram[97] = Path == Classification.CandidateMdc ? (byte)1 : (byte)0;
+        TestLogManager logManager = new(LogLevel.Error);
+        _container = new ContainerBuilder()
+            .AddModule(new Discovery.Discv4.Kademlia.KademliaModule(new Node(TestItem.PublicKeyA, IPEndPoint.Parse("127.0.0.1:30303")), []))
+            .AddSingleton<ILogManager>(logManager)
+            .AddSingleton<ITimestamper>(Timestamper.Default)
+            .AddSingleton<IDiscoveryMsgListener>(Substitute.For<IDiscoveryMsgListener>())
+            .AddSingleton<IMessageSerializationService>(Substitute.For<IMessageSerializationService>())
+            .Build();
+        _handler = _container.Resolve<DiscoveryHandler>();
         // An unset listener address with a resolved IPv4 wildcard is what makes the default configuration bind [::].
         NetworkListenerState listenerState = new(
             new NetworkConfig(),
             new FixedIpResolver(new NetworkConfig { LocalIp = "0.0.0.0" }),
-            NullLogManager.Instance);
+            logManager);
         _pool = new DiscoveryConnectionsPool(
-            NullLogManager.Instance.GetClassLogger<DiscoveryConnectionsPool>(),
+            logManager.GetClassLogger<DiscoveryConnectionsPool>(),
             new DiscoveryConfig(),
             listenerState);
         IDatagramSocket socket = _pool.Bind(
             static address => new UdpDatagramSocket(CompositeDiscoveryApp.CreateDatagramSocket(address)),
             0,
-            OnReceive);
+            Path == Classification.Bypass ? OnReceive : _handler.Receive);
+        _handler.InitializeChannel(socket, OnReceive);
 
         _sender = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
         _listenerAddress = new IPEndPoint(IPAddress.Loopback, socket.LocalEndpoint!.Port).Serialize();
@@ -60,6 +93,8 @@ public class DiscoveryReceiveBenchmarks
         _pool.StopAsync().GetAwaiter().GetResult();
         _sender.Dispose();
         _allReceived.Dispose();
+        _handler.CloseInbound();
+        _container.Dispose();
     }
 
     [Benchmark(OperationsPerInvoke = DatagramsPerInvoke)]

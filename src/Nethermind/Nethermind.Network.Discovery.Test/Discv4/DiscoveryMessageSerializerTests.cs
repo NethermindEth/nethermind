@@ -4,20 +4,28 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Network.Discovery.Discv4.Serializers;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Test;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats.Model;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv4;
@@ -45,6 +53,79 @@ public class DiscoveryMessageSerializerTests
         _nearAddress = new IPEndPoint(IPAddress.Parse(networkConfig.LocalIp), networkConfig.DiscoveryPort);
         _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
         _timestamper = Timestamper.Default;
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Production_handler_uses_the_effective_last_serializer([Values] bool customLast, [Values] bool customService, CancellationToken token)
+    {
+        Ecdsa ecdsa = new();
+        SameKeyGenerator key = new(TestItem.PrivateKeyA);
+        NodeIdResolver resolver = new(ecdsa);
+        PingMsgSerializer builtIn = new(ecdsa, key, resolver);
+        CountingPingSerializer replacement = new(ecdsa, key, resolver);
+        SerializerInfo[] serializers = customLast
+            ? [SerializerInfo.Create(builtIn), SerializerInfo.Create(replacement)]
+            : [SerializerInfo.Create(replacement), SerializerInfo.Create(builtIn)];
+        IMessageSerializationService service = customService ? new CountingService(serializers) : new MessageSerializationService(serializers);
+        IDiscoveryMsgListener listener = Substitute.For<IDiscoveryMsgListener>();
+        TaskCompletionSource<DiscoveryMsg> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        listener.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(call =>
+        {
+            received.TrySetResult(call.Arg<DiscoveryMsg>());
+            return Task.CompletedTask;
+        });
+
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new KademliaModule(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303), []));
+        builder.RegisterInstance(listener);
+        builder.RegisterInstance(service);
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        using IContainer container = builder.Build();
+        DiscoveryHandler handler = container.Resolve<DiscoveryHandler>();
+        handler.InitializeChannel(Substitute.For<IDatagramSocket>(), static packet => packet.Dispose());
+        try
+        {
+            PingMsg ping = new(TestItem.PublicKeyB, Timestamper.Default.UnixTime.SecondsLong + 60, _nearAddress, _farAddress, new byte[32]);
+            byte[] packet = service.SerializeToArray(ping);
+            handler.Receive(PooledUdpReceiveResult.Copy(packet, _nearAddress));
+            DiscoveryMsg decoded = await received.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Is.TypeOf<PingMsg>());
+                Assert.That(decoded.FarPublicKey, Is.EqualTo(TestItem.PublicKeyA));
+                Assert.That(replacement.Calls, Is.EqualTo(customLast ? 1 : 0));
+                if (service is CountingService counted) Assert.That(counted.Calls, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            handler.CloseInbound();
+        }
+    }
+
+    private sealed class CountingService(SerializerInfo[] serializers) : MessageSerializationService(serializers), IMessageSerializationService
+    {
+        public int Calls { get; private set; }
+
+        T IMessageSerializationService.Deserialize<T>(ArraySegment<byte> bytes)
+        {
+            Calls++;
+            return base.Deserialize<T>(bytes);
+        }
+    }
+
+    private sealed class CountingPingSerializer(IEcdsa ecdsa, IPrivateKeyGenerator key, INodeIdResolver resolver)
+        : PingMsgSerializer(ecdsa, key, resolver), IMessageSerializer<PingMsg>
+    {
+        public int Calls { get; private set; }
+
+        PingMsg IMessageSerializer<PingMsg>.Deserialize(ReadOnlySpan<byte> data)
+        {
+            Calls++;
+            return base.Deserialize(data);
+        }
     }
 
     [Test]
@@ -438,7 +519,7 @@ public class DiscoveryMessageSerializerTests
     public void FindNodeMessageTest()
     {
         FindNodeMsg message =
-            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
+            new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.SecondsLong, TestItem.PublicKeyB.Bytes)
             {
                 FarAddress = _farAddress
             };
@@ -454,6 +535,14 @@ public class DiscoveryMessageSerializerTests
 
             Assert.That(deserializedMessage.SearchedNodeId, Is.EqualTo(message.SearchedNodeId));
         }
+    }
+
+    [Test]
+    public void FindNodeMessage_Rejects_A_Short_Node_Id()
+    {
+        FindNodeMsg message = new(_privateKey.PublicKey, 60, new byte[PublicKey.LengthInBytes - 1]) { FarAddress = _farAddress };
+        byte[] encoded = _messageSerializationService.SerializeToArray(message);
+        Assert.Throws<RlpReaderException>(() => _messageSerializationService.Deserialize<FindNodeMsg>(encoded));
     }
 
     [Test]

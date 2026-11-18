@@ -14,11 +14,13 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -42,7 +44,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handleSlow;
         private readonly Func<TransactionsRequest, CancellationToken, ValueTask> _handlePooledTransactionsSlow;
 
-        protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex);
+        protected readonly record struct TransactionsRequest(IOwnedReadOnlyList<Transaction> Transactions, int StartIndex)
+        {
+            internal IDisposable? WorkReservation { get; init; }
+            internal bool Solicited { get; init; }
+            internal PooledTransactionRequests.ResponseContext? ResponseContext { get; init; }
+        }
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -52,8 +59,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            TimeProvider? timeProvider = null)
+            : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager, timeProvider)
         {
             _transactionBudget = new(backgroundTaskScheduler);
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
@@ -180,6 +188,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockHeaders:
+                    _headersRequests.GetPendingRequest();
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message);
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
@@ -188,6 +197,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockBodies:
+                    _bodiesRequests.GetPendingRequest();
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message);
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
@@ -348,26 +358,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return false;
         }
 
-        private protected void HandlePooledTransactions(TransactionsMessage msg)
+        private protected void HandlePooledTransactions(TransactionsMessage msg, bool solicited = false,
+            PeerWorkQuota.Reservation? reservation = null, PooledTransactionRequests.ResponseContext? context = null)
         {
-            if (!TryScheduleTransactions(msg, _handlePooledTransactionsSlow))
+            if (!TryScheduleTransactions(msg, _handlePooledTransactionsSlow, solicited, reservation, context))
             {
                 IgnorePooledTransactionResponse();
             }
         }
 
-        private bool TryScheduleTransactions(TransactionsMessage msg, Func<TransactionsRequest, CancellationToken, ValueTask> handler)
+        private bool TryScheduleTransactions(TransactionsMessage msg, Func<TransactionsRequest, CancellationToken, ValueTask> handler,
+            bool solicited = false, PeerWorkQuota.Reservation? reservation = null, PooledTransactionRequests.ResponseContext? context = null)
         {
             IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
-            if (!BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(iList, 0), handler))
+            if (!ScheduleTransactions(new TransactionsRequest(iList, 0) { Solicited = solicited, ResponseContext = context }, handler, reservation))
             {
                 ReturnUnsubmittedTransactions(iList.AsSpan());
                 iList.Dispose();
+                context?.Dispose();
                 return false;
             }
 
             return true;
         }
+
+        private bool ScheduleTransactions(TransactionsRequest request, Func<TransactionsRequest, CancellationToken, ValueTask> handler,
+            PeerWorkQuota.Reservation? reservation = null) =>
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(request, handler, request.Solicited,
+                static (request, lease) => request with { WorkReservation = lease }, replyReservation: reservation);
 
         private ValueTask HandlePooledTransactionsSlow(TransactionsRequest request, CancellationToken cancellationToken)
         {
@@ -403,7 +421,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                             return ValueTask.CompletedTask;
                         }
 
-                        if (BackgroundTaskScheduler.TryScheduleBackgroundTask(new TransactionsRequest(transactions, currentIdx), _handleSlow))
+                        if (TryContinueTransactions(request, currentIdx))
                         {
                             isTransferred = true;
                         }
@@ -412,7 +430,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     }
 
                     // Submission can publish the transaction before throwing; ownership has escaped.
-                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx++], isTrace);
+                    RetryRequestToken<ValueHash256> token = request.ResponseContext?.GetToken(currentIdx) ?? default;
+                    PrepareAndSubmitTransaction(transactionsSpan[currentIdx++], isTrace, request.Solicited, token);
                 }
             }
             finally
@@ -421,11 +440,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     ReturnUnsubmittedTransactions(transactionsSpan[currentIdx..]);
                     transactions.Dispose();
+                    request.ResponseContext?.Dispose();
                 }
             }
 
             return ValueTask.CompletedTask;
         }
+
+        protected bool TryContinueTransactions(TransactionsRequest request, int index) =>
+            BackgroundTaskScheduler.TryRescheduleBackgroundTask(request with { StartIndex = index }, _handleSlow,
+                request.WorkReservation, static (continued, lease) => continued with { WorkReservation = lease });
 
         protected static void ReturnUnsubmittedTransactions(ReadOnlySpan<Transaction> transactions)
         {
@@ -439,6 +463,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         /// <summary>Submits an inbound transaction, transferring ownership to the pool or recycling it.</summary>
         /// <remarks>The caller must not access the transaction after submission.</remarks>
         protected void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
+            => PrepareAndSubmitTransaction(tx, isTrace, false, default);
+
+        private protected AcceptTxResult PrepareAndSubmitTransaction(Transaction tx, bool isTrace, bool solicited,
+            in RetryRequestToken<ValueHash256> token)
         {
             tx.Timestamp = _timestamper.UnixTime.Seconds;
             if (tx.Hash is not null)
@@ -457,16 +485,39 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             bool canRecycle = false;
             // This handler is the peer the pool charges for frame validation that ends in a rejection.
             AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
-                ? recyclablePool.SubmitOwnedTx(tx, this, out canRecycle)
+                ? solicited && this is IMessageHandler<PooledTransactionRequestMessage> sender
+                    ? recyclablePool.SubmitOwnedRequestedTx(tx, sender, token, out canRecycle)
+                    : recyclablePool.SubmitOwnedTx(tx, this, out canRecycle)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
+            return accepted;
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node?.ToString("c"):hide} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
 
         protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);
+
+        private protected ArrayPoolList<RetryRequestToken<ValueHash256>> CaptureRequestTokens(ReadOnlySpan<ValueHash256> hashes)
+        {
+            ArrayPoolList<RetryRequestToken<ValueHash256>> tokens = new(hashes.Length, hashes.Length);
+            if (_txPool is IRecyclableTxPool pool && this is IMessageHandler<PooledTransactionRequestMessage> sender)
+                pool.CaptureRequestTokens(hashes, sender, tokens.AsSpan());
+            return tokens;
+        }
+
+        private protected static RetryRequestConfirmation? GetRequestConfirmation(ArrayPoolList<RetryRequestToken<ValueHash256>> tokens)
+        {
+            foreach (RetryRequestToken<ValueHash256> token in tokens)
+                if (token.Confirmation is not null) return token.Confirmation;
+            return null;
+        }
+
+        private protected void CompleteRequest(RetryRequestConfirmation? confirmation, bool sent)
+        {
+            if (_txPool is IRecyclableTxPool pool) pool.CompleteRequest(confirmation, sent);
+        }
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
@@ -485,10 +536,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 msg.Block.Header.TotalDifficulty = msg.TotalDifficulty;
                 SyncServer.AddNewBlock(msg.Block, this);
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not EthSyncException)
             {
                 if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node?.ToString("c"):hide} failed: {e.Message:hide}");
-                throw;
             }
 
             return ValueTask.CompletedTask;

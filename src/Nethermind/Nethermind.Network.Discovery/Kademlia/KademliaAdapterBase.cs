@@ -3,7 +3,6 @@
 
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
@@ -28,16 +27,23 @@ public abstract class KademliaAdapterBase(
 
     protected abstract void AddOrRefreshRemoteNode(Node node);
 
+    protected virtual ValueTask<bool> VerifyRemoteEndpoint(Node node, CancellationToken token) => ValueTask.FromResult(true);
+
     protected virtual bool IsEnrValidForNode(Node node, NodeRecord record) => true;
+
+    /// <summary>Reserves optional capacity for a remote record refresh.</summary>
+    /// <param name="node">The node being refreshed.</param>
+    /// <param name="lease">Null on refusal or unmetered admission; otherwise a lease disposed by the base method.</param>
+    /// <returns>False forbids dispatch; true permits refresh with or without a lease.</returns>
+    protected virtual bool TryReserveRemoteRecordRefresh(Node node, out IDisposable? lease)
+    {
+        lease = null;
+        return true;
+    }
 
     internal static bool HasExpectedNodeId(NodeRecord record, ValueHash256 expectedNodeId)
         => record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)?.Decompress().Hash == expectedNodeId;
 
-    /// <remarks>
-    /// <see cref="IPAddress.Equals(object)"/> also compares the IPv6 scope, which the socket sets for a link-local
-    /// source but a record never carries.
-    /// </remarks>
-    [SkipLocalsInit]
     internal static bool HasSameAddressBytes(IPAddress left, IPAddress right)
     {
         Span<byte> leftBytes = stackalloc byte[16];
@@ -48,7 +54,8 @@ public abstract class KademliaAdapterBase(
     }
 
     protected virtual bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
-        => CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(record, LocalIp, currentNode.DiscoveryAddress, out refreshedNode);
+        => CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(record, LocalIp, currentNode.DiscoveryAddress, out refreshedNode,
+            currentNode.IsStatic || currentNode.IsTrusted || currentNode.IsBootnode ? PeerAddressPermissions.All : PeerAddressPermissions.None);
 
     protected async Task RefreshRemoteRecordIfNewer(Node node, ulong advertisedSequence, CancellationToken token)
     {
@@ -62,108 +69,118 @@ public abstract class KademliaAdapterBase(
             return;
         }
 
-        if (!node.TryRequestEnrSequence(advertisedSequence))
+        if (!node.TryAcquireEnrRefresh(advertisedSequence, out IDisposable? owner))
         {
             return;
         }
 
-        try
-        {
-            while (true)
+        using (owner)
+            try
             {
-                if (token.IsCancellationRequested)
+                if (!TryReserveRemoteRecordRefresh(node, out IDisposable? reservation)) return;
+                using IDisposable? lease = reservation;
+                for (int iteration = 0; iteration < 2; iteration++)
                 {
-                    node.TryClearEnrRequest(node.RequestingEnrSequence);
-                    return;
-                }
-
-                ulong requestedSequence = node.RequestingEnrSequence;
-                if (requestedSequence == 0)
-                {
-                    return;
-                }
-
-                ulong observedSequence = node.HighestObservedEnrSequence;
-                if (observedSequence >= requestedSequence)
-                {
-                    if (node.TryClearEnrRequest(observedSequence))
+                    if (token.IsCancellationRequested)
                     {
                         return;
                     }
 
-                    continue;
-                }
-
-                NodeRecord? record = await RequestRemoteRecord(node, requestedSequence, token);
-                if (record is null)
-                {
-                    if (Logger.IsTrace) Logger.Trace($"No usable {protocolName} ENR available from {node:hide} after advertised sequence {requestedSequence}.");
-                    if (node.TryClearEnrRequest(requestedSequence))
+                    ulong requestedSequence = node.RequestingEnrSequence;
+                    if (requestedSequence == 0)
                     {
                         return;
                     }
 
-                    continue;
-                }
+                    ulong observedSequence = node.HighestObservedEnrSequence;
+                    if (observedSequence >= requestedSequence)
+                    {
+                        if (node.TryClearEnrRequest(observedSequence))
+                        {
+                            return;
+                        }
 
-                if (record.EnrSequence < node.RequestingEnrSequence)
-                {
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring stale {protocolName} ENR from {node:hide}; requested sequence {node.RequestingEnrSequence}, received {record.EnrSequence}.");
-                    if (node.TryClearEnrRequest(requestedSequence))
+                        continue;
+                    }
+
+                    NodeRecord? record = await RequestRemoteRecord(node, requestedSequence, token);
+                    if (record is null)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"No usable {protocolName} ENR available from {node} after advertised sequence {requestedSequence}.");
+                        if (node.TryClearEnrRequest(requestedSequence))
+                        {
+                            return;
+                        }
+
+                        continue;
+                    }
+
+                    if (record.EnrSequence < requestedSequence)
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"Ignoring stale {protocolName} ENR from {node}; requested sequence {requestedSequence}, received {record.EnrSequence}.");
+                        if (node.TryClearEnrRequest(requestedSequence))
+                        {
+                            return;
+                        }
+
+                        continue;
+                    }
+
+                    if (!IsEnrValidForNode(node, record))
+                    {
+                        // Do not observe a sequence from a record that is not authenticated for this node;
+                        // doing so could suppress a later valid refresh.
+                        if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node}; record is not valid for the node.");
+                        if (node.TryClearEnrRequest(requestedSequence))
+                        {
+                            return;
+                        }
+
+                        continue;
+                    }
+
+                    if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
+                    {
+                        if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node}; the newer ENR has no usable discovery endpoint reachable from this listener.");
+                        if (node.ObserveEnrSequence(record.EnrSequence))
+                        {
+                            return;
+                        }
+
+                        continue;
+                    }
+
+                    refreshedNode.IsStatic = node.IsStatic;
+                    refreshedNode.IsTrusted = node.IsTrusted;
+                    refreshedNode.IsBootnode = node.IsBootnode;
+                    if (!await VerifyRemoteEndpoint(refreshedNode, token))
+                    {
+                        node.TryClearEnrRequest(requestedSequence);
+                        return;
+                    }
+                    token.ThrowIfCancellationRequested();
+                    refreshedNode.MergeEnrStateFrom(node);
+                    if (!refreshedNode.SetVerifiedEnr(record))
+                    {
+                        continue;
+                    }
+
+                    ulong requestingSequence = refreshedNode.RequestingEnrSequence;
+                    node = refreshedNode;
+                    AddOrRefreshRemoteNode(refreshedNode);
+                    if (requestingSequence == 0)
                     {
                         return;
                     }
-
-                    continue;
-                }
-
-                if (!IsEnrValidForNode(node, record))
-                {
-                    // Do not observe a sequence from a record that is not authenticated for this node;
-                    // doing so could suppress a later valid refresh.
-                    if (Logger.IsTrace) Logger.Trace($"Ignoring {protocolName} ENR from {node:hide}; record is not valid for the node.");
-                    if (node.TryClearEnrRequest(requestedSequence))
-                    {
-                        return;
-                    }
-
-                    continue;
-                }
-
-                if (!TryCreateNodeFromEnr(node, record, out Node? refreshedNode))
-                {
-                    if (Logger.IsTrace) Logger.Trace($"Retaining the reachable {protocolName} endpoint for {node:hide}; the newer ENR has no acceptable discovery endpoint.");
-                    if (node.ObserveEnrSequence(record.EnrSequence))
-                    {
-                        return;
-                    }
-
-                    continue;
-                }
-
-                refreshedNode.MergeEnrStateFrom(node);
-                if (!refreshedNode.SetVerifiedEnr(record))
-                {
-                    continue;
-                }
-
-                ulong requestingSequence = refreshedNode.RequestingEnrSequence;
-                node = refreshedNode;
-                AddOrRefreshRemoteNode(refreshedNode);
-                if (requestingSequence == 0)
-                {
-                    return;
                 }
             }
-        }
-        catch (OperationCanceledException) when (token.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch (Exception e)
-        {
-            node.TryClearEnrRequest(node.RequestingEnrSequence);
-            if (Logger.IsTrace) Logger.Trace($"Failed to refresh {protocolName} ENR for {node:hide}: {e:hide}");
-        }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception e)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Failed to refresh {protocolName} ENR for {node}: {e}");
+            }
     }
 }

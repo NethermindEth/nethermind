@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
+using System.Net;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Serialization.FluentRlp;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 
@@ -37,31 +40,33 @@ public interface ISyncServeRequestHandler<THandler, TReq, TRes>
 /// <summary>
 /// Some utility function for interacting with BackgroundTaskScheduler. Notably, disconnect and/or log on failure.
 /// </summary>
+/// <remarks>
+/// Scheduler cancellation and local serving failures do not penalize the peer.
+/// Network startup validates the configured and reported scheduler capacities against the minimum serving envelope.
+/// An unreported capacity uses bounded compatibility quotas without a scheduler-wide identity guarantee.
+/// Non-network producers share the scheduler queue outside these per-peer quotas.
+/// </remarks>
 /// <param name="handler"></param>
 /// <param name="backgroundTaskScheduler"></param>
-public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler)
+public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgroundTaskScheduler backgroundTaskScheduler, TimeProvider timeProvider)
 {
-    /// <summary>The maximum number of sync-serve requests of one protocol handler that can be queued or running.</summary>
-    /// <remarks>
-    /// The scheduler queue is shared by all peers, so without a limit one peer can fill it and delay the requests of all other peers.
-    /// A peer cannot have more requests in flight on this side than it has outstanding. go-ethereum has one request for each
-    /// request type. Nethermind with the default <c>ISyncConfig.AllocationSlots</c> has at most 9 sync requests on eth and 4 on snap.
-    /// The transaction requests (<see cref="ITxServeRequest"/>) have their own
-    /// counter with the same limit: the requester sends one for each announcement, and they wait in the scheduler queue during
-    /// block processing, so they must not use up the slots of the sync requests.
-    /// The extra requests are dropped, the same as when the scheduler queue is full.
-    /// </remarks>
     internal const int MaxSyncServeRequestsInFlight = 32;
-
     private int _syncServeRequestsInFlight;
     private int _txServeRequestsInFlight;
 
+    private static readonly ConditionalWeakTable<IBackgroundTaskScheduler, PeerWorkQuota> PeerQuotas = [];
+    private readonly PeerWorkQuota _peerQuota = PeerQuotas.GetValue(backgroundTaskScheduler, static scheduler => new PeerWorkQuota(scheduler.QueueCapacity));
+
+    private readonly TimeProvider _timeProvider = timeProvider;
+    private readonly NodeFilter.IpSubnetKey? _source = IPAddress.TryParse(handler.Session.RemoteHost, out IPAddress? address)
+        ? NodeFilter.IpSubnetKey.DefaultKey(address, v6BucketPrefixBits: 56)
+        : null;
+
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
     {
-        if (!TryReserveSyncServe(request)) return false;
-
-        SyncServeTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc);
-        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeTaskRequestRunner<TReq, TRes>.Run))
+        if (!TryReserveSyncServe(request, out PeerWorkQuota.Reservation? reservation)) return false;
+        SyncServeTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc, reservation);
+        if (!TryScheduleTask(syncServeRequest, SyncServeTaskRequestRunner<TReq, TRes>.Run, reservation))
         {
             ReleaseSyncServe<TReq>();
             request.TryDispose();
@@ -76,10 +81,9 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         where TRes : P2PMessage
         where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
     {
-        if (!TryReserveSyncServe(request)) return false;
-
-        HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler> syncServeRequest = new(this, requestHandler, request);
-        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>.Run))
+        if (!TryReserveSyncServe(request, out PeerWorkQuota.Reservation? reservation)) return false;
+        HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler> syncServeRequest = new(this, requestHandler, request, reservation);
+        if (!TryScheduleTask(syncServeRequest, HandlerSyncServeTaskRequestRunner<THandler, TReq, TRes, TRequestHandler>.Run, reservation))
         {
             ReleaseSyncServe<TReq>();
             request.TryDispose();
@@ -91,10 +95,9 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
     internal bool TryScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
     {
-        if (!TryReserveSyncServe(request)) return false;
-
-        SyncServeValueTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc);
-        if (!backgroundTaskScheduler.TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run))
+        if (!TryReserveSyncServe(request, out PeerWorkQuota.Reservation? reservation)) return false;
+        SyncServeValueTaskRequest<TReq, TRes> syncServeRequest = new(this, handler, request, fulfillFunc, reservation);
+        if (!TryScheduleTask(syncServeRequest, SyncServeValueTaskRequestRunner<TReq, TRes>.Run, reservation))
         {
             ReleaseSyncServe<TReq>();
             request.TryDispose();
@@ -104,17 +107,48 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         return true;
     }
 
-    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc) =>
-        TryScheduleBackgroundTask(new BackgroundTaskRequest<TReq>(handler, request, fulfillFunc), request);
-
-    private bool TryScheduleBackgroundTask<TReq>(BackgroundTaskRequest<TReq> backgroundTaskRequest, TReq request)
+    internal bool TryScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc,
+        bool solicited = false, Func<TReq, IDisposable?, TReq>? bindReservation = null,
+        PeerWorkQuota.Reservation? replyReservation = null, bool cellsReply = false, bool serving = false)
     {
-        if (backgroundTaskScheduler.TryScheduleTask(backgroundTaskRequest, BackgroundTaskRequestRunner<TReq>.Run))
+        PeerWorkQuota.Reservation? reservation = null;
+        if (solicited)
         {
-            return true;
+            if (handler.Session.IsClosing)
+            {
+                request.TryDispose();
+                return false;
+            }
+            if (replyReservation is not null) reservation = replyReservation.Retain();
+            else if (!TryReserveReply(cellsReply ? PeerWorkQuota.WorkKind.CellsReply : PeerWorkQuota.WorkKind.PooledReply, out reservation))
+            {
+                request.TryDispose();
+                return false;
+            }
+        }
+        else if (!TryReserve(request, out reservation, serving)) return false;
+        try
+        {
+            if (bindReservation is not null) request = bindReservation(request, reservation);
+            BackgroundTaskRequest<TReq> backgroundTaskRequest = new(handler, request, fulfillFunc, reservation, peerPayload: !serving);
+            if (TryScheduleTask(backgroundTaskRequest, BackgroundTaskRequestRunner<TReq>.Run, reservation)) return true;
+        }
+        catch (Exception exception)
+        {
+            reservation?.Dispose();
+            if (handler.Logger.IsDebug) handler.Logger.Debug($"Could not prepare background request for {handler.Session.Node:c}: {exception}");
         }
 
         request.TryDispose();
+        return false;
+    }
+
+    private bool TryReserveSyncServe<TReq>(TReq request, out PeerWorkQuota.Reservation? reservation)
+    {
+        reservation = null;
+        if (!TryReserveSyncServe(request)) return false;
+        if (TryReserve(request, out reservation, serving: true)) return true;
+        ReleaseSyncServe<TReq>();
         return false;
     }
 
@@ -154,17 +188,85 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         return true;
     }
 
-    private static void HandleBackgroundTaskFailure(ProtocolHandlerBase handler, Exception e)
+    internal TimeProvider TimeProvider => _timeProvider;
+
+    internal bool TryReservePooledReply([NotNullWhen(true)] out PeerWorkQuota.Reservation? reservation)
+        => TryReserveReply(PeerWorkQuota.WorkKind.PooledReply, out reservation);
+
+    private bool TryReserveReply(PeerWorkQuota.WorkKind kind, [NotNullWhen(true)] out PeerWorkQuota.Reservation? reservation)
     {
-        DisconnectReason disconnectReason = e switch
+        reservation = null;
+        return !handler.Session.IsClosing && _peerQuota.TryReserve(handler.Session.Node.Id, kind, null, out reservation, _source);
+    }
+
+    /// <summary>Reschedules work while retaining its existing identity reservation.</summary>
+    /// <remarks>The caller retains ownership of the request when this returns false.</remarks>
+    internal bool TryRescheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc,
+        IDisposable? existingReservation, Func<TReq, IDisposable?, TReq> bindReservation)
+    {
+        if (handler.Session.IsClosing || existingReservation is not PeerWorkQuota.Reservation existing) return false;
+        PeerWorkQuota.Reservation? reservation = null;
+        try
         {
-            EthSyncException => DisconnectReason.EthSyncException,
-            RlpLimitException => DisconnectReason.MessageLimitsBreached,
-            RlpReaderException => DisconnectReason.BreachOfProtocol,
-            _ => DisconnectReason.BackgroundTaskFailure
+            reservation = existing.Retain();
+            request = bindReservation(request, reservation);
+            BackgroundTaskRequest<TReq> backgroundTaskRequest = new(handler, request, fulfillFunc, reservation);
+            return TryScheduleTask(backgroundTaskRequest, BackgroundTaskRequestRunner<TReq>.Run, reservation);
+        }
+        catch (Exception e)
+        {
+            reservation?.Dispose();
+            if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure rescheduling background task on session {handler.Session:hide}, {e:hide}");
+            return false;
+        }
+    }
+
+    private bool TryReserve<TReq>(TReq request, [NotNullWhen(true)] out PeerWorkQuota.Reservation? reservation, bool serving = false)
+    {
+        reservation = null;
+        if (!handler.Session.IsClosing)
+        {
+            (string Protocol, int PacketType)? servingClass = serving && request is P2PMessage message
+                ? (handler.ProtocolCode, message.PacketType) : null;
+            if (_peerQuota.TryReserve(handler.Session.Node.Id, PeerWorkQuota.WorkKind.Ordinary, servingClass, out reservation, _source)) return true;
+            Interlocked.Increment(ref Metrics.PeerBackgroundRequestsDropped);
+            if (handler.Logger.IsDebug) handler.Logger.Debug($"Dropped background work from {handler.Session:hide}: peer quota full");
+        }
+        request.TryDispose();
+        return false;
+    }
+
+    private bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> execute, PeerWorkQuota.Reservation? reservation)
+        where TReq : notnull, IBackgroundTaskRequest<TReq>
+    {
+        bool accepted = false;
+        try
+        {
+            accepted = backgroundTaskScheduler.TryScheduleTask(request, execute);
+            return accepted;
+        }
+        catch (Exception e)
+        {
+            if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure scheduling background task on session {handler.Session:hide}, {e:hide}");
+            return false;
+        }
+        finally
+        {
+            if (!accepted) reservation?.Dispose();
+        }
+    }
+
+    private static void HandleBackgroundTaskFailure(ProtocolHandlerBase handler, Exception e, bool peerPayload = false)
+    {
+        DisconnectReason? disconnectReason = e switch
+        {
+            InvalidPeerRequestException invalid => invalid.Reason,
+            EthSyncException when peerPayload => DisconnectReason.EthSyncException,
+            SubprotocolException when peerPayload => DisconnectReason.BreachOfProtocol,
+            _ => null
         };
 
-        handler.Session.InitiateDisconnect(disconnectReason, e.Message);
+        if (disconnectReason is { } reason) handler.Session.InitiateDisconnect(reason, e.Message);
         if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session:hide}, {e:hide}");
     }
 
@@ -172,13 +274,16 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         BackgroundTaskSchedulerWrapper owner,
         ProtocolHandlerBase handler,
         TReq request,
-        Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeTaskRequest<TReq, TRes>>
+        Func<TReq, CancellationToken, Task<TRes>> fulfillFunc,
+        PeerWorkQuota.Reservation? reservation) : IBackgroundTaskRequest<SyncServeTaskRequest<TReq, TRes>>
         where TRes : P2PMessage
     {
         public static int TaskId => BackgroundTaskTypeId<TReq>.Id;
 
         public async Task Execute(CancellationToken cancellationToken)
         {
+            using PeerWorkQuota.Reservation? lease = reservation;
+            if (handler.Session.IsClosing) cancellationToken = new CancellationToken(true);
             try
             {
                 if (SkipIfResponseCannotBeSent(handler, request)) return;
@@ -186,9 +291,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
                 TRes response = await fulfillFunc(request, cancellationToken);
                 handler.Send(response);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && handler.Session.IsClosing)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Session shutdown or disconnect canceled the task; do not treat it as a background task failure.
                 return;
             }
             catch (Exception e)
@@ -205,7 +309,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     private readonly struct HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>(
         BackgroundTaskSchedulerWrapper owner,
         THandler handler,
-        TReq request) : IBackgroundTaskRequest<HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>>
+        TReq request,
+        PeerWorkQuota.Reservation? reservation) : IBackgroundTaskRequest<HandlerSyncServeTaskRequest<THandler, TReq, TRes, TRequestHandler>>
         where THandler : ProtocolHandlerBase
         where TRes : P2PMessage
         where TRequestHandler : struct, ISyncServeRequestHandler<THandler, TReq, TRes>
@@ -214,6 +319,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
 
         public async Task Execute(CancellationToken cancellationToken)
         {
+            using PeerWorkQuota.Reservation? lease = reservation;
+            if (handler.Session.IsClosing) cancellationToken = new CancellationToken(true);
             try
             {
                 if (SkipIfResponseCannotBeSent(handler, request)) return;
@@ -221,9 +328,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
                 TRes response = await TRequestHandler.Execute(handler, request, cancellationToken);
                 handler.Send(response);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && handler.Session.IsClosing)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Session shutdown or disconnect canceled the task; do not treat it as a background task failure.
                 return;
             }
             catch (Exception e)
@@ -241,13 +347,16 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         BackgroundTaskSchedulerWrapper owner,
         ProtocolHandlerBase handler,
         TReq request,
-        Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) : IBackgroundTaskRequest<SyncServeValueTaskRequest<TReq, TRes>>
+        Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc,
+        PeerWorkQuota.Reservation? reservation) : IBackgroundTaskRequest<SyncServeValueTaskRequest<TReq, TRes>>
         where TRes : P2PMessage
     {
         public static int TaskId => BackgroundTaskTypeId<TReq>.Id;
 
         public async Task Execute(CancellationToken cancellationToken)
         {
+            using PeerWorkQuota.Reservation? lease = reservation;
+            if (handler.Session.IsClosing) cancellationToken = new CancellationToken(true);
             try
             {
                 if (SkipIfResponseCannotBeSent(handler, request)) return;
@@ -255,9 +364,8 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
                 TRes response = await fulfillFunc(request, cancellationToken);
                 handler.Send(response);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && handler.Session.IsClosing)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Session shutdown or disconnect canceled the task; do not treat it as a background task failure.
                 return;
             }
             catch (Exception e)
@@ -274,24 +382,27 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
     private readonly struct BackgroundTaskRequest<TReq>(
         ProtocolHandlerBase handler,
         TReq request,
-        Func<TReq, CancellationToken, ValueTask> fulfillFunc) : IBackgroundTaskRequest<BackgroundTaskRequest<TReq>>
+        Func<TReq, CancellationToken, ValueTask> fulfillFunc,
+        PeerWorkQuota.Reservation? reservation,
+        bool peerPayload = true) : IBackgroundTaskRequest<BackgroundTaskRequest<TReq>>
     {
         public static int TaskId => BackgroundTaskTypeId<TReq>.Id;
 
         public async Task Execute(CancellationToken cancellationToken)
         {
+            using PeerWorkQuota.Reservation? lease = reservation;
+            if (handler.Session.IsClosing) cancellationToken = new CancellationToken(true);
             try
             {
                 await fulfillFunc(request, cancellationToken);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested && handler.Session.IsClosing)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                // Session shutdown or disconnect canceled the task; do not treat it as a background task failure.
                 return;
             }
             catch (Exception e)
             {
-                HandleBackgroundTaskFailure(handler, e);
+                HandleBackgroundTaskFailure(handler, e, peerPayload);
             }
         }
     }

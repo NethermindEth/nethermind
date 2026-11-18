@@ -41,6 +41,12 @@ namespace Nethermind.Network.Rlpx
         /// </returns>
         bool ShouldContact(IPAddress ip, bool exactOnly = false);
 
+        /// <summary>Evaluates the candidate's available dial endpoints.</summary>
+        /// <remarks>Does not record a contact attempt. The default rejects no candidates; custom hosts must enforce endpoint policy when dialing. Decorators must forward this member to preserve candidate filtering.</remarks>
+        /// <param name="node">The candidate whose dial endpoints are evaluated.</param>
+        /// <returns>Whether the host rejects every available dial endpoint.</returns>
+        bool IsEndpointRejected(Node node) => false;
+
         event EventHandler<SessionEventArgs> SessionCreated;
 
         /// <summary>

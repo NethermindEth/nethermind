@@ -57,6 +57,7 @@ public sealed class PacketCodec(
         _privateKey.Dispose();
     }
 
+    /// <returns>The encoded packet, or an empty array when it exceeds the UDP packet limit.</returns>
     internal byte[] EncodeOrdinary(PublicKey destination, ReadOnlySpan<byte> encryptionKey, Discv5Message message, ReadOnlySpan<byte> nonce)
         => EncodePacket(destination.Hash.Bytes, PacketFlag.Ordinary, nonce, _localNodeId.Bytes, encryptionKey, message);
 
@@ -71,6 +72,7 @@ public sealed class PacketCodec(
         return EncodePacket(destinationNodeId, PacketFlag.WhoAreYou, requestNonce, authData, default, null);
     }
 
+    /// <returns>The encoded packet, or an empty array when it exceeds the UDP packet limit.</returns>
     [SkipLocalsInit]
     internal byte[] EncodeHandshake(PublicKey destination, Challenge challenge, Discv5Message message, NodeRecord currentNodeRecord, out Session session)
     {
@@ -104,10 +106,11 @@ public sealed class PacketCodec(
             ephemeralPublicKey.CopyTo(authData[(HandshakeAuthDataHeadSize + IdSignatureSize)..]);
             record.CopyTo(authData[(HandshakeAuthDataHeadSize + IdSignatureSize + EphemeralPublicKeySize)..]);
 
-            session = new Session(destination, recipientKey, initiatorKey);
             Span<byte> nonce = stackalloc byte[NonceSize];
             _cryptoRandom.GenerateRandomBytes(nonce);
-            return EncodePacket(destination.Hash.Bytes, PacketFlag.Handshake, nonce, authData, initiatorKey, message);
+            byte[] packet = EncodePacket(destination.Hash.Bytes, PacketFlag.Handshake, nonce, authData, initiatorKey, message);
+            session = new Session(destination, recipientKey, initiatorKey);
+            return packet;
         }
         finally
         {
@@ -370,7 +373,9 @@ public sealed class PacketCodec(
         int messageAdLength = MaskingIvSize + headerLength;
         int encryptedMessageLength = plaintext.IsEmpty ? 0 : plaintext.Length + AesGcmTagSize;
 
-        byte[] packet = new byte[MaskingIvSize + headerLength + encryptedMessageLength];
+        int packetLength = checked(MaskingIvSize + headerLength + encryptedMessageLength);
+        if (packetLength > MaxPacketSize) return [];
+        byte[] packet = new byte[packetLength];
         Span<byte> maskingIv = packet.AsSpan(0, MaskingIvSize);
         _cryptoRandom.GenerateRandomBytes(maskingIv);
 

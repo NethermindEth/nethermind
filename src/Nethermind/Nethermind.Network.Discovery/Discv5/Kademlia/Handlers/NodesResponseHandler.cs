@@ -3,10 +3,13 @@
 
 using System.Net;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Kademlia;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using Org.BouncyCastle.Crypto.EC;
+using Org.BouncyCastle.Math.EC;
 
 namespace Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 
@@ -14,18 +17,25 @@ internal sealed class NodesResponseHandler(
     Node receiver,
     Distances requestedDistances,
     IKademliaDistance<ValueHash256> distanceCalculator,
-    IPAddress localIp)
+    IPAddress localIp,
+    PeerAddressPermissions allowNonRoutable,
+    PublicKey? localNodeId = null,
+    IRoutingTable<Node, ValueHash256>? routingTable = null,
+    INodeRecordSigner? recordSigner = null)
     : ResponseHandler<NodesMsg>(MessageType.Nodes), IDisposable
 {
+    private static readonly ECCurve Curve = CustomNamedCurves.GetByName("secp256k1").Curve;
     private const int MaxNodesResponseMessages = 16;
     private const int MaxNodesResponseRecords = 64;
     private const int SeenNodeIdsCapacity = 128;
     private const int SeenNodeIdsMask = SeenNodeIdsCapacity - 1;
 
+    private readonly INodeRecordSigner _recordSigner = recordSigner ?? new NodeRecordSigner(new Ecdsa());
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Node[] _nodes = new Node[MaxNodesResponseRecords];
     private readonly CompressedPublicKey?[] _seenNodeIds = new CompressedPublicKey?[SeenNodeIdsCapacity];
-    private readonly bool _allowNonRoutableRelays = receiver.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal;
+    private readonly PeerAddressPermissions _allowNonRoutableRelays =
+        receiver.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal ? allowNonRoutable : PeerAddressPermissions.None;
 
     private readonly Lock _lock = new();
     private bool _done;
@@ -34,6 +44,8 @@ internal sealed class NodesResponseHandler(
     private int _nodeCount;
 
     public override Task Task => _completion.Task;
+
+    public override void Fail(Exception exception) => _completion.TrySetException(exception);
 
     public void Dispose()
     {
@@ -116,20 +128,42 @@ internal sealed class NodesResponseHandler(
         for (int i = 0; i < nodes.Records.Count && _nodeCount < MaxNodesResponseRecords; i++)
         {
             NodeRecord record = nodes.Records[i];
-            if (!KademliaAdapter.TryGetAcceptableDiscoveryEndpoint(record, _allowNonRoutableRelays, localIp, preferredEndpoint: null, out IPEndPoint? endpoint))
-            {
-                continue;
-            }
-
+            if (record.Signature is null) continue;
             CompressedPublicKey? compressedKey = record.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
-            if (compressedKey is null || !TryMarkSeen(compressedKey))
+            if (compressedKey is null) continue;
+
+            PublicKey key;
+            try
+            {
+                key = new PublicKey(Curve.DecodePoint(compressedKey.Bytes).GetEncoded(false));
+            }
+            catch (ArgumentException)
             {
                 continue;
             }
+            if (key.Equals(localNodeId) || !MatchesRequestedDistance(key.Hash, requestedDistances)) continue;
+            if (!_recordSigner.Verify(record)) continue;
 
-            PublicKey key = compressedKey.Decompress();
-            if (!MatchesRequestedDistance(key.Hash, requestedDistances))
+            if (routingTable is not null && routingTable.TryGet(key.Hash.ValueHash256, out Node? known)
+                && known.Enr is { } retained && known.IsVerifiedEnr(retained) && retained.EnrSequence > record.EnrSequence)
             {
+                record = retained;
+            }
+
+            if (!KademliaAdapter.TryGetAcceptableDiscoveryEndpoint(record, _allowNonRoutableRelays, localIp, preferredEndpoint: null, out IPEndPoint? endpoint)) continue;
+            if (!TryMarkSeen(compressedKey))
+            {
+                for (int index = 0; index < _nodeCount; index++)
+                {
+                    Node previous = _nodes[index];
+                    if (previous.Id.Equals(key) && previous.Enr!.EnrSequence < record.EnrSequence)
+                    {
+                        Node newer = Node.FromDiscoveryEnr(record, key, endpoint);
+                        newer.SetVerifiedEnr(record);
+                        _nodes[index] = newer;
+                        break;
+                    }
+                }
                 continue;
             }
 

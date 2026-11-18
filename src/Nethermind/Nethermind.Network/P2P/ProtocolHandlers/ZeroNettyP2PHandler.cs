@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
@@ -28,6 +29,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     private const int MaxRetainedOutputCapacity = 64 * 1024;
     private NettyBufferPacket? _outputPacket;
     private bool _stopped;
+    private int _privilegedRlpViolations;
     private readonly ISession _session = session ?? throw new ArgumentNullException(nameof(session));
     private readonly ILogger _logger = logManager?.GetClassLogger<ZeroNettyP2PHandler>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly SnappyOutputWriter _snappyOutputWriter = new();
@@ -43,6 +45,19 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
     }
 
     protected override void ChannelRead0(IChannelHandlerContext ctx, NettyBufferPacket input)
+    {
+        PacketReceiptTracker receipts = _session.InboundReceipts;
+        try
+        {
+            ReceivePacket(ctx, input);
+        }
+        finally
+        {
+            receipts.Complete(input.ReceiptSequence);
+        }
+    }
+
+    private void ReceivePacket(IChannelHandlerContext ctx, NettyBufferPacket input)
     {
         IByteBuffer content = input.Buffer;
         int readableBytes = content.ReadableBytes;
@@ -118,6 +133,8 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             {
                 outputPacket.Protocol = null;
                 outputPacket.PacketType = input.PacketType;
+                outputPacket.ReceiptSequence = input.ReceiptSequence;
+                outputPacket.ReceivedAt = input.ReceivedAt;
                 _session.ReceiveMessage(outputPacket);
             }
             finally
@@ -168,6 +185,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
     private void ReleaseOutputPacket()
     {
+        _session.InboundReceipts.Close();
         _stopped = true;
         NettyBufferPacket? packet = _outputPacket;
         _outputPacket = null;
@@ -189,12 +207,19 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         {
             // Do nothing as we don't want to drop peer for internal issue.
         }
-        else if (_session?.Node?.IsStatic != true && _session?.Node?.IsTrusted != true)
+        else if (exception is RlpReaderException && (_session.Node?.IsStatic == true || _session.Node?.IsTrusted == true) &&
+                 Interlocked.Increment(ref _privilegedRlpViolations) == 1)
         {
-            DisconnectReason reason =
-                exception is SocketException { SocketErrorCode: SocketError.ConnectionReset }
-                    ? DisconnectReason.ConnectionReset
-                    : DisconnectReason.Exception;
+            return;
+        }
+        else if (exception is RlpReaderException || (_session?.Node?.IsStatic != true && _session?.Node?.IsTrusted != true))
+        {
+            DisconnectReason reason = exception switch
+            {
+                RlpReaderException => DisconnectReason.BreachOfProtocol,
+                SocketException { SocketErrorCode: SocketError.ConnectionReset } => DisconnectReason.ConnectionReset,
+                _ => DisconnectReason.Exception
+            };
             _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
         else

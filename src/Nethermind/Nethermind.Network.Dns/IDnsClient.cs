@@ -11,10 +11,23 @@ public interface IDnsClient
     Task<IEnumerable<string>> Lookup(string query, CancellationToken cancellationToken = default);
 }
 
-public class DnsClient(string domain) : IDnsClient
+public class DnsClient : IDnsClient
 {
-    private readonly string _domain = domain ?? throw new ArgumentNullException(nameof(domain));
-    private readonly LookupClient _client = new();
+    private readonly string _domain;
+    private readonly ILookupClient _client;
+
+    /// <summary>Creates a TXT resolver for an ENR tree domain.</summary>
+    /// <param name="domain">The tree's DNS domain.</param>
+    public DnsClient(string domain) : this(domain, new LookupClient())
+    {
+    }
+
+    internal DnsClient(string domain, ILookupClient client)
+    {
+        ArgumentNullException.ThrowIfNull(domain);
+        _domain = domain;
+        _client = client;
+    }
 
     public async Task<IEnumerable<string>> Lookup(string query, CancellationToken cancellationToken = default)
     {

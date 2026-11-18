@@ -155,9 +155,9 @@ public class CompositeDiscoveryAppTests
         }
     }
 
-    [TestCase("0.0.0.0", "2001:db8::1", "192.0.2.1", 30304)]
-    [TestCase("2001:db8::5", "192.0.2.1", "2001:db8::1", 30305)]
-    [TestCase("::", "2001:db8::1", "2001:db8::1", 30305)]
+    [TestCase("0.0.0.0", "2001:4860::1", "8.8.8.1", 30304)]
+    [TestCase("2001:4860::5", "8.8.8.1", "2001:4860::1", 30305)]
+    [TestCase("::", "2001:4860::1", "2001:4860::1", 30305)]
     public void TryCreateReachableDiscoveryNode_SelectsReachableFamily(
         string localIp,
         string preferredIp,
@@ -170,7 +170,7 @@ public class CompositeDiscoveryAppTests
             record,
             IPAddress.Parse(localIp),
             new IPEndPoint(IPAddress.Parse(preferredIp), 40404),
-            out Node? node);
+            out Node? node, allowNonRoutable: PeerAddressPermissions.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -189,14 +189,14 @@ public class CompositeDiscoveryAppTests
     {
         NodeRecord record = new();
         record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
-        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860::1")));
         record.SetEntry(new Udp6Entry(30305));
 
         bool result = CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
             record,
             IPAddress.Any,
             preferredEndpoint: null,
-            out Node? node);
+            out Node? node, allowNonRoutable: PeerAddressPermissions.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -508,7 +508,7 @@ public class CompositeDiscoveryAppTests
 
     [TestCase("::1", "127.0.0.2", "127.0.0.2", Description = "IPv4 sender on a dual-stack listener")]
     [TestCase("::1", "::ffff:127.0.0.2", "127.0.0.2")]
-    [TestCase("::1", "2001:db8::2", "2001:db8::2")]
+    [TestCase("::1", "2001:4860::2", "2001:4860::2")]
     [TestCase("127.0.0.1", "127.0.0.2", "127.0.0.2")]
     public async Task Receive_ReportsSenderInCanonicalForm(string listenerAddress, string senderAddress, string expectedAddress)
     {
@@ -656,10 +656,10 @@ public class CompositeDiscoveryAppTests
     {
         NodeRecord record = new();
         record.SetEntry(new SecP256k1Entry(TestItem.PrivateKeyA.CompressedPublicKey));
-        record.SetEntry(new IpEntry(IPAddress.Parse("192.0.2.1")));
+        record.SetEntry(new IpEntry(IPAddress.Parse("8.8.8.1")));
         record.SetEntry(new TcpEntry(30303));
         record.SetEntry(new UdpEntry(30304));
-        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+        record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860::1")));
         record.SetEntry(new Tcp6Entry(30306));
         record.SetEntry(new Udp6Entry(30305));
         return record;

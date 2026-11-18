@@ -25,6 +25,11 @@ public interface IRoutingTable<TNode, TKadKey>
     /// <returns><see langword="true"/> when a matching node is found; otherwise, <see langword="false"/>.</returns>
     bool TryGet(in TKadKey hash, [MaybeNullWhen(false)] out TNode node);
     bool Remove(in TKadKey hash);
+
+    /// <summary>
+    /// Returns a bounded snapshot of replacement candidates in the specified key's leaf, newest first.
+    /// </summary>
+    TNode[] GetReplacementCandidates(in TKadKey hash) => [];
     TNode[] GetKNearestNeighbour(TKadKey hash, bool excludeSelf = false);
     TNode[] GetKNearestNeighbourExcluding(TKadKey hash, TKadKey exclude, bool excludeSelf = false);
     TNode[] GetAllAtDistance(int i);

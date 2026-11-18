@@ -4,6 +4,7 @@
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -19,16 +20,32 @@ namespace Nethermind.Network.Discovery.Discv4;
 
 public class DiscoveryApp : KademliaDiscoveryApp
 {
+    /// <summary>
+    /// Registers a protocol adapter with the scope's persistence activity before interface decoration.
+    /// </summary>
+    protected internal static void RegisterKademliaAdapter<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors | DynamicallyAccessedMemberTypes.PublicProperties)] TAdapter>(ContainerBuilder builder) where TAdapter : KademliaAdapter
+        => builder.RegisterType<TAdapter>()
+            .WithAttributeFiltering()
+            .As<IKademliaAdapter>()
+            .AsSelf()
+            .SingleInstance()
+            .OnActivated(activation => activation.Instance.RequestActivity = activation.Context.Resolve<DiscoveryRequestActivity>());
+
+    private readonly PeerAddressPolicy _addressPolicy;
     private readonly NetworkListenerState _listenerState;
     private readonly List<Node> _bootNodes;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaAdapter _discv4Adapter;
     private readonly Func<DiscoveryHandler> _discoveryHandlerFactory;
     private readonly ILifetimeScope _discv4Services;
+    private readonly IPEndPoint _selfEndpoint;
+    private readonly PublicKey _selfId;
 
     private DiscoveryHandler? _discoveryHandler;
 
+    /// <summary>Creates discovery services using the shared peer address policy.</summary>
     public DiscoveryApp(
+        PeerAddressPolicy addressPolicy,
         ILifetimeScope rootScope,
         IEnode enode,
         INetworkConfig networkConfig,
@@ -40,12 +57,17 @@ public class DiscoveryApp : KademliaDiscoveryApp
         Action<ContainerBuilder>? configureDiscv4Services = null)
         : base("discv4", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryApp>())
     {
+        ArgumentNullException.ThrowIfNull(addressPolicy);
+        _addressPolicy = addressPolicy;
         _listenerState = listenerState;
+        _selfEndpoint = new(enode.HostIp, networkConfig.DiscoveryPort);
+        _selfId = enode.PublicKey;
         _bootNodes = CreateBootNodes(networkConfig.Bootnodes, Logger, LocalIp);
 
         _discv4Services = rootScope.BeginLifetimeScope(
             (builder) =>
             {
+                builder.RegisterInstance(_addressPolicy);
                 Node currentNode = new(enode.PublicKey, enode.HostIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
 
                 builder
@@ -64,7 +86,8 @@ public class DiscoveryApp : KademliaDiscoveryApp
 
     public override void AddNodeToDiscovery(Node node)
     {
-        if (!TryCreateReachableNode(node, LocalIp, out Node? reachableNode))
+        if (!TryCreateReachableNode(node, LocalIp, out Node? reachableNode, _addressPolicy.AllowedAddresses) || node.Id == _selfId ||
+            PeerAddressPolicy.IsSelfEndpoint(reachableNode.DiscoveryAddress, _selfEndpoint.Address, _selfEndpoint.Port))
         {
             if (Logger.IsTrace) Logger.Trace($"Skipping discv4 node with no discovery endpoint reachable from the local listener: {node.ToString("s"):hide}.");
             return;
@@ -76,7 +99,8 @@ public class DiscoveryApp : KademliaDiscoveryApp
     internal static bool TryCreateReachableNode(
         Node node,
         IPAddress localIp,
-        [NotNullWhen(true)] out Node? reachableNode)
+        [NotNullWhen(true)] out Node? reachableNode,
+        PeerAddressPermissions allowNonRoutable)
     {
         NodeRecord? record = node.Enr is { Signature: not null } signedRecord ? signedRecord : null;
         if (record is not null &&
@@ -86,8 +110,10 @@ public class DiscoveryApp : KademliaDiscoveryApp
             return false;
         }
 
+        PeerAddressPermissions allowPrivate = node.IsStatic || node.IsTrusted || node.IsBootnode ? PeerAddressPermissions.All : allowNonRoutable;
         if (node.HasDiscoveryEndpoint &&
-            DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
+            DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address) &&
+            PeerAddressPolicy.IsAcceptable(node.DiscoveryAddress.Address, allowPrivate))
         {
             reachableNode = node;
             return true;
@@ -99,7 +125,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                 record,
                 localIp,
                 preferredEndpoint: null,
-                out reachableNode))
+                out reachableNode, allowPrivate))
             {
                 return false;
             }
@@ -112,7 +138,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         return false;
     }
 
-    internal static Node? RestorePersistedNode(NetworkNode networkNode, IPAddress localIp)
+    internal static Node? RestorePersistedNode(NetworkNode networkNode, IPAddress localIp, PeerAddressPermissions allowNonRoutable)
     {
         if (networkNode.IsEnr)
         {
@@ -120,7 +146,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                 networkNode.Enr,
                 localIp,
                 preferredEndpoint: null,
-                out Node? node))
+                out Node? node, allowNonRoutable))
             {
                 node.SetVerifiedEnr(networkNode.Enr);
                 return node;
@@ -131,7 +157,8 @@ public class DiscoveryApp : KademliaDiscoveryApp
 
         Node enode = new(networkNode);
         return enode.HasDiscoveryEndpoint &&
-               DiscoveryAddressSupport.Supports(localIp, enode.DiscoveryAddress.Address)
+               DiscoveryAddressSupport.Supports(localIp, enode.DiscoveryAddress.Address) &&
+               PeerAddressPolicy.IsAcceptable(enode.DiscoveryAddress.Address, allowNonRoutable)
             ? enode
             : null;
     }
@@ -154,7 +181,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                     bootnode.Enr,
                     localIp,
                     preferredEndpoint: null,
-                    out node))
+                    out node, allowNonRoutable: PeerAddressPermissions.All))
                 {
                     if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint reachable from the local listener: {bootnode:hide}");
                     continue;
@@ -165,13 +192,15 @@ public class DiscoveryApp : KademliaDiscoveryApp
             else
             {
                 node = new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
-                if (!DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
+                if (!node.HasDiscoveryEndpoint || !DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address) ||
+                    !PeerAddressPolicy.IsAcceptable(node.DiscoveryAddress.Address, PeerAddressPermissions.All))
                 {
                     if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node.ToString("s"):hide}.");
                     continue;
                 }
             }
 
+            node.IsBootnode = true;
             bootNodes.Add(node);
         }
 
@@ -216,22 +245,19 @@ public class DiscoveryApp : KademliaDiscoveryApp
 
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
-        //Step 1 - read nodes and stats from db
-        await _persistenceManager.LoadPersistedNodes(
-            cancellationToken,
-            node => RestorePersistedNode(node, LocalIp));
-
-        Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
-
+        using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task loadTask = _persistenceManager.LoadPersistedNodesInBackground(
+            lifetime.Token,
+            (node, permissions) => RestorePersistedNode(node, LocalIp, permissions));
+        Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(loadTask, lifetime.Token);
         try
         {
-            // Step 2 - run the standard kademlia routine
-            await Kademlia.Run(cancellationToken);
+            await Kademlia.Run(lifetime.Token);
         }
         finally
         {
-            // Block until persistence is finished
-            await persistenceTask;
+            await lifetime.CancelAsync();
+            await Task.WhenAll(loadTask, persistenceTask);
         }
     }
 
@@ -251,7 +277,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         for (int i = _bootNodes.Count - 1; i >= 0; i--)
         {
             Node current = _bootNodes[i];
-            if (!TryCreateReachableNode(current, LocalIp, out Node? reachable))
+            if (!TryCreateReachableNode(current, LocalIp, out Node? reachable, _addressPolicy.AllowedAddresses))
             {
                 Kademlia.Remove(current);
                 _bootNodes.RemoveAt(i);

@@ -70,9 +70,13 @@ public class DiscoveryContainerTests
 
         _ = container.Resolve<IDiscoveryApp>();
         BootnodeKademliaBucketSnapshot[] snapshot = bucketRegistry.CreateSnapshot();
+        PeerAddressPolicy policy = container.Resolve<PeerAddressPolicy>();
+        using ILifetimeScope childScope = container.BeginLifetimeScope();
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(childScope.Resolve<PeerAddressPolicy>(), Is.SameAs(policy));
+            Assert.That(policy.AllowedAddresses, Is.EqualTo(PeerAddressPermissions.All));
             Assert.That(snapshot, Has.Some.Property(nameof(BootnodeKademliaBucketSnapshot.Protocol)).EqualTo("discv4"));
             Assert.That(snapshot, Has.Some.Property(nameof(BootnodeKademliaBucketSnapshot.Protocol)).EqualTo("discv5"));
         }

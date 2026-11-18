@@ -437,6 +437,54 @@ public class IPResolverTests
     }
 
     [Test]
+    public async Task Synchronous_resolution_notifies_subscribers_outside_the_resolver_lock()
+    {
+        await using IPResolver resolver = CreateResolver(
+            new NetworkConfig { ExternalIp = "8.8.8.8", EnableExternalIpResolution = false });
+        Task<ValueTask>? disposal = null;
+        bool disposalAcceptedDuringNotification = false;
+        resolver.Resolved += (_, _) =>
+        {
+            disposal = Task.Factory.StartNew(() => resolver.DisposeAsync(), CancellationToken.None,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            disposalAcceptedDuringNotification = disposal.Wait(TimeSpan.FromSeconds(2));
+        };
+
+        IIPResolver.NethermindIp addresses = await resolver.Resolve();
+        Assert.That(disposal, Is.Not.Null);
+        await (await disposal!.WaitAsync(TimeSpan.FromSeconds(2)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(disposalAcceptedDuringNotification, Is.True);
+            Assert.That(addresses.ExternalIp, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+        }
+    }
+
+    [Test]
+    public async Task Completed_refresh_notifies_policy_even_when_addresses_are_unchanged()
+    {
+        Nethermind.Core.Test.Threading.ManualTimeProvider clock = new();
+        await using IPResolver resolver = CreateResolver(
+            new NetworkConfig { ExternalIpV6 = "2001:4860:4860::8888" },
+            family => family == AddressFamily.InterNetwork ? [SuccessfulSource("8.8.8.8")] : [],
+            timeProvider: clock);
+        int completions = 0;
+        int changes = 0;
+        resolver.Resolved += (_, _) => completions++;
+        resolver.Changed += (_, _) => changes++;
+        IIPResolver.NethermindIp first = await resolver.Resolve();
+        clock.AdvanceAndFireDueTimers(TimeSpan.FromMinutes(5));
+        IIPResolver.NethermindIp refreshed = await resolver.Resolve();
+        await resolver.DisposeAsync();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refreshed, Is.EqualTo(first));
+            Assert.That(completions, Is.EqualTo(2));
+            Assert.That(changes, Is.EqualTo(0));
+        }
+    }
+
+    [Test]
     public async Task Resolution_is_cached_then_refreshed_after_five_minutes()
     {
         ManualTimeProvider timeProvider = new();
@@ -586,12 +634,14 @@ public class IPResolverTests
                 : throw new InvalidOperationException("The configured IPv6 family must not be resolved."),
             timeProvider: timeProvider);
 
-        await ipResolver.Resolve();
+        IIPResolver.NethermindIp initial = await ipResolver.Resolve();
         timeProvider.Advance(TimeSpan.FromMinutes(61));
         IIPResolver.NethermindIp expired = await ipResolver.Resolve();
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(initial.ExternalIpV4, Is.EqualTo(IPAddress.Parse("8.8.8.8")));
+            Assert.That(timeProvider.GetTimestamp(), Is.EqualTo(TimeSpan.FromMinutes(61).Ticks));
             Assert.That(expired.ExternalIp, Is.EqualTo(IPAddress.Parse("2001:4860:4860::8888")));
             Assert.That(expired.ExternalIpV4, Is.Null);
             Assert.That(results, Is.Empty);

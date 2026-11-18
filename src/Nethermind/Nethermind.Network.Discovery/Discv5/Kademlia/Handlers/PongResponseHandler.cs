@@ -12,6 +12,8 @@ internal sealed class PongResponseHandler(Node receiver) : ResponseHandler<PongM
 
     public override Task Task => _completion.Task;
 
+    public override void Fail(Exception exception) => _completion.TrySetException(exception);
+
     public ulong EnrSequence { get; private set; }
 
     public override bool Handle(PongMsg message)

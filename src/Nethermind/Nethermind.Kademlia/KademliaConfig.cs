@@ -40,6 +40,18 @@ public class KademliaConfig<TNode>
     /// </summary>
     public TimeSpan LookupFindNeighbourHardTimeout { get; set; } = TimeSpan.FromSeconds(10);
 
+    /// <summary>Maximum requests per lookup. Defaults to 128.</summary>
+    public int LookupQueryLimit { get; set; } = 128;
+
+    /// <summary>Maximum distinct candidate IDs retained per lookup. Defaults to 2048.</summary>
+    public int LookupSeenLimit { get; set; } = 2048;
+
+    /// <summary>Clock used for the lookup deadline.</summary>
+    public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+    /// <summary>Maximum lookup duration, including requests. Defaults to 30 seconds.</summary>
+    public TimeSpan LookupTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
     /// <summary>
     /// How many time a request for a node failed before we remove it from the routing table.
     /// </summary>
@@ -54,6 +66,45 @@ public class KademliaConfig<TNode>
     /// Delay before pinging the oldest node in a full bucket to give incoming traffic a chance to refresh it first.
     /// </summary>
     public TimeSpan RefreshPingDelay { get; set; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// Minimum interval between refresh probes triggered by full-bucket insertions.
+    /// </summary>
+    /// <remarks>
+    /// The default five-failure threshold and 30-second interval permit the fifth probe 120 seconds after the first.
+    /// Probes are insertion-driven, so retiring a silent bucket tail can take longer when insertions are infrequent.
+    /// </remarks>
+    public TimeSpan RefreshRetryInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Compares the network endpoints of contacts with the same routing key.
+    /// </summary>
+    public Func<TNode, TNode, bool> AreSameEndpoint { get; set; } = EqualityComparer<TNode>.Default.Equals;
+
+    /// <summary>
+    /// Identifies contacts whose endpoints have been directly verified.
+    /// </summary>
+    public Func<TNode, bool> IsVerified { get; set; } = static _ => true;
+
+    /// <summary>
+    /// Requires a fresh liveness probe before promoting a replacement contact.
+    /// </summary>
+    public bool RequireReplacementValidation { get; set; }
+
+    /// <summary>
+    /// Maps a contact to its subnet quota group, or null for an exempt contact.
+    /// </summary>
+    public Func<TNode, UInt128?>? GetSubnet { get; set; }
+
+    /// <summary>
+    /// Maximum stored contacts from one subnet in a leaf, including replacements.
+    /// </summary>
+    public int BucketSubnetLimit { get; set; } = 2;
+
+    /// <summary>
+    /// Maximum stored contacts from one subnet across the table, including replacements.
+    /// </summary>
+    public int TableSubnetLimit { get; set; } = 10;
 
     /// <summary>
     /// Starting boot nodes.

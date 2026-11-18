@@ -38,13 +38,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             INodeStatsManager nodeStats,
             IMessageSerializationService serializer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
-            ILogManager logManager)
+            ILogManager logManager,
+            TimeProvider? timeProvider = null)
         {
             StatsManager = nodeStats ?? throw new ArgumentNullException(nameof(nodeStats));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             Session = session ?? throw new ArgumentNullException(nameof(session));
             Logger = logManager?.GetClassLogger<ProtocolHandlerBase>() ?? throw new ArgumentNullException(nameof(logManager));
-            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler);
+            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler, timeProvider ?? TimeProvider.System);
         }
 
         protected internal ILogger Logger { get; }
@@ -72,13 +73,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        private void HandleRlpException<T>(int dataLength, RlpReaderException e) where T : P2PMessage
+        private protected void HandleRlpException<T>(int dataLength, RlpReaderException e) where T : P2PMessage
         {
             if (Logger.IsTrace) TraceRlpException(typeof(T).Name, e);
             ReportIn($"{typeof(T).Name} - Deserialization exception", dataLength);
         }
 
-        private void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
+        private protected void HandleRlpLimitException<T>(int dataLength, RlpLimitException e) where T : P2PMessage
         {
             Session.InitiateDisconnect(DisconnectReason.MessageLimitsBreached, e.Message);
             if (Logger.IsTrace) TraceRlpLimitException(typeof(T).Name, e);
@@ -115,7 +116,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        protected internal void Send<T>(T message) where T : P2PMessage
+        protected internal void Send<T>(T message) where T : P2PMessage => SendAndGetSize(message);
+
+        private protected int SendAndGetSize<T>(T message) where T : P2PMessage
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
@@ -124,27 +127,29 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 string messageString = message.ToString();
                 int size = Session.DeliverMessage(message);
                 NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, messageString, size);
+                return size;
             }
             else
-                Session.DeliverMessage(message);
+                return Session.DeliverMessage(message);
         }
 
-        protected async Task CheckProtocolInitTimeout()
+        protected Task CheckProtocolInitTimeout() => CheckProtocolInitTimeout(TimeProvider.System);
+
+        private protected async Task CheckProtocolInitTimeout(TimeProvider timeProvider)
         {
             try
             {
                 Task<MessageBase> receivedInitMsgTask = _initCompletionSource.Task;
                 using CancellationTokenSource delayCancellation = new();
-                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, delayCancellation.Token));
+                Task firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout, timeProvider, delayCancellation.Token));
 
-                if (firstTask != receivedInitMsgTask)
+                if (firstTask != receivedInitMsgTask && _initCompletionSource.TrySetCanceled())
                 {
                     if (Logger.IsTrace)
                     {
                         Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId:hide}");
                     }
 
-                    _initCompletionSource.TrySetCanceled();
                     Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
                 }
                 else
@@ -253,6 +258,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         /// <inheritdoc cref="HandleInBackground{TReq, TRes}(ZeroPacket, Func{TReq, CancellationToken, Task{TRes}})"/>
         protected void HandleInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
             BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle);
+
+        private protected void HandleServingInBackground<TReq>(ZeroPacket message, Func<TReq, CancellationToken, ValueTask> handle) where TReq : P2PMessage =>
+            BackgroundTaskScheduler.TryScheduleBackgroundTask(DeserializeAndReport<TReq>(message), handle, serving: true);
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {

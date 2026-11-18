@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,6 +49,8 @@ namespace Nethermind.Network.P2P
         private IChannelHandlerContext? _context;
         private volatile ISessionActivityObserver? _activityObserver;
         private volatile bool _isChannelClosed;
+        private volatile bool _isAuthenticated;
+        private volatile bool _hasUsefulSyncResponse;
 
         public Session(
             int localPort,
@@ -90,6 +93,11 @@ namespace Nethermind.Network.P2P
         public bool IsClosing => State > SessionState.Initialized;
         private bool IsClosed => State > SessionState.DisconnectingProtocols;
         public bool IsChannelClosed => _isChannelClosed;
+        internal bool IsChannelWritable => _channel.IsWritable;
+        internal bool HasUsefulSyncResponse => _hasUsefulSyncResponse;
+        internal PacketReceiptTracker InboundReceipts { get; } = new();
+        bool ISession.IsChannelWritable => IsChannelWritable;
+        PacketReceiptTracker ISession.InboundReceipts => InboundReceipts;
         public bool IsOutboundBufferFull => _context?.Channel is { IsWritable: false };
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
@@ -125,6 +133,9 @@ namespace Nethermind.Network.P2P
 
             private set => _node = value;
         }
+
+        private IPEndPoint? GetRemoteEndPoint() =>
+            _node?.Address ?? (IPAddress.TryParse(RemoteHost, out IPAddress? address) ? new IPEndPoint(address, RemotePort) : null);
 
         public void EnableSnappy()
         {
@@ -204,6 +215,11 @@ namespace Nethermind.Network.P2P
             MessageRoute? route = GetIncomingRoute(_routes, dynamicMessageCode);
             string? protocol = route?.Protocol;
             int messageId = route?.MessageId ?? 0;
+            if (route is null)
+            {
+                InitiateDisconnect(DisconnectReason.BreachOfProtocol, $"message id {dynamicMessageCode} outside negotiated protocols");
+                return;
+            }
             zeroPacket.Protocol = protocol;
 
             _activityObserver?.OnSessionActivity(this);
@@ -212,12 +228,6 @@ namespace Nethermind.Network.P2P
             route?.Record(zeroPacket.Content.Length);
 
             if (_logger.IsTrace) TraceMessageReceived(dynamicMessageCode, protocol, messageId, zeroPacket.Content.Length);
-
-            if (protocol is null)
-            {
-                if (_logger.IsTrace) WarnUnknownProtocol(dynamicMessageCode, messageId);
-                return;
-            }
 
             zeroPacket.PacketType = (byte)messageId;
             IProtocolHandler protocolHandler = route!.Handler;
@@ -233,12 +243,6 @@ namespace Nethermind.Network.P2P
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceMessageReceived(int dynamicCode, string? proto, int msgId, int readableBytes)
                 => _logger.Trace($"{this:hide} received a message of length {readableBytes} ({dynamicCode} => {proto}.{msgId})");
-
-            [MethodImpl(MethodImplOptions.NoInlining)]
-            void WarnUnknownProtocol(int dynamicCode, int msgId)
-                => _logger.Warn($"Received a message from node: {RemoteNodeId:hide}, " +
-                        $"({dynamicCode} => {msgId}), known protocols ({_protocols.Count}): " +
-                        $"{string.Join(", ", _protocols.Select(static x => $"{x.Value.Name} {x.Value.MessageIdSpaceSize}"))}");
         }
 
         public int DeliverMessage<T>(T message) where T : P2PMessage
@@ -393,7 +397,7 @@ namespace Nethermind.Network.P2P
                 _ => true,
             };
 
-            if ((Node?.IsStatic == true || Node?.IsTrusted == true) && !ShouldDisconnectPrivilegedNode())
+            if ((_node?.IsStatic == true || _node?.IsTrusted == true) && !ShouldDisconnectPrivilegedNode())
             {
                 if (_logger.IsTrace) TracePrivilegedPeerNotDisconnecting(disconnectReason, details);
                 return;
@@ -416,6 +420,8 @@ namespace Nethermind.Network.P2P
 
                 State = SessionState.DisconnectingProtocols;
             }
+
+            InboundReceipts.Close();
 
             if (_logger.IsTrace) TraceInitiatingDisconnect(disconnectReason, details);
 
@@ -486,12 +492,14 @@ namespace Nethermind.Network.P2P
                 State = SessionState.Disconnecting;
             }
 
+            InboundReceipts.Close();
+
             if (_isTracked) WarnTrackedDisconnect(disconnectReason, disconnectType, details);
 
             _disconnectsAnalyzer.ReportDisconnect(disconnectReason, disconnectType, details);
 
             if (NetworkDiagTracer.IsEnabled && RemoteHost is not null)
-                NetworkDiagTracer.ReportDisconnect(Node.Address, $"{disconnectType} {disconnectReason} {details}");
+                NetworkDiagTracer.ReportDisconnect(GetRemoteEndPoint(), $"{disconnectType} {disconnectReason} {details}");
 
             if (BestStateReached >= SessionState.Initialized && disconnectReason != DisconnectReason.TooManyPeers)
             {
@@ -555,7 +563,11 @@ namespace Nethermind.Network.P2P
                 => _logger.DebugError($"No subscriptions for session disconnected event on {this:hide}");
         }
 
-        internal void MarkChannelClosed() => _isChannelClosed = true;
+        internal void MarkChannelClosed()
+        {
+            _isChannelClosed = true;
+            InboundReceipts.Close();
+        }
 
         private async Task DisconnectAsync(DisconnectType disconnectType)
         {
@@ -601,10 +613,24 @@ namespace Nethermind.Network.P2P
         }
         public event EventHandler<EventArgs> HandshakeComplete;
         public event EventHandler<EventArgs> Initialized;
+        internal event EventHandler<EventArgs>? Authenticated;
         public event EventHandler<PeerEventArgs> MsgReceived;
         public event EventHandler<PeerEventArgs> MsgDelivered;
 
         internal void SetActivityObserver(ISessionActivityObserver? activityObserver) => _activityObserver = activityObserver;
+
+        internal void MarkAuthenticated()
+        {
+            _isAuthenticated = true;
+            Authenticated?.Invoke(this, EventArgs.Empty);
+        }
+
+        void ISession.MarkAuthenticated() => MarkAuthenticated();
+
+        internal void MarkUsefulSyncResponse()
+        {
+            if (_isAuthenticated && !IsClosing) _hasUsefulSyncResponse = true;
+        }
 
         public void Dispose()
         {

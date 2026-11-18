@@ -8,7 +8,7 @@ namespace Nethermind.Network.Discovery.Discv4;
 internal readonly record struct EndpointKey(IPAddress Address, int Port)
 {
     public EndpointKey(IPEndPoint endpoint)
-        : this(endpoint.Address, endpoint.Port)
+        : this(endpoint.Address.NormalizeMappedIPv4(), endpoint.Port)
     {
     }
 }

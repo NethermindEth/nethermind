@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test.Threading;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test;
@@ -12,6 +14,66 @@ namespace Nethermind.Core.Test;
 [Parallelizable(ParallelScope.Self)]
 public class RateLimiterTests
 {
+    [Test]
+    public void Refused_reservations_do_not_consume_future_slots()
+    {
+        RateLimiter limiter = new(1);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        long now = TimeProvider.System.GetTimestamp();
+        Assert.That(limiter.TryReserve(now, TimeSpan.Zero, out TimeSpan delay), Is.True);
+        Assert.That(delay, Is.EqualTo(TimeSpan.Zero));
+        for (int i = 0; i < 100; i++)
+        {
+            Assert.That(limiter.TryReserve(now, TimeSpan.Zero, out _), Is.False);
+        }
+        Assert.That(limiter.TryReserve(now + Stopwatch.Frequency, TimeSpan.Zero, out delay), Is.True);
+        Assert.That(delay, Is.EqualTo(TimeSpan.Zero));
+    }
+
+    [Test]
+    public void Idle_time_does_not_accumulate_burst_credit()
+    {
+        RateLimiter limiter = new(1);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        long now = TimeProvider.System.GetTimestamp() + 100 * Stopwatch.Frequency;
+        Assert.That(limiter.TryReserve(now, TimeSpan.Zero, out _), Is.True);
+        Assert.That(limiter.TryReserve(now, TimeSpan.Zero, out _), Is.False);
+    }
+
+    [Test]
+    public void Concurrent_reservations_have_a_bounded_backlog()
+    {
+        RateLimiter limiter = new(10);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        long now = TimeProvider.System.GetTimestamp();
+        int accepted = 0;
+        Parallel.For(0, 1000, index =>
+        {
+            if (limiter.TryReserve(now, TimeSpan.FromSeconds(1), out _)) Interlocked.Increment(ref accepted);
+        });
+        Assert.That(accepted, Is.EqualTo(11));
+    }
+
+    [Test]
+    public async Task Cancelling_reserved_delays_cannot_create_unbounded_debt()
+    {
+        RateLimiter limiter = new(1);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        long now = TimeProvider.System.GetTimestamp();
+        int accepted = 0;
+        for (int i = 0; i < 100; i++)
+        {
+            if (!limiter.TryReserve(now, TimeSpan.FromSeconds(1), out TimeSpan delay)) continue;
+            accepted++;
+            using CancellationTokenSource cancellation = new();
+            Task wait = Task.Delay(delay, cancellation.Token);
+            cancellation.Cancel();
+            await wait.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+        Assert.That(accepted, Is.EqualTo(2));
+        Assert.That(limiter.TryReserve(now + 2 * Stopwatch.Frequency, TimeSpan.Zero, out _), Is.True);
+    }
+
     [TestCase(100, 1, 1000)]
     [TestCase(100, 1, 100)]
     [TestCase(1000, 1, 100)]
@@ -102,5 +164,39 @@ public class RateLimiterTests
         }
 
         Assert.That(rateLimiter.Backlog, Is.InRange(TimeSpan.FromMilliseconds(1000), TimeSpan.FromMilliseconds(1100)));
+    }
+
+    [Test]
+    public void Rate_below_one_event_per_second_spaces_the_slots_by_the_whole_interval([Values(0.125, 0.5, 0.75)] double eventsPerSecond)
+    {
+        ManualTimeProvider time = new();
+        RateLimiter rateLimiter = new(eventsPerSecond, time);
+
+        Task first = rateLimiter.WaitAsync(CancellationToken.None);
+        Task second = rateLimiter.WaitAsync(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsCompleted, Is.True);
+            Assert.That(second.IsCompleted, Is.False);
+            Assert.That(rateLimiter.Backlog, Is.EqualTo(TimeSpan.FromSeconds(2 / eventsPerSecond)).Within(TimeSpan.FromMilliseconds(1)));
+        }
+    }
+
+    [Test]
+    public void Slots_follow_the_time_provider()
+    {
+        ManualTimeProvider time = new();
+        RateLimiter rateLimiter = new(1, time);
+        _ = rateLimiter.WaitAsync(CancellationToken.None);
+
+        time.Advance(TimeSpan.FromMilliseconds(400));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rateLimiter.Backlog, Is.EqualTo(TimeSpan.FromMilliseconds(600)).Within(TimeSpan.FromMilliseconds(1)));
+            time.Advance(TimeSpan.FromMilliseconds(600));
+            Assert.That(rateLimiter.IsThrottled(), Is.False);
+        }
     }
 }

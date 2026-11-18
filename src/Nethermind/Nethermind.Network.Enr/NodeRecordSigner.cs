@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Net;
 using System.Diagnostics.CodeAnalysis;
-using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Serialization.FluentRlp;
@@ -108,6 +108,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
 
         NodeRecord nodeRecord = new();
         ReadOnlySpan<byte> previousKey = default;
+        bool hasPreviousKey = false;
 
         if (!NextItemFits(fields)) return null;
         ReadOnlySpan<byte> sigBytes = fields.DecodeByteArraySpan(RlpLimit.L65);
@@ -121,11 +122,12 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             if (!NextItemFits(fields)) return null;
             ReadOnlySpan<byte> key = fields.DecodeByteArraySpan();
             if (!NextItemFits(fields)) return null;
-            if (previousKey.Length != 0 && key.SequenceCompareTo(previousKey) <= 0)
+            if (hasPreviousKey && key.SequenceCompareTo(previousKey) <= 0)
             {
                 throw new RlpReaderException("ENR keys must be sorted and unique.");
             }
             previousKey = key;
+            hasPreviousKey = true;
 
             switch (key.Length)
             {
@@ -142,6 +144,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                 case 2 when key.SequenceEqual(EnrContentKey.IpU8):
                     {
                         ReadOnlySpan<byte> ipBytes = fields.DecodeByteArraySpan();
+                        if (ipBytes.Length != 4) ThrowInvalidIpLength();
                         IPAddress address = new(ipBytes);
                         nodeRecord.SetEntry(new IpEntry(address));
                         break;
@@ -149,6 +152,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                 case 3 when key.SequenceEqual(EnrContentKey.Ip6U8):
                     {
                         ReadOnlySpan<byte> ipBytes = fields.DecodeByteArraySpan();
+                        if (ipBytes.Length != 16) ThrowInvalidIp6Length();
                         IPAddress address = new(ipBytes);
                         nodeRecord.SetEntry(new Ip6Entry(address));
                         break;
@@ -197,14 +201,17 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     }
                 case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):
                     ReadOnlySpan<byte> keyBytes = fields.DecodeByteArraySpan();
+                    if (keyBytes.Length != CompressedPublicKey.LengthInBytes || keyBytes[0] is not (2 or 3))
+                    {
+                        ThrowInvalidCompressedPublicKey();
+                    }
                     CompressedPublicKey reportedKey = new(keyBytes);
                     nodeRecord.SetEntry(new SecP256k1Entry(reportedKey));
                     break;
                 default:
                     nodeRecord.SetEntry(new UnknownEntry(
-                        Encoding.UTF8.GetString(key),
+                        key.ToArray(),
                         fields.ReadEncodedItem().ToArray()));
-                    nodeRecord.Snap = true;
                     break;
             }
         }
@@ -254,4 +261,16 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         Signature sigB = new(nodeRecord.Signature.Bytes, 1);
         return _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash)?.Equals(reportedKey) == true;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidIpLength() =>
+        throw new RlpReaderException("ENR ip must contain four bytes.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidIp6Length() =>
+        throw new RlpReaderException("ENR ip6 must contain sixteen bytes.");
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowInvalidCompressedPublicKey() =>
+        throw new RlpReaderException("Invalid ENR compressed public key.");
 }

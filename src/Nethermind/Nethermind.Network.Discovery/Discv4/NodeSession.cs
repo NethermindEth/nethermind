@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -9,8 +11,42 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
+public sealed record NodeSession
 {
+    private readonly INodeStats? _initialStats;
+    private readonly Node? _node;
+    private readonly INodeStatsManager? _statsManager;
+
+    public NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
+    {
+        _initialStats = NodeStats;
+        this.Timestamper = Timestamper;
+    }
+
+    internal NodeSession(Node node, INodeStatsManager statsManager, ITimestamper timestamper)
+    {
+        _node = node;
+        _statsManager = statsManager;
+        Timestamper = timestamper;
+    }
+
+    public INodeStats NodeStats
+    {
+        get => ResolveStats() ?? ThrowNodeStatsUnavailable();
+        init => _initialStats = value;
+    }
+
+    public ITimestamper Timestamper { get; init; }
+
+    public void Deconstruct(out INodeStats NodeStats, out ITimestamper Timestamper)
+    {
+        NodeStats = this.NodeStats;
+        Timestamper = this.Timestamper;
+    }
+
+    private INodeStats? ResolveStats() => _initialStats ??
+        (_node is not null && HasReceivedPong && _statsManager!.TryGetStats(_node, out INodeStats? stats) ? stats : null);
+
     public static readonly TimeSpan BondTimeout = TimeSpan.FromHours(12);
     public static readonly TimeSpan PingRetryTimeout = TimeSpan.FromMinutes(10);
     public const int AuthenticatedRequestFailureLimit = 5;
@@ -114,6 +150,7 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
 
     private void RecordStatsForMsg(DiscoveryMsg msg, bool outgoing)
     {
+        if (_node is not null && (msg.FarAddress is not { } endpoint || !HasEndpointBond(endpoint))) return;
         // The Discovery* members in NodeStatsEventType are laid out as ...Out, ...In pairs,
         // so the incoming counterpart is always one position after the outgoing one.
         NodeStatsEventType eventType = msg.MsgType switch
@@ -127,21 +164,39 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
             _ => NodeStatsEventType.None,
         };
         if (eventType == NodeStatsEventType.None) return;
-        NodeStats.AddNodeStatsEvent(outgoing ? eventType : eventType + 1);
+        ResolveStats()?.AddNodeStatsEvent(outgoing ? eventType : eventType + 1);
     }
 
     public void OnPingSent() => Volatile.Write(ref _lastPingSentTicks, Timestamper.UtcNow.Ticks);
 
     public long OnPingSent(IPEndPoint endpoint)
     {
-        OnPingSent();
-        long token = Interlocked.Increment(ref _lastPingToken);
+        TryRecordBondingPing(endpoint, replacePending: true, out long token);
+        return token;
+    }
+
+    /// <summary>Records a bonding ping to <paramref name="endpoint"/> unless one is pending.</summary>
+    /// <returns>Whether the ping was recorded and may be sent.</returns>
+    public bool TryOnFirstPingSent(IPEndPoint endpoint, out long token) =>
+        TryRecordBondingPing(endpoint, replacePending: false, out token);
+
+    private bool TryRecordBondingPing(IPEndPoint endpoint, bool replacePending, out long token)
+    {
         EndpointKey endpointKey = new(endpoint);
         bool evicted;
         lock (_endpointBondLock)
         {
+            if (!replacePending && _pendingBondingPings.Contains(endpointKey))
+            {
+                token = 0;
+                return false;
+            }
+
+            token = Interlocked.Increment(ref _lastPingToken);
             evicted = _pendingBondingPings.Record(endpointKey, token);
         }
+
+        OnPingSent();
 
         // An eviction drops another endpoint's pending ping, so wake its waiter to return false instead of timing out.
         if (evicted)
@@ -149,7 +204,7 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
             SignalEndpointBondChanged();
         }
 
-        return token;
+        return true;
     }
 
     public void OnPingCompleted(IPEndPoint endpoint, long token)
@@ -218,4 +273,8 @@ public sealed record NodeSession(INodeStats NodeStats, ITimestamper Timestamper)
 
     // Endpoint stamps recorded at or before this tick predate the bond window and are treated as expired.
     private long StaleBondStamp => Timestamper.UtcNow.Ticks - BondTimeout.Ticks;
+
+    [DoesNotReturn, StackTraceHidden]
+    private static INodeStats ThrowNodeStatsUnavailable() =>
+        throw new InvalidOperationException("Node statistics require a bond and available capacity.");
 }

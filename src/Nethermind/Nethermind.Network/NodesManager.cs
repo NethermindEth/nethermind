@@ -4,17 +4,22 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network;
@@ -41,16 +46,70 @@ public abstract class NodesManager(string path, ILogger logger)
     // so transient (updateFile=false) changes to _nodes never leak into it and a failed load cannot be amplified.
     private ConcurrentDictionary<PublicKey, NetworkNode> _persistedNodes = [];
 
+    // Subscribers of the running DiscoverNetworkNodes enumerations; each only does a non-blocking TryWrite.
+    private Action<NetworkNode>? _nodeAdded;
+
     /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
     protected bool TryAddNode(NetworkNode node)
     {
+        ValidateTcpEndpoint(node);
         lock (_indexLock)
         {
             if (!_nodes.TryAdd(node.NodeId, node)) return false;
             _ipCounts.AddOrUpdate(node.HostIp, 1, static (_, count) => count + 1);
+            // Inside the lock, unlike NodeRemoved: enumerations copy _nodes under it, so each gets an add once; subscribers only TryWrite.
+            _nodeAdded?.Invoke(node);
             return true;
         }
     }
+
+    /// <summary>Yields each managed node once: the nodes present when the enumeration starts, then every node added later.</summary>
+    protected async IAsyncEnumerable<NetworkNode> DiscoverNetworkNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Channel<NetworkNode> added = Channel.CreateUnbounded<NetworkNode>();
+        Action<NetworkNode> onNodeAdded = node => added.Writer.TryWrite(node);
+
+        NetworkNode[] snapshot = Subscribe(onNodeAdded);
+        try
+        {
+            foreach (NetworkNode node in snapshot)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (IsManaged(node)) yield return node;
+            }
+
+            await foreach (NetworkNode node in added.Reader.ReadAllAsync(cancellationToken))
+            {
+                if (IsManaged(node)) yield return node;
+            }
+        }
+        finally
+        {
+            Unsubscribe(onNodeAdded);
+        }
+    }
+
+    // Under the lock that guards every add: a node is either in the returned copy or published to the subscriber.
+    // Every writer of _nodes holds this lock, so walking the dictionary here gives a point-in-time copy.
+    private NetworkNode[] Subscribe(Action<NetworkNode> onNodeAdded)
+    {
+        lock (_indexLock)
+        {
+            _nodeAdded += onNodeAdded;
+            return [.. _nodes.Select(static kvp => kvp.Value)];
+        }
+    }
+
+    private void Unsubscribe(Action<NetworkNode> onNodeAdded)
+    {
+        lock (_indexLock)
+        {
+            _nodeAdded -= onNodeAdded;
+        }
+    }
+
+    // A node removed, or replaced by a later add, after it was copied or queued is not yielded.
+    private bool IsManaged(NetworkNode node) => _nodes.TryGetValue(node.NodeId, out NetworkNode? current) && ReferenceEquals(current, node);
 
     /// <summary>Replaces the whole node set (bulk load) and rebuilds the IP index.</summary>
     protected void SetNodes(ConcurrentDictionary<PublicKey, NetworkNode> nodes)
@@ -66,6 +125,12 @@ public abstract class NodesManager(string path, ILogger logger)
 
             _persistedNodes = new ConcurrentDictionary<PublicKey, NetworkNode>(nodes);
         }
+    }
+
+    private static void ValidateTcpEndpoint(NetworkNode node)
+    {
+        if (node.IsEnr && !node.Enr.TryGetTcpEndpoint(out _))
+            ThrowMissingTcpEndpoint(nameof(node));
     }
 
     private void UnindexIp(NetworkNode node)
@@ -120,8 +185,9 @@ public abstract class NodesManager(string path, ILogger logger)
             }
         }
 
-        // Create the directory if needed
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        // Create the directory if needed; a bare file name has none
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
         if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path):hide}");
 
@@ -176,8 +242,10 @@ public abstract class NodesManager(string path, ILogger logger)
             try
             {
                 node = new(n);
+                ValidateTcpEndpoint(node);
+                _ = new Node(node);
             }
-            catch (ArgumentException ex)
+            catch (Exception ex) when (ex is ArgumentException or FormatException or RlpReaderException or InvalidOperationException)
             {
                 if (_logger.IsError) _logger.Error($"Failed to parse node: {n:hide}", SensitiveLogMasking.Enabled ? null : ex);
 
@@ -244,6 +312,10 @@ public abstract class NodesManager(string path, ILogger logger)
 
         return File.WriteAllTextAsync(path, contents, cancellationToken);
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowMissingTcpEndpoint(string paramName) =>
+        throw new ArgumentException("ENR is missing a usable TCP endpoint.", paramName);
 }
 
 [JsonSerializable(typeof(HashSet<string>))]

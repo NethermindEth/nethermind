@@ -16,7 +16,7 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
+    [ConfigItem(Description = $"The primary external IP address used for the legacy enode string, discovery, and peer filtering. Missing IPv4 or IPv6 addresses are resolved independently when `{nameof(EnableExternalIpResolution)}` is enabled; use this only to override the preferred primary address. An address family is advertised in the ENR only when every currently bound inbound transport serves it; only bound transports get port entries. Public external addresses (configured or resolved) refuse discovered private targets; configure them as static or trusted peers if required.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ExternalIp { get; set; }
 
     /// <summary>
@@ -51,7 +51,7 @@ public interface INetworkConfig : IConfig
     /// <c>IIPResolver.Resolve</c> instead of reading this property, which is only set when the user
     /// supplies an override.
     /// </remarks>
-    [ConfigItem(Description = "The local IP for inbound listeners. When unset, listeners try a dual-stack wildcard on supported platforms and fall back to IPv4 if it cannot bind; macOS uses IPv4 by default. Set to `0.0.0.0` for IPv4-only, `::` for a dual-stack wildcard, or a specific address to restrict listeners to that address and family.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
+    [ConfigItem(Description = "The local IP for inbound listeners. When unset, listeners try a dual-stack wildcard on supported platforms and fall back to IPv4 if it cannot bind; macOS uses IPv4 by default. Set to `0.0.0.0` for IPv4-only, `::` for a dual-stack wildcard, or a specific address to restrict listeners to that address and family. A private listener does not permit discovered private targets when the configured or resolved external address is public; configure them as static or trusted peers if required.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? LocalIp { get; set; }
 
     [ConfigItem(Description = $"A list of peers to keep connection for. Static peers are affected by `{nameof(MaxActivePeers)}`.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
@@ -72,8 +72,20 @@ public interface INetworkConfig : IConfig
     [ConfigItem(Description = "The max number of priority peers. Can be overridden by a plugin.", DefaultValue = "0")]
     int PriorityPeersMaxCount { get; set; }
 
-    [ConfigItem(Description = "The max allowed number of connected peers.", DefaultValue = "50")]
+    [ConfigItem(Description = "The max allowed number of connected peers. One third is reserved for outbound connections. After a dialable candidate has been selected and five minutes pass without dialable candidates, the reserve falls to at most two slots. Each accepted outbound Hello restores the reserve by disconnecting at most one newest excess ordinary inbound peer. Static and trusted peers are exempt.", DefaultValue = "50")]
     int MaxActivePeers { get; set; }
+
+    /// <summary>Maximum ordinary inbound connections awaiting an authenticated Hello. Privileged IPs have eight additional slots; zero disables all inbound connections.</summary>
+    [ConfigItem(Description = "The maximum number of ordinary inbound connections awaiting an authenticated Hello. Privileged IPs have eight additional slots. Zero disables all inbound connections.", DefaultValue = "50")]
+    int MaxPendingInboundConnections { get; set; }
+
+    /// <remarks>
+    /// Default 4 allows three NAT peers plus one spare. Slots last 3 s without AUTH or 5 s with AUTH (one Ack).
+    /// Thirteen sources fill the 50-slot ordinary lane; IPv6 sources are /64, so one /60 or routed /56 suffices.
+    /// Privileged slots are separate; filtered subnets still cost one Ack.
+    /// </remarks>
+    [ConfigItem(Description = "Maximum pending ordinary inbound connections per IPv4 address or IPv6 /64. Zero disables ordinary inbound connections.", DefaultValue = "4")]
+    int MaxPendingInboundConnectionsPerSource { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "5000")]
     int PeersPersistenceInterval { get; set; }

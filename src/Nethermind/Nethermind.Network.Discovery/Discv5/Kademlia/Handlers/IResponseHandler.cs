@@ -12,6 +12,8 @@ internal interface IResponseHandler
     MessageType MessageType { get; }
 
     bool Handle(Discv5Message message);
+
+    void Fail(Exception exception);
 }
 
 internal interface IResponseHandler<in TMessage> : IResponseHandler where TMessage : Discv5Message
@@ -29,4 +31,6 @@ internal abstract class ResponseHandler<TMessage>(MessageType messageType) : IRe
     public bool Handle(Discv5Message message) => message is TMessage typedMessage && Handle(typedMessage);
 
     public abstract bool Handle(TMessage message);
+
+    public abstract void Fail(Exception exception);
 }

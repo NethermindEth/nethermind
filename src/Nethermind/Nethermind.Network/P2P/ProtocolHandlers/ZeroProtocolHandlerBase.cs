@@ -20,10 +20,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         INodeStatsManager nodeStats,
         IMessageSerializationService serializer,
         IBackgroundTaskScheduler backgroundTaskScheduler,
-        ILogManager logManager)
-        : ProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager), IZeroProtocolHandler
+        ILogManager logManager,
+        TimeProvider? timeProvider = null)
+        : ProtocolHandlerBase(session, nodeStats, serializer, backgroundTaskScheduler, logManager, timeProvider), IZeroProtocolHandler
     {
-        protected readonly INodeStats _nodeStats = nodeStats.GetOrAdd(session.Node);
+        protected readonly INodeStats _nodeStats = nodeStats.GetStatsOrNull(session.Node) ?? new NodeStatsLight(session.Node);
 
         public override void HandleMessage(Packet message) => HandleMessage((ZeroPacket)message);
 
@@ -61,13 +62,22 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token)
-            => HandleResponseInner(request, speedType, describeRequestFunc, token).Unwrap();
+            => HandleResponse(request, speedType, describeRequestFunc, token, speedType != TransferSpeedType.NodeData);
+
+        protected Task<TResponse> HandleResponse<TRequest, TResponse>(
+            Request<TRequest, TResponse> request,
+            TransferSpeedType speedType,
+            Func<TRequest, string> describeRequestFunc,
+            CancellationToken token,
+            bool recordResponseSpeed)
+            => HandleResponseInner(request, speedType, describeRequestFunc, token, recordResponseSpeed).Unwrap();
 
         private async Task<Task<TResponse>> HandleResponseInner<TRequest, TResponse>(
             Request<TRequest, TResponse> request,
             TransferSpeedType speedType,
             Func<TRequest, string> describeRequestFunc,
-            CancellationToken token
+            CancellationToken token,
+            bool recordResponseSpeed
         )
         {
             Task<TResponse> task = request.CompletionSource.Task;
@@ -87,11 +97,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     long elapsed = request.FinishMeasuringTime();
                     long bytesPerMillisecond = (long)((decimal)request.ResponseSize / Math.Max(1, elapsed));
                     if (Logger.IsTrace) Logger.Trace($"{this:hide} speed is {request.ResponseSize}/{elapsed} = {bytesPerMillisecond}");
-                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
+                    if (recordResponseSpeed) StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, bytesPerMillisecond);
                 }
                 else
                 {
-                    StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
+                    if (recordResponseSpeed) StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
                     if (Logger.IsTrace) Logger.Trace($"{Session:hide} Request {(task.IsCanceled ? "cancelled" : "failed")}: {describeRequestFunc(request.Message)}");
                 }
             }
@@ -112,7 +122,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     });
                 }
 
-                StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
+                if (recordResponseSpeed) StatsManager.ReportTransferSpeedEvent(Session.Node, speedType, 0L);
 
                 if (Logger.IsTrace) TraceRequestTimeout(describeRequestFunc(request.Message));
             }

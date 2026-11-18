@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -12,7 +13,12 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.Threading;
+using Nethermind.Network.Discovery.Discv5.Packets;
+using TalkReqMsg = Nethermind.Network.Discovery.Discv5.Messages.TalkReqMsg;
+using RequestId = Nethermind.Network.Discovery.Discv5.Messages.RequestId;
 using Nethermind.Crypto;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
@@ -150,7 +156,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [Test]
         public async Task FindNodeSentReceivedTest()
         {
-            FindNodeMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
+            FindNodeMsg msg = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _privateKey2.PublicKey.Bytes)
             {
                 FarAddress = _address2
             };
@@ -159,7 +165,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             await SleepWhileWaiting();
             await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static x => x.MsgType == MsgType.FindNode));
 
-            FindNodeMsg msg2 = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, new byte[] { 1, 2, 3 })
+            FindNodeMsg msg2 = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _privateKey2.PublicKey.Bytes)
             {
                 FarAddress = _address
             };
@@ -197,7 +203,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             int? inboundMessageQueueCapacity = null,
             int? inboundMessageWorkerCount = null,
             IMessageSerializationService? messageSerializationService = null,
-            ILogManager? logManager = null)
+            ILogManager? logManager = null,
+            FixedWindowLimiter? globalLimiter = null)
         {
             IKademliaAdapter adapter = Substitute.For<IKademliaAdapter>();
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
@@ -210,7 +217,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 nodeFilter,
                 globalInboundMessageBurst,
                 inboundMessageQueueCapacity,
-                inboundMessageWorkerCount);
+                inboundMessageWorkerCount)
+            { GlobalInboundLimiter = globalLimiter };
             List<byte[]> forwarded = [];
             handler.InitializeChannel(Substitute.For<IDatagramSocket>(), datagram =>
             {
@@ -330,6 +338,59 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             await adapter.Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(static m => m.MsgType == MsgType.EnrResponse));
             Assert.That(forwarded, Is.Empty);
+        }
+
+        [Test]
+        public async Task Rejected_source_should_not_spend_global_allowance()
+        {
+            FixedWindowLimiter global = new(2, TimeSpan.FromMilliseconds(100), new ManualTimeProvider());
+            (IKademliaAdapter adapter, DiscoveryHandler handler, List<byte[]> forwarded, IMessageSerializationService service) =
+                CreateHandler(NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1)), globalLimiter: global);
+            byte[] data = SerializePing(service);
+            IPEndPoint honest = IPEndPoint.Parse("127.0.0.3:10002");
+            using SemaphoreSlim received = new(0);
+            adapter.When(x => x.OnIncomingMsg(Arg.Any<DiscoveryMsg>())).Do(_ => received.Release());
+
+            for (int i = 0; i < 32; i++) handler.Receive(PooledUdpReceiveResult.Copy(data, _address2));
+            handler.Receive(PooledUdpReceiveResult.Copy(data, honest));
+
+            Assert.That(await received.WaitAsync(TimeSpan.FromSeconds(2)), Is.True);
+            Assert.That(await received.WaitAsync(TimeSpan.FromSeconds(2)), Is.True);
+            await adapter.Received(1).OnIncomingMsg(Arg.Is<DiscoveryMsg>(msg => msg.FarAddress!.Equals(honest)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(global.TryAcquire(), Is.False);
+                Assert.That(forwarded, Is.Empty);
+            }
+            handler.CloseInbound();
+        }
+
+        [Test]
+        public void Discv5_packet_with_discv4_type_should_bypass_exhausted_limits([Values] bool exhaustGlobal)
+        {
+            FixedWindowLimiter global = new(1, TimeSpan.FromMilliseconds(100), new ManualTimeProvider());
+            NodeFilter source = NodeFilter.CreateExact(16, TimeSpan.FromMinutes(1));
+            if (exhaustGlobal) Assert.That(global.TryAcquire(), Is.True);
+            else Assert.That(source.TryAccept(_address2.Address), Is.True);
+            (IKademliaAdapter _, DiscoveryHandler handler, List<byte[]> forwarded, IMessageSerializationService _) =
+                CreateHandler(source, globalLimiter: global);
+            using CryptoRandom random = new();
+            using PacketCodec codec = new(new InsecureProtectedPrivateKey(TestItem.PrivateKeyA), random, new EthereumEcdsa(0));
+            using TalkReqMsg request = new(new RequestId(1, 1), ReadOnlyMemory<byte>.Empty, new byte[64]);
+            byte[] nonce = new byte[PacketCodec.NonceSize];
+            byte[] packet = [];
+            for (int i = 0; i < 4096; i++)
+            {
+                BitConverter.TryWriteBytes(nonce.AsSpan(), i);
+                packet = codec.EncodeOrdinary(TestItem.PublicKeyB, new byte[16], request, nonce);
+                if (packet[97] is >= 1 and <= 6) break;
+            }
+            Assert.That(packet[97], Is.InRange(1, 6));
+
+            handler.Receive(PooledUdpReceiveResult.Copy(packet, _address2));
+
+            Assert.That(forwarded, Has.One.EqualTo(packet));
+            handler.CloseInbound();
         }
 
         [Test]
@@ -569,5 +630,45 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
             public T Deserialize<T>(ZeroPacket packet) where T : MessageBase => innerService.Deserialize<T>(packet);
         }
+
+        [Test]
+        public async Task Failed_send_is_neutral_and_never_credited([Values("serialization", "socket", "success")] string outcome)
+        {
+            IMessageSerializationService real = Build.A.SerializationService().WithDiscovery(TestItem.PrivateKeyA).TestObject;
+            IMessageSerializationService service = Substitute.For<IMessageSerializationService>();
+            ReturnCountingPool pool = new();
+            int serializedLength = 0;
+            service.Serialize(Arg.Any<PingMsg>()).Returns(call =>
+            {
+                if (outcome == "serialization") throw new InvalidOperationException("serialization failed");
+                byte[] bytes = real.SerializeToArray(call.Arg<PingMsg>());
+                serializedLength = bytes.Length;
+                ArrayPoolSpan<byte> serialized = new(pool, bytes.Length);
+                bytes.CopyTo((Span<byte>)serialized);
+                return serialized;
+            });
+            IDatagramSocket socket = Substitute.For<IDatagramSocket>();
+            socket.SendToAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IPEndPoint>(), Arg.Any<CancellationToken>())
+                .Returns(outcome == "socket" ? ValueTask.FromException(new SocketException((int)SocketError.NetworkUnreachable)) : ValueTask.CompletedTask);
+            DiscoveryHandler handler = new(Substitute.For<IDiscoveryMsgListener>(), service, Timestamper.Default, LimboLogs.Instance);
+            handler.InitializeChannel(socket, static packet => packet.Dispose());
+            IPEndPoint local = new(IPAddress.Loopback, 30303);
+            IPEndPoint remote = new(IPAddress.Parse("8.8.8.8"), 30303);
+            PingMsg message = new(TestItem.PublicKeyB, Timestamper.Default.UnixTime.SecondsLong + 20, local, remote, new byte[32])
+            {
+                FarAddress = remote
+            };
+            long before = Metrics.DiscoveryBytesSent;
+
+            if (outcome == "success") await handler.SendMsg(message);
+            else await Assert.ThrowsAsync<KademliaRequestNotSentException>(() => handler.SendMsg(message));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Metrics.DiscoveryBytesSent - before, Is.EqualTo(outcome == "success" ? serializedLength : 0));
+                Assert.That(pool.Returned, Is.EqualTo(outcome == "serialization" ? 0 : 1));
+            }
+        }
+
     }
 }

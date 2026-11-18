@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.Discv5.Messages;
+using Nethermind.Network.Discovery.Discv5.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv5.Packets;
 using Nethermind.Stats.Model;
 
@@ -16,9 +17,7 @@ internal readonly record struct ChallengeKey(ValueHash256 NodeId, IPEndPoint End
 
 internal readonly record struct PendingNonceKey(IPEndPoint Endpoint, NonceKey Nonce);
 
-internal readonly record struct ResponseKey(ValueHash256 NodeId, RequestId RequestId, MessageType MessageType);
-
-internal readonly record struct SentChallengeExpiry(ChallengeKey Key, long CreatedAtMilliseconds);
+internal readonly record struct ResponseKey(ValueHash256 NodeId, IPEndPoint Endpoint, RequestId RequestId, MessageType MessageType);
 
 internal readonly record struct NonceKey(ulong Prefix, uint Suffix)
 {
@@ -30,6 +29,6 @@ internal readonly record struct NonceKey(ulong Prefix, uint Suffix)
             : throw new ArgumentException($"Nonce must be {PacketCodec.NonceSize} bytes.", nameof(nonce));
 }
 
-internal sealed record PendingRequest(Node Receiver, Discv5Message Message);
+internal sealed record PendingRequest(Node Receiver, Discv5Message Message, IResponseHandler ResponseHandler);
 
-internal readonly record struct SentChallenge(byte[] Packet, long CreatedAtMilliseconds);
+internal readonly record struct SentChallenge(byte[] Packet, long CreatedAtTimestamp);

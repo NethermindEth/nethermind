@@ -17,6 +17,7 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
+using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
@@ -37,6 +38,20 @@ namespace Nethermind.Network.Discovery.Test;
 [TestFixture]
 public class DiscoveryV5AppTests
 {
+    private readonly List<PeerAddressPolicy> _addressPolicies = [];
+
+    private PeerAddressPolicy OwnPolicy(PeerAddressPolicy policy)
+    {
+        _addressPolicies.Add(policy);
+        return policy;
+    }
+
+    private void DisposePolicies()
+    {
+        foreach (PeerAddressPolicy policy in _addressPolicies) policy.Dispose();
+        _addressPolicies.Clear();
+    }
+
     private MemDb _discoveryDb = null!;
     private DiscoveryV5App _discoveryV5App = null!;
     private readonly List<IContainer> _containers = [];
@@ -93,6 +108,7 @@ public class DiscoveryV5AppTests
         _containers.Add(container);
 
         DiscoveryV5App discoveryV5App = new(
+            OwnPolicy(new PeerAddressPolicy(ipResolver, new LocalAddressSource(LimboLogs.Instance, () => []))),
             container,
             nodeKey,
             enode,
@@ -124,6 +140,7 @@ public class DiscoveryV5AppTests
             _containers[i].Dispose();
         }
         _containers.Clear();
+        DisposePolicies();
         _discoveryDb.Dispose();
     }
 
@@ -147,6 +164,25 @@ public class DiscoveryV5AppTests
         address.AddressFamily == AddressFamily.InterNetwork
             ? IPAddress.Any
             : IPAddress.IPv6Any;
+
+    [Test]
+    public async Task Production_discv5_scope_shares_online_activity_and_the_lookup_budget()
+    {
+        ILifetimeScope? scope = null;
+        await using DiscoveryV5App app = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"), builder =>
+            builder.RegisterBuildCallback(child => scope = child));
+        ILifetimeScope current = scope!;
+        DiscoveryPersistenceManager persistence = current.Resolve<DiscoveryPersistenceManager>();
+        Nethermind.Network.Discovery.Discv5.Kademlia.KademliaAdapter adapter =
+            (Nethermind.Network.Discovery.Discv5.Kademlia.KademliaAdapter)current.Resolve<Nethermind.Network.Discovery.Discv5.Kademlia.IKademliaAdapter>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(current.Resolve<Nethermind.Network.Discovery.Discv5.Kademlia.KademliaAdapter>(), Is.SameAs(adapter));
+            Assert.That(adapter.RequestActivity, Is.SameAs(persistence.RequestActivity));
+            Assert.That(current.Resolve<KademliaConfig<Node>>().LookupFindNeighbourHardTimeout, Is.EqualTo(TimeSpan.FromMilliseconds(6000)));
+            Assert.That(current.Resolve<IRoutingTable<Node, ValueHash256>>(), Is.SameAs(current.Resolve<IHealthRoutingTable<Node, ValueHash256>>()));
+        }
+    }
 
     [Test]
     public void Should_Reject_Private_Ip_Enr()
@@ -677,6 +713,51 @@ public class DiscoveryV5AppTests
     }
 
     [Test]
+    [CancelAfter(10000)]
+    public async Task Bootstrap_should_run_while_persisted_probes_are_pending_and_shutdown_should_drain_them(CancellationToken token)
+    {
+        NetworkStorage storage = new(_discoveryDb, LimboLogs.Instance);
+        storage.UpdateNodes([
+            new NetworkNode(TestItem.PublicKeyA, "8.8.4.1", 30303, 0),
+            new NetworkNode(TestItem.PublicKeyB, "8.8.4.2", 30303, 0),
+            new NetworkNode(TestItem.PublicKeyC, "8.8.4.3", 30303, 0)]);
+        storage.Commit();
+        IKademlia<PublicKey, Node> table = Substitute.For<IKademlia<PublicKey, Node>>();
+        table.GetAllAtDistance(0).Returns([new Node(TestItem.PublicKeyF, "8.8.8.8", 30303)]);
+        TaskCompletionSource bootstrap = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        table.Run(Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            bootstrap.TrySetResult();
+            return Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+        });
+        TaskCompletionSource probes = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IKademliaMessageSender<PublicKey, Node> sender = Substitute.For<IKademliaMessageSender<PublicKey, Node>>();
+        int active = 0;
+        sender.Ping(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            int count = Interlocked.Increment(ref active);
+            Assert.That(count, Is.LessThanOrEqualTo(3));
+            if (count == 3) probes.TrySetResult();
+            try { await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>()); }
+            finally { Interlocked.Decrement(ref active); }
+            return false;
+        });
+        await using DiscoveryV5App app = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"), builder =>
+        {
+            builder.RegisterInstance(table).As<IKademlia<PublicKey, Node>>();
+            builder.RegisterInstance(sender).As<IKademliaMessageSender<PublicKey, Node>>();
+        });
+        app.InitializeChannel(Substitute.For<IDatagramSocket>(), static datagram => datagram.Dispose());
+        await app.StartAsync();
+        await Task.WhenAll(bootstrap.Task, probes.Task).WaitAsync(token);
+        Assert.That(active, Is.EqualTo(3));
+
+        await app.StopAsync();
+
+        Assert.That(active, Is.Zero);
+    }
+
+    [Test]
     public async Task Initialized_channel_connects_discv5_transport_to_socket()
     {
         ILifetimeScope? discv5Scope = null;
@@ -714,5 +795,43 @@ public class DiscoveryV5AppTests
         {
             received.Dispose();
         }
+    }
+    [Test]
+    public async Task Factory_failure_does_not_abort_the_remaining_discovery_load()
+    {
+        NetworkNode malformed = new(CreateTestEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4")).ToString());
+        malformed.Enr!.SetEntry(new MalformedIpEntry());
+        NetworkNode valid = new(TestItem.PublicKeyB, "9.9.9.9", 30303);
+        INetworkStorage storage = Substitute.For<INetworkStorage>();
+        List<NetworkNode> rows = [malformed, valid];
+        storage.GetPersistedNodes().Returns(_ => rows.ToArray());
+        storage.When(store => store.RemoveNode(Arg.Any<PublicKey>())).Do(call => rows.RemoveAll(row => row.NodeId.Equals(call.Arg<PublicKey>())));
+        IKademlia<PublicKey, Node> table = Substitute.For<IKademlia<PublicKey, Node>>();
+        table.GetAllAtDistance(0).Returns([new Node(TestItem.PublicKeyF, "8.8.8.8", 30303)]);
+        table.IterateNodes().Returns([]);
+        IKademliaMessageSender<PublicKey, Node> sender = Substitute.For<IKademliaMessageSender<PublicKey, Node>>();
+        sender.Ping(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(true);
+        ILifetimeScope? scope = null;
+        await using DiscoveryV5App app = CreateDiscoveryV5App(IPAddress.Parse("8.8.8.8"), builder =>
+        {
+            builder.RegisterInstance(storage).Keyed<INetworkStorage>(DbNames.DiscoveryV5Nodes);
+            builder.RegisterInstance(table).As<IKademlia<PublicKey, Node>>();
+            builder.RegisterInstance(sender).As<IKademliaMessageSender<PublicKey, Node>>();
+            builder.RegisterBuildCallback(container => scope = container);
+        });
+        DiscoveryPersistenceManager manager = scope!.Resolve<DiscoveryPersistenceManager>();
+        Assert.That(async () => await manager.LoadPersistedNodes(CancellationToken.None, (row, _) => app.RestorePersistedNode(row)), Throws.Nothing);
+        await sender.Received(1).Ping(Arg.Is<Node>(node => node.Id.Equals(valid.NodeId)), Arg.Any<CancellationToken>());
+        await sender.DidNotReceive().Ping(Arg.Is<Node>(node => node.Id.Equals(malformed.NodeId)), Arg.Any<CancellationToken>());
+        storage.Received(1).RemoveNode(malformed.NodeId);
+        storage.ClearReceivedCalls();
+        manager.CommitLiveNodes();
+        storage.Received(1).RemoveNode(valid.NodeId);
+        storage.Received(1).Commit();
+    }
+
+    private sealed class MalformedIpEntry() : TcpEntry(1)
+    {
+        public override string Key => EnrContentKey.Ip;
     }
 }

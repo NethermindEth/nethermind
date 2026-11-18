@@ -6,12 +6,20 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.Discovery;
 
-internal readonly struct PooledUdpReceiveResult(IPEndPoint remoteEndPoint, ArrayPoolSpan<byte> buffer)
+/// <summary>Owns a received datagram; every reference shares the same idempotent disposal state.</summary>
+internal sealed class PooledUdpReceiveResult(IPEndPoint remoteEndPoint, ArrayPoolSpan<byte> buffer) : IDisposable
 {
-    private readonly bool _hasBuffer = true;
     private readonly ArrayPoolSpan<byte> _buffer = buffer;
+    private int _disposed;
 
-    public ReadOnlyMemory<byte> Buffer => _buffer.AsReadOnlyMemory();
+    public ReadOnlyMemory<byte> Buffer
+    {
+        get
+        {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
+            return _buffer.AsReadOnlyMemory();
+        }
+    }
 
     public IPEndPoint RemoteEndPoint { get; } = remoteEndPoint;
 
@@ -25,9 +33,9 @@ internal readonly struct PooledUdpReceiveResult(IPEndPoint remoteEndPoint, Array
         return new PooledUdpReceiveResult(remoteEndPoint, buffer);
     }
 
-    internal void Dispose()
+    public void Dispose()
     {
-        if (_hasBuffer)
+        if (Interlocked.Exchange(ref _disposed, 1) == 0)
         {
             _buffer.Dispose();
         }

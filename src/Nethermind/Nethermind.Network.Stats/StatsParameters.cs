@@ -30,6 +30,8 @@ namespace Nethermind.Stats
             { DisconnectReason.PeerRefreshFailed, (TimeSpan.FromMinutes(5), -500)},
 
             { DisconnectReason.Other, (TimeSpan.Zero, -200)},
+            { DisconnectReason.TooManyPeers, (TimeSpan.Zero, 0) },
+            { DisconnectReason.HardLimitTooManyPeers, (TimeSpan.Zero, 0) },
 
             // These are like, very bad
             { DisconnectReason.UnexpectedIdentity, (TimeSpan.FromMinutes(15), -10000) },

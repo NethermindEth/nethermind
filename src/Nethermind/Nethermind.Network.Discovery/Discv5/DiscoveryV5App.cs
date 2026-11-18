@@ -29,7 +29,7 @@ namespace Nethermind.Network.Discovery.Discv5;
 
 public sealed class DiscoveryV5App : KademliaDiscoveryApp
 {
-    private readonly bool _allowNonRoutableEnrs;
+    private readonly PeerAddressPolicy _addressPolicy;
     private readonly NetworkListenerState _listenerState;
     private readonly List<Node> _bootNodes;
     private readonly DiscoveryPersistenceManager _persistenceManager;
@@ -37,7 +37,9 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     private readonly DiscoveryV5Transport _transport;
     private readonly ILifetimeScope _discv5Services;
 
+    /// <summary>Creates discovery services using the shared peer address policy.</summary>
     public DiscoveryV5App(
+        PeerAddressPolicy addressPolicy,
         ILifetimeScope rootScope,
         [KeyFilter(IProtectedPrivateKey.NodeKey)] IProtectedPrivateKey nodeKey,
         IEnode enode,
@@ -50,9 +52,10 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         Action<ContainerBuilder>? configureDiscv5Services = null)
         : base("discv5", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
     {
+        ArgumentNullException.ThrowIfNull(addressPolicy);
+        _addressPolicy = addressPolicy;
         IPAddress externalIp = enode.HostIp;
         _listenerState = listenerState;
-        _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
 
         bool useDefaultBootnodes = ShouldUseDefaultDiscv5Bootnodes(externalIp, discoveryConfig);
         _bootNodes = CreateBootNodes(networkConfig, discoveryConfig, useDefaultBootnodes);
@@ -60,6 +63,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         _discv5Services = rootScope.BeginLifetimeScope(builder =>
         {
+            builder.RegisterInstance(_addressPolicy);
             builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
             builder.RegisterInstance(timestamper).As<ITimestamper>();
             Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
@@ -215,7 +219,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     internal bool TryGetAcceptableNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
     {
-        if (KademliaAdapter.TryGetAcceptableNode(enr, _allowNonRoutableEnrs, LocalIp, out Node? enrNode))
+        if (KademliaAdapter.TryGetAcceptableNode(enr, _addressPolicy.AllowedAddresses, LocalIp, out Node? enrNode))
         {
             node = enrNode;
             return true;
@@ -227,10 +231,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     internal Node? RestorePersistedNode(NetworkNode networkNode)
+        => RestorePersistedNode(networkNode, _addressPolicy.AllowedAddresses);
+
+    private Node? RestorePersistedNode(NetworkNode networkNode, PeerAddressPermissions permissions)
     {
         if (networkNode.IsEnr)
         {
-            if (TryGetAcceptableNodeFromEnr(networkNode.Enr, out Node? node))
+            if (KademliaAdapter.TryGetAcceptableNode(networkNode.Enr, permissions, LocalIp, out Node? node))
             {
                 node.SetVerifiedEnr(networkNode.Enr);
                 return node;
@@ -240,37 +247,18 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
 
         Node enode = new(networkNode);
-        return DiscoveryAddressSupport.Supports(LocalIp, enode.DiscoveryAddress.Address) ? enode : null;
+        return enode.HasDiscoveryEndpoint && DiscoveryAddressSupport.Supports(LocalIp, enode.DiscoveryAddress.Address) &&
+            PeerAddressPolicy.IsAcceptable(enode.DiscoveryAddress.Address, permissions) ? enode : null;
     }
 
-    internal static bool IsDiscoveryAddressAcceptable(IPAddress ipAddress, bool allowNonRoutable)
-    {
-        if (IPAddress.Any.Equals(ipAddress) || IPAddress.IPv6Any.Equals(ipAddress) || IPAddress.Broadcast.Equals(ipAddress))
-        {
-            return false;
-        }
-
-        if (ipAddress.IsMulticast)
-        {
-            return false;
-        }
-
-        if (ipAddress.IsSpecialUseAddress)
-        {
-            return false;
-        }
-
-        return allowNonRoutable || !ipAddress.IsLoopbackOrPrivateOrLinkLocal;
-    }
+    internal static bool IsDiscoveryAddressAcceptable(IPAddress ipAddress, PeerAddressPermissions allowNonRoutable)
+        => PeerAddressPolicy.IsAcceptable(ipAddress, allowNonRoutable);
 
     internal static bool IsDiscoveryAddressRoutable(IPAddress ipAddress)
-        => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: false);
+        => IsDiscoveryAddressAcceptable(ipAddress, allowNonRoutable: PeerAddressPermissions.None);
 
     internal static bool ShouldUseDefaultDiscv5Bootnodes(IPAddress externalIp, IDiscoveryConfig discoveryConfig)
         => discoveryConfig.UseDefaultDiscv5Bootnodes && !IsKnownPrivateDiscoveryAddress(externalIp);
-
-    private static bool ShouldAcceptNonRoutableEnrs(IPAddress externalIp)
-        => IsKnownPrivateDiscoveryAddress(externalIp);
 
     private static bool IsKnownPrivateDiscoveryAddress(IPAddress externalIp)
         => !IPAddress.Any.Equals(externalIp)
@@ -290,29 +278,18 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
-        Task adapterTask = _discv5Adapter.RunAsync(cancellationToken);
-        Task? persistenceTask = null;
-
+        using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task adapterTask = _discv5Adapter.RunAsync(lifetime.Token);
+        Task loadTask = _persistenceManager.LoadPersistedNodesInBackground(lifetime.Token, RestorePersistedNode);
+        Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(loadTask, lifetime.Token);
         try
         {
-            await _persistenceManager.LoadPersistedNodes(cancellationToken, RestorePersistedNode);
-
-            persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
-            await Kademlia.Run(cancellationToken);
+            await Kademlia.Run(lifetime.Token);
         }
         finally
         {
-            try
-            {
-                if (persistenceTask is not null)
-                {
-                    await persistenceTask;
-                }
-            }
-            finally
-            {
-                await adapterTask;
-            }
+            await lifetime.CancelAsync();
+            await Task.WhenAll(loadTask, persistenceTask, adapterTask);
         }
     }
 

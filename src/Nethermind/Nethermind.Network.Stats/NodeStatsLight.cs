@@ -20,6 +20,7 @@ namespace Nethermind.Stats;
 public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProvider? timeProvider = null) : INodeStats
 {
     private readonly StatsParameters _statsParameters = StatsParameters.Instance;
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
 
     // How much weight to put on latest speed.
     // 1.0 means that the reported speed will always replaced with latest speed.
@@ -39,13 +40,17 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
 
     private readonly int[] _statCountersArray = new int[_statsLength];
 
-    private DisconnectReason? _lastLocalDisconnect;
+    private sealed record LocalDisconnect(DisconnectReason Reason, DateTime Time);
+    private LocalDisconnect? _lastLocalDisconnect;
+    internal sealed record InboundBan(DisconnectReason Reason, DateTime Time, DateTime Until);
+    private InboundBan? _inboundBan;
+    internal InboundBan? BanEvidence => Volatile.Read(ref _inboundBan);
     private DisconnectReason? _lastRemoteDisconnect;
 
     private DateTime? _lastDisconnectTime;
     private DateTime? _lastFailedConnectionTime;
 
-    private (DateTime, NodeStatsEventType) _delayConnectDeadline = (DateTime.UtcNow - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
+    private (DateTime, NodeStatsEventType) _delayConnectDeadline = ((timeProvider ?? TimeProvider.System).GetUtcNow().UtcDateTime - TimeSpan.FromSeconds(1), NodeStatsEventType.None);
 
     private static readonly Random Random = new();
 
@@ -117,12 +122,12 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
     {
         if (nodeStatsEventType == NodeStatsEventType.ConnectionFailed)
         {
-            _lastFailedConnectionTime = DateTime.UtcNow;
+            _lastFailedConnectionTime = _timeProvider.GetUtcNow().UtcDateTime;
         }
 
         if (_statsParameters.EventParams.TryGetValue(nodeStatsEventType, out (TimeSpan delay, long _) param))
         {
-            UpdateDelayConnectDeadline(DateTime.UtcNow, param.delay, nodeStatsEventType);
+            UpdateDelayConnectDeadline(_timeProvider.GetUtcNow().UtcDateTime, param.delay, nodeStatsEventType);
         }
 
         Increment(nodeStatsEventType);
@@ -132,11 +137,13 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
 
     public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
     {
-        DateTime nowUTC = DateTime.UtcNow;
+        DateTime nowUTC = _timeProvider.GetUtcNow().UtcDateTime;
         _lastDisconnectTime = nowUTC;
         if (disconnectType == DisconnectType.Local)
         {
-            _lastLocalDisconnect = disconnectReason;
+            _lastLocalDisconnect = new LocalDisconnect(disconnectReason, nowUTC);
+            if (TryGetInboundBanDelay(disconnectType, disconnectReason, out TimeSpan banDelay))
+                RestoreInboundBan(new InboundBan(disconnectReason, nowUTC, nowUTC + banDelay));
         }
         else
         {
@@ -228,6 +235,33 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
         }
     }
 
+    public bool IsInboundBanned(DateTime nowUTC)
+        => nowUTC < InboundBanUntil;
+
+    internal DateTime InboundBanUntil => BanEvidence?.Until ?? default;
+
+    internal void RestoreInboundBan(InboundBan evidence)
+    {
+        InboundBan? current = BanEvidence;
+        while (current is null || current.Until < evidence.Until)
+        {
+            InboundBan? previous = Interlocked.CompareExchange(ref _inboundBan, evidence, current);
+            if (ReferenceEquals(previous, current)) return;
+            current = previous;
+        }
+    }
+
+    internal static bool TryGetInboundBanDelay(DisconnectType type, DisconnectReason reason, out TimeSpan delay)
+    {
+        delay = default;
+        if (type != DisconnectType.Local ||
+            reason is not (DisconnectReason.BreachOfProtocol or DisconnectReason.TxFlooding or DisconnectReason.MessageLimitsBreached) ||
+            !StatsParameters.Instance.LocalDisconnectParams.TryGetValue(reason, out (TimeSpan ReconnectDelay, long ReputationScore) penalty))
+            return false;
+        delay = penalty.ReconnectDelay;
+        return delay > TimeSpan.Zero;
+    }
+
     public (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(DateTime nowUTC)
     {
         if (IsDelayedDueToDisconnect(nowUTC))
@@ -246,6 +280,7 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
             return (true, reason);
         }
 
+        if (IsInboundBanned(nowUTC)) return (true, NodeStatsEventType.LocalDisconnectDelay);
         return (false, null);
     }
 
@@ -338,7 +373,7 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
 
         if (_lastLocalDisconnect is not null)
         {
-            if (_statsParameters.LocalDisconnectParams.TryGetValue(_lastLocalDisconnect.Value, out (TimeSpan ReconnectDelay, long ReputationScore) param))
+            if (_statsParameters.LocalDisconnectParams.TryGetValue(_lastLocalDisconnect.Reason, out (TimeSpan ReconnectDelay, long ReputationScore) param))
             {
                 rlpxReputation += param.ReputationScore;
             }

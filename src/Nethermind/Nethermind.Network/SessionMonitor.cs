@@ -23,12 +23,14 @@ namespace Nethermind.Network
         private Task _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
+        private readonly TimeProvider _timeProvider;
 
         // The window is measured from the last pong received, so a session is disconnected once no pong has
         // arrived for this many ping intervals. A ping only goes out every other tick - LastPingUtc is stamped
         // after the tick that sent it, so the guard below fails on the next one - which makes the effective ping
         // period two intervals. Three missed pongs therefore need a window of six intervals.
         private const int MissedPongIntervalsBeforeDisconnect = 6;
+        private static readonly TimeSpan NonWritableTimeout = TimeSpan.FromSeconds(30);
 
         private readonly TimeSpan _pingInterval;
         private readonly List<Task<bool>> _pingTasks = [];
@@ -36,7 +38,13 @@ namespace Nethermind.Network
         private CancellationTokenSource? _cancellationTokenSource;
 
         public SessionMonitor(INetworkConfig config, ILogManager logManager)
+            : this(config, logManager, TimeProvider.System)
         {
+        }
+
+        internal SessionMonitor(INetworkConfig config, ILogManager logManager, TimeProvider timeProvider)
+        {
+            _timeProvider = timeProvider;
             _logger = logManager?.GetClassLogger<SessionMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = config ?? throw new ArgumentNullException(nameof(config));
 
@@ -47,8 +55,14 @@ namespace Nethermind.Network
 
         public void Stop() => StopPingTimer();
 
-        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
-        public IEnumerable<ISession> Sessions => _sessions.Select(static kvp => kvp.Value);
+        private sealed class MonitoredSession(ISession session)
+        {
+            public ISession Session { get; } = session;
+            public long? NonWritableSince { get; set; }
+        }
+
+        private readonly ConcurrentDictionary<Guid, MonitoredSession> _sessions = new();
+        public IEnumerable<ISession> Sessions => _sessions.Select(static kvp => kvp.Value.Session);
 
         public void AddSession(ISession session)
         {
@@ -57,8 +71,8 @@ namespace Nethermind.Network
                 // Stagger ping times so sessions added around the same time don't all ping on the same tick.
                 // Set LastPingUtc to a random offset within the interval so the first ping is naturally spread.
                 int jitterMs = Random.Shared.Next((int)_pingInterval.TotalMilliseconds);
-                session.LastPingUtc = DateTime.UtcNow - TimeSpan.FromMilliseconds(jitterMs);
-                _sessions.TryAdd(session.SessionId, session);
+                session.LastPingUtc = _timeProvider.GetUtcNow().UtcDateTime - TimeSpan.FromMilliseconds(jitterMs);
+                _sessions.TryAdd(session.SessionId, new MonitoredSession(session));
             }
         }
 
@@ -74,10 +88,29 @@ namespace Nethermind.Network
                 try
                 {
                     _pingTasks.Clear();
-                    foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
+                    foreach (KeyValuePair<Guid, MonitoredSession> kvp in _sessions)
                     {
-                        ISession session = kvp.Value;
-                        if (session.State == SessionState.Initialized && DateTime.UtcNow - session.LastPingUtc > _pingInterval)
+                        MonitoredSession monitored = kvp.Value;
+                        ISession session = monitored.Session;
+                        if (session.State != SessionState.Initialized)
+                        {
+                            monitored.NonWritableSince = null;
+                            continue;
+                        }
+
+                        if (session is Session { IsChannelWritable: false })
+                        {
+                            long now = _timeProvider.GetTimestamp();
+                            monitored.NonWritableSince ??= now;
+                            if (_timeProvider.GetElapsedTime(monitored.NonWritableSince.Value, now) >= NonWritableTimeout)
+                            {
+                                session.InitiateDisconnect(DisconnectReason.ReceiveMessageTimeout, "channel not writable");
+                            }
+                            continue;
+                        }
+
+                        monitored.NonWritableSince = null;
+                        if (_timeProvider.GetUtcNow().UtcDateTime - session.LastPingUtc > _pingInterval)
                         {
                             Task<bool> pingTask = SendPingMessage(session);
                             _pingTasks.Add(pingTask);
@@ -124,7 +157,7 @@ namespace Nethermind.Network
                 return true;
             }
 
-            DateTime pingTime = DateTime.UtcNow;
+            DateTime pingTime = _timeProvider.GetUtcNow().UtcDateTime;
             if (pingTime - session.LastPingUtc > _pingInterval)
             {
                 session.LastPingUtc = pingTime;
@@ -145,7 +178,7 @@ namespace Nethermind.Network
                     return true;
                 }
 
-                session.LastPongUtc = DateTime.UtcNow;
+                session.LastPongUtc = _timeProvider.GetUtcNow().UtcDateTime;
                 return true;
             }
 
@@ -160,8 +193,10 @@ namespace Nethermind.Network
         {
             if (_logger.IsTrace) _logger.Trace("Starting session monitor");
 
+            foreach (KeyValuePair<Guid, MonitoredSession> session in _sessions) session.Value.NonWritableSince = null;
+
             _cancellationTokenSource = new CancellationTokenSource();
-            _pingTimer = new PeriodicTimer(_pingInterval);
+            _pingTimer = new PeriodicTimer(_pingInterval, _timeProvider);
             _pingTimerTask = SendPingMessagesAsync();
         }
 

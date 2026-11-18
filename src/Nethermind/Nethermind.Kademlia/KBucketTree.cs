@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Nethermind.Kademlia;
 
-public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
+public class KBucketTree<TNode, TKadKey> : IHealthRoutingTable<TNode, TKadKey>
     where TNode : notnull
     where TKadKey : notnull
 {
@@ -26,6 +26,10 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
     private readonly TreeNode _root;
     private readonly int _b;
+    private readonly Func<TNode, UInt128?>? _getSubnet;
+    private readonly int _bucketSubnetLimit;
+    private readonly int _tableSubnetLimit;
+    private readonly bool _requireReplacementValidation;
     private readonly int _k;
     private readonly TKadKey _currentNodeHash;
     private readonly IKademliaDistance<TKadKey> _distance;
@@ -33,6 +37,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     private readonly ILogger _logger;
 
     private readonly Lock _lock = new();
+    private readonly Dictionary<TKadKey, object> _activeRevisions = [];
     private bool _isMergingRefresh;
 
     public KBucketTree(
@@ -49,6 +54,10 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         IKademliaDistance<TKadKey> distance,
         ILoggerFactory loggerFactory)
     {
+        _getSubnet = config.GetSubnet;
+        _bucketSubnetLimit = config.BucketSubnetLimit;
+        _tableSubnetLimit = config.TableSubnetLimit;
+        _requireReplacementValidation = config.RequireReplacementValidation;
         _k = config.KSize;
         _b = config.Beta;
         _distance = distance;
@@ -60,6 +69,13 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     }
 
     public BucketAddResult TryAddOrRefresh(in TKadKey nodeHash, TNode node, out TNode? toRefresh)
+    {
+        BucketAddResult result = TryAddOrRefresh(nodeHash, node, out toRefresh, out RoutingTableNotifications<TNode> notifications);
+        Publish(notifications);
+        return result;
+    }
+
+    internal BucketAddResult TryAddOrRefresh(in TKadKey nodeHash, TNode node, out TNode? toRefresh, out RoutingTableNotifications<TNode> notifications)
     {
         BucketAddResult resp;
         bool fireAdded;
@@ -82,11 +98,43 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             }
 
             resp = TryAddOrRefreshLocked(nodeHash, nodeToStore, out toRefresh, out fireAdded);
+            if (resp != BucketAddResult.Full) _activeRevisions[nodeHash] = new object();
         }
 
-        if (fireAdded) OnNodeAdded?.Invoke(this, nodeToStore);
+        notifications = new(fireAdded, nodeToStore, false, default);
         return resp;
     }
+
+    internal void Publish(in RoutingTableNotifications<TNode> notifications)
+    {
+        if (notifications.HasRemoved) OnNodeRemoved?.Invoke(this, notifications.Removed!);
+        if (notifications.HasAdded) OnNodeAdded?.Invoke(this, notifications.Added!);
+    }
+
+    BucketAddResult IHealthRoutingTable<TNode, TKadKey>.AddOrRefreshDeferred(in TKadKey hash, TNode node, out TNode? toRefresh, out RoutingTableNotifications<TNode> notifications)
+        => TryAddOrRefresh(hash, node, out toRefresh, out notifications);
+
+    bool IHealthRoutingTable<TNode, TKadKey>.TryGetActive(in TKadKey hash, [MaybeNullWhen(false)] out TNode node, [NotNullWhen(true)] out object? revision)
+    {
+        lock (_lock)
+        {
+            KBucket<TNode, TKadKey> bucket = GetBucketForHash(hash);
+            if (bucket.ContainsNode(hash) && bucket.TryGetStored(hash, out node))
+            {
+                revision = _activeRevisions[hash];
+                return true;
+            }
+            node = default!;
+            revision = null;
+            return false;
+        }
+    }
+
+    bool IHealthRoutingTable<TNode, TKadKey>.Remove(in TKadKey hash, TNode expected, object revision, out RoutingTableNotifications<TNode> notifications)
+        => Remove(hash, expected, true, true, out notifications, revision);
+
+    void IHealthRoutingTable<TNode, TKadKey>.Publish(in RoutingTableNotifications<TNode> notifications)
+        => Publish(notifications);
 
     private BucketAddResult TryAddOrRefreshLocked(
         in TKadKey nodeHash,
@@ -105,6 +153,26 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             if (current.IsLeaf)
             {
                 if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Reached leaf node at depth {depth}");
+                if (current.Bucket.Count >= _k && !current.Bucket.ContainsNode(nodeHash) && ShouldSplit(depth, logDistance))
+                {
+                    SplitBucket(depth, current);
+                    continue;
+                }
+                if (_getSubnet?.Invoke(node) is { } subnet)
+                {
+                    bool replacing = current.Bucket.TryGetStored(nodeHash, out TNode? previous);
+                    if (!replacing) replacing = current.Bucket.TryGetReplacementToEvict(out previous);
+                    if (!replacing || _getSubnet(previous!) != subnet)
+                    {
+                        Func<TNode, bool> matches = item => (!replacing || !EqualityComparer<TNode>.Default.Equals(item, previous)) && _getSubnet(item) == subnet;
+                        if (current.Bucket.CountMatches(matches) >= _bucketSubnetLimit || CountSubnet(_root, matches, _tableSubnetLimit) >= _tableSubnetLimit)
+                        {
+                            toRefresh = default;
+                            fireAdded = false;
+                            return BucketAddResult.Full;
+                        }
+                    }
+                }
                 BucketAddResult resp = current.Bucket.TryAddOrRefresh(nodeHash, node, out toRefresh);
                 fireAdded = resp == BucketAddResult.Added;
                 if (resp is BucketAddResult.Added or BucketAddResult.Refreshed)
@@ -130,6 +198,13 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
             current = goRight ? current.Right! : current.Left!;
             depth++;
         }
+    }
+
+    private static int CountSubnet(TreeNode node, Func<TNode, bool> matches, int remaining)
+    {
+        if (node.IsLeaf) return node.Bucket.CountMatches(matches);
+        int left = CountSubnet(node.Left!, matches, remaining);
+        return left >= remaining ? left : left + CountSubnet(node.Right!, matches, remaining - left);
     }
 
     public bool TryGet(in TKadKey hash, [MaybeNullWhen(false)] out TNode node)
@@ -190,20 +265,54 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
     public bool Remove(in TKadKey nodeHash)
     {
+        bool removed = Remove(nodeHash, default, false, false, out RoutingTableNotifications<TNode> notifications);
+        Publish(notifications);
+        return removed;
+    }
+
+    private bool Remove(in TKadKey nodeHash, TNode? expected, bool conditional, bool activeOnly, out RoutingTableNotifications<TNode> notifications, object? revision = null)
+    {
+        notifications = default;
         bool removed;
+        bool wasActive;
         TNode? removedNode;
+        TNode? promoted;
+        bool didPromote;
         lock (_lock)
         {
             ThrowIfMergeReentered();
             if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Attempting to remove node {nodeHash}");
 
             KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
-            removedNode = bucket.GetByHash(nodeHash);
-            removed = bucket.RemoveAndReplace(nodeHash);
+            wasActive = bucket.ContainsNode(nodeHash);
+            if (revision is not null && (!_activeRevisions.TryGetValue(nodeHash, out object? currentRevision)
+                || !ReferenceEquals(currentRevision, revision))) return false;
+            if (activeOnly && !wasActive) return false;
+            bucket.TryGetStored(nodeHash, out removedNode);
+            if (conditional && (typeof(TNode).IsValueType
+                ? !EqualityComparer<TNode>.Default.Equals(removedNode, expected)
+                : !ReferenceEquals(removedNode, expected))) return false;
+            removed = bucket.Remove(nodeHash, !_requireReplacementValidation, out promoted, out didPromote);
+            if (removed) _activeRevisions.Remove(nodeHash);
+            if (didPromote)
+            {
+                foreach ((TKadKey hash, TNode _) in bucket.GetAllWithHash())
+                {
+                    if (!_activeRevisions.ContainsKey(hash)) _activeRevisions[hash] = new object();
+                }
+            }
         }
 
-        if (removed && removedNode is not null) OnNodeRemoved?.Invoke(this, removedNode);
+        notifications = new(didPromote, promoted, removed && wasActive, removedNode);
         return removed;
+    }
+
+    public TNode[] GetReplacementCandidates(in TKadKey hash)
+    {
+        lock (_lock)
+        {
+            return GetBucketForHash(hash).GetReplacementCandidates();
+        }
     }
 
     private void ThrowIfMergeReentered()
@@ -216,6 +325,8 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
 
     public TNode[] GetAllAtDistance(int distance)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(distance);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(distance, _distance.MaxDistance);
         lock (_lock)
         {
             if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Getting all nodes at distance {distance}");

@@ -145,14 +145,22 @@ public class Kademlia<TKey, TNode, TKadKey> : IKademlia<TKey, TNode>
                 {
                     Interlocked.Increment(ref onlineBootNodes);
                 }
+                else if (!token.IsCancellationRequested)
+                {
+                    _nodeHealthTracker.OnRequestFailed(node);
+                }
             }
             catch (OperationCanceledException)
             {
                 throw;
             }
+            catch (KademliaRequestNotSentException)
+            {
+            }
             catch (Exception e)
             {
                 if (_logger.IsEnabled(LogLevel.Debug)) _logger.LogDebug($"Bootnode ping failed for {node}: {e}");
+                if (!token.IsCancellationRequested) _nodeHealthTracker.OnRequestFailed(node);
             }
         });
 

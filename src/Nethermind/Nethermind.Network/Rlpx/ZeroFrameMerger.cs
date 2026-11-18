@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common.Concurrency;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
@@ -23,9 +24,40 @@ namespace Nethermind.Network.Rlpx
         private NettyBufferPacket? _zeroPacket;
         private int? _currentContextId;
         private readonly FrameHeaderReader _headerReader = new();
+        private readonly PacketReceiptTracker? _receipts;
+        private NettyBufferPacket? _issuedPacket;
+
+        internal ZeroFrameMerger(ILogManager logManager, PacketReceiptTracker receipts) : this(logManager) => _receipts = receipts;
+
+        /// <inheritdoc/>
+        public override void ChannelRead(IChannelHandlerContext context, object message)
+        {
+            try
+            {
+                base.ChannelRead(context, message);
+            }
+            catch (RejectedExecutionException)
+            {
+                _receipts?.Close();
+                _issuedPacket?.SafeRelease();
+                throw;
+            }
+            finally
+            {
+                _issuedPacket = null;
+            }
+        }
+
+        /// <inheritdoc/>
+        public override void ChannelInactive(IChannelHandlerContext context)
+        {
+            _receipts?.Close();
+            base.ChannelInactive(context);
+        }
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
+            _receipts?.Close();
             base.HandlerRemoved(context);
             ReleaseInProgressPacket();
         }
@@ -68,7 +100,7 @@ namespace Nethermind.Network.Rlpx
                 ReadFirstChunk(context, input, frame);
                 if (!frame.TotalPacketSize.HasValue)
                 {
-                    output.Add(_zeroPacket!);
+                    AddCompletedPacket(_zeroPacket!, output);
                     ResetInProgressPacket();
                     return;
                 }
@@ -96,9 +128,16 @@ namespace Nethermind.Network.Rlpx
                     throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a corrupted frame - {input.ReadableBytes} longer than expected");
                 }
 
-                output.Add(completedPacket);
+                AddCompletedPacket(completedPacket, output);
                 ResetInProgressPacket();
             }
+        }
+
+        private void AddCompletedPacket(NettyBufferPacket packet, List<object> output)
+        {
+            _receipts?.Stamp(packet);
+            _issuedPacket = packet;
+            output.Add(packet);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

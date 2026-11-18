@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Net;
+using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -16,6 +17,134 @@ namespace Nethermind.Network.Enr.Test;
 
 public class NodeRecordSignerTests
 {
+    [Test]
+    public void FromBytes_requires_unique_empty_keys([Values] bool duplicate)
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        List<(byte[] Key, byte[] Value)> entries = [([], Rlp.Encode(1))];
+        if (duplicate) entries.Add(([], Rlp.Encode(2)));
+        entries.Add(("id"u8.ToArray(), EncodeString("v4")));
+        entries.Add(("secp256k1"u8.ToArray(), Rlp.Encode(privateKey.CompressedPublicKey.Bytes)));
+        byte[] encoded = CreateSignedRawRecord(privateKey, entries.ToArray());
+
+        if (duplicate)
+        {
+            Assert.That(() => NodeRecord.FromBytes(encoded, new Ecdsa()), Throws.TypeOf<RlpReaderException>());
+        }
+        else
+        {
+            NodeRecord record = NodeRecord.FromBytes(encoded, new Ecdsa());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(record.HasEntry(string.Empty), Is.True);
+                Assert.That(record.ToRlpBytes(), Is.EqualTo(encoded));
+                Assert.That(new NodeRecordSigner(new Ecdsa()).Verify(record), Is.True);
+            }
+        }
+    }
+
+    [Test]
+    public void Verify_uses_original_content_order_for_unknown_unicode_keys()
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        byte[] encoded = CreateSignedRawRecord(privateKey,
+            ("id"u8.ToArray(), EncodeString("v4")),
+            ("secp256k1"u8.ToArray(), Rlp.Encode(privateKey.CompressedPublicKey.Bytes)),
+            (Encoding.UTF8.GetBytes("\ue000"), Rlp.Encode(1)),
+            (Encoding.UTF8.GetBytes("\U00010000"), Rlp.Encode(2)));
+
+        NodeRecord record = NodeRecord.FromBytes(encoded, new Ecdsa());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(record.ToRlpBytes(), Is.EqualTo(encoded));
+            Assert.That(new NodeRecordSigner(new Ecdsa()).Verify(record), Is.True);
+        }
+        encoded[^1] ^= 1;
+        Assert.That(() => NodeRecord.FromBytes(encoded, new Ecdsa()), Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void FromBytes_rejects_compressed_key_outside_curve()
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        byte[] publicKey = new byte[CompressedPublicKey.LengthInBytes];
+        publicKey.AsSpan().Fill(0xff);
+        publicKey[0] = 2;
+        byte[] encoded = CreateSignedRawRecord(privateKey,
+            ("id"u8.ToArray(), EncodeString("v4")), ("secp256k1"u8.ToArray(), Rlp.Encode(publicKey)));
+        Assert.That(() => NodeRecord.FromBytes(encoded, new Ecdsa()), Throws.TypeOf<RlpReaderException>());
+    }
+
+    [Test]
+    public void Deserialize_rejects_wrong_address_family([Values] bool ipv6)
+    {
+        byte[] encoded = CreateRecord(("id", EncodeString("v4")),
+            (ipv6 ? "ip6" : "ip", Rlp.Encode(new byte[ipv6 ? 4 : 16])));
+        NodeRecordSigner signer = new(new Ecdsa());
+        RlpReader reader = new(encoded);
+        Assert.That(signer.TryDeserialize(ref reader, out _), Is.False);
+    }
+
+    [Test]
+    public void Signed_record_preserves_binary_keys_when_reencoded()
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        byte[] encoded = CreateSignedRawRecord(privateKey,
+            ("id"u8.ToArray(), EncodeString("v4")),
+            ("secp256k1"u8.ToArray(), Rlp.Encode(privateKey.CompressedPublicKey.Bytes)),
+            ([0xfe], Rlp.Encode(1)), ([0xff], Rlp.Encode(2)));
+        NodeRecord record = NodeRecord.FromBytes(encoded, new Ecdsa());
+        new NodeRecordSigner(new Ecdsa(), privateKey).Sign(record);
+        Assert.That(record.ToRlpBytes(), Is.EqualTo(encoded));
+    }
+
+    [Test]
+    public void Deserialize_rejects_invalid_compressed_key_prefix([Values(0, 4, 6, 255)] byte prefix)
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        byte[] publicKey = [.. privateKey.CompressedPublicKey.Bytes];
+        publicKey[0] = prefix;
+        byte[] encoded = CreateRecord(("id", EncodeString("v4")), ("secp256k1", Rlp.Encode(publicKey)));
+        NodeRecordSigner signer = new(new Ecdsa());
+        RlpReader reader = new(encoded);
+        Assert.That(signer.TryDeserialize(ref reader, out _), Is.False);
+    }
+
+    private static byte[] CreateSignedRawRecord(PrivateKey privateKey, params (byte[] Key, byte[] Value)[] entries)
+    {
+        List<byte[]> content = [Rlp.Encode(1UL)];
+        foreach ((byte[] key, byte[] value) in entries)
+        {
+            content.Add(Rlp.Encode(key));
+            content.Add(value);
+        }
+        ValueHash256 hash = Keccak.Compute(EncodeSequence(content));
+        Signature signature = new Ecdsa().Sign(privateKey, in hash);
+        content.Insert(0, Rlp.Encode(signature.Bytes));
+        return EncodeSequence(content);
+
+        static byte[] EncodeSequence(List<byte[]> items)
+        {
+            int length = 0;
+            foreach (byte[] item in items) length += item.Length;
+            byte[] encoded = new byte[Rlp.LengthOfSequence(length)];
+            RlpWriter writer = RlpWriter.ContentWriter(encoded);
+            writer.StartSequence(length);
+            foreach (byte[] item in items) writer.WriteEncoded(item);
+            return encoded;
+        }
+    }
+
+    [Test]
+    public void TryDeserialize_rejects_truncated_tcp_value()
+    {
+        byte[] encoded = [0xf8, 0x4f, 0xb8, 0x40, .. new byte[64], .. Convert.FromHexString("01826964827634837463708276")];
+        RlpReader reader = new(encoded);
+        NodeRecordSigner signer = new(new Ecdsa());
+        Assert.That(signer.TryDeserialize(ref reader, out _), Is.False);
+    }
+
     private const string TestPrivateKey = "b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291";
 
     [Test(Description = "https://eips.ethereum.org/EIPS/eip-778")]

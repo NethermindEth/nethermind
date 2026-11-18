@@ -41,7 +41,7 @@ namespace Nethermind.Api
         public ulong? ExitOnBlockNumber { get; set; } = null;
         public bool ExitOnInvalidBlock { get; set; } = false;
         public int BackgroundTaskConcurrency { get; set; } = 2;
-        public int BackgroundTaskMaxNumber { get; set; } = 2048;
+        public int BackgroundTaskMaxNumber { get; set; } = 8192;
         public bool InRunnerTest { get; set; } = false;
         public bool EvmWarmupEnabled { get; set; } = true;
         public bool PipelineWarmupEnabled { get; set; } = true;

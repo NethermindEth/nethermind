@@ -41,6 +41,7 @@ namespace Nethermind.Stats.Model
             public EnrRecordState? RecordState;
             public ulong HighestObservedSequence;
             public ulong RequestingSequence;
+            public long ActiveOwners;
         }
 
         private sealed class EnrRecordState(NodeRecord record, bool isVerified)
@@ -347,6 +348,8 @@ namespace Nethermind.Stats.Model
             Volatile.Write(ref existing.HighestObservedSequence, highestObservedSequence);
             Volatile.Write(ref existing.RecordState, existingRecord);
             Volatile.Write(ref existing.RequestingSequence, requestingSequence);
+            existing.ActiveOwners = checked(existing.ActiveOwners + candidate.ActiveOwners);
+            candidate.ActiveOwners = 0;
         }
 
         private EnrCacheState? GetEnrState()
@@ -467,7 +470,48 @@ namespace Nethermind.Stats.Model
                     }
 
                     Volatile.Write(ref state.RequestingSequence, sequence);
-                    return current == 0;
+                    return current == 0 && state.ActiveOwners == 0;
+                }
+            }
+        }
+
+        internal bool TryAcquireEnrRefresh(ulong sequence, [NotNullWhen(true)] out IDisposable? owner)
+        {
+            owner = null;
+            if (sequence == 0) return false;
+            while (true)
+            {
+                EnrCacheState state = GetOrCreateEnrState();
+                lock (state.Sync)
+                {
+                    if (state.Redirect is not null) continue;
+                    if (state.HighestObservedSequence >= sequence) return false;
+                    ulong pending = state.RequestingSequence;
+                    state.RequestingSequence = Math.Max(pending, sequence);
+                    if (state.ActiveOwners != 0 || pending != 0) return false;
+                    state.ActiveOwners = 1;
+                    owner = new EnrRefreshOwner(state);
+                    return true;
+                }
+            }
+        }
+
+        private sealed class EnrRefreshOwner(EnrCacheState state) : IDisposable
+        {
+            private int _disposed;
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+                while (true)
+                {
+                    state = FollowEnrState(state);
+                    lock (state.Sync)
+                    {
+                        if (state.Redirect is not null) continue;
+                        if (--state.ActiveOwners == 0) state.RequestingSequence = 0;
+                        return;
+                    }
                 }
             }
         }
@@ -788,6 +832,15 @@ namespace Nethermind.Stats.Model
         }
 
         public bool? ValidatedProtocol { get; set; }
+
+        internal sealed record DiscoveryProof(IPAddress Address, int Port, long Timestamp);
+
+        private DiscoveryProof? _lastDiscoveryProof;
+        internal DiscoveryProof? LastDiscoveryProof
+        {
+            get => Volatile.Read(ref _lastDiscoveryProof);
+            set => Volatile.Write(ref _lastDiscoveryProof, value);
+        }
 
         private static IPEndPoint GetIPEndPoint(string host, int port) => new(IPAddress.Parse(host), port);
 

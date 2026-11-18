@@ -40,6 +40,7 @@ namespace Nethermind.Network.Rlpx
         private readonly TaskCompletionSource<object> _initCompletionSource = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private IChannel _channel;
         private readonly TimeSpan _sendLatency = sendLatency;
+        internal Func<bool>? InboundAdmission { get; init; }
 
         public override void ChannelActive(IChannelHandlerContext context)
         {
@@ -118,6 +119,11 @@ namespace Nethermind.Network.Rlpx
                 input.ReadBytes(authData);
                 Interlocked.Add(ref Metrics.P2PBytesReceived, authData.Length);
                 Packet ack = _service.Ack(_handshake, new Packet(authData));
+                if (InboundAdmission?.Invoke() == false)
+                {
+                    _initCompletionSource.TrySetResult(null);
+                    return;
+                }
 
                 //_p2PSession.RemoteNodeId = _remoteId;
                 if (_logger.IsTrace) _logger.Trace($"Sending ACK to {RemoteId:hide} @ {context.Channel.RemoteAddress:hide}");
@@ -151,7 +157,7 @@ namespace Nethermind.Network.Rlpx
             }
 
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameMerger)} for {RemoteId:hide} @ {context.Channel.RemoteAddress:hide}");
-            context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager));
+            context.Channel.Pipeline.AddLast(new ZeroFrameMerger(_logManager, _session.InboundReceipts));
 
             PacketSender packetSender = new(_serializationService, _logManager, _sendLatency);
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(PacketSender)} for {_session.RemoteNodeId:hide} @ {context.Channel.RemoteAddress:hide}");
@@ -160,6 +166,7 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroNettyP2PHandler)} for {RemoteId:hide} @ {context.Channel.RemoteAddress:hide}");
             ZeroNettyP2PHandler handler = new(_session, _logManager);
             context.Channel.Pipeline.AddLast(_group, handler);
+            _session.InboundReceipts.BindExecutorLifetime(context.Channel.Pipeline.Context(handler).Executor.TerminationCompletion);
 
             handler.Init(packetSender, context);
 

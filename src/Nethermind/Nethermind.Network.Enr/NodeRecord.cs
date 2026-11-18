@@ -94,8 +94,6 @@ public class NodeRecord
         }
     }
 
-    public bool Snap { get; set; }
-
     public NodeRecord() => SetEntry(IdEntry.Instance);
 
     /// <summary>
@@ -277,12 +275,13 @@ public class NodeRecord
     /// <param name="entry"></param>
     public void SetEntry(EnrContentEntry entry)
     {
-        if (Entries.ContainsKey(entry.Key))
+        string sortKey = entry.SortKey;
+        if (Entries.ContainsKey(sortKey))
         {
             EnrSequence++;
         }
 
-        Entries[entry.Key] = entry;
+        Entries[sortKey] = entry;
         OriginalRlp = null;
         _enrString = null;
         _contentHash = null;
@@ -294,7 +293,7 @@ public class NodeRecord
     /// </summary>
     /// <param name="entryKey">Key of the entry to check.</param>
     /// <returns><see langword="true"/> when the entry is present; otherwise <see langword="false"/>.</returns>
-    public bool HasEntry(string entryKey) => Entries.ContainsKey(entryKey);
+    public bool HasEntry(string entryKey) => Entries.ContainsKey(EnrContentEntry.GetSortKey(entryKey));
 
     /// <summary>
     /// Gets a record entry value (in case of the value types). Use <see cref="GetObj{TValue}"/> for reference types./>
@@ -304,7 +303,7 @@ public class NodeRecord
     /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetValue<TValue>(string entryKey) where TValue : struct
     {
-        if (Entries.TryGetValue(entryKey, out EnrContentEntry? value))
+        if (Entries.TryGetValue(EnrContentEntry.GetSortKey(entryKey), out EnrContentEntry? value))
         {
             EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)value;
             return entry.Value;
@@ -321,7 +320,7 @@ public class NodeRecord
     /// <returns>Value of the entry or <value>null</value> if the entry is missing.</returns>
     public TValue? GetObj<TValue>(string entryKey) where TValue : class
     {
-        if (Entries.TryGetValue(entryKey, out EnrContentEntry? value))
+        if (Entries.TryGetValue(EnrContentEntry.GetSortKey(entryKey), out EnrContentEntry? value))
         {
             EnrContentEntry<TValue> entry = (EnrContentEntry<TValue>)value;
             return entry.Value;
@@ -365,6 +364,17 @@ public class NodeRecord
     /// <param name="writer">An RLP writer to encode the content to.</param>
     private void EncodeContent(ref RlpWriter writer)
     {
+        if (OriginalRlp is not null)
+        {
+            RlpReader fields = new RlpReader(OriginalRlp).EnterSequence(out _);
+            fields.SkipItem();
+            ReadOnlySpan<byte> content = fields.ReadRaw(fields.Remaining);
+            RlpSequence original = writer.StartSequence(content.Length);
+            writer.WriteEncoded(content);
+            writer.EndSequence(original);
+            return;
+        }
+
         int contentLength = GetContentLengthWithoutSignature();
         RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(EnrSequence);

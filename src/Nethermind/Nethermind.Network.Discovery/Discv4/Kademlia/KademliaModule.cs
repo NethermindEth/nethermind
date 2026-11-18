@@ -20,14 +20,17 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// <param name="bootNodes"></param>
 public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryNodes)
 {
-    protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
+    protected override void RegisterProtocolServices(ContainerBuilder builder)
+    {
+        DiscoveryApp.RegisterKademliaAdapter<KademliaAdapter>(builder);
+        builder
             // This two class contains the actual `INodeSource` logic. As in finding nodes within the network.
             .AddSingleton<IKademliaNodeSource, NodeSource>()
 
             // Some transport wiring.
-            .AddSingleton<IKademliaAdapter, KademliaAdapter>()
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
             .AddSingleton<DiscoveryHandler>()
             ;
+    }
 }

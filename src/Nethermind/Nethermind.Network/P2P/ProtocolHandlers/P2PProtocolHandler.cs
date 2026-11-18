@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -16,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -31,9 +31,14 @@ public class P2PProtocolHandler(
     INodeStatsManager nodeStatsManager,
     IMessageSerializationService serializer,
     IBackgroundTaskScheduler backgroundTaskScheduler,
-    ILogManager logManager)
-    : ProtocolHandlerBase(session, nodeStatsManager, serializer, backgroundTaskScheduler, logManager), IPingSender, IP2PProtocolHandler
+    ILogManager logManager,
+    INetworkConfig networkConfig,
+    TimeProvider? timeProvider = null)
+    : ProtocolHandlerBase(session, nodeStatsManager, serializer, backgroundTaskScheduler, logManager, timeProvider), IPingSender, IP2PProtocolHandler
 {
+    private readonly TimeProvider _timeProvider = timeProvider ?? TimeProvider.System;
+    private readonly TimeSpan _pingInterval = TimeSpan.FromMilliseconds(networkConfig.P2PPingInterval);
+
     private const int MaxCapabilityCount = 64;
     /// <summary>
     /// Maximum size of a base protocol (p2p) message in bytes (2 KiB).
@@ -41,9 +46,13 @@ public class P2PProtocolHandler(
     public static readonly long BaseProtocolMaxMsgSize = 2.KiB;
 
     private TaskCompletionSource<Packet> _pongCompletionSource;
+    private RecentPing _recentPing;
+
+    private sealed record RecentPing(TaskCompletionSource<Packet> Source, long SentAt);
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
     private bool _receivedHello;
+    private bool _acceptedHello;
     private readonly List<Capability> _agreedCapabilities = [];
     private List<Capability> _availableCapabilities = [];
 
@@ -55,7 +64,7 @@ public class P2PProtocolHandler(
 
     public override int MessageIdSpaceSize => 0x10;
 
-    protected override TimeSpan InitTimeout => Timeouts.P2PHello;
+    protected override TimeSpan InitTimeout => Session.Direction == ConnectionDirection.In ? Timeouts.P2PHello * (2d / 3d) : Timeouts.P2PHello;
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
@@ -89,7 +98,7 @@ public class P2PProtocolHandler(
 
         // We are expecting to receive Hello message anytime from the handshake completion,
         // irrespective of sending Hello from our side
-        _ = CheckProtocolInitTimeout();
+        _ = CheckProtocolInitTimeout(_timeProvider);
     }
 
     public override void HandleMessage(Packet msg)
@@ -114,8 +123,9 @@ public class P2PProtocolHandler(
 
                     _receivedHello = true;
                     using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
-                    HandleHello(helloMessage);
+                    _acceptedHello = HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
+                    if (!_acceptedHello) break;
 
                     // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
                     // which should be constant for the whole session. Some protocols (like Eth) are sending messages
@@ -162,6 +172,12 @@ public class P2PProtocolHandler(
                 }
             case P2PMessageCode.AddCapability:
                 {
+                    if (!_acceptedHello || Session.IsClosing)
+                    {
+                        DisconnectBreachOfProtocol("AddCapability before accepted Hello");
+                        break;
+                    }
+
                     using AddCapabilityMessage message = Deserialize<AddCapabilityMessage>(msg.Data);
                     Capability capability = message.Capability;
                     if (_availableCapabilities.Contains(capability))
@@ -273,17 +289,24 @@ public class P2PProtocolHandler(
         return nextCapability is not null;
     }
 
-    private void HandleHello(HelloMessage hello)
+    private bool HandleHello(HelloMessage hello)
     {
         bool isInbound = !_sentHello;
 
         if (Logger.IsTrace) TraceReceivedHello();
 
+        // Snappy applies to every message after a p2p v5 Hello, so it must be on before
+        // any check below, or later admission, can send a Disconnect.
+        if (hello.P2PVersion >= 5)
+        {
+            Session.EnableSnappy();
+        }
+
         if (hello.NodeId == _localNodeId || Session.RemoteNodeId == _localNodeId)
         {
             if (Logger.IsDebug) Logger.Debug($"Disconnecting {Session:hide}: remote identity is this node's own identity");
             Session.InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, "connection to self");
-            return;
+            return false;
         }
 
         // Nothing from the Hello may be applied until the identity it claims agrees with the authenticated one.
@@ -292,7 +315,7 @@ public class P2PProtocolHandler(
             if (Logger.IsDebug) DebugInconsistentNodeId(hello, isInbound);
             Session.InitiateDisconnect(DisconnectReason.UnexpectedIdentity,
                 $"expected {Session.RemoteNodeId}, received hello with {hello.NodeId}");
-            return;
+            return false;
         }
 
         RemoteClientId = hello.ClientId;
@@ -328,10 +351,11 @@ public class P2PProtocolHandler(
             }
         }
 
-        if (_agreedCapabilities.Count == 0)
+        if (_agreedCapabilities.TrueForAll(static capability => capability.ProtocolCode == Protocol.Snap))
         {
             _nodeStatsManager.ReportFailedValidation(Session.Node, CompatibilityValidationType.Capabilities);
             DisconnectNoCapabilityMatched(capabilities);
+            return false;
         }
 
         ReceivedProtocolInitMsg(hello);
@@ -345,6 +369,8 @@ public class P2PProtocolHandler(
         };
 
         NotifyProtocolInitialized(eventArgs);
+        if (!Session.IsClosing) Session.MarkAuthenticated();
+        return !Session.IsClosing;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedHello()
@@ -380,22 +406,23 @@ public class P2PProtocolHandler(
         if (previousSource is not null)
         {
             if (Logger.IsWarn) WarnDuplicatePing();
-            return true;
+            return previousSource.Task.IsCompletedSuccessfully;
         }
 
         Task<Packet> pongTask = newSource.Task;
 
         if (Logger.IsTrace) TraceSendingPing();
 
+        Volatile.Write(ref _recentPing, new RecentPing(newSource, _timeProvider.GetTimestamp()));
         Send(PingMessage.Instance);
 
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingOut);
-        long startTime = Stopwatch.GetTimestamp();
+        long startTime = _timeProvider.GetTimestamp();
 
         using CancellationTokenSource delayCancellation = new();
         try
         {
-            Task firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing, _timeProvider, delayCancellation.Token));
             if (firstTask != pongTask)
             {
                 _nodeStatsManager.ReportTransferSpeedEvent(
@@ -405,7 +432,7 @@ public class P2PProtocolHandler(
                 return false;
             }
 
-            long latency = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
+            long latency = (long)_timeProvider.GetElapsedTime(startTime).TotalMilliseconds;
             _nodeStatsManager.ReportTransferSpeedEvent(Session.Node, TransferSpeedType.Latency, latency);
             return true;
         }
@@ -490,13 +517,20 @@ public class P2PProtocolHandler(
 
     private void HandlePong(Packet msg)
     {
+        TaskCompletionSource<Packet> source = Volatile.Read(ref _pongCompletionSource);
+        if (source is null)
+        {
+            RecentPing recent = Volatile.Read(ref _recentPing);
+            if (recent is null || _timeProvider.GetElapsedTime(recent.SentAt) >= _pingInterval) return;
+            source = recent.Source;
+        }
+        if (!source.TrySetResult(msg)) return;
+
         if (Logger.IsTrace) TraceHandlingPong();
         _nodeStatsManager.ReportEvent(Session.Node, NodeStatsEventType.P2PPingIn);
-        // A pong that arrives after Timeouts.P2PPing no longer completes the source, but it still proves the peer
-        // is answering. The session monitor measures its disconnect window from this stamp, so crediting it here
-        // is what keeps a peer whose latency exceeds the per-ping timeout from being reaped as unresponsive.
-        Session.LastPongUtc = DateTime.UtcNow;
-        _pongCompletionSource?.TrySetResult(msg);
+        // A pong after the per-ping timeout still proves the peer answers (#12811). Credit a recent ping
+        // so the session monitor does not reap slow peers, while unsolicited and duplicate pongs stay ignored.
+        Session.LastPongUtc = _timeProvider.GetUtcNow().UtcDateTime;
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceHandlingPong()

@@ -60,7 +60,7 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         _channelFactory = channelFactory;
         _logger = logManager.GetClassLogger<CompositeDiscoveryApp>();
         _discoveryApps = discoveryApps;
-        _compositeNodeSource = new CompositeNodeSource(_discoveryApps);
+        _compositeNodeSource = new CompositeNodeSource(_discoveryApps, logManager);
     }
 
     private static KademliaDiscoveryApp[] CreateDiscoveryApps(
@@ -175,13 +175,16 @@ public sealed class CompositeDiscoveryApp : IDiscoveryApp
         NodeRecord record,
         IPAddress localIp,
         IPEndPoint? preferredEndpoint,
-        [NotNullWhen(true)] out Node? node)
+        [NotNullWhen(true)] out Node? node,
+        PeerAddressPermissions allowNonRoutable)
     {
         Span<AddressFamily> addressFamilies = stackalloc AddressFamily[2];
         int count = DiscoveryAddressSupport.GetSupportedFamilies(localIp, preferredEndpoint, addressFamilies);
         for (int i = 0; i < count; i++)
         {
-            if (Node.TryFromDiscoveryEnr(record, addressFamilies[i], out node))
+            if (Node.TryFromDiscoveryEnr(record, addressFamilies[i], out node) &&
+                PeerAddressPolicy.IsAcceptable(node.DiscoveryAddress.Address,
+                    allowNonRoutable))
             {
                 return true;
             }

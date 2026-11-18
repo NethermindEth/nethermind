@@ -18,6 +18,10 @@ namespace Nethermind.Network
             remove { }
         }
 
+        /// <summary>Raised after initial resolution and every successful cached refresh.</summary>
+        /// <remarks>An already-completed immutable snapshot need not raise an initial notification.</remarks>
+        event EventHandler<NethermindIp>? Resolved;
+
         /// <summary>
         /// Resolves the node's local and external IP addresses.
         /// </summary>

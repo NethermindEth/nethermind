@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
@@ -26,13 +27,28 @@ namespace Nethermind.Network
         /// </summary>
         public Node Node { get; } = node;
 
+        internal bool IsInboundCandidate { get; init; }
+
         internal INodeStats? Stats { get; } = stats;
+        private IDisposable? _statsLease;
+        private readonly INodeStatsManager? _statsManager;
+
+        internal Peer(Node node, INodeStats? stats, IDisposable? statsLease, INodeStatsManager statsManager) : this(node, stats)
+        {
+            _statsLease = statsLease;
+            _statsManager = statsManager;
+        }
+
+        internal void PromoteStats() => _statsManager?.PromoteLease(Volatile.Read(ref _statsLease));
+
+        internal void ReleaseStats() => Interlocked.Exchange(ref _statsLease, null)?.Dispose();
 
         /// <remarks>
         /// Guards <see cref="IsAwaitingConnection"/>, <see cref="InSession"/>, and <see cref="OutSession"/>
         /// as a unit. Using a dedicated object avoids locking on a publicly visible instance.
         /// </remarks>
         internal readonly object SessionLock = new();
+        internal bool RemovedFromPool { get; set; }
 
         private volatile bool _isAwaitingConnection;
         private volatile ISession? _inSession;

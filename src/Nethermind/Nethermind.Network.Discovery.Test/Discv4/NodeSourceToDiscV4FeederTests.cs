@@ -19,6 +19,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4;
 
 public class NodeSourceToDiscV4FeederTests
 {
+    private static readonly IPEndPoint PublicEndpoint = new(IPAddress.Parse("8.8.8.8"), 30303);
+
     [Test]
     [CancelAfter(1000)]
     public async Task Test_ShouldAddNodeToDiscover(CancellationToken token)
@@ -27,14 +29,16 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, 10);
+        using PeerAddressPolicy policy = CreatePolicy();
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, policy, 1);
         TaskCompletionSource nodeAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ => nodeAdded.TrySetResult());
 
-        _ = feeder.Run();
-        source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        Task feederTask = feeder.Run();
+        source.AddNode(new Node(TestItem.PublicKeyA, PublicEndpoint));
         await nodeAdded.Task.WaitAsync(token);
 
+        await feederTask.WaitAsync(token);
         discoveryApp.Received().AddNodeToDiscovery(Arg.Any<Node>());
     }
 
@@ -46,7 +50,8 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, 10);
+        using PeerAddressPolicy policy = CreatePolicy();
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, policy, 10);
         TaskCompletionSource expectedNodesAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int addedNodes = 0;
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ =>
@@ -57,12 +62,13 @@ public class NodeSourceToDiscV4FeederTests
             }
         });
 
-        _ = feeder.Run();
+        Task feederTask = feeder.Run();
         for (int i = 0; i < 20; i++)
         {
-            source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+            source.AddNode(new Node(TestItem.PublicKeyA, PublicEndpoint));
         }
         await expectedNodesAdded.Task.WaitAsync(token);
+        await feederTask.WaitAsync(token);
 
         discoveryApp.Received(10).AddNodeToDiscovery(Arg.Any<Node>());
     }
@@ -75,8 +81,9 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, 0);
+        source.AddNode(new Node(TestItem.PublicKeyA, PublicEndpoint));
+        using PeerAddressPolicy policy = CreatePolicy();
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, policy, 0);
 
         await feeder.Run().WaitAsync(token);
 
@@ -91,12 +98,13 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, 1);
+        using PeerAddressPolicy policy = CreatePolicy();
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, CreateListenerState(), LimboLogs.Instance, policy, 1);
         TaskCompletionSource validNodeAdded = new(TaskCreationOptions.RunContinuationsAsynchronously);
         discoveryApp.When(x => x.AddNodeToDiscovery(Arg.Any<Node>())).Do(_ => validNodeAdded.TrySetResult());
         Task feederTask = feeder.Run();
         Assert.That(Node.TryFromEnr(CreateTcpOnlyRecord(), out Node? tcpOnlyNode), Is.True);
-        Node validNode = new(TestItem.PublicKeyA, TestItem.IPEndPointA);
+        Node validNode = new(TestItem.PublicKeyA, PublicEndpoint);
 
         source.AddNode(tcpOnlyNode!);
         source.AddNode(validNode);
@@ -115,12 +123,14 @@ public class NodeSourceToDiscV4FeederTests
         IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
+        using PeerAddressPolicy policy = CreatePolicy();
         NodeSourceToDiscV4Feeder feeder = new(
             source,
             discoveryApp,
             processExitSource,
-            CreateListenerState(IPAddress.Parse("2001:db8::5")),
+            CreateListenerState(IPAddress.Parse("2001:4860::5")),
             LimboLogs.Instance,
+            policy,
             1);
         NodeRecord record = CreateAsymmetricDualStackRecord();
 #pragma warning disable NUnit2045 // Keep prerequisite acquisition outside a grouped scope; its output is used by later assertions or subsequent setup/disposal.
@@ -134,7 +144,7 @@ public class NodeSourceToDiscV4FeederTests
 
         discoveryApp.Received(1).AddNodeToDiscovery(Arg.Is<Node>(added =>
             added.Id.Equals(node.Id) &&
-            added.Host == "2001:db8::1" &&
+            added.Host == "2001:4860::1" &&
             added.Port == 30303 &&
             added.DiscoveryPort == 30304));
     }
@@ -148,10 +158,11 @@ public class NodeSourceToDiscV4FeederTests
         IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
         processExitSource.Token.Returns(token);
         NetworkListenerState listenerState = CreateListenerState(IPAddress.IPv6Any, IPAddress.Any);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, listenerState, LimboLogs.Instance, 1);
+        using PeerAddressPolicy policy = CreatePolicy();
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, listenerState, LimboLogs.Instance, policy, 1);
         Task feederTask = feeder.Run();
-        Node ipv6Node = new(TestItem.PublicKeyA, "2001:db8::1", 30303, 30304);
-        Node ipv4Node = new(TestItem.PublicKeyB, "192.0.2.1", 30303, 30304);
+        Node ipv6Node = new(TestItem.PublicKeyA, "2001:4860::1", 30303, 30304);
+        Node ipv4Node = new(TestItem.PublicKeyB, "8.8.8.1", 30303, 30304);
 
         source.AddNode(ipv6Node);
         source.AddNode(ipv4Node);
@@ -173,14 +184,18 @@ public class NodeSourceToDiscV4FeederTests
         ILogger logger = new(underlyingLogger);
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<NodeSourceToDiscV4Feeder>().Returns(logger);
-        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, listenerState, logManager, 1);
-        source.AddNode(new Node(TestItem.PublicKeyA, TestItem.IPEndPointA));
+        using PeerAddressPolicy policy = CreatePolicy();
+        NodeSourceToDiscV4Feeder feeder = new(source, discoveryApp, processExitSource, listenerState, logManager, policy, 1);
+        source.AddNode(new Node(TestItem.PublicKeyA, PublicEndpoint));
 
         await feeder.Run();
 
         discoveryApp.DidNotReceive().AddNodeToDiscovery(Arg.Any<Node>());
         underlyingLogger.Received(1).Debug(Arg.Is<string>(message => message.Contains("no discovery listener is bound")));
     }
+
+    private static PeerAddressPolicy CreatePolicy()
+        => new(CreateIpResolver(), new LocalAddressSource(LimboLogs.Instance, () => []));
 
     private static IIPResolver CreateIpResolver(IPAddress? localIp = null)
     {
@@ -208,19 +223,19 @@ public class NodeSourceToDiscV4FeederTests
     private static NodeRecord CreateTcpOnlyRecord() =>
         TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyA,
-            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("8.8.8.1"),
             tcpPort: 30303,
             udpPort: null);
 
     private static NodeRecord CreateAsymmetricDualStackRecord() =>
         TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyA,
-            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("8.8.8.1"),
             tcpPort: 30303,
             udpPort: null,
             configureExtras: record =>
             {
-                record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+                record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:4860::1")));
                 record.SetEntry(new Udp6Entry(30304));
             });
 }

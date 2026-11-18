@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -33,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
-        private ClockCache<long, byte>? _pooledTransactionRequests;
+        private PooledTransactionRequests? _pooledTransactionRequests;
 
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
@@ -60,8 +61,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IGossipPolicy gossipPolicy,
             IForkInfo forkInfo,
             ILogManager logManager,
-            ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            ITxGossipPolicy? transactionsGossipPolicy = null,
+            TimeProvider? timeProvider = null)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy, timeProvider)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(this);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(this);
@@ -100,18 +102,31 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     {
                         if (!Eth66RequestId.TryPeek(message.Content.Span, out long requestId))
                             throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage)}.");
-                        if (Volatile.Read(ref _pooledTransactionRequests)?.Delete(requestId) != true)
+                        if (Volatile.Read(ref _pooledTransactionRequests)?.TryClaim(requestId, out PooledTransactionRequests.Request? requested) != true)
                         {
                             ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage)} response ignored", size);
                             return true;
                         }
+                        using PooledTransactionRequests.Request snapshot = requested!;
                         if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, static txMessage => txMessage.EthMessage, pooledResponse: true))
                             return true;
                         ReportIn(pooledTxMsg, size);
-                        HandlePooledTransactions(pooledTxMsg.EthMessage);
+                        if (!MatchesPooledTransactionRequest(pooledTxMsg.EthMessage.Transactions.AsSpan(), snapshot.Hashes))
+                        {
+                            ReturnUnsubmittedTransactions(pooledTxMsg.EthMessage.Transactions.AsSpan());
+                            pooledTxMsg.Dispose();
+                            IgnorePooledTransactionResponse();
+                            ThrowMismatchedPooledTransactionsResponse(requestId);
+                        }
+                        HandlePooledTransactions(pooledTxMsg.EthMessage, solicited: true, snapshot.Reservation,
+                            snapshot.CreateResponseContext(pooledTxMsg.EthMessage.Transactions.AsSpan()));
                     }
                     else
                     {
+                        if (Eth66RequestId.TryPeek(message.Content.Span, out long ignoredRequestId)
+                            && Volatile.Read(ref _pooledTransactionRequests)?.TryClaim(ignoredRequestId,
+                                out PooledTransactionRequests.Request? ignoredRequest, message.ReceivedAt) == true)
+                            ignoredRequest!.Dispose();
                         IgnorePooledTransactionResponse();
                         const string ignored = $"{nameof(PooledTransactionsMessage)} ignored, syncing";
                         ReportIn(ignored, size);
@@ -170,10 +185,38 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
 
-        private protected override void TrackPooledTransactionRequest(P2PMessage message)
+        private void Handle(BlockHeadersMessage message, long size) => _headersRequests66.Handle(message.RequestId, message.EthMessage.BlockHeaders, size);
+
+        private void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size) => _bodiesRequests66.Handle(blockBodiesMessage.RequestId, (blockBodiesMessage.EthMessage.Bodies, size), size);
+
+        private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
+
+        protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
+
+        private protected override void ExpirePooledTransactionRequests() => Volatile.Read(ref _pooledTransactionRequests)?.ExpirePending();
+
+        private protected override bool TryTrackPooledTransactionRequest(P2PMessage message, PeerWorkQuota.Reservation reservation,
+            out RetryRequestConfirmation? confirmation)
         {
-            if (message is GetPooledTransactionsMessage request)
-                LazyInitializer.EnsureInitialized(ref _pooledTransactionRequests, static () => new(2048, lockPartition: 1)).Set(request.RequestId, 0);
+            confirmation = null;
+            if (message is not GetPooledTransactionsMessage request) return false;
+            using ArrayPoolList<RetryRequestToken<ValueHash256>> tokens = CaptureRequestTokens(request.EthMessage.Hashes.AsSpan());
+            confirmation = GetRequestConfirmation(tokens);
+            return PooledRequests.TryAdd(request.RequestId, request.EthMessage.Hashes.AsSpan(), reservation, tokens: tokens.AsSpan());
+        }
+
+        private PooledTransactionRequests PooledRequests => LazyInitializer.EnsureInitialized(ref _pooledTransactionRequests,
+            () => new(32, timeProvider: BackgroundTaskScheduler.TimeProvider));
+
+        private protected override void CancelPooledTransactionRequest(P2PMessage message)
+        {
+            if (message is GetPooledTransactionsMessage request) _pooledTransactionRequests?.Cancel(request.RequestId);
+        }
+
+        protected override void OnDisposed()
+        {
+            PooledRequests.Dispose();
+            base.OnDisposed();
         }
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
@@ -304,5 +347,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             public static Task<NodeDataMessage> Execute(Eth66ProtocolHandler handler, GetNodeDataMessage request, CancellationToken cancellationToken) => handler.Handle(request, cancellationToken);
         }
+
+        [DoesNotReturn, StackTraceHidden]
+        private static void ThrowMismatchedPooledTransactionsResponse(long requestId) =>
+            throw new SubprotocolException($"Mismatched {nameof(PooledTransactionsMessage)} response ID {requestId}.");
     }
 }

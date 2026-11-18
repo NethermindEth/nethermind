@@ -114,6 +114,27 @@ public class DoubleEndedLru<TKey, TValue>(int capacity)
         }
     }
 
+    internal int CountMatches(Func<TValue, bool> predicate)
+    {
+        lock (_lock)
+        {
+            int count = 0;
+            for (int i = _head; i != None; i = _entries[i].Next)
+            {
+                if (predicate(_entries[i].Value)) count++;
+            }
+            return count;
+        }
+    }
+
+    internal bool RemoveLast()
+    {
+        lock (_lock)
+        {
+            return _tail != None && Remove(_entries[_tail].Key);
+        }
+    }
+
     public bool Remove(TKey key)
     {
         lock (_lock)

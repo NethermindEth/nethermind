@@ -25,6 +25,9 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
 
     private IDatagramSocket? _socket;
     private int _activeReaders;
+    internal FixedWindowLimiter ChallengeLimiter { private get; init; } = new(256, TimeSpan.FromMilliseconds(100));
+    internal FixedWindowLimiter HandshakeLimiter { private get; init; } = new(256, TimeSpan.FromMilliseconds(100));
+    internal AddressBurstLimiter SourceLimiter { private get; init; } = new(32, 8192, TimeSpan.FromMilliseconds(100));
 
     internal void BindSocket(IDatagramSocket socket) => _socket = socket;
 
@@ -33,14 +36,34 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
     /// </summary>
     internal void Receive(PooledUdpReceiveResult result)
     {
+        if (!SourceLimiter.TryAccept(result.RemoteEndPoint.Address))
+        {
+            result.Dispose();
+            Interlocked.Increment(ref Metrics.DiscoveryV5MessagesDropped);
+            return;
+        }
+
+        int size = result.Buffer.Length;
         if (_inboundQueue.Writer.TryWrite(result))
         {
-            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {result.RemoteEndPoint:hide}, bytes: {result.Buffer.Length}.");
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {result.RemoteEndPoint:hide}, bytes: {size}.");
             return;
         }
 
         result.Dispose();
-        if (_logger.IsWarn) _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
+        Interlocked.Increment(ref Metrics.DiscoveryV5MessagesDropped);
+        if (_logger.IsTrace) _logger.Trace("Skipping discovery v5 message as inbound buffer is full or closed");
+    }
+
+    internal bool TryAcceptChallenge() => TryAccept(ChallengeLimiter);
+
+    internal bool TryAcceptHandshake() => TryAccept(HandshakeLimiter);
+
+    private static bool TryAccept(FixedWindowLimiter limiter)
+    {
+        if (limiter.TryAcquire()) return true;
+        Interlocked.Increment(ref Metrics.DiscoveryV5MessagesDropped);
+        return false;
     }
 
     public async Task SendAsync(byte[] data, IPEndPoint destination, CancellationToken token)
@@ -101,7 +124,7 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
 
     private void ReleaseQueuedPackets()
     {
-        while (_inboundQueue.Reader.TryRead(out PooledUdpReceiveResult result))
+        while (_inboundQueue.Reader.TryRead(out PooledUdpReceiveResult? result))
         {
             result.Dispose();
         }

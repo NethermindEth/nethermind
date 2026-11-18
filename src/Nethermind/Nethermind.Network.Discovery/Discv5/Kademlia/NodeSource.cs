@@ -20,9 +20,10 @@ public sealed class NodeSource(
     KademliaConfig<Node> kademliaConfig,
     IDiscv5RecordFilter recordFilter,
     IForkInfo forkInfo,
-    ILogManager logManager)
-    : IKademliaNodeSource
+    ILogManager logManager,
+    PeerAddressPolicy addressPolicy) : IKademliaNodeSource
 {
+
     private const int ChannelCapacity = 64;
 
     private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
@@ -145,7 +146,7 @@ public sealed class NodeSource(
         }
     }
 
-    private bool IsExcluded(Node node) => node.IsBootnode || node.IdHash.Equals(_currentNodeHash);
+    private bool IsExcluded(Node node) => node.IdHash.Equals(_currentNodeHash);
 
     private bool TryCreatePeerCandidate(Node discoveryNode, [NotNullWhen(true)] out Node? peerCandidate)
     {
@@ -175,10 +176,12 @@ public sealed class NodeSource(
             }
 
             AddressFamily addressFamily = DiscoveryAddressSupport.GetFamily(discoveryNode.DiscoveryAddress.Address);
+            PeerAddressPermissions allowNonRoutable = discoveryNode.IsStatic || discoveryNode.IsTrusted || discoveryNode.IsBootnode ? PeerAddressPermissions.All :
+                discoveryNode.DiscoveryAddress.Address.IsLoopbackOrPrivateOrLinkLocal ? addressPolicy.AllowedAddresses : PeerAddressPermissions.None;
             // EIP-778 endpoints are independent: prefer the proven discovery family without
             // discarding a record whose only usable RLPx endpoint belongs to the other family.
-            if (!Node.TryFromEnr(record, addressFamily, out peerCandidate) &&
-                !Node.TryFromEnr(record, out peerCandidate))
+            if (!TryCandidate(addressFamily, out peerCandidate) &&
+                !TryCandidate(addressFamily == AddressFamily.InterNetwork ? AddressFamily.InterNetworkV6 : AddressFamily.InterNetwork, out peerCandidate))
             {
                 return false;
             }
@@ -188,8 +191,20 @@ public sealed class NodeSource(
                 peerCandidate.SetVerifiedEnr(record);
             }
 
+            peerCandidate.IsStatic = discoveryNode.IsStatic;
+            peerCandidate.IsTrusted = discoveryNode.IsTrusted;
+            peerCandidate.IsBootnode = discoveryNode.IsBootnode;
             peerCandidate.ObserveEnrSequence(discoveryNode.HighestObservedEnrSequence);
             return true;
+
+            bool TryCandidate(AddressFamily family, [NotNullWhen(true)] out Node? candidate)
+            {
+                if (Node.TryFromEnr(record, family, out candidate) &&
+                    PeerAddressPolicy.IsAcceptable(candidate.Address.Address, allowNonRoutable) &&
+                    !PeerAddressPolicy.IsSelfEndpoint(candidate.Address, kademliaConfig.CurrentNodeId.Address.Address, kademliaConfig.CurrentNodeId.Port)) return true;
+                candidate = null;
+                return false;
+            }
         }
         catch (Exception e)
         {

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -17,11 +18,19 @@ namespace Nethermind.Network.Discovery.Discv5.Kademlia;
 /// </summary>
 public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryV5Nodes)
 {
-    protected override void RegisterProtocolServices(ContainerBuilder builder) => builder
-        .AddSingleton<IDiscv5RecordFilter>(ExecutionLayerDiscv5RecordFilter.Instance)
-        .AddSingleton<IKademliaNodeSource, NodeSource>()
-        .AddSingleton<IKademliaAdapter, KademliaAdapter>()
-        .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
-        .AddSingleton<DiscoveryV5Transport>()
-        .AddSingleton<PacketCodec>();
+    protected override void RegisterProtocolServices(ContainerBuilder builder)
+    {
+        builder.RegisterType<KademliaAdapter>()
+            .WithAttributeFiltering()
+            .As<IKademliaAdapter>()
+            .AsSelf()
+            .SingleInstance()
+            .OnActivated(activation => activation.Instance.RequestActivity = activation.Context.Resolve<DiscoveryRequestActivity>());
+        builder
+            .AddSingleton<IDiscv5RecordFilter>(ExecutionLayerDiscv5RecordFilter.Instance)
+            .AddSingleton<IKademliaNodeSource, NodeSource>()
+            .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
+            .AddSingleton<DiscoveryV5Transport>()
+            .AddSingleton<PacketCodec>();
+    }
 }

@@ -44,6 +44,14 @@ namespace Nethermind.Network
         public static long P2PBytesSent;
 
         [CounterMetric]
+        [Description("Number of outgoing P2P messages dropped because the channel is inactive or not writable.")]
+        public static long P2PMessagesDropped;
+
+        [CounterMetric]
+        [Description("Number of unsolicited requests dropped at the per-peer background work limit.")]
+        public static long PeerBackgroundRequestsDropped;
+
+        [CounterMetric]
         [Description("_Deprecated._ Number of bytes received through P2P (TCP).")]
         public static long P2PBytesReceived;
 
@@ -58,6 +66,10 @@ namespace Nethermind.Network
         [CounterMetric]
         [Description("Number of bytes received through Discovery (UDP).")]
         public static long DiscoveryBytesReceived;
+
+        [CounterMetric]
+        [Description("Number of discv5 datagrams dropped by ingress limits or a full or closed queue.")]
+        public static long DiscoveryV5MessagesDropped;
 
         [CounterMetric]
         [Description("Number of sent discovery message")]

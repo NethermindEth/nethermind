@@ -126,10 +126,15 @@ public sealed class NodeFilter
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private IpSubnetKey GetKey(IPAddress ipAddress, bool exactOnly)
+    internal IpSubnetKey GetKey(IPAddress ipAddress, bool exactOnly)
         => _exactMatchOnly || exactOnly
             ? IpSubnetKey.Exact(ipAddress)
-            : (_parsedCurrentIp is { } current
+            : GetKey(ipAddress, false, _parsedCurrentIp);
+
+    internal static IpSubnetKey GetKey(IPAddress ipAddress, bool exactOnly, ParsedIPAddress? currentIp)
+        => exactOnly
+            ? IpSubnetKey.Exact(ipAddress)
+            : (currentIp is { } current
                 ? IpSubnetKey.CreateNodeFilterKey(ipAddress, in current)
                 : IpSubnetKey.DefaultKey(ipAddress));
 
@@ -141,7 +146,7 @@ public sealed class NodeFilter
     /// Allocation-free key for an IP address or a masked subnet prefix, suitable for hash lookups and prefix checks.
     /// </summary>
     [StructLayout(LayoutKind.Explicit)]
-    private readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
+    internal readonly struct IpSubnetKey : IEquatable<IpSubnetKey>
     {
         // For IPv6: _hi/_lo are the masked 128-bit network prefix (big-endian).
         // For IPv4: _hi holds the masked v4 in the low 32 bits (big-endian), _lo is 0.
@@ -237,7 +242,7 @@ public sealed class NodeFilter
             => CreateFromParsed(in parsed, 32, 128);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static IpSubnetKey CreateFromParsed(in ParsedIPAddress parsed, byte v4PrefixBits, byte v6PrefixBits)
+        internal static IpSubnetKey CreateFromParsed(in ParsedIPAddress parsed, byte v4PrefixBits, byte v6PrefixBits)
             => parsed.Family == IpFamily.IPv4
                 ? CreateFromV4(parsed.V4, v4PrefixBits)
                 : CreateFromV6(parsed.Hi, parsed.Lo, v6PrefixBits);

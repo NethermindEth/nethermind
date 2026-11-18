@@ -10,7 +10,9 @@ using System.Threading.Channels;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using ILogger = Nethermind.Logging.ILogger;
@@ -51,6 +53,8 @@ public class DiscoveryHandler(
             SingleWriter = false
         });
     private readonly int _inboundMessageWorkerCount = Math.Max(1, inboundMessageWorkerCount ?? DefaultInboundMessageWorkerCount);
+    internal FixedWindowLimiter? GlobalInboundLimiter { private get; init; }
+
     private int _dispatchWorkersStarted;
     private IDatagramSocket? _socket;
     private Action<PooledUdpReceiveResult>? _forward;
@@ -70,6 +74,10 @@ public class DiscoveryHandler(
 
     internal void CloseInbound() => _inboundMessages.Writer.TryComplete();
 
+    /// <summary>Sends a discovery datagram.</summary>
+    /// <remarks>Local serialization or socket failure is neutral unsent work. A refused inbound response
+    /// stops the remaining Neighbors batches or the PONG-dependent bonding, refresh and publication.</remarks>
+    /// <exception cref="KademliaRequestNotSentException">Serialization or socket sending failed.</exception>
     public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
         IDatagramSocket socket = Socket;
@@ -82,7 +90,7 @@ public class DiscoveryHandler(
         catch (Exception e)
         {
             _logger.Error($"Error during serialization of the message: {discoveryMsg:hide}", SensitiveLogMasking.Enabled ? null : e);
-            return;
+            throw new KademliaRequestNotSentException();
         }
 
         int size = packet.Length;
@@ -107,6 +115,7 @@ public class DiscoveryHandler(
         catch (Exception e)
         {
             if (_logger.IsTrace) TraceSendFailure(discoveryMsg, e);
+            ThrowRequestNotSent();
         }
         finally
         {
@@ -148,20 +157,22 @@ public class DiscoveryHandler(
             return false;
         }
 
+        ValueHash256 packetHash = ValueKeccak.Compute(content[Hash256.Size..]);
+        if (!content[..Hash256.Size].SequenceEqual(packetHash.BytesAsSpan)) return false;
+
         type = resolvedType;
         shouldForward = false;
         if (_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
-        // Per-IP first, so a single flooding host cannot spend the global budget that everyone shares.
         if (!TryAcceptInbound(address))
         {
-            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {address:hide}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address:hide}");
             return false;
         }
 
-        if (!_globalInboundMessageLimiter.TryAcquire())
+        if (!(GlobalInboundLimiter ?? _globalInboundMessageLimiter).TryAcquire())
         {
-            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address:hide}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message globally, type: {type}, sender: {address}");
             return false;
         }
 
@@ -432,38 +443,14 @@ public class DiscoveryHandler(
         }
     }
 
-    private sealed class FixedWindowLimiter(int maxCount, TimeSpan window)
-    {
-        private readonly Lock _lock = new();
-        private long _windowStartTicks = Stopwatch.GetTimestamp();
-        private int _count;
-
-        public bool TryAcquire()
-        {
-            lock (_lock)
-            {
-                long now = Stopwatch.GetTimestamp();
-                if (Stopwatch.GetElapsedTime(_windowStartTicks, now) >= window)
-                {
-                    _windowStartTicks = now;
-                    _count = 0;
-                }
-
-                if (_count >= maxCount)
-                {
-                    return false;
-                }
-
-                _count++;
-                return true;
-            }
-        }
-    }
-
     private readonly record struct InboundDiscoveryPacket(PooledUdpReceiveResult Packet, MsgType Type)
     {
         public IPEndPoint Address => Packet.RemoteEndPoint;
 
         public int Size => Packet.Buffer.Length;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowRequestNotSent() =>
+        throw new KademliaRequestNotSentException();
 }

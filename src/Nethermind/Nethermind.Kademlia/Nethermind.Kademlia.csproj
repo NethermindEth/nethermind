@@ -25,6 +25,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Network.Discovery.Test" />
     <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 

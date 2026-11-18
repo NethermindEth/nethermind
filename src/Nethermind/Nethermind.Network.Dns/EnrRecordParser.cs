@@ -25,9 +25,12 @@ public class EnrRecordParser(INodeRecordSigner nodeRecordSigner) : IEnrRecordPar
 
     public NodeRecord ParseRecord(string nodeRecordText)
     {
+        if (!nodeRecordText.StartsWith("enr:", StringComparison.Ordinal) || nodeRecordText.Length == 4)
+            throw new FormatException("Invalid ENR base64 encoding.");
         ReadOnlySpan<char> base64 = nodeRecordText.AsSpan(4);
-        int maxLength = Base64Url.GetMaxDecodedLength(base64.Length);
-        Span<byte> rlp = maxLength <= MaxRecordSize ? stackalloc byte[MaxRecordSize] : new byte[maxLength];
+        if (base64.Length > Base64Url.GetEncodedLength(MaxRecordSize))
+            throw new RlpReaderException("ENR exceeds 300 bytes.");
+        Span<byte> rlp = stackalloc byte[MaxRecordSize];
         RlpReader ctx = new(rlp[..Base64Url.DecodeFromChars(base64, rlp)]);
         NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
         if (!_nodeRecordSigner.Verify(result))

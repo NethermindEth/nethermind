@@ -36,6 +36,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
     {
         if (!_context.Channel.IsWritable || !_context.Channel.Active)
         {
+            Interlocked.Increment(ref Metrics.P2PMessagesDropped);
             return 0;
         }
 

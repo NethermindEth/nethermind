@@ -10,6 +10,7 @@ namespace Nethermind.Stats.Model
         NetworkId,
         DifferentGenesis,
         MissingForkId,
-        InvalidForkId
+        InvalidForkId,
+        StatsUnavailable
     }
 }

@@ -107,6 +107,29 @@ public class KBucketTests
         Assert.That(bucket.Count, Is.EqualTo(KBucket<int, int>.DefaultReplacementCacheSize));
     }
 
+    [Test]
+    public void Full_replacement_cache_should_admit_newest_candidate()
+    {
+        KBucket<int, int> bucket = new(2);
+        AddNodes(bucket, [1, 2, 3, 4, 5]);
+
+        bucket.RemoveAndReplace(1);
+
+        Assert.That(bucket.GetAll(), Is.EquivalentTo(new[] { 2, 5 }));
+    }
+
+    [Test]
+    public void Replacement_only_contact_should_be_removed()
+    {
+        KBucket<int, int> bucket = new(2);
+        AddNodes(bucket, [1, 2, 3]);
+
+        Assert.That(bucket.RemoveAndReplace(3), Is.True);
+        bucket.RemoveAndReplace(1);
+
+        Assert.That(bucket.GetAll(), Is.EqualTo(new[] { 2 }));
+    }
+
     private static (KBucket<int, int> Bucket, int[] Nodes) BuildFullBucket()
     {
         KBucket<int, int> bucket = new(5);

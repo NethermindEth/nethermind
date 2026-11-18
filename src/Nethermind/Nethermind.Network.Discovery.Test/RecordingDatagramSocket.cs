@@ -16,13 +16,17 @@ internal sealed class RecordingDatagramSocket : IDatagramSocket
 {
     public ConcurrentQueue<(byte[] Data, IPEndPoint Destination)> Sent { get; } = new();
 
+    internal Action<byte[], IPEndPoint>? OnSend { get; set; }
+
     public IPEndPoint? LocalEndpoint { get; private set; }
 
     public void Bind(IPEndPoint localEndpoint) => LocalEndpoint = localEndpoint;
 
     public ValueTask SendToAsync(ReadOnlyMemory<byte> datagram, IPEndPoint remoteEndpoint, CancellationToken cancellationToken = default)
     {
-        Sent.Enqueue((datagram.ToArray(), remoteEndpoint));
+        byte[] packet = datagram.ToArray();
+        Sent.Enqueue((packet, remoteEndpoint));
+        OnSend?.Invoke(packet, remoteEndpoint);
         return ValueTask.CompletedTask;
     }
 

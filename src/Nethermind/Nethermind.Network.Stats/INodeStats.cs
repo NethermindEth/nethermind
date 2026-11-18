@@ -24,6 +24,11 @@ namespace Nethermind.Stats
         long? GetAverageTransferSpeed(TransferSpeedType speedType);
         (bool Result, NodeStatsEventType? DelayReason) IsConnectionDelayed(DateTime nowUTC);
 
+        /// <summary>
+        /// Whether peer-produced misconduct currently prevents an inbound connection.
+        /// </summary>
+        bool IsInboundBanned(DateTime nowUTC) => false;
+
         long CurrentNodeReputation() => CurrentNodeReputation(DateTime.UtcNow);
         long CurrentNodeReputation(DateTime nowUTC);
         long CurrentPersistedNodeReputation { get; set; }

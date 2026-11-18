@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Config;
 using Nethermind.Logging;
@@ -14,8 +16,10 @@ public sealed class NodeSourceToDiscV4Feeder(
     IProcessExitSource exitSource,
     NetworkListenerState listenerState,
     ILogManager logManager,
+    PeerAddressPolicy addressPolicy,
     int maxNodes = 50)
 {
+
     public const string SourceKey = "Enr";
 
     private readonly INodeSource _nodeSource = nodeSource;
@@ -24,6 +28,7 @@ public sealed class NodeSourceToDiscV4Feeder(
     private readonly NetworkListenerState _listenerState = listenerState;
     private readonly ILogger _logger = logManager.GetClassLogger<NodeSourceToDiscV4Feeder>();
     private readonly int _maxNodes = maxNodes;
+    private readonly PeerAddressPolicy _addressPolicy = addressPolicy ?? ThrowMissingAddressPolicy(nameof(addressPolicy));
 
     public async Task Run()
     {
@@ -42,7 +47,8 @@ public sealed class NodeSourceToDiscV4Feeder(
         int addedNodes = 0;
         await foreach (Node node in _nodeSource.DiscoverNodes(token).WithCancellation(token))
         {
-            if (!DiscoveryApp.TryCreateReachableNode(node, localIp, out Node? reachableNode))
+            if (!DiscoveryApp.TryCreateReachableNode(node, localIp, out Node? reachableNode,
+                _addressPolicy.AllowedAddresses))
             {
                 continue;
             }
@@ -54,4 +60,8 @@ public sealed class NodeSourceToDiscV4Feeder(
             }
         }
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static PeerAddressPolicy ThrowMissingAddressPolicy(string paramName) =>
+        throw new ArgumentNullException(paramName);
 }

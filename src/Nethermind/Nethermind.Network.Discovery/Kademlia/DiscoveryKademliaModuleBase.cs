@@ -18,6 +18,7 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
 {
     protected override void Load(ContainerBuilder builder)
     {
+        builder.RegisterInstance(new DiscoveryRequestActivity());
         RegisterProtocolServices(builder);
 
         builder
@@ -31,7 +32,8 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
             .AsSelf()
             .WithAttributeFiltering()
             .WithParameter(ResolvedParameter.ForKeyed<INetworkStorage>(discoveryStorageKey))
-            .SingleInstance();
+            .SingleInstance()
+            .OnActivated(activation => activation.Instance.RequestActivity = activation.Context.Resolve<DiscoveryRequestActivity>());
     }
 
     protected abstract void RegisterProtocolServices(ContainerBuilder builder);

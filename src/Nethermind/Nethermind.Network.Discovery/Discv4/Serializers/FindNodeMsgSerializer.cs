@@ -30,6 +30,10 @@ public sealed class FindNodeMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPri
         (PublicKey FarPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
         RlpReader ctx = new RlpReader(data).EnterSequence(out _);
         byte[] searchedNodeId = ctx.DecodeByteArray(NodeIdRlpLimit);
+        if (searchedNodeId.Length != PublicKey.LengthInBytes)
+        {
+            throw new RlpReaderException("FINDNODE target must be a 64-byte node ID.");
+        }
         long expirationTime = ctx.DecodeLong();
 
         FindNodeMsg findNodeMsg = new(FarPublicKey, expirationTime, searchedNodeId);

@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Network.Config
 {
@@ -30,6 +33,27 @@ namespace Nethermind.Network.Config
         [Obsolete]
         public int ActivePeersMaxCount { get => MaxActivePeers; set => MaxActivePeers = value; }
         public int MaxActivePeers { get; set; } = 50;
+        private int _maxPendingInboundConnections = 50;
+        public int MaxPendingInboundConnections
+        {
+            get => _maxPendingInboundConnections;
+            set => _maxPendingInboundConnections = ValidateMaxPendingInboundConnections(value);
+        }
+
+        internal static int ValidateMaxPendingInboundConnections(int value) => value >= 0 ? value
+            : ThrowNegativeMaxPendingInboundConnections();
+
+        private int _maxPendingInboundConnectionsPerSource = 4;
+        /// <inheritdoc/>
+        public int MaxPendingInboundConnectionsPerSource
+        {
+            get => _maxPendingInboundConnectionsPerSource;
+            set => _maxPendingInboundConnectionsPerSource = ValidateMaxPendingInboundConnectionsPerSource(value);
+        }
+
+        internal static int ValidateMaxPendingInboundConnectionsPerSource(int value) => value >= 0 ? value
+            : ThrowNegativeMaxPendingInboundConnectionsPerSource();
+
         public int PriorityPeersMaxCount { get; set; } = 0;
         public int PeersPersistenceInterval { get; set; } = 1000 * 5;
         public int PeersUpdateInterval { get; set; } = 250;
@@ -59,5 +83,13 @@ namespace Nethermind.Network.Config
         public bool FilterPeersBySameSubnet { get; set; } = true;
         public bool FilterDiscoveryNodesByRecentIp { get; set; } = true;
         public bool FilterDiscoveryNodesBySameSubnet { get; set; } = true;
+
+        [DoesNotReturn, StackTraceHidden]
+        private static int ThrowNegativeMaxPendingInboundConnections() =>
+            throw new InvalidConfigurationException("Network.MaxPendingInboundConnections must not be negative.", ExitCodes.ForbiddenOptionValue);
+
+        [DoesNotReturn, StackTraceHidden]
+        private static int ThrowNegativeMaxPendingInboundConnectionsPerSource() =>
+            throw new InvalidConfigurationException("Network.MaxPendingInboundConnectionsPerSource must not be negative.", ExitCodes.ForbiddenOptionValue);
     }
 }

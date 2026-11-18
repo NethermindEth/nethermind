@@ -123,6 +123,7 @@ public class KademliaTests
             KSize = 5,
             Beta = 0,
             RefreshPingDelay = TimeSpan.Zero,
+            NodeRequestFailureThreshold = 1,
         });
         Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256> kad = container.Resolve<Nethermind.Kademlia.Kademlia<ValueHash256, ValueHash256, ValueHash256>>();
 

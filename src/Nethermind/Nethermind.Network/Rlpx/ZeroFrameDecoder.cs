@@ -156,7 +156,8 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AllocateFrameBuffer(IChannelHandlerContext context)
         {
-            _innerBuffer = context.Allocator.Buffer(Frame.HeaderSize + _frameSize);
+            int capacity = Frame.HeaderSize + _frameSize;
+            _innerBuffer = context.Allocator.Buffer(Math.Min(capacity, 64 * 1024), capacity);
             _innerBuffer.WriteBytes(_decryptedBytes, 0, Frame.HeaderSize);
         }
 
@@ -217,6 +218,7 @@ namespace Nethermind.Network.Rlpx
             int arrayIndex = input.ArrayOffset + input.ReaderIndex;
             int writerIndex = _innerBuffer.WriterIndex;
             _authenticator.UpdateIngressMac(array.AsSpan(arrayIndex, length));
+            _innerBuffer.EnsureWritable(length);
             _cipher.Decrypt(array, arrayIndex, length, _innerBuffer.Array, _innerBuffer.ArrayOffset + writerIndex);
             _innerBuffer.SetWriterIndex(writerIndex + length);
             input.SkipBytes(length);

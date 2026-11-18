@@ -95,6 +95,8 @@ internal static class DiscoveryContainer
             .AddSingleton<INodeIdResolver, NodeIdResolver>()
             .AddSingleton<IMessageSerializationService, MessageSerializationService>()
             .AddSingleton<NetworkListenerState>()
+            .AddSingleton<LocalAddressSource>()
+            .AddSingleton<PeerAddressPolicy>()
             .AddSingleton<INodeStatsManager>(context => new NodeStatsManager(
                 context.Resolve<ITimerFactory>(),
                 context.Resolve<ILogManager>(),

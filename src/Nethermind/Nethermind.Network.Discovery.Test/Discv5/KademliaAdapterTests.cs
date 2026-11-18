@@ -28,9 +28,24 @@ namespace Nethermind.Network.Discovery.Test.Discv5;
 
 public class KademliaAdapterTests
 {
+    private readonly List<PeerAddressPolicy> _ownedPolicies = [];
+
+    private PeerAddressPolicy OwnPolicy(PeerAddressPolicy policy)
+    {
+        _ownedPolicies.Add(policy);
+        return policy;
+    }
+
+    private void DisposePolicies()
+    {
+        foreach (PeerAddressPolicy policy in _ownedPolicies) policy.Dispose();
+        _ownedPolicies.Clear();
+    }
+
     private IKademlia<PublicKey, Node> _kademlia = null!;
     private IRoutingTable<Node, ValueHash256> _routingTable = null!;
     private PacketCodec? _packetCodec;
+    private readonly List<KademliaAdapter> _adapters = [];
 
     [SetUp]
     public void SetUp()
@@ -40,10 +55,60 @@ public class KademliaAdapterTests
     }
 
     [TearDown]
-    public void TearDown()
+    public async Task TearDown()
     {
+        foreach (KademliaAdapter adapter in _adapters) await adapter.DisposeAsync();
+        _adapters.Clear();
+        DisposePolicies();
         _packetCodec?.Dispose();
         _packetCodec = null;
+    }
+
+    [Test]
+    public void GetNodesAtDistances_ShouldRejectExcessInputBeforeWalking()
+    {
+        Assert.Throws<ArgumentException>(() => CreateAdapter().GetNodesAtDistances(new int[258]));
+        _kademlia.DidNotReceive().GetAllAtDistance(Arg.Any<int>());
+    }
+
+    [Test]
+    public void GetNodesAtDistances_ShouldCapUniqueDistances()
+    {
+        int[] distances = new int[257];
+        for (int i = 0; i < distances.Length; i++) distances[i] = i;
+        _kademlia.GetAllAtDistance(Arg.Any<int>()).Returns([]);
+        _kademlia.ClearReceivedCalls();
+
+        Assert.That(CreateAdapter().GetNodesAtDistances(distances), Is.Empty);
+
+        for (int i = 0; i < distances.Length; i++) _kademlia.Received(i < 8 ? 1 : 0).GetAllAtDistance(i);
+    }
+
+    [Test]
+    public void GetNodesAtDistances_ShouldWalkRepeatedDistanceOnce()
+    {
+        int[] distances = new int[257];
+        Array.Fill(distances, 10);
+        _kademlia.GetAllAtDistance(10).Returns([]);
+        _kademlia.ClearReceivedCalls();
+
+        Assert.That(CreateAdapter().GetNodesAtDistances(distances), Is.Empty);
+
+        _kademlia.Received(1).GetAllAtDistance(10);
+    }
+
+    [Test]
+    public void GetNodesAtDistances_ShouldCapResponseRecords()
+    {
+        Node[] nodes = new Node[17];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            byte[] key = new byte[64];
+            BitConverter.TryWriteBytes(key.AsSpan(), i + 1);
+            nodes[i] = CreateNode(new PublicKey(key), i + 1);
+        }
+        _kademlia.GetAllAtDistance(10).Returns(nodes);
+        Assert.That(CreateAdapter().GetNodesAtDistances([10]), Has.Length.EqualTo(16));
     }
 
     [Test]
@@ -209,11 +274,11 @@ public class KademliaAdapterTests
         Node node = CreateNode(TestItem.PublicKeyB, 2);
         node.SetVerifiedEnr(retainedRecord);
 
-        Assert.That(KademliaAdapter.GetFindNodeRecord(node, allowNonRoutableRelays: false), Is.SameAs(retainedRecord));
+        Assert.That(KademliaAdapter.GetFindNodeRecord(node, allowNonRoutableRelays: PeerAddressPermissions.None), Is.SameAs(retainedRecord));
 
         node.ObserveEnrSequence(2);
 
-        Assert.That(KademliaAdapter.GetFindNodeRecord(node, allowNonRoutableRelays: false), Is.Null);
+        Assert.That(KademliaAdapter.GetFindNodeRecord(node, allowNonRoutableRelays: PeerAddressPermissions.None), Is.Null);
     }
 
     [Test]
@@ -288,7 +353,7 @@ public class KademliaAdapterTests
             KademliaAdapter.IsAcceptableNodeRecord(
                 NodeRecord.FromEnrString(record.ToString()),
                 testCase.ExpectedNodeId,
-                testCase.AllowNonRoutable),
+                testCase.AllowNonRoutable ? PeerAddressPermissions.All : PeerAddressPermissions.None),
             Is.EqualTo(testCase.ExpectedResult));
     }
 
@@ -316,7 +381,7 @@ public class KademliaAdapterTests
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable: false,
+            allowNonRoutable: PeerAddressPermissions.None,
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
@@ -330,7 +395,7 @@ public class KademliaAdapterTests
             Assert.That(node!.Host, Is.EqualTo(expectedIp));
             Assert.That(node.Port, Is.EqualTo(expectedTcpPort));
             Assert.That(node.DiscoveryPort, Is.EqualTo(expectedUdpPort));
-            Assert.That(KademliaAdapter.IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutable: false), Is.True);
+            Assert.That(KademliaAdapter.IsAcceptableNodeRecord(record, node.Id.Hash, allowNonRoutable: PeerAddressPermissions.None), Is.True);
         }
     }
 
@@ -363,7 +428,7 @@ public class KademliaAdapterTests
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable,
+            allowNonRoutable ? PeerAddressPermissions.All : PeerAddressPermissions.None,
             localIp: IPAddress.IPv6Any,
             sourceEndpoint: IPEndPoint.Parse(source),
             node: out Node? node);
@@ -380,6 +445,9 @@ public class KademliaAdapterTests
     public async Task Handshake_StoresRecordOnlyWhenItAdvertisesPacketSource([Values] bool advertisesSource)
     {
         IPEndPoint source = IPEndPoint.Parse("8.8.8.8:30304");
+        Node known = Node.FromDiscoveryEndpoint(TestItem.PublicKeyB, source);
+        known.ValidatedProtocol = true;
+        ConfigureStoredNode(known);
         NodeRecord remoteRecord = TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyB,
             advertisesSource ? source.Address : IPAddress.Parse("1.1.1.1"),
@@ -451,7 +519,7 @@ public class KademliaAdapterTests
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable: false,
+            allowNonRoutable: PeerAddressPermissions.None,
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
@@ -475,7 +543,7 @@ public class KademliaAdapterTests
 
         bool result = KademliaAdapter.TryGetAcceptableNode(
             record,
-            allowNonRoutable: false,
+            allowNonRoutable: PeerAddressPermissions.None,
             localIp: IPAddress.Parse(localIp),
             node: out Node? node);
 
@@ -570,7 +638,7 @@ public class KademliaAdapterTests
             new CryptoRandom(),
             new EthereumEcdsa(0));
 
-        return new(
+        KademliaAdapter adapter = new(
             new Lazy<IKademlia<PublicKey, Node>>(_kademlia),
             _routingTable,
             transport ?? new DiscoveryV5Transport(LimboLogs.Instance),
@@ -581,7 +649,10 @@ public class KademliaAdapterTests
             new CryptoRandom(),
             ValueHash256KademliaDistance.Instance,
             LimboLogs.Instance,
-            listenerState);
+            listenerState, OwnPolicy(new PeerAddressPolicy(new IIPResolver.NethermindIp(IPAddress.Any, currentNode.DiscoveryAddress.Address),
+                new LocalAddressSource(LimboLogs.Instance, () => []))));
+        _adapters.Add(adapter);
+        return adapter;
     }
 
     private void ConfigureStoredNode(Node node)

@@ -5,17 +5,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Autofac.Features.AttributeFilters;
-using Nethermind.Config;
-using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.Enr;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
@@ -30,7 +26,8 @@ namespace Nethermind.Network
     public class ProtocolsManager : IProtocolsManager, IProtocolRegistrar
     {
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
-        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
+        private readonly Dictionary<Node, Dictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = [];
+        private readonly Lock _satelliteProtocolsLock = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ITxPool _txPool;
         private readonly INodeStatsManager _stats;
@@ -38,7 +35,6 @@ namespace Nethermind.Network
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IProtocolValidator _protocolValidator;
         private readonly IPeerManager _peerManager;
-        private readonly INetworkStorage _peerStorage;
         private readonly ILogger _logger;
         private readonly IProtocolHandlerFactory[] _factories;
         private readonly IP2PCapabilityResolver[] _capabilityResolvers;
@@ -67,7 +63,7 @@ namespace Nethermind.Network
             _stats = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
             _protocolValidator = protocolValidator ?? throw new ArgumentNullException(nameof(protocolValidator));
             _peerManager = peerManager ?? throw new ArgumentNullException(nameof(peerManager));
-            _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
+            ArgumentNullException.ThrowIfNull(peerStorage);
             _logger = logManager?.GetClassLogger<ProtocolsManager>() ?? throw new ArgumentNullException(nameof(logManager));
 
             // Order is already set by OrderedComponents<T> (AddFirst/AddLast)
@@ -95,33 +91,31 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
-            if (_logger.IsTrace && session.BestStateReached == SessionState.Initialized)
+            Node? node = session.RemoteNodeId is null ? null : session.Node;
+            if (_logger.IsTrace && node is not null && session.BestStateReached == SessionState.Initialized)
             {
                 TraceSessionDisconnected(session, e);
             }
 
-            if (session.Node is not null
-                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
-                && registrations is not null)
+            if (node is not null)
             {
-                registrations.TryRemove(session.SessionId, out _);
+                lock (_satelliteProtocolsLock)
+                {
+                    if (_hangingSatelliteProtocols.TryGetValue(node, out Dictionary<Guid, ProtocolHandlerBase>? registrations))
+                    {
+                        registrations.Remove(session.SessionId);
+                        if (registrations.Count == 0) _hangingSatelliteProtocols.Remove(node);
+                    }
+                }
             }
 
-            PublicKey? handlerKey = null;
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
             {
                 _syncPool.RemovePeer(removed);
                 if (removed.Node?.Id is not null)
                 {
-                    handlerKey = removed.Node.Id;
-                    _txPool.RemovePeer(handlerKey);
+                    _txPool.RemovePeer(removed.Node.Id);
                 }
-            }
-
-            PublicKey sessionKey = session.Node?.Id;
-            if (sessionKey is not null && sessionKey != handlerKey)
-            {
-                _txPool.RemovePeer(session.Node.Id);
             }
         }
 
@@ -224,15 +218,38 @@ namespace Nethermind.Network
                 }
                 else
                 {
-                    _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                        _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
-                        (_, dict) =>
+                    SyncPeerProtocolHandlerBase? initializingSyncPeer = null;
+                    lock (_satelliteProtocolsLock)
+                    {
+                        if (session.IsClosing) return;
+                        foreach ((_, SyncPeerProtocolHandlerBase candidate) in _syncPeers)
                         {
-                            dict[session.SessionId] = handler;
-                            return dict;
-                        });
+                            if (candidate.Node.Equals(session.Node) && !candidate.Session.IsClosing)
+                            {
+                                initializingSyncPeer = candidate;
+                                break;
+                            }
+                        }
+                        if (initializingSyncPeer is null)
+                        {
+                            if (!_hangingSatelliteProtocols.TryGetValue(session.Node, out Dictionary<Guid, ProtocolHandlerBase>? registrations))
+                            {
+                                _hangingSatelliteProtocols.Add(session.Node, registrations = []);
+                            }
+                            registrations[session.SessionId] = handler;
+                        }
+                    }
 
-                    if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session:hide} not found.");
+                    if (initializingSyncPeer is not null)
+                    {
+                        initializingSyncPeer.RegisterSatelliteProtocol(handler.ProtocolCode, handler);
+                        if (handler.IsPriority)
+                        {
+                            initializingSyncPeer.IsPriority = true;
+                            _syncPool.SetPeerPriority(session.Node.Id);
+                        }
+                    }
+                    else if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol sync peer {session:hide} not found.");
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session:hide} - adding sync peer {session.Node.ToString("s"):hide}");
@@ -246,16 +263,11 @@ namespace Nethermind.Network
         private void OnP2PProtocolInitialized(ISession session, P2PProtocolHandler handler, P2PProtocolInitializedEventArgs args)
         {
             if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
+            if (!_protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args)) return;
 
-            if (handler.ProtocolVersion >= 5)
-            {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - enabling snappy");
-                session.EnableSnappy();
-            }
-            else
-            {
-                if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode}.{handler.ProtocolVersion} established on {session:hide} - disabling snappy");
-            }
+            if (session.Direction == ConnectionDirection.In) session.Node.Port = args.ListenPort;
+            _peerManager.OnP2PProtocolInitialized(session);
+            if (session.IsClosing) return;
 
             _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
             {
@@ -266,12 +278,6 @@ namespace Nethermind.Network
             });
 
             AddNodeToDiscovery(session, args);
-
-            bool isValid = _protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args);
-            if (isValid)
-            {
-                _peerManager.OnP2PProtocolInitialized(session);
-            }
 
             if (_logger.IsTrace) _logger.Trace($"Finalized P2P protocol initialization on {session:hide}");
         }
@@ -293,14 +299,17 @@ namespace Nethermind.Network
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
                 {
-                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
+                    ProtocolHandlerBase[] satelliteHandlers;
+                    lock (_satelliteProtocolsLock)
                     {
-                        foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
-                        {
-                            handler.RegisterSatelliteProtocol(registration.Value);
-                            if (registration.Value.IsPriority) handler.IsPriority = true;
-                            if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session:hide}. Sync peer has priority: {handler.IsPriority}");
-                        }
+                        satelliteHandlers = _hangingSatelliteProtocols.TryGetValue(handler.Node, out Dictionary<Guid, ProtocolHandlerBase>? registrations)
+                            ? registrations.Values.ToArray() : [];
+                    }
+                    foreach (ProtocolHandlerBase satelliteHandler in satelliteHandlers)
+                    {
+                        handler.RegisterSatelliteProtocol(satelliteHandler);
+                        if (satelliteHandler.IsPriority) handler.IsPriority = true;
+                        if (_logger.IsTrace) _logger.Trace($"{handler.ProtocolCode} satellite protocol registered for sync peer {session:hide}. Sync peer has priority: {handler.IsPriority}");
                     }
 
                     _syncPool.AddPeer(handler);
@@ -315,29 +324,11 @@ namespace Nethermind.Network
 
                 if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session:hide} - adding sync peer {session.Node.ToString("s"):hide}");
 
-                //Add/Update peer to the storage and to sync manager
-                _peerStorage.UpdateNode(CreatePersistedNode(session.Node));
             }
             else
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {handler.ProtocolCode}{handler.ProtocolVersion} is invalid on {session:hide}");
             }
-        }
-
-        private NetworkNode CreatePersistedNode(Node node)
-        {
-            long reputation = _stats.GetOrAdd(node).NewPersistedNodeReputation(DateTime.UtcNow);
-            NodeRecord? record = node.Enr;
-            // A reloaded ENR is dialed at its default TCP endpoint, so it is kept only when that is the address that
-            // worked. Ports are not compared because the Hello message overwrites the node's port.
-            if (record is not null && node.IsVerifiedEnr(record) && record.EnrSequence >= node.HighestObservedEnrSequence &&
-                record.TryGetTcpEndpoint(out IPEndPoint? tcpEndpoint) &&
-                tcpEndpoint.Address.Equals(node.Address.Address))
-            {
-                return new NetworkNode(record.ToString()) { Reputation = reputation };
-            }
-
-            return new NetworkNode(node.Id, node.Host, node.Port, reputation);
         }
 
         private bool RunBasicChecks(ISession session, string protocolCode, int protocolVersion)

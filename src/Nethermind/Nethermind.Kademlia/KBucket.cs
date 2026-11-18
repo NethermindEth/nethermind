@@ -39,11 +39,16 @@ public class KBucket<TNode, TKadKey>(int k)
         // Either added or refreshed
         if (addResult != BucketAddResult.Full)
         {
+            _replacement.Remove(hash);
             toRefresh = default;
             return addResult;
         }
 
-        _replacement.AddOrRefresh(hash, item);
+        if (_replacement.AddOrRefresh(hash, item) == BucketAddResult.Full)
+        {
+            _replacement.RemoveLast();
+            _replacement.AddOrRefresh(hash, item);
+        }
         _items.TryGetLast(out toRefresh);
         return BucketAddResult.Full;
     }
@@ -56,22 +61,34 @@ public class KBucket<TNode, TKadKey>(int k)
 
     internal int CopyAllWithHash((TKadKey Hash, TNode Node)[] destination) => _items.CopyAllWithKey(destination);
 
-    public bool RemoveAndReplace(in TKadKey hash)
-    {
-        if (!_items.Remove(hash)) return false;
+    public bool RemoveAndReplace(in TKadKey hash) => Remove(hash, promote: true, out _, out _);
 
-        if (_replacement.TryPopHead(out TKadKey replacementHash, out TNode? replacement))
+    internal bool Remove(in TKadKey hash, bool promote, out TNode? promoted, out bool didPromote)
+    {
+        promoted = default;
+        didPromote = false;
+        if (!_items.Remove(hash)) return _replacement.Remove(hash);
+
+        if (promote && _replacement.TryPopHead(out TKadKey replacementHash, out TNode? replacement))
         {
             _items.AddOrRefresh(replacementHash, replacement!);
+            promoted = replacement;
+            didPromote = true;
         }
 
-        if (_cacheItems)
-        {
-            _cachedArray = _items.GetAll();
-        }
-
+        if (_cacheItems) _cachedArray = _items.GetAll();
         return true;
     }
+
+    internal TNode[] GetReplacementCandidates() => _replacement.GetAll();
+
+    internal bool TryGetReplacementToEvict(out TNode? node)
+    {
+        node = default;
+        return _items.Count >= k && _replacement.Count >= GetReplacementCacheSize(k) && _replacement.TryGetLast(out node);
+    }
+
+    internal int CountMatches(Func<TNode, bool> predicate) => _items.CountMatches(predicate) + _replacement.CountMatches(predicate);
 
     public void Clear()
     {

@@ -7,11 +7,13 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 
-public sealed class NeighbourMsgHandler(int k, IPAddress localIp) : ITaskCompleter<Node[]>
+public sealed class NeighbourMsgHandler(int k, IPAddress localIp, PeerAddressPermissions allowNonRoutable) : ITaskCompleter<Node[]>
 {
+
     private readonly Lock _lock = new();
     private readonly Node[] _nodes = new Node[k];
     private int _count;
+    internal Node? LocalNode { get; init; }
     public TaskCompletionSource<DiscoveryResponse<Node[]>> TaskCompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     // The peer should send the two packet pretty much immediately. In any case, if the second packet is loss, its not a huge deal.
@@ -35,7 +37,11 @@ public sealed class NeighbourMsgHandler(int k, IPAddress localIp) : ITaskComplet
             {
                 Node node = neighborsMsg.Nodes[i];
                 if (node.HasDiscoveryEndpoint &&
-                    DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
+                    DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address) &&
+                    PeerAddressPolicy.IsAcceptable(node.DiscoveryAddress.Address,
+                        allowNonRoutable) &&
+                    (LocalNode is null || (node.Id != LocalNode.Id &&
+                        !PeerAddressPolicy.IsSelfEndpoint(node.DiscoveryAddress, LocalNode.DiscoveryAddress.Address, LocalNode.DiscoveryPort))))
                 {
                     _nodes[_count++] = node;
                 }

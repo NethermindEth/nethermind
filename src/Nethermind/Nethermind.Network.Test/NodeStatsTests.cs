@@ -108,6 +108,9 @@ public class NodeStatsTests
     }
 
     [TestCase(null, DisconnectReason.Other, 0)]
+    [TestCase(DisconnectType.Local, DisconnectReason.TooManyPeers, 0)]
+    [TestCase(DisconnectType.Local, DisconnectReason.HardLimitTooManyPeers, 0)]
+    [TestCase(DisconnectType.Remote, DisconnectReason.TooManyPeers, -300)]
     [TestCase(DisconnectType.Local, DisconnectReason.UselessPeer, -10000)]
     [TestCase(DisconnectType.Local, DisconnectReason.TxFlooding, -10000)]
     [TestCase(DisconnectType.Local, DisconnectReason.PeerRefreshFailed, -500)]

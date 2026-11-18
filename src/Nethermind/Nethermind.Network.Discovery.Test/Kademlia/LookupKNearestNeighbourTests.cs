@@ -10,7 +10,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Kademlia;
+using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -18,6 +23,152 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 
 public class LookupKNearestNeighbourTests
 {
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_prefer_verified_endpoint_over_a_third_party_mention(CancellationToken token)
+    {
+        Node self = new(TestItem.PublicKeyA, "192.168.1.1", 30303);
+        Node seed = new(TestItem.PublicKeyB, "192.168.1.2", 30303);
+        Node known = new(TestItem.PublicKeyC, "192.168.1.3", 30303) { ValidatedProtocol = false };
+        Node forged = new(TestItem.PublicKeyC, "192.168.1.4", 30303);
+        IRoutingTable<Node, ValueHash256> routing = Substitute.For<IRoutingTable<Node, ValueHash256>>();
+        routing.GetKNearestNeighbour(Arg.Any<ValueHash256>(), Arg.Any<bool>()).Returns([seed]);
+        routing.TryGet(known.Id.Hash.ValueHash256, out _).Returns(call =>
+        {
+            call[1] = known;
+            return true;
+        });
+        INodeHealthTracker<Node> health = Substitute.For<INodeHealthTracker<Node>>();
+        LookupKNearestNeighbour<PublicKey, Node, ValueHash256> lookup = new(routing,
+            new FromKeyNodeHashProvider<PublicKey, Node, ValueHash256>(new PublicKeyKeyOperator()),
+            ValueHash256KademliaDistance.Instance, health,
+            DiscoveryKademliaConfigFactory.Create(self, [], new DiscoveryConfig()));
+        Node? queried = null;
+
+        await lookup.Lookup(known.Id.Hash.ValueHash256, 8, (node, _) =>
+        {
+            if (node.Id == seed.Id) return Task.FromResult<Node[]?>([forged]);
+            queried = node;
+            return Task.FromResult<Node[]?>(null);
+        }, token);
+
+        Assert.That(queried, Is.SameAs(known));
+        health.Received(1).OnRequestFailed(Arg.Is<Node>(node => ReferenceEquals(node, known)));
+        health.DidNotReceive().OnRequestFailed(Arg.Is<Node>(node => ReferenceEquals(node, forged)));
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_bound_fresh_closer_candidates([Values] bool limitSeen, [Values(1, 3)] int alpha, [Values] bool silentMentions, CancellationToken token)
+    {
+        KademliaConfig<int> config = new()
+        {
+            Alpha = alpha,
+            LookupQueryLimit = limitSeen ? 1000 : 8,
+            LookupSeenLimit = limitSeen ? 8 : 1000
+        };
+        IRoutingTable<int, int> routing = Substitute.For<IRoutingTable<int, int>>();
+        routing.GetKNearestNeighbour(Arg.Any<int>(), Arg.Any<bool>()).Returns([100]);
+        LookupKNearestNeighbour<int, int, int> lookup = new(routing, IntNodeHashProvider.Instance,
+            Int32KademliaDistance.Instance, Substitute.For<INodeHealthTracker<int>>(), config);
+        int requests = 0;
+        int[] result = await lookup.Lookup(0, 16, (node, _) =>
+        {
+            Interlocked.Increment(ref requests);
+            return Task.FromResult<int[]?>(silentMentions
+                ? node % 2 != 0 ? null : node > 2 ? [node - 1, node - 2] : []
+                : node > 1 ? [node - 1] : []);
+        }, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requests, Is.EqualTo(8));
+            Assert.That(result, Does.Contain(100));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_deadline_should_cancel_requests_without_penalty_and_keep_results([Values] bool transportError, CancellationToken token)
+    {
+        ManualTimeProvider clock = new();
+        KademliaConfig<int> config = new()
+        {
+            TimeProvider = clock,
+            Alpha = 1,
+            LookupTimeout = TimeSpan.FromMilliseconds(100),
+            LookupFindNeighbourHardTimeout = TimeSpan.FromSeconds(2)
+        };
+        IRoutingTable<int, int> routing = Substitute.For<IRoutingTable<int, int>>();
+        routing.GetKNearestNeighbour(Arg.Any<int>(), Arg.Any<bool>()).Returns([100]);
+        INodeHealthTracker<int> health = Substitute.For<INodeHealthTracker<int>>();
+        LookupKNearestNeighbour<int, int, int> lookup = new(routing, IntNodeHashProvider.Instance,
+            Int32KademliaDistance.Instance, health, config);
+        int active = 0;
+        TaskCompletionSource pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int[]> lookupTask = lookup.Lookup(0, 16, async (node, requestToken) =>
+        {
+            if (node == 100) return [99];
+            Interlocked.Increment(ref active);
+            pending.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, requestToken);
+                return [];
+            }
+            catch (OperationCanceledException) when (transportError)
+            {
+                throw new IOException("Transport closed during cancellation");
+            }
+            finally
+            {
+                Interlocked.Decrement(ref active);
+            }
+        }, token);
+
+        await pending.Task.WaitAsync(token);
+        clock.AdvanceAndFireDueTimers(config.LookupTimeout);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await lookupTask, Is.EqualTo(new[] { 100 }));
+            Assert.That(active, Is.Zero);
+        }
+        health.DidNotReceive().OnRequestFailed(Arg.Any<int>());
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Bootstrap_should_continue_after_lookup_budget_is_exhausted(CancellationToken token)
+    {
+        KademliaConfig<int> config = new() { Alpha = 1, LookupQueryLimit = 8, KSize = 16 };
+        IRoutingTable<int, int> routing = Substitute.For<IRoutingTable<int, int>>();
+        routing.GetKNearestNeighbour(Arg.Any<int>(), Arg.Any<bool>()).Returns([100]);
+        routing.IterateBuckets().Returns([new RoutingTableBucket<int, int>(0, 0, [100])]);
+        INodeHealthTracker<int> health = Substitute.For<INodeHealthTracker<int>>();
+        LookupKNearestNeighbour<int, int, int> lookup = new(routing, IntNodeHashProvider.Instance,
+            Int32KademliaDistance.Instance, health, config);
+        IKeyOperator<int, int, int> keys = Substitute.For<IKeyOperator<int, int, int>>();
+        keys.GetKeyHash(Arg.Any<int>()).Returns(call => call.Arg<int>());
+        keys.GetNodeHash(Arg.Any<int>()).Returns(call => call.Arg<int>());
+        keys.CreateRandomKeyAtDistance(0, 0).Returns(1);
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
+        int firstLookupRequests = 0;
+        sender.FindNeighbours(Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            int node = call.ArgAt<int>(0);
+            if (call.ArgAt<int>(1) != 0) return Task.FromResult<int[]?>([]);
+            firstLookupRequests++;
+            return Task.FromResult<int[]?>(node > 1 ? [node - 1] : []);
+        });
+        Nethermind.Kademlia.Kademlia<int, int, int> kademlia = new(keys, sender, routing, lookup,
+            health, config, NullLoggerFactory.Instance);
+
+        await kademlia.Bootstrap(token);
+
+        Assert.That(firstLookupRequests, Is.EqualTo(8));
+        await sender.Received().FindNeighbours(100, 1, Arg.Any<CancellationToken>());
+    }
+
     private const int Self = 0;
     private const int Seed1 = 1;
     private const int Seed2 = 2;
@@ -47,6 +198,21 @@ public class LookupKNearestNeighbourTests
             loggerFactory ?? NullLoggerFactory.Instance);
 
         return (lookup, routing, health);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Lookup_should_not_penalize_locally_refused_requests(CancellationToken token)
+    {
+        (LookupKNearestNeighbour<int, int, int> lookup, _, INodeHealthTracker<int> health) =
+            CreateLookup(1, TimeSpan.FromSeconds(1), [Seed1]);
+
+        int[] result = await lookup.Lookup(Self, 8,
+            (_, _) => Task.FromException<int[]?>(new KademliaRequestNotSentException()), token);
+
+        Assert.That(result, Is.Empty);
+        health.DidNotReceive().OnRequestFailed(Arg.Any<int>());
+        health.DidNotReceive().OnIncomingMessageFrom(Arg.Any<int>());
     }
 
     [Test]
@@ -158,6 +324,7 @@ public class LookupKNearestNeighbourTests
             token);
 
         health.DidNotReceive().OnIncomingMessageFrom(Seed1);
+        health.Received(1).OnRequestFailed(Seed1);
     }
 
     [Test]
@@ -328,7 +495,7 @@ public class LookupKNearestNeighbourTests
     public async Task Find_neighbour_transport_failure_is_not_logged_as_warning(CancellationToken token)
     {
         // A torn-down channel raises DotNetty's ClosedChannelException (: IOException); like a
-        // SocketException it is expected transport churn — logged at Trace, never at Warning.
+        // SocketException it is expected transport churn, logged at Trace, never at Warning.
         CapturingLogger logger = new(LogLevel.Trace);
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
             CreateLookup(1, TimeSpan.FromSeconds(10), [Seed1], new CapturingLoggerFactory(logger));
@@ -363,7 +530,7 @@ public class LookupKNearestNeighbourTests
     public async Task Find_neighbour_failure_after_cancellation_is_not_logged_as_warning(CancellationToken token)
     {
         // After the lookup token is cancelled, a non-transport teardown failure (e.g. DotNetty's
-        // RejectedExecutionException from the disposed event loop) is expected and must stay quiet —
+        // RejectedExecutionException from the disposed event loop) is expected and must stay quiet:
         // otherwise a graceful restart floods WARN and trips the very detector this fix targets.
         CapturingLogger logger = new();
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
@@ -384,7 +551,7 @@ public class LookupKNearestNeighbourTests
     [CancelAfter(10000)]
     public async Task Find_neighbour_unexpected_failure_during_drain_is_logged_as_warning(CancellationToken token)
     {
-        // The other seeds return nothing, so the lookup finishes and drains — cancelling its internal
+        // The other seeds return nothing, so the lookup finishes and drains, cancelling its internal
         // token while the caller's token stays live. Seed1 is still in flight and then fails with a
         // non-transport exception: a real fault that must warn, not be silenced as shutdown teardown.
         CapturingLogger logger = new();
@@ -392,7 +559,7 @@ public class LookupKNearestNeighbourTests
             CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1], new CapturingLoggerFactory(logger));
 
         // Gate the empty-returning ops on Seed1's op having started, so Seed1's worker has taken its round
-        // before the other worker consumes the Alpha*2 rounds that trip the no-better-result break —
+        // before the other worker consumes the Alpha*2 rounds that trip the no-better-result break:
         // otherwise Seed1's worker could break without ever calling the op and the drain never happens.
         TaskCompletionSource seed1Started = new(TaskCreationOptions.RunContinuationsAsynchronously);
 

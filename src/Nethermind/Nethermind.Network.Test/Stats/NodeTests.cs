@@ -635,6 +635,83 @@ namespace Nethermind.Network.Test.Stats
             Assert.That(node.ToString(Node.Format.AlignedShort), Is.EqualTo("      127.0.0.1:30303"));
         }
 
+        [Test]
+        public void Refresh_alias_merge_blocks_new_owners_until_both_calls_finish([Values] bool candidateFirst, [Values] bool disposeBeforeMerge)
+        {
+            Node original = new(TestItem.PublicKeyA, "8.8.8.8", 30303);
+            Node alias = new(TestItem.PublicKeyA, "8.8.4.4", 30303);
+            IDisposable? first;
+            IDisposable? second;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original.TryAcquireEnrRefresh(2, out first), Is.True);
+                Assert.That(alias.TryAcquireEnrRefresh(2, out second), Is.True);
+            }
+            using (first)
+            using (second)
+            {
+                IDisposable earlier = candidateFirst ? second! : first!;
+                IDisposable later = candidateFirst ? first! : second!;
+                if (disposeBeforeMerge) earlier.Dispose();
+                alias.MergeEnrStateFrom(original);
+                if (!disposeBeforeMerge) earlier.Dispose();
+                alias.SetVerifiedEnr(CreateEnr(TestItem.PrivateKeyA, IPAddress.Parse("8.8.4.4"), 30303, 30303, enrSequence: 2));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(alias.TryAcquireEnrRefresh(3, out _), Is.False);
+                    Assert.That(original.TryRequestEnrSequence(4), Is.False);
+                }
+                later.Dispose();
+                Assert.That(original.TryAcquireEnrRefresh(5, out IDisposable? replacement), Is.True);
+                using (replacement)
+                {
+                    earlier.Dispose();
+                    later.Dispose();
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(alias.RequestingEnrSequence, Is.EqualTo(5));
+                        Assert.That(alias.HighestObservedEnrSequence, Is.EqualTo(2));
+                        Assert.That(alias.TryAcquireEnrRefresh(6, out _), Is.False);
+                    }
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(original.RequestingEnrSequence, Is.Zero);
+                    Assert.That(original.HighestObservedEnrSequence, Is.EqualTo(2));
+                }
+            }
+        }
+
+        [Test]
+        public async Task Refresh_owner_release_and_merge_preserve_a_later_owner()
+        {
+            Node original = new(TestItem.PublicKeyA, "8.8.8.8", 30303);
+            Node alias = new(TestItem.PublicKeyA, "8.8.4.4", 30303);
+            IDisposable? first;
+            IDisposable? second;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(original.TryAcquireEnrRefresh(2, out first), Is.True);
+                Assert.That(alias.TryAcquireEnrRefresh(3, out second), Is.True);
+            }
+            using (first)
+            using (second)
+            using (Barrier start = new(2))
+            {
+                await Task.WhenAll(Task.Run(() => { start.SignalAndWait(); alias.MergeEnrStateFrom(original); }),
+                    Task.Run(() => { start.SignalAndWait(); first!.Dispose(); }));
+                Assert.That(original.TryAcquireEnrRefresh(4, out _), Is.False);
+                second!.Dispose();
+                Assert.That(alias.TryAcquireEnrRefresh(5, out IDisposable? replacement), Is.True);
+                using (replacement)
+                {
+                    first!.Dispose();
+                    second.Dispose();
+                    Assert.That(original.RequestingEnrSequence, Is.EqualTo(5));
+                }
+            }
+        }
+
         private static NodeRecord CreateEnr(
             PrivateKey privateKey,
             IPAddress ipAddress,
