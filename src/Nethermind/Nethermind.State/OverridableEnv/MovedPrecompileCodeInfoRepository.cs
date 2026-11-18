@@ -45,9 +45,14 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
         return codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation, vmSpec, out delegationAddress);
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Answers from the env's store alone. A code change after an override keeps a retained native precompile and
+    /// leaves other overrides without one, so the account's current code hash cannot change the answer.
+    /// </remarks>
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         TryGetMoved(codeSource, out CodeInfo? codeInfo) ? codeInfo.Precompile
-        : TryGetOverriddenPrecompileAddress(codeSource, vmSpec, out codeInfo) ? codeInfo.Precompile
+        : TryGetPrecompileCodeOverride(codeSource, vmSpec, out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry) ? entry.codeInfo.Precompile
         : codeInfoRepository.GetPrecompile(codeSource, vmSpec);
 
     /// <inheritdoc/>
@@ -103,8 +108,7 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
     /// </remarks>
     private bool TryGetOverriddenPrecompileAddress(Address codeSource, IReleaseSpec vmSpec, [NotNullWhen(true)] out CodeInfo? codeInfo, bool forDelegation = false)
     {
-        if (overrides.Code.Count != 0 && overrides.Code.TryGetValue(codeSource, out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry) &&
-            (vmSpec.IsPrecompile(codeSource) || entry.codeInfo.IsPrecompile))
+        if (TryGetPrecompileCodeOverride(codeSource, vmSpec, out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry))
         {
             ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
             if (codeHash == entry.codeHash)
@@ -119,6 +123,20 @@ public class MovedPrecompileCodeInfoRepository(ICodeInfoRepository codeInfoRepos
         }
 
         codeInfo = null;
+        return false;
+    }
+
+    /// <summary>Finds the env's code override at a precompile address, a moved-away origin or a retained native address.</summary>
+    private bool TryGetPrecompileCodeOverride(Address codeSource, IReleaseSpec vmSpec,
+        out (CodeInfo codeInfo, CodeInfo delegatedCodeInfo, ValueHash256 codeHash) entry)
+    {
+        if (overrides.Code.Count != 0 && overrides.Code.TryGetValue(codeSource, out entry) &&
+            (vmSpec.IsPrecompile(codeSource) || entry.codeInfo.IsPrecompile))
+        {
+            return true;
+        }
+
+        entry = default;
         return false;
     }
 }

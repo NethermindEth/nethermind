@@ -13,6 +13,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Newtonsoft.Json.Linq;
@@ -251,6 +252,33 @@ public partial class EthRpcModuleTests
         JToken? error = response["error"] ?? (response["result"] as JObject)?["error"];
         if (chargeFees) Assert.That(error, Is.Not.Null, response.ToString());
         else Assert.That(error, Is.Null, response.ToString());
+    }
+
+    /// <summary>Only <c>underCallPolicy</c> applies the call fee policy; the overload without it fills limits as an estimate.</summary>
+    [Test]
+    public async Task RpcCallFeePolicy_frame_gas_estimate_follows_call_fee_semantics_only_under_call_policy([Values(null, false, true)] bool? underCallPolicy)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance),
+            configurer: builder => builder.AddSingleton(new RpcCallExecutionPolicy(chargeFees: false)));
+        FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 1_000_000_000;
+        request.MaxPriorityFeePerGas = 1;
+        Transaction tx = request.ToCallTransaction(Eip8141Prototype.Instance, ctx.Test.RpcConfig.GasCap, validateFeeCapOrder: false).Data!;
+        tx.ChainId = ctx.Test.Bridge.GetChainId();
+        ulong gasCap = ctx.Test.RpcConfig.GasCap.EffectiveGasCap();
+        Func<ulong, UInt256>? maxFeeAt = request.PerGasBudget(tx, gasCap) is null ? null : maxGas => request.PerGasBudget(tx, maxGas)!.Value;
+        bool[] fill = [true, true];
+        // The payer covers the sender frame's 1 wei transfer and none of the gas.
+        Dictionary<Address, AccountOverride> stateOverride = new() { [request.From!] = new AccountOverride { Balance = 1 } };
+        BlockHeader header = ctx.Test.BlockTree.Head!.Header;
+        int errorMargin = ctx.Test.RpcConfig.EstimateErrorMargin;
+
+        Result<TxFrame[]> result = underCallPolicy is { } policy
+            ? ctx.Test.Bridge.EstimateFrameGas(header, tx, fill, fill, gasCap, errorMargin, maxFeeAt, stateOverride, null, policy, default, out _)
+            : ctx.Test.Bridge.EstimateFrameGas(header, tx, fill, fill, gasCap, errorMargin, maxFeeAt, stateOverride, null, default, out _);
+
+        if (underCallPolicy is true) Assert.That(result.Error, Is.Null);
+        else Assert.That(result.Error, Is.Not.Null);
     }
 
     [Test]

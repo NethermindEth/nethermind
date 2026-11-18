@@ -355,6 +355,12 @@ namespace Nethermind.Facade
         }
 
         public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
+            Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride,
+            CancellationToken cancellationToken, out bool executionReverted) =>
+            EstimateFrameGas(header, tx, fillExecution, fillState, gasCap, errorMargin, maxFeeAt, stateOverride, blockOverride, underCallPolicy: false,
+                cancellationToken, out executionReverted);
+
+        public Result<TxFrame[]> EstimateFrameGas(BlockHeader header, Transaction tx, bool[] fillExecution, bool[] fillState, ulong gasCap, int errorMargin,
             Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, bool underCallPolicy,
             CancellationToken cancellationToken, out bool executionReverted)
         {

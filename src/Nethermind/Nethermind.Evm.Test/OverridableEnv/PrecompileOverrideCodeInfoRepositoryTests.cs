@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -417,6 +418,38 @@ public class PrecompileOverrideCodeInfoRepositoryTests
             Assert.That(codeInfo.IsPrecompile, Is.True);
             Assert.That(worldState.Reads, Is.EqualTo(new[] { movedTo }));
             Assert.That(worldState.Accesses, Is.EqualTo(new[] { movedTo }));
+        }
+    }
+
+    /// <summary>
+    /// Resolving an overridden precompile's dispatch reads no account, so a transaction that never accesses the address
+    /// leaves it out of the EIP-7928 block access list.
+    /// </summary>
+    [Test]
+    public void GetPrecompile_at_overridden_precompile_records_no_account_access([Values] bool preservePrecompiles, [Values] bool codeChanged)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address address = IdentityPrecompile.Address;
+        IWorldState inner = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = inner.BeginScope(IWorldState.PreGenesis);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(new EthereumCodeInfoRepository(inner), inner, overrides,
+            new(disableOnAccountOverride: !preservePrecompiles));
+        inner.ApplyStateOverridesNoCommit(repository, new() { [address] = new() { Balance = 7 } }, spec);
+        if (codeChanged) inner.InsertCode(address, new byte[] { (byte)Instruction.STOP }, spec);
+        TracedAccessWorldState worldState = new(inner, parallel: false);
+        worldState.SetGeneratingBlockAccessList(new());
+        MovedPrecompileCodeInfoRepository reader = new(new EthereumCodeInfoRepository(worldState), worldState, overrides);
+
+        IPrecompile? precompile = reader.GetPrecompile(address, spec);
+        AccountChangesAtIndex? recordedByGetPrecompile = worldState.GetGeneratingBlockAccessList()!.GetAccountChanges(address);
+        reader.GetCachedCodeInfo(address, spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(precompile, Is.EqualTo(preservePrecompiles ? IdentityPrecompile.Instance : null));
+            Assert.That(recordedByGetPrecompile, Is.Null);
+            Assert.That(worldState.GetGeneratingBlockAccessList()!.GetAccountChanges(address), Is.Not.Null, "a code lookup records the account");
         }
     }
 

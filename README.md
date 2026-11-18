@@ -171,11 +171,8 @@ Explicit precompile moves remain separate. Ordinary VM outcomes marked `ShouldRe
 original revert bytes through `eth_call` and `eth_estimateGas`, even when an
 extension does not also set the redundant `Revert` exception marker.
 
-Decorators implementing `IOverridableCodeInfoRepository` must forward
-`DisablePrecompileOnAccountOverride`. The override layer uses this policy before
-allocating unused replacement code wrappers for non-code account overrides.
-RPC tests exercise both default and container-registered policies with empty, balance,
-nonce, code, state and state-diff account overrides.
+RPC tests exercise both the default and a container-registered `PrecompileOverridePolicy` with empty,
+balance, nonce, code, state and state-diff account overrides.
 
 Chains can independently select fee semantics for `eth_call` and `eth_createAccessList`
 by registering the immutable `Nethermind.Facade.RpcCallExecutionPolicy`. Its default values preserve
