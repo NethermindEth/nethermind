@@ -22,7 +22,6 @@ public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvi
     protected readonly ILogger _logger = logger;
     protected ulong _barrier;
     protected ulong _pivotNumber;
-    protected ulong? _barrierWhenStarted;
 
     protected readonly IDb _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
 
@@ -30,17 +29,11 @@ public abstract class BarrierSyncFeed<T>(IDb metadataDb, ISpecProvider specProvi
     {
         if (!HasPivot())
         {
-            _barrierWhenStarted = SyncConfigBarrierCalc;
-            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, SyncConfigBarrierCalc.ToBigEndianByteArrayWithoutLeadingZeros());
         }
-        else if (_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
+        else if (!_metadataDb.KeyExists(BarrierWhenStartedMetadataDbKey))
         {
-            _barrierWhenStarted = _metadataDb.GetULongFromBigEndianByteArrayWithoutLeadingZeros((ulong)BarrierWhenStartedMetadataDbKey);
-        }
-        else
-        {
-            _barrierWhenStarted = _barrier;
-            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+            _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrier.ToBigEndianByteArrayWithoutLeadingZeros());
         }
     }
 }
