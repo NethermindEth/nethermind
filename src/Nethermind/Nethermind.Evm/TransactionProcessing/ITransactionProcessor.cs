@@ -19,8 +19,14 @@ public interface ITransactionProcessor
 
     public interface IBlobBaseFeeCalculator
     {
+        /// <summary>Calculates the fee per blob gas for <paramref name="transaction"/>.</summary>
+        /// <remarks>
+        /// The default calls <see cref="TryCalculateBlobFees"/>, so an existing implementation keeps its pricing but
+        /// also fails when the total blob fee exceeds 256 bits. Override it to avoid that.
+        /// </remarks>
         bool TryCalculateFeePerBlobGas(BlockHeader header, Transaction transaction,
-            ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas);
+            ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas) =>
+            TryCalculateBlobFees(header, transaction, blobGasPriceUpdateFraction, out feePerBlobGas, out _);
 
         bool TryCalculateBlobFees(BlockHeader header, Transaction transaction,
             ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas, out UInt256 totalBlobBaseFee);
