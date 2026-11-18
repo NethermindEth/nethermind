@@ -9,7 +9,6 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.IO;
 using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
@@ -30,7 +29,6 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Network;
-using Snappier;
 using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
 using Channel = System.Threading.Channels.Channel;
@@ -40,6 +38,8 @@ namespace Nethermind.Optimism.CL.P2P;
 public class OptimismCLP2P : IDisposable
 {
     private const int MaxGossipSize = 10485760;
+    // 65-byte signature followed by at least one payload byte, as in op-node's gossip validation
+    private const int MinGossipSize = 66;
     private const int MessageDomainLength = 4;
     private const int MessageIdLength = 20;
 
@@ -267,15 +267,18 @@ public class OptimismCLP2P : IDisposable
 
     private bool TryValidateAndDecodePayload(byte[] msg, [MaybeNullWhen(false)] out ExecutionPayloadV3 payload)
     {
-        int length = Snappy.GetUncompressedLength(msg);
-        if (length is < 65 or > MaxGossipSize)
+        if (!TryGetDecompressedLength(msg, out int length) || length < MinGossipSize)
         {
             payload = null;
             return false;
         }
 
         using ArrayPoolListRef<byte> decompressed = new(length, length);
-        Snappy.Decompress(msg, decompressed.AsSpan());
+        if (!GoSnappy.TryDecode(msg, decompressed.AsSpan()))
+        {
+            payload = null;
+            return false;
+        }
 
         Span<byte> signature = decompressed.AsSpan()[..65];
         ReadOnlySpan<byte> payloadData = decompressed.AsSpan()[65..];
@@ -372,7 +375,7 @@ public class OptimismCLP2P : IDisposable
         Span<byte> payload = buffer.AsSpan(headerLength);
         ReadOnlySpan<byte> domain = MessageDomainValidSnappy;
         int payloadLength = decompressedLength;
-        if (decompressedLength < 0 || !TryDecompress(data, payload[..decompressedLength]))
+        if (decompressedLength < 0 || !GoSnappy.TryDecode(data, payload[..decompressedLength]))
         {
             domain = MessageDomainInvalidSnappy;
             data.CopyTo(payload);
@@ -391,28 +394,9 @@ public class OptimismCLP2P : IDisposable
 
     private static bool TryGetDecompressedLength(ReadOnlySpan<byte> data, out int length)
     {
-        try
-        {
-            length = Snappy.GetUncompressedLength(data);
-            return length is >= 0 and <= MaxGossipSize;
-        }
-        catch (InvalidDataException)
-        {
-            length = 0;
-            return false;
-        }
-    }
-
-    private static bool TryDecompress(ReadOnlySpan<byte> data, Span<byte> destination)
-    {
-        try
-        {
-            return Snappy.Decompress(data, destination) == destination.Length;
-        }
-        catch (InvalidDataException)
-        {
-            return false;
-        }
+        bool isValid = GoSnappy.TryReadDecodedLength(data, out uint decodedLength, out _) && decodedLength <= MaxGossipSize;
+        length = isValid ? (int)decodedLength : 0;
+        return isValid;
     }
 
     public void Reset(ulong headNumber) => _headNumber = headNumber;

@@ -305,7 +305,7 @@ public class SnapRangeProofBoundaryTests
             {
                 byte[] key = Keccak.Compute(new byte[] { (byte)nibble, (byte)i }).BytesToArray();
                 key[0] = (byte)((nibble << 4) | (key[0] & 0x0f));
-                accounts.Add(new PathWithAccount(new ValueHash256(key), Build.An.Account.WithBalance(9).TestObject));
+                accounts.Add(new PathWithAccount(new ValueHash256(key), Build.An.Account.WithBalance(9).TestObject.ToStruct()));
             }
         }
         accounts.Sort(static (x, y) => x.Path.CompareTo(y.Path));
@@ -412,7 +412,7 @@ public class SnapRangeProofBoundaryTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         DrainAccountRangePartition(progressTracker);
 
-        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject.ToStruct());
         progressTracker.EnqueueAccountRefresh(refreshed, ValueKeccak.Zero, Keccak.MaxValue);
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
@@ -436,7 +436,7 @@ public class SnapRangeProofBoundaryTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(retry!.AccountsToRefreshRequest!.Paths[0].PathAndAccount?.Path, Is.EqualTo(KeyB));
-                Assert.That(refreshed.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "nothing was adopted");
+                Assert.That(refreshed.Account.StorageRoot, Is.EqualTo(TestItem.KeccakG), "nothing was adopted");
             }
         }
     }
@@ -450,7 +450,7 @@ public class SnapRangeProofBoundaryTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         DrainAccountRangePartition(progressTracker);
 
-        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+        PathWithAccount refreshed = new(KeyB, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject.ToStruct());
         progressTracker.EnqueueAccountRefresh(refreshed, ValueKeccak.Zero, Keccak.MaxValue);
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
         using (refresh)
@@ -463,10 +463,10 @@ public class SnapRangeProofBoundaryTests
             snapProvider.ReleaseRequest(refresh, responseHandled: true);
         }
 
-        Assert.That(refreshed.Account!.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
+        Assert.That(refreshed.Account.StorageRoot, Is.EqualTo(source.Accounts[KeyB].StorageRoot), "the proven storage root is adopted");
     }
 
-    private static PathWithAccount MadeUpAccountBeforeD() => new(KeyBeforeD, Build.An.Account.WithBalance(9).TestObject);
+    private static PathWithAccount MadeUpAccountBeforeD() => new(KeyBeforeD, Build.An.Account.WithBalance(9).TestObject.ToStruct());
 
     private static ContainerBuilder CreateContainerBuilder(Hash256 stateRoot) =>
         new ContainerBuilder()
@@ -617,7 +617,7 @@ public class SnapRangeProofBoundaryTests
 
         public PathWithAccount AccountD => AccountEntry(KeyD);
 
-        public PathWithAccount AccountEntry(in ValueHash256 path) => new(path, Accounts[path]);
+        public PathWithAccount AccountEntry(in ValueHash256 path) => new(path, Accounts[path].ToStruct());
 
         public PathWithStorageSlot SlotEntry(in ValueHash256 path) => new(path, SlotValue(path));
 

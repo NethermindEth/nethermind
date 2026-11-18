@@ -208,74 +208,89 @@ public class BlockValidator(
             return true;
         }
 
-        if (_logger.IsWarn) _logger.Warn($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
-        if (_logger.IsWarn) _logger.Warn($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
-        error = null;
+        // The bad-block store keeps the access list processing generated.
+        if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
+        {
+            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+        }
+
+        error = DescribeMismatch(processedBlock, receipts, suggestedBlock, _logger);
+        return false;
+    }
+
+    /// <summary>
+    /// Logs each execution outcome in which <paramref name="processedBlock"/> differs from <paramref name="suggestedBlock"/>
+    /// and returns the error for the first one, or <c>null</c> when none of them does.
+    /// </summary>
+    internal static string? DescribeMismatch(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, ILogger logger)
+    {
+        if (logger.IsWarn) logger.Warn($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
+        if (logger.IsWarn) logger.Warn($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
+        string? error = null;
         if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
         {
-            if (_logger.IsWarn) _logger.Warn($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
+            if (logger.IsWarn) logger.Warn($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
             error ??= BlockErrorMessages.HeaderGasUsedMismatch(suggestedBlock.Header.GasUsed, processedBlock.Header.GasUsed);
         }
 
         if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
         {
-            if (_logger.IsWarn) _logger.Warn($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
+            if (logger.IsWarn) logger.Warn($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
             error ??= BlockErrorMessages.InvalidLogsBloom(suggestedBlock.Header.Bloom, processedBlock.Header.Bloom);
         }
 
         if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
         {
-            if (_logger.IsWarn) _logger.Warn($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
+            if (logger.IsWarn) logger.Warn($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
             error ??= BlockErrorMessages.InvalidReceiptsRoot(suggestedBlock.Header.ReceiptsRoot, processedBlock.Header.ReceiptsRoot);
         }
 
         if (processedBlock.Header.BlockAccessListHash != suggestedBlock.Header.BlockAccessListHash)
         {
-            if (_logger.IsWarn) _logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
+            if (logger.IsWarn) logger.Warn($"- block access list hash : expected {suggestedBlock.Header.BlockAccessListHash}, got {processedBlock.Header.BlockAccessListHash}");
             error ??= BlockErrorMessages.InvalidBlockLevelAccessListHash(suggestedBlock.Header.BlockAccessListHash, processedBlock.Header.BlockAccessListHash);
-            if (_logger.IsDebug) _logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
-            suggestedBlock.GeneratedBlockAccessList = processedBlock.GeneratedBlockAccessList;
+            if (logger.IsDebug) logger.Debug($"Generated block access list:\n{processedBlock.GeneratedBlockAccessList}\nSuggested block access list:\n{processedBlock.BlockAccessList}");
         }
 
         if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
         {
-            if (_logger.IsWarn) _logger.Warn($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
+            if (logger.IsWarn) logger.Warn($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             error ??= BlockErrorMessages.InvalidStateRoot(suggestedBlock.Header.StateRoot, processedBlock.Header.StateRoot);
         }
 
         if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
         {
-            if (_logger.IsWarn) _logger.Warn($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
+            if (logger.IsWarn) logger.Warn($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
             error ??= BlockErrorMessages.HeaderBlobGasMismatch(suggestedBlock.Header.BlobGasUsed, processedBlock.Header.BlobGasUsed);
         }
 
         if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
         {
-            if (_logger.IsWarn) _logger.Warn($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
+            if (logger.IsWarn) logger.Warn($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
             error ??= BlockErrorMessages.IncorrectExcessBlobGas(suggestedBlock.Header.ExcessBlobGas, processedBlock.Header.ExcessBlobGas);
         }
 
         if (processedBlock.Header.ParentBeaconBlockRoot != suggestedBlock.Header.ParentBeaconBlockRoot)
         {
-            if (_logger.IsWarn) _logger.Warn($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
+            if (logger.IsWarn) logger.Warn($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
             error ??= BlockErrorMessages.InvalidParentBeaconBlockRoot(suggestedBlock.Header.ParentBeaconBlockRoot, processedBlock.Header.ParentBeaconBlockRoot);
         }
 
         if (processedBlock.Header.RequestsHash != suggestedBlock.Header.RequestsHash)
         {
-            if (_logger.IsWarn) _logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
+            if (logger.IsWarn) logger.Warn($"- requests root : expected {suggestedBlock.Header.RequestsHash}, got {processedBlock.Header.RequestsHash}");
             error ??= BlockErrorMessages.InvalidRequestsHash(suggestedBlock.Header.RequestsHash, processedBlock.Header.RequestsHash);
         }
 
         if (processedBlock.Header.SlotNumber != suggestedBlock.Header.SlotNumber)
         {
-            if (_logger.IsWarn) _logger.Warn($"- slot number: expected {suggestedBlock.Header.SlotNumber}, got {processedBlock.Header.SlotNumber}");
+            if (logger.IsWarn) logger.Warn($"- slot number: expected {suggestedBlock.Header.SlotNumber}, got {processedBlock.Header.SlotNumber}");
             error ??= BlockErrorMessages.SlotNumberMismatch(suggestedBlock.Header.SlotNumber, processedBlock.Header.SlotNumber);
         }
 
         if (receipts.Length != processedBlock.Transactions.Length)
         {
-            if (_logger.IsWarn) _logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
+            if (logger.IsWarn) logger.Warn($"- receipt count mismatch: expected {processedBlock.Transactions.Length} receipts to match transaction count, got {receipts.Length}");
             error ??= BlockErrorMessages.ReceiptCountMismatch(processedBlock.Transactions.Length, receipts.Length);
         }
         else
@@ -284,7 +299,7 @@ public class BlockValidator(
             {
                 if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
                 {
-                    if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
+                    if (logger.IsWarn) logger.Warn($"- invalid transaction {i}");
                     error ??= BlockErrorMessages.InvalidTxInBlock(i);
                 }
             }
@@ -292,10 +307,10 @@ public class BlockValidator(
 
         if (suggestedBlock.ExtraData is not null)
         {
-            if (_logger.IsWarn) _logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
+            if (logger.IsWarn) logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
         }
 
-        return false;
+        return error;
     }
 
     public bool ValidateWithdrawals(Block block, out string? error)
@@ -532,16 +547,22 @@ public class BlockValidator(
 
     private bool ValidateBlockLevelAccessListSize(Block block, int itemCount, ref string? error)
     {
-        if (Eip7928Constants.ExceedsItemLimit(itemCount, block.Header.GasLimit))
+        if (ItemLimitError(block.Header, itemCount) is { } limitError)
         {
-            ulong maxBalItems = block.Header.GasLimit / Eip7928Constants.ItemCost;
-            error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, maxBalItems);
+            error = limitError;
             if (_logger.IsWarn) _logger.Warn($"{Invalid(block)} {error}");
             return false;
         }
 
         return true;
     }
+
+    /// <summary>EIP-7928: the error for an access list of <paramref name="itemCount"/> items over the limit of
+    /// <paramref name="header"/>'s gas limit / <see cref="Eip7928Constants.ItemCost"/>, or <c>null</c> within it.</summary>
+    internal static string? ItemLimitError(BlockHeader header, int itemCount) =>
+        Eip7928Constants.ExceedsItemLimit(itemCount, header.GasLimit)
+            ? BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, header.GasLimit / Eip7928Constants.ItemCost)
+            : null;
 
     // EIP-7928: BlockAccessIndex valid range is [0, txCount + 1]
     // (0 = pre-execution, 1..n = transactions, n+1 = post-execution).

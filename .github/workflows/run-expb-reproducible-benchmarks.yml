@@ -897,14 +897,20 @@ jobs:
             exit 1
           fi
 
-          inspect_output="$(docker buildx imagetools inspect "${IMAGE_LABEL}")"
+          # Concurrent master pushes overwrite :master in whatever order their builds finish, so resolve the
+          # per-commit tag publish-docker adds on master pushes instead of racing the moving one.
+          resolve_label="${IMAGE_LABEL}"
+          if [[ "${IMAGE_LABEL}" == "nethermindeth/nethermind:master" && -n "${EXPECTED_REVISION}" ]]; then
+            resolve_label="${IMAGE_LABEL}-${EXPECTED_REVISION:0:7}"
+          fi
+          inspect_output="$(docker buildx imagetools inspect "${resolve_label}")"
           image_digest="$(printf '%s\n' "${inspect_output}" | awk '$1 == "Digest:" { print $2; exit }')"
           if ! [[ "${image_digest}" =~ ^sha256:[0-9a-fA-F]{64}$ ]]; then
-            echo "::error::Could not resolve an immutable multiarch digest for ${IMAGE_LABEL}."
+            echo "::error::Could not resolve an immutable multiarch digest for ${resolve_label}."
             exit 1
           fi
           image="${IMAGE_LABEL%%@*}@${image_digest}"
-          echo "Resolved ${IMAGE_LABEL} to ${image}."
+          echo "Resolved ${resolve_label} to ${image}."
 
           docker pull "${image}"
           version_status=0
@@ -1430,6 +1436,22 @@ jobs:
             done < <(printf '%s' "${scratch[${mp}]}" | tr ',' '\n' | sed -n 's/^\(upperdir\|workdir\)=//p' | sort -u)
           done
           exit 0
+
+      - name: Reclaim Docker disk and pull the client image
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Each master run leaves a digest-pinned image on this box. expb's own pull drops the daemon's error, so
+          # once they fill the disk the run fails later with a bare ImageNotFound. With the overlay2 store, digest-only
+          # images count as dangling; keep this run's image when an earlier matrix cell already pulled it.
+          keep="$(docker image inspect --format '{{.Id}}' "${NETHERMIND_IMAGE}" 2>/dev/null || true)"
+          docker container prune -f >/dev/null || true
+          docker images -q --no-trunc --filter dangling=true | grep -vxF "${keep:-none}" | xargs -r docker rmi >/dev/null 2>&1 || true
+          docker builder prune -af >/dev/null || true
+          echo "Storage driver: $(docker info --format '{{.Driver}}')"
+          docker system df || true
+          df -h / "$(docker info --format '{{.DockerRootDir}}')"
+          docker pull "${NETHERMIND_IMAGE}"
 
       - name: Run expb scenarios
         id: run-expb
