@@ -31,6 +31,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -3087,6 +3088,89 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        /// <summary>
+        /// Local transactions submitted over RPC are held by the pending pool and by the persistent broadcast pool, which
+        /// share the instances. Replacements make the pending pool rewrite the gas bottleneck of a sender's later
+        /// transactions, which the persistent pool sorts by.
+        /// </summary>
+        [Test]
+        public void Local_tx_spam_with_replacements_does_not_livelock_persistent_broadcast_eviction()
+        {
+            // The Hoodi preset's TxPool.Size, which also caps the persistent broadcast pool.
+            const int capacity = 1024;
+            const int senders = 64;
+            const int operations = 8_000;
+            _txPool = CreatePool(new TxPoolConfig { Size = capacity, GasLimit = TxGasLimit });
+
+            PrivateKey[] keys = TestItem.PrivateKeys[..senders];
+            foreach (PrivateKey key in keys)
+            {
+                EnsureSenderBalance(key.Address, UInt256.MaxValue);
+            }
+
+            Random random = new(1);
+            ulong[] nextNonce = new ulong[senders];
+            Dictionary<(int Sender, ulong Nonce), UInt256> prices = [];
+            int submitted = 0;
+            int accepted = 0;
+            int acceptedReplacements = 0;
+            int acceptedOnceFull = 0;
+            bool persistentPoolFull = false;
+
+            bool completed = TestThread.CompletesWithin(() =>
+            {
+                for (int i = 0; i < operations; i++)
+                {
+                    int sender = random.Next(senders);
+                    ulong nonce;
+                    UInt256 price;
+                    bool replacement = nextNonce[sender] > 0 && random.Next(4) == 0;
+                    if (replacement)
+                    {
+                        // Replace a pending nonce with a fee bump above the 10% the pool requires.
+                        nonce = (ulong)random.Next((int)nextNonce[sender]);
+                        price = prices[(sender, nonce)] * 12 / 10 + 1;
+                    }
+                    else
+                    {
+                        nonce = nextNonce[sender]++;
+                        price = random.Next(1, 100).GWei;
+                    }
+
+                    prices[(sender, nonce)] = price;
+                    Transaction tx = Build.A.Transaction
+                        .WithNonce(nonce)
+                        .WithGasPrice(price)
+                        .SignedAndResolved(_ethereumEcdsa, keys[sender])
+                        .TestObject;
+                    if (_txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted)
+                    {
+                        accepted++;
+                        if (replacement) acceptedReplacements++;
+                        if (persistentPoolFull) acceptedOnceFull++;
+                        else persistentPoolFull = _txPool.GetOwnPendingTransactions().Length == capacity;
+                    }
+
+                    submitted++;
+                }
+            }, TimeSpan.FromSeconds(30));
+
+            if (!completed)
+            {
+                // The livelocked submission holds the pool's locks, so disposing it would hang the teardown too.
+                _txPool = null;
+            }
+
+            Assert.That(completed, Is.True, $"local tx submission livelocked on submission {submitted + 1} of {operations} ({accepted} accepted before it)");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistentPoolFull, Is.True, "the workload never filled the persistent broadcast pool");
+                Assert.That(acceptedOnceFull, Is.GreaterThan(0), "no local tx was accepted into the full persistent broadcast pool");
+                Assert.That(acceptedReplacements, Is.GreaterThan(0), "no same-sender, same-nonce replacement was accepted");
+                Assert.That(_txPool.GetOwnPendingTransactions(), Has.Length.LessThanOrEqualTo(capacity));
+            }
+        }
+
         [Test]
         public void should_notify_added_peer_of_own_tx_when_we_are_synced([Values(0u, 1u)] uint headNumber) =>
             AssertAnnouncementsToAddedPeer(peerHeadNumber: headNumber, expectedAnnouncements: (int)headNumber);
@@ -3257,10 +3341,32 @@ namespace Nethermind.TxPool.Test
             Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             EnsureSenderBalance(tx);
             _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(_txPool.IsKnown(tx.Hash), Is.True, "the per-block cache must know a just-submitted tx whatever the long-term size");
 
             await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
 
             Assert.That(_txPool.IsKnown(tx.Hash), Is.EqualTo(hashCacheSize > 0));
+        }
+
+        [Test]
+        public async Task HashCacheSize_bounds_the_known_tx_hashes_kept_after_a_new_head()
+        {
+            // Capacity eight is a single eight-way set that fills vacant ways before evicting, so once more than
+            // eight hashes are pooled it holds exactly eight of them.
+            const int hashCacheSize = 8;
+            const int txCount = 64;
+            _txPool = CreatePool(new TxPoolConfig { HashCacheSize = hashCacheSize });
+            Transaction[] txs = new Transaction[txCount];
+            for (int i = 0; i < txCount; i++)
+            {
+                txs[i] = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeys[i]).TestObject;
+                EnsureSenderBalance(txs[i]);
+                Assert.That(_txPool.SubmitTx(txs[i], TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.TestObject);
+
+            Assert.That(txs.Count(tx => _txPool.IsKnown(tx.Hash)), Is.EqualTo(hashCacheSize));
         }
 
         [Test]
@@ -6605,6 +6711,31 @@ namespace Nethermind.TxPool.Test
                 Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)), Is.EqualTo(1));
                 Assert.That(_txPool.NotifyAboutTx(tx.Hash!, peer), Is.EqualTo(AnnounceResult.RequestRequired));
             }
+        }
+
+        [Test]
+        public async Task Locally_unsent_transaction_retries_through_the_original_announcer()
+        {
+            _txPool = CreatePool();
+            FieldInfo retryField = typeof(TxPool).GetField("_retryCache", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            await ((RetryCache<PooledTransactionRequestMessage, ValueHash256>)retryField.GetValue(_txPool)!).DisposeAsync();
+            ManualTimeProvider clock = new();
+            RetryCache<PooledTransactionRequestMessage, ValueHash256> cache = new(LimboLogs.Instance, clock, timeoutMs: 500);
+            retryField.SetValue(_txPool, cache);
+            IMessageHandler<PooledTransactionRequestMessage> source = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            ValueHash256 hash = TestItem.KeccakA.ValueHash256;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.NotifyAboutTx(in hash, source), Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(_txPool.TryDeferTransactionRequest(in hash, source), Is.True);
+                Assert.That(_txPool.NotifyAboutTx(in hash, source), Is.EqualTo(AnnounceResult.Delayed));
+            }
+
+            clock.Advance(TimeSpan.FromMilliseconds(500));
+            cache.ProcessRetryTick();
+            source.Received(1).HandleMessage(Arg.Is<PooledTransactionRequestMessage>(request => request.TxHash == hash));
+            cache.Received(in hash);
+            Assert.That(_txPool.TryDeferTransactionRequest(in hash, source), Is.False);
         }
 
         // Asserts against the shared preemption counter, so it runs from TxPoolProcessWideStateTests.
