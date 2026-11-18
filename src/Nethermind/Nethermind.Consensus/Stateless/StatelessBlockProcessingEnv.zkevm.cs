@@ -19,4 +19,13 @@ public partial class StatelessBlockProcessingEnv
 
     /// <remarks>A plain, unbounded map rather than <see cref="StaticCodeCache"/>: see <see cref="GuestCodeCache"/>.</remarks>
     private static partial ICodeCache CreateCodeCache() => new GuestCodeCache(CodeCacheCapacity);
+
+    /// <remarks>On Airbender the tries are libairbender's, when it read these witness nodes itself: see
+    /// <see cref="AirbenderTrieScopeProvider"/>.</remarks>
+    private static partial IWorldStateScopeProvider CreateScopeProvider(Witness witness, ILogManager logManager) =>
+        AirbenderTrieScopeProvider.TryAttach(witness.State.AsSpan()) && witness.CreateCodeDb() is IWorldStateScopeProvider.ICodeDb codeDb
+            ? new AirbenderTrieScopeProvider(codeDb, UnavailableStateHeaderProvider.Instance, logManager)
+            : new TrieStoreScopeProvider(
+                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+                WitnessNodeStorage.CreateTrieStore(witness.State), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager);
 }

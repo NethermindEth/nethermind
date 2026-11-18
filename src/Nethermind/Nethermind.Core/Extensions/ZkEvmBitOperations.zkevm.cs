@@ -23,11 +23,42 @@ public static partial class ZkEvmBitOperations
     /// </remarks>
     internal static bool HasByteReverse => ZiskFlag.IsActive;
 
+    /// <summary>Whether the guest's zkVM reverses the bytes of a 32-bit value in one instruction, and nothing more of
+    /// Zbb: Airbender, whose machines decode <c>rev8</c> alone. Its loads still have to be aligned.</summary>
+    internal static bool HasRev8 => AirbenderFlag.IsActive;
+
+    /// <summary>Each 32-bit half of <paramref name="x"/> reversed and the halves exchanged, as two <c>rev8</c>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong Rev8Halves(ulong x) =>
+        ((ulong)BinaryPrimitives.ReverseEndianness((uint)x) << 32) | BinaryPrimitives.ReverseEndianness((uint)(x >> 32));
+
+    /// <summary><see cref="ReadUInt64BigEndian"/> by aligned word loads: the two or three words that hold the eight
+    /// bytes, shifted into place and reversed.</summary>
+    /// <remarks>Reads no word that holds none of the bytes.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe ulong ReadUInt64BigEndianByWords(ref byte source)
+    {
+        nuint address = (nuint)Unsafe.AsPointer(ref source);
+        uint* words = (uint*)(address & ~(nuint)3);
+        int shift = (int)(address & 3) << 3;
+        uint first = words[0];
+        uint second = words[1];
+        if (shift != 0)
+        {
+            uint third = words[2];
+            first = (first >> shift) | (second << (32 - shift));
+            second = (second >> shift) | (third << (32 - shift));
+        }
+
+        return ((ulong)BinaryPrimitives.ReverseEndianness(first) << 32) | BinaryPrimitives.ReverseEndianness(second);
+    }
+
     // Without Zbb, RISC-V has no byte-swap instruction and this all-64-bit form beats the BCL's ReverseEndianness.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Bswap64(ulong x)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(x);
+        if (HasRev8) return Rev8Halves(x);
         ref ulong masks = ref MemoryMarshal.GetArrayDataReference(SwapMasks);
         return Swap(x, masks, Unsafe.Add(ref masks, 1));
     }
@@ -40,6 +71,29 @@ public static partial class ZkEvmBitOperations
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong ReadUInt64BigEndian(ref byte source)
+    {
+        if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (HasRev8) return ReadUInt64BigEndianByWords(ref source);
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.
+            uint high = ((uint)source << 24) | ((uint)Unsafe.Add(ref source, 1) << 16) |
+                ((uint)Unsafe.Add(ref source, 2) << 8) | Unsafe.Add(ref source, 3);
+            uint low = ((uint)Unsafe.Add(ref source, 4) << 24) | ((uint)Unsafe.Add(ref source, 5) << 16) |
+                ((uint)Unsafe.Add(ref source, 6) << 8) | Unsafe.Add(ref source, 7);
+            return ((ulong)high << 32) | low;
+        }
+
+        return ((ulong)source << 56) | ((ulong)Unsafe.Add(ref source, 1) << 48) |
+            ((ulong)Unsafe.Add(ref source, 2) << 40) | ((ulong)Unsafe.Add(ref source, 3) << 32) |
+            ((ulong)Unsafe.Add(ref source, 4) << 24) | ((ulong)Unsafe.Add(ref source, 5) << 16) |
+            ((ulong)Unsafe.Add(ref source, 6) << 8) | Unsafe.Add(ref source, 7);
+    }
+
+    /// <summary><see cref="ReadUInt64BigEndian"/> without the word loads of <see cref="HasRev8"/>: for sources of no
+    /// known alignment in code that has to stay small, such as the PUSH handlers.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong ReadUInt64BigEndianGathered(ref byte source)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
         if (IntPtr.Size == sizeof(uint))
@@ -67,6 +121,18 @@ public static partial class ZkEvmBitOperations
         {
             Unsafe.WriteUnaligned(ref destination, BinaryPrimitives.ReverseEndianness(value));
             return;
+        }
+        if (HasRev8)
+        {
+            unsafe
+            {
+                if (((nuint)Unsafe.AsPointer(ref destination) & 3) == 0)
+                {
+                    Unsafe.As<byte, uint>(ref destination) = BinaryPrimitives.ReverseEndianness((uint)(value >> 32));
+                    Unsafe.As<byte, uint>(ref Unsafe.Add(ref destination, 4)) = BinaryPrimitives.ReverseEndianness((uint)value);
+                    return;
+                }
+            }
         }
 
         if (IntPtr.Size == sizeof(uint))
@@ -122,7 +188,7 @@ public static partial class ZkEvmBitOperations
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadSwapMasks(out ulong m8, out ulong m16)
     {
-        if (HasByteReverse)
+        if (HasByteReverse || HasRev8)
         {
             m8 = m16 = 0;
             return;
@@ -137,6 +203,7 @@ public static partial class ZkEvmBitOperations
     internal static ulong Swap(ulong x, ulong m8, ulong m16)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(x);
+        if (HasRev8) return Rev8Halves(x);
 
         // A 32-bit guest swaps each half, which then trade places for free, with `or`: a 64-bit addition there is
         // a carry chain of four instructions.

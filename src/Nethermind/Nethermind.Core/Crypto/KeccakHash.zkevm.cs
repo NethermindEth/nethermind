@@ -364,6 +364,8 @@ public sealed partial class KeccakHash
         /// <remarks>Packed where the guest reuses its input: only nodes that keep states have them, one state each, at the
         /// index <see cref="Slots"/> holds.</remarks>
         public static unsafe ulong* States;
+        /// <summary>Whether <see cref="States"/> is libairbender's, not this class's to free.</summary>
+        public static bool StatesBorrowed;
         /// <summary>Where the guest reuses its input, per node that keeps states, the index of its states in <see cref="States"/>.</summary>
         public static unsafe uint* Slots;
         /// <summary>On Airbender, the 256-byte aligned state a keyed or resumed node is finished in.</summary>
@@ -414,14 +416,32 @@ public sealed partial class KeccakHash
         {
             // Unchecked, the counts checked once: a bounds check per node loads a 32-bit length, a narrow access.
             ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
+            if (AirbenderFlag.IsActive && WitnessNodes.Lane is null)
+                WitnessNodes.Lane = (ulong*)NativeMemory.AlignedAlloc(AlignedStateLanes * sizeof(ulong), AlignedStateLanes * sizeof(ulong));
+            // The nodes of a trusted input lie where libairbender read them, and it hashed them as it did: see
+            // read_input there. The first and the last node say whether these are those nodes.
+            if (AirbenderFlag.IsActive && count > 0)
+            {
+                ref byte[] head = ref MemoryMarshal.GetArrayDataReference(nodes);
+                byte* firstData = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(head));
+                byte* lastData = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(Unsafe.Add(ref head, count - 1)));
+                if (Accelerators.AirbenderPrehashedNodes(firstData, lastData, (uint)count, out byte* prehashed, out ulong* kept))
+                {
+                    new ReadOnlySpan<byte>(prehashed, count * sizeof(ValueHash256)).CopyTo(MemoryMarshal.AsBytes(hashes));
+                    if (!WitnessNodes.StatesBorrowed) NativeMemory.AlignedFree(WitnessNodes.States);
+                    WitnessNodes.Nodes = nodes;
+                    WitnessNodes.Count = count;
+                    WitnessNodes.States = kept;
+                    WitnessNodes.StatesBorrowed = true;
+                    return;
+                }
+            }
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // the states of a node's whole leading blocks are written, and ComputeHash256OfEdited reads no other.
             ulong* states = AirbenderFlag.IsActive
                 ? (ulong*)NativeMemory.AlignedAlloc((nuint)count * (nuint)(RetainedLanes * sizeof(ulong)), AlignedStateLanes * sizeof(ulong))
                 : (ulong*)NativeMemory.Alloc((nuint)count, (nuint)(RetainedLanes * sizeof(ulong)));
             Debug.Assert(((nuint)states & 7) == 0);
-            if (AirbenderFlag.IsActive && WitnessNodes.Lane is null)
-                WitnessNodes.Lane = (ulong*)NativeMemory.AlignedAlloc(AlignedStateLanes * sizeof(ulong), AlignedStateLanes * sizeof(ulong));
             ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
             ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
             Unsafe.SkipInit(out KeccakState stateBuffer);
@@ -464,7 +484,9 @@ public sealed partial class KeccakHash
             WitnessNodes.Nodes = nodes;
             WitnessNodes.Count = count;
             WitnessNodes.States = states;
-            if (AirbenderFlag.IsActive)
+            if (WitnessNodes.StatesBorrowed)
+                WitnessNodes.StatesBorrowed = false;
+            else if (AirbenderFlag.IsActive)
                 NativeMemory.AlignedFree(released);
             else
                 NativeMemory.Free(released);

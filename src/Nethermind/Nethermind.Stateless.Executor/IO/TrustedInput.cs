@@ -314,10 +314,13 @@ public static partial class TrustedInput
         if (data.Length < HeaderLength
             || BinaryPrimitives.ReadUInt32LittleEndian(data) != Magic
             || BinaryPrimitives.ReadUInt32LittleEndian(data[4..]) != Version
-            || BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..]) != (uint)data.Length)
+            || BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..]) > (uint)data.Length)
         {
             throw new ArgumentException("Not a trusted input", nameof(data));
         }
+
+        // What follows the input proper is hints the guest's reader took: see WordDivision.
+        data = data[..(int)BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..])];
 
         ulong chainId = BinaryPrimitives.ReadUInt64LittleEndian(data[ChainIdOffset..]);
         ushort schemaId = SchemaIdOf(data);
@@ -350,7 +353,7 @@ public static partial class TrustedInput
         Witness witness = new()
         {
             Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
-            State = new ItemList(ReadItems(data, StateNodesList, 0)),
+            State = new ItemList(ReadStateNodes(data)),
             Codes = ReadCodes(data),
             Keys = ArrayPoolList<byte[]>.Empty()
         };
@@ -381,7 +384,8 @@ public static partial class TrustedInput
         TransactionDecodingResult decoded = TxsDecoder.DecodeTxsBorrowingBuffers(encodedTransactions, skipErrors: false);
         if (decoded.Error is not null) throw new InvalidOperationException(decoded.Error);
 
-        Block block = new(header, decoded.Transactions, [], withdrawals);
+        // The encodings are the block's own, so its size is their sum rather than a pass over the decoded transactions.
+        Block block = new(header, decoded.Transactions, [], withdrawals) { EncodedTransactions = encodedTransactions };
         if (encodedBlockAccessList is not null)
         {
             if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
@@ -414,6 +418,9 @@ public static partial class TrustedInput
 
     /// <summary>Returns the item list whose offset the header holds at <paramref name="field"/>.</summary>
     /// <param name="padding">The bytes each item is followed by before its own padding to 8.</param>
+    /// <summary>The state nodes of <paramref name="data"/>.</summary>
+    private static partial byte[][] ReadStateNodes(ReadOnlySpan<byte> data);
+
     private static byte[][] ReadItems(ReadOnlySpan<byte> data, int field, int padding)
     {
         (int position, int count) = ListStart(data, field);
@@ -554,7 +561,7 @@ public static partial class TrustedInput
         public byte[] this[int index] => codes[index].ToArray();
 
         (ValueHash256 Hash, ReadOnlyMemory<byte> Code) IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.this[int index] =>
-            (ValueKeccak.Compute(codes[index].Span), codes[index]);
+            (HashOf(codes[index], index), codes[index]);
 
         public ReadOnlySpan<byte[]> AsSpan()
         {
@@ -570,14 +577,21 @@ public static partial class TrustedInput
 
         IEnumerator<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> IEnumerable<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.GetEnumerator()
         {
-            foreach (ReadOnlyMemory<byte> code in codes)
-                yield return (ValueKeccak.Compute(code.Span), code);
+            for (int i = 0; i < codes.Length; i++)
+                yield return (HashOf(codes[i], i), codes[i]);
         }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 
         public void Dispose() { }
+
+        private static ValueHash256 HashOf(ReadOnlyMemory<byte> code, int index) =>
+            TryTakePrehashedCode(code.Span, index, out ValueHash256 hash) ? hash : ValueKeccak.Compute(code.Span);
     }
+
+    /// <summary>The keccak of the <paramref name="index"/>-th code of the input, when the guest's input reader hashed it.</summary>
+    /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial bool TryTakePrehashedCode(ReadOnlySpan<byte> code, int index, out ValueHash256 hash);
 }
 
 /// <summary>A field of a recovery hint, each held in a column of its own.</summary>

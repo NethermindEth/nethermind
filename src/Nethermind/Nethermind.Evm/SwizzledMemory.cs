@@ -78,11 +78,43 @@ internal static unsafe class SwizzledMemory
         for (; i < length && ((nuint)Unsafe.AsPointer(ref Unsafe.Add(ref destination, i)) & GroupMask) != 0; i++)
             ByteAt(ref Unsafe.Add(ref destination, i)) = Unsafe.Add(ref from, i);
 
-        for (; i <= length - sizeof(uint); i += sizeof(uint))
+        // Two cursors rather than an index: the address of each byte is then a displacement, not a sum that
+        // the code would compute again for every byte.
+        if (i <= length - sizeof(uint))
         {
-            Unsafe.As<byte, uint>(ref Unsafe.Add(ref destination, i)) =
-                ((uint)Unsafe.Add(ref from, i) << 24) | ((uint)Unsafe.Add(ref from, i + 1) << 16) |
-                ((uint)Unsafe.Add(ref from, i + 2) << 8) | Unsafe.Add(ref from, i + 3);
+            nint groups = (length - i) >> 2;
+            ref byte next = ref Unsafe.Add(ref from, i);
+            ref uint group = ref Unsafe.As<byte, uint>(ref Unsafe.Add(ref destination, i));
+            ref uint end = ref Unsafe.Add(ref group, groups);
+            // A group is the source's four bytes read big-endian: a word of the source with its bytes reversed. A
+            // source off a word boundary is read as the aligned words that cover it, each group merged from two.
+            nuint address = (nuint)Unsafe.AsPointer(ref next);
+            uint* words = (uint*)(address & ~(nuint)3);
+            int shift = (int)(address & 3) << 3;
+            if (shift == 0)
+            {
+                do
+                {
+                    group = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*words);
+                    words++;
+                    group = ref Unsafe.Add(ref group, 1);
+                }
+                while (Unsafe.IsAddressLessThan(ref group, ref end));
+            }
+            else
+            {
+                uint current = *words;
+                do
+                {
+                    words++;
+                    uint following = *words;
+                    group = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness((current >> shift) | (following << (32 - shift)));
+                    current = following;
+                    group = ref Unsafe.Add(ref group, 1);
+                }
+                while (Unsafe.IsAddressLessThan(ref group, ref end));
+            }
+            i += groups << 2;
         }
 
         for (; i < length; i++)
@@ -98,13 +130,39 @@ internal static unsafe class SwizzledMemory
         for (; i < length && ((nuint)Unsafe.AsPointer(ref Unsafe.Add(ref source, i)) & GroupMask) != 0; i++)
             Unsafe.Add(ref to, i) = ByteAt(ref Unsafe.Add(ref source, i));
 
-        for (; i <= length - sizeof(uint); i += sizeof(uint))
+        if (i <= length - sizeof(uint))
         {
-            uint group = Unsafe.As<byte, uint>(ref Unsafe.Add(ref source, i));
-            Unsafe.Add(ref to, i) = (byte)(group >> 24);
-            Unsafe.Add(ref to, i + 1) = (byte)(group >> 16);
-            Unsafe.Add(ref to, i + 2) = (byte)(group >> 8);
-            Unsafe.Add(ref to, i + 3) = (byte)group;
+            nint groups = (length - i) >> 2;
+            ref byte next = ref Unsafe.Add(ref to, i);
+            ref uint from = ref Unsafe.As<byte, uint>(ref Unsafe.Add(ref source, i));
+            ref uint end = ref Unsafe.Add(ref from, groups);
+            if (((nuint)Unsafe.AsPointer(ref next) & 3) == 0)
+            {
+                // Onto a word boundary a group goes out as one word, its bytes reversed.
+                ref uint word = ref Unsafe.As<byte, uint>(ref next);
+                do
+                {
+                    word = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(from);
+                    word = ref Unsafe.Add(ref word, 1);
+                    from = ref Unsafe.Add(ref from, 1);
+                }
+                while (Unsafe.IsAddressLessThan(ref from, ref end));
+            }
+            else
+            {
+                do
+                {
+                    uint group = from;
+                    next = (byte)(group >> 24);
+                    Unsafe.Add(ref next, 1) = (byte)(group >> 16);
+                    Unsafe.Add(ref next, 2) = (byte)(group >> 8);
+                    Unsafe.Add(ref next, 3) = (byte)group;
+                    next = ref Unsafe.Add(ref next, sizeof(uint));
+                    from = ref Unsafe.Add(ref from, 1);
+                }
+                while (Unsafe.IsAddressLessThan(ref from, ref end));
+            }
+            i += groups << 2;
         }
 
         for (; i < length; i++)
