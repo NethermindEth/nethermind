@@ -1464,7 +1464,7 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
+    public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
         BadBlockStore badBlocksStore = null!;
         BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BadBlockStore(b.BadBlocksDb, 100)));
@@ -1489,7 +1489,7 @@ public class DebugModuleTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
-        ResultWrapper<IEnumerable<BadBlock>> blocks = await CreateModule().debug_getBadBlocks();
+        ResultWrapper<IEnumerable<BadBlock>> blocks = CreateModule().debug_getBadBlocks();
         Assert.That(blocks.Data.Count(), Is.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
@@ -1736,12 +1736,14 @@ public class DebugModuleTests
         Directory.CreateDirectory(directory.Path);
         string file = Path.Combine(directory.Path, "bad-blocks.json");
         TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
-        _debugBridge.GetBadBlocks().Returns(TimeOutAfter(Build.A.Block.WithNumber(1).TestObject));
+        bool resumedAfterTimeout = false;
+        _debugBridge.GetBadBlocks().Returns(TimeOutAfter(Build.A.Block.WithNumber(1).TestObject, Build.A.Block.WithNumber(2).TestObject));
         try
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(async () => await CreateModule().debug_getBadBlocks(file), Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(() => CreateModule().debug_getBadBlocks(file), Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(resumedAfterTimeout, Is.False, "the write stops at the first block after the timeout");
                 Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
             }
         }
@@ -1750,10 +1752,12 @@ public class DebugModuleTests
             TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
 
-        IEnumerable<Block> TimeOutAfter(Block block)
+        IEnumerable<Block> TimeOutAfter(Block first, Block second)
         {
-            yield return block;
+            yield return first;
             timeout.Cancel();
+            yield return second;
+            resumedAfterTimeout = true;
         }
     }
 
