@@ -12,13 +12,13 @@ set -euo pipefail
 cd "$(dirname "$0")"
 G=$(realpath "${2:?genesis dir}")
 TOOL=(dotnet run -c release --file proof-tool.cs --)
-VECTORS=$(realpath ../../src/Nethermind/artifacts/bin/Nethermind.Crypto.LeanFfi.Test/release/lean-vectors)
 mkdir -p "$G/proof"
 
 case "$1" in
   send)
     GENERATOR=$(grep -oP '^GENERATOR=\K.*' gen-genesis.sh)
     MNEMONIC=$(cat "$G/mnemonic")
+    VECTORS=$(realpath ../../src/Nethermind/artifacts/bin/Nethermind.Crypto.LeanFfi.Test/release/lean-vectors)
     # First account premined from the devnet mnemonic.
     DEVNET_SENDER_KEY=$(docker run --rm --network none --entrypoint geth-hdwallet "$GENERATOR" \
       -mnemonic "$MNEMONIC" -path "m/44'/60'/0'/0/0" | awk '/private key/{print $3}') \
