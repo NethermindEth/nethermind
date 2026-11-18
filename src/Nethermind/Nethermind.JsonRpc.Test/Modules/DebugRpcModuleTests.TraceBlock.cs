@@ -765,7 +765,14 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_javascript_deadline_cancels_execution(
-        [Values("javascript", "mux", "nested-mux", "native", "native-mux", "shadowed-mux")] string kind, [Values] bool indexed)
+        [Values("javascript", "mux", "nested-mux", "native", "native-mux", "shadowed-mux")] string kind, [Values] bool indexed) =>
+        await AssertJavaScriptCallCancellation(kind, indexed, bundle: false);
+
+    [Test]
+    public async Task Debug_traceCallMany_keeps_its_existing_deadline_policy([Values("javascript", "mux", "native")] string kind) =>
+        await AssertJavaScriptCallCancellation(kind, indexed: false, bundle: true);
+
+    private static async Task AssertJavaScriptCallCancellation(string kind, bool indexed, bool bundle)
     {
         DeadlineExecution clock = new() { Expiry = "before" };
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -785,13 +792,20 @@ public partial class DebugRpcModuleTests
         Dictionary<string, object> options = new() { ["tracer"] = tracer, ["timeout"] = "1s", ["streamMode"] = false };
         if (kind is "mux" or "nested-mux" or "native-mux" or "shadowed-mux") options["tracerConfig"] = config;
         if (indexed) options["txIndex"] = "0x1";
-        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), "debug_traceCall",
-            new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), nonce = $"0x{clock.Target:x}", gas = "0x186a0" }, block.Hash!, options);
+        object call = new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), nonce = $"0x{clock.Target:x}", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+            bundle ? "debug_traceCallMany" : "debug_traceCall",
+            bundle ? new[] { new { transactions = new[] { call } } } : call, block.Hash!, options);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(clock.TargetCancelled, Is.EqualTo(javascript), response);
-            if (!javascript)
+            Assert.That(clock.TargetCancelled, Is.EqualTo(javascript && !bundle), response);
+            if (bundle)
+            {
+                Assert.That((json["result"] as JArray)?.Count, Is.EqualTo(1), response);
+                if (javascript) Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.True, response);
+            }
+            if (!javascript || bundle)
                 Assert.That(json["error"], Is.Null, response);
             else
             {
@@ -1064,6 +1078,8 @@ public partial class DebugRpcModuleTests
     private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock, bool noBaseFee = false)
     {
         IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
+        module.debug_traceCallMany(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            inner.debug_traceCallMany(call.Arg<TransactionBundle[]>(), call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }));
         module.debug_traceCall(Arg.Any<Nethermind.Facade.Eth.RpcTransaction.TransactionForRpc>(), Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
             inner.debug_traceCall(call.Arg<Nethermind.Facade.Eth.RpcTransaction.TransactionForRpc>(), call.Arg<BlockParameter>(),
                 call.Arg<GethTraceOptions>() with { DeadlineClock = clock }));

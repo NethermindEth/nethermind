@@ -246,7 +246,9 @@ public class DebugRpcModule(
 
         GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
         {
-            NoBaseFee = !call.ShouldSetBaseFee()
+            NoBaseFee = !call.ShouldSetBaseFee(),
+            EnforceExecutionDeadline = options?.EnforceExecutionDeadline == true
+                || ContainsJavaScriptTracer(options?.Tracer, options?.TracerConfig)
         };
 
         UInt256? rejectedBlobBaseFee = GetRejectedTraceCallBlobBaseFee(tx, header!, effective);
@@ -372,6 +374,16 @@ public class DebugRpcModule(
 
     private static bool IsJavaScriptOrMuxTracer(GethTraceOptions? options) =>
         options?.Tracer is { Length: > 0 } tracer && (tracer == "muxTracer" || !GethLikeNativeTracerFactory.IsNativeTracer(tracer));
+
+    private static bool ContainsJavaScriptTracer(string? tracer, JsonElement? config)
+    {
+        if (tracer != GethLikeBlockMuxTracer.TracerName)
+            return tracer is { Length: > 0 } && !GethLikeNativeTracerFactory.IsNativeTracer(tracer);
+        if (config is not { ValueKind: JsonValueKind.Object }) return false;
+        foreach ((string name, JsonElement child) in GethLikeBlockMuxTracer.ParseConfig(config))
+            if (ContainsJavaScriptTracer(name, child)) return true;
+        return false;
+    }
 
     private bool CanStreamStructLogs(GethTraceOptions? options)
     {
