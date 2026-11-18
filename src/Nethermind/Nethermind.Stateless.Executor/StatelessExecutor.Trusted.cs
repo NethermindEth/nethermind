@@ -87,6 +87,9 @@ public static partial class StatelessExecutor
             using Witness witness = payload.Witness;
             Block block = payload.GetBlock();
             IReleaseSpec spec = payload.SpecProvider.GetSpec(block.Header);
+            // Without the setup a point evaluation throws, and the run would end at the block's first one with the
+            // calls after it uncollected.
+            InitializeKzg(spec);
             if (TryRecoverSenders(block.Transactions, payload.EncodedTransactions, payload.SpecProvider, spec))
                 Execute(block, witness, payload.SpecProvider, validateHashes: true, collector);
         }
