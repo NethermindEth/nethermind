@@ -58,10 +58,10 @@ public sealed partial class OtsRpcModule
         TraceAddressIndex.Checkpoint? coverage = cursor.Coverage;
         Block? previous = null;
         Stack<ParityTraceAction> stack = new();
-        foreach (SearchResult<CreatorCandidate> candidate in cursor.Read(ct))
+        foreach (CreatorCandidate candidate in cursor.Read(ct))
         {
-            if (candidate.IsError) return ResultWrapper<OtsContractCreator?>.Fail(candidate);
-            (ulong number, Hash256? indexedHash, bool enteringCoverage, bool belowCoverage) = candidate.Object!;
+            (ulong number, Hash256? indexedHash, bool enteringCoverage, bool belowCoverage, string? error) = candidate;
+            if (error is not null) return ResultWrapper<OtsContractCreator?>.Fail(error, ErrorCodes.ResourceUnavailable);
             if (enteringCoverage && previous is not null && previous.ParentHash != coverage!.Hash)
                 return ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
             if (number == 0) break;
@@ -95,7 +95,8 @@ public sealed partial class OtsRpcModule
             : ResultWrapper<OtsContractCreator?>.Fail(ChainChanged, ErrorCodes.ResourceUnavailable);
     }
 
-    private sealed record CreatorCandidate(ulong Number, Hash256? IndexedHash, bool EnteringCoverage, bool BelowCoverage);
+    private readonly record struct CreatorCandidate(ulong Number, Hash256? IndexedHash,
+        bool EnteringCoverage, bool BelowCoverage, string? Error = null);
 
     private sealed class CreatorCandidateCursor
     {
@@ -117,7 +118,7 @@ public sealed partial class OtsRpcModule
             FirstParent = _candidates?.FirstParent;
         }
 
-        public IEnumerable<SearchResult<CreatorCandidate>> Read(CancellationToken ct)
+        public IEnumerable<CreatorCandidate> Read(CancellationToken ct)
         {
             int next = 0;
             bool crossedCoverage = false;
@@ -136,7 +137,7 @@ public sealed partial class OtsRpcModule
                         next = 0;
                         if (_candidates is null || _candidates.Coverage != Coverage || _candidates.FirstParent != FirstParent)
                         {
-                            yield return new(ChainChanged, ErrorCodes.ResourceUnavailable);
+                            yield return new(0, null, false, false, ChainChanged);
                             yield break;
                         }
                     }
@@ -145,7 +146,7 @@ public sealed partial class OtsRpcModule
                         number = (ulong)Coverage.From - 1;
                         if (number == 0)
                         {
-                            yield return new(new CreatorCandidate(0, null, enteringCoverage, false));
+                            yield return new(0, null, enteringCoverage, false);
                             yield break;
                         }
                     }
@@ -155,8 +156,8 @@ public sealed partial class OtsRpcModule
                         indexedHash = _candidates.Hashes[next++];
                     }
                 }
-                yield return new(new CreatorCandidate(number, indexedHash, enteringCoverage,
-                    crossedCoverage && Coverage is not null && number == (ulong)Coverage.From - 1));
+                yield return new(number, indexedHash, enteringCoverage,
+                    crossedCoverage && Coverage is not null && number == (ulong)Coverage.From - 1);
             }
         }
     }
