@@ -25,10 +25,9 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// messages from one delivering peer, a new message is <see cref="MessageValidity.Throttled"/>: the router caches no id for it, so a
 /// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
-/// A peer with no accepted vote since it joined or since its last rejected vote (or not among the <see cref="AcceptedVoteSourcesCapacity"/>
-/// peers with one most recently promoted or offering a vote; the set is not kept across restarts) gets a smaller fraction of that bound, and all
-/// such peers together a quarter of it: a new peer id costs nothing, so a fraction per peer alone grows with the ids one host makes, and one
-/// relayed valid vote must not keep an id's forgeries admitted. A peer whose vote is rejected has its new votes refused for the rest of the
+/// New peers share a quarter of the vote queue. Each starts with a small allowance and earns one additional pending vote for each accepted
+/// vote, up to one eighth of the queue. The node retains allowances for the <see cref="AcceptedVoteSourcesCapacity"/> most recently active
+/// peers with accepted votes. A peer whose vote is rejected loses its earned allowance and has its new votes refused for the rest of the
 /// wall slot (at most <paramref name="maxPendingVotes"/> peers per slot), or until one of its votes already being checked is accepted. Its votes
 /// already deferred are still checked here, and nothing unchecked counts against it; <see cref="GossipRouter"/>'s own per-slot rule for payload
 /// attestations still throttles a peer's queued payload attestations once fork choice rejected one of them.
@@ -78,7 +77,7 @@ internal sealed class DeferredGossipValidation(
     private readonly int _maxPendingVotesOfAllNewSources = Math.Max(1, maxPendingVotes / AllNewVoteSourcesShareDivisor);
     private readonly ConcurrentDictionary<(PeerId Source, bool Vote, bool Column), int> _pendingBySource = new();
     // Only a verified vote adds a peer, so peer id churn alone cannot evict the peers that sent one; its next rejected vote removes it.
-    private readonly LruKeyCache<PeerId> _acceptedVoteSources = new(AcceptedVoteSourcesCapacity, "beacon gossip vote-accepted peers");
+    private readonly LruCache<PeerId, int> _voteAllowances = new(AcceptedVoteSourcesCapacity, "beacon gossip vote allowances");
     private int _pending;
     private long _pendingBytes;
     private int _pendingVotes;
@@ -104,8 +103,6 @@ internal sealed class DeferredGossipValidation(
     internal int PendingColumns => Volatile.Read(ref _pendingColumns);
     /// <summary>The most messages other than votes and columns from one delivering peer that may await a verdict at once.</summary>
     internal int MaxPendingPerSource => _maxPendingPerSource;
-    /// <summary>The most votes from one delivering peer with an accepted vote that may await a verdict at once.</summary>
-    internal int MaxPendingVotesPerSource => _maxPendingVotesPerSource;
     /// <summary>The most votes from one delivering peer with no accepted vote since it joined or since its last rejected one that may await a verdict at once.</summary>
     internal int MaxPendingVotesPerNewSource => _maxPendingVotesPerNewSource;
     /// <summary>The most votes from all delivering peers with no accepted vote since they joined or since their last rejected one that may await a verdict at once.</summary>
@@ -124,13 +121,14 @@ internal sealed class DeferredGossipValidation(
         long size = message.CalculateSize();
         bool vote = IsVote(message, size);
         bool column = GossipMessageValidator.IsColumn(message.Topic);
-        bool newVoteSource = vote && !_acceptedVoteSources.Get(source);
+        int earnedAllowance = vote ? _voteAllowances.Get(source) : 0;
+        bool newVoteSource = vote && earnedAllowance == 0;
         if (newVoteSource && IsVoteSourceRejectedThisSlot(source))
         {
             return RefuseVote(source, message);
         }
 
-        int sourceLimit = !vote ? _maxPendingPerSource : newVoteSource ? _maxPendingVotesPerNewSource : _maxPendingVotesPerSource;
+        int sourceLimit = !vote ? _maxPendingPerSource : Math.Max(_maxPendingVotesPerNewSource, earnedAllowance);
         bool overSourceShare = _pendingBySource.GetValueOrDefault((source, vote, column)) >= sourceLimit;
         bool overBound = vote ? PendingVotes >= maxPendingVotes || (newVoteSource && Volatile.Read(ref _pendingVotesOfNewSources) >= _maxPendingVotesOfAllNewSources)
             : column ? Volatile.Read(ref _pendingColumns) >= maxPending || Interlocked.Read(ref _pendingColumnBytes) + size > maxPendingBytes
@@ -238,13 +236,17 @@ internal sealed class DeferredGossipValidation(
         }
     }
 
-    /// <summary>Promotes <paramref name="source"/>, whose vote was accepted, and lifts its refusal for the slot.</summary>
+    /// <summary>Increases the peer's vote allowance by one up to its limit and lifts its refusal for the slot.</summary>
     /// <remarks>Under the lock, so a refusal check ordered after this sees no mark, and a rejection ordered after this demotes and marks the peer again.</remarks>
     private void MarkVoteSourceAccepted(PeerId source)
     {
         lock (_rejectedVoteSourcesLock)
         {
-            _acceptedVoteSources.Set(source);
+            int allowance = _voteAllowances.Get(source);
+            if (allowance < _maxPendingVotesPerSource)
+            {
+                _voteAllowances.Set(source, Math.Min(_maxPendingVotesPerSource, Math.Max(allowance, _maxPendingVotesPerNewSource) + 1));
+            }
             _rejectedVoteSources.Remove(source);
         }
     }
@@ -259,7 +261,7 @@ internal sealed class DeferredGossipValidation(
     {
         lock (_rejectedVoteSourcesLock)
         {
-            _acceptedVoteSources.Delete(source);
+            _voteAllowances.Delete(source);
             HashSet<PeerId> sources = RejectedVoteSourcesOfThisSlot();
             if (sources.Count < maxPendingVotes)
             {
