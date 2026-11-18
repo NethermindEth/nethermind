@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -43,6 +44,18 @@ public interface IBlockStore
 
     Block? Get(ulong blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true);
     byte[]? GetRlp(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Copies the stored encoding of each block, as <see cref="GetRlp"/> reads it, to <paramref name="destination"/>.</summary>
+    /// <param name="blocks">The number and hash of each block.</param>
+    /// <param name="destination">The buffer the encodings are copied to.</param>
+    /// <param name="rlps">Receives the encoding of each block in <paramref name="destination"/>, or <see langword="null"/> when it is not stored.</param>
+    void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    {
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            rlps[i] = GetRlp(blocks[i].Number, new Hash256(in blocks[i].Hash)) is { } rlp ? destination.Add(rlp) : default(ReadOnlyMemory<byte>?);
+        }
+    }
 
     /// <summary>The stored block encoding, in memory that the caller disposes.</summary>
     /// <remarks>Unlike <see cref="GetRlp"/>, the database value need not be copied to a managed array.</remarks>

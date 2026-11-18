@@ -970,6 +970,37 @@ public class BlockTreeTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void FindCanonicalHeadersIfBloomMatches_finds_what_the_single_lookup_finds([Values] bool bloomMatches)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
+        BlockTree blockTree = builder.TestObject;
+        Block branch = Build.A.Block.WithParent(blockTree.Head!).TestObject;
+        blockTree.SuggestBlock(branch, BlockTreeSuggestOptions.None);
+        builder.ChainLevelInfoRepository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(Keccak.Zero, 1)));
+        builder.HeaderStore.Delete(blockTree.FindHash(2)!);
+        ((IClearableCache)builder.ChainLevelInfoRepository).ClearCache();
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+
+        BlockHeader?[] headers = new BlockHeader?[branch.Number + 2];
+        bool[] found = new bool[headers.Length];
+        blockTree.FindCanonicalHeadersIfBloomMatches(0, _ => bloomMatches, headers, found);
+
+        for (int i = 0; i < headers.Length; i++)
+        {
+            BlockHeader? expected = blockTree.FindCanonicalHeaderIfBloomMatches((ulong)i, _ => bloomMatches, out bool expectedFound);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found[i], Is.EqualTo(expectedFound), $"found {i}");
+                Assert.That(headers[i]?.Hash, Is.EqualTo(expected?.Hash), $"hash {i}");
+                Assert.That(headers[i]?.TotalDifficulty, Is.EqualTo(expected?.TotalDifficulty), $"total difficulty {i}");
+            }
+        }
+
+        Assert.That(found[1..3], Is.All.False, "a zero-hash level and a missing header are not found");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void FindCanonicalHeaderIfBloomMatches_does_not_cache_a_historical_level()
     {
         BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(BlockStore.CacheSize + 8);
@@ -1067,32 +1098,6 @@ public class BlockTreeTests
 
         Block? found = blockTree.FindBlock(5, BlockTreeLookupOptions.None);
         Assert.That(found, Is.Null);
-    }
-
-    [Test]
-    public void PrefetchCanonicalHeaders_reads_the_headers_of_the_canonical_blocks_in_the_range()
-    {
-        using PrefetchingTestDb headersDb = new();
-        BlockTree tree = Build.A.BlockTree().WithHeadersDb(headersDb).OfChainLength(5).TestObject;
-
-        tree.PrefetchCanonicalHeaders(3, 4);
-
-        byte[][] keys = [.. new ulong[] { 3, 4 }.Select(n => Bytes.Concat(n.ToBigEndianByteArray(), tree.FindHeader(n, BlockTreeLookupOptions.RequireCanonical)!.Hash!.BytesToArray()))];
-        Assert.That(headersDb.Prefetches, Is.EqualTo(new[] { keys }));
-    }
-
-    [Test]
-    public void PrefetchHeaders_reads_the_headers_of_the_known_hashes()
-    {
-        using PrefetchingTestDb headersDb = new();
-        BlockTree tree = Build.A.BlockTree().WithHeadersDb(headersDb).OfChainLength(5).TestObject;
-        BlockHeader third = tree.FindHeader(3UL, BlockTreeLookupOptions.RequireCanonical)!;
-        BlockHeader first = tree.FindHeader(1UL, BlockTreeLookupOptions.RequireCanonical)!;
-
-        tree.PrefetchHeaders([third.Hash!, TestItem.KeccakA, null!, first.Hash!]);
-
-        byte[][] keys = [.. new[] { third, first }.Select(static h => Bytes.Concat(h.Number.ToBigEndianByteArray(), h.Hash!.BytesToArray()))];
-        Assert.That(headersDb.Prefetches, Is.EqualTo(new[] { keys }));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

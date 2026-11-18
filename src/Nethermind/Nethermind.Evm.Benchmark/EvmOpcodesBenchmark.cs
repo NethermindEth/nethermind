@@ -1062,8 +1062,6 @@ public unsafe class EvmOpcodesBenchmark
 
             // 2 process launches x 15 measurement iterations = 30 data points.
             // GcForce ensures a GC collection between iterations to reduce allocation noise.
-            // Without an explicit job, BDN falls back to Job.Default (1 launch, auto-pilot)
-            // because the runner's DashboardConfig.AddJob is commented out.
             AddJob(Job.Default
                 // BenchmarkDotNet 0.15.8 doesn't recognize .NET 11 and fails validating such a job, so it claims .NET 10
                 // and the toolchain builds for net11.0. TODO: use the host runtime once BenchmarkDotNet 0.16.0 is released.

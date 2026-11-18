@@ -216,7 +216,7 @@ public class LogIndexBuilderTests
     }
 
     private LogIndexBuilder GetService(ILogIndexStorage logIndexStorage, IBlockTree? blockTree = null, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null, ISyncPointers? syncPointers = null, int stallTicksBeforeGivingUp = 1440) => new LogIndexBuilder(
-            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, flatDbConfig, prunedLogsRetention, syncPointers
+            logIndexStorage, _config, blockTree ?? _blockTree, _syncConfig, _receiptStorage, _logManager, new MemDb(), flatDbConfig, prunedLogsRetention, syncPointers
         )
     { StallTicksBeforeGivingUp = stallTicksBeforeGivingUp }.AddTo(_testDisposables);
 
@@ -227,7 +227,7 @@ public class LogIndexBuilderTests
     public void Stall_deadline_scales_with_the_pruning_interval_and_slot_time(ulong pruningInterval, ulong secondsPerSlot, int expectedTicks)
     {
         LogIndexBuilder builder = new(
-            Substitute.For<ILogIndexStorage>(), _config, _blockTree, _syncConfig, _receiptStorage, _logManager,
+            Substitute.For<ILogIndexStorage>(), _config, _blockTree, _syncConfig, _receiptStorage, _logManager, new MemDb(),
             historyConfig: new HistoryConfig { PruningInterval = pruningInterval },
             blocksConfig: new BlocksConfig { SecondsPerSlot = secondsPerSlot });
         builder.AddTo(_testDisposables);

@@ -8,6 +8,7 @@ using Autofac;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -91,6 +92,58 @@ public class BlockStoreTests
 
         Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
         Assert.That(retrieved, Is.EqualTo(block).UsingBlockComparer());
+    }
+
+    [Test]
+    public async Task GetRlps_reads_each_block_as_GetRlp_does([Values] bool batching, [Values(16, 1024 * 1024)] int segmentSize)
+    {
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db, deferredWriter: writer);
+        BlockDecoder decoder = new();
+        Block stored = Build.A.Block.WithNumber(1).TestObject;
+        Block hashKeyed = Build.A.Block.WithNumber(2).TestObject;
+        Block pending = Build.A.Block.WithNumber(3).TestObject;
+        Block missing = Build.A.Block.WithNumber(4).TestObject;
+        store.Insert(stored);
+        db[hashKeyed.Hash!.Bytes] = decoder.Encode(hashKeyed);
+        store.InsertDeferred(pending);
+
+        using PooledSegmentedBuffer destination = new(segmentSize);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[5];
+        store.GetRlps(
+            [(missing.Number, missing.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256), (pending.Number, pending.Hash!.ValueHash256), (hashKeyed.Number, hashKeyed.Hash!.ValueHash256), (stored.Number, stored.Hash!.ValueHash256)],
+            destination,
+            found);
+        byte[]?[] rlps = Array.ConvertAll(found, rlp => rlp?.ToArray());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlps, Is.EqualTo(new[] { null, decoder.Encode(stored), decoder.Encode(pending), decoder.Encode(hashKeyed), decoder.Encode(stored) }));
+            if (db is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void GetRlps_reads_an_empty_value_as_missing_as_GetOwnedRlp_does([Values] bool batching, [Values] bool hashKeyed)
+    {
+        MemDb db = batching ? new BatchReadMemDb() : new MemDb();
+        BlockStore store = new(db);
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        byte[] encoded = new BlockDecoder().Encode(block);
+        db[Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray())] = [];
+        db[block.Hash!.Bytes] = hashKeyed ? encoded : [];
+
+        using PooledSegmentedBuffer destination = new(1024);
+        ReadOnlyMemory<byte>?[] found = new ReadOnlyMemory<byte>?[1];
+        store.GetRlps([(block.Number, block.Hash!.ValueHash256)], destination, found);
+        using MemoryManager<byte>? owned = store.GetOwnedRlp(block.Number, block.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found[0]?.ToArray(), Is.EqualTo(hashKeyed ? encoded : null));
+            Assert.That(owned?.Memory.ToArray(), Is.EqualTo(found[0]?.ToArray()));
+        }
     }
 
     [Test]

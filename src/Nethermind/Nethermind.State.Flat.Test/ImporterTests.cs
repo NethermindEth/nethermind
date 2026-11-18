@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -75,6 +76,15 @@ public class ImporterTests
             RlpReader ctx = new(rlp!);
             Assert.That(AccountDecoder.Slim.Decode(ref ctx), Is.EqualTo(expected));
         }
+    }
+
+    [Test]
+    public void Copy_RejectsAccountLeafCarryingNoAccount()
+    {
+        _stateTree.Set(TestItem.KeccakA.Bytes, Bytes.FromHexString("c1"));
+        _stateTree.Commit();
+
+        Assert.That(async () => await _importer.Copy(new StateId(0, _stateTree.RootHash)), Throws.InvalidOperationException);
     }
 
     [Test]

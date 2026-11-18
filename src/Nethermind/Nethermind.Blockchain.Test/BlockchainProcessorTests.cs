@@ -90,7 +90,7 @@ public class BlockchainProcessorTests
     [Test]
     public async Task Refused_branch_is_deleted_and_the_best_suggested_block_reset_only_when_it_forks_below_the_head([Values] bool forkBelowHead)
     {
-        RefusedBranch branch = CreateRefusedBranch(forkBelowHead);
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: forkBelowHead ? 2 : 1);
         await using IContainer container = CreateRefusedBranchContainer();
         IBlockTree blockTree = SuggestRefusedBranch(container, branch);
 
@@ -107,8 +107,8 @@ public class BlockchainProcessorTests
     [Test]
     public async Task Refused_branch_from_a_different_fork_is_deleted()
     {
-        RefusedBranch branch = CreateRefusedBranch(forkBelowHead: false);
-        await using IContainer container = CreateRefusedBranchContainer(hiddenHeader: branch.BodylessParent.Hash);
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: 1);
+        await using IContainer container = CreateRefusedBranchContainer(hiddenHeader: branch.BodylessParent!.Hash);
         IBlockTree blockTree = SuggestRefusedBranch(container, branch);
 
         ProcessRefused(container, branch.Refused);
@@ -124,7 +124,7 @@ public class BlockchainProcessorTests
     [Test]
     public async Task Refused_branch_is_kept_when_the_block_is_post_merge_or_on_the_main_chain([Values] bool postMerge)
     {
-        RefusedBranch branch = CreateRefusedBranch(forkBelowHead: true, postMerge);
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: 2, postMerge: postMerge);
         await using IContainer container = CreateRefusedBranchContainer(mainChainBlock: postMerge ? null : branch.Refused.Hash);
         IBlockTree blockTree = SuggestRefusedBranch(container, branch);
 
@@ -137,24 +137,46 @@ public class BlockchainProcessorTests
         }
     }
 
-    private sealed record RefusedBranch(Block Genesis, Block[] MainChain, BlockHeader BodylessParent, Block Refused)
+    [Test]
+    public async Task Refused_branch_on_a_main_chain_block_without_state_keeps_the_main_chain()
+    {
+        RefusedBranch branch = CreateRefusedBranch(mainChainLength: 3, mainChainStateRoot: TestItem.KeccakA, refusedParentIndex: 1);
+        await using IContainer container = CreateRefusedBranchContainer(hiddenHeader: branch.MainChain[0].Hash);
+        IBlockTree blockTree = SuggestRefusedBranch(container, branch);
+
+        ProcessRefused(container, branch.Refused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(branch.Refused.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(blockTree.FindBlock(branch.MainChain[1].Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.FindBlock(branch.Head.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(blockTree.Head?.Hash, Is.EqualTo(branch.Head.Hash));
+            Assert.That(blockTree.IsMainChain(branch.Head.Header), Is.True);
+            Assert.That(container.Resolve<IBadBlockStore>().GetAll(), Is.Empty);
+        }
+    }
+
+    private sealed record RefusedBranch(Block Genesis, Block[] MainChain, BlockHeader? BodylessParent, Block Refused)
     {
         public Block Head => MainChain[^1];
     }
 
-    private static RefusedBranch CreateRefusedBranch(bool forkBelowHead, bool postMerge = false)
+    private static RefusedBranch CreateRefusedBranch(int mainChainLength, Hash256? mainChainStateRoot = null, int? refusedParentIndex = null, bool postMerge = false)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         genesis.Header.TotalDifficulty = genesis.Header.Difficulty;
-        Block[] mainChain = new Block[forkBelowHead ? 2 : 1];
+        Block[] mainChain = new Block[mainChainLength];
         Block parent = genesis;
         for (int i = 0; i < mainChain.Length; i++)
         {
-            parent = mainChain[i] = Build.A.Block.WithParent(parent).WithNonce((ulong)i + 1).WithDifficulty(2).TestObject;
+            parent = mainChain[i] = Build.A.Block.WithParent(parent).WithNonce((ulong)i + 1).WithDifficulty(2).WithStateRoot(mainChainStateRoot ?? Keccak.EmptyTreeHash).TestObject;
         }
 
-        BlockHeader bodylessParent = Build.A.BlockHeader.WithParent(genesis.Header).WithNonce(100).WithDifficulty(1).WithStateRoot(TestItem.KeccakA).TestObject;
-        Block refused = Build.A.Block.WithParent(bodylessParent).WithNonce(101).WithDifficulty(10).TestObject;
+        BlockHeader? bodylessParent = refusedParentIndex is null
+            ? Build.A.BlockHeader.WithParent(genesis.Header).WithNonce(100).WithDifficulty(1).WithStateRoot(TestItem.KeccakA).TestObject
+            : null;
+        Block refused = Build.A.Block.WithParent(bodylessParent ?? mainChain[refusedParentIndex!.Value].Header).WithNonce(101).WithDifficulty(10).TestObject;
         refused.Header.IsPostMerge = postMerge;
         return new RefusedBranch(genesis, mainChain, bodylessParent, refused);
     }
@@ -181,7 +203,11 @@ public class BlockchainProcessorTests
             blockTree.TryUpdateMainChain(block.Header, wereProcessed: true, preloadedBlocks: [block]);
         }
 
-        blockTree.SuggestHeader(branch.BodylessParent);
+        if (branch.BodylessParent is not null)
+        {
+            blockTree.SuggestHeader(branch.BodylessParent);
+        }
+
         blockTree.SuggestBlock(branch.Refused, BlockTreeSuggestOptions.ForceDontSetAsMain);
         Assert.That(blockTree.BestSuggestedHeader?.Hash, Is.EqualTo(branch.Refused.Hash));
         return blockTree;

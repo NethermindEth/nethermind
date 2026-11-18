@@ -623,32 +623,6 @@ namespace Nethermind.Blockchain
         }
 
         /// <inheritdoc/>
-        /// <remarks>Reads the chain levels in one batch, as the headers are keyed by the canonical hashes they hold.</remarks>
-        public void PrefetchCanonicalHeaders(ulong start, int count)
-        {
-            using ArrayPoolListRef<ulong> numbers = new(count);
-            for (int i = 0; i < count; i++) numbers.Add(start + (ulong)i);
-
-            using IOwnedReadOnlyList<ChainLevelInfo?> levels = _chainLevelInfoRepository.MultiLoadLevel(numbers);
-            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
-            int known = 0;
-            for (int i = 0; i < count; i++)
-            {
-                if (levels[i]?.MainChainBlock is { } blockInfo) blocks[known++] = (start + (ulong)i, blockInfo.BlockHash.ValueHash256);
-            }
-
-            _headerStore.Prefetch(blocks.Slice(0, known));
-        }
-
-        /// <inheritdoc/>
-        /// <remarks>Reads the block numbers in one batch, as the headers are keyed by them.</remarks>
-        public void PrefetchHeaders(IReadOnlyList<Hash256> blockHashes)
-        {
-            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(blockHashes.Count);
-            _headerStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(blockHashes, 0, blockHashes.Count, blocks)));
-        }
-
-        /// <inheritdoc/>
         /// <remarks>A level outside the cached window is read without caching it, as long scans read many.</remarks>
         public BlockHeader? FindCanonicalHeaderIfBloomMatches(ulong blockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, out bool found)
         {
@@ -690,6 +664,73 @@ namespace Nethermind.Blockchain
             }
 
             return header;
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>The levels and headers outside the cached window are read in one batch each, without caching them.</remarks>
+        public void FindCanonicalHeadersIfBloomMatches(ulong firstBlockNumber, Func<ReadOnlySpan<byte>, bool> bloomMatches, Memory<BlockHeader?> headers, Memory<bool> found)
+        {
+            Span<BlockHeader?> headerSpan = headers.Span;
+            Span<bool> foundSpan = found.Span;
+            using ArrayPoolListRef<ulong> uncachedNumbers = new(headerSpan.Length);
+            using ArrayPoolListRef<int> uncachedIndexes = new(headerSpan.Length);
+            for (int i = 0; i < headerSpan.Length; i++)
+            {
+                ulong number = firstBlockNumber + (ulong)i;
+                if (ShouldCache(number))
+                {
+                    headerSpan[i] = FindCanonicalHeaderIfBloomMatches(number, bloomMatches, out foundSpan[i]);
+                }
+                else
+                {
+                    headerSpan[i] = null;
+                    foundSpan[i] = false;
+                    uncachedNumbers.Add(number);
+                    uncachedIndexes.Add(i);
+                }
+            }
+
+            if (uncachedNumbers.Count == 0) return;
+
+            int count = uncachedNumbers.Count;
+            using ArrayPoolSpan<ulong> numbers = new(count);
+            using ArrayPoolSpan<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> mainChainBlocks = new(count);
+            uncachedNumbers.AsSpan().CopyTo(numbers);
+            _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory(), mainChainBlocks.AsMemory());
+
+            using ArrayPoolSpan<ValueHash256> hashes = new(count);
+            using ArrayPoolSpan<UInt256> totalDifficulties = new(count);
+            using ArrayPoolSpan<int> indexes = new(count);
+            int stored = 0;
+            for (int i = 0; i < count; i++)
+            {
+                (ValueHash256 blockHash, UInt256 totalDifficulty) = mainChainBlocks[i];
+                if (blockHash == Keccak.Zero.ValueHash256) continue;
+
+                hashes[stored] = blockHash;
+                numbers[stored] = numbers[i];
+                totalDifficulties[stored] = totalDifficulty;
+                indexes[stored] = uncachedIndexes[i];
+                stored++;
+            }
+
+            using ArrayPoolSpan<BlockHeader?> storedHeaders = new(stored);
+            using ArrayPoolSpan<bool> storedFound = new(stored);
+            _headerStore.GetIfBloomMatches(hashes.AsReadOnlyMemory()[..stored], numbers.AsReadOnlyMemory()[..stored], bloomMatches, storedHeaders.AsMemory(), storedFound.AsMemory());
+            for (int i = 0; i < stored; i++)
+            {
+                BlockHeader? header = storedHeaders[i];
+                if (header is not null)
+                {
+                    header.Hash ??= new Hash256(in hashes[i]);
+                    SetTotalDifficultyFromBlockInfo(header, totalDifficulties[i]);
+                }
+
+                headerSpan[indexes[i]] = header;
+                foundSpan[indexes[i]] = storedFound[i];
+            }
+
+            ((Span<BlockHeader?>)storedHeaders).Clear();
         }
 
         public Hash256? FindBlockHash(ulong blockNumber) => GetBlockHashOnMainOrBestDifficultyHash(blockNumber);
