@@ -76,14 +76,13 @@ public class OptimismBlockReceiptTracerTests
         }
     }
 
-    /// <summary>The deposit fields are read while the world state still holds the post-transaction nonce.</summary>
     [Test]
     public void DepositTxReceipt_CarriesTheDepositFields()
     {
         IOptimismSpecHelper specHelper = Substitute.For<IOptimismSpecHelper>();
         specHelper.IsCanyon(Arg.Any<BlockHeader>()).Returns(true);
         IWorldState worldState = Substitute.For<IWorldState>();
-        worldState.GetNonce(Arg.Any<Address>()).Returns(5UL);
+        worldState.GetNonce(Arg.Any<Address>()).Returns(4UL);
 
         Transaction depositTx = Build.A.Transaction.WithType(TxType.DepositTx).WithSenderAddress(TestItem.AddressA).WithGasPrice(7).TestObject;
 
@@ -92,6 +91,7 @@ public class OptimismBlockReceiptTracerTests
         // block would make the builder compute a transaction root it cannot encode.
         tracer.StartNewBlockTrace(Build.A.Block.TestObject);
         tracer.StartNewTxTrace(depositTx);
+        worldState.GetNonce(Arg.Any<Address>()).Returns(6UL);
         tracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], []);
         tracer.EndTxTrace();
 
@@ -99,10 +99,40 @@ public class OptimismBlockReceiptTracerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(receipt.DepositNonce, Is.EqualTo(4UL), "the nonce is written before the receipt is built, so it is read back decremented");
+            Assert.That(receipt.DepositNonce, Is.EqualTo(4UL), "the sender nonce before execution, even when execution raises it more than once");
             Assert.That(receipt.DepositReceiptVersion, Is.EqualTo(1UL));
             Assert.That(receipt.GasUsed, Is.EqualTo(21_000UL), "the shared population still runs for a deposit");
             Assert.That(receipt.EffectiveGasPrice, Is.EqualTo((UInt256)7), "so does the diagnostic gas price");
+        }
+    }
+
+    [Test]
+    public void DepositTxReceipt_FailedDeposit_CarriesThePreExecutionNonce_AndDoesNotLeakIntoTheNextTransaction()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.GetNonce(Arg.Any<Address>()).Returns(4UL);
+
+        Transaction depositTx = Build.A.Transaction.WithType(TxType.DepositTx).WithSenderAddress(TestItem.AddressA).TestObject;
+        Transaction plainTx = Build.A.Transaction.WithSenderAddress(TestItem.AddressB).TestObject;
+
+        using OptimismBlockReceiptTracer tracer = BuildTracer(worldState: worldState);
+        tracer.StartNewBlockTrace(Build.A.Block.TestObject);
+
+        tracer.StartNewTxTrace(depositTx);
+        worldState.GetNonce(Arg.Any<Address>()).Returns(6UL);
+        tracer.MarkAsFailed(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], "failed deposit");
+        tracer.EndTxTrace();
+        OptimismTxReceipt depositReceipt = (OptimismTxReceipt)tracer.LastReceipt;
+
+        tracer.StartNewTxTrace(plainTx);
+        tracer.MarkAsSuccess(TestItem.AddressE, new GasConsumed(21_000, 21_000), [], []);
+        tracer.EndTxTrace();
+        OptimismTxReceipt plainReceipt = (OptimismTxReceipt)tracer.LastReceipt;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(depositReceipt.DepositNonce, Is.EqualTo(4UL));
+            Assert.That(plainReceipt.DepositNonce, Is.Null);
         }
     }
 }

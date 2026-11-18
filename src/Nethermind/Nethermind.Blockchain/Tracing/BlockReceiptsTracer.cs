@@ -189,7 +189,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
     /// <summary>Creates the empty receipt that <see cref="BuildReceipt"/> then fills in.</summary>
     /// <remarks>
-    /// The single extension point for chain-specific tracers: supply the receipt type and only the fields
+    /// The extension point for chain-specific receipts: supply the receipt type and only the fields
     /// <see cref="BuildReceipt"/> does not assign, since anything it assigns is overwritten here.
     /// </remarks>
     protected virtual TxReceipt CreateReceipt() => new();
@@ -322,6 +322,9 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
     /// <inheritdoc/>
     public void ReportActionErrorDetails(string error, bool actionOnly) => _currentTxTracer.ReportActionErrorDetails(error, actionOnly);
+
+    /// <inheritdoc/>
+    public void ReportCodeDepositError(string error) => _currentTxTracer.ReportCodeDepositError(error);
 
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);
@@ -512,7 +515,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         _cumulativeReceiptGas = 0;
     }
 
-    public ITxTracer StartNewTxTrace(Transaction? tx)
+    public virtual ITxTracer StartNewTxTrace(Transaction? tx)
     {
         CurrentTx = tx;
         // Cleared per tx: BuildFailedReceipt rebuilds a failing tx's log set from _frameTxReceipts
