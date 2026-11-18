@@ -513,7 +513,7 @@ namespace Nethermind.Synchronization
 
         /// <summary>
         /// Finds the headers of a request with a skip whose numbers all resolve to main chain blocks, as the walk would
-        /// find them, with two batched level reads and one batched header read.
+        /// find them, with batched level reads and one batched header read.
         /// </summary>
         /// <returns>
         /// The headers in response order, or <see langword="null"/>, with <paramref name="headers"/> still owned by the
@@ -522,7 +522,8 @@ namespace Nethermind.Synchronization
         /// </returns>
         /// <remarks>
         /// Without a skip, the walk finds the headers by parent hash, which needs no level read per header. A forward
-        /// request reads no level above the highest one the tree can have written, as such a level is missing.
+        /// request reads no level above the highest one the tree can have written, as such a level is missing. The start
+        /// level is read first, so a request that starts off the main chain reads only that level before the walk.
         /// </remarks>
         private ArrayPoolList<byte>? TryFindMainChainHeadersRlp(in ValueHash256 hash, ulong number, int numberOfBlocks, int skip, bool reverse, ArrayPoolList<byte> headers)
         {
@@ -543,7 +544,10 @@ namespace Nethermind.Synchronization
             using ArrayPoolListRef<ValueHash256> hashes = new(count);
             using (ArrayPoolSpan<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> mainChainBlocks = new(count))
             {
-                _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory(), mainChainBlocks.AsMemory());
+                _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory()[..1], mainChainBlocks.AsMemory()[..1]);
+                if (mainChainBlocks[0].BlockHash != hash) return null;
+
+                if (count > 1) _chainLevelInfoRepository.GetMainChainBlocksWithoutCaching(numbers.AsReadOnlyMemory()[1..], mainChainBlocks.AsMemory()[1..]);
                 for (int i = 0; i < count; i++)
                 {
                     ValueHash256 blockHash = mainChainBlocks[i].BlockHash;
@@ -556,8 +560,6 @@ namespace Nethermind.Synchronization
 
                     hashes.Add(blockHash);
                 }
-
-                if (hashes.Count == 0 || hashes[0] != hash) return null;
 
                 // A reorg during the read can mix branches. As the forward walk does, keep a header only while the one
                 // before it is still on the main chain.

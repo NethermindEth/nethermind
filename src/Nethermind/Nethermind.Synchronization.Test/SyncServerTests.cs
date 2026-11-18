@@ -1218,6 +1218,7 @@ public class SyncServerTests
         {
             Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, count, skip, reverse)));
             Assert.That(levels.BatchedReads, batched && skip > 0 && count > 0 ? Is.Positive : Is.Zero);
+            if (start < 0 && batched && skip > 0 && count > 0) Assert.That(levels.BatchedLevels, Is.EqualTo(1), "levels read in batches from a side chain start");
         }
     }
 
@@ -1323,9 +1324,10 @@ public class SyncServerTests
     private sealed class CountingChainLevelInfoRepository(ChainLevelInfoRepository inner) : IChainLevelInfoRepository
     {
         public int BatchedReads { get; private set; }
+        public int BatchedLevels { get; private set; }
         public int LevelReads { get; private set; }
 
-        public void ResetCounts() => BatchedReads = LevelReads = 0;
+        public void ResetCounts() => BatchedReads = BatchedLevels = LevelReads = 0;
         public void ClearCache() => ((IClearableCache)inner).ClearCache();
 
         public void Delete(ulong number, BatchWrite? batch = null) => inner.Delete(number, batch);
@@ -1350,19 +1352,17 @@ public class SyncServerTests
             return inner.MultiLoadLevel(in blockNumbers);
         }
 
-        /// <summary>Runs between the reads of the first level and the other levels of the next batched read of more than one level.</summary>
+        /// <summary>Runs before the next batched read of more than one level.</summary>
         public Action? DuringNextBatchedRead { get; set; }
 
         public void GetMainChainBlocksWithoutCaching(ReadOnlyMemory<ulong> blockNumbers, Memory<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> blocks)
         {
             BatchedReads++;
+            BatchedLevels += blockNumbers.Length;
             if (blockNumbers.Length > 1 && DuringNextBatchedRead is { } action)
             {
                 DuringNextBatchedRead = null;
-                inner.GetMainChainBlocksWithoutCaching(blockNumbers[..1], blocks[..1]);
                 action();
-                inner.GetMainChainBlocksWithoutCaching(blockNumbers[1..], blocks[1..]);
-                return;
             }
 
             inner.GetMainChainBlocksWithoutCaching(blockNumbers, blocks);
