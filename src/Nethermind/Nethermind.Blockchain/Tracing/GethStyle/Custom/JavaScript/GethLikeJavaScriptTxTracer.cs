@@ -599,7 +599,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private void CheckDeadline()
     {
         _external.ThrowIfCancellationRequested();
-        if ((_enforceExecutionDeadline || _traceError is null) && _deadline?.Expired == true) throw new GethTraceDeadlineException();
+        bool recordedErrorWins = !_enforceExecutionDeadline && _traceError is not null;
+        if (!recordedErrorWins && _deadline?.Expired == true) throw new GethTraceDeadlineException();
     }
 
     private bool IsOwnDeadlineInterruption(Exception exception) =>
