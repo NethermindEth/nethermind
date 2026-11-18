@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Test;
@@ -422,20 +423,30 @@ public class SessionTests
     public async Task Delays_closing_the_connection_only_for_local_disconnects_after_init([Values] bool initialized, [Values] DisconnectType disconnectType)
     {
         Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        TaskCompletionSource closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<TimeSpan> closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        long start = 0;
         _connection.DisconnectAsync().Returns(_ =>
         {
-            closed.TrySetResult();
+            closed.TrySetResult(Stopwatch.GetElapsedTime(start));
             return Task.CompletedTask;
         });
         session.Handshake(TestItem.PublicKeyA);
         if (initialized) session.Init(5, _packetSender);
 
+        start = Stopwatch.GetTimestamp();
         session.MarkDisconnected(DisconnectReason.Other, disconnectType, "test");
 
-        bool delayed = initialized && disconnectType == DisconnectType.Local;
-        Assert.That(closed.Task.IsCompleted, Is.EqualTo(!delayed), "Closed right away");
-        await closed.Task.WaitAsync(Timeouts.Disconnection * 10);
+        if (initialized && disconnectType == DisconnectType.Local)
+        {
+            // A timer can fire up to a system clock tick early
+            Assert.That(await closed.Task.WaitAsync(Timeouts.Disconnection * 10),
+                Is.GreaterThanOrEqualTo(Timeouts.Disconnection - TimeSpan.FromMilliseconds(50)), "Closed after");
+        }
+        else
+        {
+            Assert.That(closed.Task.IsCompleted, Is.True, "Closed right away");
+        }
+
         await _connection.Received(1).DisconnectAsync();
     }
 
