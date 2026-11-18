@@ -24,6 +24,7 @@ public class FlatBalHealing(
     IBlockTree blockTree,
     IBlockAccessListStore balStore,
     TrieReassembler trieReassembler,
+    FlatTrieVerifier trieVerifier,
     IPersistence persistence,
     ITreeSyncStore store,
     [KeyFilter(DbNames.Code)] IDb codeDb,
@@ -52,6 +53,10 @@ public class FlatBalHealing(
         }
 
         if (_logger.IsInfo) _logger.Info($"Trie reassembly produced base state root {reassembledRoot}.");
+
+        if (_logger.IsInfo) _logger.Info($"Verifying the reassembled trie at {reassembledRoot} before healing.");
+        bool verified = trieVerifier.VerifyPersisted(reassembledRoot, token);
+        if (_logger.IsInfo) _logger.Info($"Verify before healing {(verified ? "passed" : "failed")} at reassembled root {reassembledRoot}.");
         return reassembledRoot;
     }
 

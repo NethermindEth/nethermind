@@ -342,7 +342,7 @@ public class BalApplierDifferentialTests(bool flatScope)
         }
 
         MemDb codeDb = new();
-        FlatBalHealing healing = new(blockTree, balStore, new TrieReassembler(persistence, LimboLogs.Instance), persistence,
+        FlatBalHealing healing = new(blockTree, balStore, new TrieReassembler(persistence, LimboLogs.Instance), new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), persistence, LimboLogs.Instance, Path.GetTempPath()), persistence,
             Substitute.For<ITreeSyncStore>(), codeDb, new Lazy<ICodeRecovery>(Substitute.For<ICodeRecovery>()), LimboLogs.Instance);
 
         Hash256[] storages = [.. pre.Where(static a => a.Slots is { Length: > 0 }).Select(static a => a.Address.ToAccountPath.ToCommitment())];

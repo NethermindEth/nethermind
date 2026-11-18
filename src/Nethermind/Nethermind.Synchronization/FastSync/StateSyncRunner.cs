@@ -78,6 +78,7 @@ public class StateSyncRunner(
                     {
                         await RunSnapSync(token);
                         DeleteCheckpointBeforeHealing(token);
+                        balHealing.Reassemble(stateSyncPivot.UpdatedStorages, token);
                     }
                 }
 

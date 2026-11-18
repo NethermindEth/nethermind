@@ -11,6 +11,7 @@ using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -97,6 +98,20 @@ public class FlatTrieVerifier
         ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
 
         return VerifyCore(reader, trieStore, stateId.StateRoot.ToCommitment(), cancellationToken);
+    }
+
+    /// <summary>Verifies the persisted flat state against the trie rooted at <paramref name="stateRoot"/>.</summary>
+    /// <remarks>
+    /// Unlike <see cref="Verify(BlockHeader, CancellationToken)"/>, the root need not be the persisted state's, e.g. a trie
+    /// reassembled during sync, and in-memory snapshots are not read, as sync writes straight to the persistence.
+    /// </remarks>
+    internal bool VerifyPersisted(Hash256 stateRoot, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(_persistence);
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        using ReadOnlySnapshotBundle bundle = new(new SnapshotPooledList(0), _persistence.CreateReader(ReaderFlags.FullScan), recordDetailedMetrics: false, PersistedSnapshotStack.Empty(), bufferPin: null);
+        return VerifyCore(reader, new ReadOnlyStateTrieStoreAdapter(bundle), stateRoot, cancellationToken);
     }
 
     // Internal method for testing with direct components
