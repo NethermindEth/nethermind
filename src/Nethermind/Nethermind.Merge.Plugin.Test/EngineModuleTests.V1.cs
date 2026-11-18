@@ -1943,8 +1943,20 @@ public partial class EngineModuleTests
         Address recipient = TestItem.AddressD;
         PrivateKey sender = TestItem.PrivateKeyB;
 
-        Transaction[] txsSource =
+        Transaction[] transfers =
             BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+        // Non-empty calldata, so a decoder that drops it cannot pass the comparison below.
+        Transaction withCalldata = Build.A.Transaction
+            .WithNonce(transfers[^1].Nonce + 1)
+            .WithTo(recipient)
+            .WithValue(value.GWei)
+            .WithData([0x01, 0x02, 0x03])
+            .WithType(TxType.EIP1559)
+            .WithGasPrice(1.GWei)
+            .WithMaxFeePerGasIfSupports1559(1.GWei)
+            .WithChainId(chain.SpecProvider.ChainId)
+            .SignedAndResolved(sender).TestObject;
+        Transaction[] txsSource = [.. transfers, withCalldata];
 
         ExecutionPayload executionPayload = new();
         executionPayload.SetTransactions(txsSource);
