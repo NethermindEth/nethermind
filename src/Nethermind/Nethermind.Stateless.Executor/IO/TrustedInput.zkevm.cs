@@ -91,4 +91,6 @@ public static partial class TrustedInput
             MethodTable = *(nint*)array;
         }
     }
+
+    private static bool RetainHints => AirbenderFlag.IsActive;
 }
