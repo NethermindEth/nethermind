@@ -157,6 +157,7 @@ namespace Nethermind.Init.Steps
                 }
             }
             if (target is not null) PruneToTarget(stepInfoMap, target);
+            ThrowOnDependencyCycle(stepInfoMap);
 
             if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
             List<Task> allRequiredSteps = [];
@@ -198,7 +199,7 @@ namespace Nethermind.Init.Steps
             catch (Exception exception) when (exception is not OperationCanceledException || (dependenciesCompleted && !cancellationToken.IsCancellationRequested))
             {
                 // A selected target is the whole job of the run, so its failure is fatal even for an optional step.
-                if (isTarget || stepWrapper.Step.MustInitialize)
+                if (isTarget || stepWrapper.MustInitialize)
                 {
                     if (_logger.IsError) _logger.Error($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
 
@@ -304,6 +305,37 @@ namespace Nethermind.Init.Steps
                 stepInfoMap.Remove(stepBaseType);
         }
 
+        /// <summary>Rejects a step graph in which some steps wait for each other and so would never start.</summary>
+        /// <exception cref="StepDependencyException">The dependencies form a cycle; the message names the steps on it.</exception>
+        private static void ThrowOnDependencyCycle(Dictionary<Type, StepWrapper> stepInfoMap)
+        {
+            // Set aside every step whose dependencies are all set aside, until nothing changes. A step left over waits for ever.
+            HashSet<Type> waiting = [.. stepInfoMap.Keys];
+            bool changed;
+            do
+            {
+                changed = false;
+                foreach ((Type step, StepWrapper stepWrapper) in stepInfoMap)
+                {
+                    if (waiting.Contains(step) && !stepWrapper.Dependencies.Exists(waiting.Contains))
+                        changed |= waiting.Remove(step);
+                }
+            } while (changed);
+
+            if (waiting.Count == 0) return;
+
+            // A left-over step that no left-over step depends on only waits behind the cycle, so it is not named.
+            do
+            {
+                HashSet<Type> dependedOn = [];
+                foreach (Type step in waiting) dependedOn.UnionWith(stepInfoMap[step].Dependencies);
+                changed = waiting.RemoveWhere(step => !dependedOn.Contains(step)) > 0;
+            } while (changed);
+
+            throw new StepDependencyException(
+                $"Steps depend on each other in a cycle: {string.Join(", ", waiting.Select(static t => t.Name).Order())}.");
+        }
+
         private IStep CreateStepInstance(StepInfo stepInfo)
         {
             try
@@ -378,8 +410,6 @@ namespace Nethermind.Init.Steps
                         queue.Enqueue(dependent);
                 }
             }
-            if (sorted.Count != depsMap.Count)
-                sorted = depsMap.Keys.OrderBy(n => n).ToList();
 
             // Compute max dependency depth for indentation
             Dictionary<string, int> depth = [];
@@ -423,6 +453,11 @@ namespace Nethermind.Init.Steps
 
             private IStep? _step;
             public IStep Step => _step ??= stepFactory();
+
+            /// <summary>Whether a failure of this step fails the run.</summary>
+            /// <remarks>Never creates the step, so a constructor that threw is not run again; a step that was not created is required.</remarks>
+            public bool MustInitialize => _step?.MustInitialize ?? true;
+
             private Task StepTask => _taskCompletedSource.Task;
             public readonly List<Type> Dependencies = [.. stepInfo.Dependencies];
 
