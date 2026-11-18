@@ -35,6 +35,7 @@ try
                 var entries = cases.ValueKind == JsonValueKind.Array
                     ? cases.EnumerateArray().ToArray()
                     : cases.EnumerateObject().Select(property => property.Value).ToArray();
+                var suiteResults = new List<(string Name, bool Passed)>();
                 foreach (var test in entries)
                 {
                     if (!test.TryGetProperty("summaryResult", out var summary) || summary.ValueKind == JsonValueKind.Null ||
@@ -42,12 +43,14 @@ try
                         passed.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                         continue;
                     var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
-                    // devp2p runs its test tool inside the launch test of these suites, so there it fails with any sub-test.
-                    if (name == launchTest && suite is "eth" or "snap" or "snap2")
-                        continue;
                     // Sync suites reuse case names, so retain their suite prefix to distinguish failures.
-                    results.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean()));
+                    suiteResults.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean()));
                 }
+                // devp2p runs its test tool inside the launch test of these suites, so there it fails with any sub-test.
+                // Drop it only when the suite reported sub-tests; otherwise it is the suite's only result and counts.
+                if (suite is "eth" or "snap" or "snap2" && suiteResults.Any(result => result.Name != launchTest))
+                    suiteResults.RemoveAll(result => result.Name == launchTest);
+                results.AddRange(suiteResults);
             }
             catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException)
             {

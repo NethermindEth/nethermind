@@ -30,6 +30,8 @@ try
         ("snap_launch_ignored", "snap", new[] { (launch, false), (failing, false) }, 0, "Unexpected fails: 0"),
         ("snap2_launch_ignored", "snap2", new[] { (launch, false), (failing, false) }, 0, "Unexpected fails: 0"),
         ("eth_case_counted", "eth", new[] { (launch, true), ("test_a", false) }, 1, "Unexpected fails: 1"),
+        ("snap_failed_launch_only", "snap", new[] { (launch, false) }, 1, "Unexpected fails: 1"),
+        ("eth_failed_launch_only", "eth", new[] { (launch, false) }, 1, "\u001b[31m✖\u001b[0m client launch (nethermind)"),
         ("flaky_pass", "engine", new[] { (flaky, true) }, 0, "\u001b[33m✔ flaky (nethermind) (flaky)\u001b[0m"),
         ("flaky_fail", "engine", new[] { (flaky, false) }, 0, "\u001b[33m✖ flaky (nethermind) (flaky)\u001b[0m"),
         ("sync_prefix", "sync", new[] { (failing, false) }, 0, "sync/known failing (nethermind)"),
@@ -66,6 +68,9 @@ try
                 json = "{\"name\":\"engine\",\"testCases\":{\"1\":{\"name\":\"pending\",\"summaryResult\":null}}}";
             if (name != "missing_result_files")
                 File.WriteAllText(Path.Combine(logs.FullName, "first.json"), json);
+            // A passing sibling suite, read before the snap file.
+            if (name == "snap_failed_launch_only")
+                File.WriteAllText(Path.Combine(logs.FullName, "eth.json"), "{\"name\":\"eth\",\"testCases\":{\"1\":{\"name\":\"test_a\",\"summaryResult\":{\"pass\":true}}}}");
             if (name is "multiple_files" or "explicit_paths")
                 File.WriteAllText(Path.Combine(logs.FullName, "second.json"), json);
             if (name == "malformed_json")
