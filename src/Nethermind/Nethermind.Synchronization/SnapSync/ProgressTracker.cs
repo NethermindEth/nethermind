@@ -479,7 +479,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         /// <param name="runRoot">The storage root the range ending at <paramref name="lastProcessedHash"/> was verified against.</param>
         /// <param name="runStart">Where the consecutive ranges of the storage downloaded at <paramref name="runRoot"/> begin.</param>
-        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount, Hash256 runRoot, in ValueHash256 runStart)
+        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount, in ValueHash256 runRoot, in ValueHash256 runStart)
         {
             ValueHash256 limitHash = parentRequest.LimitHash ?? Keccak.MaxValue;
             if (lastProcessedHash > limitHash)

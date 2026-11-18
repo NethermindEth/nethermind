@@ -520,16 +520,16 @@ public class TxValidatorTests
 
     private static IEnumerable<TestCaseData> OversizedWrapperFieldCases()
     {
-        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Blobs[0] = new byte[Ckzg.BytesPerBlob + 1]))
+        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Blobs = [new byte[Ckzg.BytesPerBlob + 1], .. w.Blobs[1..]] }))
             .SetName("IsWellFormed_BlobTxHasBlobOverTheSizeLimit_ReturnFalse");
-        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Commitments[0] = new byte[Ckzg.BytesPerCommitment + 1]))
+        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Commitments = [new byte[Ckzg.BytesPerCommitment + 1], .. w.Commitments[1..]] }))
             .SetName("IsWellFormed_BlobTxHasCommitmentOverTheSizeLimit_ReturnFalse");
-        yield return new TestCaseData(new Action<ShardBlobNetworkWrapper>(w => w.Proofs[0] = new byte[Ckzg.BytesPerProof + 1]))
+        yield return new TestCaseData(new Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper>(static w => w with { Proofs = new byte[w.Proofs.Length + 1] }))
             .SetName("IsWellFormed_BlobTxHasProofOverTheSizeLimit_ReturnFalse");
     }
 
     [TestCaseSource(nameof(OversizedWrapperFieldCases))]
-    public void IsWellFormed_BlobTxHasWrapperFieldOverTheSizeLimit_ReturnFalse(Action<ShardBlobNetworkWrapper> corrupt)
+    public void IsWellFormed_BlobTxHasWrapperFieldOverTheSizeLimit_ReturnFalse(Func<ShardBlobNetworkWrapper, ShardBlobNetworkWrapper> corrupt)
     {
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
@@ -539,7 +539,7 @@ public class TxValidatorTests
             .SignedAndResolved()
             .TestObject;
 
-        corrupt((ShardBlobNetworkWrapper)tx.NetworkWrapper!);
+        tx.NetworkWrapper = corrupt((ShardBlobNetworkWrapper)tx.NetworkWrapper!);
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
         Assert.That(txValidator.IsWellFormed(tx, Cancun.Instance).AsBool(), Is.False);
@@ -585,7 +585,7 @@ public class TxValidatorTests
     {
         Transaction tx = BuildBlobCarryingFrameTx(Eip8141Prototype.Instance.BlobProofVersion);
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        wrapper.Proofs[0].AsSpan().Clear(); // break the KZG cell proof while keeping the length valid
+        wrapper.Proofs.AsSpan(0, Ckzg.BytesPerProof).Clear(); // break the KZG cell proof while keeping the length valid
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
 
         Assert.That(txValidator.IsWellFormed(tx, Eip8141Prototype.Instance).AsBool(), Is.False);
@@ -1292,7 +1292,7 @@ public class TxValidatorTests
                 ExpectedResult = false
             };
             yield return new TestCaseData(Cancun.Instance, MakeTestObject()
-                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[0][1] ^= 0xFF)
+                .With(static tx => ((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs[1] ^= 0xFF)
                 .SignedAndResolved().TestObject)
             {
                 TestName = "Proofs are not valid",

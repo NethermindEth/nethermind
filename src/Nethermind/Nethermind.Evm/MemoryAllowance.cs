@@ -13,7 +13,7 @@ namespace Nethermind.Evm
         /// <summary>Entries of the process-wide code cache for code of at most 24 KiB; at most ~110 MB.</summary>
         public const int MediumCodeCacheSize = 4_096;
 
-        /// <summary>Entries of the process-wide code cache for larger code; at most ~75 MB at 64 KiB.</summary>
+        /// <summary>Entries of the process-wide code cache for code of at most 64 KiB; at most ~75 MB.</summary>
         public const int LargeCodeCacheSize = 1_024;
     }
 }

@@ -250,7 +250,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(dbKey) ?? _blockDb.GetOwnedMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = BlockStore.ReadBlockMemory(_blockDb, dbKey) ?? BlockStore.ReadBlockMemory(_blockDb, blockHash.Bytes);
         if (memoryOwner is null)
         {
             return null;

@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -120,7 +121,7 @@ public class ColumnsDbTests
     {
         public CountingRocksDbConfig TableConfig { get; private set; } = null!;
 
-        public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+        public IRocksDbConfig GetForDatabase(string? databaseName, string? columnName)
         {
             IRocksDbConfig config = inner.GetForDatabase(databaseName, columnName);
             return columnName is null ? TableConfig = new CountingRocksDbConfig(config) : config;
@@ -178,6 +179,99 @@ public class ColumnsDbTests
 
         if (!disposeSnapshotFirst) snapshot.Dispose();
         Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, 0));
+    }
+
+    [Test]
+    public void Snapshot_dispose_waits_for_a_pinned_read_in_flight([Values] bool hintCacheMiss)
+    {
+        byte[] key = [1, 2, 3];
+        _db.GetColumnDb(ReceiptsColumns.Blocks).PutSpan(key, new byte[64], WriteFlags.None);
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        IReadOnlyKeyValueStore column = snapshot.GetColumn(ReceiptsColumns.Blocks);
+        using DbOnTheRocksTests.ReadGate gate = new();
+        Task reading = gate.Read(column, key, hintCacheMiss ? ReadFlags.HintCacheMiss : ReadFlags.None);
+
+        Task disposing = Task.Run(snapshot.Dispose);
+        Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the snapshot was disposed under a pinned read");
+
+        gate.Release();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reading.Wait(TimeSpan.FromSeconds(10)), "the read never finished");
+            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the read ended");
+            Assert.That(() => column.TryGet(key, ReadFlags.None, static (_, _) => { }, 0), Throws.InstanceOf<ObjectDisposedException>());
+        }
+    }
+
+    [Test]
+    public void Snapshot_dispose_under_concurrent_pinned_reads_lets_each_read_finish_or_throw_object_disposed()
+    {
+        const int Readers = 8;
+        byte[] key = [1, 2, 3];
+        ReceiptsColumns[] columns = Enum.GetValues<ReceiptsColumns>();
+        foreach (ReceiptsColumns column in columns) _db.GetColumnDb(column).PutSpan(key, new byte[64], WriteFlags.None);
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+
+        using CountdownEvent started = new(Readers);
+        Task<int>[] readers = new Task<int>[Readers];
+        for (int i = 0; i < Readers; i++)
+        {
+            IReadOnlyKeyValueStore column = snapshot.GetColumn(columns[i % columns.Length]);
+            readers[i] = Task.Factory.StartNew(() =>
+            {
+                started.Signal();
+                int reads = 0;
+                try
+                {
+                    while (true)
+                    {
+                        if (!column.TryGet(key, ReadFlags.None, DbOnTheRocksTests.CheckValueLength, 64))
+                        {
+                            throw new InvalidOperationException("the key was not found");
+                        }
+
+                        reads++;
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    return reads;
+                }
+            }, TaskCreationOptions.LongRunning);
+        }
+
+        Assert.That(started.Wait(TimeSpan.FromSeconds(10)), "the readers never started");
+        Thread.Sleep(50);
+        snapshot.Dispose();
+
+        Assert.That(Task.WaitAll(readers, TimeSpan.FromSeconds(10)), "a reader never stopped");
+        int reads = readers.Sum(static r => r.Result);
+        Assert.That(reads, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void Snapshot_disposed_inside_its_own_read_releases_the_snapshot_and_iterator_managers_when_the_read_ends()
+    {
+        byte[] key = [1, 2, 3];
+        _db.GetColumnDb(ReceiptsColumns.Blocks).PutSpan(key, new byte[64], WriteFlags.None);
+        DbOnTheRocks column = (DbOnTheRocks)_db.GetColumnDb(ReceiptsColumns.Blocks);
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead: true);
+        IReadOnlyKeyValueStore blocks = snapshot.GetColumn(ReceiptsColumns.Blocks);
+        RocksDbReader transactions = (RocksDbReader)snapshot.GetColumn(ReceiptsColumns.Transactions);
+        ulong snapshotsInRead = 0;
+
+        blocks.TryGet(key, ReadFlags.None, (_, _) =>
+        {
+            snapshot.Dispose();
+            snapshotsInRead = DbOnTheRocksTests.LiveSnapshots(column);
+        }, 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshotsInRead, Is.EqualTo(1), "the snapshot was released under its own read");
+            Assert.That(DbOnTheRocksTests.LiveSnapshots(column), Is.Zero, "the read did not release the snapshot when it ended");
+            Assert.That(() => transactions.IteratorManager!.Value, Throws.InstanceOf<ObjectDisposedException>(), "the iterator managers were not released");
+        }
     }
 
     [Test]
@@ -481,7 +575,30 @@ public class ColumnsDbTests
             {
                 Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)i, 1 }), $"reverse key {i}");
             }
-            Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[0], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 0, 1 }));
+
+                // Skip-ahead reads. The iterator is on keys[0]. A key further away than the five steps of its probe
+                // is found by a seek.
+                Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[8], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { 8, 1 }), "key 8 from key 0");
+            }
+
+            // From here the iterator is on keys[i]. Next lands on keys[i + 1], before the requested key, so the
+            // bounded probe takes over. It steps past a key that is absent between keys[i + 1] and keys[i + 2] and
+            // settles the miss without a point read. The read of keys[i + 2], where it stopped, steps past it, so a
+            // seek serves that key, and keys[i + 4] is found by the probe. Several rounds, so one read that the
+            // cleanup timer of the iterator pool sends to a seek cannot hide the probe branches.
+            for (int i = 8; i + 4 < keys.Length; i += 4)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, [.. keys[i + 1], 0], ReadFlags.HintReadAhead, spanAction), Is.Null, $"absent key after key {i + 1}");
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i + 2], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)(i + 2), 1 }), $"key {i + 2} after the miss");
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, keys[i + 4], ReadFlags.HintReadAhead, spanAction), Is.EqualTo(new byte[] { (byte)(i + 4), 1 }), $"key {i + 4} after a skip");
+                }
+            }
         }
 
         // Disposing the snapshot tears down its iterators; the head db must stay fully usable.
@@ -526,7 +643,7 @@ public class ColumnsDbTests
         }
 
         _db.Flush();
-        long usageBefore = BlockCacheUsage();
+        long usageBefore = BlockCacheUsage(column);
 
         using (IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead))
         {
@@ -537,18 +654,76 @@ public class ColumnsDbTests
             }
         }
 
-        long added = BlockCacheUsage() - usageBefore;
+        long added = BlockCacheUsage(column) - usageBefore;
         Assert.That(added, sequentialReadAhead ? Is.LessThan(keyCount * valueSize / 10) : Is.GreaterThan(keyCount * valueSize / 2));
+    }
 
-        static byte[] Key(int i)
+    [Test]
+    public void Snapshot_ReadAhead_Misses_FillBlockCacheOnlyThroughFallbackWithoutHintCacheMiss(
+        [Values] bool probe, [Values] bool hintCacheMiss, [Values] bool spanAction)
+    {
+        const int keyCount = 4096;
+        const int valueSize = 256;
+        const int storedBytes = keyCount / 4 * 3 * valueSize;
+        // The bloom filter is skipped on the last level (optimize_filters_for_hits), here the one file the flush
+        // writes, so a point read of an absent key has to read the data block that would hold it. With the filter
+        // consulted almost no miss does, and the bounds below could not tell the cases apart. No automatic
+        // compaction either, so nothing in the background moves blocks in or out of the cache.
+        using ColumnsDb<ReceiptsColumns> db = CreateDb(DbPath + "-misses", new DbConfig
         {
-            byte[] key = new byte[8];
-            BinaryPrimitives.WriteInt64BigEndian(key, i);
-            return key;
+            BlocksDbAdditionalRocksDbOptions = "optimize_filters_for_hits=true;disable_auto_compactions=true;"
+        });
+        ColumnDb column = (ColumnDb)db.GetColumnDb(ReceiptsColumns.Blocks);
+        Random random = new(42);
+        byte[][] values = new byte[keyCount][];
+        for (int i = 0; i < keyCount; i++)
+        {
+            if (i % 4 == 3) continue; // absent, between stored neighbours
+            random.NextBytes(values[i] = new byte[valueSize]);
+            column.Set(Key(i), values[i]);
         }
 
-        long BlockCacheUsage() => long.Parse(column.GatherProperty("rocksdb.block-cache-usage")!);
+        db.Flush();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(long.Parse(column.GatherProperty("rocksdb.num-entries-active-mem-table")!), Is.Zero, "reads must reach SST files, not the memtable");
+            Assert.That(long.Parse(column.GatherProperty("rocksdb.num-files-at-level0")!), Is.EqualTo(1), "the flush must write one SST file");
+        }
+        long usageBefore = BlockCacheUsage(column);
+
+        ReadFlags flags = ReadFlags.HintReadAhead | (hintCacheMiss ? ReadFlags.HintCacheMiss : ReadFlags.None);
+        using (IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)db).CreateSnapshot(sequentialReadAhead: true))
+        {
+            IReadOnlyKeyValueStore snapshotColumn = snapshot.GetColumn(ReceiptsColumns.Blocks);
+            for (int i = 0; i + 4 < keyCount; i += 4)
+            {
+                // From i + 1 the iterator steps to i + 2 and its probe passes the absent i + 3: a settled miss.
+                // From i + 2 it steps straight past i + 3, cannot settle the read, and falls back to a point read.
+                int stored = probe ? i + 1 : i + 2;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, Key(stored), flags, spanAction), Is.EqualTo(values[stored]), $"key {stored}");
+                    Assert.That(KeyValueStoreReads.Read(snapshotColumn, Key(i + 3), flags, spanAction), Is.Null, $"absent key {i + 3}");
+                }
+            }
+        }
+
+        long added = BlockCacheUsage(column) - usageBefore;
+        // Only the point reads of the fallback can fill the cache, and HintCacheMiss must keep them out of it.
+        // The fallback without the flag is the control: it shows that these misses do read data blocks. A miss that
+        // the cleanup timer of the iterator pool sends to the fallback adds one or two blocks, far below the bound.
+        bool fills = !probe && !hintCacheMiss;
+        Assert.That(added, fills ? Is.GreaterThan(storedBytes / 2) : Is.LessThan(storedBytes / 10));
     }
+
+    private static byte[] Key(int i)
+    {
+        byte[] key = new byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(key, i);
+        return key;
+    }
+
+    private static long BlockCacheUsage(ColumnDb column) => long.Parse(column.GatherProperty("rocksdb.block-cache-usage")!);
 
     [TestCase(false)]
     [TestCase(true)]

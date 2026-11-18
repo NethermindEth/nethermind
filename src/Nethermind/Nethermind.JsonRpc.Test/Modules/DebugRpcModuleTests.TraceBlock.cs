@@ -3025,8 +3025,9 @@ public partial class DebugRpcModuleTests
     {
         using Context context = await Context.Create();
         ulong nonce = context.Blockchain.WorldStateManager.GlobalStateReader.GetNonce(context.Blockchain.BlockTree.Head!.Header, TestItem.AddressB);
-        Transaction transaction = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce)
-            .WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        // Init code: MSTORE8 0x2a at 0, then KECCAK256 over that byte.
+        Transaction transaction = Build.A.Transaction.WithCode(Bytes.FromHexString("602a600053600160002000")).WithNonce(nonce)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Block block = await context.Blockchain.AddBlock(transaction);
         object selector = method == "debug_traceBlockByHash" ? block.Hash! : block.Number;
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, selector,
@@ -3036,8 +3037,15 @@ public partial class DebugRpcModuleTests
         Assert.That(result["error"], Is.Null, response);
 #pragma warning restore NUnit2045
         Assert.That(result["result"]!.Count(), Is.EqualTo(block.Transactions.Length));
+        JToken expectedPreimages = JToken.Parse("""{"0x04994f67dc55b09e814ab7ffc8df3686b4afb2bb53e60eae97ef043fe03fb829":"0x2a"}""");
         for (int i = 0; i < block.Transactions.Length; i++)
-            Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result["result"]![i]!["txHash"]!.Value<string>(), Is.EqualTo(block.Transactions[i].Hash!.ToString()));
+                Assert.That(JToken.DeepEquals(result["result"]![i]!["result"], expectedPreimages), Is.True, response);
+            }
+        }
     }
 
     // The supplied body keeps the stored header's hash, and the new header has no stored receipts: both must number

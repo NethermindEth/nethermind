@@ -19,6 +19,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
@@ -736,21 +737,22 @@ public class PersistenceManager(
             // write batch.
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
+                Address address = entry.Address.ToAddress();
                 if (entry.SelfDestructFlag is false)
-                    batch.SelfDestruct(entry.Address);
+                    batch.SelfDestruct(address);
 
                 if (entry.HasAccount)
-                    batch.SetAccount(entry.Address, entry.Account);
+                    entry.WriteAccount(batch, address);
 
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                    batch.SetStorage(address, slot.Slot, slot.Value);
             }
 
             foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
-                batch.SetStateTrieNode(entry.Path, entry.Rlp);
+                entry.Write(batch);
 
             foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
+                entry.Write(batch);
         }
 
         // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the

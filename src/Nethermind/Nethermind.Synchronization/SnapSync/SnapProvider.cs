@@ -297,7 +297,7 @@ namespace Nethermind.Synchronization.SnapSync
                 // A refresh of the other half of a split storage can replace the account meanwhile, and the range has
                 // to be verified against the root its run is decided on.
                 PathWithAccount verifiedAccount = new(pathWithAccount.Path, pathWithAccount.Account);
-                Hash256 storageRoot = verifiedAccount.Account.StorageRoot;
+                ValueHash256 storageRoot = verifiedAccount.Account.StorageRoot;
                 ValueHash256 runStart = request.PrevRunRoot == storageRoot ? request.PrevRunStart : request.StartingHash ?? ValueKeccak.Zero;
 
                 (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, verifiedAccount, slots, request.StartingHash, runStart, request.LimitHash, proofs);
@@ -359,11 +359,12 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 path = requestedPath.PathAndAccount.Path;
 
             AddRangeResult result;
-            switch (VerifyRefreshedAccount(response, request.RootHash, path, out Account? account))
+            switch (VerifyRefreshedAccount(response, request.RootHash, path, out AccountStruct account))
             {
                 case RefreshVerifyResult.Verified:
                     result = AddRangeResult.OK;
-                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(account!.StorageRoot);
+                    AccountStruct oldAccount = requestedPath.PathAndAccount.Account;
+                    requestedPath.PathAndAccount.Account = new AccountStruct(oldAccount.Nonce, oldAccount.Balance, account.StorageRoot, oldAccount.CodeHash);
                     // Read and reset in one step, for the same reason as above.
                     int emptyResponses = Interlocked.Exchange(ref requestedPath.PathAndAccount.EmptyStorageResponses, 0);
 
@@ -425,9 +426,9 @@ namespace Nethermind.Synchronization.SnapSync
         /// isolated, empty-backed trie - the account leaf is set from the response, not assumed to be in the proof -
         /// then extracts the verified account at <paramref name="path"/>. Nothing is written to the client state DB.
         /// </summary>
-        private RefreshVerifyResult VerifyRefreshedAccount(AccountsAndProofs response, Hash256 stateRoot, in ValueHash256 path, out Account? account)
+        private RefreshVerifyResult VerifyRefreshedAccount(AccountsAndProofs response, Hash256 stateRoot, in ValueHash256 path, out AccountStruct account)
         {
-            account = null;
+            account = default;
             IReadOnlyList<PathWithAccount> accounts = response.PathAndAccounts;
             // An empty response carries no range to verify, so the account's absence cannot be proven here -
             // retry rather than concluding (unproven) that it was deleted.

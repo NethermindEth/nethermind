@@ -154,7 +154,7 @@ public class FlatSnapTrieFactory(
                 if (TryGetFirstAccountKeyAtOrAfter(partition.NextAccountPath, out ValueHash256 firstAccount))
                 {
                     batch.DeleteAccountRange(firstAccount, partition.AccountPathLimit);
-                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit);
+                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit, null);
                 }
             }
 

@@ -168,6 +168,7 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         private readonly ReadOptions _sharedCacheMissReadOptions;
         private ReadOptions? _readAheadReadOptions;
         private int _disposed;
+        private readonly InFlightOperations _reads = new();
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
@@ -250,7 +251,10 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
                         iteratorManager,
-                        columnFamily);
+                        columnFamily)
+                    {
+                        Reads = _reads
+                    };
                 }
 
                 return readers;
@@ -310,6 +314,18 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
+            if (RocksDbReader.DrainReads(_reads, _columnsDb._anyColumn.PinnedSliceDrainTimeout))
+            {
+                Release();
+            }
+            else
+            {
+                _columnsDb._anyColumn.ReleaseSnapshotAfterReads(_reads, Release);
+            }
+        }
+
+        private void Release()
+        {
             // Iterators pin the snapshot's resources — tear the managers down before releasing anything they read through.
             foreach (RocksDbReader? reader in _readers)
             {

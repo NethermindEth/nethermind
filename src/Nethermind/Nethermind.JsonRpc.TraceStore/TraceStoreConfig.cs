@@ -8,6 +8,10 @@ namespace Nethermind.JsonRpc.TraceStore;
 public class TraceStoreConfig : ITraceStoreConfig
 {
     public bool Enabled { get; set; }
+    /// <inheritdoc />
+    public string RocksDbOptions { get; set; } = "";
+    /// <inheritdoc />
+    public string AdditionalRocksDbOptions { get; set; } = "";
     public ulong BlocksToKeep { get; set; } = 10000;
     public ParityTraceTypes TraceTypes { get; set; } = ParityTraceTypes.Trace | ParityTraceTypes.Rewards;
     /// <inheritdoc />

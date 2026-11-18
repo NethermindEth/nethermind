@@ -478,7 +478,7 @@ internal sealed class McpTransactionTools(
         {
             BlockParameter metadataBlock = tx.BlockHash is { } blockHash ? new BlockParameter(blockHash) : new BlockParameter(blockNumber);
             (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(movements), metadataBlock, MaxTokenLookups, token,
-                () => context.Clock.Elapsed > _tokenDeadline, DetachedEth());
+                () => context.Clock.Elapsed > _tokenDeadline, DetachedEth(token));
             if (skipped > 0)
             {
                 context.Notes.Add($"Token metadata was not read for {skipped} token(s) (at most {MaxTokenLookups} per call, within the time budget); they show raw amounts.");
@@ -733,7 +733,7 @@ internal sealed class McpTransactionTools(
 
     private async Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> RunTraceAsync(Hash256 hash)
     {
-        using ModuleLease<IDebugRpcModule> debug = await executor.RentAsync<IDebugRpcModule>(nameof(IDebugRpcModule.debug_traceTransaction));
+        using ModuleLease<IDebugRpcModule> debug = await executor.RentAsync<IDebugRpcModule>(nameof(IDebugRpcModule.debug_traceTransaction), CancellationToken.None);
         if (debug.Module is null)
         {
             return (false, null, null);
@@ -1372,7 +1372,7 @@ internal sealed class McpTransactionTools(
         {
             BlockParameter metadataBlock = header.Hash is { } blockHash ? new BlockParameter(blockHash) : new BlockParameter(header.Number ?? 0);
             (tokens, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, TokensOf(allMovements), metadataBlock, MaxTokenLookups, token,
-                tokenBudgetSpent, DetachedEth());
+                tokenBudgetSpent, DetachedEth(token));
             if (skipped > 0) notes.Add($"Token metadata was not read for {skipped} token(s) (at most {MaxTokenLookups} per call, within the time budget); they show raw amounts.");
             foreach ((int call, List<McpTokenMovement> movements) in perCall)
             {
@@ -1968,7 +1968,7 @@ internal sealed class McpTransactionTools(
         List<Address> topTokens = [];
         for (int i = 0; i < top.Count && i < BlockTopCount; i++) topTokens.Add(top[i].Key);
         (Dictionary<AddressAsKey, McpTokenInfo> infos, int skipped) = McpTxTokens.LookUp(tokenMetadata, eth, topTokens, block, BlockTopCount, token,
-            tokenBudgetSpent, DetachedEth());
+            tokenBudgetSpent, DetachedEth(token));
         if (skipped > 0)
         {
             notes.Add($"Token metadata was not read for {skipped} of the top tokens within the time budget; they are shown by address only.");
@@ -2040,9 +2040,10 @@ internal sealed class McpTransactionTools(
     private string Display(Address address) => Label(address) is { } label ? $"{label} ({McpTxFormat.Short(address)})" : McpTxFormat.Short(address);
 
     // Token metadata reads run on their own eth module, so a slow read can be left behind at the token deadline.
-    private McpDetachedEth DetachedEth() => new(async () =>
+    private McpDetachedEth DetachedEth(CancellationToken token) => new(async abandoned =>
     {
-        ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call));
+        using CancellationTokenSource rental = CancellationTokenSource.CreateLinkedTokenSource(token, abandoned);
+        ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), rental.Token);
         return (lease.Module, lease);
     }, executor.TrackDetached);
 
