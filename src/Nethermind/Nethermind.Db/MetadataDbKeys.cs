@@ -31,5 +31,7 @@ namespace Nethermind.Db
         public const int AncientBodiesDownloadComplete = 24;
         public const int HistoryPruningBlobCompactionDone = 25;
         public const int HistoryPruningBlobCompactionOwed = 26;
+        public const int LogIndexLowestReplacedBlock = 27;
+        public const int ReplacedSyncPivotHash = 28;
     }
 }
