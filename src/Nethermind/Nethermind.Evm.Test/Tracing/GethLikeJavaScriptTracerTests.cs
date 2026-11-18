@@ -62,6 +62,18 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(expected));
     }
 
+    [TestCase(false, 0)]
+    [TestCase(true, 0)]
+    [TestCase(true, 1)]
+    public void Javascript_db_exists_includes_empty_accounts(bool exists, int balance)
+    {
+        Address address = new("0x00000000000000000000000000000000deadbeef");
+        if (exists)
+            TestState.CreateAccount(address, (UInt256)balance);
+        Db db = new(TestState);
+        Assert.That(db.exists(address.Bytes.ToArray()), Is.EqualTo(exists));
+    }
+
     [TestCaseSource(nameof(AddressInputCases), new object[] { false })]
     public void Javascript_address_inputs_normalize_geth_widths(string expression, string inputHex, string addressHex) =>
         AssertAddressInputNormalization(expression, inputHex, addressHex);
