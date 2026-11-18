@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
@@ -18,7 +19,6 @@ namespace Nethermind.Wallet
     public class DevWallet : IWallet
     {
         private const string AnyPassword = "#DEV_ACCOUNT_NETHERMIND_ANY_PASSWORD#";
-        private static readonly byte[] _keySeed = new byte[32];
         private readonly ILogger _logger;
         private readonly Dictionary<Address, bool> _isUnlocked = [];
         private readonly Dictionary<Address, PrivateKey> _keys = [];
@@ -30,14 +30,15 @@ namespace Nethermind.Wallet
         {
             _logger = logManager?.GetClassLogger<DevWallet>() ?? throw new ArgumentNullException(nameof(logManager));
 
-            _keySeed[31] = 1;
+            byte[] keySeed = new byte[32];
             for (int i = 0; i < walletConfig?.DevAccounts; i++)
             {
-                PrivateKey key = new(_keySeed);
+                // Dev key n is the 32-byte big-endian number n
+                BinaryPrimitives.WriteUInt32BigEndian(keySeed.AsSpan(28), (uint)i + 1);
+                PrivateKey key = new(keySeed);
                 _keys.Add(key.Address, key);
                 _passwords.Add(key.Address, AnyPassword);
                 _isUnlocked.Add(key.Address, true);
-                _keySeed[31]++;
             }
         }
 
