@@ -216,7 +216,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            if (lowestInserted is not null && lowestInserted.Number < _pivotNumber)
+            if (lowestInserted is not null && lowestInserted.Number == _pivotNumber && lowestInserted.Hash != nextHeaderHash)
+            {
+                // A lowest inserted header at the pivot height that is not the pivot does not belong to this sync,
+                // so start from the pivot again.
+                _blockTree.LowestInsertedHeader = null;
+                lowestInserted = null;
+            }
+
+            // `<=`: when only the pivot is inserted, resume from its parent rather than requesting the pivot again.
+            if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
             {
                 if (lowestInserted.TotalDifficulty is null)
                 {
@@ -970,7 +979,8 @@ namespace Nethermind.Synchronization.FastBlocks
                             "first hash inconsistent with request");
                     }
 
-                    return true;
+                    // Nothing from this response is inserted; the range is requested again.
+                    return false;
                 }
 
                 // response needs to be cached until predecessors arrive
