@@ -735,6 +735,32 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Javascript_timeout_range_uses_the_owned_deadline(
+        [Values(0, -1, 1, 121, 4_294_968)] int seconds, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        DeadlineExecution clock = new();
+        using Engine engine = new(Prague.Instance);
+        using (GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
+            new GethTraceOptions
+            {
+                Timeout = TimeSpan.FromSeconds(seconds), DeadlineClock = clock, CaptureJavaScriptErrors = capture,
+                Tracer = "{fault:function(){},result:function(){return {};}}"
+            }))
+        {
+            clock.Advance(0);
+            if (seconds <= 0)
+                Assert.That(() => tracer.BuildResult(), Throws.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
+            else
+            {
+                using GethLikeTxTrace result = tracer.BuildResult();
+                Assert.That(result.CustomTracerResult, Is.Not.Null);
+            }
+        }
+        Assert.That(clock.Timers, Has.All.Property(nameof(ExecutionTimer.Disposed)).True);
+    }
+
     private static GethLikeJavaScriptTxTracer CreateDeadlineJavaScriptTracer(
         Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script,
         GethTraceDeadlineScope? scope = null, int timeoutSeconds = 1, CancellationToken external = default) =>
@@ -996,6 +1022,8 @@ public partial class DebugRpcModuleTests
     private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock, bool noBaseFee = false)
     {
         IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
+        module.debug_traceTransaction(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            inner.debug_traceTransaction(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }));
         module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
             inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with
             {

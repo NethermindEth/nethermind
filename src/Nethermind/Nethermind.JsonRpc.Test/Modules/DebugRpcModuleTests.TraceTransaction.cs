@@ -255,33 +255,31 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceTransaction_javascript_duration_policy(
-        [Values("bad", "5s", "0s", "-1s", "4294968s")] string timeout,
+        [Values("bad", "5s", "0s", "-1s", "121s", "4294968s")] string timeout,
         [Values(null, false, true)] bool? streamMode)
     {
-        using Context context = await Context.Create();
-        Transaction transaction = await AddBlockWithTransfer(context);
+        DeadlineExecution clock = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Transaction transaction = Build.A.Transaction.WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressB))
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        await chain.AddBlock(transaction);
+        clock.Enabled = true;
         const string tracer = "{fault:function(){},result:function(){return {};}}";
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), "debug_traceTransaction",
             transaction.Hash!, new { tracer, timeout, streamMode });
         string expected;
         if (timeout == "bad")
         {
             expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}""";
         }
-        else if (timeout == "5s")
+        else if (timeout is "0s" or "-1s")
         {
-            expected = """{"jsonrpc":"2.0","result":{},"id":67}""";
+            expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"execution timeout"},"id":67}""";
         }
         else
         {
-            TimeSpan duration = TimeSpan.FromSeconds(timeout == "0s" ? 0 : timeout == "-1s" ? -1 : 4_294_968);
-            ArgumentOutOfRangeException error = new("options", duration, "Tracer timeout must be between 1ns and 2m.");
-            expected = JsonSerializer.Serialize(new
-            {
-                jsonrpc = "2.0",
-                error = new { code = ErrorCodes.InvalidParams, message = error.Message },
-                id = 67
-            });
+            expected = """{"jsonrpc":"2.0","result":{},"id":67}""";
         }
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
