@@ -251,7 +251,7 @@ namespace Nethermind.Facade
         {
             // The env opens the scope on the base block, applies the block override, and commits the
             // (possibly empty) override at the overridden block number — so the overridden header used below resolves.
-            if (!processingEnv.TryBuildAndOverride(header, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope)) return StateUnavailable(header);
+            if (!TryBuildAndOverrideCall(header, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope)) return StateUnavailable(header);
             using IDisposable _ = scope;
             // Dual-write: RequestState feeds the VM-time decorator; RunCall applies it during pre-VM header prep.
             scope.Component.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
@@ -276,6 +276,21 @@ namespace Nethermind.Facade
             BlockHeader copy = header.Clone();
             poSSwitcher.RestorePostMergeForCall(copy);
             return copy;
+        }
+
+        /// <summary>Opens the exclusive scope on <paramref name="callHeader"/>, the call's own copy, and applies the overrides to it.</summary>
+        /// <remarks>
+        /// A <c>prevRandao</c> override that counts under the overridden block's spec (see <see cref="BlockOverride.PrevRandaoFor"/>)
+        /// makes the copy post-merge, so PREVRANDAO returns it on a block from before the merge too. A set flag is never
+        /// cleared. Unlike a value passed in the context, the flag survives the header clone the frame-gas search runs its probes on.
+        /// </remarks>
+        private bool TryBuildAndOverrideCall(BlockHeader callHeader, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride,
+            [NotNullWhen(true)] out Scope<BlockProcessingComponents>? scope)
+        {
+            if (!processingEnv.TryBuildAndOverride(callHeader, stateOverride, blockOverride, out scope)) return false;
+            if (blockOverride?.PrevRandao is not null && blockOverride.PrevRandaoFor(specProvider.GetSpec(callHeader)) is not null)
+                callHeader.IsPostMerge = true;
+            return true;
         }
 
         private static CallOutput StateUnavailable(BlockHeader header) =>
@@ -382,7 +397,7 @@ namespace Nethermind.Facade
             // The requested block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
             {
-                if (!processingEnv.TryBuildAndOverride(executionHeader, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope))
+                if (!TryBuildAndOverrideCall(executionHeader, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope))
                     return Result<TxFrame[]>.Fail(StateUnavailable(header).Error!);
                 using IDisposable _ = scope;
                 GasEstimator estimator = new(scope.Component.TransactionProcessor, scope.Component.WorldState);
@@ -407,7 +422,7 @@ namespace Nethermind.Facade
 
         private CallOutput EstimateGasExclusive(BlockHeader header, Transaction tx, int errorMargin, Dictionary<Address, AccountOverride>? stateOverride, UInt256? blobBaseFeeOverride, BlockOverride? blockOverride, ulong gasCap, BlobFeeCapFill blobFeeCapFill, CancellationToken cancellationToken)
         {
-            if (!processingEnv.TryBuildAndOverride(header, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope)) return EstimateGasStateUnavailable(header, tx);
+            if (!TryBuildAndOverrideCall(header, stateOverride, blockOverride, out Scope<BlockProcessingComponents>? scope)) return EstimateGasStateUnavailable(header, tx);
             using IDisposable _ = scope;
             BlockProcessingComponents components = scope.Component;
             components.RequestState.BlobBaseFeeOverride = blobBaseFeeOverride;
