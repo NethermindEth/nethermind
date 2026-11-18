@@ -75,6 +75,8 @@ public class GethStyleTracer(
     public GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null)
     {
         tx.Hash ??= tx.CalculateHash();
+        if (ContainsJavaScriptTracer(options.Tracer, options.TracerConfig))
+            options = options with { EnforceExecutionDeadline = true };
         if (options.TxIndex is { } index)
         {
             Block parentBlock = blockTree.FindBlock(blockParameter) ?? throw new InvalidOperationException($"Cannot find block {blockParameter}");
@@ -118,12 +120,17 @@ public class GethStyleTracer(
         try
         {
             // Prefix execution uses canonical state and block context. Overrides belong only to the synthetic call.
-            CallAtIndexBlockTracer callTracer = new(tracer.WithCancellation(cancellationToken), callHeader, (int)index,
+            CallAtIndexBlockTracer callTracer = new(GethLikeBlockDeadlineTracer.WithCancellation(tracer, cancellationToken), callHeader, (int)index,
                 tracedBlock => PrepareIndexedCall(tracedBlock, call, options, state, callSpec));
             IBlockTracer boundary = TransactionTraceBoundary.WrapAt(callTracer, call.Hash, (int)index);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, cancellationToken);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
             return (tracePreceding ? KeepTrace(tracer.BuildResult(), call.Hash) : tracer.BuildResult()).SingleOrDefault();
+        }
+        catch (Exception exception) when (tracer is GethLikeBlockDeadlineTracer deadline)
+        {
+            deadline.HandleFailure(exception);
+            throw;
         }
         finally
         {
@@ -150,7 +157,10 @@ public class GethStyleTracer(
         GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : call.Hash, ExecutionCancellationToken = cancellationToken };
         BlockLogIndex logIndex = new();
         return writer is null
-            ? CreateOptionsTracer(header, filtered, state, specProvider, tracePreceding ? (_, _) => logIndex : null)
+            ? GethLikeBlockDeadlineTracer.Wrap(
+                effective => CreateOptionsTracer(header, filtered with { DeadlineScope = effective.DeadlineScope }, state, specProvider,
+                    tracePreceding ? (_, _) => logIndex : null),
+                options with { TxHash = call.Hash }, cancellationToken)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)spec.GasCosts.DestroyRefund);
     }
 
@@ -716,6 +726,16 @@ public class GethStyleTracer(
     /// <summary>A JavaScript tracer owns a script engine; one per worker at once is not a cost a block trace should pay.</summary>
     private static bool IsJavaScriptTracer(GethTraceOptions options) =>
         options.Tracer is { Length: > 0 } tracer && !GethLikeNativeTracerFactory.IsNativeTracer(tracer);
+
+    private static bool ContainsJavaScriptTracer(string tracer, JsonElement? config)
+    {
+        if (tracer != GethLikeBlockMuxTracer.TracerName)
+            return tracer is { Length: > 0 } && !GethLikeNativeTracerFactory.IsNativeTracer(tracer);
+        if (config is not { ValueKind: JsonValueKind.Object }) return false;
+        foreach ((string name, JsonElement child) in GethLikeBlockMuxTracer.ParseConfig(config))
+            if (ContainsJavaScriptTracer(name, child)) return true;
+        return false;
+    }
 
     private BlockHeader? FindParent(Block block)
     {
