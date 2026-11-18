@@ -423,10 +423,16 @@ public partial class BlockProcessor
                 return;
             }
 
+            bool sorted = true;
             for (int i = lead; i < len; i++)
             {
                 sortKeys[i] = new(txs[i], i);
+                sorted &= i == lead || sortKeys[i - 1].CompareTo(sortKeys[i]) <= 0;
             }
+
+            // Keys tie-break on the index, so a block of identically shaped transactions is already in order;
+            // sorting it again cost O(n log n) on the block-processing thread before execution could start.
+            if (sorted) return;
 
             Array.Sort(sortKeys, txExecutionOrder, lead, sortCount);
         }

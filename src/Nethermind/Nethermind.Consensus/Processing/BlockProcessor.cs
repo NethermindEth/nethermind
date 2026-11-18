@@ -28,6 +28,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
@@ -337,10 +338,26 @@ public partial class BlockProcessor(
 
         if (BlockchainProcessor.IsMainProcessingThread)
         {
-            Evm.Metrics.PublishBlockGasPrices(block.Transactions, spec.IsEip1559Enabled, header.BaseFeePerGas);
+            PublishBlockGasPrices(block.Transactions, spec.IsEip1559Enabled, header.BaseFeePerGas);
         }
 
         return receipts;
+    }
+
+    // A pass over every transaction: on large blocks it was a measurable share of the block's critical path, and the
+    // gauges need not be current before the block is.
+    private const int InlineGasPriceMetricsLimit = 4096;
+
+    private static void PublishBlockGasPrices(Transaction[] transactions, bool isEip1559Enabled, UInt256 baseFee)
+    {
+        if (transactions.Length <= InlineGasPriceMetricsLimit)
+        {
+            Evm.Metrics.PublishBlockGasPrices(transactions, isEip1559Enabled, baseFee);
+            return;
+        }
+
+        ThreadPool.UnsafeQueueUserWorkItem(static state => Evm.Metrics.PublishBlockGasPrices(state.transactions, state.isEip1559Enabled, state.baseFee),
+            (transactions, isEip1559Enabled, baseFee), preferLocal: false);
     }
 
     private void CommitState(IReleaseSpec spec)
