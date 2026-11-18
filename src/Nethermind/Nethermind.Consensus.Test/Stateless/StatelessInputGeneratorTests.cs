@@ -302,7 +302,12 @@ public class StatelessInputGeneratorTests
         Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded), Is.EqualTo(ProtocolFork.Current.ToRevision1SchemaId()));
         StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
 
-        Assert.That(input.NewPayloadRequest.ToBlock(requestsEnabled)!.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
+        Block restored = input.NewPayloadRequest.ToBlock(requestsEnabled)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
+            Assert.That(input.NewPayloadRequest.ExecutionPayload.AsExecutionPayload().ExecutionRequests, requestsEnabled ? Is.Empty : Is.Null);
+        }
     }
 
     [Test]
