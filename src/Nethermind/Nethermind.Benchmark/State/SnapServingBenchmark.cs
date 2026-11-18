@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using Autofac;
 using BenchmarkDotNet.Attributes;
@@ -94,7 +93,7 @@ public class SnapServingBenchmark
 
             Account account = new(1, (UInt256)i, storageTree.RootHash, _codeHashes[i % CodeCount].ToCommitment());
             stateTree.Set(contractPaths[i], account);
-            _contracts[i] = new PathWithAccount(contractPaths[i], account);
+            _contracts[i] = new PathWithAccount(contractPaths[i], account.ToStruct());
         }
 
         stateTree.Commit();

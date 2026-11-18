@@ -299,7 +299,7 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {tx.Hash}", ErrorCodes.ResourceNotFound);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceCall)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
@@ -1580,7 +1580,7 @@ public class DebugRpcModule(
         if (header is null)
         {
             error = GetFailureResult<TResult, BlockHeader>(
-                new SearchResult<BlockHeader>($"Cannot find header for block hash: {blockHash}", ErrorCodes.ResourceNotFound),
+                new SearchResult<BlockHeader>(badBlocksOnly ? $"bad block {blockHash} not found" : $"block {blockHash} not found", ErrorCodes.ResourceNotFound),
                 debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }

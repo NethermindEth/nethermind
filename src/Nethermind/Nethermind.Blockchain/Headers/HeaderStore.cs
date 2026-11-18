@@ -136,11 +136,67 @@ public class HeaderStore : IHeaderStore, IClearableCache
         header ??= Get(new Hash256(in blockHash), shouldCache: false, blockNumber);
         if (header is null) return false;
 
+        AppendEncoded(header, decoder, destination);
+        return true;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The headers that <see cref="TryAppendRlp"/> would copy from the database are read in one batch by their
+    /// number-prefixed keys; one not found by that key is then read by its hash.
+    /// </remarks>
+    public void AppendRlps(ReadOnlySpan<ValueHash256> blockHashes, ReadOnlySpan<ulong> blockNumbers, IHeaderDecoder decoder, ArrayPoolList<byte> destination, Span<Range> items)
+    {
+        bool encodesAsStored = EncodesAsStored(decoder);
+        using ArrayPoolListRef<int> reads = new(blockHashes.Length);
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            BlockHeader? header = _headerCache.Get(in blockHashes[i]);
+            if (header is null && _pending is not null) _pending.TryGet(in blockHashes[i], out header);
+
+            int start = destination.Count;
+            if (header is not null)
+            {
+                AppendEncoded(header, decoder, destination);
+                items[i] = start..destination.Count;
+            }
+            else if (encodesAsStored)
+            {
+                reads.Add(i);
+            }
+            else
+            {
+                items[i] = TryAppendRlp(in blockHashes[i], blockNumbers[i], decoder, destination) ? start..destination.Count : default;
+            }
+        }
+
+        if (reads.Count == 0) return;
+
+        using ArrayPoolSpan<byte> keys = new(reads.Count * NumberPrefixedKeyLength);
+        for (int j = 0; j < reads.Count; j++)
+        {
+            int i = reads[j];
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumbers[i], blockHashes[i], keys.Slice(j * NumberPrefixedKeyLength, NumberPrefixedKeyLength));
+        }
+
+        using ArrayPoolSpan<Range> found = new(reads.Count);
+        _headerDb.GetMany<Range, FirstItemAppender>(keys, NumberPrefixedKeyLength, found, new FirstItemAppender(destination));
+        for (int j = 0; j < reads.Count; j++)
+        {
+            int i = reads[j];
+            int start = destination.Count;
+            items[i] = !found[j].Equals(default) ? found[j]
+                : TryAppendStored(blockHashes[i].Bytes, destination) ? start..destination.Count
+                : default;
+        }
+    }
+
+    private static void AppendEncoded(BlockHeader header, IHeaderDecoder decoder, ArrayPoolList<byte> destination)
+    {
         int length = decoder.GetLength(header);
         RlpWriter writer = RlpWriter.ContentWriter(destination.AddUninitialized(length));
         decoder.Encode(ref writer, header);
         Rlp.CheckLength(in writer, length);
-        return true;
     }
 
     private bool EncodesAsStored(IHeaderDecoder decoder) =>
@@ -184,6 +240,15 @@ public class HeaderStore : IHeaderStore, IClearableCache
         RlpReader reader = new(stored);
         destination.AddRange(reader.ReadEncodedItem<OffFlag>());
         return true;
+    }
+
+    private readonly struct FirstItemAppender(ArrayPoolList<byte> destination) : IValueDecoder<Range>
+    {
+        public Range Decode(ReadOnlySpan<byte> buffer)
+        {
+            int start = destination.Count;
+            return TryAppendFirstItem(buffer, destination) ? start..destination.Count : default;
+        }
     }
 
     /// <inheritdoc/>
@@ -417,6 +482,11 @@ public class HeaderStore : IHeaderStore, IClearableCache
             numbers[i] = storedNumbers[j] ?? GetHashKeyedBlockNumber(new Hash256(in blockHashes[i]));
         }
     }
+
+    /// <inheritdoc/>
+    /// <remarks>Skips the prefetch when the last header is already cached.</remarks>
+    public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) =>
+        KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_headerDb, blocks);
 
     private readonly struct BlockNumberDecoder : IValueDecoder<ulong?>
     {

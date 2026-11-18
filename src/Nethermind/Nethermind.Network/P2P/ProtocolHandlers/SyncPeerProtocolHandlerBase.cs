@@ -38,6 +38,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
+        // The size limits can end a response early, so blocks are read ahead a window at a time, not all at once.
+        protected const int ServingPrefetchWindow = 16;
         public Node Node => Session.Node;
         public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -375,6 +377,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         break;
                     }
 
+                    int remaining = hashes.Count - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchBlocks(hashes, i, Math.Min(ServingPrefetchWindow, remaining));
+
                     MemoryManager<byte>? block = SyncServer.FindBlockRlp(hashes[i]);
                     if (block is null)
                     {
@@ -441,9 +446,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             using ArrayPoolList<Range> blocks = new(hashes.Length);
             try
             {
-                foreach (Hash256 blockHash in hashes)
+                for (int i = 0; i < hashes.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
+
+                    Hash256 blockHash = hashes[i];
+                    int remaining = hashes.Length - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchReceipts(getReceiptsMessage.Hashes, i, Math.Min(ServingPrefetchWindow, remaining));
 
                     int start = buffer.Count;
                     if (!SyncServer.TryAppendReceipts(blockHash, decoder, withBloom, buffer)) break;

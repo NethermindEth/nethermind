@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
-using Nethermind.Core.Exceptions;
 using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -138,7 +137,7 @@ public class PerTableDbConfigTests
 #if DEBUG
     [Test]
     public void Named_databases_still_require_declared_options() =>
-        Assert.Throws<InvalidConfigurationException>(() => new PerTableDbConfig(new DbConfig(), "UndeclaredPlugin"));
+        Assert.Throws<Nethermind.Core.Exceptions.InvalidConfigurationException>(() => new PerTableDbConfig(new DbConfig(), "UndeclaredPlugin"));
 #endif
 
     [Test]
