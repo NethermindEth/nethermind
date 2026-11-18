@@ -96,8 +96,18 @@ public class SyncPeerPoolTests
         /// </summary>
         public bool AnswersWithNullHeader { get; set; }
 
+        /// <summary>
+        /// When set, head-header requests wait for this task first, which keeps a refresh in flight without a timer.
+        /// </summary>
+        public Task? HeadHeaderGate { get; set; }
+
         public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
+            if (HeadHeaderGate is not null)
+            {
+                await HeadHeaderGate;
+            }
+
             if (_headHeaderFailure is not null)
             {
                 throw _headHeaderFailure;
@@ -658,6 +668,45 @@ public class SyncPeerPoolTests
             Assert.That(ctx.Pool.PeerCount, Is.EqualTo(1));
         }
         ctx.Stats.Received(1).ReportSyncEvent(peer.Node, NodeStatsEventType.SyncInitFailed);
+    }
+
+    [Test]
+    public async Task Finished_refresh_leaves_a_newer_refresh_cancellable()
+    {
+        await using Context ctx = new();
+        Task refreshFinished = WhenRefreshFinishes(ctx);
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { HeadHash = TestItem.KeccakA, HeadHeaderGate = gate.Task };
+        ctx.Pool.Start();
+        ctx.Pool.AddPeer(peer);
+
+        // Stands in for a newer refresh of the same peer that registered while the first one was in flight.
+        using CancellationTokenSource newer = new();
+        Assert.That(
+            () => ctx.Pool.TryReplaceRefreshCancellation(peer.Node.Id, newer),
+            Is.True.After(10_000, 10),
+            "guard: the refresh must register its cancellation source first");
+        gate.SetResult();
+        await refreshFinished.WaitAsync(TimeSpan.FromSeconds(30));
+
+        Assert.That(ctx.Pool.RefreshCancellationIs(peer.Node.Id, newer), Is.True, "the finished refresh removed the newer registration");
+        ctx.Pool.RemovePeer(peer);
+        Assert.That(newer.IsCancellationRequested, Is.True);
+    }
+
+    [Test]
+    public async Task Finished_refresh_unregisters_its_cancellation()
+    {
+        await using Context ctx = new();
+        Task refreshFinished = WhenRefreshFinishes(ctx);
+        SimpleSyncPeerMock peer = new(TestItem.PublicKeyA) { HeadHash = TestItem.KeccakA };
+        ctx.Pool.Start();
+        ctx.Pool.AddPeer(peer);
+
+        await refreshFinished.WaitAsync(TimeSpan.FromSeconds(30));
+
+        using CancellationTokenSource other = new();
+        Assert.That(ctx.Pool.TryReplaceRefreshCancellation(peer.Node.Id, other), Is.False);
     }
 
     [Test]

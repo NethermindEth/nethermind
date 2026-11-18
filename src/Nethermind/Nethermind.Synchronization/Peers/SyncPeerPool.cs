@@ -430,7 +430,8 @@ namespace Nethermind.Synchronization.Peers
                 ExecuteRefreshTask(refreshTask, linkedSource.Token).ContinueWith(t =>
 #pragma warning restore 4014
                 {
-                    _refreshCancelTokens.TryRemove(syncPeer.Node.Id, out _);
+                    // A newer refresh of the same peer may have replaced this entry; remove it only if it is still ours.
+                    _refreshCancelTokens.TryRemove(KeyValuePair.Create(syncPeer.Node.Id, initCancelSource));
                     if (t.IsFaulted)
                     {
                         if (t.HasTimeoutException())
