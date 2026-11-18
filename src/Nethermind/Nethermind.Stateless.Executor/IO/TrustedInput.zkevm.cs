@@ -92,5 +92,5 @@ public static partial class TrustedInput
         }
     }
 
-    private static bool RetainHints => AirbenderFlag.IsActive;
+    private static partial bool RetainHints => AirbenderFlag.IsActive;
 }

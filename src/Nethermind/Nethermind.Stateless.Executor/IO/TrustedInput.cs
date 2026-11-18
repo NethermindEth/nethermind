@@ -516,6 +516,9 @@ public static partial class TrustedInput
     /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length);
 
+    /// <summary>Whether <see cref="Read"/> keeps the sender and recovery hints; only Airbender batch-verifies with them.</summary>
+    private static partial bool RetainHints { get; }
+
     private sealed class ItemList(byte[][] items) : IOwnedReadOnlyList<byte[]>
     {
         public int Count => items.Length;
