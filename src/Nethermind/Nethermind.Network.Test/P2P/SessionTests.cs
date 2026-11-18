@@ -4,7 +4,10 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -123,6 +126,39 @@ public class SessionTests
 
         session.Handshake(TestItem.PublicKeyA);
         Assert.That(wasCalled, Is.True);
+    }
+
+    [Test]
+    public async Task Outbound_buffer_is_full_when_the_channel_is_closed()
+    {
+        EmbeddedChannel channel = new();
+        _channelHandlerContext.Channel.Returns(channel);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Before init");
+
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Open channel");
+
+        await channel.CloseAsync();
+        Assert.That(session.IsOutboundBufferFull, Is.True, "Closed channel");
+    }
+
+    [Test]
+    public void Outbound_buffer_is_full_above_the_high_watermark()
+    {
+        EmbeddedChannel channel = new();
+        _channelHandlerContext.Channel.Returns(channel);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+
+        _ = channel.WriteAsync(Unpooled.WrappedBuffer(new byte[channel.Configuration.WriteBufferHighWaterMark + 1]));
+        Assert.That(session.IsOutboundBufferFull, Is.True, "Above the high watermark");
+
+        channel.Flush();
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Flushed below the low watermark");
+        channel.FinishAndReleaseAll();
     }
 
     [Test]
@@ -758,6 +794,135 @@ public class SessionTests
             Assert.That(afterLocal, Is.EqualTo(beforeLocal));
             Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
         }
+    }
+
+    [Test]
+    public void Message_metrics_count_every_message_and_byte_once_per_key()
+    {
+        const string protocol = "mta";
+        const byte version = 7;
+        Session session = CreateInitializedSession(BuildHandler("p2p", 10), BuildVersionedHandler(protocol, 10, version));
+        _packetSender.Enqueue(Arg.Any<ProtocolMessage>()).Returns(20);
+        byte[] data = new byte[10];
+
+        for (int i = 0; i < 5; i++) session.ReceiveMessage(new Packet("---", 11, data));
+        for (int i = 0; i < 3; i++) session.DeliverMessage(new ProtocolMessage(protocol, 2));
+        session.ReceiveMessage(new Packet("---", 100, data));
+
+        P2PMessageKey received = new(new VersionedProtocol(protocol, version), 1);
+        P2PMessageKey delivered = new(new VersionedProtocol(protocol, version), 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.IncomingP2PMessages[received].Value, Is.EqualTo(5));
+            Assert.That(Metrics.IncomingP2PMessageBytes[received].Value, Is.EqualTo(50));
+            Assert.That(Metrics.OutgoingP2PMessages[delivered].Value, Is.EqualTo(3));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[delivered].Value, Is.EqualTo(60));
+            Assert.That(Metrics.IncomingP2PMessages.ContainsKey(delivered), Is.False);
+            Assert.That(Metrics.OutgoingP2PMessages.ContainsKey(received), Is.False);
+            Assert.That(CountKeys(Metrics.IncomingP2PMessages, protocol), Is.EqualTo(1));
+            Assert.That(CountKeys(Metrics.OutgoingP2PMessageBytes, protocol), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Message_metrics_follow_protocol_version_changes()
+    {
+        const string protocol = "mtv";
+        IProtocolHandler handler = BuildVersionedHandler(protocol, 10, 1);
+        Session session = CreateInitializedSession(BuildHandler("p2p", 10), handler);
+        _packetSender.Enqueue(Arg.Any<ProtocolMessage>()).Returns(4);
+        byte[] data = new byte[3];
+
+        for (int i = 0; i < 2; i++) session.ReceiveMessage(new Packet("---", 10, data));
+        session.DeliverMessage(new ProtocolMessage(protocol, 0));
+        handler.ProtocolVersion.Returns((byte)2);
+        for (int i = 0; i < 3; i++) session.ReceiveMessage(new Packet("---", 10, data));
+        for (int i = 0; i < 2; i++) session.DeliverMessage(new ProtocolMessage(protocol, 0));
+
+        P2PMessageKey first = new(new VersionedProtocol(protocol, 1), 0);
+        P2PMessageKey second = new(new VersionedProtocol(protocol, 2), 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.IncomingP2PMessages[first].Value, Is.EqualTo(2));
+            Assert.That(Metrics.IncomingP2PMessageBytes[first].Value, Is.EqualTo(6));
+            Assert.That(Metrics.IncomingP2PMessages[second].Value, Is.EqualTo(3));
+            Assert.That(Metrics.IncomingP2PMessageBytes[second].Value, Is.EqualTo(9));
+            Assert.That(Metrics.OutgoingP2PMessages[first].Value, Is.EqualTo(1));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[first].Value, Is.EqualTo(4));
+            Assert.That(Metrics.OutgoingP2PMessages[second].Value, Is.EqualTo(2));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[second].Value, Is.EqualTo(8));
+        }
+    }
+
+    [Test]
+    public void Message_metrics_are_exact_across_concurrent_sessions()
+    {
+        const string protocol = "mtc";
+        const int sessions = 8;
+        const int messagesPerSession = 1000;
+        Session[] all = new Session[sessions];
+        for (int i = 0; i < sessions; i++)
+        {
+            all[i] = CreateInitializedSession(BuildHandler("p2p", 10), BuildVersionedHandler(protocol, 10, 3));
+        }
+
+        _packetSender.Enqueue(Arg.Any<ProtocolMessage>()).Returns(2);
+        byte[] data = new byte[5];
+        Parallel.For(0, sessions, new ParallelOptions { MaxDegreeOfParallelism = sessions }, i =>
+        {
+            for (int j = 0; j < messagesPerSession; j++)
+            {
+                all[i].ReceiveMessage(new Packet("---", 13, data));
+                all[i].DeliverMessage(new ProtocolMessage(protocol, 4));
+            }
+        });
+
+        P2PMessageKey received = new(new VersionedProtocol(protocol, 3), 3);
+        P2PMessageKey delivered = new(new VersionedProtocol(protocol, 3), 4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.IncomingP2PMessages[received].Value, Is.EqualTo(sessions * messagesPerSession));
+            Assert.That(Metrics.IncomingP2PMessageBytes[received].Value, Is.EqualTo(sessions * messagesPerSession * data.Length));
+            Assert.That(Metrics.OutgoingP2PMessages[delivered].Value, Is.EqualTo(sessions * messagesPerSession));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[delivered].Value, Is.EqualTo(sessions * messagesPerSession * 2));
+        }
+    }
+
+    private Session CreateInitializedSession(params IProtocolHandler[] handlers)
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        foreach (IProtocolHandler handler in handlers)
+        {
+            session.AddProtocolHandler(handler);
+        }
+
+        return session;
+    }
+
+    private IProtocolHandler BuildVersionedHandler(string code, int spaceSize, byte version)
+    {
+        IProtocolHandler handler = BuildHandler(code, spaceSize);
+        handler.ProtocolVersion.Returns(version);
+        return handler;
+    }
+
+    private static int CountKeys(NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> metric, string protocol)
+    {
+        int count = 0;
+        foreach (KeyValuePair<P2PMessageKey, MetricCounter> entry in metric)
+        {
+            if (entry.Key.Protocol.Protocol == protocol) count++;
+        }
+
+        return count;
+    }
+
+    private sealed class ProtocolMessage(string protocol, int packetType) : P2PMessage
+    {
+        public override int PacketType => packetType;
+        public override string Protocol => protocol;
     }
 
     private class TestMessage : P2PMessage

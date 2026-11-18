@@ -40,7 +40,7 @@ namespace Nethermind.Db.FullPruning
             _settings = settings;
             _dbFactory = dbFactory;
             _updateDuplicateWriteMetrics = updateDuplicateWriteMetrics;
-            _currentDb = CreateDb(_settings).WithEOACompressed();
+            _currentDb = CreateDb(_settings);
         }
 
         private IDb CreateDb(DbSettings settings) => _dbFactory.CreateDb(settings);
@@ -143,8 +143,6 @@ namespace Nethermind.Db.FullPruning
         public IDbMeta.DbMetric GatherMetric() => _currentDb.GatherMetric();
 
         public string Name => _settings.DbName;
-
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => _currentDb[keys];
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _currentDb.GetAll(ordered);
 

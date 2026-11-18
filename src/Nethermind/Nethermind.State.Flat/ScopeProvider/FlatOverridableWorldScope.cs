@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -214,7 +215,10 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         public byte[]? GetCode(in ValueHash256 codeHash)
             => codeHash == ValueKeccak.OfAnEmptyString ? [] : overridableWorldScope._codeDbOverlay[codeHash.Bytes];
 
-        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx> =>
+            RunTreeVisitor(new TreeVisitorAdapter<TCtx>(treeVisitor), baseBlock, visitingOptions, diagnostics);
+
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
         {
             StateId stateId = new(baseBlock);
             using SnapshotBundle snapshotBundle = overridableWorldScope.GatherSnapshotBundle(baseBlock);
@@ -228,7 +232,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
                     baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
             }
 
-            snapshotBundle.RunTreeVisitor(treeVisitor, stateId.StateRoot.ToCommitment(), visitingOptions ?? VisitingOptions.Default, diagnostics);
+            snapshotBundle.RunTreeVisitor(visitor, stateId.StateRoot.ToCommitment(), visitingOptions ?? VisitingOptions.Default, diagnostics);
         }
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => overridableWorldScope.HasStateForBlock(baseBlock);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Int256;
@@ -15,15 +16,31 @@ namespace Ethereum.Test.Base;
 /// transaction they expect to be rejected. The strict converters fail the whole file over that one value, losing
 /// every other case in it. Conversion takes such a transaction from its txbytes, where the same field fails to
 /// decode, so the template only stands in for it; at the maximum it still describes a transaction that is rejected.
-/// Any other value goes to the serializer's own converter, and production keeps rejecting these.
+/// Any other value goes to the serializer's own converter, and production keeps rejecting these. A quantity may carry
+/// the retesteth <c>0x:bigint </c> prefix, as the ValueOverflow fixtures write their value wider than 256 bits.
 /// </remarks>
 public abstract class SaturatingQuantityConverter<T>(int maxHexDigits, T max) : JsonConverter<T> where T : struct
 {
-    public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        IsBeyondWidth(ref reader) ? max : Default(options).Read(ref reader, typeToConvert, options);
+    private const string RetestethBigIntPrefix = "0x:bigint ";
+
+    public override T Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.String || reader.GetString() is not { } text
+            || !text.StartsWith(RetestethBigIntPrefix, StringComparison.Ordinal))
+        {
+            return ReadQuantity(ref reader, typeToConvert, options);
+        }
+
+        Utf8JsonReader quantity = new(JsonSerializer.SerializeToUtf8Bytes(text[RetestethBigIntPrefix.Length..]));
+        quantity.Read();
+        return ReadQuantity(ref quantity, typeToConvert, options);
+    }
 
     public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options) =>
         Default(options).Write(writer, value, options);
+
+    private T ReadQuantity(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
+        IsBeyondWidth(ref reader) ? max : Default(options).Read(ref reader, typeToConvert, options);
 
     private static JsonConverter<T> Default(JsonSerializerOptions options) => (JsonConverter<T>)options.GetConverter(typeof(T));
 
@@ -50,3 +67,45 @@ public sealed class SaturatingUInt256Converter() : SaturatingQuantityConverter<U
 public sealed class SaturatingNullableUInt256Converter() : NullableJsonConverter<UInt256>(new SaturatingUInt256Converter());
 
 public sealed class SaturatingULongConverter() : SaturatingQuantityConverter<ulong>(maxHexDigits: 16, ulong.MaxValue);
+
+/// <summary>Reads a transaction template's list of values, each through <see cref="SaturatingUInt256Converter"/>.</summary>
+/// <remarks>
+/// Attached to that one property rather than registered for every <c>UInt256</c>: registered in the options, the
+/// element converter would find itself as the serializer's own converter.
+/// </remarks>
+public sealed class SaturatingUInt256ArrayConverter : JsonConverter<UInt256[]>
+{
+    private static readonly SaturatingUInt256Converter Element = new();
+
+    public override UInt256[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType != JsonTokenType.StartArray)
+        {
+            throw new JsonException($"Expected an array of quantities, found {reader.TokenType}.");
+        }
+
+        List<UInt256> values = [];
+        while (reader.Read())
+        {
+            if (reader.TokenType == JsonTokenType.EndArray)
+            {
+                return [.. values];
+            }
+
+            values.Add(Element.Read(ref reader, typeof(UInt256), options));
+        }
+
+        throw new JsonException("The array of quantities is not terminated.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, UInt256[] value, JsonSerializerOptions options)
+    {
+        writer.WriteStartArray();
+        foreach (UInt256 item in value)
+        {
+            Element.Write(writer, item, options);
+        }
+
+        writer.WriteEndArray();
+    }
+}

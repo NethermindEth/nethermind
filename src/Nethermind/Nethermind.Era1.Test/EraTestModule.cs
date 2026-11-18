@@ -28,6 +28,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
         return new ContainerBuilder()
             .AddModule(new EraTestModule())
             .AddSingleton<IBlockTree>(blockTreeBuilder.TestObject)
+            .AddSingleton(blockTreeBuilder.BlockStore)
             .OnBuild((ctx) =>
             {
                 blockTreeBuilder

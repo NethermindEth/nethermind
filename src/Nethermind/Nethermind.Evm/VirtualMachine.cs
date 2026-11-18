@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -25,6 +26,7 @@ using static Nethermind.Evm.VirtualMachineStatics;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Precompiles")]
 [assembly: InternalsVisibleTo("Nethermind.Evm.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain")]
 namespace Nethermind.Evm;
 
 using Int256;
@@ -64,10 +66,10 @@ public static class VirtualMachineStatics
 
     /// <summary>Deepest child call frame a VM keeps for reuse; deeper frames and the top-level frame use the pools.</summary>
     /// <remarks>A kept frame holds its data stack (32 KiB, pinned), its 1 KiB inline memory and its environment, about
-    /// 34 KiB in all, so a VM that has reached this depth retains about 270 KiB until it is disposed, which hands the
+    /// 34 KiB in all, so a VM that has reached this depth retains about 550 KiB until it is disposed, which hands the
     /// data stacks back to the pool. Like the ID scratch above, that is multiplied by the pooled VMs, so the depth is
     /// kept to where most calls end.</remarks>
-    internal const int MaxCachedFrameDepth = 8;
+    internal const int MaxCachedFrameDepth = 16;
 
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static ref readonly UInt256 P255 => ref P255Int;
@@ -127,7 +129,8 @@ internal struct ReturnDataScratch
 
     internal int RetainedLength => _retained.Length;
 
-    internal byte[] Stage(ReadOnlySpan<byte> returnData, bool allowReuse)
+    /// <param name="laidOut">Whether <paramref name="returnData"/> is swizzled memory, which this then copies out in natural order.</param>
+    internal byte[] Stage(ReadOnlySpan<byte> returnData, bool allowReuse, bool laidOut = false)
     {
         _stagedLength = returnData.Length;
 
@@ -145,12 +148,15 @@ internal struct ReturnDataScratch
                 _retained = scratch = GC.AllocateUninitializedArray<byte>(size);
             }
 
-            Bytes.Copy(returnData, scratch);
+            if (laidOut)
+                SwizzledMemory.Read(ref MemoryMarshal.GetReference(returnData), scratch.AsSpan(0, returnData.Length));
+            else
+                Bytes.Copy(returnData, scratch);
             output = scratch;
         }
         else
         {
-            output = returnData.ToArray();
+            output = laidOut ? SwizzledMemory.ToArray(ref MemoryMarshal.GetReference(returnData), returnData.Length) : returnData.ToArray();
         }
 
         _staged = output;
@@ -247,7 +253,8 @@ public partial class VirtualMachine<TGasPolicy>(
     public ref readonly UInt256 ChainId => ref _chainId;
     public ref ReadOnlyMemory<byte> ReturnDataBuffer => ref _returnDataBuffer;
 
-    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert)
+    /// <param name="laidOut">Whether <paramref name="returnData"/> is swizzled memory (see <see cref="EvmPooledMemory.LoadLaidOutSpanAfterGas"/>).</param>
+    internal void StageReturnData(ReadOnlySpan<byte> returnData, bool isRevert, bool laidOut = false)
     {
         // Nested outputs are consumed before this buffer can be reused by a later child call, and a create's
         // output may become the deployed code. A top-level call output may reuse it only when the tracer reads no
@@ -259,7 +266,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 : _tracerFlags.AllowsReturnScratch
                     && (!_currentState.ExecutionType.IsAnyCreate() || IsUndeployableCreateOutput(returnData.Length, isRevert)));
 
-        ReturnData = _returnDataScratch.Stage(returnData, allowReuse);
+        ReturnData = _returnDataScratch.Stage(returnData, allowReuse, laidOut);
     }
 
     /// <summary>Whether a create frame's output of <paramref name="length"/> bytes, reverted or returned, is never deployed, so nothing reads it once the frame returns.</summary>
@@ -827,11 +834,11 @@ public partial class VirtualMachine<TGasPolicy>(
                 if (previousState.ExecutionType == ExecutionType.TCREATE)
                 {
                     // EIP-8360: paid no deposit, so the code must not reach the code database.
-                    _codeInfoRepository.InsertTransientCode(code, callCodeOwner, spec);
+                    _codeInfoRepository.InsertTransientCode(_worldState, code, callCodeOwner, spec);
                 }
                 else
                 {
-                    _codeInfoRepository.InsertCode(code, callCodeOwner, spec);
+                    _codeInfoRepository.InsertCode(_worldState, code, callCodeOwner, spec);
                 }
                 if (IsTracingActions)
                 {
@@ -871,12 +878,20 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 // The deposit failure consumed the gas the frame returned, so it ends with none left.
                 _txTracer.ReportActionRemainingGas(0);
+                if (spec.LimitCodeSize && code.Length > spec.MaxCodeSize)
+                {
+                    TraceCodeDepositError("max code size exceeded");
+                }
+                else if (!hasEnoughGas && !invalidCode && executionDepositCost != ulong.MaxValue)
+                {
+                    TraceCodeDepositError("contract creation code storage out of gas");
+                }
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
         }
         else if (!chargedCodeDeposit && IsTracingActions)
         {
-            _txTracer.ReportActionEnd(0UL, callCodeOwner, code);
+            _txTracer.ReportActionEnd(TGasPolicy.GetRemainingGas(previousState.Gas), callCodeOwner, code);
         }
     }
 
@@ -1420,14 +1435,28 @@ public partial class VirtualMachine<TGasPolicy>(
         else if (currentState.ExecutionType.IsAnyCreate())
         {
             ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
+            // EIP-3541 prefix validation precedes deposit gas, but not the EIP-170 size limit.
+            if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes) && codeDepositGasCost != ulong.MaxValue)
+            {
+                _txTracer.ReportActionRemainingGas(0);
+                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
+            }
             // If available gas is insufficient to cover the code deposit cost...
-            if (!hasEnoughGasForCodeDeposit)
+            else if (!hasEnoughGasForCodeDeposit)
             {
                 // When the spec mandates charging for top-level creation, report an out-of-gas error,
                 // which consumes all the frame's gas.
                 if (spec.ChargeForTopLevelCreate)
                 {
                     _txTracer.ReportActionRemainingGas(0);
+                    if (spec.LimitCodeSize && outputBytes.Length > spec.MaxCodeSize)
+                    {
+                        TraceCodeDepositError("max code size exceeded");
+                    }
+                    else if (codeDepositGasCost != ulong.MaxValue)
+                    {
+                        TraceCodeDepositError("contract creation code storage out of gas");
+                    }
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1435,12 +1464,6 @@ public partial class VirtualMachine<TGasPolicy>(
                 {
                     _txTracer.ReportActionEnd(gasAvailable, currentState.To, outputBytes);
                 }
-            }
-            // If the generated code is invalid (e.g., violates EIP-3541 by starting with 0xEF), report an invalid code error.
-            else if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
-            {
-                _txTracer.ReportActionRemainingGas(0);
-                _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
             }
             // In the successful contract creation case, deduct the code deposit gas cost and report a normal action end.
             else
@@ -1455,6 +1478,9 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TraceCodeDepositError(string error) => _txTracer.ReportActionErrorDetails(error, actionOnly: true);
+
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
 
@@ -1468,7 +1494,8 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
         }
 
-        ReadOnlyMemory<byte> callData = state.Env.InputData;
+        // Precompiles take their input in natural order, where a guest's call input is laid out as its memory.
+        ReadOnlyMemory<byte> callData = EvmPooledMemory.IsSwizzled ? SwizzledMemory.ToNatural(state.Env.InputData) : state.Env.InputData;
         ref readonly UInt256 transferValue = ref state.ExecutionType.GetBalanceCredit(in state.Env.Value);
         TGasPolicy gas = state.Gas;
 
@@ -2008,6 +2035,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceActionErrorDetailsCore(string error) => _txTracer.ReportActionErrorDetails(error);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal void TraceInvalidOpcode(Instruction opcode) =>
+        _txTracer.ReportActionErrorDetails($"invalid opcode: {InstructionNames.GetName(opcode)}", actionOnly: true);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     internal void EndInstructionTrace(ulong gasAvailable, EvmExceptionType? evmExceptionType = null)

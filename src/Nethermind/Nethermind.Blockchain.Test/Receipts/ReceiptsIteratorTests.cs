@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
@@ -142,8 +143,8 @@ public class ReceiptsIteratorTests
     {
         LogEntry first = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
         LogEntry second = Build.A.LogEntry.WithAddress(TestItem.AddressB).TestObject;
-        Rlp encoded = Rlp.Encode(Rlp.Encode(first), Rlp.OfEmptyList, Rlp.Encode(second));
-        LogEntriesIterator iterator = new(encoded.Bytes, new ReceiptStorageDecoder());
+        byte[] encoded = RlpTestHelper.EncodeSequence(Rlp.Encode(first), RlpTestHelper.OfEmptyList, Rlp.Encode(second));
+        LogEntriesIterator iterator = new(encoded, new ReceiptStorageDecoder());
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.
         Assert.That(iterator.TryGetNext(out LogEntryStructRef log), Is.True);
@@ -191,7 +192,7 @@ public class ReceiptsIteratorTests
         using ArrayPoolSpan<byte> stream = _decoder.EncodeToArrayPoolSpan(receipts, RlpBehaviors.Storage);
         Span<byte> span = stream;
         BlockDecoder blockDecoder = new();
-        byte[] encodedBlock = blockDecoder.Encode(block).Bytes;
+        byte[] encodedBlock = blockDecoder.Encode(block);
         CountingMemoryManager? blockMemory = fromEncoded ? new(encodedBlock) : null;
         if (!fromEncoded && useLogContext)
         {
@@ -232,8 +233,8 @@ public class ReceiptsIteratorTests
                     continue;
                 }
 
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? repeatedTransactionHash);
+                bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 recoveredTransactionHash);
+                bool repeated = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 repeatedTransactionHash);
                 if (useLogContext)
                 {
                     Assert.That(receipt.TxHash.Bytes.Length, Is.Zero, "direct recovery must not construct a hash span");
@@ -242,8 +243,8 @@ public class ReceiptsIteratorTests
 
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(recoveredTransactionHash, Is.EqualTo(useLogContext ? expectedHashes[i] : null), "only selective recovery supplies a direct hash");
-                    Assert.That(repeatedTransactionHash, Is.SameAs(recoveredTransactionHash), "repeated recovery reuses the hash object");
+                    Assert.That(recovered ? recoveredTransactionHash : default, Is.EqualTo(useLogContext ? expectedHashes[i].ValueHash256 : default), "only selective recovery supplies a direct hash");
+                    Assert.That((repeated, repeatedTransactionHash), Is.EqualTo((recovered, recoveredTransactionHash)), "repeated recovery returns the same hash");
                     Assert.That(receipt.TxHash.ToCommitment(), Is.EqualTo(expectedHashes[i]), $"receipt {i} must carry its transaction's hash");
                     Assert.That(receipt.BlockHash.ToCommitment(), Is.EqualTo(block.Hash), $"receipt {i} must carry the block hash");
                     Assert.That(receipt.BlockNumber, Is.EqualTo(block.Number), $"receipt {i} must carry the block number");
@@ -274,7 +275,7 @@ public class ReceiptsIteratorTests
     {
         Block block = Build.A.Block.WithTransactions(Build.A.Transaction.Signed().TestObject).TestObject;
         BlockDecoder blockDecoder = new();
-        byte[] encodedBlock = blockDecoder.Encode(block).Bytes;
+        byte[] encodedBlock = blockDecoder.Encode(block);
         ReceiptRecoveryBlock recoveryBlock = fromEncoded
             ? blockDecoder.DecodeToReceiptRecoveryBlock(null, encodedBlock, RlpBehaviors.None)!.Value
             : new ReceiptRecoveryBlock(block);
@@ -329,12 +330,12 @@ public class ReceiptsIteratorTests
             }
             if (sequence is RecoverySequence.LogOnly or RecoverySequence.LogThenFull or RecoverySequence.FullThenLog)
             {
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? hash);
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? repeatedHash);
+                bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 hash);
+                bool repeated = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 repeatedHash);
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(hash, Is.EqualTo(sequence == RecoverySequence.FullThenLog ? null : transactions[1].Hash));
-                    Assert.That(repeatedHash, Is.SameAs(hash));
+                    Assert.That(recovered ? hash : default, Is.EqualTo(sequence == RecoverySequence.FullThenLog ? default : transactions[1].Hash!.ValueHash256));
+                    Assert.That((repeated, repeatedHash), Is.EqualTo((recovered, hash)));
                 }
             }
             if (sequence == RecoverySequence.LogThenFull)
@@ -395,19 +396,19 @@ public class ReceiptsIteratorTests
         try
         {
             Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
-            iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? hash);
-            Assert.That(hash ?? receipt.TxHash.ToCommitment(), Is.EqualTo(block.Transactions[0].Hash));
+            bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 hash);
+            Assert.That(recovered ? hash : receipt.TxHash.ToCommitment().ValueHash256, Is.EqualTo(block.Transactions[0].Hash!.ValueHash256));
             if (recoveryOverride != RecoveryOverride.Default)
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(hash, Is.Null, "the custom full context must retain its fallback behavior");
+                    Assert.That(recovered, Is.False, "the custom full context must retain its fallback behavior");
                     Assert.That(((ICustomRecovery)recovery).LogContextCalls, Is.EqualTo(1), "custom log factories must not be bypassed");
                 }
             }
             else
             {
-                Assert.That(hash, Is.Not.Null, "the default deferred context must return its hash directly");
+                Assert.That(recovered, Is.True, "the default deferred context must return its hash directly");
             }
         }
         finally
@@ -456,7 +457,7 @@ public class ReceiptsIteratorTests
             Reads++;
             if (!fromEncoded) return new ReceiptRecoveryBlock(block);
             BlockDecoder decoder = new();
-            CountingMemoryManager owner = new(decoder.Encode(block).Bytes);
+            CountingMemoryManager owner = new(decoder.Encode(block));
             Owners.Add(owner);
             return decoder.DecodeToReceiptRecoveryBlock(owner, owner.Memory, RlpBehaviors.None)!.Value;
         }

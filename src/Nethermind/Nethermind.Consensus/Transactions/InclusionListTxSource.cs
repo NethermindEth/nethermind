@@ -10,7 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 
 namespace Nethermind.Consensus.Transactions;
 
@@ -43,7 +43,7 @@ public class InclusionListTxSource(
         {
             return decoded.Value;
         }
-        catch (Exception ex) when (ex is RlpException or ArgumentException)
+        catch (Exception ex) when (ex is RlpReaderException or ArgumentException)
         {
             // Lazy caches the failure, so a malformed list is reported once per build, not per improvement.
             if (_logger.IsWarn) _logger.Warn($"Discarding malformed inclusion list ({ex.GetType().Name}: {ex.Message}); building without it.");
@@ -65,7 +65,7 @@ public class InclusionListTxSource(
         if (txs.Length < 2) return txs;
 
         // Unrecoverable senders can never be included; group them together under Zero.
-        Dictionary<AddressAsKey, int> firstSeen = new(txs.Length);
+        Dictionary<AddressAsKey, int> firstSeen = [with(txs.Length)];
         int next = 0;
         foreach (Transaction tx in txs)
             if (firstSeen.TryAdd(tx.SenderAddress ?? Address.Zero, next)) next++;

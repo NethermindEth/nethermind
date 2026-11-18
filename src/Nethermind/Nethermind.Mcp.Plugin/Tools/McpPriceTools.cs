@@ -78,7 +78,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
         IEnumerable<string> tokens, BlockParameter block, TimeSpan budget, CancellationToken cancellationToken, bool pinnedHead = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        Dictionary<string, McpPriceFeed?> requests = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, McpPriceFeed?> requests = [with(StringComparer.OrdinalIgnoreCase)];
         Dictionary<AddressAsKey, McpPriceFeed> feeds = [];
         foreach (string token in tokens)
         {
@@ -96,7 +96,10 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
             try
             {
                 if (Stopped()) return results;
-                using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call));
+                using CancellationTokenSource rental = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                TimeSpan left = budget - clock.Elapsed;
+                rental.CancelAfter(left > TimeSpan.Zero ? left : TimeSpan.Zero);
+                using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), rental.Token);
                 if (lease.Module is null) return Failed("The eth_call module is unavailable for the price feed.");
                 if (!TryResolveReference(lease.Module, block, Stopped, pinnedHead, out PriceReference reference, out string referenceError)) return Failed(referenceError);
                 foreach ((AddressAsKey key, McpPriceFeed feed) in feeds)
@@ -147,7 +150,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
 
         Dictionary<string, McpPriceResult> Finish(Dictionary<AddressAsKey, McpPriceResult> results, string fallback)
         {
-            Dictionary<string, McpPriceResult> output = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, McpPriceResult> output = [with(StringComparer.OrdinalIgnoreCase)];
             foreach ((string asset, McpPriceFeed? feed) in requests)
             {
                 McpPriceResult price = feed is null

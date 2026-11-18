@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
@@ -75,7 +76,7 @@ public static class BasePersistence
     /// <summary>Key of the sentinel saved in the account column with a snap sync checkpoint, see <see cref="HasSnapCheckpointSentinel"/>.</summary>
     /// <remarks>
     /// No account key is a single byte, and this one sorts before all of them in the first column a wipe goes through,
-    /// so the first batch any wipe commits deletes it.
+    /// so the first batch any older version's wipe commits deletes it.
     /// </remarks>
     private static readonly byte[] SnapCheckpointSentinelKey = [0];
 
@@ -275,6 +276,11 @@ public static class BasePersistence
     }
 
     /// <summary>Wipes every data column and the state pointer, keeping the format markers, and marks the DB as wiped for a state sync.</summary>
+    /// <remarks>
+    /// A column that can remove a key range is first dropped with a single range deletion and the files it held are given
+    /// back, so the key-by-key pass over it only meets the keys left in files that could not be given back. That pass is
+    /// still needed: tailing iterators ignore range deletions.
+    /// </remarks>
     public static void ClearAllColumns(IColumnsDb<FlatDbColumns> db)
     {
         // Delete in bounded batches; a single batch over every key exhausts memory when wiping a large
@@ -288,6 +294,9 @@ public static class BasePersistence
             // midway reads back as "pointer and marker both present" and the next start redoes it.
             batch.GetColumnBatch(FlatDbColumns.Metadata).PutSpan(WipedForSyncKey, [1]);
             batch.GetColumnBatch(FlatDbColumns.Metadata).Remove(SnapCheckpointKey);
+            // Range deletions bypass the batch.
+            batch = CommitAndStartNext(db, batch);
+            RemoveRangeRemovableColumns(db);
 
             int count = 0;
             foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
@@ -302,9 +311,7 @@ public static class BasePersistence
                     batch.GetColumnBatch(column).Remove(key);
                     if (++count == batchSize)
                     {
-                        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
-                        batch.Dispose(); // commit the chunk
-                        batch = next;
+                        batch = CommitAndStartNext(db, batch);
                         count = 0;
                     }
                 }
@@ -316,6 +323,40 @@ public static class BasePersistence
         finally
         {
             batch.Dispose();
+        }
+    }
+
+    private static IColumnsWriteBatch<FlatDbColumns> CommitAndStartNext(IColumnsDb<FlatDbColumns> db, IColumnsWriteBatch<FlatDbColumns> batch)
+    {
+        IColumnsWriteBatch<FlatDbColumns> next = db.StartWriteBatch();
+        batch.Dispose();
+        return next;
+    }
+
+    private static void RemoveRangeRemovableColumns(IColumnsDb<FlatDbColumns> db)
+    {
+        // Longer than any flat key, so every key sorts below it.
+        Span<byte> aboveEveryKey = stackalloc byte[64];
+        aboveEveryKey.Fill(0xFF);
+        bool anyRemoved = false;
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column != FlatDbColumns.Metadata && db.GetColumnDb(column) is IRangeRemovableKeyValueStore rangeRemovable)
+            {
+                rangeRemovable.RemoveRange([], aboveEveryKey);
+                anyRemoved = true;
+            }
+        }
+
+        if (!anyRemoved) return;
+
+        // Files may only go once the wipe marker and the range deletions are durable: a crash losing those would leave
+        // the state pointer over a state whose files are gone.
+        db.GetColumnDb(FlatDbColumns.Metadata).SyncWal();
+        foreach (FlatDbColumns column in Enum.GetValues<FlatDbColumns>())
+        {
+            if (column != FlatDbColumns.Metadata && db.GetColumnDb(column) is IRangeRemovableKeyValueStore rangeRemovable)
+                rangeRemovable.ReclaimRange([0], aboveEveryKey);
         }
     }
 
@@ -375,8 +416,9 @@ public static class BasePersistence
 
     /// <summary>
     /// Scans <c>[firstKey, lastKey)</c> and removes every key of <paramref name="keyLength"/> bytes whose 20-byte
-    /// account is within <c>[fromAccount, toAccount]</c>. The account is read as <paramref name="prefixLength"/> bytes at
-    /// <paramref name="prefixOffset"/> followed by the rest of its bytes at <paramref name="suffixOffset"/>.
+    /// account is within <c>[fromAccount, toAccount]</c> and is not <paramref name="keptAccount"/> (empty keeps none).
+    /// The account is read as <paramref name="prefixLength"/> bytes at <paramref name="prefixOffset"/> followed by
+    /// the rest of its bytes at <paramref name="suffixOffset"/>.
     /// </summary>
     /// <param name="flags">The batch's write flags. Without the WAL a batch commits every few hundred writes, deletes included, which bounds a long scan.</param>
     [SkipLocalsInit]
@@ -391,6 +433,7 @@ public static class BasePersistence
         int suffixOffset,
         scoped ReadOnlySpan<byte> fromAccount,
         scoped ReadOnlySpan<byte> toAccount,
+        scoped ReadOnlySpan<byte> keptAccount,
         WriteFlags flags)
     {
         const int accountLength = 20;
@@ -403,7 +446,7 @@ public static class BasePersistence
 
             key.Slice(prefixOffset, prefixLength).CopyTo(account);
             key.Slice(suffixOffset, accountLength - prefixLength).CopyTo(account[prefixLength..]);
-            if (account.SequenceCompareTo(fromAccount) >= 0 && account.SequenceCompareTo(toAccount) <= 0)
+            if (account.SequenceCompareTo(fromAccount) >= 0 && account.SequenceCompareTo(toAccount) <= 0 && !account.SequenceEqual(keptAccount))
                 batch.Set(key, null, flags);
         }
     }
@@ -459,7 +502,7 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
 
         /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         public void RemoveAccount(in ValueHash256 address);
 
@@ -501,16 +544,19 @@ public static class BasePersistence
         public void SelfDestruct(Address addr);
 
         /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         public void SetAccount(Address addr, Account? account);
+
+        /// <inheritdoc cref="IPersistence.IWriteBatch.SetSlimAccount"/>
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp);
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value);
 
         /// <summary>Writes a slot whose value is already the trie-leaf RLP byte string (<c>RLP(stripped)</c>).</summary>
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account);
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath);
 
@@ -519,8 +565,6 @@ public static class BasePersistence
 
     public interface ITrieReader
     {
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags);
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags);
         /// <summary>Passes the RLP of the state trie node at <paramref name="path"/> to <paramref name="action"/>, borrowed for the duration of the call.</summary>
         /// <remarks><paramref name="action"/> runs synchronously, at most once, and only when the node is found.</remarks>
         /// <returns>Whether the node was found and passed.</returns>
@@ -536,10 +580,10 @@ public static class BasePersistence
         public void SelfDestruct(in ValueHash256 address);
 
         /// <inheritdoc cref="IPersistence.IWriteBatch.SelfDestructRange"/>
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount);
 
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp);
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp);
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to);
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to);
     }
@@ -555,8 +599,8 @@ public static class BasePersistence
 
         public void SelfDestruct(Address addr) => _flatWriteBatch.SelfDestruct(addr.ToAccountPath);
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>
-            _flatWriteBatch.SelfDestructRange(fromPath, toPath);
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) =>
+            _flatWriteBatch.SelfDestructRange(fromPath, toPath, keptAccount);
 
         public void SetAccount(Address addr, Account? account)
         {
@@ -570,6 +614,12 @@ public static class BasePersistence
             _flatWriteBatch.SetAccount(addr.ToAccountPath, rlp);
         }
 
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp)
+        {
+            if (_accountDecoder == AccountDecoder.Slim) _flatWriteBatch.SetAccount(addr.ToAccountPath, slimRlp);
+            else SetAccount(addr, AccountDecoder.Slim.Decode(slimRlp));
+        }
+
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
             ValueHash256 hashBuffer = ValueKeccak.Zero;
@@ -580,9 +630,13 @@ public static class BasePersistence
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriteBatch.SetStorageEncoded(addrHash, slotHash, rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account)
+        [SkipLocalsInit]
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account)
         {
-            using ArrayPoolSpan<byte> rlp = _accountDecoder.EncodeToArrayPoolSpan(account);
+            int contentLength = _accountDecoder.GetContentLength(account);
+            Span<byte> rlp = stackalloc byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = RlpWriter.ContentWriter(rlp);
+            _accountDecoder.Encode(account, ref writer, contentLength);
             _flatWriteBatch.SetAccount(addrHash, rlp);
         }
 
@@ -615,7 +669,7 @@ public static class BasePersistence
             }
 
             RlpReader ctx = new(valueBuffer[..responseSize]);
-            return _accountDecoder.Decode(ref ctx);
+            return _accountDecoder.Decode(ref ctx, RlpBehaviors.TrustedInput);
         }
 
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
@@ -864,12 +918,6 @@ public static class BasePersistence
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) =>
             _flatReader.TryGetSlot(address, in slot, ref outValue);
 
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStateRlp(path, flags);
-
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            _trieReader.TryLoadStorageRlp(address, path, flags);
-
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             _trieReader.TryLoadStateRlp(path, flags, action, arg);
 
@@ -918,14 +966,17 @@ public static class BasePersistence
             _trieWriteBatch.SelfDestruct(addr.ToAccountPath);
         }
 
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
-            _flatWriter.SelfDestructRange(fromPath, toPath);
-            _trieWriteBatch.SelfDestructRange(fromPath, toPath);
+            _flatWriter.SelfDestructRange(fromPath, toPath, keptAccount);
+            _trieWriteBatch.SelfDestructRange(fromPath, toPath, keptAccount);
         }
 
         public void SetAccount(Address addr, Account? account) =>
             _flatWriter.SetAccount(addr, account);
+
+        public void SetSlimAccount(Address addr, scoped ReadOnlySpan<byte> slimRlp) =>
+            _flatWriter.SetSlimAccount(addr, slimRlp);
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value) =>
             _flatWriter.SetStorage(addr, slot, value);
@@ -933,13 +984,13 @@ public static class BasePersistence
         public void SetStateTrieNode(in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStateTrieNode(path, rlp);
 
-        public void SetStorageTrieNode(Hash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
+        public void SetStorageTrieNode(in ValueHash256 address, in TreePath path, scoped ReadOnlySpan<byte> rlp) =>
             _trieWriteBatch.SetStorageTrieNode(address, path, rlp);
 
         public void SetStorageRawEncoded(in ValueHash256 addrHash, in ValueHash256 slotHash, scoped ReadOnlySpan<byte> rlpValue) =>
             _flatWriter.SetStorageRawEncoded(addrHash, slotHash, rlpValue);
 
-        public void SetAccountRaw(in ValueHash256 addrHash, Account account) =>
+        public void SetAccountRaw(in ValueHash256 addrHash, in AccountStruct account) =>
             _flatWriter.SetAccountRaw(addrHash, account);
 
         public void DeleteAccountRange(in ValueHash256 fromPath, in ValueHash256 toPath) =>

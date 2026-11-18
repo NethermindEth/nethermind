@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
@@ -20,9 +21,10 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
         GetDataLength(msg, out int contentLength);
 
         RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(ref writer);
+        writer.EndSequence(sequence);
 
         return CompletePacket(destination, in writer, out _);
     }
@@ -30,11 +32,10 @@ public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtected
     public EnrResponseMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
         (PublicKey? farPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
-        RlpReader ctx = new(data);
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(data).EnterSequence(out int itemLength);
         Hash256 requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 
-        int positionForHex = ctx.Position;
+        int positionForHex = itemLength - ctx.Remaining;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(ref ctx);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {

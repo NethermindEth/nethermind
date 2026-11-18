@@ -79,7 +79,7 @@ public class TransactionTests
         Nethermind.Core.Transaction transaction;
         try
         {
-            Rlp rlp = new(Bytes.FromHexString(test.Rlp));
+            byte[] rlp = Bytes.FromHexString(test.Rlp);
             transaction = Rlp.Decode<Nethermind.Core.Transaction>(rlp);
         }
         catch (Exception)

@@ -22,6 +22,10 @@ public abstract class TransactionTestBase
 
     protected static Result RunTest(TransactionTest test)
     {
+        if (test.LoadFailure is not null)
+        {
+            return Result.Fail(test.LoadFailure);
+        }
         if (string.IsNullOrEmpty(test.TxBytes))
         {
             return Result.Fail("Missing txbytes");

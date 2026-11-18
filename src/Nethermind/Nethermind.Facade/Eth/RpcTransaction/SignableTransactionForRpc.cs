@@ -29,13 +29,19 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
     protected SignableTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
         : base(transaction, extraData) { }
 
+    internal virtual bool HasConflictingCalldata => false;
+
+    internal virtual bool ShouldCheckFeesBeforeConversion() => true;
+
+    internal virtual bool ShouldFillDefaultsOnSend() => true;
+
     public sealed class SignableTransactionJsonConverter : JsonConverter<SignableTransactionForRpc>
     {
         private readonly GeneratedJsonDispatch _generated = new();
 
         public override SignableTransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             // The base converter matches only TransactionForRpc, so its concrete-type deserialization never re-enters this one.
-            TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(ref reader, options) switch
+            TypeInfoJsonSerializer.ReadNested<TransactionForRpc>(ref reader, options) switch
             {
                 null => null,
                 SignableTransactionForRpc signable => signable,

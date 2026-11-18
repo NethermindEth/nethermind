@@ -90,12 +90,17 @@ public class OptimismEthRpcModule(
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
         if (searchResult.IsError)
         {
-            return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(null);
+            return GetBlockSearchErrorResult<IEnumerable<ReceiptForRpc>?>(searchResult);
         }
 
         Block? block = searchResult.Object!;
         Transaction[] transactions = block.Transactions;
-        TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[transactions.Length];
+        TxReceipt[] receipts = _receiptFinder.Get(block);
+        if (receipts.Length != transactions.Length)
+        {
+            return GetMissingReceiptsResult(_blockFinder, block);
+        }
+
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
         L1BlockGasInfo l1BlockGasInfo = new(block, opSpecHelper);
@@ -182,7 +187,7 @@ public class OptimismEthRpcModule(
             return (ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked), false);
 
         bool signedByNode = unsigned && tx.Signature is not null;
-        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes), signedByNode);
+        return (await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping)), signedByNode);
     }
 
     public override async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
@@ -215,18 +220,43 @@ public class OptimismEthRpcModule(
         return forwarded?.Result is { } result ? ResultWrapper<Hash256>.Success(result) : ResultWrapper<Hash256>.Fail("Failed to forward transaction");
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A node that forwards to the sequencer has no pool (<c>NullTxPool</c>), whose pending nonce is always 0. On such
+    /// a node the pending nonce is the head nonce raised past the forwards of <c>eth_sendTransaction</c> that the
+    /// sequencer accepted and the head does not include yet; a send still at the sequencer counts once answered.
+    /// </remarks>
+    public override ResultWrapper<UInt256> eth_getTransactionCount(Address address, BlockParameter? blockParameter) =>
+        sequencerRpcClient is not null && blockParameter == BlockParameter.Pending
+            ? ResultWrapper<UInt256>.Success(nonceTracker.GetPendingNonce(address))
+            : base.eth_getTransactionCount(address, blockParameter);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The base fill keeps an explicit nonce and takes a missing one from the pool, which a node that forwards to the
+    /// sequencer does not have. Such a node fills a missing nonce with the pending nonce of <c>from</c>, reading a
+    /// missing <c>from</c> as the zero address, as the base fill does.
+    /// </remarks>
+    public override async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
+    {
+        if (sequencerRpcClient is not null && rpcTx is LegacyTransactionForRpc { Nonce: null } legacy)
+            legacy.Nonce = nonceTracker.GetPendingNonce(legacy.From ?? Address.Zero);
+
+        return await base.eth_fillTransaction(rpcTx);
+    }
+
     public override ResultWrapper<ReceiptForRpc?> eth_getTransactionReceipt(Hash256 txHash)
     {
         (TxReceipt? receipt, ulong blockTimestamp, TxGasInfo? gasInfo, int logIndexStart) = _blockchainBridge.GetTxReceiptInfo(txHash);
         if (receipt is null || gasInfo is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         SearchResult<Block> foundBlock = _blockFinder.SearchForBlock(new(receipt.BlockHash!));
         if (foundBlock.Object is null)
         {
-            return ResultWrapper<ReceiptForRpc?>.Success(null);
+            return GetMissingTransactionReceiptResult(txHash);
         }
 
         Block block = foundBlock.Object;
@@ -300,6 +330,7 @@ public class OptimismEthRpcModule(
                 txIndex: (int)positionIndex,
                 blockTimestamp: block.Timestamp,
                 baseFee: block.BaseFeePerGas,
+                spec: _specProvider.GetSpec(block.Header),
                 receipt: receipt));
         if (transactionModel is DepositTransactionForRpc depositTx)
         {
@@ -338,6 +369,7 @@ public class OptimismEthRpcModule(
                 TxReceipt[] receipts = _receiptFinder.Get(block);
                 Transaction[] transactions = block.Transactions;
                 TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
+                IReleaseSpec spec = _specProvider.GetSpec(block.Header);
                 for (int i = 0; i < txs.Length; i++)
                 {
                     Transaction tx = transactions[i];
@@ -351,6 +383,7 @@ public class OptimismEthRpcModule(
                             txIndex: i,
                             blockTimestamp: block.Timestamp,
                             baseFee: block.BaseFeePerGas,
+                            spec: spec,
                             receipt: receipt));
 
                     if (rpcTx is DepositTransactionForRpc depositTx)

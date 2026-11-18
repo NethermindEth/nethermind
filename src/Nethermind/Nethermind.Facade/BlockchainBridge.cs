@@ -54,6 +54,7 @@ namespace Nethermind.Facade
         SimulateReadOnlyBlocksProcessingEnvPool simulateEnvPool,
         Lazy<IWitnessGeneratingBlockProcessingEnvFactory> witnessGeneratingBlockProcessingEnvFactory,
         IBlockTree blockTree,
+        IPoSSwitcher poSSwitcher,
         IBlockStore blockStore,
         IStateReader stateReader,
         ITxPool txPool,
@@ -204,7 +205,9 @@ namespace Nethermind.Facade
                     txIndex: txReceipt!.Index,
                     blockTimestamp: header.Timestamp,
                     baseFee: header.BaseFeePerGas,
-                    receipt: txReceipt);
+                    receipt: txReceipt,
+                    spec: specProvider.GetSpec(header),
+                    excessBlobGas: header.ExcessBlobGas);
 
 
                 result = new TransactionLookupResult(tx, extraData);
@@ -213,7 +216,7 @@ namespace Nethermind.Facade
 
             if (checkTxnPool && txPool.TryGetPendingTransaction(txHash, out Transaction? transaction))
             {
-                result = new TransactionLookupResult(transaction, new(specProvider.ChainId));
+                result = new TransactionLookupResult(transaction, TransactionForRpcContext.ForPending(specProvider, blockTree.Head?.Header, blocksConfig.SecondsPerSlot));
                 return true;
             }
 
@@ -255,13 +258,24 @@ namespace Nethermind.Facade
             return RunCall(scope.Component.WorldState, scope.Component.TransactionProcessor, header, tx, blobBaseFeeOverride, cancellationToken);
         }
 
-        /// <summary>The copy of <paramref name="header"/> a call runs in, which the overrides and <see cref="PrepareCall"/> modify.</summary>
-        private static BlockHeader CloneForCall(BlockHeader header, bool noBaseFee)
+        /// <summary>
+        /// The copy of <paramref name="header"/> a call runs in, which carries the restored <see cref="BlockHeader.IsPostMerge"/>
+        /// and which the overrides and <see cref="PrepareCall"/> modify.
+        /// </summary>
+        private BlockHeader CloneForCall(BlockHeader header, bool noBaseFee)
         {
-            BlockHeader callHeader = header.Clone();
+            BlockHeader callHeader = CloneWithPostMergeFlag(header);
             callHeader.GasUsed = 0;
             if (noBaseFee) callHeader.BaseFeePerGas = 0;
             return callHeader;
+        }
+
+        /// <summary>Copies <paramref name="header"/> with <see cref="BlockHeader.IsPostMerge"/> restored, before any override changes the copy.</summary>
+        private BlockHeader CloneWithPostMergeFlag(BlockHeader header)
+        {
+            BlockHeader copy = header.Clone();
+            poSSwitcher.RestorePostMergeForCall(copy);
+            return copy;
         }
 
         private static CallOutput StateUnavailable(BlockHeader header) =>
@@ -273,13 +287,17 @@ namespace Nethermind.Facade
             BlockExecutionContext blockContext = PrepareCall(nonceSource, header, tx, blobBaseFeeOverride);
             TransactionResult result = TipAboveFeeCap(tx, blockContext.Spec) is { } tipAboveFeeCap
                 ? tipAboveFeeCap
-                : TryCallAndRestore(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
+                : TryCall(txProcessor, tx, in blockContext, tracer.WithCancellation(cancellationToken));
 
             string? error = result.GetErrorMessage(tracer.Error);
-            if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert
-                && ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+            if (result.TransactionExecuted && error is not null && result.EvmExceptionType is not EvmExceptionType.Revert)
             {
-                error = failureText;
+                // The call keeps its changes, so the rerun that names the failure must start from the state the call started from.
+                nonceSource.Reset(resetBlockChanges: false);
+                if (ExecutionFailureText.TryDescribe(txProcessor, tx, in blockContext, result.EvmExceptionType, error, cancellationToken, out string failureText))
+                {
+                    error = failureText;
+                }
             }
 
             return new CallOutput
@@ -302,7 +320,7 @@ namespace Nethermind.Facade
             : blockOverride?.Withdrawals is not null ? BlockOverride.WithdrawalsNotSupported
             : null;
 
-        private static bool HasBlockOverrides(BlockOverride blockOverride) =>
+        internal static bool HasBlockOverrides(BlockOverride blockOverride) =>
             blockOverride.Number is not null ||
             blockOverride.PrevRandao is not null ||
             blockOverride.Time is not null ||
@@ -331,7 +349,7 @@ namespace Nethermind.Facade
             using SimulateReadOnlyBlocksProcessingEnvPool.PooledScope pooled = simulateEnvPool.Begin(header);
             SimulateReadOnlyBlocksProcessingScope env = pooled.Scope;
             env.SimulateRequestState.Validate = payload.Validation;
-            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header);
+            IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header, cancellationToken);
             try
             {
                 return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
@@ -360,7 +378,7 @@ namespace Nethermind.Facade
         {
             executionReverted = false;
             if (GetUnsupportedBlockOverrideError(blockOverride) is { } error) return Result<TxFrame[]>.Fail(error);
-            BlockHeader executionHeader = header.Clone();
+            BlockHeader executionHeader = CloneWithPostMergeFlag(header);
             // The requested block's context, as the gas estimate that follows uses.
             if (HasOverrides(stateOverride, null, blockOverride))
             {
@@ -516,7 +534,7 @@ namespace Nethermind.Facade
                 previousAccessList = opcodeTracer.BuildAccessList();
             }
 
-            CallOutputTracer outputTracer = new();
+            CallOutputTracer outputTracer = new OutputlessCallTracer();
             CancellationTxTracer tracer = new CompositeTxTracer(outputTracer, accessTracer ?? (ITxTracer)opcodeTracer!).WithCancellation(cancellationToken);
             TransactionResult result;
             bool stop;
@@ -561,11 +579,16 @@ namespace Nethermind.Facade
                 Error = error,
                 GasSpent = outputTracer.GasSpent,
                 OperationGas = outputTracer.OperationGas,
-                OutputData = outputTracer.ReturnValue,
                 InputError = !result.TransactionExecuted,
                 ExecutionReverted = executionReverted,
                 AccessList = accessList,
             };
+        }
+
+        /// <summary>Collects the outcome of a run without its output, which eth_createAccessList does not report.</summary>
+        private sealed class OutputlessCallTracer : CallOutputTracer, ITxOutputTracingFilter
+        {
+            public bool IsTracingOutput => false;
         }
 
         private int FillAddressesToOptimize(Span<Address> buffer, IWorldState nonceSource, BlockHeader header, Transaction tx, bool optimize, FrozenSet<AddressAsKey> precompiles)
@@ -706,11 +729,18 @@ namespace Nethermind.Facade
             return previousCount == discoveredCount;
         }
 
-        private static TransactionResult TryCallAndRestore(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
+        /// <summary>Runs <paramref name="transaction"/> without validation and keeps its changes in the world state.</summary>
+        /// <remarks>
+        /// The call neither commits nor restores: the world state scope it runs in drops the changes when it closes.
+        /// <see cref="ExecutionOptions.BuildUp"/> is set because <see cref="ExecutionOptions.SkipValidation"/> alone
+        /// routes the call to the system transaction processor.
+        /// </remarks>
+        private static TransactionResult TryCall(ITransactionProcessor txProcessor, Transaction transaction, in BlockExecutionContext blockContext, ITxTracer tracer)
         {
             try
             {
-                return txProcessor.CallAndRestore(transaction, in blockContext, tracer);
+                txProcessor.SetBlockExecutionContext(in blockContext);
+                return txProcessor.Process(transaction, tracer, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
             }
             catch (InsufficientBalanceException)
             {
@@ -779,7 +809,6 @@ namespace Nethermind.Facade
                     transaction.MaxFeePerBlobGas = blobBaseFee;
                 }
             }
-            blockHeader.IsPostMerge = blockHeader.Difficulty == 0;
             transaction.Hash = transaction.Type <= TxType.FrameTx ? null : transaction.CalculateHash();
             return new BlockExecutionContext(blockHeader, releaseSpec, blobBaseFee);
         }
@@ -924,7 +953,7 @@ namespace Nethermind.Facade
         /// <summary>Whether a legacy signature's own chain id recovers the sender, as the receipts recovery does.</summary>
         private bool UsesSignatureChainId(BlockHeader header) => !specProvider.GetSpec(header).ValidateChainId;
 
-        private Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
+        public Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
             ecdsa.TryRecoverAddress(tx, out Address? senderAddress, useSignatureChainId) ? senderAddress : null;
 
         public ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId) =>
@@ -952,12 +981,15 @@ namespace Nethermind.Facade
         public void DeleteBlockAccessList(ulong blockNumber, Hash256 blockHash)
             => balStore.Delete(blockNumber, blockHash);
 
-        public Witness GenerateExecutionWitness(BlockHeader parent, Block block)
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block) =>
+            GenerateExecutionWitness(parent, block, NullBlockTracer.Instance);
+
+        public Witness GenerateExecutionWitness(BlockHeader parent, Block block, IBlockTracer tracer)
         {
             RecoverTxSenders(block);
             using IWitnessGeneratingBlockProcessingEnvScope scope = witnessGeneratingBlockProcessingEnvFactory.Value.CreateScope();
             IExistingBlockWitnessCollector witnessCollector = scope.Env.CreateExistingBlockWitnessCollector();
-            return witnessCollector.GetWitnessForExistingBlock(parent, block);
+            return witnessCollector.GetWitnessForExistingBlock(parent, block, tracer);
         }
 
         public SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default)
@@ -1022,6 +1054,8 @@ namespace Nethermind.Facade
                     .AddScoped<SingleCallRequestState>()
                     .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
                     .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
+                    // Geth's eth_call, unlike its debug_traceCall, does not serve the base block's hash to its successor.
+                    .AddDecorator<IBlockhashProvider>((ctx, inner) => new BlockNumberOverrideBlockhashProvider(inner, ctx.Resolve<IBlockFinder>(), servesBaseToSuccessor: false))
                     // Resolved code is remembered across the restored re-runs of estimateGas and createAccessList; the
                     // processor decorator drops it after any transaction that keeps its changes.
                     .AddScoped<ResolvedCodeMemo>()

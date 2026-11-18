@@ -187,7 +187,7 @@ public class NewPayloadSerializationBenchmarks : IDisposable
                 .WithTo(TestItem.Addresses[i % TestItem.Addresses.Length])
                 .WithData(callData)
                 .SignedAndResolved().TestObject;
-            txs[i] = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+            txs[i] = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping);
         }
         return txs;
     }

@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
@@ -68,7 +67,7 @@ public class WithdrawalTrieTests
             {
                 string hex = p.Length < 32 ? p.ToHexString(false) : hash.ToString(false);
 
-                if (!new Rlp(proof[i - 1]).ToString(false).Contains(hex, StringComparison.Ordinal))
+                if (!proof[i - 1].ToHexString().Contains(hex, StringComparison.Ordinal))
                 {
                     return false;
                 }
