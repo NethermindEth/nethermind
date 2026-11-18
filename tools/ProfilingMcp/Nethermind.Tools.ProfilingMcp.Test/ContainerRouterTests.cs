@@ -90,6 +90,31 @@ public class ContainerRouterTests
     [TestCase("-1", ExpectedResult = 30)]
     public double Reads_the_sidecar_idle_limit(string? minutes) => ContainerSidecar.IdleLimit(minutes).TotalMinutes;
 
+    [TestCase("/tmp", ExpectedResult = "/data/tmp")]
+    [TestCase("/var/tmp/x", ExpectedResult = "/data/tmp/x")]
+    [TestCase("/app/tmp", ExpectedResult = "/app/scratch")]
+    [TestCase("/up/tmp", ExpectedResult = "/data/tmp")]
+    [TestCase("/missing/tmp", ExpectedResult = "/missing/tmp")]
+    [TestCase("/", ExpectedResult = "/")]
+    public string Resolves_a_temp_folder_within_the_target_root(string path)
+    {
+        // /tmp -> /data/tmp, /var/tmp -> ../tmp (so /tmp again), /app/tmp -> scratch, /up -> /app/.. (the root).
+        Dictionary<string, string> links = new()
+        {
+            ["/tmp"] = "/data/tmp",
+            ["/var/tmp"] = "../tmp",
+            ["/app/tmp"] = "scratch",
+            ["/up"] = "/app/..",
+        };
+
+        return ContainerSidecar.ResolveWithinRoot(path, links.GetValueOrDefault);
+    }
+
+    [Test]
+    public void Refuses_a_loop_of_symlinks() =>
+        Assert.That(() => ContainerSidecar.ResolveWithinRoot("/a/tmp", new Dictionary<string, string> { ["/a"] = "/b", ["/b"] = "/a" }.GetValueOrDefault),
+            Throws.InstanceOf<IOException>());
+
     [Test]
     [CancelAfter(30_000)]
     public void Stops_a_command_that_hangs([Values] bool requestCancelled)

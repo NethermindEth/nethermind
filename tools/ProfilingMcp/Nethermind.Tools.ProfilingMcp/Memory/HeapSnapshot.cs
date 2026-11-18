@@ -7,7 +7,11 @@ using Microsoft.Diagnostics.Runtime;
 namespace Nethermind.Tools.ProfilingMcp.Memory;
 
 /// <summary>Instance count and shallow size of one type on the managed heap.</summary>
-/// <param name="LargeObjectBytes">Part of <paramref name="Bytes"/> on the large object heap.</param>
+/// <param name="LargeObjectBytes">
+/// Part of <paramref name="Bytes"/> in objects of <see cref="HeapSnapshot.LargeObjectSize"/> bytes or more, the size the GC allocates on the
+/// large object heap. It is told by size because a live heap read reports no heap per object; such arrays allocated pinned are on the pinned
+/// object heap instead, which <see cref="HeapSnapshot.GenerationBytes"/> tells apart.
+/// </param>
 public sealed record TypeStat(string Name, long Count, long Bytes, long LargeObjectBytes);
 
 /// <summary>
@@ -28,6 +32,9 @@ public sealed record HeapSnapshot(
 {
     /// <summary>The largest file <see cref="Load"/> reads; a snapshot holds one line per type, so even a large heap's is a few megabytes.</summary>
     internal const long MaxFileBytes = 256L << 20;
+
+    /// <summary>The object size from which the GC allocates on the large object heap.</summary>
+    public const int LargeObjectSize = 85_000;
 
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = false };
 
@@ -59,7 +66,7 @@ public sealed record HeapSnapshot(
 
                 objectCount++;
                 totalBytes += size;
-                long largeBytes = generation == Generation.Large ? size : 0;
+                long largeBytes = size >= LargeObjectSize ? size : 0;
                 byMethodTable[type.MethodTable] = byMethodTable.TryGetValue(type.MethodTable, out (string Name, long Count, long Bytes, long LargeBytes) stat)
                     ? (stat.Name, stat.Count + 1, stat.Bytes + size, stat.LargeBytes + largeBytes)
                     : (type.Name ?? $"<unknown 0x{type.MethodTable:x}>", 1, size, largeBytes);

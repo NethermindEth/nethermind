@@ -164,21 +164,42 @@ public class NativeSamplerTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(NativeSampler.RecordAttempts - 1)]
-    [TestCase(NativeSampler.RecordAttempts)]
-    public async Task Starts_perf_again_when_it_fails(int failures)
+    private const string KernelSymbolWarning = "Couldn't record kernel reference relocation symbol\nSymbol resolution may be skewed if relocation was used (e.g. kexec).\nCheck /proc/kallsyms permission or run as root.";
+
+    [TestCase(0, 255, KernelSymbolWarning, 1)]
+    [TestCase(NativeSampler.RecordAttempts - 1, 255, KernelSymbolWarning, NativeSampler.RecordAttempts)]
+    [TestCase(NativeSampler.RecordAttempts, 255, KernelSymbolWarning, NativeSampler.RecordAttempts)]
+    [TestCase(1, 255, "", 2)]
+    [TestCase(1, 255, "Error:\nNo permission to enable cpu-clock event.", 1)]
+    [TestCase(1, 129, KernelSymbolWarning, 1)]
+    public async Task Starts_perf_again_only_when_it_failed_to_attach(int failures, int exitCode, string error, int expectedAttempts)
     {
         int attempts = 0;
-        Task Record() => ++attempts <= failures ? throw new InvalidOperationException("perf record failed with exit code 255") : Task.CompletedTask;
+        Task Record() => ++attempts <= failures ? throw new PerfFailedException($"perf record failed with exit code {exitCode}: {error}", exitCode, error) : Task.CompletedTask;
 
-        Task recording = NativeSampler.RecordAsync(Record, TimeSpan.Zero, CancellationToken.None);
+        Task recording = NativeSampler.RecordAsync(Record, TimeSpan.MaxValue, TimeSpan.Zero, CancellationToken.None);
 
-        if (failures < NativeSampler.RecordAttempts)
+        if (failures < expectedAttempts)
             await recording;
+        else if (NativeSampler.FailedToAttach(exitCode, error))
+            Assert.That(async () => await recording, Throws.InvalidOperationException.With.Message.Contains($"failed {failures} times"));
         else
-            Assert.That(async () => await recording, Throws.InvalidOperationException.With.Message.Contains("exit code 255").And.Message.Contains($"failed {failures} times"));
-        Assert.That(attempts, Is.EqualTo(Math.Min(failures + 1, NativeSampler.RecordAttempts)));
+            Assert.That(async () => await recording, Throws.InstanceOf<PerfFailedException>());
+        Assert.That(attempts, Is.EqualTo(expectedAttempts));
+    }
+
+    [Test]
+    public void Reports_a_failure_late_in_the_window_without_recording_again()
+    {
+        int attempts = 0;
+        Task Record()
+        {
+            attempts++;
+            throw new PerfFailedException("perf record failed with exit code 255", 255, KernelSymbolWarning);
+        }
+
+        Assert.That(async () => await NativeSampler.RecordAsync(Record, TimeSpan.Zero, TimeSpan.Zero, CancellationToken.None), Throws.InstanceOf<PerfFailedException>());
+        Assert.That(attempts, Is.EqualTo(1));
     }
 
     [Test]

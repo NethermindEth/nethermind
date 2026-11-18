@@ -50,7 +50,7 @@ public static class NativeSampler
             // Build ids are skipped: perf script reads each library by path, from the target's mount namespace.
             await RecordAsync(() => RunPerfAsync(["record", "--quiet", "--no-buildid", "--no-buildid-cache", "-e", "cpu-clock", "-F", Hz.ToString(CultureInfo.InvariantCulture), "-g",
                 "-p", pid.ToString(CultureInfo.InvariantCulture), "-o", data, "--", "sleep", duration.TotalSeconds.ToString(CultureInfo.InvariantCulture)], stdout: null, cancellationToken),
-                TimeSpan.FromSeconds(1), cancellationToken);
+                duration, TimeSpan.FromSeconds(1), cancellationToken);
 
             JitMap jit = isDotNet ? JitMap.Load(perfMap) : JitMap.Empty;
             PerfScriptFolder folder = new(jit);
@@ -65,33 +65,53 @@ public static class NativeSampler
         }
     }
 
-    /// <summary>Runs <paramref name="record"/>, starting it again after <paramref name="pause"/> when it fails, up to <see cref="RecordAttempts"/> times.</summary>
-    /// <param name="record">Runs <c>perf record</c>, throwing <see cref="InvalidOperationException"/> when it fails.</param>
+    /// <summary>
+    /// Runs <paramref name="record"/>, starting it again after <paramref name="pause"/> when perf failed while attaching to the target,
+    /// up to <see cref="RecordAttempts"/> times.
+    /// </summary>
+    /// <param name="record">Runs <c>perf record</c>, throwing <see cref="PerfFailedException"/> when it fails.</param>
+    /// <param name="window">How long the recording runs; a failure after that is not retried, since it would cost the whole window again.</param>
     /// <remarks>
     /// <c>perf record -p</c> (6.8 and 7.0 alike) exits with 255 and no error of its own, only its usual warning about kernel symbols, when threads
     /// of the target end while it attaches to them. A process that starts and ends threads quickly, as a thread pool under load does, hits this
-    /// often and in bursts, so the attempts are spaced out.
+    /// often and in bursts, so the attempts are spaced out. Any other failure, such as a missing permission, would only repeat, so it is reported at once.
     /// </remarks>
-    /// <exception cref="InvalidOperationException">Every attempt failed.</exception>
-    internal static async Task RecordAsync(Func<Task> record, TimeSpan pause, CancellationToken cancellationToken)
+    /// <exception cref="InvalidOperationException">perf failed for another reason, or failed to attach every time.</exception>
+    internal static async Task RecordAsync(Func<Task> record, TimeSpan window, TimeSpan pause, CancellationToken cancellationToken)
     {
         for (int attempt = 1; ; attempt++)
         {
+            long started = Stopwatch.GetTimestamp();
             try
             {
                 await record();
                 return;
             }
-            catch (InvalidOperationException) when (attempt < RecordAttempts && !cancellationToken.IsCancellationRequested)
+            catch (PerfFailedException e) when (FailedToAttach(e.ExitCode, e.Error) && Stopwatch.GetElapsedTime(started) < window && !cancellationToken.IsCancellationRequested)
             {
+                if (attempt == RecordAttempts)
+                    throw new InvalidOperationException($"{e.Message}\nperf failed {RecordAttempts} times. It fails when threads of the target end while it attaches to them, " +
+                                                        "which is frequent while the process starts and ends many threads, as under load. Try again, or with a shorter window.", e);
                 await Task.Delay(pause, cancellationToken);
             }
-            catch (InvalidOperationException e) when (!cancellationToken.IsCancellationRequested)
-            {
-                throw new InvalidOperationException($"{e.Message}\nperf failed {RecordAttempts} times. It fails when threads of the target end while it attaches to them, " +
-                                                    "which is frequent while the process starts and ends many threads, as under load. Try again, or with a shorter window.", e);
-            }
         }
+    }
+
+    /// <summary>Whether perf failed the way it does when threads of the target end while it attaches: exit code 255 and no error beyond its warning about kernel symbols.</summary>
+    internal static bool FailedToAttach(int exitCode, string error)
+    {
+        if (exitCode != 255)
+            return false;
+
+        foreach (string line in error.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (line is not ("Couldn't record kernel reference relocation symbol"
+                or "Symbol resolution may be skewed if relocation was used (e.g. kexec)."
+                or "Check /proc/kallsyms permission or run as root."))
+                return false;
+        }
+
+        return true;
     }
 
     /// <summary>Whether the runtime writes its perf map without being asked: its environment enables it, or the map exists already.</summary>
@@ -198,7 +218,20 @@ public static class NativeSampler
                 stdout?.Invoke(line);
             await process.WaitForExitAsync(cancellationToken);
             if (process.ExitCode != 0)
-                throw new InvalidOperationException($"perf {arguments[0]} failed with exit code {process.ExitCode}: {(await error).Trim()}");
+            {
+                string message = (await error).Trim();
+                throw new PerfFailedException($"perf {arguments[0]} failed with exit code {process.ExitCode}: {message}", process.ExitCode, message);
+            }
         }
     }
+}
+
+/// <summary>perf exited with a failure code.</summary>
+/// <param name="ExitCode">perf's exit code.</param>
+/// <param name="Error">What perf wrote to its standard error.</param>
+internal sealed class PerfFailedException(string message, int exitCode, string error) : InvalidOperationException(message)
+{
+    public int ExitCode { get; } = exitCode;
+
+    public string Error { get; } = error;
 }

@@ -99,9 +99,33 @@ public class ContainerRouterRecoveryTests
         }
     }
 
-    private RequestContext<CallToolRequestParams> Call(string tool, string container = "node") =>
-        new(_sidecars.FirstOrDefault()?.Server ?? Sidecar.Placeholder, new JsonRpcRequest { Method = RequestMethods.ToolsCall },
-            new CallToolRequestParams { Name = tool, Arguments = new Dictionary<string, JsonElement> { [ContainerRouter.ContainerArgument] = JsonSerializer.SerializeToElement(container) } });
+    [TestCase("write_dump", false, true)]
+    [TestCase("write_dump", true, false)]
+    [TestCase("native_memory", false, true)]
+    [TestCase("native_memory", true, true)]
+    [CancelAfter(30_000)]
+    public async Task Reports_dacs_that_could_not_be_supplied(string tool, bool toolFails, bool warned, CancellationToken cancellationToken)
+    {
+        ContainerRouter router = new((_, _) => StartSidecarAsync(), provideDebuggingLibraries: static (_, _, _) => Task.FromResult<string?>(".NET 9.0.1: nuget.org is unreachable"));
+        McpRequestHandler<CallToolRequestParams, CallToolResult> route = router.Route(static (_, _) => throw new AssertionException("the call should be routed"));
+
+        CallToolResult result = await route(Call(tool, fail: toolFails), cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError == true, Is.EqualTo(toolFails));
+            Assert.That(result.Content.OfType<TextContentBlock>().Select(static c => c.Text), warned ? Has.Some.Contains("nuget.org is unreachable") : Has.None.Contains("nuget.org"));
+        }
+    }
+
+    private RequestContext<CallToolRequestParams> Call(string tool, string container = "node", bool fail = false)
+    {
+        Dictionary<string, JsonElement> arguments = new() { [ContainerRouter.ContainerArgument] = JsonSerializer.SerializeToElement(container) };
+        if (fail)
+            arguments["fail"] = JsonSerializer.SerializeToElement(true);
+        return new(_sidecars.FirstOrDefault()?.Server ?? Sidecar.Placeholder, new JsonRpcRequest { Method = RequestMethods.ToolsCall },
+            new CallToolRequestParams { Name = tool, Arguments = arguments });
+    }
 
     private async Task<McpClient> StartSidecarAsync()
     {
@@ -132,8 +156,8 @@ public class ContainerRouterRecoveryTests
                     ToolCollection =
                     [
                         McpServerTool.Create(static () => "ok", new McpServerToolCreateOptions { Name = "echo" }),
-                        McpServerTool.Create(static () => "ok", new McpServerToolCreateOptions { Name = "write_dump" }),
-                        McpServerTool.Create(static () => "ok", new McpServerToolCreateOptions { Name = "native_memory" }),
+                        McpServerTool.Create(static (bool fail = false) => fail ? throw new InvalidOperationException("disk full") : "ok", new McpServerToolCreateOptions { Name = "write_dump" }),
+                        McpServerTool.Create(static (bool fail = false) => fail ? throw new InvalidOperationException("no DAC") : "ok", new McpServerToolCreateOptions { Name = "native_memory" }),
                     ],
                 });
             sidecar._running = sidecar.Server.RunAsync(sidecar._stop.Token);

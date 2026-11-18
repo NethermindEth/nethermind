@@ -84,12 +84,13 @@ internal static class ContainerSidecar
     }
 
     /// <summary>Copies trusted DACs for the target's .NET runtimes into its sidecar, for the tools that load one (<see cref="DebuggingLibraries"/>).</summary>
-    public static async Task ProvideDebuggingLibrariesAsync(string? dockerHost, string container, CancellationToken cancellationToken)
+    /// <returns>The runtimes whose DAC could not be supplied and why, or null when every one was.</returns>
+    public static async Task<string?> ProvideDebuggingLibrariesAsync(string? dockerHost, string container, CancellationToken cancellationToken)
     {
         string[] engine = EngineArguments(dockerHost);
         string sidecar = await EnsureSidecarAsync(engine, container);
         string architecture = await DockerAsync(engine, ["version", "--format", "{{.Server.Arch}}"], cancellationToken);
-        await DebuggingLibraries.ProvideAsync(engine, sidecar, architecture, WorkspacePaths.FromEnvironment().Root, cancellationToken);
+        return await DebuggingLibraries.ProvideAsync(engine, sidecar, architecture, WorkspacePaths.FromEnvironment().Root, cancellationToken);
     }
 
     private static async Task<string> EnsureSidecarAsync(string[] engine, string container)
@@ -217,19 +218,25 @@ internal static class ContainerSidecar
 
     /// <summary>Run inside the sidecar: makes a target's own temp folder resolve at the same path in the sidecar.</summary>
     /// <remarks>
+    /// The sidecar's TMPDIR is the target's temp folder under <see cref="TargetRoot"/>, where the kernel would follow an absolute symlink in it,
+    /// such as <c>/tmp -&gt; /data/tmp</c>, from the sidecar's root; it is resolved within the target's root instead.
     /// When the target's environment sets TMPDIR, the diagnostics client looks for its socket at that literal path instead of in its own
     /// temp folder, so the path is linked to the target's folder. An explicit <c>/tmp</c> or <c>/var/tmp</c> replaces the sidecar's own empty
     /// folder. The path comes from the target, so <see cref="CheckTargetTempFolder"/> keeps the link away from the sidecar's system folders.
     /// </remarks>
     public static void LinkTargetTempFolder()
     {
+        if (Environment.GetEnvironmentVariable(NameVariable) is not null && Environment.GetEnvironmentVariable("TMPDIR") is { } tmpdir
+            && tmpdir.StartsWith(TargetRoot + "/", StringComparison.Ordinal))
+            Environment.SetEnvironmentVariable("TMPDIR", InTargetRoot(tmpdir[TargetRoot.Length..]));
+
         if (Environment.GetEnvironmentVariable(TargetTempVariable) is not { Length: > 0 } temp)
             return;
 
         if (CheckTargetTempFolder(temp) is { } problem)
             throw new InvalidOperationException($"The target's TMPDIR {temp} {problem}.");
 
-        string target = TargetRoot + temp;
+        string target = InTargetRoot(temp);
         // Servers starting together race to replace the folder; whatever one of them did, the link is what must be there afterwards.
         for (int attempt = 0; new FileInfo(temp).LinkTarget != target; attempt++)
         {
@@ -257,6 +264,62 @@ internal static class ContainerSidecar
             {
                 // Another server in the sidecar is replacing it at the same time; look again.
             }
+        }
+    }
+
+    /// <summary>The sidecar's path to <paramref name="path"/> in the target's file system, its symlinks followed within the target's root.</summary>
+    private static string InTargetRoot(string path) => TargetRoot + ResolveWithinRoot(path, static p =>
+    {
+        try
+        {
+            return new FileInfo(TargetRoot + p).LinkTarget;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+    });
+
+    /// <summary>Resolves the symlinks in an absolute <paramref name="path"/> as a process whose root is the file system <paramref name="readLink"/> reads would.</summary>
+    /// <param name="readLink">The target of the symlink at an absolute path in that file system, or null when the path is not a symlink.</param>
+    /// <returns>The path with every symlink replaced by its target; parts that do not exist are kept as they are.</returns>
+    /// <exception cref="IOException">The path has more than 40 symlinks, as the kernel allows, which a loop of them exceeds.</exception>
+    internal static string ResolveWithinRoot(string path, Func<string, string?> readLink)
+    {
+        List<string> resolved = [];
+        Stack<string> pending = new();
+        PushParts(pending, path);
+        int links = 0;
+        while (pending.TryPop(out string? part))
+        {
+            if (part == ".")
+                continue;
+            if (part == "..")
+            {
+                if (resolved.Count > 0)
+                    resolved.RemoveAt(resolved.Count - 1);
+                continue;
+            }
+
+            resolved.Add(part);
+            if (readLink("/" + string.Join('/', resolved)) is not { } link)
+                continue;
+
+            if (++links > 40)
+                throw new IOException($"Too many symbolic links in {path}.");
+            resolved.RemoveAt(resolved.Count - 1);
+            if (link.StartsWith('/'))
+                resolved.Clear();
+            PushParts(pending, link);
+        }
+
+        return "/" + string.Join('/', resolved);
+
+        static void PushParts(Stack<string> pending, string path)
+        {
+            string[] parts = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            for (int i = parts.Length - 1; i >= 0; i--)
+                pending.Push(parts[i]);
         }
     }
 

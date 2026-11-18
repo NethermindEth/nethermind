@@ -86,6 +86,18 @@ public class CallTreeTests
         }
     }
 
+    [Test]
+    public void Report_renders_the_deepest_stack_that_is_kept()
+    {
+        string[] frames = [.. Enumerable.Range(0, Native.FoldedStacks.MaxFrames).Select(static i => $"f{i}")];
+        FunctionStat[] functions = [Function(frames[^1], Stack(5, 5, frames))];
+        CallTreeNode tree = CallTree.Build(functions, IsWait);
+
+        string html = HtmlReport.Render("trace.nettrace", functions, tree, CallTree.Count(tree), IsWait);
+
+        Assert.That(html, Does.Contain($"\"f{Native.FoldedStacks.MaxFrames - 1}\""));
+    }
+
     private static FunctionStat Function(string name, params CallStackStat[] stacks) =>
         new(name, stacks.Sum(static s => s.TotalTime), stacks.Sum(static s => s.OwnTime), 1, stacks);
 

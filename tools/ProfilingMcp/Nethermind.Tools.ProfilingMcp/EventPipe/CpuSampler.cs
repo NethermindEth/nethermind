@@ -27,7 +27,11 @@ internal static class CpuSampler
             new(ClrTraceEventParser.ProviderName, EventLevel.Informational, RuntimeKeywords),
         ], duration, output, cancellationToken);
 
+    /// <summary>How long stopping a session and receiving the rest of its events, the rundown included, may take before the target is given up on.</summary>
+    internal static TimeSpan StopTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
     /// <summary>Records the providers' events, with the rundown that names JIT-compiled methods, to a <c>.nettrace</c> file.</summary>
+    /// <exception cref="TimeoutException">The target did not finish the session within <see cref="StopTimeout"/>, as when it stopped responding.</exception>
     public static async Task RecordAsync(int pid, IReadOnlyList<EventPipeProvider> providers, TimeSpan duration, string output, CancellationToken cancellationToken)
     {
         DiagnosticsClient client = new(pid);
@@ -41,20 +45,22 @@ internal static class CpuSampler
         finally
         {
             // Stopping triggers the rundown that names the JIT-compiled methods, so it is needed even after cancellation.
+            using CancellationTokenSource stopping = new(StopTimeout);
             try
             {
-                await session.StopAsync(CancellationToken.None);
+                await session.StopAsync(stopping.Token);
+                await copy.WaitAsync(stopping.Token);
             }
-            catch
+            catch (Exception e)
             {
                 // A session that was not stopped keeps its stream open while the target runs, so the copy would never end; disposing
                 // the session closes the stream. The file is disposed on return, so the copy must end first; the stop's error is the cause.
                 session.Dispose();
                 await copy.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                if (e is OperationCanceledException && stopping.IsCancellationRequested)
+                    throw new TimeoutException($"Process {pid} did not finish its EventPipe session within {StopTimeout.TotalSeconds:N0} s of being asked to stop; it may have stopped responding.", e);
                 throw;
             }
-
-            await copy;
         }
     }
 }

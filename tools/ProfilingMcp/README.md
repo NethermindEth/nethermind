@@ -12,7 +12,7 @@ These steps take you from a fresh clone to an AI agent profiling a process. They
 
 | What | Why | Check |
 | --- | --- | --- |
-| [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) | Builds the server; its runtime runs it | `dotnet --version` prints `10.x` |
+| [.NET 11 SDK](https://dotnet.microsoft.com/download/dotnet/11.0) | Builds the server; its runtime runs it | `dotnet --version` prints `11.x` |
 | Git | Gets the source | `git --version` |
 | An MCP client: [Claude Code](https://docs.claude.com/en/docs/claude-code), Claude Desktop, VS Code, Cursor, or any client that starts stdio servers | Runs the agent that calls the tools | |
 | Docker (optional) | Profiling processes in containers | `docker version` shows a server |
@@ -42,7 +42,7 @@ dotnet publish tools/ProfilingMcp/Nethermind.Tools.ProfilingMcp -c Release -o ~/
 
 The install folder now holds:
 
-- `Nethermind.Tools.ProfilingMcp.exe` on Windows, or `Nethermind.Tools.ProfilingMcp` elsewhere: the server, which runs on the .NET 10 runtime installed with the SDK.
+- `Nethermind.Tools.ProfilingMcp.exe` on Windows, or `Nethermind.Tools.ProfilingMcp` elsewhere: the server, which runs on the .NET 11 runtime installed with the SDK.
 - `linux-x64/` and `linux-arm64/`: self-contained Linux builds of the same server, which container profiling runs in a sidecar on engines of that architecture.
 - `sidecar.Dockerfile`: builds the sidecar image when no published one matches.
 
@@ -162,7 +162,7 @@ Then delete the install folder and the data folder (`PROFILING_MCP_HOME`). If yo
 
 | Symptom | Cause and fix |
 | --- | --- |
-| The server shows as failed or not connected | Check that the registered path is absolute and ends in the executable. Run the executable by hand: it should log "Application started" and wait for input (Ctrl+C stops it). An error about a missing framework means the .NET 10 runtime is not installed |
+| The server shows as failed or not connected | Check that the registered path is absolute and ends in the executable. Run the executable by hand: it should log "Application started" and wait for input (Ctrl+C stops it). An error about a missing framework means the .NET 11 runtime is not installed |
 | New tools or fixes do not show up | Clients connect at session start, so start a new session after publishing. Check that the registration points to the folder you published to |
 | `dotnet publish` fails with "the file is locked by" | A running session uses that folder. Publish to a new folder, or close the sessions first |
 | `list_dotnet_processes` misses a process | The process runs as another user (run the agent as that user, or as root or administrator), was started with `DOTNET_EnableDiagnostics=0`, or runs in a container, in which case pass `container` instead |
@@ -193,7 +193,7 @@ The server's instructions describe the intended workflows (CPU hotspots, leaks, 
 
 ## Requirements
 
-- .NET 10 SDK.
+- .NET 11 SDK.
 - EventPipe traces and native stacks are analyzed on any OS.
 - `native_memory` needs Linux and ptrace access to the process, which the sidecar has.
 - `native_sample` needs Linux and `perf`: the sidecar image includes it, and on a Linux host it comes from `linux-perf` or `linux-tools`. Sampling another process needs `CAP_PERFMON` or root, or a `kernel.perf_event_paranoid` of 1 or less.
@@ -221,7 +221,7 @@ What the target needs, and what it doesn't:
 Nothing is copied into the target container. No bind mounts are used, so nothing depends on Docker Desktop's file sharing:
 
 - There is one sidecar per container and sidecar image, `profmcp-<container>-<container id>-<image id>`, shared by all sessions. It is tied to the container's ID, so a container that later takes the target's name gets its own sidecar. Between sessions it stays running for 30 minutes, so the next session connects in about 3 s, then stops itself; `PROFILING_MCP_SIDECAR_IDLE_MINUTES` changes that. It also ends with its target: recreating or upgrading the target needs nothing more than the next call, which reconnects.
-- The first call for a container on an engine builds the sidecar image, once per server build: `profiling-mcp:<hash>`, from the install's Linux build for the engine's architecture and `sidecar.Dockerfile`, on .NET's `mcr.microsoft.com/dotnet/runtime-deps:10.0` image. It is never built on the target's image: when the engine cannot pull `runtime-deps`, pull it there by hand or set `PROFILING_MCP_SIDECAR_IMAGE`. Building sends about 70 MB to the engine and installs `perf` from the base image's package repository, so it needs network access; a failed `perf` install fails the build, and on a base without `apt` the image is built without `perf`. Set `PROFILING_MCP_SIDECAR_IMAGE` to use another image instead. Old images can be removed with `docker image rm`.
+- The first call for a container on an engine builds the sidecar image, once per server build: `profiling-mcp:<hash>`, from the install's Linux build for the engine's architecture and `sidecar.Dockerfile`, on .NET's `mcr.microsoft.com/dotnet/runtime-deps:11.0` image. It is never built on the target's image: when the engine cannot pull `runtime-deps`, pull it there by hand or set `PROFILING_MCP_SIDECAR_IMAGE`. Building sends about 70 MB to the engine and installs `perf` from the base image's package repository, so it needs network access; a failed `perf` install fails the build, and on a base without `apt` the image is built without `perf`. Set `PROFILING_MCP_SIDECAR_IMAGE` to use another image instead. Old images can be removed with `docker image rm`.
 - Traces, reports, heap statistics and dumps go to a `profmcp-home-<container>` volume and are kept across sessions until the volume is removed with `docker volume rm profmcp-home-<container>` (stop the sidecar first). `cpu_sample`, `alloc_sample` and `trace_report` give the `docker cp` command that copies their file to this machine. A dump is first written to the target's temp folder, then moved into the volume; it is as large as the target's memory and needs that much free disk in both places.
 
 Verified against a hoodi node on `nethermindeth/nethermind:master` (.NET 10.0.14), and on a separate Docker engine against targets running as root, as an unprivileged user, and with a custom `TMPDIR`. Things that differ from a local Windows process:

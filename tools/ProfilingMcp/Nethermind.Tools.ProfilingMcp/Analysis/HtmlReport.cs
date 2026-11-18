@@ -30,7 +30,8 @@ internal static class HtmlReport
         }
 
         using MemoryStream body = new();
-        using (Utf8JsonWriter json = new(body))
+        // Every level of the tree nests two arrays (WriteNode), under the root object and the synthetic root node.
+        using (Utf8JsonWriter json = new(body, new JsonWriterOptions { MaxDepth = 2 * (Native.FoldedStacks.MaxFrames + 1) + 8 }))
         {
             json.WriteStartObject();
             json.WriteString("snapshot", snapshot);

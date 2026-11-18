@@ -54,7 +54,7 @@ public sealed class MemoryTools(WorkspacePaths paths)
         sb.Append('\n');
 
         Regex? filter = ToolArguments.OptionalPattern(include);
-        TextTable table = new("bytes", "% heap", "count", "LOH bytes", "type");
+        TextTable table = new("bytes", "% heap", "count", "in objects >= 85,000 B", "type");
         int shown = 0;
         foreach (TypeStat type in snapshot.Types)
         {
@@ -262,7 +262,10 @@ public sealed class MemoryTools(WorkspacePaths paths)
         string inTarget = Path.Combine(Path.GetTempPath(), Path.GetFileName(path));
         try
         {
-            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, inTarget[ContainerSidecar.TargetRoot.Length..], logDumpGeneration: false, cancellationToken);
+            // Cancelling the request would only stop waiting: the runtime goes on and creates the file later, after it was deleted here,
+            // leaving a dump as large as the process in the target's file system. So the dump is waited for, then removed when cancelled.
+            await new DiagnosticsClient(pid).WriteDumpAsync(DumpType.WithHeap, inTarget[ContainerSidecar.TargetRoot.Length..], logDumpGeneration: false, CancellationToken.None);
+            cancellationToken.ThrowIfCancellationRequested();
             File.Move(inTarget, path);
         }
         finally

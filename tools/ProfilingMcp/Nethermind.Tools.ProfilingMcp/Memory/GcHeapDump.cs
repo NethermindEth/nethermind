@@ -34,11 +34,10 @@ internal sealed record GcHeapDumpResult(HeapSnapshot Snapshot, HeapGraph? Graph,
 /// <remarks>
 /// Enabling the heap-dump keywords makes the runtime run a full blocking GC and report every object that survives it with its type,
 /// size and references. Unlike reading the process's memory with ClrMD it needs no ptrace, so it works in containers, and the process
-/// is paused only for that GC. The events carry no field names or generations: objects of at least 85,000 bytes are counted as LOH.
+/// is paused only for that GC. The events carry no field names or generations, so large objects are told by size (<see cref="TypeStat.LargeObjectBytes"/>).
 /// </remarks>
 internal static class GcHeapDump
 {
-    private const int LargeObjectThreshold = 85_000;
 
     /// <summary>Same size as <c>dotnet-gcdump</c>'s; the events of a heap of a few GB pass through it while the reader keeps up.</summary>
     private const int BufferMB = 256;
@@ -249,7 +248,7 @@ internal static class GcHeapDump
                     int type = TypeIndex(node.TypeID);
                     long size = (long)node.Size;
                     (long count, long bytes, long largeBytes) = _typeStats[type];
-                    _typeStats[type] = (count + 1, bytes + size, largeBytes + (size >= LargeObjectThreshold ? size : 0));
+                    _typeStats[type] = (count + 1, bytes + size, largeBytes + (size >= HeapSnapshot.LargeObjectSize ? size : 0));
                     _objects++;
 
                     if (!withReferences)

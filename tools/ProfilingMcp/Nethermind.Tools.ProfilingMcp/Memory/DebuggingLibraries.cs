@@ -54,12 +54,15 @@ internal static partial class DebuggingLibraries
         "done | sort -u";
 
     /// <summary>Run on the host: copies the DACs for every .NET runtime the target's processes have loaded into the sidecar, downloading them once.</summary>
+    /// <returns>The runtimes whose DAC could not be supplied and why, or null when every one was.</returns>
     /// <remarks>
     /// Nothing is supplied for a runtime the sidecar's own DAC serves, nor for a musl one, whose DAC the glibc sidecar cannot load; the tools
     /// report that themselves when they need it. A DAC is copied under a temporary name and renamed, so an interrupted copy is never taken for one.
+    /// One runtime's DAC failing to download does not stop the others: the call may need only one of them.
     /// </remarks>
-    public static async Task ProvideAsync(string[] engine, string sidecar, string architecture, string cacheRoot, CancellationToken cancellationToken)
+    public static async Task<string?> ProvideAsync(string[] engine, string sidecar, string architecture, string cacheRoot, CancellationToken cancellationToken)
     {
+        List<string> problems = [];
         string? own = null;
         foreach ((string path, bool musl) in ParseRuntimes(await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "sh", "-c", RuntimesScript], cancellationToken)))
         {
@@ -71,19 +74,33 @@ internal static partial class DebuggingLibraries
             if (version == own || await ContainerSidecar.SucceedsAsync(engine, ["exec", sidecar, "test", "-f", $"{target}/{Dac}"], cancellationToken))
                 continue;
 
-            string local = await DownloadAsync(rid, version, cacheRoot, cancellationToken);
-            string partial = $"{target}/{Dac}.{Guid.NewGuid():N}.partial";
-            await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "mkdir", "-p", target], cancellationToken);
             try
             {
-                await ContainerSidecar.DockerAsync(engine, ["cp", local, $"{sidecar}:{partial}"], cancellationToken);
-                await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "mv", "-f", partial, $"{target}/{Dac}"], cancellationToken);
+                await SupplyAsync(engine, sidecar, rid, version, target, cacheRoot, cancellationToken);
             }
-            catch
+            catch (Exception e) when (e is not OperationCanceledException)
             {
-                await ContainerSidecar.SucceedsAsync(engine, "exec", sidecar, "rm", "-f", partial);
-                throw;
+                problems.Add($".NET {version}: {e.Message}");
             }
+        }
+
+        return problems.Count == 0 ? null : string.Join("; ", problems);
+    }
+
+    private static async Task SupplyAsync(string[] engine, string sidecar, string rid, string version, string target, string cacheRoot, CancellationToken cancellationToken)
+    {
+        string local = await DownloadAsync(rid, version, cacheRoot, cancellationToken);
+        string partial = $"{target}/{Dac}.{Guid.NewGuid():N}.partial";
+        await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "mkdir", "-p", target], cancellationToken);
+        try
+        {
+            await ContainerSidecar.DockerAsync(engine, ["cp", local, $"{sidecar}:{partial}"], cancellationToken);
+            await ContainerSidecar.DockerAsync(engine, ["exec", sidecar, "mv", "-f", partial, $"{target}/{Dac}"], cancellationToken);
+        }
+        catch
+        {
+            await ContainerSidecar.SucceedsAsync(engine, "exec", sidecar, "rm", "-f", partial);
+            throw;
         }
     }
 

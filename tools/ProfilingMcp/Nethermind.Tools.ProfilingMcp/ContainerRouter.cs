@@ -37,7 +37,7 @@ internal sealed class ContainerRouter : IAsyncDisposable
 
     private readonly ConcurrentDictionary<(string? DockerHost, string Container), Lazy<Task<McpClient>>> _sidecars = new();
     private readonly Func<string?, string, Task<McpClient>> _start;
-    private readonly Func<string?, string, CancellationToken, Task> _provideDebuggingLibraries;
+    private readonly Func<string?, string, CancellationToken, Task<string?>> _provideDebuggingLibraries;
     private readonly Func<string?, string, Task<string>> _identify;
 
     public ContainerRouter() : this(ContainerSidecar.StartAsync, ContainerSidecar.ProvideDebuggingLibrariesAsync, ContainerSidecar.ContainerIdAsync)
@@ -45,15 +45,15 @@ internal sealed class ContainerRouter : IAsyncDisposable
     }
 
     /// <param name="start">Starts a sidecar for an engine and container and connects to it.</param>
-    /// <param name="provideDebuggingLibraries">Supplies a sidecar with the trusted DACs ClrMD needs for its target.</param>
+    /// <param name="provideDebuggingLibraries">Supplies a sidecar with the trusted DACs ClrMD needs for its target, returning the ones it could not supply.</param>
     /// <param name="identify">Resolves a container given by name or ID to its full ID.</param>
     internal ContainerRouter(
         Func<string?, string, Task<McpClient>> start,
-        Func<string?, string, CancellationToken, Task>? provideDebuggingLibraries = null,
+        Func<string?, string, CancellationToken, Task<string?>>? provideDebuggingLibraries = null,
         Func<string?, string, Task<string>>? identify = null)
     {
         _start = start;
-        _provideDebuggingLibraries = provideDebuggingLibraries ?? (static (_, _, _) => Task.CompletedTask);
+        _provideDebuggingLibraries = provideDebuggingLibraries ?? (static (_, _, _) => Task.FromResult<string?>(null));
         _identify = identify ?? (static (_, container) => Task.FromResult(container));
     }
 
@@ -95,24 +95,24 @@ internal sealed class ContainerRouter : IAsyncDisposable
             try
             {
                 McpClient client = await sidecar.Value.WaitAsync(cancellationToken);
-                string? warning = null;
+                bool dump = call.Name == "write_dump";
+                string? unsupplied = null;
                 if (DebuggingLibraries.AreNeededBy(call.Name, arguments))
                 {
                     try
                     {
-                        await _provideDebuggingLibraries(dockerHost, key.Item2, cancellationToken);
+                        unsupplied = await _provideDebuggingLibraries(dockerHost, key.Item2, cancellationToken);
                     }
-                    catch (Exception e) when (call.Name == "write_dump" && e is not OperationCanceledException)
+                    catch (Exception e) when (dump && e is not OperationCanceledException)
                     {
                         // A dump cannot be taken again later, so it is written anyway; the DAC is supplied again when the dump is read.
-                        warning = $"WARNING: the debugging library (DAC) for reading this dump could not be supplied ({e.Message}). " +
-                                  "The dump is written; reading it needs the DAC, which is supplied again then, but only while a process of the same .NET version runs.";
+                        unsupplied = e.Message;
                     }
                 }
 
                 CallToolResult result = await client.CallToolAsync(new CallToolRequestParams { Name = call.Name, Arguments = arguments }, cancellationToken);
-                if (warning is not null)
-                    result.Content.Add(new TextContentBlock { Text = warning });
+                if (unsupplied is not null && !(dump && result.IsError == true))
+                    result.Content.Add(new TextContentBlock { Text = DacWarning(unsupplied, dump) });
                 return result;
             }
             catch (Exception e) when (e is not OperationCanceledException && IsGone(sidecar.Value))
@@ -122,6 +122,12 @@ internal sealed class ContainerRouter : IAsyncDisposable
                 throw;
             }
         };
+
+    private static string DacWarning(string unsupplied, bool dump) =>
+        $"WARNING: the debugging library (DAC) could not be supplied for some of the container's .NET runtimes ({unsupplied}). " +
+        (dump
+            ? "The dump is written; reading it needs the DAC for the dumped process's runtime, which is supplied again then, but only while a process of that .NET version runs."
+            : "Processes and dumps on those versions cannot be analyzed with ClrMD.");
 
     /// <summary>Returns the sidecar for a target, replacing one known to be gone, such as after its target restarted, before it fails a call.</summary>
     internal async Task<Lazy<Task<McpClient>>> LiveSidecarAsync((string? DockerHost, string Container) key)

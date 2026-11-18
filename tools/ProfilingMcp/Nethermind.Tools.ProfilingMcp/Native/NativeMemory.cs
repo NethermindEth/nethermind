@@ -12,7 +12,9 @@ namespace Nethermind.Tools.ProfilingMcp.Native;
 /// <summary>One mapping of a process's address space, from <c>/proc/&lt;pid&gt;/smaps</c>, with its resident and swapped-out bytes.</summary>
 public sealed record Mapping(ulong Start, ulong End, string Permissions, string Name, long Rss, long Swap)
 {
-    public bool IsAnonymous => Name.Length == 0;
+    /// <summary>Whether the mapping is anonymous memory: unnamed, or named by the process with <c>prctl(PR_SET_VMA_ANON_NAME)</c>,
+    /// which <c>smaps</c> shows as <c>[anon:name]</c> or <c>[anon_shmem:name]</c> (glibc names its malloc arenas so when asked to).</summary>
+    public bool IsAnonymous => Name.Length == 0 || Name.StartsWith("[anon:", StringComparison.Ordinal) || Name.StartsWith("[anon_shmem:", StringComparison.Ordinal);
 }
 
 /// <summary>A labelled address range: a GC region, a runtime heap or a thread's stack.</summary>
@@ -153,7 +155,7 @@ public static class NativeMemory
     }
 
     private static string Describe(Mapping mapping) =>
-        $"mapping at {mapping.Start:x}, {(mapping.End - mapping.Start) / (1024.0 * 1024):N1} MB";
+        $"{(mapping.Name.Length == 0 ? "mapping" : mapping.Name)} at {mapping.Start:x}, {(mapping.End - mapping.Start) / (1024.0 * 1024):N1} MB";
 
     /// <summary>Bytes of <paramref name="mapping"/> in each label and detail, counting each byte once.</summary>
     private static Dictionary<(string Label, string? Detail), ulong> Overlaps(Mapping mapping, KnownRange[] sortedRanges)

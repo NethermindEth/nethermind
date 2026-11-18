@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using Microsoft.Diagnostics.NETCore.Client;
 using Nethermind.Tools.ProfilingMcp.Analysis;
@@ -68,6 +70,46 @@ public class LiveEventPipeTests
         {
             if (File.Exists(moved))
                 File.Move(moved, socket);
+        }
+    }
+
+    [Test]
+    [CancelAfter(120_000)]
+    public async Task Cpu_sample_gives_up_on_a_target_that_stops_responding(CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsLinux())
+            Assert.Ignore("Stopping a process with SIGSTOP needs Linux.");
+
+        // The server's sidecar mode with no idle limit is a .NET process that does nothing at all.
+        string server = Path.Combine(AppContext.BaseDirectory, "Nethermind.Tools.ProfilingMcp");
+        ProcessStartInfo info = new(server, ContainerSidecar.IdleOption) { UseShellExecute = false };
+        info.Environment[ContainerSidecar.IdleMinutesVariable] = "0";
+        using Process target = Process.Start(info)!;
+        TimeSpan stopTimeout = CpuSampler.StopTimeout;
+        try
+        {
+            while (!DiagnosticsClient.GetPublishedProcesses().Contains(target.Id))
+                await Task.Delay(100, cancellationToken);
+
+            CpuSampler.StopTimeout = TimeSpan.FromSeconds(3);
+            Task sample = CpuSampler.CollectAsync(target.Id, TimeSpan.FromSeconds(2), _trace, cancellationToken);
+            while (!File.Exists(_trace) || new FileInfo(_trace).Length == 0)
+                await Task.Delay(50, cancellationToken);
+            await Signal("STOP", target.Id);
+
+            Assert.That(async () => await sample.WaitAsync(TimeSpan.FromSeconds(30), cancellationToken), Throws.InstanceOf<TimeoutException>().With.Message.Contains("did not finish"));
+        }
+        finally
+        {
+            CpuSampler.StopTimeout = stopTimeout;
+            await Signal("CONT", target.Id);
+            target.Kill();
+        }
+
+        static async Task Signal(string signal, int pid)
+        {
+            using Process kill = Process.Start("kill", [$"-{signal}", pid.ToString(CultureInfo.InvariantCulture)])!;
+            await kill.WaitForExitAsync();
         }
     }
 

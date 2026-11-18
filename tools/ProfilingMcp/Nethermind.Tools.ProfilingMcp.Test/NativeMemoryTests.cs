@@ -62,6 +62,26 @@ public class NativeMemoryTests
     }
 
     [Test]
+    public void Counts_named_anonymous_mappings_as_anonymous_memory()
+    {
+        IReadOnlyList<Mapping> mappings = NativeMemory.ParseSmaps(
+        [
+            "7f0004000000-7f0004100000 rw-p 00000000 00:00 0                          [anon: glibc: malloc arena]",
+            "Rss:                1024 kB",
+            "7f0000200000-7f0000300000 rw-s 00000000 00:01 9                          [anon_shmem:ring]",
+            "Rss:                 512 kB",
+        ]);
+
+        MemoryShare[] shares = [.. NativeMemory.Attribute(mappings, [])];
+
+        Assert.That(shares.Select(static s => (s.Category, s.Item)), Is.EqualTo(new[]
+        {
+            (NativeMemory.MallocArenas, "[anon: glibc: malloc arena] at 7f0004000000, 1.0 MB"),
+            (NativeMemory.OtherAnonymous, "[anon_shmem:ring] at 7f0000200000, 1.0 MB"),
+        }));
+    }
+
+    [Test]
     public void Names_items_by_file_known_range_detail_or_mapping()
     {
         KnownRange[] known = [new(0x7f0000200000, 0x7f0000300000, NativeMemory.ThreadStacks, "thread worker (42)")];
