@@ -35,6 +35,7 @@ public class SnapBlockAccessListsServingBenchmark
     private IContainer _container = null!;
     private ISnapServer _server = null!;
     private ValueHash256[][] _requests = null!;
+    private ValueHash256[] _unknownRequest = null!;
     private int _nextRequest;
 
     [Params(2_000, 30_000, 131_072)]
@@ -81,6 +82,12 @@ public class SnapBlockAccessListsServingBenchmark
             _requests[i] = hashes[(i * RequestedBlocks)..((i + 1) * RequestedBlocks)];
         }
 
+        _unknownRequest = new ValueHash256[RequestedBlocks];
+        for (int i = 0; i < RequestedBlocks; i++)
+        {
+            _unknownRequest[i] = Keccak.Compute(BitConverter.GetBytes(-1 - i)).ValueHash256;
+        }
+
         _server = _container.Resolve<ISnapServer>();
         using IByteArrayList lists = _server.GetBlockAccessLists(_requests[0], ByteLimit, CancellationToken.None);
         if (lists.Count == 0 || lists[0].Length == 0) throw new InvalidOperationException("No access list was served.");
@@ -91,6 +98,13 @@ public class SnapBlockAccessListsServingBenchmark
     {
         ValueHash256[] request = _requests[(uint)Interlocked.Increment(ref _nextRequest) % (uint)_requests.Length];
         using IByteArrayList lists = _server.GetBlockAccessLists(request, ByteLimit, CancellationToken.None);
+        return lists.Count;
+    }
+
+    [Benchmark]
+    public int ServeUnknownBlockAccessLists()
+    {
+        using IByteArrayList lists = _server.GetBlockAccessLists(_unknownRequest, ByteLimit, CancellationToken.None);
         return lists.Count;
     }
 

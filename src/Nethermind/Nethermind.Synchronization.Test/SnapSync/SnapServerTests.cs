@@ -282,6 +282,29 @@ public class SnapServerTests
         }
     }
 
+    [Test]
+    public void GetBlockAccessLists_split_batch_reads_no_list_past_the_batch()
+    {
+        // Batches of 1, 1 and 2 lists stop after the fourth list. The cap splits the third batch after the 1,000-byte
+        // list, and the larger mean after it must not pull the 200,000-byte list into the rest of that batch.
+        int[] sizes = [70_000, 70_000, 1_000, 60_000, 200_000];
+        List<ValueHash256> request = [];
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            Hash256 hash = Keccak.Compute(BitConverter.GetBytes(i));
+            GivenBlock(hash, (ulong)i, new byte[sizes[i]]);
+            request.Add(hash.ValueHash256);
+        }
+
+        using IByteArrayList result = _server.GetBlockAccessLists(request, 200_000, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(4));
+            Assert.That(_balDb.Reads, Is.EqualTo(4));
+        }
+    }
+
     private sealed class ReadCountingDb : TestMemDb
     {
         public int Reads { get; private set; }
