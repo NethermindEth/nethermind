@@ -28,7 +28,7 @@ public interface IKeyStoreConfig : IConfig
     [ConfigItem(Description = "The derived key length for new key files, in bytes. Must be `32`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
     int KdfparamsDklen { get; set; }
 
-    [ConfigItem(Description = "The scrypt CPU and memory cost (`n`) for new key files. Must be a power of two. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "262144")]
+    [ConfigItem(Description = "The scrypt CPU and memory cost (`n`) for new key files. Must be a power of two greater than `1`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "262144")]
     int KdfparamsN { get; set; }
 
     [ConfigItem(Description = "The scrypt parallelization (`p`) for new key files. Must be at least `1`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "1")]

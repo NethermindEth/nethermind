@@ -59,12 +59,13 @@ namespace Nethermind.KeyStore
         private const string Aes128Ctr = "aes-128-ctr";
         private const string Aes128Cbc = "aes-128-cbc";
 
-        // The MAC is taken from the last 16 derived bytes; the Web3 Secret Storage definition takes bytes 16..31.
-        // The two agree only at 32, so that is the only length new key files are written with.
+        // New key files take the MAC key from the last 16 derived bytes; the Web3 Secret Storage definition takes bytes
+        // 16..31. The two agree only at 32, so that is the only length new key files are written with.
         private const int WriteDkLen = 32;
         private const int MinWriteSaltLength = 16;
-        // Reading needs derived bytes 0..15 for the cipher key and the last 16 for the MAC.
+        // Reading needs derived bytes 0..15 for the cipher key and 16 bytes for the MAC key (see IsMacValid).
         private const int MinReadDkLen = 16;
+        private const int MacKeyLength = 16;
 
         private readonly PrivateKeyGenerator _privateKeyGenerator;
         private readonly IKeyStoreConfig _config;
@@ -155,9 +156,9 @@ namespace Nethermind.KeyStore
             {
                 case Scrypt:
                     if (kdfParams.N is not int n || kdfParams.R is not int r || kdfParams.P is not int p
-                        || !int.IsPow2(n) || r <= 0 || p <= 0)
+                        || !IsValidScryptN(n) || r <= 0 || p <= 0)
                     {
-                        return (null, Result.Fail("Incorrect key: scrypt requires a power-of-two n and positive r and p"));
+                        return (null, Result.Fail("Incorrect key: scrypt requires a power-of-two n above 1 and positive r and p"));
                     }
 
                     // ComputeDerivedKey uses too little stack size in case of multithread processing, which may cause stack overflow.
@@ -176,10 +177,7 @@ namespace Nethermind.KeyStore
                     return (null, Result.Fail($"Unsupported algorithm: {kdf}"));
             }
 
-            // The definition takes the MAC key from bytes 16..31. The last 16 bytes are the same at dklen 32 and also
-            // match the key files Nethermind wrote with another dklen, so those stay readable.
-            Span<byte> restoredMac = Keccak.Compute(derivedKey.Slice(dkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
-            if (!CryptographicOperations.FixedTimeEquals(mac, restoredMac))
+            if (!IsMacValid(mac, derivedKey, cipher))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
@@ -396,6 +394,41 @@ namespace Nethermind.KeyStore
 
         private static string? ToCanonicalName(string? name) => name?.Trim().ToLowerInvariant();
 
+        // Scrypt needs a cost above 1.
+        private static bool IsValidScryptN(int n) => n > 1 && int.IsPow2(n);
+
+        // Accepts the MAC key of the Web3 Secret Storage definition, derived bytes 16..31, and, for a dklen other than 32,
+        // the last 16 derived bytes, which Nethermind key files with such a dklen use.
+        private static bool IsMacValid(ReadOnlySpan<byte> mac, ReadOnlySpan<byte> derivedKey, ReadOnlySpan<byte> cipher)
+        {
+            int length = MacKeyLength + cipher.Length;
+            Span<byte> macBody = length <= 256 ? stackalloc byte[length] : new byte[length];
+            cipher.CopyTo(macBody[MacKeyLength..]);
+
+            if (derivedKey.Length >= 2 * MacKeyLength)
+            {
+                derivedKey.Slice(MacKeyLength, MacKeyLength).CopyTo(macBody);
+                if (MacMatches(mac, macBody))
+                {
+                    return true;
+                }
+
+                if (derivedKey.Length == 2 * MacKeyLength)
+                {
+                    return false;
+                }
+            }
+
+            derivedKey[^MacKeyLength..].CopyTo(macBody);
+            return MacMatches(mac, macBody);
+
+            static bool MacMatches(ReadOnlySpan<byte> mac, ReadOnlySpan<byte> macBody)
+            {
+                ValueHash256 restoredMac = ValueKeccak.Compute(macBody);
+                return CryptographicOperations.FixedTimeEquals(mac, restoredMac.Bytes);
+            }
+        }
+
         /// <summary>Rejects settings that new key files cannot be written with.</summary>
         /// <remarks>
         /// Checked on every write rather than at startup, so settings that only affect writing do not stop a node from
@@ -425,9 +458,9 @@ namespace Nethermind.KeyStore
             }
 
             // The same rules as for reading a scrypt key file.
-            if (!int.IsPow2(n))
+            if (!IsValidScryptN(n))
             {
-                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsN), n, "use a power of two");
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsN), n, "use a power of two greater than 1");
             }
 
             if (r <= 0)

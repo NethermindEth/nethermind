@@ -438,6 +438,7 @@ public class KeyStoreTests
     [TestCase(nameof(IKeyStoreConfig.KdfparamsSaltLen), 15)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 3)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 0)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 1)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsR), 0)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsP), 0)]
     public void Unsupported_write_settings_throw_before_anything_is_written(string setting, object value)
@@ -489,12 +490,13 @@ public class KeyStoreTests
 
         // Below the limits for new key files, which do not apply to reading.
         yield return new TestCaseData(ScryptKeyFile("scrypt", salt[..8], 64)).SetArgDisplayNames("scrypt with an 8-byte salt and dklen 64");
+        yield return new TestCaseData(ScryptKeyFile("scrypt", salt, 64, definitionMac: true)).SetArgDisplayNames("scrypt with dklen 64 and the definition's MAC");
         yield return new TestCaseData(ScryptKeyFile("scrypt", salt, 16)).SetArgDisplayNames("scrypt with dklen 16");
         yield return new TestCaseData(ScryptKeyFile("Scrypt", salt, 32)).SetArgDisplayNames("scrypt named Scrypt");
 
-        KeyStoreItem ScryptKeyFile(string kdf, byte[] kdfSalt, int dkLen) => BuildKeyFile(
+        KeyStoreItem ScryptKeyFile(string kdf, byte[] kdfSalt, int dkLen, bool definitionMac = false) => BuildKeyFile(
             kdf, new KdfParams { N = 1024, R = 8, P = 1, DkLen = dkLen, Salt = kdfSalt.ToHexString() },
-            SCrypt.ComputeDerivedKey(password, kdfSalt, 1024, 8, 1, null, dkLen));
+            SCrypt.ComputeDerivedKey(password, kdfSalt, 1024, 8, 1, null, dkLen), definitionMac);
     }
 
     [TestCaseSource(nameof(ReadableKeyFiles))]
@@ -513,10 +515,11 @@ public class KeyStoreTests
     {
         yield return Case("pbkdf2 without c", static crypto => crypto.KDFParams.C = null, "Incorrect key: pbkdf2 requires a positive c");
         yield return Case("pbkdf2 with c 0", static crypto => crypto.KDFParams.C = 0, "Incorrect key: pbkdf2 requires a positive c");
-        const string invalidScrypt = "Incorrect key: scrypt requires a power-of-two n and positive r and p";
+        const string invalidScrypt = "Incorrect key: scrypt requires a power-of-two n above 1 and positive r and p";
         yield return Case("scrypt without n, r and p", static crypto => crypto.KDF = "scrypt", invalidScrypt);
         yield return Case("scrypt with n 3", Scrypt(3, 8, 1), invalidScrypt);
         yield return Case("scrypt with n 0", Scrypt(0, 8, 1), invalidScrypt);
+        yield return Case("scrypt with n 1", Scrypt(1, 8, 1), invalidScrypt);
         yield return Case("scrypt with r 0", Scrypt(1024, 0, 1), invalidScrypt);
         yield return Case("scrypt with p 0", Scrypt(1024, 8, 0), invalidScrypt);
         yield return Case("dklen 15", static crypto => crypto.KDFParams.DkLen = 15, "Unsupported dklen: 15");
@@ -588,11 +591,14 @@ public class KeyStoreTests
 
     private static KeyStoreItem Parse(string json) => new EthereumJsonSerializer().Deserialize<KeyStoreItem>(json);
 
-    /// <summary>Builds a key file for the vector key as the store reads one: AES-128-CTR under derived bytes 0..15, MAC over the last 16.</summary>
-    private static KeyStoreItem BuildKeyFile(string kdf, KdfParams kdfParams, byte[] derivedKey)
+    /// <summary>
+    /// Builds a key file for the vector key: AES-128-CTR under derived bytes 0..15, MAC keyed by the last 16 derived bytes,
+    /// or by bytes 16..31 as in the definition when <paramref name="definitionMac"/> is set.
+    /// </summary>
+    private static KeyStoreItem BuildKeyFile(string kdf, KdfParams kdfParams, byte[] derivedKey, bool definitionMac = false)
     {
         byte[] cipherText = new AesEncrypter(new KeyStoreConfig(), LimboLogs.Instance).Encrypt(Bytes.FromHexString(VectorKey), derivedKey[..16], Bytes.FromHexString(VectorIv), "aes-128-ctr");
-        byte[] macBody = [.. derivedKey[^16..], .. cipherText];
+        byte[] macBody = [.. definitionMac ? derivedKey[16..32] : derivedKey[^16..], .. cipherText];
         return new KeyStoreItem
         {
             Version = 3,
