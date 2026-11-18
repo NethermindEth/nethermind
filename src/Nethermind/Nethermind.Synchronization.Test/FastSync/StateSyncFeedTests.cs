@@ -442,6 +442,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 #pragma warning restore NUnit2045
 
             Assert.That(ctx.Feed.HandleResponse(request, new PeerInfo(Substitute.For<ISyncPeer>())), Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+            DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
+            Assert.That((data.NotAssignedCount, data.NoResponseCount), Is.EqualTo((0L, 1L)));
         }
 
         [Test]
@@ -462,6 +464,8 @@ namespace Nethermind.Synchronization.Test.FastSync
 #pragma warning restore NUnit2045
 
             Assert.That(ctx.Feed.HandleResponse(request, peer: null), Is.EqualTo(SyncResponseHandlingResult.NotAssigned));
+            DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
+            Assert.That((data.NotAssignedCount, data.NoResponseCount), Is.EqualTo((1L, 0L)));
         }
 
         [Test]

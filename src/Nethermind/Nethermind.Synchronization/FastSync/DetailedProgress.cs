@@ -38,11 +38,12 @@ namespace Nethermind.Synchronization.FastSync
         internal long OkCount;
         internal long BadQualityCount;
         internal long NotAssignedCount;
+        internal long NoResponseCount;
         internal long DataSize;
 
         private string? _lastStateSyncReport;
 
-        private long TotalRequestsCount => EmptishCount + InvalidFormatCount + BadQualityCount + OkCount + NotAssignedCount;
+        private long TotalRequestsCount => EmptishCount + InvalidFormatCount + BadQualityCount + OkCount + NotAssignedCount + NoResponseCount;
         public long ProcessedRequestsCount => EmptishCount + BadQualityCount + OkCount;
 
         internal (DateTime small, DateTime full) LastReportTime = (DateTime.MinValue, DateTime.MinValue);
@@ -104,7 +105,7 @@ namespace Nethermind.Synchronization.FastSync
                 if (logger.IsDebug && DateTime.UtcNow - LastReportTime.full > TimeSpan.FromSeconds(100))
                 {
                     long allChecks = CheckWasInDependencies + CheckWasCached + StateWasThere + StateWasNotThere;
-                    if (logger.IsDebug) logger.Debug($"OK {(decimal)OkCount / TotalRequestsCount:p2} | Emptish: {(decimal)EmptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal)BadQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal)InvalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal)NotAssignedCount / TotalRequestsCount:p2}");
+                    if (logger.IsDebug) logger.Debug($"OK {(decimal)OkCount / TotalRequestsCount:p2} | Emptish: {(decimal)EmptishCount / TotalRequestsCount:p2} | BadQuality: {(decimal)BadQualityCount / TotalRequestsCount:p2} | InvalidFormat: {(decimal)InvalidFormatCount / TotalRequestsCount:p2} | NotAssigned {(decimal)NotAssignedCount / TotalRequestsCount:p2} | NoResponse {(decimal)NoResponseCount / TotalRequestsCount:p2}");
                     if (RequestedNodesCount > 0)
                     {
                         decimal consumedRatio = (decimal)ConsumedNodesCount / RequestedNodesCount;
