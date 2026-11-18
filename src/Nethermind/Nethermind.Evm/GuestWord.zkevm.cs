@@ -292,9 +292,10 @@ internal static unsafe class GuestWord
 
     /// <summary>Stores the stack word that ends at <paramref name="end"/>, in limb layout, big-endian to the 32 bytes at <paramref name="destination"/>.</summary>
     /// <remarks>
-    /// The store counterpart of <see cref="LoadBigEndian"/>. Where <see cref="StrictAlignmentFlag"/> or <see cref="OpenVmFlag"/> is on, each limb is
-    /// loaded, swapped and stored before the next, so the four limbs are not live at once. The word is addressed from the
-    /// slot above it, which the MSTORE handlers hold, so the JIT folds the limbs' offsets into the loads.
+    /// The store counterpart of <see cref="LoadBigEndian"/>. Where <see cref="StrictAlignmentFlag"/> or
+    /// <see cref="OpenVmFlag"/> is on, each limb is loaded, swapped and stored before the next, so the four limbs are
+    /// not live at once. The word is addressed from the slot above it, which the MSTORE handlers hold, so the JIT folds
+    /// the limbs' offsets into the loads.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void StoreBigEndian(ref byte destination, ref ulong end)
@@ -328,6 +329,7 @@ internal static unsafe class GuestWord
     }
 
     // Separate from their callers so the IL that only SP1 and OpenVM run does not count against their inlining elsewhere.
+    // OpenVM passes them misaligned pointers too, which is sound only while its target emits plain ld/sd for them.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void LoadAlignedBigEndian(ref ulong slot, ulong* words)
     {

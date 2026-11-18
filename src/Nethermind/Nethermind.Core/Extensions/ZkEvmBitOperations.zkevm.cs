@@ -42,7 +42,8 @@ public static partial class ZkEvmBitOperations
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong ReadUInt64BigEndian(ref byte source)
     {
-        if (HasByteReverse || OpenVmFlag.IsActive) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (OpenVmFlag.IsActive) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
         if (IntPtr.Size == sizeof(uint))
         {
             // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.
@@ -64,9 +65,9 @@ public static partial class ZkEvmBitOperations
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void WriteUInt64BigEndian(ref byte destination, ulong value)
     {
-        if (HasByteReverse || OpenVmFlag.IsActive)
+        if (HasByteReverse)
         {
-            Unsafe.WriteUnaligned(ref destination, Bswap64(value));
+            Unsafe.WriteUnaligned(ref destination, BinaryPrimitives.ReverseEndianness(value));
             return;
         }
 
