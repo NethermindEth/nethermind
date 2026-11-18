@@ -56,7 +56,7 @@ namespace Nethermind.JsonRpc
             {
                 lock (_recorderSync)
                 {
-                    if (_currentRecorderFileLength + data.Length > MaxFileLength)
+                    if (_currentRecorderFileLength > 0 && _currentRecorderFileLength + data.Length > MaxFileLength)
                     {
                         CreateNewRecorderFile();
                     }
