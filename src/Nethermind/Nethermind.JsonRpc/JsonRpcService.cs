@@ -659,7 +659,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, in request.IdRef, returnAction)),
 
-            TraceDurationFormatException when isStreaming =>
+            TraceDurationFormatException =>
                 GetErrorResponse(methodName, ErrorCodes.InvalidInput, ex.Message, in request.IdRef, returnAction),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>

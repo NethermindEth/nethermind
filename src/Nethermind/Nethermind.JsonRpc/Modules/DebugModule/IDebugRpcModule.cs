@@ -40,7 +40,7 @@ public interface IDebugRpcModule : IRpcModule
     [JsonRpcMethod(Description = "This method lets you run an eth_call within the context of the given block execution using the final state of parent block as the base. The block can be specified either by hash or by number. It takes the same input object as a eth_call. It returns the same output as debug_traceTransaction."
         + " A non-null `input` takes precedence over `data`."
         + " Blob versioned hashes are decoded as byte arrays; invalid lengths are rejected during Blob transaction conversion, not JSON decoding. For duplicate fields, the last value is used.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null);
+    ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions? options = null);
 
     [JsonRpcMethod(Description = "Returns the full stack trace of the transaction at the given index of the block specified by number, tag or hash. The block that the parameter resolves to is the one traced, so a hash that is not on the canonical chain traces that block rather than the canonical one at the same height.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex, GethTraceOptions options = null);
@@ -60,7 +60,7 @@ public interface IDebugRpcModule : IRpcModule
         [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Similar to debug_traceBlockByHash, but replays a block that has been rejected as invalid and is held in the bad-block store.", IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, GethTraceOptions? options = null);
+    ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> debug_traceBadBlock(Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions? options = null);
 
     [JsonRpcMethod(Description = "Replays a block and returns the world-state root after each transaction in execution order. EIP-4788/EIP-2935 system calls and withdrawals do not produce an entry. Failed transactions still produce a root (geth partial-result semantics). The block must be canonical or in the bad-block store.", IsImplemented = true, IsSharable = false)]
     ResultWrapper<IReadOnlyCollection<Hash256>> debug_intermediateRoots(Hash256 blockHash, GethTraceOptions? options = null);
@@ -128,11 +128,11 @@ public interface IDebugRpcModule : IRpcModule
 
     [JsonRpcMethod(Description = "Writes to a file the full stack trace of all invoked opcodes of the transaction specified (or all transactions if not specified) that was included in the block specified. The parent of the block must be present or it will fail.",
         IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
+    ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "This method is similar to the `debug_standardTraceBlockToFile` method, but can be used to obtain information about a block that has been rejected as invalid.",
         IsImplemented = true, IsSharable = false)]
-    ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
+    ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(GethTraceOptionsConverter))] GethTraceOptions options = null);
 
     /// <summary>
     /// Returns the stored invalid blocks, or writes them as JSON to <paramref name="file"/> when it is given.

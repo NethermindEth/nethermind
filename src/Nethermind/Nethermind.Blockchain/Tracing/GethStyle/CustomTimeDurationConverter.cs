@@ -88,8 +88,36 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 
     private static ParsedTraceDuration Parse(ReadOnlySpan<char> value)
     {
-        if (TryParseGoDuration(value, out TimeSpan result)) return new(result);
-        return new(null, $"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s').", new string(value));
+        if (TryParseGoDuration(value, out TimeSpan result, out DurationError error, out ReadOnlySpan<char> unit)) return new(result);
+        string quoted = Quote(value);
+        string message = error switch
+        {
+            DurationError.MissingUnit => $"time: missing unit in duration {quoted}",
+            DurationError.UnknownUnit => $"time: unknown unit {Quote(unit)} in duration {quoted}",
+            _ => $"time: invalid duration {quoted}"
+        };
+        return new(null, message, new string(value));
+    }
+
+    private enum DurationError { Invalid, MissingUnit, UnknownUnit }
+
+    private static string Quote(ReadOnlySpan<char> value)
+    {
+        Span<byte> bytes = stackalloc byte[MaxInputBytes];
+        int length = Encoding.UTF8.GetBytes(value, bytes);
+        StringBuilder quoted = new(length + 2);
+        quoted.Append('"');
+        foreach (byte b in bytes[..length])
+        {
+            if (b >= 128 || b < 32)
+                quoted.Append("\\x").Append("0123456789abcdef"[b >> 4]).Append("0123456789abcdef"[b & 15]);
+            else
+            {
+                if (b is (byte)'"' or (byte)'\\') quoted.Append('\\');
+                quoted.Append((char)b);
+            }
+        }
+        return quoted.Append('"').ToString();
     }
 
     public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)
@@ -193,9 +221,11 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
     }
 
     // Port of Go's time.ParseDuration — accumulates nanoseconds, then converts to ticks.
-    private static bool TryParseGoDuration(ReadOnlySpan<char> s, out TimeSpan result)
+    private static bool TryParseGoDuration(ReadOnlySpan<char> s, out TimeSpan result, out DurationError error, out ReadOnlySpan<char> unit)
     {
         result = TimeSpan.Zero;
+        error = DurationError.Invalid;
+        unit = default;
 
         if (s.IsEmpty) return false;
 
@@ -209,7 +239,7 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         ulong totalNs = 0;
         while (!s.IsEmpty)
         {
-            if (!TryParseSegment(ref s, out ulong segmentNs)) return false;
+            if (!TryParseSegment(ref s, out ulong segmentNs, out error, out unit)) return false;
             // Check before adding — `ulong` addition would wrap silently past MaxNs.
             if (segmentNs > MaxNs - totalNs) return false;
             totalNs += segmentNs;
@@ -223,9 +253,11 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         return true;
     }
 
-    private static bool TryParseSegment(ref ReadOnlySpan<char> s, out ulong ns)
+    private static bool TryParseSegment(scoped ref ReadOnlySpan<char> s, out ulong ns, out DurationError error, out ReadOnlySpan<char> unit)
     {
         ns = 0;
+        error = DurationError.Invalid;
+        unit = default;
 
         if (!TryTakeInteger(ref s, out ulong v, out bool hasInt)) return false;
 
@@ -240,7 +272,11 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 
         if (!hasInt && !hasFrac) return false;
 
-        if (!TryTakeUnit(ref s, out ulong unitNs)) return false;
+        if (!TryTakeUnit(ref s, out ulong unitNs, out unit))
+        {
+            error = unit.IsEmpty ? DurationError.MissingUnit : DurationError.UnknownUnit;
+            return false;
+        }
 
         if (v > MaxNs / unitNs) return false;
         ns = v * unitNs;
@@ -294,10 +330,11 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
         return taken;
     }
 
-    private static bool TryTakeUnit(ref ReadOnlySpan<char> s, out ulong unitNs)
+    private static bool TryTakeUnit(scoped ref ReadOnlySpan<char> s, out ulong unitNs, out ReadOnlySpan<char> unit)
     {
         int end = s.IndexOfAny(UnitTerminators);
         if (end < 0) end = s.Length;
+        unit = s[..end];
         if (end == 0)
         {
             unitNs = 0;

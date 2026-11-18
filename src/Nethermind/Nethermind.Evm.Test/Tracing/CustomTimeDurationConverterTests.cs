@@ -185,6 +185,24 @@ public class CustomTimeDurationConverterTests
         Assert.That(act, Throws.TypeOf<JsonException>());
     }
 
+    [TestCase("abc", "time: invalid duration \"abc\"")]
+    [TestCase("5", "time: missing unit in duration \"5\"")]
+    [TestCase("00:00:05", "time: unknown unit \":\" in duration \"00:00:05\"")]
+    [TestCase("5x", "time: unknown unit \"x\" in duration \"5x\"")]
+    [TestCase("1.2.3s", "time: missing unit in duration \"1.2.3s\"")]
+    [TestCase("9223372036854775808ns", "time: invalid duration \"9223372036854775808ns\"")]
+    [TestCase("1é", "time: unknown unit \"\\xc3\\xa9\" in duration \"1\\xc3\\xa9\"")]
+    public void invalid_duration_reports_go_parse_error(string text, string expected)
+    {
+        ParsedTraceDuration parsed = CustomTimeDurationConverter.Parse(text);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed.Value, Is.Null);
+            Assert.That(parsed.Error, Is.EqualTo(expected));
+            Assert.That(parsed.RawText, Is.EqualTo(text));
+        }
+    }
+
     [Test]
     public void read_oversized_multibyte_duration_reports_byte_limit()
     {
