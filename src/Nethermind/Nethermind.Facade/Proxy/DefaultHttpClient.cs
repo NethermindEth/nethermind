@@ -15,19 +15,19 @@ namespace Nethermind.Facade.Proxy
     /// <summary>
     /// Sends JSON requests, and sends a request again when it fails before a response arrives.
     /// </summary>
-    /// <param name="attempts">The most sends of one request, the first included; below 1 sends once.</param>
+    /// <param name="retries">The most sends of one request, the first included; below 1 sends once.</param>
     /// <param name="retryDelayMilliseconds">The wait before sending again; below 0 does not wait.</param>
     public class DefaultHttpClient(
         HttpClient client,
         IJsonSerializer jsonSerializer,
         ILogManager logManager,
-        int attempts = 3,
+        int retries = 3,
         int retryDelayMilliseconds = 100) : IHttpClient, IDisposable
     {
         private readonly HttpClient _client = client ?? throw new ArgumentNullException(nameof(client));
         private readonly IJsonSerializer _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
         private readonly ILogger _logger = logManager?.GetClassLogger<DefaultHttpClient>() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly int _attempts = Math.Max(1, attempts);
+        private readonly int _attempts = Math.Max(1, retries);
         private readonly int _retryDelayMilliseconds = Math.Max(0, retryDelayMilliseconds);
 
         public Task<T?> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default)
