@@ -24,6 +24,12 @@ try
         ("passing_run", "engine", new[] { (launch, true), ("test_a", true), (failing, false) }, 0, "Unexpected fails: 0"),
         ("unexpected_failure", "engine", new[] { (launch, true), ("test_a", false) }, 1, "Unexpected fails: 1"),
         ("unexpected_pass", "engine", new[] { (launch, true), (failing, true) }, 1, "Unexpected passes: 1"),
+        ("failed_launch", "rpc-compat", new[] { (launch, false), ("test_a", true) }, 1, "Unexpected fails: 1"),
+        ("listed_launch_pass", "graphql", new[] { (launch, true), ("test_a", true) }, 1, "Unexpected passes: 1"),
+        ("eth_launch_ignored", "eth", new[] { (launch, false), (failing, false) }, 0, "Unexpected fails: 0"),
+        ("snap_launch_ignored", "snap", new[] { (launch, false), (failing, false) }, 0, "Unexpected fails: 0"),
+        ("snap2_launch_ignored", "snap2", new[] { (launch, false), (failing, false) }, 0, "Unexpected fails: 0"),
+        ("eth_case_counted", "eth", new[] { (launch, true), ("test_a", false) }, 1, "Unexpected fails: 1"),
         ("flaky_pass", "engine", new[] { (flaky, true) }, 0, "\u001b[33m✔ flaky (nethermind) (flaky)\u001b[0m"),
         ("flaky_fail", "engine", new[] { (flaky, false) }, 0, "\u001b[33m✖ flaky (nethermind) (flaky)\u001b[0m"),
         ("sync_prefix", "sync", new[] { (failing, false) }, 0, "sync/known failing (nethermind)"),
@@ -46,7 +52,8 @@ try
         try
         {
             var scripts = Directory.CreateDirectory(Path.Combine(directory.FullName, "scripts"));
-            File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), $"# suite\n\n{failing}\nsync/{failing}\nsnapsync/{failing}\n{flaky}\n{launch}\n");
+            var listedLaunch = name == "listed_launch_pass" ? $"{launch}\n" : "";
+            File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), $"# suite\n\n{failing}\nsync/{failing}\nsnapsync/{failing}\n{flaky}\n{listedLaunch}");
             File.WriteAllText(Path.Combine(scripts.FullName, "known-flaky-hive-tests.txt"), $"# suite\n\n{flaky}\n");
             var logs = Directory.CreateDirectory(Path.Combine(directory.FullName, "hive", "workspace", "logs"));
             var entries = cases.Select(test => (JsonNode)new JsonObject { ["name"] = test.Item1, ["summaryResult"] = new JsonObject { ["pass"] = test.Item2 } }).ToArray();
