@@ -54,6 +54,7 @@ internal static class DiscoveryAdmissionTestContainer
         ITrustedNodesManager? trustedNodes = null,
         IEnumerable<NetworkNode>? configuredStaticNodes = null,
         DiscoveryNodeAdmission? admission = null,
+        int admittedCapacity = 100,
         IKademliaAdapter? innerAdapter = null,
         INodeHealthTracker<Node>? innerTracker = null)
     {
@@ -133,7 +134,7 @@ internal static class DiscoveryAdmissionTestContainer
                 admissionRoutingTable,
                 kademliaConfig,
                 storage,
-                admittedCapacity: 100,
+                admittedCapacity: admittedCapacity,
                 logManager,
                 staticNodes,
                 trustedNodes,

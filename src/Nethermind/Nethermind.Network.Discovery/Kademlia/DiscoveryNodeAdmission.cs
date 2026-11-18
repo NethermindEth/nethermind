@@ -77,7 +77,9 @@ internal sealed class DiscoveryNodeAdmission(
     /// filter without consuming IP capacity. A known node refreshes its own address window, but only while it
     /// still holds that reservation: identity proves who the sender is, not that it owns an address in the
     /// subnet it now claims, so a node that moves to a different address or whose window was taken over by
-    /// another identity must pass the filter again.
+    /// another identity must pass the filter again. The admitted cache is smaller than the address filter, so
+    /// an identity can be evicted while its reservation is still live; that node renews the reservation it
+    /// still owns instead of being rejected by it.
     /// </remarks>
     public bool TryAdmit(Node node)
     {
@@ -107,6 +109,15 @@ internal sealed class DiscoveryNodeAdmission(
         if (IsKnown(node))
         {
             return RefreshKnownNode(node);
+        }
+
+        // The identity cache can evict a node that still holds a live address reservation, and a full routing
+        // bucket keeps it out of the routing table, so it arrives here as unknown. TryAccept rejects any live
+        // entry regardless of who holds it, so let the owner extend its own reservation instead.
+        if (_filter.TryRefresh(node.Address.Address, node.Id))
+        {
+            _admitted.TryReserve(node.Id);
+            return true;
         }
 
         if (!AdmitAddress(node))

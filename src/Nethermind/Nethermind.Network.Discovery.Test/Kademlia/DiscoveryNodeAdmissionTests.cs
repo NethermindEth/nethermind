@@ -193,6 +193,31 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Reclaims_its_live_address_reservation_after_its_identity_is_evicted()
+    {
+        ManualTimeProvider clock = new();
+        Fixture fixture = CreateAdmission(timeProvider: clock, admittedCapacity: 1);
+        Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+
+        Assert.That(fixture.Admission.TryAdmit(node), Is.True);
+
+        clock.Advance(TimeSpan.FromMinutes(4));
+        // A newer identity evicts the first one from the admitted cache, and the routing table does not know
+        // it, so the returning node takes the unknown-node path.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.True);
+            // Its address entry is still live and names the same owner, so it must not exclude the owner.
+            Assert.That(fixture.Admission.TryAdmit(node), Is.True);
+        }
+
+        // The reclaim renewed the window at the contact above: the first reservation would have expired at
+        // five minutes, but the subnet is still the node's.
+        clock.Advance(TimeSpan.FromMinutes(3));
+        Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.113.99")), Is.False);
+    }
+
+    [Test]
     public void Exempt_nodes_bypass_the_filter_without_consuming_capacity()
     {
         Fixture fixture = CreateAdmission(
@@ -412,7 +437,8 @@ public class DiscoveryNodeAdmissionTests
         TimeProvider? timeProvider = null,
         IStaticNodesManager? staticNodes = null,
         ITrustedNodesManager? trustedNodes = null,
-        IEnumerable<NetworkNode>? configuredStaticNodes = null)
+        IEnumerable<NetworkNode>? configuredStaticNodes = null,
+        int admittedCapacity = 100)
     {
         IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
         INetworkStorage storage = Substitute.For<INetworkStorage>();
@@ -427,7 +453,8 @@ public class DiscoveryNodeAdmissionTests
             storage: storage,
             staticNodes: staticNodes,
             trustedNodes: trustedNodes,
-            configuredStaticNodes: configuredStaticNodes);
+            configuredStaticNodes: configuredStaticNodes,
+            admittedCapacity: admittedCapacity);
         return new Fixture(container.Resolve<DiscoveryNodeAdmission>(), routingTable, storage);
     }
 
