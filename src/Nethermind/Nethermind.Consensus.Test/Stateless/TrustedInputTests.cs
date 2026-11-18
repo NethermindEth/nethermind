@@ -115,9 +115,11 @@ public class TrustedInputTests
     private const int CodeExecutionPadding = 34;
 
     [Test]
-    public async Task Converted_input_validates_and_reports_the_block_hash([Values] bool amsterdam)
+    public async Task Converted_input_validates_and_reports_the_block_hash([Values] bool amsterdam, [Values] bool includeHints)
     {
-        (byte[] input, Block block) = await CreateInput(amsterdam);
+        (byte[] input, Block block) = await CreateInput(amsterdam, includeHints);
+        TrustedPayload payload = TrustedInput.Read(input);
+        using Witness witness = payload.Witness;
 
         StatelessValidationResult result = Execute(input);
 
@@ -126,6 +128,8 @@ public class TrustedInputTests
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(block.Hash));
             Assert.That(result.SchemaId, Is.EqualTo(amsterdam ? 0x9501 : 0x8001));
+            Assert.That(payload.SenderHints.Length, Is.EqualTo(includeHints ? block.Transactions.Length * TrustedInput.SenderHintLength : 0));
+            if (!includeHints) Assert.That(payload.RecoveryHints, Is.Empty);
         }
     }
 
@@ -322,13 +326,13 @@ public class TrustedInputTests
         }
     }
 
-    private static async Task<(byte[] Input, Block Block)> CreateInput(bool amsterdam)
+    private static async Task<(byte[] Input, Block Block)> CreateInput(bool amsterdam, bool includeHints = true)
     {
         (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(amsterdam, currentChainActivation: true);
         using (witness)
         {
             byte[] stateless = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
-            return (TrustedInput.FromStatelessInput(stateless), block);
+            return (TrustedInput.FromStatelessInput(stateless, includeHints), block);
         }
     }
 
