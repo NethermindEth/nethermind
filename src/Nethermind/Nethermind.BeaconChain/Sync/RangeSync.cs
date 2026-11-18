@@ -18,8 +18,8 @@ namespace Nethermind.BeaconChain.Sync;
 
 /// <summary>Downloads blocks above an anchor with beacon_blocks_by_range, yielding parent-linked blocks in import order.</summary>
 /// <remarks>
-/// Round-robin peers supply whole batches checked before yielding: the first parent must equal the anchor or last yielded root,
-/// and each later block must link to its predecessor. Drop mismatches and penalize only a peer that also supplied the predecessor.
+/// Within a batch every block must link to its predecessor. A new batch normally extends the tip. If peers corroborate a signed
+/// block extending the tip's parent instead, yield that competing branch for import and fork choice.
 /// Retry from the slot after the last yielded block, recovering false empty replies; repeated failures halve batches down to one slot.
 /// Blob blocks fetch sampled columns from custodians before yielding, separately for Fulu and Gloas response shapes.
 /// Gloas sidecars verify against their named block's bid. Failed fetches penalize peers but still yield blocks;
@@ -82,6 +82,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         CancellationToken superseded = default)
     {
         Hash256 lastRoot = anchorRoot;
+        Hash256? lastParentRoot = null;
         ulong lastSlot = anchorSlot;
         ulong nextSlot = anchorSlot + 1;
         // The peer that supplied lastRoot; null while lastRoot is the anchor.
@@ -143,10 +144,10 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             // A peer may answer ResourceUnavailable below its earliest slot (phase0/p2p-interface.md); slots under it are taken as empty and block linkage still checks that.
             ulong from = Math.Max(nextSlot, peer.EarliestAvailableSlot);
             ulong count = Math.Min(batchSize, target - from + 1);
-            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || lastSupplier != peer.Id, token, superseded);
-            if (batch is { Linked: false } && fallback is not null)
+            (IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)? batch = await FetchAndVerifyBatchAsync(peer, from, count, lastRoot, lastParentRoot, fallback is not null || skippedOnWordOf is not null || from != lastSlot + 1 || lastSupplier != peer.Id, token, superseded);
+            if (batch is { Linked: false } alternative && (fallback is not null || alternative.Blocks[0].ParentRoot == lastParentRoot))
             {
-                bool? signed = VerifyBlockSignature is { } verify ? await verify(batch.Value.Blocks[0]) : null;
+                bool? signed = VerifyBlockSignature is { } verify ? await verify(alternative.Blocks[0]) : null;
                 superseded.ThrowIfCancellationRequested();
                 token.ThrowIfCancellationRequested();
                 if (signed != true)
@@ -154,6 +155,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                     if (signed == false)
                         peer.ReportFailure(PeerFailureReason.ProtocolViolation, "The block offered against the range anchor has an invalid proposer signature");
                     batch = null;
+                }
+                else if (alternative.Blocks[0].ParentRoot == lastParentRoot)
+                {
+                    // A skipped orphan leaves the next canonical block linked to a parent we already yielded or started from.
+                    batch = CountAnchorMismatches(anchorMisses ??= [], lastRoot, peer.Id, target) >= 2
+                        ? (alternative.Blocks, alternative.Roots, true)
+                        : null;
                 }
             }
             // Another peer's empty answer is contradicted before an unverified anchor is doubted; the answering peer's own may mean the anchor is off its chain.
@@ -177,6 +185,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 // The first block names another parent: the unverified anchor is off the peers' chain, not the peer at fault.
                 abandonedOnWordOf = ([.. anchorMisses], lastRoot, lastSlot);
                 lastRoot = fallback.Root;
+                lastParentRoot = null;
                 lastSlot = fallback.Slot;
                 lastSupplier = null;
                 nextSlot = lastSlot + 1;
@@ -211,6 +220,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             {
                 consecutiveFailures = 0;
                 fallback = null;
+                anchorMisses = null;
                 skippedOnWordOf = null;
                 if (batchSize != DefaultBatchSize && _logger.IsDebug) _logger.Debug($"Restoring range sync batch size to {DefaultBatchSize} from {batchSize} after a served batch");
                 batchSize = DefaultBatchSize;
@@ -244,6 +254,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             if (batch.Value.Blocks.Count > 0)
             {
                 lastRoot = batch.Value.Roots[^1];
+                lastParentRoot = batch.Value.Blocks[^1].ParentRoot;
                 lastSupplier = peer.Id;
                 if (abandonedOnWordOf is { } abandoned && lastSlot >= abandoned.Slot)
                 {
@@ -284,6 +295,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         ulong startSlot,
         ulong count,
         Hash256 parentRoot,
+        Hash256? lastParentRoot,
         bool allowFirstMismatch,
         CancellationToken token,
         CancellationToken superseded)
@@ -324,7 +336,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
             ForkedSignedBeaconBlock block = batch[i];
             if (block.ParentRoot != expectedParent)
             {
-                if (allowFirstMismatch && i == 0)
+                if (i == 0 && (allowFirstMismatch || block.ParentRoot == lastParentRoot))
                 {
                     linked = false;
                 }
