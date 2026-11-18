@@ -353,9 +353,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
                     IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Component, block, new(parityTypes, specProvider), isSigned);
-                    // More than one trace still throws, so no other trace can stand in for the call's own.
-                    ParityLikeTxTrace? trace = result.SingleOrDefault();
-                    return trace is null ? new ParityTxTraceFromReplay() : new ParityTxTraceFromReplay(trace);
+                    // Anything but exactly one trace throws, so no other trace can stand in for the call's own.
+                    return new ParityTxTraceFromReplay(result.Single());
                 });
         }
 

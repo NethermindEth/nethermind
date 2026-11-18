@@ -2265,7 +2265,7 @@ public class TraceRpcModuleTests
     [Test]
     public async Task Trace_call_and_rawTransaction_ignore_the_rewards_trace_type(
         [Values("trace_call", "trace_rawTransaction")] string method,
-        [Values("trace,rewards", "stateDiff,rewards", "all")] string traceTypes,
+        [Values("trace,rewards", "stateDiff,rewards", "rewards", "all")] string traceTypes,
         [Values] bool streaming)
     {
         using Context context = new();
@@ -2292,7 +2292,7 @@ public class TraceRpcModuleTests
             : RpcTest.TestSerializedRequest(context.TraceRpcModule, method, TxDecoder.Instance.Encode(transaction), types);
 
         string response = await Trace(traceTypes.Split(','));
-        string withoutRewards = await Trace(traceTypes == "all" ? ["vmTrace", "stateDiff", "trace"] : [traceTypes.Split(',')[0]]);
+        string withoutRewards = await Trace(traceTypes == "all" ? ["vmTrace", "stateDiff", "trace"] : traceTypes.Split(',')[..^1]);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(JToken.Parse(response)["result"]?.Type, Is.EqualTo(JTokenType.Object), response);
