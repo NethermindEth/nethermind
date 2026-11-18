@@ -47,10 +47,13 @@ internal static class InputConverter
             string name = Path.ChangeExtension(Path.GetFileName(file), ".nti");
             await File.WriteAllBytesAsync(Path.Join(output, name), zisk ? ZiskFrame.Wrap(trusted) : trusted, cancellationToken);
 
-            // Plain output a workflow can read: the file, the result a guest validating it reports, and its keccak.
-            Console.WriteLine($"{name} {System.Convert.ToHexStringLower(result)} {Keccak.Compute(result).ToString(withZeroX: false)}");
+            Console.WriteLine(FormatResult(name, result));
         }
 
         return 0;
     }
+
+    /// <summary>Formats the plain line a workflow reads: the input file, the result a guest validating it reports, and its keccak.</summary>
+    internal static string FormatResult(string file, byte[] result) =>
+        $"{file} {System.Convert.ToHexStringLower(result)} {Keccak.Compute(result).ToString(withZeroX: false)}";
 }

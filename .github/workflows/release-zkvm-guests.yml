@@ -16,7 +16,7 @@ jobs:
   # The tested binaries are what gets released, so nothing unexecuted is ever signed
   test:
     name: Test
-    uses: ./.github/workflows/stateless-tests.yml
+    uses: ./.github/workflows/stateless-fixture-tests.yml
     permissions:
       contents: read
       id-token: write

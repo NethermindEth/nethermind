@@ -18,6 +18,7 @@ internal static class InputExtractor
 {
     private const string BlocksProperty = "blocks";
     private const string InputBytesProperty = "statelessInputBytes";
+    private const string OutputBytesProperty = "statelessOutputBytes";
     /// <summary>The cap on output file name length, keeping names manageable regardless of the output path.</summary>
     private const int MaxFileNameLength = 128;
 
@@ -64,6 +65,7 @@ internal static class InputExtractor
         int extracted = 0;
         int failed = 0;
         HashSet<string> writtenFiles = [with(StringComparer.OrdinalIgnoreCase)];
+        List<string> results = [];
 
         await AnsiConsole
             .Status()
@@ -80,7 +82,7 @@ internal static class InputExtractor
                     try
                     {
                         (int fileExtracted, int fileFailed) = await ExtractFromFile(
-                            fixtureFile, fullOutputPath, forZisk, trusted, maxFileNameLength, writtenFiles, cancellationToken);
+                            fixtureFile, fullOutputPath, forZisk, trusted, maxFileNameLength, writtenFiles, results, cancellationToken);
 
                         extracted += fileExtracted;
                         failed += fileFailed;
@@ -92,6 +94,9 @@ internal static class InputExtractor
                     }
                 }
             });
+
+        foreach (string result in results)
+            Console.WriteLine(result);
 
         AnsiConsole.MarkupLine(extracted == 0
             ? "[yellow]No stateless input found[/]"
@@ -110,6 +115,7 @@ internal static class InputExtractor
         bool trusted,
         int maxFileNameLength,
         HashSet<string> writtenFiles,
+        List<string> results,
         CancellationToken cancellationToken)
     {
         int extracted = 0;
@@ -156,6 +162,11 @@ internal static class InputExtractor
                         continue;
                     }
 
+                    // A trusted input reports another result than the fixture's, so only a stateless input gets one
+                    byte[]? expected = !trusted && block.TryGetProperty(OutputBytesProperty, out JsonElement outputBytes) &&
+                        outputBytes.ValueKind == JsonValueKind.String
+                            ? Convert.FromHexString(outputBytes.GetString().AsSpan(2))
+                            : null;
                     (byte[] buffer, int dataLength) = DecodeInput(inputBytes);
 
                     try
@@ -187,6 +198,9 @@ internal static class InputExtractor
 
                     writtenFiles.Add(fileName);
                     extracted++;
+
+                    if (expected is not null)
+                        results.Add($"{InputConverter.FormatResult(fileName, expected)} {test.Name}");
                 }
                 catch (Exception ex) when (ex is IOException or FormatException or UnauthorizedAccessException)
                 {
@@ -221,7 +235,7 @@ internal static class InputExtractor
     /// Decodes the hex payload into a pooled buffer at offset <see cref="ZiskFrame.HeaderLength"/>,
     /// leaving room for in-place Zisk framing. The caller returns the buffer to <see cref="ArrayPool{T}.Shared"/>.
     /// </summary>
-    /// <exception cref="FormatException">The payload is not a 0x-prefixed non-empty even-length hex string.</exception>
+    /// <exception cref="FormatException">The payload is not a 0x-prefixed even-length hex string.</exception>
     private static (byte[] Buffer, int DataLength) DecodeInput(JsonElement inputBytes)
     {
         // Raw UTF-8 avoids materializing multi-MB hex payloads as UTF-16 strings; [1..^1] trims the JSON quotes.
@@ -233,8 +247,9 @@ internal static class InputExtractor
 
         hex = hex[2..];
 
-        if (hex.Length == 0 || hex.Length % 2 != 0)
-            throw new FormatException($"{InputBytesProperty} must be a non-empty even-length hex string");
+        // An empty input is a fixture of its own: the guest must reject it
+        if (hex.Length % 2 != 0)
+            throw new FormatException($"{InputBytesProperty} must be an even-length hex string");
 
         int dataLength = hex.Length / 2;
         byte[] buffer = ArrayPool<byte>.Shared.Rent(ZiskFrame.GetFrameLength(dataLength));
