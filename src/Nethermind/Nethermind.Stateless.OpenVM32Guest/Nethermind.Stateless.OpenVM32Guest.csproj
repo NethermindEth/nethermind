@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Import Project="..\Nethermind.Stateless.Guest\Guest.props" />
+
+  <ItemGroup>
+    <!-- WriteOutput is the RV64 guest's: both publish the Keccak-256 of the result. -->
+    <Compile Include="..\Nethermind.Stateless.OpenVMGuest\Program.cs" Link="Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Nethermind.OpenVM.Runtime" />
+  </ItemGroup>
+
+</Project>

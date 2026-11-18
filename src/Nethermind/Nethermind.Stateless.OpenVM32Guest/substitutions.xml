@@ -1,0 +1,22 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+  SPDX-License-Identifier: LGPL-3.0-only
+
+  Substitutions only this guest applies, on top of the shared
+  ../Nethermind.Stateless.Guest/substitutions.xml. OpenVmFlag stays off: the
+  division hint it switches on is the RV64 runner's.
+-->
+<linker>
+  <assembly fullname="Nethermind.Core">
+    <!-- ADDMOD and MULMOD over a modulus of the VM configuration run on the modular extension. -->
+    <type fullname="Nethermind.Core.OpenVmModularFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Serialization.Ssz">
+    <!-- Merkleization hashes pairs with the three-operand zkvm_sha256_compress of OpenVM's runtime. -->
+    <type fullname="Nethermind.Serialization.Ssz.Merkleization.OpenVmSha256Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+</linker>
