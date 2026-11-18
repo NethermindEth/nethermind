@@ -236,6 +236,9 @@ public partial class BlockAccessListManager
 
         private bool IsTransactionSlot(int idx) => idx > 0 && idx < _lastBalIndex;
 
+        /// <summary>The slice <see cref="Return"/> stashed for <paramref name="balIndex"/>, until the validator merges it.</summary>
+        public BlockAccessListAtIndex? GetStashedSlice(uint balIndex) => _perTxBal[ClampBalIndex(balIndex)];
+
         /// <summary>
         /// Merges the per-tx BAL into <paramref name="target"/> in caller-controlled order, then
         /// returns it to the pool. Idempotent w.r.t. <see cref="Return"/>: also detaches the BAL
