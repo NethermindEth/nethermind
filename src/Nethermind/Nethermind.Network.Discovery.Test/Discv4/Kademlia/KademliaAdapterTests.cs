@@ -1138,14 +1138,35 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task Filtered_ping_is_still_answered_but_not_admitted(CancellationToken token)
         {
-            DiscoveryNodeAdmission admission = CreateAdmission(TimeProvider.System);
+            INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
+            (DiscoveryNodeAdmission admission, INodeHealthTracker<Node> filteringTracker) = CreateAdmission(admitted);
+
             await _adapter.DisposeAsync();
-            _adapter = CreateAdapter(ExpiringRequestTimeoutMs);
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: filteringTracker);
             IKademliaAdapter gate = CreateGate(admission);
+            Queue<PublicKey> pendingPongs = new([TestItem.PublicKeyE, TestItem.PublicKeyD]);
+            _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
+            {
+                PingMsg sent = (PingMsg)ci[0]!;
+                // Serialization assigns the ping MDC that the pong handler matching keys on.
+                _receiverSerializationManager.SerializeToArray(sent);
+                PongMsg pong = new(pendingPongs.Dequeue(), _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value);
+                pong.FarAddress = sent.FarAddress;
+                return _adapter.OnIncomingMsg(pong);
+            });
 
             // Record the /24 through admission alone, as if a node in it had already been handled.
             Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.10", 30303, 30303)), Is.True);
 
+            // Control: a sender from a free subnet bonds and is both tracked and published.
+            IPEndPoint acceptedAddress = new(IPAddress.Parse("203.0.114.50"), 30303);
+            await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyE, acceptedAddress));
+            Assert.That((await ReadGateCandidate(gate, token)).Id, Is.EqualTo(TestItem.PublicKeyE));
+            admitted.Received().OnIncomingMessageFrom(Arg.Is<Node>(node => node.Id.Equals(TestItem.PublicKeyE)));
+            _msgSender.ClearReceivedCalls();
+            admitted.ClearReceivedCalls();
+
+            // The filtered sender completes the same bond exchange, so only admission can exclude it.
             IPEndPoint address = new(IPAddress.Parse("203.0.113.50"), 30303);
             await gate.OnIncomingMsg(CreatePing(TestItem.PublicKeyD, address));
 
@@ -1154,10 +1175,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 // The ping is answered, so the peer can still complete its endpoint proof of us.
                 await _msgSender.Received(1).SendMsg(Arg.Any<PongMsg>());
                 await _msgSender.Received(1).SendMsg(Arg.Any<PingMsg>());
-                // But the filtered sender is not admitted or published.
-                _nodeHealthTracker.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
+                // But the bonded sender is neither tracked nor published.
+                admitted.DidNotReceive().OnIncomingMessageFrom(Arg.Any<Node>());
             }
-            await AssertNoPeerCandidate(token);
+            await AssertNoCandidate(gate.ReadPeerCandidates, token);
         }
 
         [Test]
