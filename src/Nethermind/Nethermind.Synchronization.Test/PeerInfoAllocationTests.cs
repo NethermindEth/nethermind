@@ -104,8 +104,8 @@ namespace Nethermind.Synchronization.Test
             fastDataStats.GetAverageTransferSpeed(TransferSpeedType.Bodies).Returns(100L);
             fastDataStats.GetAverageTransferSpeed(speedType).Returns(10_000L);
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
-            nodeStatsManager.GetOrAdd(fastBodies.SyncPeer.Node).Returns(fastBodiesStats);
-            nodeStatsManager.GetOrAdd(fastData.SyncPeer.Node).Returns(fastDataStats);
+            nodeStatsManager.GetStatsOrNull(fastBodies.SyncPeer.Node).Returns(fastBodiesStats);
+            nodeStatsManager.GetStatsOrNull(fastData.SyncPeer.Node).Returns(fastDataStats);
 
             using BlocksRequest request = new();
             if (speedType == TransferSpeedType.Receipts)
@@ -184,7 +184,7 @@ namespace Nethermind.Synchronization.Test
             nodeStats.GetAverageTransferSpeed(TransferSpeedType.Bodies).Returns((long?)null);
 
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
-            nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+            nodeStatsManager.GetStatsOrNull(Arg.Any<Node>()).Returns(nodeStats);
             return nodeStatsManager;
         }
 

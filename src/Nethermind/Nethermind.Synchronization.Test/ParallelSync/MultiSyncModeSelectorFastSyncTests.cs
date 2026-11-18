@@ -1,7 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading.Tasks;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.ParallelSync
@@ -11,6 +17,40 @@ namespace Nethermind.Synchronization.Test.ParallelSync
     [TestFixture(true)]
     public class MultiSyncModeSelectorFastSyncTests(bool needToWaitForHeaders) : MultiSyncModeSelectorTestsBase(needToWaitForHeaders)
     {
+        [Test]
+        public async Task Unproductive_claim_does_not_keep_a_synced_node_in_full_sync([Values] bool noProgress, [Values] bool honestFailed)
+        {
+            ISyncProgressResolver progress = Substitute.For<ISyncProgressResolver>();
+            progress.FindBestHeader().Returns(100UL);
+            progress.FindBestFullBlock().Returns(100UL);
+            progress.FindBestFullState().Returns(100UL);
+            progress.FindBestProcessedBlock().Returns(100UL);
+            progress.ChainDifficulty.Returns(new UInt256(100));
+            ISyncPeer honest = Substitute.For<ISyncPeer>();
+            honest.HeadNumber.Returns(100UL);
+            honest.TotalDifficulty.Returns(new UInt256(100));
+            ISyncPeer liar = Substitute.For<ISyncPeer>();
+            liar.HeadNumber.Returns(100000UL);
+            liar.TotalDifficulty.Returns(UInt256.MaxValue);
+            PeerInfo liarInfo = new(liar);
+            if (noProgress) liarInfo.RecordNoProgress(AllocationContexts.ForwardHeader);
+            PeerInfo honestInfo = new(honest);
+            if (honestFailed) honestInfo.RecordNoProgress(AllocationContexts.ForwardHeader);
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeers.Returns([honestInfo, liarInfo]);
+            using MultiSyncModeSelector selector = new(progress, pool, new TestSyncConfig { FastSync = false },
+                No.BeaconSync, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance);
+            await selector.StopAsync();
+
+            selector.Update();
+
+            Assert.That(selector.Current, Is.EqualTo(noProgress && !honestFailed ? SyncMode.WaitingForBlock : SyncMode.Full));
+
+            liarInfo.RecordProgress(AllocationContexts.ForwardHeader);
+            selector.Update();
+            Assert.That(selector.Current, Is.EqualTo(SyncMode.Full));
+        }
+
         [Test]
         public void Genesis_network() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeHasNeverSyncedBefore()

@@ -20,6 +20,37 @@ public class SimpleDispatcherTests
 {
     public class TestBatch;
 
+    [Test, CancelAfter(30_000)]
+    public async Task Useful_response_clears_prior_peer_failures(
+        [Values(SyncResponseHandlingResult.OK, SyncResponseHandlingResult.Emptish)] SyncResponseHandlingResult result,
+        CancellationToken cancellationToken)
+    {
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        peer.RecordNoProgress(AllocationContexts.State);
+        peer.IncreaseWeakness(AllocationContexts.State);
+        ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+        SyncPeerAllocation allocation = new(AllocationContexts.State);
+        allocation.AllocatePeer(peer);
+        pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.State, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(allocation));
+        ISimpleSyncFeed<TestBatch> feed = Substitute.For<ISimpleSyncFeed<TestBatch>>();
+        feed.PrepareRequest(Arg.Any<CancellationToken>()).Returns(Task.FromResult<TestBatch?>(new()), Task.FromResult<TestBatch?>(null));
+        feed.HandleResponse(Arg.Any<TestBatch>(), peer).Returns(result);
+        SimpleDispatcher<TestBatch> dispatcher = new(feed, new BlockingDownloader(1),
+            new StaticPeerAllocationStrategyFactory<TestBatch>(FirstFree.Instance), AllocationContexts.State,
+            pool, new TestSyncConfig(), LimboLogs.Instance);
+
+        await dispatcher.Run(cancellationToken);
+
+        bool useful = result == SyncResponseHandlingResult.OK;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasNoProgress(AllocationContexts.State), Is.EqualTo(!useful));
+            Assert.That(peer.IncreaseWeakness(AllocationContexts.State), Is.EqualTo(useful ? AllocationContexts.None : AllocationContexts.State));
+        }
+        pool.DidNotReceive().ReportNoSyncProgress(peer, AllocationContexts.State);
+    }
+
     /// <summary>
     /// Downloader whose <see cref="Dispatch"/> blocks until <see cref="ReleaseAll"/>, emulating
     /// a long network round trip. Honors the token so cancellation aborts the wait.
@@ -49,7 +80,7 @@ public class SimpleDispatcherTests
         }
     }
 
-    private class TestFeed(int totalRequests) : ISimpleSyncFeed<TestBatch>
+    private class TestFeed(int totalRequests, int preparedSignalCount = 0) : ISimpleSyncFeed<TestBatch>
     {
         private readonly ManualResetEventSlim _handleGate = new(true);
         private int _prepared;
@@ -57,7 +88,11 @@ public class SimpleDispatcherTests
         private int _maxConcurrentHandling;
         private int _handled;
         private int _failedAllocations;
+        private int _maxOwned;
 
+        public TaskCompletionSource PreparedSignal { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public int PreparedCount => Volatile.Read(ref _prepared);
+        public int MaxOwnedCount => Volatile.Read(ref _maxOwned);
         public int HandledCount => Volatile.Read(ref _handled);
         public int FailedAllocationCount => Volatile.Read(ref _failedAllocations);
         public int MaxConcurrentHandling => Volatile.Read(ref _maxConcurrentHandling);
@@ -66,8 +101,15 @@ public class SimpleDispatcherTests
         public void LockHandleResponse() => _handleGate.Reset();
         public void UnlockHandleResponse() => _handleGate.Set();
 
-        public Task<TestBatch?> PrepareRequest(CancellationToken token) =>
-            Task.FromResult(_prepared++ < totalRequests ? new TestBatch() : null);
+        public Task<TestBatch?> PrepareRequest(CancellationToken token)
+        {
+            if (PreparedCount >= totalRequests) return Task.FromResult<TestBatch?>(null);
+            int prepared = Interlocked.Increment(ref _prepared);
+            int owned = prepared - HandledCount - FailedAllocationCount;
+            if (owned > MaxOwnedCount) Volatile.Write(ref _maxOwned, owned);
+            if (prepared == preparedSignalCount) PreparedSignal.TrySetResult();
+            return Task.FromResult<TestBatch?>(new TestBatch());
+        }
 
         public SyncResponseHandlingResult HandleResponse(TestBatch response, PeerInfo? peer = null)
         {
@@ -106,6 +148,43 @@ public class SimpleDispatcherTests
             peerPool,
             new TestSyncConfig { MaxProcessingThreads = MaxThreads, SyncDispatcherAllocateTimeoutMs = allocateTimeoutMs },
             LimboLogs.Instance);
+
+    [Test, CancelAfter(30_000)]
+    public async Task Prepared_request_waiting_for_dispatch_bounds_owned_work_at_two_times_threads_plus_one(CancellationToken cancellationToken)
+    {
+        const int ownedCap = InFlightCap + 1;
+        const int accountsPerRequest = 1200;
+        TestFeed feed = new(totalRequests: PeerCount, preparedSignalCount: ownedCap);
+        BlockingDownloader downloader = new();
+        await using TestSyncPeerPool peerPool = new(PeerCount);
+        Task runTask = CreateDispatcher(feed, downloader, peerPool).Run(cancellationToken);
+        try
+        {
+            await feed.PreparedSignal.Task.WaitAsync(cancellationToken);
+            await downloader.WaitForStarted(InFlightCap, cancellationToken);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(feed.PreparedCount, Is.EqualTo(ownedCap));
+                Assert.That(downloader.Started, Is.EqualTo(InFlightCap));
+                Assert.That(feed.HandledCount, Is.Zero);
+                Assert.That(feed.PreparedCount - downloader.Started, Is.EqualTo(1));
+                Assert.That((feed.PreparedCount - feed.HandledCount) * accountsPerRequest, Is.EqualTo(6000));
+                Assert.That(runTask.IsCompleted, Is.False);
+            }
+        }
+        finally
+        {
+            downloader.ReleaseAll();
+            await runTask.WaitAsync(cancellationToken);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.PreparedCount, Is.EqualTo(PeerCount));
+            Assert.That(feed.MaxOwnedCount, Is.EqualTo(ownedCap));
+            Assert.That(feed.HandledCount, Is.EqualTo(PeerCount));
+            Assert.That(peerPool.FreedCount, Is.EqualTo(PeerCount));
+        }
+    }
 
     // Isolated, as the sibling allocation test: its waits run on the thread pool, which parallel fixtures in this
     // assembly starve for longer than the 30 s budget on the slow lanes.

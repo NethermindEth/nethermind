@@ -108,25 +108,49 @@ namespace Nethermind.Synchronization.Test
             }
         }
 
-        [Test]
-        public void WakeUp_clears_the_composite_Blocks_weakness_nibble()
+        [TestCaseSource(nameof(ContextCases))]
+        public void WakeUp_preserves_failure_history_until_useful_progress(AllocationContexts contexts)
         {
-            // Regression: waking must reset the Blocks composite weakness nibble, not just its member bits,
-            // so re-sleeping still takes SleepThreshold reports rather than one.
             DateTime t0 = DateTime.UtcNow;
             PeerInfo peer = NewPeer();
 
-            RaiseWeaknessUntilSleeping(peer, AllocationContexts.Blocks);
-            peer.PutToSleep(AllocationContexts.Blocks, t0);
+            RaiseWeaknessUntilSleeping(peer, contexts);
+            peer.PutToSleep(contexts, t0);
 
             peer.TryToWakeUp(t0 + TimeSpan.FromHours(1), TimeSpan.Zero);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(peer.IsAsleep(AllocationContexts.Blocks), Is.False);
-
-                // With the nibble reset, a single fresh weak report must not immediately re-sleep.
-                Assert.That(peer.IncreaseWeakness(AllocationContexts.Blocks), Is.EqualTo(AllocationContexts.None));
+                Assert.That(peer.IsAsleep(contexts), Is.False);
+                Assert.That(peer.IncreaseWeakness(contexts), Is.EqualTo(contexts));
             }
+
+            peer.RecordProgress(contexts);
+            Assert.That(peer.IncreaseWeakness(contexts), Is.EqualTo(AllocationContexts.None));
+        }
+
+        [TestCaseSource(nameof(SingleBitContextCases))]
+        public void Repeated_failures_extend_sleep_with_a_bounded_recovery_probe(AllocationContexts context)
+        {
+            DateTime now = DateTime.UtcNow;
+            PeerInfo peer = NewPeer();
+            RaiseWeaknessUntilSleeping(peer, context);
+            peer.PutToSleep(context, now);
+            peer.TryToWakeUp(now.AddSeconds(10), TimeSpan.FromSeconds(10));
+            Assert.That(peer.IsAsleep(context), Is.False);
+
+            peer.IncreaseWeakness(context);
+            peer.PutToSleep(context, now.AddSeconds(10));
+            peer.TryToWakeUp(now.AddSeconds(20), TimeSpan.FromSeconds(10));
+            Assert.That(peer.IsAsleep(context), Is.True);
+            peer.TryToWakeUp(now.AddSeconds(30), TimeSpan.FromSeconds(10));
+            Assert.That(peer.IsAsleep(context), Is.False);
+
+            for (int i = 0; i < 30; i++) peer.IncreaseWeakness(context);
+            peer.PutToSleep(context, now);
+            peer.TryToWakeUp(now.AddSeconds(639), TimeSpan.FromSeconds(10));
+            Assert.That(peer.IsAsleep(context), Is.True);
+            peer.TryToWakeUp(now.AddSeconds(640), TimeSpan.FromSeconds(10));
+            Assert.That(peer.IsAsleep(context), Is.False);
         }
 
         [Test]
@@ -289,11 +313,12 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Concurrent_resleep_and_wake_never_leave_peer_permanently_asleep()
+        public void Concurrent_resleep_and_wake_preserve_the_latest_sleep([Values] bool freshSleep)
         {
             PeerInfo peer = NewPeer();
             DateTime sleptAt = DateTime.UtcNow;
             DateTime wakeAt = sleptAt + TimeSpan.FromSeconds(10);
+            DateTime resleepAt = freshSleep ? sleptAt + TimeSpan.FromHours(1) : sleptAt;
 
             const int iterations = 25_000;
             using Barrier barrier = new(3);
@@ -315,7 +340,7 @@ namespace Nethermind.Synchronization.Test
                 }
             }
 
-            Thread sleeper = new(() => RunRounds(() => peer.PutToSleep(AllocationContexts.Receipts, sleptAt)));
+            Thread sleeper = new(() => RunRounds(() => peer.PutToSleep(AllocationContexts.Receipts, resleepAt)));
             Thread waker = new(() => RunRounds(() => peer.TryToWakeUp(wakeAt, TimeSpan.Zero)));
             sleeper.Start();
             waker.Start();
@@ -330,7 +355,7 @@ namespace Nethermind.Synchronization.Test
                     barrier.SignalAndWait(cts.Token);
 
                     peer.TryToWakeUp(wakeAt, TimeSpan.Zero);
-                    if (peer.IsAsleep(AllocationContexts.Receipts))
+                    if (peer.IsAsleep(AllocationContexts.Receipts) != freshSleep)
                     {
                         stuckAt = i;
                         break;
@@ -344,7 +369,31 @@ namespace Nethermind.Synchronization.Test
                 waker.Join();
             }
 
-            Assert.That(stuckAt, Is.EqualTo(-1), $"Peer left permanently asleep for Receipts at iteration {stuckAt}.");
+            Assert.That(stuckAt, Is.EqualTo(-1), $"Incorrect Receipts sleep state at iteration {stuckAt} (fresh sleep: {freshSleep}).");
+        }
+
+        [Test]
+        public void Expired_block_sleep_preserves_a_newer_component_sleep([Values(AllocationContexts.Bodies, AllocationContexts.Receipts)] AllocationContexts context)
+        {
+            PeerInfo peer = NewPeer();
+            DateTime start = DateTime.UnixEpoch;
+            peer.PutToSleep(AllocationContexts.Blocks, start);
+            peer.PutToSleep(context, start.AddSeconds(10));
+
+            peer.TryToWakeUp(start.AddSeconds(10), TimeSpan.FromSeconds(5));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.SleepingContexts, Is.EqualTo(context));
+                Assert.That(peer.TryAllocate(context), Is.False);
+            }
+            peer.TryToWakeUp(start.AddSeconds(15), TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.SleepingContexts, Is.EqualTo(AllocationContexts.None));
+                Assert.That(peer.TryAllocate(context), Is.True);
+            }
+            peer.Free(context);
         }
 
         [Test]

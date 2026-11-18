@@ -3,15 +3,21 @@
 
 using System;
 using System.Buffers;
+using Nethermind.Core.Test.Threading;
 using System.Linq;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Threading;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -26,6 +32,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -408,4 +415,111 @@ public class BodiesSyncFeedTests
         BodiesSyncBatch req = (await _feed.PrepareRequest())!;
         Assert.That(req.Infos.Length, Is.EqualTo(5));
     }
+    [Test, CancelAfter(30000)]
+    public async Task Local_request_limit_refusal_retries_without_peer_fault([Values] bool timeout, CancellationToken token)
+    {
+        _feed.InitializeFeed();
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        using BodiesSyncBatch request = (await _feed.PrepareRequest())!;
+        BlockHeader header = _syncingFromBlockTree.FindHeader(request.Infos[0]!.BlockNumber)!;
+        node.Resolve<IBlockTree>().Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.HeadHash = header.Hash!;
+        remote.HeadNumber = header.Number;
+        remote.IsInitialized.Returns(true);
+        remote.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<OwnedBlockBodies>(timeout ? new TimeoutException()
+                : new ConcurrencyLimitReachedException("Outstanding local request limit")));
+        pool.Start();
+        pool.AddPeer(remote);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        await SyncDispatcherTests.DispatchOnce(request, new BodiesSyncDownloader(LimboLogs.Instance), pool,
+            AllocationContexts.Bodies, token, _feed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasWeakness(AllocationContexts.Bodies), Is.EqualTo(timeout));
+            Assert.That(peer.HasNoProgress(AllocationContexts.Bodies), Is.False);
+            Assert.That(peer.HasTimeoutEvidence, Is.EqualTo(timeout));
+            Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.Zero);
+        }
+        using BodiesSyncBatch retry = (await _feed.PrepareRequest())!;
+        Hash256 firstHash = retry.Infos[0]!.BlockHash;
+        remote.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<OwnedBlockBodies>(new OwnedBlockBodies([_syncingFromBlockTree.FindBlock(retry.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!.Body])));
+        await SyncDispatcherTests.DispatchOnce(retry, new BodiesSyncDownloader(LimboLogs.Instance), pool,
+            AllocationContexts.Bodies, token, _feed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasWeakness(AllocationContexts.Bodies), Is.False);
+            Assert.That(peer.HasNoProgress(AllocationContexts.Bodies), Is.False);
+            Assert.That(_syncingToBlockTree.FindBlock(firstHash, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(firstHash));
+        }
+        await remote.Received(2).GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Outstanding_bodies_timeouts_form_one_cohort_through_the_real_feed(CancellationToken token)
+    {
+        _feed.InitializeFeed();
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        PeerInfo peer = new(remote);
+        using BodiesSyncBatch first = (await _feed.PrepareRequest())!;
+        await SyncPeerPoolTests.AssertTimeoutCohort<OwnedBlockBodies, BodiesSyncBatch>(peer,
+            replies => remote.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+                .Returns(_ => replies()),
+            () => new BodiesSyncBatch(first.Infos.Select(info => info!).ToArray()),
+            new BodiesSyncDownloader(LimboLogs.Instance), AllocationContexts.Bodies, token, _feed);
+        Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.Zero, "transport silence is not a history availability claim");
+    }
+
+    [Test]
+    public async Task Unknown_history_empties_are_bounded_and_useful_bodies_restore_availability([Values] bool usefulBetweenEmpties)
+    {
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.ProtocolVersion.Returns((byte)68);
+        ManualTimeProvider clock = new();
+        PeerInfo peer = new(remote, null, clock);
+        ulong lastUsefulNumber = 0;
+        _feed.InitializeFeed();
+
+        await SyncPeerPoolTests.AssertBoundedEmptyHistory(async useful =>
+        {
+            BodiesSyncBatch request = (await _feed.PrepareRequest())!;
+            Assert.That(request, Is.Not.Null);
+            if (useful) lastUsefulNumber = request.Infos[0]!.BlockNumber;
+            request.MarkSent(peer);
+            request.ResponseSourcePeer = peer;
+            request.Response = new OwnedBlockBodies(useful
+                ? [_syncingFromBlockTree.FindBlock(request.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!.Body]
+                : []);
+            return _feed.HandleResponse(request, peer);
+        }, usefulBetweenEmpties);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.EqualTo(usefulBetweenEmpties ? lastUsefulNumber : 0UL));
+            Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.Zero);
+        }
+        if (usefulBetweenEmpties)
+        {
+            SyncPeerPoolTests.AssertInferredHistoryAllocation(peer, AllocationContexts.Bodies, _syncingToBlockTree, lastUsefulNumber);
+            using BodiesSyncBatch lower = (await _feed.PrepareRequest())!;
+            ulong lowerNumber = lower.Infos[0]!.BlockNumber;
+            Assert.That(lowerNumber, Is.LessThan(lastUsefulNumber));
+            lower.MarkSent(peer);
+            lower.ResponseSourcePeer = peer;
+            lower.Response = new OwnedBlockBodies([_syncingFromBlockTree.FindBlock(lowerNumber, BlockTreeLookupOptions.None)!.Body]);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_feed.HandleResponse(lower, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+                Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.EqualTo(lowerNumber), "validated lower backfill must reopen availability");
+            }
+        }
+        clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.Zero, "inferred availability must permit a bounded reprobe");
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+    }
+
 }

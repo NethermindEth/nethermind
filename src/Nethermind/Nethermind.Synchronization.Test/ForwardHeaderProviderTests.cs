@@ -19,6 +19,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -30,6 +32,11 @@ using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using Nethermind.Consensus.Clique;
+using Nethermind.Core.Test.Threading;
+using Nethermind.Network.Config;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test.ChainSpecStyle;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Test;
@@ -65,7 +72,8 @@ public partial class ForwardHeaderProviderTests
 
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
-        ctx.ConfigureBestPeer(syncPeer);
+        peerInfo.RecordNoProgress(AllocationContexts.ForwardHeader);
+        ctx.ConfigureBestPeer(peerInfo);
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
 
         int maxNHeader = Math.Min(maxHeader, peerInfo!.MaxHeadersPerRequest());
@@ -75,6 +83,271 @@ public partial class ForwardHeaderProviderTests
         {
             Assert.That(headers?[0]?.Number, Is.EqualTo(expectedStartNumber));
             Assert.That(headers?[^1]?.Number, Is.EqualTo(expectedEndNumber));
+        }
+        if (expectedEndNumber is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peerInfo.ServedHeadNumber, Is.EqualTo((ulong)expectedEndNumber.Value));
+                Assert.That(peerInfo.HasNoProgress(AllocationContexts.ForwardHeader), Is.False);
+            }
+        }
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Clique_forward_sync_accepts_an_honest_stale_difficulty_peer_and_bounds_short_replies(
+        [Values] bool shortReply, CancellationToken token)
+    {
+        ManualTimeProvider clock = new();
+        byte[] extraData = new byte[32 + Address.Size + 65];
+        TestItem.PrivateKeyA.Address.Bytes.CopyTo(extraData.AsSpan(32));
+        Block genesis = Build.A.Block.Genesis.WithExtraData(extraData).TestObject;
+        ChainSpec chainSpec = new()
+        {
+            ChainId = BlockchainIds.Sepolia,
+            NetworkId = BlockchainIds.Sepolia,
+            SealEngineType = SealEngineType.Clique,
+            Genesis = genesis,
+            Allocations = [],
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(
+                new CliqueChainSpecEngineParameters { Epoch = 30000, Period = 15 })
+        };
+        using IContainer node = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new ConfigProvider(), chainSpec, useTestSpecProvider: false))
+            .AddModule(new CliqueModule())
+            .AddSingleton<ISigner>(new Signer(chainSpec.ChainId, TestItem.PrivateKeyA, LimboLogs.Instance))
+            .AddSingleton<INetworkConfig>(new NetworkConfig { MaxActivePeers = 100 })
+            .AddSingleton<SyncPeerPool>(context => new SyncPeerPool(context.Resolve<IBlockTree>(),
+                context.Resolve<INodeStatsManager>(), context.Resolve<IBetterPeerStrategy>(), context.Resolve<INetworkConfig>(),
+                context.Resolve<ISyncConfig>(), context.Resolve<ILogManager>())
+            { RefreshTimeProvider = clock })
+            .Build();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(genesis);
+        Block child = Build.A.Block.WithParent(genesis).WithDifficulty(2).WithNonce(0)
+            .WithTimestamp(genesis.Timestamp + 15).WithExtraData(new byte[97]).TestObject;
+        child.Header.MixHash = Keccak.Zero;
+        Block? sealedChild = await node.Resolve<ISealer>().SealBlock(child, token);
+        Assert.That(sealedChild, Is.Not.Null);
+        child.Header.Author = null;
+        ISealValidator validator = node.Resolve<ISealValidator>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validator.GetType().Name, Is.EqualTo("CliqueSealValidator"));
+            Assert.That(node.Resolve<ISyncConfig>().NeedToWaitForHeader, Is.True);
+        }
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        IForwardHeaderProvider provider = node.Resolve<IForwardHeaderProvider>();
+        TaskCompletionSource liarRefreshStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource honestRefreshStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ISyncPeer liar = CreateRemote(TestItem.PublicKeyB, TestItem.KeccakB, 1000, liarRefreshStarted, [genesis.Header]);
+        ISyncPeer honest = CreateRemote(TestItem.PublicKeyA, child.Hash!, 1, honestRefreshStarted, [genesis.Header, child.Header]);
+        pool.Start();
+        if (shortReply)
+        {
+            pool.AddPeer(liar);
+            await liarRefreshStarted.Task.WaitAsync(token);
+            using (IOwnedReadOnlyList<BlockHeader?>? overlap = await provider.GetBlockHeaders(0, 2, token))
+                Assert.That(overlap, Is.Null);
+            PeerInfo liarInfo = pool.GetPeer(liar.Node)!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(liarInfo.HasNoProgress(AllocationContexts.ForwardHeader), Is.True);
+                Assert.That(liarInfo.ServedHeadNumber, Is.Zero);
+            }
+            liar.HeadNumber = 1000;
+            clock.Advance(TimeSpan.FromSeconds(299));
+            using (IOwnedReadOnlyList<BlockHeader?>? blocked = await provider.GetBlockHeaders(0, 2, token))
+                Assert.That(blocked, Is.Null);
+            await liar.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+            clock.Advance(TimeSpan.FromSeconds(1));
+            using (IOwnedReadOnlyList<BlockHeader?>? nextWindow = await provider.GetBlockHeaders(0, 2, token))
+                Assert.That(nextWindow, Is.Null);
+            await liar.Received(2).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+            return;
+        }
+        pool.AddPeer(honest);
+        await honestRefreshStarted.Task.WaitAsync(token);
+        using IOwnedReadOnlyList<BlockHeader?>? response = await provider.GetBlockHeaders(0, 2, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response?.Count, Is.EqualTo(2));
+            Assert.That(validator.ValidateParams(genesis.Header, response![1]!), Is.True);
+            Assert.That(tree.Insert(response[1]!), Is.EqualTo(AddBlockResult.Added));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.BestKnownNumber, Is.EqualTo(1UL));
+            Assert.That(response[1]!.Author, Is.EqualTo(TestItem.PrivateKeyA.Address));
+            Assert.That(pool.GetPeer(honest.Node)!.ServedHeadNumber, Is.EqualTo(1UL));
+            honest.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+
+        ISyncPeer CreateRemote(PublicKey id, Hash256 hash, ulong number, TaskCompletionSource started, BlockHeader[] headers)
+        {
+            ISyncPeer remote = Substitute.For<ISyncPeer>();
+            remote.Node.Returns(new Node(id, "127.0.0.1", 30303));
+            remote.IsInitialized.Returns(true);
+            remote.HeadHash = hash;
+            remote.HeadNumber = number;
+            remote.TotalDifficulty = UInt256.Zero;
+            remote.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>())
+                .Returns(call => HoldRefresh(call.Arg<CancellationToken>(), started));
+            remote.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(headers)));
+            return remote;
+        }
+
+        static async Task<BlockHeader?> HoldRefresh(CancellationToken cancellation, TaskCompletionSource started)
+        {
+            started.TrySetResult();
+            await Task.Delay(Timeout.Infinite, cancellation);
+            return null;
+        }
+    }
+
+    public enum StaleHeadReply { Valid, BrokenLinks, Empty, Overlap }
+
+    [Test, CancelAfter(30000)]
+    public async Task A_production_peer_with_stale_difficulty_can_make_verified_forward_progress(
+        [Values] bool nullDifficulty, [Values] StaleHeadReply reply, CancellationToken token)
+    {
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        BlockHeader start = tree.Genesis!;
+        BlockHeader child = Build.A.BlockHeader.WithParent(start).TestObject;
+        BlockHeader last = Build.A.BlockHeader.WithParent(child).TestObject;
+        if (reply == StaleHeadReply.BrokenLinks) last.ParentHash = TestItem.KeccakB;
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.HeadHash = start.Hash!;
+        remote.HeadNumber = last.Number;
+        remote.TotalDifficulty = nullDifficulty ? null : UInt256.Zero;
+        BlockHeader[] replyHeaders = reply switch
+        {
+            StaleHeadReply.Empty => [],
+            StaleHeadReply.Overlap => [start],
+            _ => [start, child, last]
+        };
+        remote.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(replyHeaders)));
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        pool.Start();
+        pool.AddPeer(remote);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        ISyncPeer equalHeight = Substitute.For<ISyncPeer>();
+        equalHeight.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303));
+        equalHeight.IsInitialized.Returns(true);
+        equalHeight.HeadHash = start.Hash!;
+        equalHeight.HeadNumber = start.Number;
+        equalHeight.TotalDifficulty = UInt256.MaxValue;
+        pool.AddPeer(equalHeight);
+        PowForwardHeaderProvider provider = new(Always.Valid, tree, pool, new NullSyncReport(), LimboLogs.Instance);
+
+        using IOwnedReadOnlyList<BlockHeader?>? response = await provider.GetBlockHeaders(0, 3, token);
+        Assert.That(response?.Count, nullDifficulty || reply != StaleHeadReply.Valid ? Is.Null : Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.KnownHeadNumber, Is.EqualTo(tree.BestKnownNumber));
+            Assert.That(peer.ServedHeadNumber, Is.EqualTo(!nullDifficulty && reply == StaleHeadReply.Valid ? last.Number : 0UL));
+        }
+        await equalHeight.DidNotReceive().GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        if (!nullDifficulty && reply is StaleHeadReply.Empty or StaleHeadReply.Overlap)
+        {
+            Assert.That(peer.HasNoProgress(AllocationContexts.ForwardHeader), Is.True);
+            using IOwnedReadOnlyList<BlockHeader?>? retry = await provider.GetBlockHeaders(0, 3, token);
+            Assert.That(retry, Is.Null);
+            await remote.Received(1).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+        }
+        if (nullDifficulty || reply != StaleHeadReply.Valid) return;
+        pool.RemovePeer(equalHeight);
+
+        ISyncPeer fabricated = Substitute.For<ISyncPeer>();
+        fabricated.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303));
+        fabricated.HeadHash = start.Hash!;
+        fabricated.HeadNumber = ulong.MaxValue;
+        fabricated.TotalDifficulty = UInt256.MaxValue;
+        pool.AddPeer(fabricated);
+        Assert.That(pool.PeerCount, Is.EqualTo(2));
+        pool.DropUselessPeers(true);
+        using (Assert.EnterMultipleScope())
+        {
+            fabricated.Received(1).Disconnect(DisconnectReason.DropWorstPeer, Arg.Any<string>());
+            remote.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Pos_premerge_preserves_null_difficulty_compatibility_and_stops_at_the_terminal_transition(
+        [Values] bool localNull, [Values] bool peerNull, [Values] bool terminal, CancellationToken token)
+    {
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        BlockHeader start = tree.Genesis!;
+        start.TotalDifficulty = localNull ? null : new UInt256(100);
+        BlockHeader child = Build.A.BlockHeader.WithParent(start).TestObject;
+        BlockHeader last = Build.A.BlockHeader.WithParent(child).TestObject;
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.IsInitialized.Returns(true);
+        remote.HeadHash = start.Hash!;
+        remote.HeadNumber = last.Number;
+        remote.TotalDifficulty = peerNull ? null : new UInt256(200);
+        remote.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>([start, child, last])));
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        pool.Start();
+        pool.AddPeer(remote);
+        // Publish the status claim after known-head metadata initialization.
+        remote.TotalDifficulty = peerNull ? null : new UInt256(200);
+        IPoSSwitcher transition = Substitute.For<IPoSSwitcher>();
+        transition.HasEverReachedTerminalBlock().Returns(terminal);
+        IChainLevelHelper levels = Substitute.For<IChainLevelHelper>();
+        levels.GetNextHeaders(default, default, default).ReturnsForAnyArgs(Array.Empty<BlockHeader>());
+        PosForwardHeaderProvider provider = new(levels, transition, Substitute.For<IBeaconPivot>(), Always.Valid,
+            tree, pool, new NullSyncReport(), LimboLogs.Instance);
+
+        using IOwnedReadOnlyList<BlockHeader?>? response = await provider.GetBlockHeaders(0, 3, token);
+
+        bool allowed = !terminal && (localNull || !peerNull);
+        Assert.That(response?.Count, allowed ? Is.EqualTo(3) : Is.Null);
+        await remote.Received(allowed ? 1 : 0).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test]
+    public async Task Reports_no_progress_when_an_advertised_head_cannot_be_served(
+        [Values(0, 1)] int responseCount, [Values(100UL, 10000UL)] ulong advertisedHead,
+        [Values] bool concurrentAnnouncement, [Values] bool higherNumber)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+        using SyncPeerPoolTests.HeadRacePeer remote = new(ctx.BlockTree.Genesis!.Hash!, advertisedHead);
+        ISyncPeer syncPeer = remote.Peer;
+        remote.Protocol.TotalDifficulty = UInt256.MaxValue;
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                if (concurrentAnnouncement)
+                    remote.Protocol.SetHead(TestItem.KeccakB, higherNumber ? advertisedHead + 1 : advertisedHead);
+                return responseCount == 0 ? Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty())
+                    : ctx.ResponseBuilder.BuildHeaderResponse(0, responseCount, Response.AllCorrect);
+            });
+        PeerInfo peer = new(syncPeer);
+        ctx.ConfigureBestPeer(peer);
+
+        using IOwnedReadOnlyList<BlockHeader?>? headers = await ctx.ForwardHeaderProvider.GetBlockHeaders(0, 128, CancellationToken.None);
+
+        Assert.That(headers, Is.Null);
+        ctx.PeerPool.Received(1).ReportNoSyncProgress(peer, AllocationContexts.ForwardHeader);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remote.Protocol.HeadNumber, Is.EqualTo(concurrentAnnouncement
+                ? higherNumber ? advertisedHead + 1 : advertisedHead : 0UL));
+            Assert.That(remote.Protocol.HeadHash, Is.EqualTo(concurrentAnnouncement ? TestItem.KeccakB : ctx.BlockTree.Genesis!.Hash),
+                "an empty reply cannot overwrite a concurrent same-height announcement");
+            Assert.That(peer.ServedHeadNumber, Is.Zero);
         }
     }
 
@@ -209,11 +482,13 @@ public partial class ForwardHeaderProviderTests
         await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(sealValidator));
         Context ctx = node.Resolve<Context>();
 
+        Response responseFlags = Response.AllCorrect | badNumbers;
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | badNumbers));
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), responseFlags));
 
         PeerInfo peerInfo = new(syncPeer);
+        peerInfo.RecordNoProgress(AllocationContexts.ForwardHeader);
         syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
         syncPeer.HeadNumber.Returns(1024UL);
         ctx.ConfigureBestPeer(peerInfo);
@@ -227,13 +502,28 @@ public partial class ForwardHeaderProviderTests
             // No seal may be looked at: the peer-chosen number selects the Ethash epoch, and validating it
             // builds that epoch's cache synchronously before the response could be rejected.
             sealValidator.DidNotReceiveWithAnyArgs().ValidateSeal(null!, default);
+            Assert.That(peerInfo.ServedHeadNumber, Is.Zero);
+            Assert.That(peerInfo.HasNoProgress(AllocationContexts.ForwardHeader), Is.True);
+        }
+
+        responseFlags = Response.AllCorrect;
+        using IOwnedReadOnlyList<BlockHeader?>? recovered = await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered, Has.Count.EqualTo(128));
+            Assert.That(peerInfo.ServedHeadNumber, Is.EqualTo(127));
+            Assert.That(peerInfo.HasNoProgress(AllocationContexts.ForwardHeader), Is.False);
         }
     }
 
     [Test]
-    public async Task Throws_on_invalid_seal()
+    public async Task Reports_a_peer_whose_batch_fails_seal_validation([Values] bool validatorThrows)
     {
-        await using IContainer node = CreateNode(builder => builder.AddSingleton<ISealValidator>(Always.Invalid));
+        ISealValidator validator = Substitute.For<ISealValidator>();
+        validator.ValidateSeal(Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(_ =>
+            validatorThrows ? throw new ArgumentException("Seal could not be evaluated.") : false);
+
+        await using IContainer node = CreateNode(builder => builder.AddSingleton(validator));
         Context ctx = node.Resolve<Context>();
 
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -334,13 +624,13 @@ public partial class ForwardHeaderProviderTests
             Assert.That(strategy, Is.Not.Null);
         }
 
-        IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.BestSuggestedHeader.Returns(Build.A.BlockHeader.WithTotalDifficulty(10_000_000).TestObject);
-        blockTree.Head.Returns(Build.A.Block.WithDifficulty(100_000).TestObject);
+        IBlockTree blockTree = ctx.BlockTree;
+        blockTree.SuggestBlock(Build.A.Block.WithParent(blockTree.Genesis!).WithDifficulty(10_000_000).TestObject);
+        UInt256 localDifficulty = blockTree.BestSuggestedHeader!.TotalDifficulty!.Value;
         INodeStatsManager stats = Substitute.For<INodeStatsManager>();
 
-        PeerInfo equalTdPeer = BuildInitializedPeer(TestItem.PublicKeyA, 10_000_000);
-        PeerInfo betterTdPeer = BuildInitializedPeer(TestItem.PublicKeyB, 12_100_000);
+        PeerInfo equalTdPeer = BuildInitializedPeer(TestItem.PublicKeyA, localDifficulty);
+        PeerInfo betterTdPeer = BuildInitializedPeer(TestItem.PublicKeyB, localDifficulty + 2_100_000);
 
         using (Assert.EnterMultipleScope())
         {
@@ -498,7 +788,9 @@ public partial class ForwardHeaderProviderTests
     [Test]
     public async Task Cached_pin_is_kept_when_owner_sleeps_only_for_other_contexts([Values(
         AllocationContexts.Bodies,
-        AllocationContexts.Blocks)] AllocationContexts sleepContexts)
+        AllocationContexts.Blocks,
+        AllocationContexts.Headers,
+        AllocationContexts.All)] AllocationContexts sleepContexts)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
@@ -869,7 +1161,7 @@ public partial class ForwardHeaderProviderTests
     }
 
     [Test]
-    public async Task Reports_weak_peer_on_timeout_cancellation()
+    public async Task Records_transient_allocated_weakness_on_timeout_cancellation()
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
@@ -885,7 +1177,14 @@ public partial class ForwardHeaderProviderTests
 
         IForwardHeaderProvider forwardHeader = ctx.ForwardHeaderProvider;
         Assert.That((await forwardHeader.GetBlockHeaders(0, 128, CancellationToken.None)), Is.Null);
-        ctx.PeerPool.Received().ReportWeakPeer(peerInfo, AllocationContexts.ForwardHeader);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peerInfo.HasWeakness(AllocationContexts.ForwardHeader), Is.True);
+            Assert.That(peerInfo.HasNoProgress(AllocationContexts.ForwardHeader), Is.False);
+            Assert.That(peerInfo.HasWeakness(AllocationContexts.Headers | AllocationContexts.Bodies | AllocationContexts.Receipts), Is.False);
+        }
+        ctx.PeerPool.DidNotReceive().ReportWeakPeer(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
+        ctx.PeerPool.DidNotReceive().ReportNoSyncProgress(Arg.Any<PeerInfo>(), Arg.Any<AllocationContexts>());
     }
 
     [Test]

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -14,15 +15,38 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.Test.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
 using NUnit.Framework;
+
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Timers;
+using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Db;
+using Nethermind.History;
+using Nethermind.Network.Config;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.TxPool;
+using Nethermind.Specs;
+using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Test.Mocks;
+using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -40,6 +64,7 @@ public class SyncPeerPoolTests
         {
             BlockTree = Substitute.For<IBlockTree>();
             Stats = Substitute.For<INodeStatsManager>();
+            Stats.GetStatsOrNull(Arg.Any<Node>()).Returns(call => Stats.GetOrAdd(call.Arg<Node>()));
             PeerStrategy = new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance);
             Pool = new SyncPeerPool(BlockTree, Stats, PeerStrategy, LimboLogs.Instance, 25, 50);
         }
@@ -52,12 +77,38 @@ public class SyncPeerPoolTests
     {
         public string Name => "SimpleMock";
 
-        public Hash256 HeadHash { get; set; } = null!;
+        private static readonly BlockHeader DefaultHeader = Build.A.BlockHeader.TestObject;
+        private readonly Lock _headLock = new();
+        private Hash256 _headHash = DefaultHeader.Hash!;
+        private ulong _headNumber;
+        public Hash256 HeadHash
+        {
+            get { lock (_headLock) return _headHash; }
+            set { lock (_headLock) _headHash = value; }
+        }
         public byte ProtocolVersion { get; set; }
         public string ProtocolCode { get; } = null!;
         public Node Node { get; } = new Node(publicKey, "127.0.0.1", 30303);
         public string ClientId { get; } = description;
-        public ulong HeadNumber { get; set; }
+        public ulong HeadNumber
+        {
+            get { lock (_headLock) return _headNumber; }
+            set { lock (_headLock) _headNumber = value; }
+        }
+        public void SetHead(Hash256 hash, ulong number)
+        {
+            lock (_headLock) (_headHash, _headNumber) = (hash, number);
+        }
+        public bool TrySetHead(Hash256 expectedHash, ulong expectedNumber, Hash256 hash, ulong number)
+        {
+            lock (_headLock)
+            {
+                if (_headHash != expectedHash || _headNumber != expectedNumber) return false;
+                (_headHash, _headNumber) = (hash, number);
+                return true;
+            }
+        }
+        public Func<Hash256?, CancellationToken, Task<BlockHeader?>>? HeaderReply { get; set; }
         public UInt256? TotalDifficulty { get; set; } = 1;
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
@@ -98,6 +149,7 @@ public class SyncPeerPoolTests
 
         public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
+            if (HeaderReply is not null) return await HeaderReply(hash, token);
             if (_headHeaderFailure is not null)
             {
                 throw _headHeaderFailure;
@@ -114,7 +166,7 @@ public class SyncPeerPoolTests
             }
 
             IsInitialized = true;
-            return await Task.FromResult(HeadHeaderUnavailable ? null : HeaderToReturn ?? Build.A.BlockHeader.TestObject);
+            return await Task.FromResult(HeadHeaderUnavailable ? null : HeaderToReturn ?? DefaultHeader);
         }
 
         public void NotifyOfNewBlock(Block block, SendBlockMode mode)
@@ -201,6 +253,89 @@ public class SyncPeerPoolTests
     }
 
     [Test]
+    public void Default_head_update_preserves_custom_peer_updates([Values] bool matchingHash, [Values] bool matchingNumber)
+    {
+        SimpleSyncPeerMock inner = new(TestItem.PublicKeyA);
+        inner.SetHead(TestItem.KeccakA, 7);
+        ISyncPeer peer = new DefaultHeadPeer(inner);
+        bool changed = peer.TrySetHead(matchingHash ? TestItem.KeccakA : TestItem.KeccakB,
+            matchingNumber ? 7UL : 6UL, TestItem.KeccakC, 8);
+        bool expected = matchingHash && matchingNumber;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changed, Is.EqualTo(expected));
+            Assert.That((peer.HeadHash, peer.HeadNumber),
+                Is.EqualTo(expected ? (TestItem.KeccakC, 8UL) : (TestItem.KeccakA, 7UL)));
+        }
+    }
+
+    [TestCase(0, false, true)]
+    [TestCase(9, false, true)]
+    [TestCase(10, false, false)]
+    [TestCase(0, true, true)]
+    [TestCase(9, true, true)]
+    [TestCase(10, true, true)]
+    public void Stored_head_newcomer_has_bounded_served_height_grace(
+        int ageSeconds, bool noProgress, bool dropIncumbent)
+    {
+        ManualTimeProvider clock = new();
+        using IContainer node = CreateNode(clock);
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        SimpleSyncPeerMock incumbent = new(TestItem.PublicKeyA) { IsInitialized = true };
+        SimpleSyncPeerMock newcomer = new(TestItem.PublicKeyB) { IsInitialized = true };
+        incumbent.SetHead(header.Hash!, header.Number);
+        newcomer.SetHead(header.Hash!, header.Number);
+        pool.Start();
+        pool.AddPeer(incumbent);
+        pool.UpdateSyncPeerHeadIfHeaderIsBetter(incumbent, header, Keccak.Zero);
+        PeerInfo incumbentInfo = pool.GetPeer(incumbent.Node)!;
+        if (noProgress) pool.ReportNoSyncProgress(incumbentInfo, AllocationContexts.Headers);
+        else pool.ReportRefreshFailed(incumbent, "timeout", new TimeoutException());
+        clock.Advance(TimeSpan.FromSeconds(10));
+        pool.AddPeer(newcomer);
+        PeerInfo newcomerInfo = pool.GetPeer(newcomer.Node)!;
+        Assert.That(newcomerInfo.ServedHeadNumber, Is.Zero, "an announcement is not delivery credit");
+        clock.Advance(TimeSpan.FromSeconds(ageSeconds));
+
+        pool.DropUselessPeers(true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(incumbent.DisconnectRequested, Is.EqualTo(dropIncumbent));
+            Assert.That(newcomer.DisconnectRequested, Is.EqualTo(!dropIncumbent));
+            Assert.That(newcomerInfo.ServedHeadNumber, Is.Zero);
+        }
+    }
+
+    private sealed class DefaultHeadPeer(ISyncPeer inner) : ISyncPeer
+    {
+        public Node Node => inner.Node;
+        public string Name => inner.Name;
+        public PublicKey Id => inner.Id;
+        public Hash256 HeadHash { get => inner.HeadHash; set => inner.HeadHash = value; }
+        public ulong HeadNumber { get => inner.HeadNumber; set => inner.HeadNumber = value; }
+        public UInt256? TotalDifficulty { get => inner.TotalDifficulty; set => inner.TotalDifficulty = value; }
+        public bool IsInitialized { get => inner.IsInitialized; set => inner.IsInitialized = value; }
+        public bool IsPriority { get => inner.IsPriority; set => inner.IsPriority = value; }
+        public byte ProtocolVersion => inner.ProtocolVersion;
+        public string ProtocolCode => inner.ProtocolCode;
+        public void Disconnect(DisconnectReason reason, string details) => inner.Disconnect(reason, details);
+        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> hashes, CancellationToken token) => inner.GetBlockBodies(hashes, token);
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(ulong number, int count, int skip, CancellationToken token) => inner.GetBlockHeaders(number, count, skip, token);
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 hash, int count, int skip, CancellationToken token) => inner.GetBlockHeaders(hash, count, skip, token);
+        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token) => inner.GetHeadBlockHeader(hash, token);
+        public void NotifyOfNewBlock(Block block, SendBlockMode mode) => inner.NotifyOfNewBlock(block, mode);
+        public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> hashes, CancellationToken token) => inner.GetReceipts(hashes, token);
+        public Task<IByteArrayList> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => inner.GetNodeData(hashes, token);
+        public void SendNewTransactions(ReadOnlySpan<Transaction> transactions, bool full) => inner.SendNewTransactions(transactions, full);
+        public void RegisterSatelliteProtocol<T>(string protocol, T handler) where T : class => inner.RegisterSatelliteProtocol(protocol, handler);
+        public bool TryGetSatelliteProtocol<T>(string protocol, out T handler) where T : class => inner.TryGetSatelliteProtocol(protocol, out handler);
+    }
+
+    [Test]
     public async Task Cannot_add_when_not_started()
     {
         await using Context ctx = new();
@@ -221,6 +356,235 @@ public class SyncPeerPoolTests
         Assert.That(peers.Any(static p => p.DisconnectRequested), Is.True);
     }
 
+    [Test, CancelAfter(30000)]
+    public async Task Anchored_honest_peer_keeps_its_slot_over_an_extreme_unserved_claim([Values] bool hasTotalDifficulty, CancellationToken token)
+    {
+        ManualTimeProvider clock = new();
+        TaskCompletionSource refreshed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ILogManager logs = ObserveRefreshCompletion(() => refreshed);
+        using IContainer node = SyncPeerPoolTests.CreateNode(clock, logs);
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        INodeStatsManager stats = node.Resolve<INodeStatsManager>();
+        BlockHeader honestHeader = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(honestHeader, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        BlockHeader inventedHeader = Build.A.BlockHeader.WithNumber(100000).WithParentHash(TestItem.KeccakB).TestObject;
+        ISyncPeer honest = Substitute.For<ISyncPeer>();
+        ISyncPeer liar = Substitute.For<ISyncPeer>();
+        honest.IsInitialized.Returns(true);
+        liar.IsInitialized.Returns(true);
+        honest.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        liar.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303));
+        honest.HeadHash = honestHeader.Hash!;
+        honest.HeadNumber = honestHeader.Number;
+        honest.TotalDifficulty = hasTotalDifficulty ? new UInt256(100) : null;
+        liar.HeadHash = inventedHeader.Hash!;
+        liar.HeadNumber = ulong.MaxValue;
+        liar.TotalDifficulty = hasTotalDifficulty ? UInt256.MaxValue : null;
+        honest.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(honestHeader));
+        liar.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(inventedHeader));
+        stats.GetOrAdd(honest.Node).AddTransferSpeedCaptureEvent(TransferSpeedType.Latency, 100);
+        stats.GetOrAdd(liar.Node).AddTransferSpeedCaptureEvent(TransferSpeedType.Latency, 1);
+        pool.Start();
+        pool.AddPeer(honest);
+        pool.UpdateSyncPeerHeadIfHeaderIsBetter(honest, (await honest.GetHeadBlockHeader(honest.HeadHash, default))!, Keccak.Zero);
+        pool.DropUselessPeers(true);
+        pool.AddPeer(liar);
+        await refreshed.Task.WaitAsync(token);
+        Assert.That(pool.InitializedPeersCount, Is.EqualTo(2));
+        PeerInfo liarInfo = pool.GetPeer(liar.Node)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(liarInfo.ServedHeadNumber, Is.Zero);
+            Assert.That(liarInfo.HeadNumber, Is.EqualTo(tree.BestKnownNumber + 1024));
+            Assert.That(liar.HeadNumber, Is.EqualTo(ulong.MaxValue), "the raw claim is retained independently of the scheduling horizon");
+            Assert.That(liarInfo.HasNoProgress(AllocationContexts.Headers), Is.False, "serving an unknown head is not an allocated empty reply");
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(10));
+        pool.DropUselessPeers(true);
+
+        liar.Received(1).Disconnect(DisconnectReason.DropWorstPeer, Arg.Any<string>());
+        honest.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Evicts_unproductive_peer_despite_extreme_claim_and_fast_ping([Values] bool hasTotalDifficulty,
+        CancellationToken token)
+    {
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        BlockHeader reference = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(reference, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        INodeStatsManager stats = node.Resolve<INodeStatsManager>();
+        ISyncPeer honest = Substitute.For<ISyncPeer>();
+        ISyncPeer liar = Substitute.For<ISyncPeer>();
+        honest.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        liar.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303));
+        honest.IsInitialized.Returns(true);
+        liar.IsInitialized.Returns(true);
+        honest.HeadHash = reference.Hash!;
+        honest.HeadNumber = 100;
+        liar.HeadHash = reference.Hash!;
+        liar.HeadNumber = ulong.MaxValue;
+        honest.TotalDifficulty = hasTotalDifficulty ? new UInt256(100) : null;
+        liar.TotalDifficulty = hasTotalDifficulty ? UInt256.MaxValue : null;
+        liar.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(new TimeoutException()));
+        stats.GetOrAdd(honest.Node).AddTransferSpeedCaptureEvent(TransferSpeedType.Latency, 100);
+        stats.GetOrAdd(liar.Node).AddTransferSpeedCaptureEvent(TransferSpeedType.Latency, 1);
+        pool.Start();
+        pool.AddPeer(liar);
+        PeerInfo liarInfo = pool.GetPeer(liar.Node)!;
+        using HeadersSyncBatch request = new() { StartNumber = 100, RequestSize = 1 };
+        await SyncDispatcherTests.DispatchOnce(request, new HeadersSyncDownloader(LimboLogs.Instance), pool,
+            AllocationContexts.Headers, token);
+        pool.AddPeer(honest);
+        PeerInfo honestInfo = pool.GetPeer(honest.Node)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(liarInfo.ServedHeadNumber, Is.Zero);
+            Assert.That(honestInfo.ServedHeadNumber, Is.Zero);
+            Assert.That(liarInfo.HasWeakness(AllocationContexts.Headers), Is.True);
+            Assert.That(liarInfo.HasNoProgress(AllocationContexts.Headers), Is.False);
+            Assert.That(honestInfo.HasWeakness(AllocationContexts.Headers), Is.False);
+        }
+
+        pool.DropUselessPeers(true);
+
+        liar.Received(1).Disconnect(DisconnectReason.DropWorstPeer, Arg.Any<string>());
+        honest.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public void Conditional_pool_head_writers_preserve_a_concurrent_protocol_announcement(
+        [Values] bool refresh, [Values] bool interleave, [Values] bool higherNumber)
+    {
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        BlockHeader candidate = Build.A.BlockHeader.WithNumber(11).WithTotalDifficulty(100).TestObject;
+        tree.Insert(candidate, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        using SyncPeerPoolTests.HeadRacePeer remote = new(candidate.Hash!, 10);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        pool.Start();
+        if (refresh)
+        {
+            pool.AddPeer(remote.Peer);
+            remote.Protocol.SetHead(TestItem.KeccakA, 10);
+        }
+        if (interleave)
+            remote.OnNumberRead = () => remote.Protocol.SetHead(TestItem.KeccakB, higherNumber ? 20UL : 10UL);
+
+        if (refresh) pool.UpdateSyncPeerHeadIfHeaderIsBetter(remote.Peer, candidate, Keccak.Zero);
+        else pool.AddPeer(remote.Peer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remote.Protocol.HeadHash, Is.EqualTo(interleave ? TestItem.KeccakB : candidate.Hash));
+            Assert.That(remote.Protocol.HeadNumber, Is.EqualTo(interleave ? higherNumber ? 20UL : 10UL : 11UL));
+        }
+    }
+
+    [Test]
+    public async Task Equal_served_height_does_not_give_a_relayed_extreme_claim_an_eviction_lead()
+    {
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        BlockHeader known = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(known, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        INodeStatsManager stats = node.Resolve<INodeStatsManager>();
+        ISyncPeer honest = Substitute.For<ISyncPeer>();
+        ISyncPeer relayedClaim = Substitute.For<ISyncPeer>();
+        honest.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        relayedClaim.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303));
+        pool.Start();
+        foreach (ISyncPeer remote in new[] { honest, relayedClaim })
+        {
+            remote.HeadHash = known.Hash!;
+            remote.HeadNumber = ReferenceEquals(remote, honest) ? known.Number : ulong.MaxValue;
+            remote.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(known));
+            pool.AddPeer(remote);
+            pool.UpdateSyncPeerHeadIfHeaderIsBetter(remote, (await remote.GetHeadBlockHeader(known.Hash!, default))!, Keccak.Zero);
+        }
+        stats.GetOrAdd(honest.Node).AddTransferSpeedCaptureEvent(TransferSpeedType.Latency, 1);
+        stats.GetOrAdd(relayedClaim.Node).AddTransferSpeedCaptureEvent(TransferSpeedType.Latency, 100);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.GetPeer(honest.Node)!.ServedHeadNumber, Is.EqualTo(100UL));
+            Assert.That(pool.GetPeer(relayedClaim.Node)!.ServedHeadNumber, Is.EqualTo(100UL));
+            Assert.That(pool.GetPeer(relayedClaim.Node)!.HeadNumber, Is.EqualTo(1124UL));
+        }
+        pool.DropUselessPeers(true);
+        using (Assert.EnterMultipleScope())
+        {
+            relayedClaim.Received(1).Disconnect(DisconnectReason.DropWorstPeer, Arg.Any<string>());
+            honest.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Failed_head_refresh_cannot_demote_a_newer_announcement([Range(0, 2)] int newerClaim, CancellationToken token)
+    {
+        ManualTimeProvider clock = new();
+        TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ILogManager logManager = ObserveRefreshCompletion(() => completed);
+        using IContainer node = SyncPeerPoolTests.CreateNode(clock, logManager);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        BlockHeader known = Build.A.BlockHeader.WithNumber(100).TestObject;
+        node.Resolve<IBlockTree>().Insert(known, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        using SyncPeerPoolTests.HeadRacePeer remote = new(known.Hash!, known.Number);
+        pool.Start();
+        pool.AddPeer(remote.Peer);
+        pool.UpdateSyncPeerHeadIfHeaderIsBetter(remote.Peer, known, Keccak.Zero);
+        PeerInfo peer = pool.GetPeer(remote.Peer.Node)!;
+        remote.Protocol.SetHead(TestItem.KeccakA, 1000);
+        for (int attempt = 1; attempt <= 4; attempt++)
+        {
+            if (attempt == 4) clock.Advance(TimeSpan.FromMinutes(4));
+            completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource requested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<BlockHeader?> reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            remote.Peer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(call =>
+            {
+                requested.TrySetResult();
+                return reply.Task.WaitAsync(call.ArgAt<CancellationToken>(1));
+            });
+            pool.RefreshTotalDifficulty(remote.Peer, remote.Peer.HeadHash);
+            try
+            {
+                await requested.Task.WaitAsync(token);
+                if (attempt == 3 && newerClaim != 0)
+                    remote.Protocol.SetHead(TestItem.KeccakB, newerClaim == 1 ? 2000UL : 1000UL);
+                clock.AdvanceAndFireTimer(Timeouts.Eth);
+                await completed.Task.WaitAsync(token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.EqualTo(attempt >= 3));
+                    Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.True);
+                    Assert.That(remote.Protocol.HeadNumber, Is.EqualTo(attempt < 3 ? 1000UL
+                        : attempt == 4 || newerClaim == 0 ? 100UL : newerClaim == 1 ? 2000UL : 1000UL));
+                    Assert.That(remote.Protocol.HeadHash, Is.EqualTo(attempt < 3 || newerClaim == 0 ? TestItem.KeccakA : TestItem.KeccakB));
+                    Assert.That(peer.ServedHeadNumber, Is.EqualTo(100UL));
+                    Assert.That(peer.HasWeakness(AllocationContexts.Bodies | AllocationContexts.State), Is.False);
+                }
+            }
+            finally
+            {
+                reply.TrySetCanceled();
+            }
+        }
+        clock.Advance(TimeSpan.FromMinutes(1));
+        Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.True, "a later real timeout renews the evidence lifetime");
+        clock.Advance(TimeSpan.FromMinutes(4));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.False);
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.False);
+        }
+    }
+
     [TestCase(true, false)]
     [TestCase(false, true)]
     public async Task Will_disconnect_when_refresh_exception_is_not_cancelled(bool isExceptionOperationCanceled, bool isDisconnectRequested)
@@ -232,6 +596,123 @@ public class SyncPeerPoolTests
         Exception refreshException = isExceptionOperationCanceled ? new OperationCanceledException() : new Exception();
         ctx.Pool.ReportRefreshFailed(peer, "test with cancellation", refreshException);
         Assert.That(peer.DisconnectRequested, Is.EqualTo(isDisconnectRequested));
+    }
+
+    [Test]
+    public async Task Wrapped_refresh_failures_preserve_classification([Values] bool genuineFault)
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 1);
+        Exception exception = genuineFault ? new InvalidOperationException() : new TimeoutException();
+        ctx.Pool.ReportRefreshFailed(peers[0], "wrapped", new AggregateException(
+            new OperationCanceledException(), new AggregateException(exception)));
+        Assert.That(peers[0].DisconnectRequested, Is.EqualTo(genuineFault));
+    }
+
+    [Test]
+    public async Task Refresh_hints_coalesce_and_keep_the_newest_hash([Values] bool removePeer)
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        TaskCompletionSource firstStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource releaseFirst = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<Hash256?> nextHash = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int requests = 0;
+        CancellationToken requestToken = default;
+        BlockHeader header = Build.A.BlockHeader.TestObject;
+        peer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            if (Interlocked.Increment(ref requests) == 1)
+            {
+                requestToken = call.Arg<CancellationToken>();
+                firstStarted.TrySetResult();
+                await releaseFirst.Task.WaitAsync(requestToken);
+            }
+            else nextHash.TrySetResult(call.Arg<Hash256?>());
+            return (BlockHeader?)header;
+        });
+        ctx.Pool.AddPeer(peer);
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        for (int i = 0; i < 100; i++) ctx.Pool.RefreshTotalDifficulty(peer, TestItem.KeccakA);
+        ctx.Pool.RefreshTotalDifficulty(peer, TestItem.KeccakB);
+
+        try
+        {
+            if (removePeer)
+            {
+                ctx.Pool.RemovePeer(peer);
+                Assert.That(requestToken.IsCancellationRequested, Is.True);
+                ctx.Pool.RefreshTotalDifficulty(peer, TestItem.KeccakC);
+            }
+            Assert.That(Volatile.Read(ref requests), Is.EqualTo(1));
+        }
+        finally
+        {
+            releaseFirst.TrySetResult();
+        }
+        if (!removePeer)
+        {
+            Assert.That(await nextHash.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.EqualTo(TestItem.KeccakB));
+        }
+        await ctx.Pool.DisposeAsync();
+        Assert.That(Volatile.Read(ref requests), Is.EqualTo(removePeer ? 1 : 2));
+    }
+
+    [Test]
+    public async Task Old_refresh_completion_cannot_remove_replacement_cancellation()
+    {
+        await using Context ctx = new();
+        ctx.Pool.Start();
+        ISyncPeer oldPeer = Substitute.For<ISyncPeer>();
+        ISyncPeer newPeer = Substitute.For<ISyncPeer>();
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        oldPeer.Node.Returns(node);
+        newPeer.Node.Returns(node);
+        TaskCompletionSource oldStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource newStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<BlockHeader?> oldResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<BlockHeader?> newResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken newToken = default;
+        oldPeer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            oldStarted.TrySetResult();
+            return oldResponse.Task;
+        });
+        newPeer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            newToken = call.Arg<CancellationToken>();
+            newStarted.TrySetResult();
+            return newResponse.Task;
+        });
+        ctx.Pool.AddPeer(oldPeer);
+        await oldStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        ctx.Pool.RemovePeer(oldPeer);
+        ctx.Pool.AddPeer(newPeer);
+        await newStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        oldResponse.SetResult(Build.A.BlockHeader.TestObject);
+        ctx.Pool.RemovePeer(newPeer);
+        Assert.That(newToken.IsCancellationRequested, Is.True);
+        newResponse.TrySetCanceled();
+    }
+
+    [Test]
+    public async Task Allocates_honest_alternative_to_unproductive_highest_td_peer([Values] bool allPeersFailed)
+    {
+        await using Context ctx = new();
+        SimpleSyncPeerMock[] peers = await SetupPeers(ctx, 2);
+        peers[0].TotalDifficulty = UInt256.MaxValue;
+        peers[1].TotalDifficulty = 100;
+        PeerInfo liar = ctx.Pool.InitializedPeers.Single(p => p.SyncPeer == peers[0]);
+        PeerInfo honest = ctx.Pool.InitializedPeers.Single(p => p.SyncPeer == peers[1]);
+        ctx.Pool.ReportNoSyncProgress(liar, AllocationContexts.ForwardHeader);
+        if (allPeersFailed) ctx.Pool.ReportNoSyncProgress(honest, AllocationContexts.ForwardHeader);
+
+        using SyncPeerAllocation allocation = await ctx.Pool.Allocate(
+            new ByTotalDifficultyPeerAllocationStrategy(null), AllocationContexts.ForwardHeader);
+
+        Assert.That(allocation.Current, Is.SameAs(allPeersFailed ? liar : honest));
     }
 
     [Test]
@@ -431,16 +912,19 @@ public class SyncPeerPoolTests
         ISyncPeer? syncPeer = Substitute.For<ISyncPeer>();
         syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
 
+        TaskCompletionSource firstCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondCall = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int callCount = 0;
         syncPeer.When(p => p.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()))
             .Do(_ =>
             {
+                firstCall.TrySetResult();
                 if (Interlocked.Increment(ref callCount) == 2)
                     secondCall.TrySetResult();
             });
 
         ctx.Pool.AddPeer(syncPeer);
+        await firstCall.Task.WaitAsync(TimeSpan.FromSeconds(30));
         ctx.Pool.RefreshTotalDifficulty(syncPeer, Keccak.Zero);
 
         await secondCall.Task.WaitAsync(TimeSpan.FromSeconds(30));
@@ -597,7 +1081,7 @@ public class SyncPeerPoolTests
     }
 
     [Test]
-    public async Task Will_remove_peer_if_times_out_on_init()
+    public async Task Will_weaken_peer_if_times_out_on_init()
     {
         await using Context ctx = new();
         SimpleSyncPeerMock peer = new(TestItem.PublicKeyA);
@@ -605,9 +1089,12 @@ public class SyncPeerPoolTests
         ctx.Pool.Start();
         ctx.Pool.AddPeer(peer);
 
-        // The refresh goes through several thread-pool hops, as in It_is_fine_to_fail_init.
-        await Wait.ForCondition(() => peer.DisconnectRequested, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
-        Assert.That(peer.DisconnectRequested, Is.True);
+        await Wait.ForCondition(() => ctx.Pool.GetPeer(peer.Node)?.HasWeakness(AllocationContexts.All) == true, TimeSpan.FromSeconds(30), TimeSpan.FromMilliseconds(50));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Pool.GetPeer(peer.Node)!.HasWeakness(AllocationContexts.All), Is.True);
+            Assert.That(peer.DisconnectRequested, Is.False);
+        }
     }
 
     [Test]
@@ -1016,5 +1503,682 @@ public class SyncPeerPoolTests
             TimeSpan.FromSeconds(30),
             TimeSpan.FromMilliseconds(50));
         Assert.That(initialized, Is.True, "peers did not initialize in time");
+    }
+
+    [Test]
+    public async Task Eviction_only_uses_failures_for_expected_block_data(
+        [Values(AllocationContexts.State, AllocationContexts.Snap, AllocationContexts.BlockAccessLists,
+            AllocationContexts.Headers, AllocationContexts.Bodies, AllocationContexts.Receipts, AllocationContexts.ForwardHeader)] AllocationContexts context)
+    {
+        using IContainer node = CreateNode();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        ISyncPeer[] peers = [Substitute.For<ISyncPeer>(), Substitute.For<ISyncPeer>()];
+        pool.Start();
+        for (int index = 0; index < peers.Length; index++)
+        {
+            BlockHeader header = Build.A.BlockHeader.WithNumber((ulong)(100 + 100 * index)).TestObject;
+            tree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            peers[index].Node.Returns(new Node(TestItem.PublicKeys[index], "127.0.0.1", 30303));
+            peers[index].HeadHash = header.Hash!;
+            peers[index].HeadNumber = header.Number;
+            peers[index].GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(header));
+            pool.AddPeer(peers[index]);
+            Assert.That(pool.GetPeer(peers[index].Node)!.ServedHeadNumber, Is.Zero, "local lookup is not serving evidence");
+            pool.UpdateSyncPeerHeadIfHeaderIsBetter(peers[index], (await peers[index].GetHeadBlockHeader(header.Hash!, default))!, Keccak.Zero);
+        }
+        Assert.That(pool.AllPeers.Count(peer => peer.ServedHeadNumber != 0), Is.EqualTo(2));
+        pool.ReportNoSyncProgress(pool.GetPeer(peers[1].Node)!, context);
+
+        pool.DropUselessPeers(true);
+
+        bool expectedBlockData = context is AllocationContexts.Headers or AllocationContexts.Bodies or AllocationContexts.Receipts or AllocationContexts.ForwardHeader;
+        peers[expectedBlockData ? 1 : 0].Received(1).Disconnect(DisconnectReason.DropWorstPeer, Arg.Any<string>());
+        peers[expectedBlockData ? 0 : 1].DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Refresh_credits_only_a_locally_known_or_consensus_requested_header(
+        [Values] bool stored, [Values] bool consensusRequested, [Values] bool parentStored, CancellationToken token)
+    {
+        TaskCompletionSource refreshed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ILogManager logs = ObserveRefreshCompletion(() => refreshed);
+        using IContainer node = CreateNode(logManager: logs);
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(99).TestObject;
+        parent.TotalDifficulty = new UInt256(1000);
+        if (parentStored) tree.Insert(parent, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        BlockHeader response = Build.A.BlockHeader.WithParent(parent).WithNumber(100).WithDifficulty(UInt256.MaxValue / 2).TestObject;
+        UInt256 expectedDifficulty = parent.TotalDifficulty.Value + response.Difficulty;
+        if (stored)
+        {
+            response.TotalDifficulty = expectedDifficulty;
+            tree.Insert(response, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        }
+        using HeadRacePeer protocolPeer = new(response.Hash!, response.Number);
+        ISyncPeer remote = protocolPeer.Peer;
+        remote.IsInitialized = true;
+        remote.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(response));
+        pool.Start();
+        pool.AddPeer(remote);
+        if (!stored) await refreshed.Task.WaitAsync(token);
+        remote.TotalDifficulty = UInt256.One;
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        pool.ReportNoSyncProgress(peer, AllocationContexts.Headers);
+        pool.ReportRefreshFailed(remote, "timeout", new TimeoutException());
+
+        if (consensusRequested) pool.UpdateSyncPeerHeadIfHeaderIsBetter(remote, response, response.Hash!);
+        else pool.UpdateSyncPeerHeadIfHeaderIsBetter(remote, response, Keccak.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.ServedHeadNumber, Is.EqualTo(stored || consensusRequested ? 100UL : 0UL));
+            Assert.That(peer.HasTimeoutEvidence, Is.EqualTo(!stored && !consensusRequested));
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.True, "refresh cannot erase an allocated failure");
+            Assert.That(protocolPeer.Protocol.HeadHash, Is.EqualTo(response.Hash));
+            Assert.That(protocolPeer.Protocol.HeadNumber, Is.EqualTo(response.Number));
+            Assert.That(protocolPeer.Protocol.TotalDifficulty,
+                Is.EqualTo((UInt256?)(stored || consensusRequested && parentStored ? expectedDifficulty : UInt256.One)),
+                "only a trusted response may update cumulative work through the real protocol head CAS");
+        }
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Pruning_during_body_request_cannot_reset_unknown_history_grace([Values] bool pruned, [Values] bool recover, CancellationToken token)
+    {
+        IBlockTree source = Build.A.BlockTree().WithTransactions(new InMemoryReceiptStorage()).OfChainLength(4).TestObject;
+        using TestMemDb blocksDb = new();
+        using MemDb metadataDb = new();
+        IBlockTree target = Build.A.BlockTree().WithBlocksDb(blocksDb).TestObject;
+        for (ulong number = 1; number < 4; number++) target.Insert(source.FindHeader(number, BlockTreeLookupOptions.None)!);
+        BlockHeader pivot = source.FindHeader(3, BlockTreeLookupOptions.None)!;
+        target.SyncPivot = (3, pivot.Hash!);
+        TestSyncConfig config = new() { FastSync = true, PivotNumber = 3, PivotHash = pivot.Hash!.ToString(), AncientBodiesBarrier = 0 };
+        using IContainer node = CreateNode();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        node.Resolve<IBlockTree>().Insert(pivot, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        using BodiesSyncFeed feed = new(MainnetSpecProvider.Instance, target,
+            new BlockValidator(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, LimboLogs.Instance),
+            new MemorySyncPointers(), pool, config, new NullSyncReport(), Substitute.For<IHistoryPruner>(), blocksDb, metadataDb, LimboLogs.Instance);
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.HeadHash = pivot.Hash!;
+        remote.HeadNumber = pivot.Number;
+        remote.IsInitialized.Returns(true);
+        remote.GetBlockBodies(Arg.Any<System.Collections.Generic.IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                remote.EarliestBlockNumber.Returns(pruned ? 4UL : 0UL);
+                return Task.FromResult<OwnedBlockBodies>(new OwnedBlockBodies([]));
+            });
+        pool.Start();
+        pool.AddPeer(remote);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        feed.InitializeFeed();
+        ulong[]? requestedNumbers = null;
+        for (int attempt = 1; attempt <= 4; attempt++)
+        {
+            remote.EarliestBlockNumber.Returns(0UL);
+            using BodiesSyncBatch request = (await feed.PrepareRequest())!;
+            ulong[] numbers = request.Infos.Where(info => info is not null).Select(info => info!.BlockNumber).ToArray();
+            requestedNumbers ??= numbers;
+            Assert.That(numbers, Is.EquivalentTo(requestedNumbers));
+            await SyncDispatcherTests.DispatchOnce(request, new BodiesSyncDownloader(LimboLogs.Instance), pool,
+                AllocationContexts.Bodies, token, feed);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.HasNoProgress(AllocationContexts.Bodies), Is.EqualTo(attempt == 4));
+                Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.Zero);
+            }
+        }
+        if (!recover)
+        {
+            ISyncPeer honest = Substitute.For<ISyncPeer>();
+            honest.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303));
+            honest.HeadHash = pivot.Hash!;
+            honest.HeadNumber = pivot.Number;
+            honest.IsInitialized.Returns(true);
+            pool.AddPeer(honest);
+            pool.DropUselessPeers(true);
+            using (Assert.EnterMultipleScope())
+            {
+                remote.Received(1).Disconnect(DisconnectReason.DropWorstPeer, Arg.Any<string>());
+                honest.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+            return;
+        }
+        remote.EarliestBlockNumber.Returns(0UL);
+        using BodiesSyncBatch retry = (await feed.PrepareRequest())!;
+        remote.GetBlockBodies(Arg.Any<System.Collections.Generic.IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<OwnedBlockBodies>(new OwnedBlockBodies(retry.Infos.TakeWhile(info => info is not null)
+                .Select(info => source.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray())));
+        await SyncDispatcherTests.DispatchOnce(retry, new BodiesSyncDownloader(LimboLogs.Instance), pool,
+            AllocationContexts.Bodies, token, feed);
+        Assert.That(peer.HasNoProgress(AllocationContexts.Bodies), Is.False);
+        foreach (ulong number in requestedNumbers!)
+            Assert.That(target.FindBlock(number, BlockTreeLookupOptions.None)!.IsBodyMissing, Is.False);
+    }
+
+    [Test]
+    public void History_allocations_respect_the_inclusive_advertised_range(
+        [Values(TransferSpeedType.Headers, TransferSpeedType.Bodies, TransferSpeedType.Receipts)] TransferSpeedType type,
+        [Values(99UL, 100UL, 101UL)] ulong requestedNumber,
+        [Values] bool alreadyAllocated)
+    {
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        syncPeer.IsInitialized = true;
+        syncPeer.HeadNumber = 200;
+        syncPeer.EarliestBlockNumber.Returns(100UL);
+        PeerInfo peer = new(syncPeer);
+        FastBlocksAllocationStrategy strategy = new(type, requestedNumber, true);
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        PeerInfo? allocated = strategy.Allocate(alreadyAllocated ? peer : null, [peer], stats, Substitute.For<IBlockTree>());
+
+        bool available = type == TransferSpeedType.Headers || requestedNumber >= 100;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.SameAs(available ? peer : null));
+            Assert.That(peer.HasNoProgress(AllocationContexts.All), Is.False);
+        }
+    }
+
+    [Test]
+    public void No_progress_expires_per_context_without_wall_clock_dependence([Values] bool jumpWallClock)
+    {
+        ManualTimeProvider clock = new();
+        PeerInfo peer = new(Substitute.For<ISyncPeer>(), null, clock);
+        peer.RecordNoProgress(AllocationContexts.Headers);
+        clock.Advance(TimeSpan.FromMinutes(4));
+        peer.RecordNoProgress(AllocationContexts.Bodies);
+        if (jumpWallClock) clock.JumpUtc(TimeSpan.FromDays(-1));
+        clock.Advance(TimeSpan.FromMinutes(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.False);
+            Assert.That(peer.HasNoProgress(AllocationContexts.Bodies), Is.True);
+        }
+        clock.Advance(TimeSpan.FromMinutes(4));
+        Assert.That(peer.HasNoProgress(AllocationContexts.All), Is.False);
+    }
+
+    [Test]
+    public void Useful_work_preserves_failure_evidence_in_other_contexts(
+        [Values(AllocationContexts.Headers, AllocationContexts.State, AllocationContexts.BlockAccessLists)] AllocationContexts successfulContext)
+    {
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        peer.RecordNoProgress(AllocationContexts.Bodies);
+        peer.IncreaseWeakness(AllocationContexts.Bodies);
+        peer.IncreaseWeakness(successfulContext);
+
+        peer.RecordProgress(successfulContext);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasNoProgress(AllocationContexts.Bodies), Is.True);
+            Assert.That(peer.HasWeakness(successfulContext), Is.False);
+            Assert.That(peer.HasWeakness(AllocationContexts.Bodies), Is.True);
+        }
+    }
+    public enum HeightFallbackGuard { None, NullDifficulty, TransitionFinished, TerminalDifficulty, BeaconControl, ForwardFailure, ZeroDifficultyTransitionFinished }
+
+    [Test]
+    public async Task Stale_difficulty_selection_uses_the_production_known_height_and_transition_guards(
+        [Values(50UL, 200UL)] ulong suggestedHeight, [Values(75UL, 150UL)] ulong peerHeight, [Values] HeightFallbackGuard guard)
+    {
+        using IContainer node = CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        BlockHeader known = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(known, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.IsInitialized.Returns(true);
+        remote.HeadHash = tree.Genesis!.Hash!;
+        remote.HeadNumber.Returns(peerHeight);
+        remote.TotalDifficulty.Returns(guard == HeightFallbackGuard.NullDifficulty ? (UInt256?)null
+            : guard == HeightFallbackGuard.ZeroDifficultyTransitionFinished ? UInt256.Zero : UInt256.One);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        pool.Start();
+        pool.AddPeer(remote);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        if (guard == HeightFallbackGuard.ForwardFailure) peer.RecordNoProgress(AllocationContexts.ForwardHeader);
+        Assert.That(peer.KnownHeadNumber, Is.EqualTo(100UL));
+        ISyncProgressResolver progress = Substitute.For<ISyncProgressResolver>();
+        progress.FindBestHeader().Returns(suggestedHeight);
+        progress.FindBestFullBlock().Returns(suggestedHeight);
+        progress.FindBestFullState().Returns(suggestedHeight);
+        progress.FindBestProcessedBlock().Returns(suggestedHeight);
+        progress.ChainDifficulty.Returns(guard == HeightFallbackGuard.ZeroDifficultyTransitionFinished ? UInt256.Zero : new UInt256(200));
+        IBeaconSyncStrategy beacon = Substitute.For<IBeaconSyncStrategy>();
+        beacon.MergeTransitionFinished.Returns(guard is HeightFallbackGuard.TransitionFinished or HeightFallbackGuard.ZeroDifficultyTransitionFinished);
+        beacon.ShouldBeInBeaconModeControl().Returns(guard == HeightFallbackGuard.BeaconControl);
+        IBetterPeerStrategy strategy = Substitute.For<IBetterPeerStrategy>();
+        TotalDifficultyBetterPeerStrategy ordering = new(LimboLogs.Instance);
+        strategy.Compare(Arg.Any<(UInt256?, ulong)>(), Arg.Any<(UInt256?, ulong)>())
+            .Returns(call => ordering.Compare(call.ArgAt<(UInt256?, ulong)>(0), call.ArgAt<(UInt256?, ulong)>(1)));
+        strategy.IsLowerThanTerminalTotalDifficulty(Arg.Any<UInt256>()).Returns(guard != HeightFallbackGuard.TerminalDifficulty);
+        using MultiSyncModeSelector selector = new(progress, pool, new TestSyncConfig { FastSync = false },
+            beacon, strategy, LimboLogs.Instance);
+        await selector.StopAsync();
+
+        selector.Update();
+
+        Assert.That(selector.Current == SyncMode.Full, Is.EqualTo(guard == HeightFallbackGuard.None && peerHeight > 100),
+            "a non-null stale claim can probe beyond BestKnown before the terminal transition, even when BestSuggested differs");
+    }
+
+    internal static void AssertInferredHistoryAllocation(PeerInfo peer, AllocationContexts context, IBlockTree tree, ulong floor)
+    {
+        peer.SyncPeer.IsInitialized = true;
+        peer.SyncPeer.HeadNumber = ulong.MaxValue;
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        TransferSpeedType speed = context == AllocationContexts.Bodies ? TransferSpeedType.Bodies : TransferSpeedType.Receipts;
+        FastBlocksAllocationStrategy below = new(speed, floor - 1, false, FirstFree.Instance);
+        FastBlocksAllocationStrategy above = new(speed, floor, false, FirstFree.Instance);
+        FastBlocksAllocationStrategy headers = new(TransferSpeedType.Headers, floor - 1, false, FirstFree.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(below.Allocate(null, [peer], stats, tree), Is.Null);
+            Assert.That(above.Allocate(null, [peer], stats, tree), Is.SameAs(peer));
+            Assert.That(headers.Allocate(null, [peer], stats, tree), Is.SameAs(peer), "body or receipt evidence cannot exclude header backfill");
+        }
+    }
+
+    internal static async Task AssertBoundedEmptyHistory(Func<bool, Task<SyncResponseHandlingResult>> respond, bool usefulBetweenEmpties)
+    {
+        for (int attempt = 1; attempt <= 6; attempt++)
+        {
+            SyncResponseHandlingResult empty = await respond(false);
+            Assert.That(empty, Is.EqualTo(usefulBetweenEmpties || attempt <= 3
+                ? SyncResponseHandlingResult.Emptish : SyncResponseHandlingResult.NoProgress));
+            if (usefulBetweenEmpties)
+                Assert.That(await respond(true), Is.EqualTo(SyncResponseHandlingResult.OK));
+        }
+    }
+
+    [Test]
+    public async Task Consensus_refresh_credits_only_the_original_requested_head([Values] bool matching)
+    {
+        using IContainer node = CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        BlockHeader parent = tree.Genesis!;
+        BlockHeader requested = Build.A.BlockHeader.WithParent(parent).WithDifficulty(0).TestObject;
+        BlockHeader answer = matching ? requested : Build.A.BlockHeader.WithParent(parent).WithExtraData([1]).TestObject;
+        using HeadRacePeer remote = new(parent.Hash!, 0);
+        remote.Peer.GetBlockHeaders(parent.Hash!, 2, 0, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>([parent, answer])));
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        pool.Start();
+        pool.AddPeer(remote.Peer);
+        PeerInfo peer = pool.GetPeer(remote.Peer.Node)!;
+        pool.ReportNoSyncProgress(peer, AllocationContexts.Headers);
+        await using PeerRefresher refresher = new(pool, Substitute.For<ITimerFactory>(), LimboLogs.Instance);
+
+        refresher.RefreshPeers(requested.Hash!, parent.Hash!, Keccak.Zero);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.ServedHeadNumber, Is.EqualTo(matching ? requested.Number : 0UL));
+            Assert.That(remote.Protocol.HeadHash, Is.EqualTo(matching ? requested.Hash : parent.Hash));
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.True, "CL refresh is not allocated-header recovery");
+            Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.Zero, "header-only serving cannot establish body availability");
+            Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.Zero);
+            Assert.That(tree.FindHeader(requested.Hash!, BlockTreeLookupOptions.None), Is.Null);
+        }
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Configured_and_stored_pivots_keep_a_dynamic_allocatable_horizon(
+        [Values(0UL, 5000UL)] ulong configuredPivot, [Values(0UL, 9000UL)] ulong storedPivot, CancellationToken token)
+    {
+        using IContainer node = CreateNode(syncConfig: new SyncConfig { SnapSync = true, PivotNumber = configuredPivot });
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        tree.SyncPivot = (storedPivot, TestItem.KeccakC);
+        using HeadRacePeer remote = new(tree.Genesis!.Hash!, ulong.MaxValue);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        pool.Start();
+        pool.AddPeer(remote.Peer);
+        // AddPeer fills known metadata, so publish the subsequent distant announcement through the protocol tuple.
+        remote.Protocol.SetHead(TestItem.KeccakA, ulong.MaxValue);
+        PeerInfo peer = pool.GetPeer(remote.Peer.Node)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HeadNumber, Is.EqualTo(Math.Max(configuredPivot, storedPivot) + 1024));
+            Assert.That(remote.Protocol.HeadNumber, Is.EqualTo(ulong.MaxValue));
+            Assert.That(peer.ServedHeadNumber, Is.Zero);
+        }
+        using (SyncPeerAllocation allocation = await pool.Allocate(FirstFree.Instance, AllocationContexts.ForwardHeader, 0, token))
+            Assert.That(allocation.Current, Is.SameAs(peer));
+        tree.Insert(Build.A.BlockHeader.WithNumber(12000).TestObject, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HeadNumber, Is.EqualTo(13024UL));
+            Assert.That(remote.Protocol.HeadNumber, Is.EqualTo(ulong.MaxValue));
+            Assert.That(peer.ServedHeadNumber, Is.Zero);
+        }
+        using SyncPeerAllocation advanced = await pool.Allocate(FirstFree.Instance, AllocationContexts.ForwardHeader, 0, token);
+        Assert.That(advanced.Current, Is.SameAs(peer));
+    }
+
+    internal sealed class HeadRacePeer : IDisposable
+    {
+        public Eth62ProtocolHandler Protocol { get; }
+        public ISyncPeer Peer { get; } = Substitute.For<ISyncPeer>();
+        public Action? OnNumberRead { get; set; }
+
+        public HeadRacePeer(Hash256 hash, ulong number)
+        {
+            ISession session = Substitute.For<ISession>();
+            Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+            session.Node.Returns(node);
+            Protocol = new(session, Substitute.For<IMessageSerializationService>(), Substitute.For<INodeStatsManager>(),
+                Substitute.For<ISyncServer>(), RunImmediatelyScheduler.Instance, Substitute.For<ITxPool>(),
+                Substitute.For<IGossipPolicy>(), LimboLogs.Instance);
+            Protocol.SetHead(hash, number);
+            Protocol.TotalDifficulty = UInt256.One;
+            Protocol.IsInitialized = true;
+            Peer.Node.Returns(node);
+            Peer.IsInitialized.Returns(true);
+            Peer.HeadHash.Returns(_ => Protocol.HeadHash);
+            Peer.HeadNumber.Returns(_ =>
+            {
+                ulong snapshot = Protocol.HeadNumber;
+                Action? action = OnNumberRead;
+                OnNumberRead = null;
+                action?.Invoke();
+                return snapshot;
+            });
+            Peer.TotalDifficulty.Returns(_ => Protocol.TotalDifficulty);
+            Peer.When(peer => peer.TotalDifficulty = Arg.Any<UInt256?>()).Do(call => Protocol.TotalDifficulty = call.Arg<UInt256?>());
+            Peer.When(peer => peer.SetHead(Arg.Any<Hash256>(), Arg.Any<ulong>()))
+                .Do(call => Protocol.SetHead(call.Arg<Hash256>(), call.Arg<ulong>()));
+            Peer.TrySetHead(Arg.Any<Hash256>(), Arg.Any<ulong>(), Arg.Any<Hash256>(), Arg.Any<ulong>())
+                .Returns(call => Protocol.TrySetHead(call.ArgAt<Hash256>(0), call.ArgAt<ulong>(1),
+                    call.ArgAt<Hash256>(2), call.ArgAt<ulong>(3)));
+        }
+
+        public void Dispose() => Protocol.Dispose();
+    }
+
+    internal static IContainer CreateNode(ManualTimeProvider? clock = null, ILogManager? logManager = null, ISyncConfig? syncConfig = null, Module? extraModule = null)
+    {
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(syncConfig is null ? new TestNethermindModule() : new TestNethermindModule(syncConfig))
+            .AddSingleton<ILogManager>(logManager ?? LimboLogs.Instance)
+            .AddSingleton<ISyncConfig>(syncConfig ?? new SyncConfig())
+            .AddSingleton<IBetterPeerStrategy>(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance))
+            .AddSingleton<INetworkConfig>(new NetworkConfig { MaxActivePeers = 2 })
+            .AddSingleton<SyncPeerPool>(context => new SyncPeerPool(context.Resolve<IBlockTree>(),
+                context.Resolve<INodeStatsManager>(), context.Resolve<IBetterPeerStrategy>(), context.Resolve<INetworkConfig>(),
+                context.Resolve<ISyncConfig>(), context.Resolve<ILogManager>())
+            { RefreshTimeProvider = clock ?? TimeProvider.System });
+        if (extraModule is not null) builder.AddModule(extraModule);
+        return builder.Build();
+    }
+
+    internal static ILogManager ObserveRefreshCompletion(Func<TaskCompletionSource> completion)
+    {
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsTrace.Returns(true);
+        logger.When(log => log.Trace(Arg.Is<string>(message => message.StartsWith("Refreshed peer info for "))))
+            .Do(_ => completion().TrySetResult());
+        return new OneLoggerLogManager(new ILogger(logger));
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Already_dispatched_header_timeouts_count_once_until_another_request_is_sent(CancellationToken token)
+    {
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        PeerInfo peer = new(remote);
+        await AssertTimeoutCohort<IOwnedReadOnlyList<BlockHeader>?, HeadersSyncBatch>(peer,
+            replies => remote.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+                .Returns(_ => replies()),
+            () => new HeadersSyncBatch { StartNumber = 1, RequestSize = 1 },
+            new HeadersSyncDownloader(LimboLogs.Instance), AllocationContexts.Headers, token);
+    }
+
+    internal static async Task AssertTimeoutCohort<TReply, TBatch>(PeerInfo peer,
+        Action<Func<Task<TReply>>> configure, Func<TBatch> prepare, ISyncDownloader<TBatch> downloader,
+        AllocationContexts context, CancellationToken token, ISyncFeed<TBatch?>? productionFeed = null) where TBatch : FastBlocksBatch
+    {
+        ISyncPeerPool pool = CreateIssuedRequestPool(peer);
+        TaskCompletionSource<TReply>[] replies = [NewReply(), NewReply(), NewReply()];
+        TaskCompletionSource[] sentSignals =
+        [
+            new(TaskCreationOptions.RunContinuationsAsynchronously),
+            new(TaskCreationOptions.RunContinuationsAsynchronously),
+            new(TaskCreationOptions.RunContinuationsAsynchronously)
+        ];
+        int sent = 0;
+        configure(() =>
+        {
+            int index = Interlocked.Increment(ref sent) - 1;
+            sentSignals[index].TrySetResult();
+            return replies[index].Task;
+        });
+        TBatch[] requests = [prepare(), prepare(), prepare()];
+        Task[] dispatches = [Task.CompletedTask, Task.CompletedTask, Task.CompletedTask];
+        try
+        {
+            for (int index = 0; index < requests.Length; index++)
+            {
+                dispatches[index] = SyncDispatcherTests.DispatchOnce(requests[index], downloader, pool,
+                    context, token, productionFeed);
+                await Task.WhenAny(dispatches[index], sentSignals[index].Task).WaitAsync(token);
+                if (dispatches[index].IsCompleted) await dispatches[index];
+                Assert.That(sentSignals[index].Task.IsCompleted, Is.True, "each real request must be sent before completing the outstanding cohort");
+            }
+            for (int index = 0; index < replies.Length; index++)
+            {
+                replies[index].SetException(new TimeoutException());
+                await dispatches[index].WaitAsync(token);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(peer.HasNoProgress(context), Is.False, "one outstanding cohort cannot count as three successive failures");
+                    Assert.That(peer.HasWeakness(context), Is.True);
+                    Assert.That(peer.HasTimeoutEvidence, Is.True);
+                }
+            }
+        }
+        finally
+        {
+            foreach (TaskCompletionSource<TReply> reply in replies) reply.TrySetException(new TimeoutException());
+            await Task.WhenAll(dispatches).WaitAsync(token);
+            foreach (TBatch request in requests) request.Dispose();
+        }
+        configure(() => Task.FromException<TReply>(new TimeoutException()));
+        for (int later = 1; later <= 2; later++)
+        {
+            using TBatch request = prepare();
+            await SyncDispatcherTests.DispatchOnce(request, downloader, pool, context, token, productionFeed);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.HasNoProgress(context), Is.EqualTo(later == 2));
+                Assert.That(peer.HasWeakness(context), Is.True);
+                Assert.That(peer.HasWeakness((AllocationContexts.Headers | AllocationContexts.Bodies | AllocationContexts.Receipts) & ~context), Is.False);
+            }
+        }
+        static TaskCompletionSource<TReply> NewReply() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    internal static ISyncPeerPool CreateIssuedRequestPool(PeerInfo peer, ISyncPeerPool? accountingPool = null)
+    {
+        ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+        // Independent already-issued protocol requests share evidence, not an exclusive feed allocation.
+        pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                SyncPeerAllocation allocation = new(AllocationContexts.None);
+                allocation.AllocatePeer(peer);
+                return Task.FromResult(allocation);
+            });
+        if (accountingPool is not null)
+        {
+            pool.When(value => value.ReportWeakPeer(peer, Arg.Any<AllocationContexts>()))
+                .Do(call => accountingPool.ReportWeakPeer(peer, call.Arg<AllocationContexts>()));
+            pool.When(value => value.ReportNoSyncProgress(peer, Arg.Any<AllocationContexts>()))
+                .Do(call => accountingPool.ReportNoSyncProgress(peer, call.Arg<AllocationContexts>()));
+        }
+        return pool;
+    }
+
+    [Test]
+    public async Task Header_probes_recover_from_transient_failure_but_require_header_progress_after_bad_data(
+        [Values] bool concreteFault, [Values] bool successfulOtherContext)
+    {
+        ManualTimeProvider clock = new();
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        IBlockTree tree = Build.A.BlockTree().TestObject;
+        await using SyncPeerPool pool = new(tree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance);
+        PeerInfo unproven = CreatePeer(0, null, stats, clock);
+        PeerInfo proven = CreatePeer(1, 10, stats, clock);
+        BySpeedStrategy strategy = new(TransferSpeedType.Headers, false);
+        pool.ReportNoSyncProgress(unproven, AllocationContexts.Headers);
+        // Bad data reported after the stall keeps its own evidence lifetime once the stall evidence has expired.
+        clock.Advance(TimeSpan.FromMinutes(1));
+        if (concreteFault) pool.ReportWeakPeer(unproven, AllocationContexts.Headers);
+        Assert.That(CountProbes(), Is.Zero);
+
+        if (successfulOtherContext) unproven.RecordProgress(AllocationContexts.State);
+        else clock.Advance(TimeSpan.FromMinutes(4));
+        unproven.TryToWakeUp(DateTime.UtcNow.AddHours(1), TimeSpan.FromSeconds(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unproven.HasNoProgress(AllocationContexts.Headers), Is.EqualTo(successfulOtherContext));
+            Assert.That(CountProbes(), Is.EqualTo(concreteFault || successfulOtherContext ? 0 : 2));
+        }
+        unproven.RecordProgress(AllocationContexts.Headers);
+        Assert.That(CountProbes(), Is.EqualTo(2));
+
+        int CountProbes()
+        {
+            int probes = 0;
+            for (int i = 0; i < 64; i++)
+                if (strategy.Allocate(null, [unproven, proven], stats, tree) == unproven) probes++;
+            return probes;
+        }
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Hint_and_consensus_refresh_cannot_erase_allocated_header_timeouts(CancellationToken token)
+    {
+        TaskCompletionSource refreshed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ILogManager logs = ObserveRefreshCompletion(() => refreshed);
+        using IContainer node = SyncPeerPoolTests.CreateNode(logManager: logs);
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        tree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        BlockHeader parent = tree.Genesis!;
+        BlockHeader child = Build.A.BlockHeader.WithParent(parent).TestObject;
+        tree.Insert(child, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        using SyncPeerPoolTests.HeadRacePeer remote = new(parent.Hash!, 0);
+        remote.Peer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(new TimeoutException()));
+        remote.Peer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult(tree.FindHeader(call.ArgAt<Hash256>(0), BlockTreeLookupOptions.None)));
+        remote.Peer.GetBlockHeaders(parent.Hash!, 2, 0, Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>([parent, child])));
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        pool.Start();
+        pool.AddPeer(remote.Peer);
+        PeerInfo peer = pool.GetPeer(remote.Peer.Node)!;
+        await using PeerRefresher consensus = new(pool, Substitute.For<ITimerFactory>(), LimboLogs.Instance);
+        for (int attempt = 1; attempt <= 3; attempt++)
+        {
+            using HeadersSyncBatch request = new() { StartNumber = 1, RequestSize = 1 };
+            await SyncDispatcherTests.DispatchOnce(request, new HeadersSyncDownloader(LimboLogs.Instance), pool,
+                AllocationContexts.Headers, token);
+            refreshed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            pool.RefreshTotalDifficulty(remote.Peer, child.Hash!);
+            await refreshed.Task.WaitAsync(token);
+            await consensus.RefreshPeerForFcu(remote.Peer, child.Hash!, parent.Hash!, Keccak.Zero, token);
+            await remote.Peer.Received(attempt).GetBlockHeaders(parent.Hash!, 2, 0, Arg.Any<CancellationToken>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.True);
+                Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.EqualTo(attempt == 3));
+                Assert.That(peer.ServedHeadNumber, Is.EqualTo(child.Number), "the CL response serves data without recovering an allocated origin");
+            }
+        }
+    }
+
+    [Test]
+    public async Task Head_refresh_timeout_is_transient_header_evidence([Values(1, 3)] int timeouts, [Values] bool trustedResponse)
+    {
+        ManualTimeProvider clock = new();
+        using IContainer node = SyncPeerPoolTests.CreateNode(clock);
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        remote.HeadHash = header.Hash!;
+        remote.HeadNumber = 100;
+        remote.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(Task.FromResult<BlockHeader?>(header));
+        pool.Start();
+        pool.AddPeer(remote);
+        pool.UpdateSyncPeerHeadIfHeaderIsBetter(remote, (await remote.GetHeadBlockHeader(header.Hash!, default))!, Keccak.Zero);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        for (int index = 0; index < timeouts; index++)
+            pool.ReportRefreshFailed(remote, "timeout", new TimeoutException());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.EqualTo(timeouts == 3));
+            Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.True);
+            Assert.That(peer.HasNoProgress(AllocationContexts.State | AllocationContexts.BlockAccessLists), Is.False);
+        }
+        peer.RecordProgress(AllocationContexts.State);
+        Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.True, "unrelated work cannot clear refresh silence");
+        if (trustedResponse)
+            pool.UpdateSyncPeerHeadIfHeaderIsBetter(remote, (await remote.GetHeadBlockHeader(header.Hash!, default))!, Keccak.Zero);
+        else
+            clock.Advance(TimeSpan.FromMinutes(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.False);
+            Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.False);
+        }
+        remote.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Header_recovery_preserves_bad_state_or_bal_evidence(
+        [Values(AllocationContexts.State, AllocationContexts.BlockAccessLists)] AllocationContexts context)
+    {
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        IBlockTree tree = Build.A.BlockTree().TestObject;
+        await using SyncPeerPool pool = new(tree, stats, new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), LimboLogs.Instance);
+        PeerInfo peer = CreatePeer(0, null, stats, new ManualTimeProvider());
+        pool.ReportNoSyncProgress(peer, AllocationContexts.Headers);
+        pool.ReportWeakPeer(peer, context);
+
+        peer.RecordProgress(AllocationContexts.Headers);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasNoProgress(AllocationContexts.All), Is.False);
+            Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.False);
+            Assert.That(peer.HasWeakness(context), Is.True);
+        }
+        peer.RecordProgress(context);
+        Assert.That(peer.HasWeakness(context), Is.False);
+    }
+
+    private static PeerInfo CreatePeer(int index, long? speed, INodeStatsManager stats, ManualTimeProvider clock)
+    {
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Node(TestItem.PublicKeys[index], "127.0.0.1", 30303 + index));
+        peer.IsInitialized = true;
+        NodeStatsLight measured = new(peer.Node);
+        if (speed is { } value) measured.AddTransferSpeedCaptureEvent(TransferSpeedType.Headers, value);
+        stats.GetStatsOrNull(peer.Node).Returns(measured);
+        return new PeerInfo(peer, null, clock);
     }
 }

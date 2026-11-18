@@ -6,10 +6,21 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.Blocks;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Test.Mocks;
 using NSubstitute;
 using NUnit.Framework;
@@ -436,4 +447,223 @@ public class SyncDispatcherTests
         Assert.That(syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest));
         syncFeed.UnlockResponse();
     }
+    [Test, CancelAfter(30000)]
+    public async Task Blocks_failures_preserve_requested_constituents_after_response_disposal(
+        [Range(1, 7)] int requestedParts, [Values] bool weak, CancellationToken token)
+    {
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Nethermind.Stats.Model.Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        PeerInfo peer = new(remote);
+        ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+        pool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                SyncPeerAllocation allocation = new(call.ArgAt<AllocationContexts>(1));
+                allocation.AllocatePeer(peer);
+                return Task.FromResult(allocation);
+            });
+        SyncPeerPool accounting = node.Resolve<SyncPeerPool>();
+        pool.When(value => value.ReportWeakPeer(peer, Arg.Any<AllocationContexts>()))
+            .Do(call => accounting.ReportWeakPeer(peer, call.Arg<AllocationContexts>()));
+        pool.When(value => value.ReportNoSyncProgress(peer, Arg.Any<AllocationContexts>()))
+            .Do(call => accounting.ReportNoSyncProgress(peer, call.Arg<AllocationContexts>()));
+        BlocksRequest request = new() { DownloadTask = Task.CompletedTask };
+        if ((requestedParts & 1) != 0) request.BodiesRequests = new ArrayPoolList<BlockHeader>(1) { header };
+        if ((requestedParts & 2) != 0) request.ReceiptsRequests = new ArrayPoolList<BlockHeader>(1) { header };
+        if ((requestedParts & 4) != 0) request.BlockAccessListsRequests = new ArrayPoolList<BlockHeader>(1) { header };
+        OneBatchFeed<BlocksRequest> feed = new(request, AllocationContexts.Blocks | AllocationContexts.BlockAccessLists,
+            weak ? SyncResponseHandlingResult.LesserQuality : SyncResponseHandlingResult.NoProgress, disposeResponse: true);
+        ISyncDownloader<BlocksRequest> downloader = Substitute.For<ISyncDownloader<BlocksRequest>>();
+        TaskCompletionSource reported = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        AllocationContexts lastContext = (requestedParts & 4) != 0 ? AllocationContexts.BlockAccessLists
+            : (requestedParts & 2) != 0 ? AllocationContexts.Receipts : AllocationContexts.Bodies;
+        if (weak) pool.When(value => value.ReportWeakPeer(peer, lastContext)).Do(_ => reported.TrySetResult());
+        else pool.When(value => value.ReportNoSyncProgress(peer, lastContext)).Do(_ => reported.TrySetResult());
+        using CancellationTokenSource shutdown = CancellationTokenSource.CreateLinkedTokenSource(token);
+        await using SyncDispatcher<BlocksRequest> dispatcher = new(new TestSyncConfig(), feed, downloader, pool,
+            new StaticPeerAllocationStrategyFactory<BlocksRequest>(FirstFree.Instance), LimboLogs.Instance);
+        feed.Activate();
+        Task running = dispatcher.Start(shutdown.Token);
+        try
+        {
+            await Task.WhenAny(running, reported.Task).WaitAsync(token);
+            Assert.That(reported.Task.IsCompleted, Is.True);
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            await running;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((int bit, AllocationContexts context) in new[]
+            {
+                (1, AllocationContexts.Bodies), (2, AllocationContexts.Receipts), (4, AllocationContexts.BlockAccessLists)
+            })
+            {
+                if (weak) pool.Received((requestedParts & bit) != 0 ? 1 : 0).ReportWeakPeer(peer, context);
+                else pool.Received((requestedParts & bit) != 0 ? 1 : 0).ReportNoSyncProgress(peer, context);
+                Assert.That(peer.HasWeakness(context), Is.EqualTo((requestedParts & bit) != 0));
+                Assert.That(peer.HasNoProgress(context), Is.EqualTo(!weak && (requestedParts & bit) != 0));
+            }
+            if (weak) pool.DidNotReceive().ReportWeakPeer(peer, AllocationContexts.Blocks);
+            else pool.DidNotReceive().ReportNoSyncProgress(peer, AllocationContexts.Blocks);
+        }
+        if (weak)
+        {
+            using BlocksRequest second = new() { DownloadTask = Task.CompletedTask };
+            if ((requestedParts & 1) != 0) second.BodiesRequests = new ArrayPoolList<BlockHeader>([header]);
+            if ((requestedParts & 2) != 0) second.ReceiptsRequests = new ArrayPoolList<BlockHeader>([header]);
+            if ((requestedParts & 4) != 0) second.BlockAccessListsRequests = new ArrayPoolList<BlockHeader>([header]);
+            await DispatchOnce(second, downloader, pool, AllocationContexts.Blocks | AllocationContexts.BlockAccessLists, token,
+                handleResponse: (response, _) =>
+                {
+                    response.Dispose();
+                    return SyncResponseHandlingResult.LesserQuality;
+                });
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.IsAsleep(AllocationContexts.Bodies), Is.EqualTo((requestedParts & 1) != 0));
+                Assert.That(peer.IsAsleep(AllocationContexts.Receipts), Is.EqualTo((requestedParts & 2) != 0));
+                Assert.That(peer.IsAsleep(AllocationContexts.BlockAccessLists), Is.EqualTo((requestedParts & 4) != 0));
+            }
+        }
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Allocated_transport_timeouts_are_counted_once_and_caller_cancellation_is_neutral(
+        [Values(AllocationContexts.Headers, AllocationContexts.Bodies, AllocationContexts.Receipts)] AllocationContexts context,
+        [Values] bool canceledTransport, [Values] bool callerCancellation, CancellationToken token)
+    {
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        tree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        ISyncPeer remote = NSubstitute.Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Nethermind.Stats.Model.Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.HeadHash = header.Hash!;
+        remote.HeadNumber = header.Number;
+        remote.ProtocolVersion.Returns((byte)69);
+        Action beforeFailure = () => { };
+        remote.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Fail<IOwnedReadOnlyList<BlockHeader>?>(beforeFailure, canceledTransport));
+        remote.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Fail<OwnedBlockBodies>(beforeFailure, canceledTransport));
+        remote.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Fail<IOwnedReadOnlyList<TxReceipt[]?>>(beforeFailure, canceledTransport));
+        pool.Start();
+        pool.AddPeer(remote);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        for (int attempt = 1; attempt <= (callerCancellation ? 1 : 3); attempt++)
+        {
+            using CancellationTokenSource shutdown = CancellationTokenSource.CreateLinkedTokenSource(token);
+            beforeFailure = () => { if (callerCancellation) shutdown.Cancel(); };
+            BlockInfo info = new(header.Hash!, UInt256.Zero) { BlockNumber = header.Number };
+            switch (context)
+            {
+                case AllocationContexts.Headers:
+                    await Dispatch(new HeadersSyncBatch { StartNumber = 100, RequestSize = 1 }, new HeadersSyncDownloader(LimboLogs.Instance));
+                    break;
+                case AllocationContexts.Bodies:
+                    await Dispatch(new BodiesSyncBatch([info]), new BodiesSyncDownloader(LimboLogs.Instance));
+                    break;
+                case AllocationContexts.Receipts:
+                    await Dispatch(new ReceiptsSyncBatch([info]), new ReceiptsSyncDispatcher(LimboLogs.Instance));
+                    break;
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(peer.HasWeakness(context), Is.EqualTo(!callerCancellation));
+                Assert.That(peer.HasNoProgress(context), Is.EqualTo(!callerCancellation && attempt == 3));
+                Assert.That(peer.HasNoProgress(AllocationContexts.All & ~context), Is.False);
+            }
+
+            async Task Dispatch<T>(T request, ISyncDownloader<T> downloader) where T : FastBlocksBatch
+            {
+                OneBatchFeed<T> feed = new(request, context);
+                await using SyncDispatcher<T> dispatcher = new(new TestSyncConfig(), feed, downloader, pool,
+                    new StaticPeerAllocationStrategyFactory<T>(FirstFree.Instance), LimboLogs.Instance);
+                feed.Activate();
+                Task running = dispatcher.Start(shutdown.Token);
+                try
+                {
+                    Task reached = await Task.WhenAny(running, feed.Handled.Task).WaitAsync(token);
+                    if (!callerCancellation) Assert.That(reached, Is.SameAs(feed.Handled.Task));
+                }
+                finally
+                {
+                    await shutdown.CancelAsync();
+                    await running;
+                    request.Dispose();
+                }
+            }
+        }
+
+        static Task<T> Fail<T>(Action before, bool canceled)
+        {
+            before();
+            return Task.FromException<T>(canceled ? new TaskCanceledException() : new TimeoutException());
+        }
+    }
+
+    internal static async Task DispatchOnce<T>(T request, ISyncDownloader<T> downloader, ISyncPeerPool pool,
+        AllocationContexts context, CancellationToken token, ISyncFeed<T?>? productionFeed = null,
+        Func<T, PeerInfo?, SyncResponseHandlingResult>? handleResponse = null)
+    {
+        using CancellationTokenSource shutdown = CancellationTokenSource.CreateLinkedTokenSource(token);
+        OneBatchFeed<T> feed = new(request, context, productionFeed: productionFeed, handleResponse: handleResponse);
+        await using SyncDispatcher<T> dispatcher = new(new TestSyncConfig(), feed, downloader, pool,
+            new StaticPeerAllocationStrategyFactory<T>(FirstFree.Instance), LimboLogs.Instance);
+        feed.Activate();
+        Task running = dispatcher.Start(shutdown.Token);
+        try
+        {
+            await Task.WhenAny(running, feed.Accounted.Task).WaitAsync(token);
+            if (running.IsCompleted) await running;
+            Assert.That(feed.Accounted.Task.IsCompleted, Is.True, "the dispatcher must finish response accounting before continuing");
+        }
+        finally
+        {
+            await shutdown.CancelAsync();
+            await running;
+        }
+    }
+
+    private sealed class OneBatchFeed<T>(T request, AllocationContexts context,
+        SyncResponseHandlingResult result = SyncResponseHandlingResult.Emptish, bool disposeResponse = false,
+        ISyncFeed<T?>? productionFeed = null, Func<T, PeerInfo?, SyncResponseHandlingResult>? handleResponse = null) : SyncFeed<T>
+    {
+        private bool _issued;
+        public TaskCompletionSource Handled { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Accounted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override bool IsMultiFeed => false;
+        public override AllocationContexts Contexts => context;
+        public override bool IsFinished => false;
+        public override string FeedName => nameof(OneBatchFeed<T>);
+        public override void SyncModeSelectorOnChanged(SyncMode current) { }
+        public override async Task<T> PrepareRequest(CancellationToken token = default)
+        {
+            if (!_issued)
+            {
+                _issued = true;
+                return request;
+            }
+            Accounted.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return default!;
+        }
+        public override SyncResponseHandlingResult HandleResponse(T response, PeerInfo? peer = null)
+        {
+            if (disposeResponse && response is IDisposable disposable) disposable.Dispose();
+            Handled.TrySetResult();
+            return productionFeed?.HandleResponse(response, peer) ?? handleResponse?.Invoke(response, peer) ?? result;
+        }
+    }
+
 }

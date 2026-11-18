@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Synchronization.Test.ParallelSync;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -39,11 +40,14 @@ public partial class BlockDownloaderTests
     [TestCase(false, true, true)]
     [TestCase(true, false, false)]
     [TestCase(true, false, true)]
-    public async Task Finalized_catchup_downloads_retained_receipts_before_suggestion(bool missingBal, bool missingReceipts, bool truncated)
+    [CancelAfter(30000)]
+    public async Task Finalized_catchup_downloads_retained_receipts_before_suggestion(bool missingBal, bool missingReceipts, bool truncated, CancellationToken token)
     {
         await using CatchUp catchUp = CreateCatchUp(1);
         (Context ctx, Block block, TxReceipt[] receipts, byte[] bal, BlockDownloader downloader, PeerInfo peer) =
             (catchUp.Ctx, catchUp.Blocks[0], catchUp.Receipts, catchUp.Bal, catchUp.Downloader, catchUp.Peer);
+        using IContainer qualityNode = SyncPeerPoolTests.CreateNode();
+        ISyncPeerPool accountingPool = SyncPeerPoolTests.CreateIssuedRequestPool(peer, qualityNode.Resolve<SyncPeerPool>());
         bool suggested = false;
         bool receiptsAtSuggestion = false;
         ctx.BlockTree.NewBestSuggestedBlock += (_, args) =>
@@ -55,7 +59,8 @@ public partial class BlockDownloaderTests
 
         BlocksRequest bodyRequest = (await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
         bodyRequest.OwnedBodies = new OwnedBlockBodies([block.Body]);
-        downloader.HandleResponse(bodyRequest, peer);
+        await Handle(bodyRequest);
+        Assert.That(bodyRequest.VerifiedProgressContexts, Is.EqualTo(AllocationContexts.Bodies));
         BlocksRequest balRequest = (await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None))!;
         using (Assert.EnterMultipleScope())
         {
@@ -66,13 +71,14 @@ public partial class BlockDownloaderTests
             ? new ArrayPoolList<byte[]?>(0)
             : BuildBlockAccessLists(missingBal ? null : bal);
         // A peer that answers without the list sleeps for lists. Without another list peer, the block executes without it.
-        downloader.HandleResponse(balRequest, peer);
+        await Handle(balRequest);
+        Assert.That(balRequest.VerifiedProgressContexts, Is.EqualTo(missingBal ? AllocationContexts.None : AllocationContexts.BlockAccessLists));
         if (missingBal)
         {
             BlocksRequest fastRequest = (await downloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))!;
             Assert.That(fastRequest.BlockAccessListsRequests, Has.Count.EqualTo(1));
             fastRequest.BlockAccessLists = BuildBlockAccessLists((byte[]?)null);
-            downloader.HandleResponse(fastRequest, peer);
+            await Handle(fastRequest);
         }
         BlocksRequest? receiptRequest = await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
         if (!missingBal)
@@ -87,7 +93,8 @@ public partial class BlockDownloaderTests
                 receiptRequest!.Receipts = missingReceipts && truncated
                     ? new ArrayPoolList<TxReceipt[]?>(0)
                     : new ArrayPoolList<TxReceipt[]?>(1) { missingReceipts ? null : receipts };
-                downloader.HandleResponse(receiptRequest, peer);
+                await Handle(receiptRequest);
+                Assert.That(receiptRequest.VerifiedProgressContexts, Is.EqualTo(missingReceipts ? AllocationContexts.None : AllocationContexts.Receipts));
                 receiptRequest = await downloader.PrepareRequest(DownloaderOptions.Process, 0, CancellationToken.None);
                 if (missingReceipts && attempt < 2)
                 {
@@ -104,6 +111,45 @@ public partial class BlockDownloaderTests
             Assert.That(receiptRequest, Is.Null);
             Assert.That(suggested, Is.True);
             Assert.That(receiptsAtSuggestion, Is.EqualTo(!missingBal && !missingReceipts));
+        }
+
+        async Task Handle(BlocksRequest response)
+        {
+            AllocationContexts[] contexts = [AllocationContexts.Bodies, AllocationContexts.Receipts, AllocationContexts.BlockAccessLists];
+            foreach (AllocationContexts context in contexts) peer.RecordNoProgress(context);
+            AllocationContexts requested = AllocationContexts.None;
+            if (response.BodiesRequests.Count != 0) requested |= AllocationContexts.Bodies;
+            if (response.ReceiptsRequests.Count != 0) requested |= AllocationContexts.Receipts;
+            if (response.BlockAccessListsRequests.Count != 0) requested |= AllocationContexts.BlockAccessLists;
+            await WeakResponse();
+            await SyncDispatcherTests.DispatchOnce(response, Substitute.For<ISyncDownloader<BlocksRequest>>(),
+                accountingPool, AllocationContexts.Blocks | AllocationContexts.BlockAccessLists,
+                token, handleResponse: (request, source) => downloader.HandleResponse(request, source));
+            using (Assert.EnterMultipleScope())
+                foreach (AllocationContexts context in contexts)
+                    Assert.That(peer.HasNoProgress(context), Is.EqualTo((response.VerifiedProgressContexts & context) == 0),
+                        "validated constituent work must clear exactly its own context");
+            if (response.VerifiedProgressContexts != AllocationContexts.None)
+            {
+                await WeakResponse();
+                Assert.That(peer.IsAsleep(response.VerifiedProgressContexts), Is.False,
+                    "weakness, actual validated success, then weakness must not become consecutive-failure backoff");
+            }
+
+            async Task WeakResponse()
+            {
+                using BlocksRequest weak = new() { DownloadTask = Task.CompletedTask };
+                if ((requested & AllocationContexts.Bodies) != 0) weak.BodiesRequests = new ArrayPoolList<BlockHeader>([block.Header]);
+                if ((requested & AllocationContexts.Receipts) != 0) weak.ReceiptsRequests = new ArrayPoolList<BlockHeader>([block.Header]);
+                if ((requested & AllocationContexts.BlockAccessLists) != 0) weak.BlockAccessListsRequests = new ArrayPoolList<BlockHeader>([block.Header]);
+                await SyncDispatcherTests.DispatchOnce(weak, Substitute.For<ISyncDownloader<BlocksRequest>>(), accountingPool,
+                    AllocationContexts.Blocks | AllocationContexts.BlockAccessLists, token,
+                    handleResponse: (request, _) =>
+                    {
+                        request.Dispose();
+                        return SyncResponseHandlingResult.LesserQuality;
+                    });
+            }
         }
     }
 

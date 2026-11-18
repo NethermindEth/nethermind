@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Test.Threading;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using System.Threading;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -14,6 +17,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -31,6 +35,7 @@ using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
+using Nethermind.Synchronization.Test.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Stats.SyncLimits;
@@ -828,4 +833,111 @@ public class ReceiptsSyncFeedTests
 
         Assert.That(receipt.Bloom, Is.EqualTo(expectedBloom));
     }
+    [Test, CancelAfter(30000)]
+    public async Task Local_request_limit_refusal_retries_without_peer_fault([Values] bool timeout, CancellationToken token)
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        using ReceiptsSyncBatch request = (await _feed.PrepareRequest())!;
+        BlockHeader header = _1024BodiesWithOneTxEach.Blocks[(int)request.Infos[0]!.BlockNumber]!.Header;
+        node.Resolve<IBlockTree>().Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.HeadHash = header.Hash!;
+        remote.HeadNumber = header.Number;
+        remote.IsInitialized.Returns(true);
+        remote.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IOwnedReadOnlyList<TxReceipt[]?>>(timeout ? new TimeoutException()
+                : new ConcurrencyLimitReachedException("Outstanding local request limit")));
+        pool.Start();
+        pool.AddPeer(remote);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        await SyncDispatcherTests.DispatchOnce(request, new ReceiptsSyncDispatcher(LimboLogs.Instance), pool,
+            AllocationContexts.Receipts, token, _feed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasWeakness(AllocationContexts.Receipts), Is.EqualTo(timeout));
+            Assert.That(peer.HasNoProgress(AllocationContexts.Receipts), Is.False);
+            Assert.That(peer.HasTimeoutEvidence, Is.EqualTo(timeout));
+            Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.Zero);
+        }
+        using ReceiptsSyncBatch retry = (await _feed.PrepareRequest())!;
+        Hash256 firstHash = retry.Infos[0]!.BlockHash;
+        remote.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(new ArrayPoolList<TxReceipt[]?>([[Build.A.Receipt.TestObject]])));
+        await SyncDispatcherTests.DispatchOnce(retry, new ReceiptsSyncDispatcher(LimboLogs.Instance), pool,
+            AllocationContexts.Receipts, token, _feed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasWeakness(AllocationContexts.Receipts), Is.False);
+            Assert.That(peer.HasNoProgress(AllocationContexts.Receipts), Is.False);
+            Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.Zero);
+        }
+        _insertBatch.Received(1).Insert(Arg.Is<Block>(block => block.Hash == firstHash), Arg.Any<TxReceipt[]>());
+        await remote.Received(2).GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Outstanding_receipts_timeouts_form_one_cohort_through_the_real_feed(CancellationToken token)
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        PeerInfo peer = new(remote);
+        using ReceiptsSyncBatch first = (await _feed.PrepareRequest())!;
+        await SyncPeerPoolTests.AssertTimeoutCohort<IOwnedReadOnlyList<TxReceipt[]?>, ReceiptsSyncBatch>(peer,
+            replies => remote.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+                .Returns(_ => replies()),
+            () => new ReceiptsSyncBatch(first.Infos.ToArray()),
+            new ReceiptsSyncDispatcher(LimboLogs.Instance), AllocationContexts.Receipts, token, _feed);
+        Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.Zero, "transport silence is not a history availability claim");
+    }
+
+    [Test]
+    public async Task Unknown_history_empties_are_bounded_and_useful_receipts_restore_availability([Values] bool usefulBetweenEmpties)
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.ProtocolVersion.Returns((byte)68);
+        ManualTimeProvider clock = new();
+        PeerInfo peer = new(remote, null, clock);
+        ulong lastUsefulNumber = 0;
+
+        await SyncPeerPoolTests.AssertBoundedEmptyHistory(async useful =>
+        {
+            ReceiptsSyncBatch request = (await _feed.PrepareRequest())!;
+            Assert.That(request, Is.Not.Null);
+            if (useful) lastUsefulNumber = request.Infos[0]!.BlockNumber;
+            request.MarkSent(peer);
+            request.ResponseSourcePeer = peer;
+            request.Response = useful ? (ArrayPoolList<TxReceipt[]?>)[with(1), [Build.A.Receipt.TestObject]]
+                : ArrayPoolList<TxReceipt[]?>.Empty();
+            return _feed.HandleResponse(request, peer);
+        }, usefulBetweenEmpties);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.EqualTo(usefulBetweenEmpties ? lastUsefulNumber : 0UL));
+            Assert.That(peer.HistoryFloor(AllocationContexts.Bodies), Is.Zero);
+        }
+        if (usefulBetweenEmpties)
+        {
+            SyncPeerPoolTests.AssertInferredHistoryAllocation(peer, AllocationContexts.Receipts, _blockTree, lastUsefulNumber);
+            using ReceiptsSyncBatch lower = (await _feed.PrepareRequest())!;
+            ulong lowerNumber = lower.Infos[0]!.BlockNumber;
+            Assert.That(lowerNumber, Is.LessThan(lastUsefulNumber));
+            lower.MarkSent(peer);
+            lower.ResponseSourcePeer = peer;
+            lower.Response = new ArrayPoolList<TxReceipt[]?>([[Build.A.Receipt.TestObject]]);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_feed.HandleResponse(lower, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+                Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.EqualTo(lowerNumber), "validated lower backfill must reopen availability");
+            }
+        }
+        clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.That(peer.HistoryFloor(AllocationContexts.Receipts), Is.Zero, "inferred availability must permit a bounded reprobe");
+        _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
+    }
+
 }

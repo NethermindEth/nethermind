@@ -53,6 +53,12 @@ using NonBlocking;
 using NSubstitute.ExceptionExtensions;
 using IContainer = Autofac.IContainer;
 
+using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.Test.ParallelSync;
+using Nethermind.Synchronization.Test.Mocks;
+
+
 namespace Nethermind.Synchronization.Test;
 
 [Parallelizable(ParallelScope.All)]
@@ -1314,7 +1320,7 @@ public partial class BlockDownloaderTests
     }
 
     [Flags]
-    private enum Response
+    internal enum Response
     {
         Consistent = 1,
         AllCorrect = 7,
@@ -1323,7 +1329,8 @@ public partial class BlockDownloaderTests
         TimeoutOnFullBatch = 32,
         NoBody = 64,
         WithTransactions = 128,
-        IncorrectReceiptRoot = 256
+        IncorrectReceiptRoot = 256,
+        ValidTimestamps = 512
     }
 
     private IContainer CreateFastSyncNode(ulong fastSyncLag = 1) =>
@@ -1334,7 +1341,7 @@ public partial class BlockDownloaderTests
             StateMinDistanceFromHead = fastSyncLag,
         }));
 
-    private IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
+    internal static IContainer CreateNode(Action<ContainerBuilder>? configurer = null, IConfigProvider? configProvider = null)
     {
         configProvider ??= new ConfigProvider();
         configProvider.GetConfig<IFlatDbConfig>().Enabled = TestStateBackend.UseFlatDb;
@@ -1377,7 +1384,7 @@ public partial class BlockDownloaderTests
             .Build();
     }
 
-    private record Context
+    internal record Context
     {
         private static readonly TimeSpan SyncUntilNoRequestTimeout = TimeSpan.FromMinutes(2);
 
@@ -1731,7 +1738,7 @@ public partial class BlockDownloaderTests
             throw new NotImplementedException();
     }
 
-    private class ResponseBuilder(IBlockTree blockTree, Dictionary<ulong, Hash256> testHeaderMapping)
+    internal class ResponseBuilder(IBlockTree blockTree, Dictionary<ulong, Hash256> testHeaderMapping)
     {
         private static readonly ReceiptMessageDecoder ReceiptDecoder = new();
 
@@ -1764,6 +1771,9 @@ public partial class BlockDownloaderTests
                     BlockHeaderBuilder blockHeaderBuilder = consistent
                         ? Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithParent(headers[i - 1])
                         : Build.A.BlockHeader.WithReceiptsRoot(receiptRoot).WithNumber(headers[i - 1].Number + 1);
+
+                    if (flags.HasFlag(Response.ValidTimestamps))
+                        blockHeaderBuilder.WithTimestamp(headers[i - 1].Timestamp + 1);
 
                     if (withTransaction)
                     {
@@ -1901,5 +1911,180 @@ public partial class BlockDownloaderTests
 
         public BlockHeader? GetHeader(Hash256 hash) =>
             _headers.TryGetValue(hash, out BlockHeader? header) ? header : _blockTree.FindHeader(hash, BlockTreeLookupOptions.None)!;
+    }
+
+    [Test]
+    public async Task Validated_body_head_update_preserves_a_concurrent_protocol_announcement(
+        [Values] bool merge, [Values] bool interleave, [Values] bool higherNumber)
+    {
+        await using IContainer node = CreateNode(builder =>
+        {
+            builder.AddSingleton<IBlockValidator, BlockValidator>();
+            if (merge)
+                builder.AddSingleton<IBeaconPivot>(Substitute.For<IBeaconPivot>())
+                    .AddSingleton<BlockDownloader, MergeBlockDownloader>();
+        });
+        Context context = node.Resolve<Context>();
+        ISyncPeer headerPeer = Substitute.For<ISyncPeer>();
+        headerPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        headerPeer.HeadNumber.Returns(1000UL);
+        headerPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call => context.ResponseBuilder.BuildHeaderResponse(call.ArgAt<ulong>(0), call.ArgAt<int>(1),
+                Response.AllCorrect | Response.ValidTimestamps));
+        context.ConfigureBestPeer(new PeerInfo(headerPeer));
+        using BlocksRequest request = (await context.Feed.PrepareRequest())!;
+        BlockHeader first = request.BodiesRequests[0];
+        using SyncPeerPoolTests.HeadRacePeer remote = new(context.BlockTree.Genesis!.Hash!, 0);
+        remote.Peer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(call => context.ResponseBuilder.BuildBlocksResponse(call.ArgAt<IList<Hash256>>(0),
+                Response.AllCorrect | Response.JustFirst));
+        PeerInfo bodyPeer = new(remote.Peer);
+        await context.FullSyncFeedComponent.Downloader.Dispatch(bodyPeer, request, default);
+        context.Feed.HandleResponse(request, bodyPeer);
+        if (interleave)
+            remote.OnNumberRead = () => remote.Protocol.SetHead(TestItem.KeccakB, higherNumber ? 20UL : 0UL);
+
+        using BlocksRequest? next = await context.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.BlockTree.FindBlock(first.Hash!, BlockTreeLookupOptions.None)!.Hash, Is.EqualTo(first.Hash));
+            Assert.That(remote.Protocol.HeadHash, Is.EqualTo(interleave ? TestItem.KeccakB : first.Hash));
+            Assert.That(remote.Protocol.HeadNumber, Is.EqualTo(interleave ? higherNumber ? 20UL : 0UL : first.Number));
+        }
+    }
+
+    public enum HeaderFault { None, Hash, Timestamp }
+
+    [Test]
+    public async Task Validated_body_credits_its_serving_peer([Values] bool merge, [Values] HeaderFault fault,
+        [Values(AllocationContexts.Bodies, AllocationContexts.Receipts)] AllocationContexts lateContext)
+    {
+        await using IContainer node = CreateNode(builder =>
+        {
+            builder.AddSingleton<IBlockValidator, BlockValidator>();
+            if (merge)
+                builder.AddSingleton<IBeaconPivot>(Substitute.For<IBeaconPivot>())
+                    .AddSingleton<BlockDownloader, MergeBlockDownloader>();
+        });
+        Context context = node.Resolve<Context>();
+        ISyncPeer headerPeer = Substitute.For<ISyncPeer>();
+        headerPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        headerPeer.HeadNumber.Returns(1000UL);
+        headerPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call => context.ResponseBuilder.BuildHeaderResponse(call.ArgAt<ulong>(0), call.ArgAt<int>(1), Response.AllCorrect | Response.ValidTimestamps));
+        PeerInfo headerPeerInfo = new(headerPeer);
+        context.ConfigureBestPeer(headerPeerInfo);
+        ISyncPeer bodyPeer = Substitute.For<ISyncPeer>();
+        bodyPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(call => context.ResponseBuilder.BuildBlocksResponse(call.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.JustFirst));
+        PeerInfo bodyPeerInfo = new(bodyPeer);
+
+        using BlocksRequest request = (await context.Feed.PrepareRequest())!;
+        BlockHeader first = request.BodiesRequests[0];
+        Hash256 requestedHash = first.Hash!;
+        await context.FullSyncFeedComponent.Downloader.Dispatch(bodyPeerInfo, request, default);
+        Assert.That(node.Resolve<IBlockValidator>().ValidateSuggestedBlock(new Block(first, request.OwnedBodies!.Bodies[0]!),
+            context.BlockTree.FindHeader(first.ParentHash!)!, out string? validationError), Is.True, validationError);
+        using CancellationTokenSource dispatchStop = new(TimeSpan.FromSeconds(30));
+        TaskCompletionSource<OwnedBlockBodies> lateReply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<IOwnedReadOnlyList<TxReceipt[]?>> lateReceipts = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource lateSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        bodyPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            lateSent.TrySetResult();
+            return lateReply.Task;
+        });
+        bodyPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            lateSent.TrySetResult();
+            return lateReceipts.Task;
+        });
+        BlockInfo info = new(first.Hash!, UInt256.Zero) { BlockNumber = first.Number };
+        using FastBlocksBatch outstanding = lateContext == AllocationContexts.Bodies
+            ? new BodiesSyncBatch([info]) : new ReceiptsSyncBatch([info]);
+        ISyncPeerPool issuedPool = SyncPeerPoolTests.CreateIssuedRequestPool(bodyPeerInfo);
+        Task outstandingDownload = outstanding is BodiesSyncBatch bodies
+            ? SyncDispatcherTests.DispatchOnce(bodies, new BodiesSyncDownloader(LimboLogs.Instance), issuedPool, lateContext, dispatchStop.Token)
+            : SyncDispatcherTests.DispatchOnce((ReceiptsSyncBatch)outstanding, new ReceiptsSyncDispatcher(LimboLogs.Instance), issuedPool, lateContext, dispatchStop.Token);
+        await lateSent.Task.WaitAsync(dispatchStop.Token);
+        bodyPeerInfo.RecordNoProgress(AllocationContexts.Bodies);
+        bodyPeerInfo.RecordNoProgress(AllocationContexts.Receipts);
+        context.ConfigureBestPeer(bodyPeerInfo);
+        ValidatedBodyFeed feed = new(request, context.Feed);
+        try
+        {
+            using CancellationTokenSource progressStop = CancellationTokenSource.CreateLinkedTokenSource(dispatchStop.Token);
+            await using SyncDispatcher<BlocksRequest> dispatcher = new(new TestSyncConfig(), feed,
+                Substitute.For<ISyncDownloader<BlocksRequest>>(), context.PeerPool,
+                new StaticPeerAllocationStrategyFactory<BlocksRequest>(FirstFree.Instance), LimboLogs.Instance);
+            feed.Activate();
+            Task running = dispatcher.Start(progressStop.Token);
+            try
+            {
+                await Task.WhenAny(running, feed.Accounted.Task).WaitAsync(dispatchStop.Token);
+                if (running.IsCompleted) await running;
+                Assert.That(feed.Accounted.Task.IsCompleted, Is.True);
+            }
+            finally
+            {
+                await progressStop.CancelAsync();
+                await running;
+            }
+        }
+        finally
+        {
+            if (lateContext == AllocationContexts.Bodies) lateReply.TrySetException(new TimeoutException());
+            else lateReceipts.TrySetException(new TimeoutException());
+            await outstandingDownload;
+        }
+        Assert.That(outstanding.RequestTimedOut, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bodyPeerInfo.ServedHeadNumber, Is.Zero);
+            Assert.That(bodyPeerInfo.HasWeakness(AllocationContexts.Bodies), Is.False,
+                "a pre-progress request cannot restore timeout evidence after validated matching-context work");
+            Assert.That(bodyPeerInfo.HasNoProgress(AllocationContexts.Receipts), Is.True);
+            Assert.That(bodyPeerInfo.HasWeakness(AllocationContexts.Receipts), Is.True);
+            Assert.That(bodyPeerInfo.HasTimeoutEvidence, Is.EqualTo(lateContext == AllocationContexts.Receipts),
+                "body progress cannot fence an already-issued receipt timeout");
+            Assert.That(request.VerifiedProgressContexts, Is.EqualTo(AllocationContexts.Bodies),
+                "the validated body must not manufacture receipt or BAL progress");
+        }
+        if (fault == HeaderFault.Hash) first.Hash = TestItem.KeccakA;
+        if (fault == HeaderFault.Timestamp) first.Timestamp = 0;
+        // The forward headers come from the header peer again; the body peer advertises no head to serve them.
+        context.ConfigureBestPeer(headerPeerInfo);
+        using BlocksRequest? next = await context.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.BlockTree.FindBlock(requestedHash, BlockTreeLookupOptions.None) is not null, Is.EqualTo(fault == HeaderFault.None));
+            Assert.That(bodyPeerInfo.ServedHeadNumber, Is.EqualTo(fault == HeaderFault.None ? first.Number : 0UL));
+        }
+    }
+
+    private sealed class ValidatedBodyFeed(BlocksRequest request, ISyncFeed<BlocksRequest> productionFeed) : SyncFeed<BlocksRequest>
+    {
+        private bool _issued;
+        public TaskCompletionSource Accounted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public override bool IsMultiFeed => false;
+        public override AllocationContexts Contexts => AllocationContexts.Blocks;
+        public override bool IsFinished => false;
+        public override string FeedName => nameof(ValidatedBodyFeed);
+        public override void SyncModeSelectorOnChanged(SyncMode current) { }
+        public override async Task<BlocksRequest> PrepareRequest(CancellationToken token = default)
+        {
+            if (!_issued)
+            {
+                _issued = true;
+                return request;
+            }
+            Accounted.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return null!;
+        }
+        public override SyncResponseHandlingResult HandleResponse(BlocksRequest response, PeerInfo? peer = null) =>
+            productionFeed.HandleResponse(response, peer);
     }
 }

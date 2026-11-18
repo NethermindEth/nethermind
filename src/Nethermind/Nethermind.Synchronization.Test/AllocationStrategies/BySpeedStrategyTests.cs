@@ -1,14 +1,21 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using NSubstitute;
@@ -19,6 +26,38 @@ namespace Nethermind.Synchronization.Test.AllocationStrategies;
 
 public class BySpeedStrategyTests
 {
+    [Test]
+    public void Slow_headers_prefer_proven_peers_and_bound_unproven_probes(
+        [Values(null, 0)] long? unprovenSpeed, [Values] bool newBatchStrategy)
+    {
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        PeerInfo unproven = CreatePeerInfoWithSpeed(unprovenSpeed, stats);
+        PeerInfo proven = CreatePeerInfoWithSpeed(10, stats);
+        BySpeedStrategy strategy = new(TransferSpeedType.Headers, false);
+        FastBlocksPeerAllocationStrategyFactory factory = new();
+        int probes = 0;
+        for (int i = 0; i < 64; i++)
+        {
+            using HeadersSyncBatch batch = new() { StartNumber = 0, RequestSize = 1 };
+            IPeerAllocationStrategy selectedStrategy = newBatchStrategy ? factory.Create(batch) : strategy;
+            if (selectedStrategy.Allocate(null, [unproven, proven], stats, Build.A.BlockTree().TestObject) == unproven) probes++;
+        }
+        Assert.That(probes, Is.InRange(1, 2));
+    }
+
+    [Test]
+    public void Slow_headers_do_not_prefer_recent_failures_and_allow_recovery()
+    {
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        PeerInfo failed = CreatePeerInfoWithSpeed(1, stats);
+        PeerInfo healthy = CreatePeerInfoWithSpeed(10, stats);
+        failed.RecordNoProgress(AllocationContexts.Headers);
+        BySpeedStrategy strategy = new(TransferSpeedType.Headers, false, recalculateSpeedProbability: 0);
+        Assert.That(strategy.Allocate(failed, [failed, healthy], stats, Build.A.BlockTree().TestObject), Is.SameAs(healthy));
+        failed.RecordProgress(AllocationContexts.Headers);
+        Assert.That(strategy.Allocate(null, [failed, healthy], stats, Build.A.BlockTree().TestObject), Is.SameAs(failed));
+    }
+
     private static PublicKey TestPublicKey { get; } = new(Bytes.FromHexString(
         "0x13a1107b6f78a4977222d2d5a4cd05a8a042b75222c8ec99129b83793eda3d214208d4e835617512fc8d148d3d1b4d89530861644f531675b1fb64b785c6c152"));
 
@@ -161,7 +200,59 @@ public class BySpeedStrategyTests
 
         INodeStats nodeStats = Substitute.For<INodeStats>();
         nodeStats.GetAverageTransferSpeed(Arg.Any<TransferSpeedType>()).Returns(speed);
-        nodeStatsManager.GetOrAdd(Arg.Is<Node>(n => ReferenceEquals(n, node))).Returns(nodeStats);
+        nodeStatsManager.GetStatsOrNull(Arg.Is<Node>(n => ReferenceEquals(n, node))).Returns(nodeStats);
         return pInfo;
+    }
+
+    [Test]
+    public async Task Unknown_speed_at_capacity_remains_eligible_for_real_allocation(
+        [Values(TransferSpeedType.Headers, TransferSpeedType.Bodies)] TransferSpeedType speed, [Values] bool priority)
+    {
+        await using StatsCapacityContext context = new();
+        BySpeedStrategy strategy = new(speed, priority, recalculateSpeedProbability: 0);
+
+        PeerInfo? allocated = strategy.Allocate(null, [context.Peer], context.Stats, Build.A.BlockTree().TestObject);
+
+        Assert.That(allocated, Is.SameAs(context.Peer));
+    }
+
+    [Test]
+    public async Task Peer_report_includes_active_peer_when_stats_capacity_is_exhausted()
+    {
+        await using StatsCapacityContext context = new();
+        SyncPeersReport report = new(Substitute.For<ISyncPeerPool>(), context.Stats, LimboLogs.Instance);
+
+        string rendered = report.MakeReportForPeers([context.Peer], "test");
+
+        Assert.That(rendered, Does.Contain("capacity-test-client").And.Contain("L/H/B/R/N/S"));
+    }
+
+    private sealed class StatsCapacityContext : IAsyncDisposable
+    {
+        public NodeStatsManager Stats { get; } = new(TimerFactory.Default, LimboLogs.Instance, 1);
+        public PeerInfo Peer { get; }
+        private readonly PeerPool _pool;
+        private readonly PeerAddressPolicy _addressPolicy = new(new Nethermind.Core.Test.Modules.FixedIpResolver(new NetworkConfig { ExternalIp = "127.0.0.1" }),
+            new LocalAddressSource(LimboLogs.Instance));
+
+        public StatsCapacityContext()
+        {
+            _pool = new PeerPool(Substitute.For<INodeSource>(), Stats, Substitute.For<INetworkStorage>(),
+                new NetworkConfig(), LimboLogs.Instance, Substitute.For<ITrustedNodesManager>(), TimeProvider.System,
+                _addressPolicy);
+            _pool.GetOrAdd(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303, true));
+            ISyncPeer peer = Substitute.For<ISyncPeer>();
+            peer.Node.Returns(new Node(TestItem.PublicKeyB, "9.9.9.9", 30303));
+            peer.IsInitialized.Returns(true);
+            peer.ClientId.Returns("capacity-test-client");
+            Peer = new PeerInfo(peer);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _pool.StopAsync();
+            Stats.Dispose();
+            _addressPolicy.Dispose();
+        }
     }
 }

@@ -67,7 +67,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     {
         public override string Name => "Mock";
 
-        private readonly bool _causeTimeoutOnInit;
+        public Exception? InitializationFailure { get; set; }
         private readonly bool _causeTimeoutOnBlocks;
         private readonly bool _causeTimeoutOnHeaders;
         private List<Block> Blocks { get; } = [];
@@ -82,7 +82,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             bool causeTimeoutOnBlocks = false,
             bool causeTimeoutOnHeaders = false)
         {
-            _causeTimeoutOnInit = causeTimeoutOnInit;
+            InitializationFailure = causeTimeoutOnInit ? new TimeoutException() : null;
             _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
             _causeTimeoutOnHeaders = causeTimeoutOnHeaders;
             Blocks.Add(_genesisBlock);
@@ -158,10 +158,10 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
-            if (_causeTimeoutOnInit)
+            if (InitializationFailure is not null)
             {
                 Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER WITH EXCEPTION");
-                await Task.FromException<BlockHeader>(new TimeoutException());
+                await Task.FromException<BlockHeader>(InitializationFailure);
             }
 
             BlockHeader header;
@@ -247,7 +247,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
         private ISyncServer SyncServer => FromContainer.SyncServer;
 
         private ISynchronizer Synchronizer => FromContainer.Synchronizer;
-        private ISyncPeerPool SyncPeerPool => FromContainer.SyncPeerPool;
+        internal ISyncPeerPool SyncPeerPool => FromContainer.SyncPeerPool;
 
         private IContainer Container { get; }
 
@@ -332,6 +332,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
             INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
             nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+            nodeStatsManager.GetStatsOrNull(Arg.Any<Node>()).Returns(nodeStats);
             nodeStatsManager.IsConnectionDelayed(Arg.Any<Node>()).Returns((false, null));
             return nodeStatsManager;
         }
@@ -761,7 +762,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     [Test]
     public async Task Will_remove_peer_when_init_fails()
     {
-        SyncPeerMock peerA = new("A", true, true);
+        SyncPeerMock peerA = new("A") { InitializationFailure = new InvalidOperationException("invalid head response") };
         peerA.AddBlocksUpTo(1);
 
         await When.Syncing
@@ -771,6 +772,24 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
             .StopAsync();
     }
 
+
+    [Test]
+    public async Task Initial_head_timeout_retains_peer_and_recovers_on_retry()
+    {
+        SyncPeerMock peer = new("A", causeTimeoutOnInit: true);
+        peer.AddBlocksUpTo(1);
+        await using SyncingContext context = When.Syncing;
+        context.AfterProcessingGenesis().AfterPeerIsAdded(peer);
+        Assert.That(() => context.SyncPeerPool.GetPeer(peer.Node)?.HasWeakness(AllocationContexts.Headers),
+            Is.True.After(10_000, 10));
+        context.PeerCountIs(1);
+        peer.InitializationFailure = null;
+        context.SyncPeerPool.RefreshTotalDifficulty(peer, peer.HeadHash);
+
+        context.WaitUntilInitialized().BestSuggestedHeaderIs(peer.HeadHeader, BatchSyncDynamicTimeout);
+        context.PeerCountIs(1);
+        Assert.That(peer.HeadNumber, Is.EqualTo(1));
+    }
 
     [Test]
     public async Task Can_remove_peers()

@@ -22,11 +22,15 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Merge.Plugin;
 using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Test.ParallelSync;
+using Nethermind.Synchronization.Test.Mocks;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
@@ -34,6 +38,9 @@ using Nethermind.Stats.SyncLimits;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+
+using Nethermind.Core.Test.Threading;
+using Nethermind.Core.Exceptions;
 
 namespace Nethermind.Synchronization.Test.FastBlocks;
 
@@ -627,7 +634,7 @@ public class FastHeadersSyncTests
     /// <c>FirstBatch</c>, so its headers cannot link to the chain until <c>FirstBatch</c> is
     /// answered. A response to it goes to `_dependencies` instead of being inserted.
     /// </summary>
-    private sealed class DependentBatchScenario : IDisposable
+    internal sealed class DependentBatchScenario : IDisposable
     {
         public IBlockTree PeerChain { get; } = CachedBlockTreeBuilder.OfLength(1000);
         public ISyncPeerPool SyncPeerPool { get; } = Substitute.For<ISyncPeerPool>();
@@ -880,26 +887,48 @@ public class FastHeadersSyncTests
     // re-requesting the whole batch would reject and re-queue it forever.
     [TestCase(100, 100, TestName = "Part of the batch is still needed")]
     [TestCase(0, 0, TestName = "All of the batch is already stored")]
-    public async Task Does_not_add_dependency_above_lowest_inserted(int storedFromOffset, int expectedFillerSize)
+    [TestCase(-1, 0, TestName = "Only the stored boundary is returned")]
+    [CancelAfter(30000)]
+    public async Task Does_not_add_dependency_above_lowest_inserted(int storedFromOffset, int expectedFillerSize, CancellationToken token)
     {
         using DependentBatchScenario scenario = new();
         HeadersSyncBatch dependentBatch = scenario.DependentBatch;
 
+        bool storedBoundaryOnly = storedFromOffset < 0;
+        if (storedBoundaryOnly)
+        {
+            dependentBatch.StartNumber = dependentBatch.EndNumber;
+            dependentBatch.RequestSize = 1;
+            storedFromOffset = 0;
+        }
         ArrayPoolList<BlockHeader?> response = [with(dependentBatch.RequestSize)];
         for (int i = 0; i < dependentBatch.RequestSize; i++)
         {
-            response.Add(Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
+            response.Add(storedBoundaryOnly
+                ? scenario.PeerChain.FindHeader(dependentBatch.StartNumber + (ulong)i)
+                : Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)i).TestObject);
         }
         dependentBatch.Response = response;
 
-        scenario.Feed.PinnedLowestInserted = Build.A.BlockHeader
-            .WithNumber(dependentBatch.StartNumber + (ulong)storedFromOffset).TestObject;
+        scenario.Feed.PinnedLowestInserted = storedBoundaryOnly
+            ? scenario.PeerChain.FindHeader(dependentBatch.StartNumber)
+            : Build.A.BlockHeader.WithNumber(dependentBatch.StartNumber + (ulong)storedFromOffset)
+                .WithTotalDifficulty(1_000_000_000).TestObject;
 
         // Accounted for, so the batch is not re-queued whole.
-#pragma warning disable NUnit2045 // Keep the state-changing response or range admission separate from dependent state checks.
-        Assert.That(scenario.Feed.HandleResponse(dependentBatch), Is.EqualTo(SyncResponseHandlingResult.OK));
-#pragma warning restore NUnit2045
-        Assert.That(Dependencies(scenario.Feed).Count, Is.Zero, "batch must not reach _dependencies");
+        PeerInfo peer = dependentBatch.ResponseSourcePeer!;
+        peer.RecordNoProgress(AllocationContexts.Headers);
+        SyncResponseHandlingResult result = default;
+        await SyncDispatcherTests.DispatchOnce(dependentBatch, Substitute.For<ISyncDownloader<HeadersSyncBatch>>(),
+            SyncPeerPoolTests.CreateIssuedRequestPool(peer), AllocationContexts.Headers, token,
+            handleResponse: (batch, source) => result = scenario.Feed.HandleResponse(batch, source!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.Emptish));
+            Assert.That(dependentBatch.InsertedHeadersCount, Is.Zero);
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.True);
+            Assert.That(Dependencies(scenario.Feed).Count, Is.Zero, "batch must not reach _dependencies");
+        }
 
         using HeadersSyncBatch? next = await scenario.Feed.PrepareRequest();
         Assert.That(next, Is.Not.Null);
@@ -916,6 +945,68 @@ public class FastHeadersSyncTests
             // Nothing of this range is outstanding, so sync must have moved below it.
             Assert.That(next!.EndNumber, Is.LessThan(dependentBatch.StartNumber));
         }
+    }
+
+    [Test]
+    public async Task Response_overlapping_lowest_inserted_preserves_anchor([Values] bool conflictingHash)
+    {
+        using DependentBatchScenario scenario = new(requestSize: 3);
+        BlockHeader anchor = scenario.PeerChain.FindHeader(scenario.FirstBatch.EndNumber)!;
+        scenario.FirstBatch.Response = new ArrayPoolList<BlockHeader?>(3) { null, null, anchor };
+        scenario.Feed.ThrowAfterInsert = new InvalidOperationException("failure after partial insertion");
+        Assert.Throws<InvalidOperationException>(() => scenario.Feed.HandleResponse(scenario.FirstBatch));
+        scenario.Feed.ThrowAfterInsert = null;
+        using HeadersSyncBatch? outstandingFiller = await scenario.Feed.PrepareRequest();
+        using HeadersSyncBatch? overlap = await scenario.Feed.PrepareRequest();
+        Assert.That(overlap, Is.Not.Null);
+        ulong lowest = scenario.LowestInserted!.Value;
+        Nethermind.Int256.UInt256? totalDifficulty = anchor.TotalDifficulty;
+        Assert.That(overlap!.EndNumber, Is.EqualTo(lowest), "whole-range retry overlaps the partially inserted header");
+        overlap.ResponseSourcePeer = scenario.DependentBatch.ResponseSourcePeer;
+        overlap.Response = new ArrayPoolList<BlockHeader?>(3)
+        {
+            scenario.PeerChain.FindHeader(lowest - 2),
+            scenario.PeerChain.FindHeader(lowest - 1),
+            conflictingHash
+                ? Build.A.BlockHeader.WithParent(scenario.PeerChain.FindHeader(lowest - 1)!).WithDifficulty(123).TestObject
+                : anchor
+        };
+
+        scenario.Feed.HandleResponse(overlap);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scenario.LowestInserted, Is.EqualTo(conflictingHash ? lowest : lowest - 2));
+            Assert.That(anchor.TotalDifficulty, Is.EqualTo(totalDifficulty));
+            Assert.That(Dependencies(scenario.Feed), Is.Empty);
+        }
+        if (conflictingHash)
+        {
+            scenario.SyncPeerPool.Received(1).ReportBreachOfProtocol(
+                overlap.ResponseSourcePeer!, DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
+        }
+        else
+        {
+            scenario.SyncPeerPool.DidNotReceive().ReportBreachOfProtocol(
+                Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            return;
+        }
+
+        using HeadersSyncBatch? retry = await scenario.Feed.PrepareRequest();
+        Assert.That(retry, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retry!.StartNumber, Is.EqualTo(overlap.StartNumber));
+            Assert.That(retry.EndNumber, Is.EqualTo(conflictingHash ? lowest : lowest - 1));
+        }
+        RespondWithChainHeaders(scenario, retry);
+        if (conflictingHash)
+        {
+            using HeadersSyncBatch? filler = await scenario.Feed.PrepareRequest();
+            Assert.That(filler, Is.Not.Null);
+            RespondWithChainHeaders(scenario, filler!);
+        }
+        Assert.That(scenario.LowestInserted, Is.EqualTo(lowest - 2));
     }
 
     // A range can overlap a dependency once `RequeueAsNewBatch` re-queues it whole, so a response's
@@ -1903,7 +1994,7 @@ public class FastHeadersSyncTests
         }
     }
 
-    private class TestableHeadersSyncFeed(
+    internal class TestableHeadersSyncFeed(
         IBlockTree? blockTree,
         ISyncPeerPool? syncPeerPool,
         ISyncConfig? syncConfig,
@@ -1913,6 +2004,7 @@ public class FastHeadersSyncTests
             Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IHeaderStore>())
     {
         public Exception? ThrowOnInsert { get; set; }
+        public Exception? ThrowAfterInsert { get; set; }
         public BlockHeader? PinnedLowestInserted { get; set; }
         public IReadOnlyCollection<HeadersSyncBatch> Pending => _pending;
 
@@ -1922,8 +2014,13 @@ public class FastHeadersSyncTests
             set => base.LowestInsertedBlockHeader = value;
         }
 
-        protected override int InsertHeaders(HeadersSyncBatch batch) =>
-            ThrowOnInsert is null ? base.InsertHeaders(batch) : throw ThrowOnInsert;
+        protected override int InsertHeaders(HeadersSyncBatch batch)
+        {
+            if (ThrowOnInsert is not null) throw ThrowOnInsert;
+            int added = base.InsertHeaders(batch);
+            if (ThrowAfterInsert is not null) throw ThrowAfterInsert;
+            return added;
+        }
     }
 
     private class DestinationHeaderSyncFeed(
@@ -1941,4 +2038,307 @@ public class FastHeadersSyncTests
         protected override ulong HeadersDestinationNumber => DestinationNumber;
     }
 
+    [Test, CancelAfter(30000)]
+    public async Task Parked_headers_do_not_credit_progress_until_the_missing_predecessor_is_inserted(CancellationToken token)
+    {
+        using DependentBatchScenario scenario = new(requestSize: 3);
+        Fill(scenario.DependentBatch);
+        Fill(scenario.FirstBatch);
+        ulong? before = scenario.LowestInserted;
+
+        PeerInfo peer = scenario.DependentBatch.ResponseSourcePeer!;
+        peer.RecordNoProgress(AllocationContexts.Headers);
+        SyncResponseHandlingResult parked = default;
+        await SyncDispatcherTests.DispatchOnce(scenario.DependentBatch, Substitute.For<ISyncDownloader<HeadersSyncBatch>>(),
+            SyncPeerPoolTests.CreateIssuedRequestPool(peer), AllocationContexts.Headers, token,
+            handleResponse: (batch, source) => parked = scenario.Feed.HandleResponse(batch, source!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parked, Is.EqualTo(SyncResponseHandlingResult.Emptish));
+            Assert.That(scenario.DependentBatch.InsertedHeadersCount, Is.Zero);
+            Assert.That(scenario.LowestInserted, Is.EqualTo(before));
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.True);
+        }
+
+        SyncResponseHandlingResult inserted = default;
+        await SyncDispatcherTests.DispatchOnce(scenario.FirstBatch, Substitute.For<ISyncDownloader<HeadersSyncBatch>>(),
+            SyncPeerPoolTests.CreateIssuedRequestPool(peer), AllocationContexts.Headers, token,
+            handleResponse: (batch, source) => inserted = scenario.Feed.HandleResponse(batch, source!));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inserted, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(scenario.FirstBatch.InsertedHeadersCount, Is.EqualTo(3));
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.False);
+            Assert.That(scenario.LowestInserted, Is.EqualTo(scenario.FirstBatch.StartNumber));
+        }
+
+        void Fill(HeadersSyncBatch batch)
+        {
+            ArrayPoolList<BlockHeader?> response = [with(batch.RequestSize)];
+            for (ulong number = batch.StartNumber; number <= batch.EndNumber; number++)
+                response.Add(scenario.PeerChain.FindHeader(number));
+            batch.Response = response;
+        }
+    }
+
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    [TestCase(2, false)]
+    public async Task Matching_stored_overlap_inserts_lower_headers_without_another_request(int persistedCount, bool conflict)
+    {
+        using DependentBatchScenario scenario = new(requestSize: 3);
+        BlockHeader anchor = scenario.PeerChain.FindHeader(scenario.FirstBatch.EndNumber - (ulong)persistedCount + 1)!;
+        scenario.FirstBatch.Response = new ArrayPoolList<BlockHeader?>(3)
+        {
+            null,
+            persistedCount == 2 ? anchor : null,
+            scenario.PeerChain.FindHeader(scenario.FirstBatch.EndNumber)
+        };
+        scenario.Feed.ThrowAfterInsert = new InvalidOperationException("Interrupted insertion");
+        Assert.Throws<InvalidOperationException>(() => scenario.Feed.HandleResponse(scenario.FirstBatch));
+        scenario.Feed.ThrowAfterInsert = null;
+        using HeadersSyncBatch? outstanding = await scenario.Feed.PrepareRequest();
+        using HeadersSyncBatch overlap = (await scenario.Feed.PrepareRequest())!;
+        ulong lowest = anchor.Number;
+        overlap.ResponseSourcePeer = scenario.DependentBatch.ResponseSourcePeer;
+        overlap.Response = new ArrayPoolList<BlockHeader?>(3)
+        {
+            scenario.PeerChain.FindHeader(overlap.StartNumber),
+            scenario.PeerChain.FindHeader(overlap.StartNumber + 1),
+            conflict ? Build.A.BlockHeader.WithParent(scenario.PeerChain.FindHeader(lowest - 1)!).WithDifficulty(123).TestObject
+                : scenario.PeerChain.FindHeader(overlap.EndNumber)
+        };
+        Nethermind.Int256.UInt256? anchorDifficulty = anchor.TotalDifficulty;
+
+        scenario.Feed.HandleResponse(overlap);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scenario.LowestInserted, Is.EqualTo(conflict ? lowest : overlap.StartNumber));
+            Assert.That(anchor.TotalDifficulty, Is.EqualTo(anchorDifficulty));
+        }
+        using HeadersSyncBatch? next = await scenario.Feed.PrepareRequest();
+        Assert.That(next, Is.Not.Null);
+        Assert.That(next!.EndNumber, conflict ? Is.EqualTo(lowest) : Is.LessThan(overlap.StartNumber));
+        scenario.SyncPeerPool.Received(conflict ? 1 : 0).ReportBreachOfProtocol(
+            overlap.ResponseSourcePeer!, DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Local_request_limit_refusal_retries_without_peer_fault([Values] bool timeout, CancellationToken token)
+    {
+        using DependentBatchScenario scenario = new(requestSize: 3);
+        using IContainer node = SyncPeerPoolTests.CreateNode();
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        BlockHeader pivot = scenario.PeerChain.FindHeader(scenario.FirstBatch.EndNumber + 1)!;
+        tree.Insert(pivot, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        ISyncPeer remote = Substitute.For<ISyncPeer>();
+        remote.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        remote.HeadHash = pivot.Hash!;
+        remote.HeadNumber = pivot.Number;
+        remote.IsInitialized.Returns(true);
+        remote.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(timeout ? new TimeoutException()
+                : new ConcurrencyLimitReachedException("Outstanding local request limit")));
+        pool.Start();
+        pool.AddPeer(remote);
+        PeerInfo peer = pool.GetPeer(remote.Node)!;
+        await SyncDispatcherTests.DispatchOnce(scenario.FirstBatch, new HeadersSyncDownloader(LimboLogs.Instance), pool,
+            AllocationContexts.Headers, token, scenario.Feed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.EqualTo(timeout));
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.False);
+            Assert.That(peer.HasTimeoutEvidence, Is.EqualTo(timeout));
+        }
+        using HeadersSyncBatch retry = (await scenario.Feed.PrepareRequest())!;
+        remote.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(call => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(
+                call.ArgAt<int>(1), Enumerable.Range(0, call.ArgAt<int>(1))
+                    .Select(index => scenario.PeerChain.FindHeader(call.ArgAt<ulong>(0) + (ulong)index)!))));
+        await SyncDispatcherTests.DispatchOnce(retry, new HeadersSyncDownloader(LimboLogs.Instance), pool,
+            AllocationContexts.Headers, token, scenario.Feed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(peer.HasWeakness(AllocationContexts.Headers), Is.False);
+            Assert.That(peer.HasNoProgress(AllocationContexts.Headers), Is.False);
+            Assert.That(retry.InsertedHeadersCount, Is.EqualTo(3));
+            Assert.That(scenario.LowestInserted, Is.EqualTo(retry.StartNumber));
+        }
+        await remote.Received(2).GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>());
+    }
+
+    [Test, CancelAfter(30000)]
+    public async Task Consensus_timeout_keeps_the_tip_peer_over_an_empty_header_responder(
+        [Values] bool recoverWithAnswer, CancellationToken cancellationToken)
+    {
+        ManualTimeProvider clock = new();
+        IBlockTree source = CachedBlockTreeBuilder.OfLength(101);
+        BlockHeader parent = source.FindHeader(99)!;
+        BlockHeader tip = source.FindHeader(100)!;
+        await using IContainer node = SyncPeerPoolTests.CreateNode(clock,
+            syncConfig: new SyncConfig
+            {
+                FastSync = true,
+                SnapSync = true,
+                PivotNumber = tip.Number,
+                PivotHash = tip.Hash!.ToString(),
+                PivotTotalDifficulty = tip.TotalDifficulty!.Value.ToString()
+            },
+            extraModule: new BaseMergePluginModule());
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        tree.Insert(parent, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        tree.Insert(tip, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        ISyncPeer delayed = CreateRemote(TestItem.PublicKeyA);
+        ISyncPeer empty = CreateRemote(TestItem.PublicKeyB);
+        pool.Start();
+        pool.AddPeer(delayed);
+        pool.DropUselessPeers(true);
+        pool.AddPeer(empty);
+        pool.UpdateSyncPeerHeadIfHeaderIsBetter(delayed, tip, tip.Hash!);
+        pool.UpdateSyncPeerHeadIfHeaderIsBetter(empty, tip, tip.Hash!);
+        PeerInfo delayedInfo = pool.GetPeer(delayed.Node)!;
+        PeerInfo emptyInfo = pool.GetPeer(empty.Node)!;
+        clock.Advance(TimeSpan.FromSeconds(10));
+        TaskCompletionSource sent = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        delayed.GetBlockHeaders(parent.Hash!, 2, 0, Arg.Any<CancellationToken>())
+            .Returns(call => WaitForDeadline(call.Arg<CancellationToken>()));
+        PeerRefresher refresher = (PeerRefresher)node.Resolve<IPeerRefresher>();
+        using (CancellationTokenSource deadline = new(Timeouts.Eth, clock))
+        {
+            Task refresh = refresher.RefreshPeerForFcu(delayed, tip.Hash!, parent.Hash!, Keccak.Zero, deadline.Token);
+            await sent.Task.WaitAsync(cancellationToken);
+            clock.AdvanceAndFireTimer(Timeouts.Eth);
+            await refresh.WaitAsync(cancellationToken);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delayedInfo.HasTimeoutEvidence, Is.True);
+            Assert.That(delayedInfo.HasNoProgress(AllocationContexts.Headers), Is.False);
+            Assert.That(delayedInfo.ServedHeadNumber, Is.EqualTo(100UL));
+            delayed.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+        tree.SyncPivot = (100, tip.Hash!);
+        await using SyncFeedComponent<HeadersSyncBatch> component =
+            node.ResolveNamed<SyncFeedComponent<HeadersSyncBatch>>(nameof(HeadersSyncFeed));
+        HeadersSyncFeed feed = (HeadersSyncFeed)component.Feed;
+        feed.InitializeFeed();
+        HeadersSyncBatch? request = await feed.PrepareRequest(cancellationToken);
+        Assert.That(request, Is.Not.Null);
+        empty.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>([])));
+        Assert.That(delayedInfo.TryAllocate(AllocationContexts.Headers), Is.True);
+        try
+        {
+            await SyncDispatcherTests.DispatchOnce(request!, component.Downloader, pool,
+                AllocationContexts.Headers, cancellationToken, feed);
+        }
+        finally
+        {
+            delayedInfo.Free(AllocationContexts.Headers);
+        }
+        Assert.That(emptyInfo.HasNoProgress(AllocationContexts.Headers), Is.True);
+        pool.DropUselessPeers(true);
+        using (Assert.EnterMultipleScope())
+        {
+            empty.Received(1).Disconnect(DisconnectReason.DropWorstPeer, Arg.Any<string>());
+            delayed.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+        if (recoverWithAnswer)
+        {
+            delayed.GetBlockHeaders(parent.Hash!, 2, 0, Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>([parent, tip])));
+            await refresher.RefreshPeerForFcu(delayed, tip.Hash!, parent.Hash!, Keccak.Zero, cancellationToken);
+        }
+        else clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.That(delayedInfo.HasTimeoutEvidence, Is.False);
+        pool.RemovePeer(empty);
+        using SyncPeerAllocation allocation = await pool.Allocate(FirstFree.Instance, AllocationContexts.Headers, 1000, cancellationToken);
+        Assert.That(allocation.Current, Is.SameAs(delayedInfo));
+
+        ISyncPeer CreateRemote(PublicKey id)
+        {
+            ISyncPeer remote = Substitute.For<ISyncPeer>();
+            remote.Node.Returns(new Node(id, "127.0.0.1", 30303));
+            remote.HeadHash = tip.Hash!;
+            remote.HeadNumber = 100;
+            remote.ProtocolVersion.Returns((byte)69);
+            return remote;
+        }
+
+        async Task<IOwnedReadOnlyList<BlockHeader>?> WaitForDeadline(CancellationToken token)
+        {
+            sent.TrySetResult();
+            await Task.Delay(Timeout.Infinite, token);
+            return null;
+        }
+    }
+
+    [Test, CancelAfter(25_000)]
+    public async Task Timed_out_refresh_cancels_remote_work_before_honest_recovery(CancellationToken cancellationToken)
+    {
+        ManualTimeProvider clock = new();
+        TaskCompletionSource refreshed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ILogManager logs = SyncPeerPoolTests.ObserveRefreshCompletion(() => refreshed);
+        await using IContainer node = SyncPeerPoolTests.CreateNode(clock, logs, extraModule: new BaseMergePluginModule());
+        IBlockTree tree = node.Resolve<IBlockTree>();
+        SyncPeerPool pool = node.Resolve<SyncPeerPool>();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(100).TestObject;
+        BlockHeader recoveredParent = Build.A.BlockHeader.WithNumber(199).TestObject;
+        BlockHeader recovered = Build.A.BlockHeader.WithParent(recoveredParent).TestObject;
+        tree.Insert(header, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        tree.Insert(recoveredParent, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        tree.Insert(recovered, BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        peer.HeadHash = header.Hash!;
+        peer.HeadNumber = 100;
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<BlockHeader?> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationTokenRegistration registration = default;
+        int calls = 0;
+        peer.GetHeadBlockHeader(Arg.Any<Hash256?>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            int number = Interlocked.Increment(ref calls);
+            if (number != 2) return Task.FromResult<BlockHeader?>(number == 1 ? header : recovered);
+            CancellationToken requestToken = call.Arg<CancellationToken>();
+            registration = requestToken.Register(() =>
+            {
+                pending.TrySetCanceled(requestToken);
+                cancelled.TrySetResult();
+            });
+            started.TrySetResult();
+            return pending.Task;
+        });
+        try
+        {
+            pool.Start();
+            pool.AddPeer(peer);
+            pool.UpdateSyncPeerHeadIfHeaderIsBetter(peer, (await peer.GetHeadBlockHeader(header.Hash!, cancellationToken))!, Keccak.Zero);
+            Assert.That(pool.GetPeer(peer.Node)!.ServedHeadNumber, Is.EqualTo(100UL));
+            pool.RefreshTotalDifficulty(peer, TestItem.KeccakB);
+            await started.Task.WaitAsync(cancellationToken);
+            clock.AdvanceAndFireTimer(Timeouts.Eth);
+            await cancelled.Task.WaitAsync(cancellationToken);
+            await refreshed.Task.WaitAsync(cancellationToken);
+            Assert.That(pending.Task.IsCanceled, Is.True);
+            peer.GetBlockHeaders(recoveredParent.Hash!, 2, 0, Arg.Any<CancellationToken>())
+                .Returns(_ => Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>([recoveredParent, recovered])));
+            PeerRefresher refresher = (PeerRefresher)node.Resolve<IPeerRefresher>();
+            await refresher.RefreshPeerForFcu(peer, recovered.Hash!, recoveredParent.Hash!, Keccak.Zero, cancellationToken);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool.GetPeer(peer.Node)!.ServedHeadNumber, Is.EqualTo(200UL));
+                peer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+        }
+        finally
+        {
+            pending.TrySetCanceled();
+            registration.Dispose();
+        }
+    }
 }
