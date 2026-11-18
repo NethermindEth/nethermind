@@ -36,6 +36,37 @@ public class BlsTests
     }
 
     [Test]
+    public void Rejects_identity_public_key_and_signature()
+    {
+        G1 publicKey = new();
+        BlsSigner.Signature signature = new();
+        Assert.That(BlsSigner.Verify(publicKey.ToAffine(), signature, MsgBytes), Is.False);
+    }
+
+    [Test]
+    public void Rejects_public_key_outside_the_prime_order_subgroup()
+    {
+        // ethereum/bls12-381-tests v0.1.2 deserialization_fails_not_in_G1.
+        byte[] encoded = Convert.FromHexString("8123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+        Bls.P1Affine outside = new();
+        Assert.That(outside.TryDecode(encoded, out _), Is.True);
+        byte[] subgroupOrder = Convert.FromHexString("73eda753299d7d483339d80809a1d80553bda402fffe5bfeffffffff00000001");
+        Array.Reverse(subgroupOrder);
+        G1 torsion = new();
+        torsion.Add(outside);
+        torsion.Mult(subgroupOrder);
+        Bls.SecretKey key = new(SkBytes, Bls.ByteOrder.LittleEndian);
+        G1 point = new(key);
+        point.Add(torsion.ToAffine());
+        Bls.P1Affine publicKey = point.ToAffine();
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(torsion.IsInf(), Is.False);
+        Assert.That(publicKey.InGroup(), Is.False);
+        BlsSigner.Signature signature = BlsSigner.Sign(key, MsgBytes);
+        Assert.That(BlsSigner.Verify(publicKey, signature, MsgBytes), Is.False);
+    }
+
+    [Test]
     public void Verify_aggregate_signature()
     {
         BlsSigner.Signature agg = new();

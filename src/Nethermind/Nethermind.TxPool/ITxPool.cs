@@ -183,9 +183,9 @@ namespace Nethermind.TxPool
             [NotNullWhen(true)] out byte[]? proof);
         bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs);
+            out ReadOnlyMemory<byte> cellProofs);
         int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs);
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs);
         /// <summary>
         /// Gets the cell availability mask of a pending blob transaction without materializing blobs or cells.
         /// </summary>

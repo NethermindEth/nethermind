@@ -530,7 +530,8 @@ public class GethGenesisLoaderTests
                 Is.EqualTo(new[] { new NetworkNode(enode).NodeId, new NetworkNode(enr).NodeId }));
         }
 
-        logger.Received(includeInvalid ? 1 : 0).Error(Arg.Is<string>(static message => message.Contains("invalid")), Arg.Any<Exception>());
+        // Other tests flip the global sensitive-data masking, which hides the record, so match the text it keeps.
+        logger.Received(includeInvalid ? 1 : 0).Error(Arg.Is<string>(static message => message.StartsWith("Could not parse enode data from ")), Arg.Any<Exception?>());
     }
 
     [TestCase("", null)]

@@ -22,6 +22,7 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockStore : IBlockStore, IClearableCache
 {
     public const int CacheSize = 128 + 32;
+    private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
     private readonly IDb _blockDb;
     private readonly IHeaderDecoder _headerDecoder;
@@ -224,6 +225,45 @@ public class BlockStore : IBlockStore, IClearableCache
     }
 
     /// <inheritdoc/>
+    /// <remarks>Reads the number-prefixed keys in one batch. Pending blocks are taken before the batch, as
+    /// <see cref="GetRlp"/> does, so a block whose write lands during the batch is not missed. A block missing from the
+    /// batch is read under its bare hash, as a database predating the block-number prefix stores it.</remarks>
+    public void GetRlps(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks, PooledSegmentedBuffer destination, Span<ReadOnlyMemory<byte>?> rlps)
+    {
+        ArgumentOutOfRangeException.ThrowIfNotEqual(rlps.Length, blocks.Length);
+        using ArrayPoolListRef<(int Index, ReadOnlyMemory<byte> Rlp)> pending = new(0);
+        if (_pending is not null)
+        {
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                if (_pending.TryGet(in blocks[i].Hash, out Block? pendingBlock))
+                {
+                    pending.Add((i, destination.Add(_blockDecoder.Encode(pendingBlock))));
+                }
+            }
+        }
+
+        using ArrayPoolSpan<byte> keys = new(blocks.Length * NumberPrefixedKeyLength);
+        for (int i = 0; i < blocks.Length; i++)
+        {
+            KeyValueStoreExtensions.GetBlockNumPrefixedKey(blocks[i].Number, blocks[i].Hash, keys.Slice(i * NumberPrefixedKeyLength, NumberPrefixedKeyLength));
+        }
+
+        _blockDb.GetMany(keys, NumberPrefixedKeyLength, rlps, new AddingDecoder(destination));
+        foreach ((int index, ReadOnlyMemory<byte> rlp) in pending.AsSpan()) rlps[index] = rlp;
+        for (int i = 0; i < rlps.Length; i++)
+        {
+            if (rlps[i] is null && _blockDb.Get(blocks[i].Hash.Bytes) is { Length: > 0 } rlp) rlps[i] = destination.Add(rlp);
+        }
+    }
+
+    /// <remarks>An empty value reads as missing, as <see cref="GetOwnedRlp"/> reads it.</remarks>
+    private readonly struct AddingDecoder(PooledSegmentedBuffer destination) : IValueDecoder<ReadOnlyMemory<byte>?>
+    {
+        public ReadOnlyMemory<byte>? Decode(ReadOnlySpan<byte> buffer) => buffer.IsEmpty ? (ReadOnlyMemory<byte>?)null : destination.Add(buffer);
+    }
+
+    /// <inheritdoc/>
     public MemoryManager<byte>? GetOwnedRlp(ulong blockNumber, Hash256 blockHash)
     {
         if (_pending is not null && _pending.TryGet(blockHash, out Block? pendingBlock))
@@ -233,7 +273,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
-        return ReadBlockMemory(dbKey) ?? ReadBlockMemory(blockHash.Bytes);
+        return ReadBlockMemory(_blockDb, dbKey) ?? ReadBlockMemory(_blockDb, blockHash.Bytes);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash)
@@ -252,8 +292,8 @@ public class BlockStore : IBlockStore, IClearableCache
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
-        MemoryManager<byte>? memoryOwner = ReadBlockMemory(keyWithBlockNumber);
-        memoryOwner ??= ReadBlockMemory(blockHash.Bytes);
+        MemoryManager<byte>? memoryOwner = ReadBlockMemory(_blockDb, keyWithBlockNumber);
+        memoryOwner ??= ReadBlockMemory(_blockDb, blockHash.Bytes);
         if (memoryOwner is null) return null;
 
         ReceiptRecoveryBlock? block = null;
@@ -269,9 +309,9 @@ public class BlockStore : IBlockStore, IClearableCache
         }
     }
 
-    private MemoryManager<byte>? ReadBlockMemory(ReadOnlySpan<byte> key)
+    internal static MemoryManager<byte>? ReadBlockMemory(IDb blockDb, ReadOnlySpan<byte> key)
     {
-        if (_blockDb is not IReadOnlyNativeKeyValueStore native) return _blockDb.GetOwnedMemory(key);
+        if (blockDb is not IReadOnlyNativeKeyValueStore native) return blockDb.GetOwnedMemory(key);
 
         ReadOnlySpan<byte> bytes = native.GetNativeSlice(key, out nint handle);
         try

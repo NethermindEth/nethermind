@@ -44,6 +44,9 @@ public sealed class PersistedSnapshotStack(
 
     public int Count => _snapshots.Count;
 
+    /// <summary>The state the newest snapshot ends at, or <c>null</c> when there is none.</summary>
+    internal StateId? To => _snapshots.Count > 0 ? _snapshots[^1].To : null;
+
     /// <returns><c>true</c> when a snapshot holds an entry for the address —
     /// <paramref name="account"/> is then the stored account, or <c>null</c> for a
     /// deletion marker. <c>false</c> means the caller should fall through to persistence.</returns>

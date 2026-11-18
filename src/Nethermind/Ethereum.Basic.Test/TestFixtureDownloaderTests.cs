@@ -46,7 +46,10 @@ public class TestFixtureDownloaderTests
     [
         new TestCaseData(new Func<HttpResponseMessage>[] { BadGateway, BadGateway, Archive }, 3).SetName("Bad_gateway_responses_are_retried_until_the_download_succeeds"),
         new TestCaseData(new Func<HttpResponseMessage>[] { BrokenStream, Archive }, 2).SetName("Broken_response_stream_is_retried_and_no_partial_extraction_is_used"),
-        new TestCaseData(new Func<HttpResponseMessage>[] { RequestTimeout, Archive }, 2).SetName("Request_timeout_is_retried_until_the_download_succeeds")
+        new TestCaseData(new Func<HttpResponseMessage>[] { RequestTimeout, Archive }, 2).SetName("Request_timeout_is_retried_until_the_download_succeeds"),
+        new TestCaseData(new Func<HttpResponseMessage>[] { RequestTimeoutStatus, Archive }, 2).SetName("Request_timeout_status_is_retried_until_the_download_succeeds"),
+        new TestCaseData(new Func<HttpResponseMessage>[] { TooManyRequests, Archive }, 2).SetName("Too_many_requests_is_retried_until_the_download_succeeds"),
+        new TestCaseData(new Func<HttpResponseMessage>[] { ConnectionError, Archive }, 2).SetName("Connection_error_is_retried_until_the_download_succeeds")
     ];
 
     [TestCaseSource(nameof(TransientFailureCases))]
@@ -165,6 +168,21 @@ public class TestFixtureDownloaderTests
     private string Download(FakeHandler handler) =>
         TestFixtureDownloader.EnsureDownloaded(_cacheRoot, _suiteName, UrlTemplate, Version, ArchiveName, handler, TimeSpan.Zero);
 
+    [Test]
+    public void Retried_download_preserves_filter_and_hash_validation()
+    {
+        byte[] archive = CreateArchive();
+        string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(archive));
+        using FakeHandler handler = new(BadGateway, () => new(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
+        string target = TestFixtureDownloader.EnsureDownloaded(_cacheRoot, _suiteName, UrlTemplate, Version, ArchiveName, handler,
+            TimeSpan.Zero, path => path == EntryName, "filtered", hash);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(File.ReadAllText(Path.Combine(target, EntryName)), Is.EqualTo(EntryContent));
+        Assert.That(handler.Requests, Is.EqualTo(2));
+        Assert.That(File.ReadAllLines(Path.Combine(target, TestFixtureDownloader.MarkerFileName))[0], Is.EqualTo($"filtered;sha256={hash}"));
+        AssertNoTempDirectories();
+    }
+
     private string TargetDir() => Path.Combine(_cacheRoot, _suiteName, Version, "general");
 
     private void AssertNoTempDirectories()
@@ -180,6 +198,12 @@ public class TestFixtureDownloaderTests
     }
 
     private static HttpResponseMessage BadGateway() => new(HttpStatusCode.BadGateway);
+
+    private static HttpResponseMessage RequestTimeoutStatus() => new(HttpStatusCode.RequestTimeout);
+
+    private static HttpResponseMessage TooManyRequests() => new(HttpStatusCode.TooManyRequests);
+
+    private static HttpResponseMessage ConnectionError() => throw new HttpRequestException(HttpRequestError.ConnectionError, "Connection refused.");
 
     private static HttpResponseMessage NotFound() => new(HttpStatusCode.NotFound);
 
@@ -206,6 +230,9 @@ public class TestFixtureDownloaderTests
                 DataStream = new MemoryStream(Encoding.UTF8.GetBytes(EntryContent))
             };
             writer.WriteEntry(entry);
+            byte[] noise = new byte[8192];
+            new Random(1).NextBytes(noise);
+            writer.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, "tests/noise.bin") { DataStream = new MemoryStream(noise) });
         }
 
         return output.ToArray();

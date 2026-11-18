@@ -38,20 +38,20 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
        byte[] requestedBlobVersionedHash,
        [NotNullWhen(true)] out byte[]? blob,
        [NotNullWhen(true)] out byte[]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V0,
-           static (proofs, index) => proofs[index]);
+           static (proofs, index) => proofs.AsSpan(index * Ckzg.BytesPerProof, Ckzg.BytesPerProof).ToArray());
 
     public bool TryGetBlobAndProofV1(
        byte[] requestedBlobVersionedHash,
        [NotNullWhen(true)] out byte[]? blob,
-       [NotNullWhen(true)] out byte[][]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1,
-           static (proofs, index) => [.. proofs.Slice(Ckzg.CellsPerExtBlob * index, Ckzg.CellsPerExtBlob)]);
+       out ReadOnlyMemory<byte> proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1,
+           static (proofs, index) => proofs.AsMemory(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof * index, Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
 
     private bool TryGetBlobAndProof<TProof>(
         byte[] requestedBlobVersionedHash,
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out TProof? proof,
         ProofVersion requiredVersion,
-        Func<byte[][], int, TProof> proofSelector)
+        Func<byte[], int, TProof> proofSelector)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
 
@@ -87,7 +87,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     public virtual int TryGetBlobsAndProofsV1(
         byte[][] requestedBlobVersionedHashes,
         Span<byte[]?> blobs,
-        Span<ReadOnlyMemory<byte[]>> proofs)
+        Span<ReadOnlyMemory<byte>> proofs)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
         int found = 0;
@@ -116,10 +116,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         }
 
                         blobs[i] = wrapper.Blobs[indexOfBlob];
-                        proofs[i] = new ReadOnlyMemory<byte[]>(
-                            wrapper.Proofs,
-                            Ckzg.CellsPerExtBlob * indexOfBlob,
-                            Ckzg.CellsPerExtBlob);
+                        proofs[i] = wrapper.GetProofs(Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.CellsPerExtBlob);
                         found++;
                         matched = true;
                         break;
@@ -425,7 +422,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     {
         if (current.Version != validated.Version
             || current.Commitments.Length != validated.Commitments.Length
-            || current.Proofs.Length != validated.Proofs.Length)
+            || !current.Proofs.AsSpan().SequenceEqual(validated.Proofs))
         {
             return false;
         }
@@ -433,14 +430,6 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         for (int i = 0; i < current.Commitments.Length; i++)
         {
             if (!Bytes.AreEqual(current.Commitments[i], validated.Commitments[i]))
-            {
-                return false;
-            }
-        }
-
-        for (int i = 0; i < current.Proofs.Length; i++)
-        {
-            if (!Bytes.AreEqual(current.Proofs[i], validated.Proofs[i]))
             {
                 return false;
             }
@@ -573,13 +562,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             }
 
             byte[][] selectedProofs = BlobCellsHelper.SelectProofs(candidate.Wrapper, candidate.BlobIndex, selectedMask);
-            bool proofsAreValid = selectedProofs.Length == selectedMask.Count;
-            for (int i = 0; proofsAreValid && i < selectedProofs.Length; i++)
-            {
-                proofsAreValid = selectedProofs[i] is { Length: Ckzg.BytesPerProof };
-            }
-
-            if (!proofsAreValid
+            if (selectedProofs.Length != selectedMask.Count
                 || !TryGetFlattenedCellsForBlob(candidate.Wrapper, candidate.BlobIndex, selectedMask, out byte[][]? selectedCells))
             {
                 availableMask = default;

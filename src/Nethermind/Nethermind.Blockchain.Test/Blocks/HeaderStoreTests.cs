@@ -178,10 +178,10 @@ public class HeaderStoreTests
     }
 
     [Test]
-    public async Task GetBlockNumbers_resolves_each_block_as_GetBlockNumber_does()
+    public async Task GetBlockNumbers_resolves_each_block_as_GetBlockNumber_does([Values] bool batching)
     {
         MemDb headerDb = new();
-        MemDb blockNumberDb = new();
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
         using IContainer container = BuildContainer(headerDb, blockNumberDb, writer);
         IHeaderStore store = container.Resolve<IHeaderStore>();
@@ -203,7 +203,20 @@ public class HeaderStoreTests
         {
             Assert.That(numbers, Is.EqualTo(new ulong?[] { 102, null, 101, 100, 103 }));
             Assert.That(numbers, Is.EqualTo(hashes.Select(h => store.GetBlockNumber(new Hash256(h)))));
+            if (blockNumberDb is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task GetBlockNumbers_rejects_a_malformed_block_number_entry([Values] bool batching, [Values(7, 9)] int length)
+    {
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = BuildContainer(new MemDb(), blockNumberDb, writer);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
+        blockNumberDb.Set(TestItem.KeccakA, new byte[length]);
+
+        Assert.Throws<InvalidDataException>(() => store.GetBlockNumbers([TestItem.KeccakA.ValueHash256], new ulong?[1]));
     }
 
     [Test]
@@ -372,11 +385,58 @@ public class HeaderStoreTests
         HeaderDecoder decoder = new();
         HeaderStore store = new(headerDb, new MemDb(), decoder);
         HeaderSource?[] sources = [HeaderSource.NumberedKey, null, HeaderSource.HashKey, HeaderSource.Cache, HeaderSource.NumberedKey];
+        (_, ValueHash256[] hashes, ulong[] numbers) = StoreHeaders(store, headerDb, decoder, sources);
+
+        BlockHeader?[] headers = new BlockHeader?[sources.Length];
+        bool[] found = new bool[sources.Length];
+        store.GetIfBloomMatches(hashes, numbers, _ => bloomMatches, headers, found);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < sources.Length; i++)
+            {
+                Assert.That(found[i], Is.EqualTo(sources[i] is not null), $"found {i}");
+                Assert.That(headers[i]?.Hash?.ValueHash256, Is.EqualTo(bloomMatches && sources[i] is not null ? (ValueHash256?)hashes[i] : null), $"header {i}");
+            }
+        }
+    }
+
+    /// <param name="rocks">Whether the headers are in RocksDB, which reads them in one batch.</param>
+    [Test]
+    public void AppendRlps_appends_each_header_as_TryAppendRlp_does([Values] bool storeDecoder, [Values] bool rocks)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using IDb headerDb = rocks ? CreateRocksDb(directory) : new TestMemDb();
+        HeaderDecoder decoder = new();
+        HeaderStore store = new(headerDb, new MemDb(), decoder);
+        HeaderSource?[] sources = [HeaderSource.NumberedKey, null, HeaderSource.HashKey, HeaderSource.Cache, HeaderSource.NumberedKey];
+        (BlockHeader[] headers, ValueHash256[] hashes, ulong[] numbers) = StoreHeaders(store, headerDb, decoder, sources);
+
+        using ArrayPoolList<byte> rlp = new(0);
+        Range[] items = new Range[headers.Length];
+        store.AppendRlps(hashes, numbers, storeDecoder ? decoder : new CountingHeaderDecoder(), rlp, items);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (sources[i] is null)
+                    Assert.That(items[i], Is.EqualTo(default(Range)), $"header {i}");
+                else
+                    Assert.That(rlp.AsSpan()[items[i]].ToArray(), Is.EqualTo(new HeaderDecoder().Encode(headers[i])), $"header {i}");
+            }
+        }
+    }
+
+    /// <summary>Builds one header per source, from block 100 up, and stores each where its source says; a null source stores nothing.</summary>
+    private static (BlockHeader[] Headers, ValueHash256[] Hashes, ulong[] Numbers) StoreHeaders(HeaderStore store, IDb headerDb, HeaderDecoder decoder, HeaderSource?[] sources)
+    {
+        BlockHeader[] headers = new BlockHeader[sources.Length];
         ValueHash256[] hashes = new ValueHash256[sources.Length];
         ulong[] numbers = new ulong[sources.Length];
         for (int i = 0; i < sources.Length; i++)
         {
-            BlockHeader header = Build.A.BlockHeader.WithNumber(100 + (ulong)i).TestObject;
+            BlockHeader header = headers[i] = Build.A.BlockHeader.WithNumber(100 + (ulong)i).TestObject;
             hashes[i] = header.Hash!.ValueHash256;
             numbers[i] = header.Number;
             switch (sources[i])
@@ -393,18 +453,7 @@ public class HeaderStoreTests
             }
         }
 
-        BlockHeader?[] headers = new BlockHeader?[sources.Length];
-        bool[] found = new bool[sources.Length];
-        store.GetIfBloomMatches(hashes, numbers, _ => bloomMatches, headers, found);
-
-        using (Assert.EnterMultipleScope())
-        {
-            for (int i = 0; i < sources.Length; i++)
-            {
-                Assert.That(found[i], Is.EqualTo(sources[i] is not null), $"found {i}");
-                Assert.That(headers[i]?.Hash?.ValueHash256, Is.EqualTo(bloomMatches && sources[i] is not null ? (ValueHash256?)hashes[i] : null), $"header {i}");
-            }
-        }
+        return (headers, hashes, numbers);
     }
 
     private static IDb CreateRocksDb(TempPath directory)

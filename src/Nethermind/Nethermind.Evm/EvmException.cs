@@ -42,6 +42,11 @@ public enum EvmExceptionType
     ReturnStackOverflow,
     /// <summary>EIP-7979: <c>RETURNSUB</c> with an empty return stack.</summary>
     ReturnStackUnderflow,
+    /// <summary>
+    /// A CREATE from an account whose nonce cannot be incremented, which fails its precheck and enters no frame.
+    /// Reported to action tracers only; the operation itself pushes 0 and execution continues.
+    /// </summary>
+    NonceOverflow,
 }
 
 public static class EvmExceptionTypeExtensions
@@ -75,6 +80,7 @@ public static class EvmExceptionTypeExtensions
         EvmExceptionType.CallDepthExceeded => nameof(EvmExceptionType.CallDepthExceeded),
         EvmExceptionType.ReturnStackOverflow => nameof(EvmExceptionType.ReturnStackOverflow),
         EvmExceptionType.ReturnStackUnderflow => nameof(EvmExceptionType.ReturnStackUnderflow),
+        EvmExceptionType.NonceOverflow => nameof(EvmExceptionType.NonceOverflow),
         _ => ((int)type).ToString(),
     };
 
@@ -103,6 +109,7 @@ public static class EvmExceptionTypeExtensions
         nameof(EvmExceptionType.CallDepthExceeded) => EvmExceptionType.CallDepthExceeded,
         nameof(EvmExceptionType.ReturnStackOverflow) => EvmExceptionType.ReturnStackOverflow,
         nameof(EvmExceptionType.ReturnStackUnderflow) => EvmExceptionType.ReturnStackUnderflow,
+        nameof(EvmExceptionType.NonceOverflow) => EvmExceptionType.NonceOverflow,
         _ => EvmExceptionType.None,
     };
 }

@@ -169,10 +169,11 @@ public static class BaseTriePersistence
         }
 
         [SkipLocalsInit]
-        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath)
+        public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount)
         {
             ReadOnlySpan<byte> fromAccount = fromPath.Bytes[..StorageHashPrefixLength];
             ReadOnlySpan<byte> toAccount = toPath.Bytes[..StorageHashPrefixLength];
+            ReadOnlySpan<byte> kept = keptAccount is { } keptPath ? keptPath.Bytes[..StorageHashPrefixLength] : default;
 
             Span<byte> firstKey = stackalloc byte[1 + StoragePrefixPortion];
             Span<byte> lastKey = stackalloc byte[FullStorageNodesKeyLength + 1];
@@ -183,7 +184,7 @@ public static class BaseTriePersistence
             BasePersistence.DeleteKeysOfAccountRange(storageNodesSnap, storageNodes,
                 fromPath.Bytes[..StoragePrefixPortion], lastKey[..(ShortenedStorageNodesKeyLength + 1)],
                 ShortenedStorageNodesKeyLength, prefixOffset: 0, StoragePrefixPortion,
-                suffixOffset: StoragePrefixPortion + ShortenedPathLength, fromAccount, toAccount, flags);
+                suffixOffset: StoragePrefixPortion + ShortenedPathLength, fromAccount, toAccount, kept, flags);
 
             // FallbackNodes (prefix 0x01)
             firstKey[0] = 1;
@@ -193,7 +194,7 @@ public static class BaseTriePersistence
             toPath.Bytes[..StoragePrefixPortion].CopyTo(lastKey[1..]);
             BasePersistence.DeleteKeysOfAccountRange(fallbackNodesSnap, fallbackNodes, firstKey, lastKey,
                 FullStorageNodesKeyLength, prefixOffset: 1, StoragePrefixPortion,
-                suffixOffset: 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, fromAccount, toAccount, flags);
+                suffixOffset: 1 + StoragePrefixPortion + FullPathLength + PathLengthLength, fromAccount, toAccount, kept, flags);
         }
 
         [SkipLocalsInit]
@@ -355,7 +356,7 @@ public static class BaseTriePersistence
                 _ => fallbackNodes.TryGet(EncodeFullStateNodeKey(stackalloc byte[FullStateNodesKeyLength], in path), flags, action, arg)
             };
 
-        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
             path.Length <= ShortenedPathThreshold
                 ? storageNodes.TryGet(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags, action, arg)
                 : fallbackNodes.TryGet(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags, action, arg);

@@ -112,7 +112,7 @@ public class LogIndexBuildBenchmark
     public async Task Backward()
     {
         IndexedRange storage = new(_aggregator);
-        LogIndexBuilder builder = new(storage, CreateConfig(), _blockTree, new SyncConfig(), _receiptStorage, LimboLogs.Instance);
+        LogIndexBuilder builder = new(storage, CreateConfig(), _blockTree, new SyncConfig(), _receiptStorage, LimboLogs.Instance, new MemDb());
         await builder.StartAsync();
         await builder.BackwardSyncCompletion;
         await builder.StopAsync();

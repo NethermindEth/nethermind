@@ -53,8 +53,9 @@ public class BlockAccessListStoreTests
         store.Insert(7, TestItem.KeccakA, storedBal);
         Block pendingBlock = BlockWithBal(8, pendingBal);
         store.InsertFromBlockDeferred(pendingBlock);
-        ulong[] numbers = [8, 9, 7];
-        ValueHash256[] hashes = [pendingBlock.Hash!, TestItem.KeccakB, TestItem.KeccakA];
+        store.Insert(10, TestItem.KeccakC, Array.Empty<byte>());
+        ulong[] numbers = [8, 9, 7, 10];
+        ValueHash256[] hashes = [pendingBlock.Hash!, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakC];
 
         using ArrayPoolList<byte> lists = new(0);
         Range?[] ranges = new Range?[hashes.Length];
@@ -65,6 +66,7 @@ public class BlockAccessListStoreTests
             Assert.That(lists.AsSpan()[ranges[0]!.Value].ToArray(), Is.EqualTo(pendingBal));
             Assert.That(ranges[1], Is.Null);
             Assert.That(lists.AsSpan()[ranges[2]!.Value].ToArray(), Is.EqualTo(storedBal));
+            Assert.That(ranges[3], Is.Null, "an empty value reads as missing, as GetRlp reads it");
         }
     }
 

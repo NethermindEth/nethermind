@@ -73,6 +73,7 @@ namespace Nethermind.Consensus.Producers
         private async Task<Block?> InvokeTriggerBlockProductionDelayed(BlockProductionEventArgs e)
         {
             CancellationToken cancellationToken = e.CancellationToken;
+            Interlocked.Exchange(ref Metrics.CanProduceBlocks, 0);
             // retry production until its allowed or its cancelled
             while (!CanTriggerBlockProduction)
             {
