@@ -362,7 +362,7 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
         // Test raw account operations
         using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis, WriteFlags.None))
         {
-            writer.SetAccountRaw(addrHash, acc);
+            writer.SetAccountRaw(addrHash, acc.ToStruct());
         }
 
         using (IPersistence.IPersistenceReader reader = _persistence.CreateReader())
@@ -869,6 +869,51 @@ public class PersistenceScenario(PersistenceScenario.TestConfiguration configura
                 byte[]? node = reader.LoadStorageRlp(account, TreePath.FromHexString(p), ReadFlags.None);
                 Assert.That(node, del ? Is.Null : Is.EqualTo(rlp), p);
             }
+        }
+    }
+
+    // Snap cleanup skips its deletes in a range the probe reports empty, so the probe must see every node they would remove.
+    [TestCaseSource(nameof(SubtreeDeleteCases))]
+    public void IsStorageRangeEmpty_SeesExactlyTheNodesTheRangeDeleteRemoves(ValueHash256 from, ValueHash256 to, (string Path, bool Deleted)[] nodes)
+    {
+        if (IsPreimage(configuration.FlatDbConfig.Layout)) Assert.Ignore("Snap sync is not supported in preimage mode");
+        byte[] rlp = [0xc1, 0x11];
+
+        // one account per node, so each probe sees that node alone
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            for (int i = 0; i < nodes.Length; i++) writer.SetStorageTrieNode(AccountOf(i), TreePath.FromHexString(nodes[i].Path), rlp);
+
+        // a sync batch, as snap uses, merges the trie node log into the columns before taking the snapshot it probes
+        using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < nodes.Length; i++)
+                Assert.That(batch.IsStorageRangeEmpty(AccountOf(i), from, to), Is.EqualTo(!nodes[i].Deleted), nodes[i].Path);
+            Assert.That(batch.IsStorageRangeEmpty(AccountOf(nodes.Length), ValueKeccak.Zero, ValueKeccak.MaxValue), Is.True, "an account with nothing stored");
+        }
+
+        static ValueHash256 AccountOf(int index) => ValueKeccak.Compute(BitConverter.GetBytes(index));
+    }
+
+    [Test]
+    public void IsStorageRangeEmpty_SeesTheSlotsTheRangeDeleteRemoves()
+    {
+        if (IsPreimage(configuration.FlatDbConfig.Layout)) Assert.Ignore("Snap sync is not supported in preimage mode");
+        Address address = TestItem.AddressA;
+        ValueHash256 slotHash = default;
+        StorageTree.ComputeKeyWithLookup(1, ref slotHash);
+
+        using (IPersistence.IWriteBatch writer = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis))
+            writer.SetStorage(address, 1, BaseFlatPersistence.DecodeSlotValue([0x11]));
+
+        using IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, StateId.PreGenesis);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch.IsStorageRangeEmpty(address.ToAccountPath, slotHash, slotHash), Is.False, "the slot itself");
+            Assert.That(batch.IsStorageRangeEmpty(address.ToAccountPath, ValueKeccak.Zero, ValueKeccak.MaxValue), Is.False, "the whole account");
+            Assert.That(batch.IsStorageRangeEmpty(address.ToAccountPath, ValueKeccak.Zero, slotHash.DecrementPath()), Is.True, "before the slot");
+            Assert.That(batch.IsStorageRangeEmpty(address.ToAccountPath, slotHash.IncrementPath(), ValueKeccak.MaxValue), Is.True, "after the slot");
+            Assert.That(batch.IsStorageRangeEmpty(TestItem.AddressB.ToAccountPath, ValueKeccak.Zero, ValueKeccak.MaxValue), Is.True, "another account");
         }
     }
 

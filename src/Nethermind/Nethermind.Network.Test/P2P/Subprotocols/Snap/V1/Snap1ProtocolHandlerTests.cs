@@ -3,18 +3,20 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -29,16 +31,20 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Network.Test.PeerManagerTests;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1;
 
 public class Snap1ProtocolHandlerTests
 {
+
     private class Context
     {
         private readonly ManualTimeProvider _timeProvider = new();
 
         public ISession Session { get; set; } = Substitute.For<ISession>();
+
+        public Context() => Session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
 
         private IMessageSerializationService? _messageSerializationService;
         public IMessageSerializationService MessageSerializationService
@@ -63,6 +69,7 @@ public class Snap1ProtocolHandlerTests
                 {
                     _nodeStatsManager = Substitute.For<INodeStatsManager>();
                     _nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0], timeProvider: _timeProvider));
+                    _nodeStatsManager.GetStatsOrNull(Arg.Any<Node>()).Returns(c => _nodeStatsManager.GetOrAdd(c.Arg<Node>()));
                 }
                 return _nodeStatsManager;
             }
@@ -113,7 +120,7 @@ public class Snap1ProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
+                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, AccountStruct.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
@@ -133,6 +140,44 @@ public class Snap1ProtocolHandlerTests
         public void RecordedMessageSizesShouldDecrease() => Assert.That(_recordedResponseBytesLength[^1], Is.LessThan(_recordedResponseBytesLength[^2]));
 
         public void RecordedMessageSizesShouldNotChange() => Assert.That(_recordedResponseBytesLength[^1], Is.EqualTo(_recordedResponseBytesLength[^2]));
+    }
+
+    [Test]
+    public async Task Unvalidated_trie_nodes_do_not_improve_transfer_speed()
+    {
+        Context ctx = new()
+        {
+            MessageSerializationService = new MessageSerializationService(SerializerInfo.Create(new TrieNodesMessageSerializer()))
+        };
+        ctx.Session.When(session => session.DeliverMessage(Arg.Any<GetTrieNodesMessage>())).Do(call =>
+        {
+            using TrieNodesMessage reply = new(new ByteArrayListAdapter(new ArrayPoolList<byte[]>([new byte[256]])))
+            {
+                RequestId = call.Arg<GetTrieNodesMessage>().RequestId
+            };
+            IByteBuffer buffer = ctx.MessageSerializationService.ZeroSerialize(reply);
+            buffer.ReadByte();
+            NettyBufferPacket packet = new(buffer) { PacketType = Snap1MessageCode.TrieNodes };
+            try { ctx.Snap1ProtocolHandler.HandleMessage(packet); }
+            finally { ReferenceCountUtil.Release(packet); }
+        });
+        using GetTrieNodesRequest request = new() { RootHash = Keccak.Zero, AccountAndStoragePaths = PathGroup.EncodeToRlpPathGroupList([]) };
+
+        using IByteArrayList response = await ctx.Snap1ProtocolHandler.GetTrieNodes(request, CancellationToken.None);
+
+        ctx.NodeStatsManager.DidNotReceive().ReportTransferSpeedEvent(
+            Arg.Any<Node>(), TransferSpeedType.SnapRanges, Arg.Is<long>(speed => speed > 0));
+    }
+
+    [Test]
+    public async Task Unvalidated_account_range_does_not_improve_transfer_speed()
+    {
+        Context ctx = new Context().WithResponseBytesRecorder;
+        using AccountsAndProofs response = await ctx.Snap1ProtocolHandler.GetAccountRange(
+            new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None);
+
+        ctx.NodeStatsManager.DidNotReceive().ReportTransferSpeedEvent(
+            Arg.Any<Node>(), TransferSpeedType.SnapRanges, Arg.Is<long>(speed => speed > 0));
     }
 
     [Test]
@@ -319,6 +364,138 @@ public class Snap1ProtocolHandlerTests
         ctx.RealTimeStall = TimeSpan.Zero; // The read value is the request down, but it is adjusted on above request
         (await protocolHandler.GetAccountRange(new AccountRange(Keccak.Zero, Keccak.Zero), CancellationToken.None)).Dispose();
         ctx.RecordedMessageSizesShouldDecrease();
+    }
+
+    [Test]
+    public async Task Saturation_does_not_prevent_real_snap_protocol_initialization()
+    {
+        await using PeerManagerTests.Context context = new(maxStats: 1);
+        context.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyA, "8.8.8.8", 30303, true));
+        using OwnedSession owned = new();
+        Session session = owned.Session;
+        using Snap1ProtocolHandler handler = new(session, context.Stats, Substitute.For<IMessageSerializationService>(),
+            Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance, new SyncConfig(), Substitute.For<ISnapServer>());
+        int initialized = 0;
+        handler.ProtocolInitialized += (_, _) => initialized++;
+
+        handler.Init();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initialized, Is.EqualTo(1));
+            Assert.That(session.IsClosing, Is.False);
+            Assert.That(context.PeerPool.Peers.ContainsKey(TestItem.PublicKeyB), Is.False);
+        }
+    }
+
+    [Test]
+    public Task Identity_replacement_publishes_peer_and_preserves_displaced_original_ban_deadline()
+        => CheckIdentityReplacement(fullyPinned: false);
+
+    [Test]
+    public Task Identity_replacement_remains_session_only_when_another_identity_owns_all_stats()
+        => CheckIdentityReplacement(fullyPinned: true);
+
+    private static async Task CheckIdentityReplacement(bool fullyPinned)
+    {
+        ManualTimeProvider clock = new();
+        await using PeerManagerTests.Context context = new(maxStats: 1, timeProvider: clock);
+        Peer? held = fullyPinned ? context.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyC, "9.9.9.9", 30303, true)) : null;
+        Node oldNode = new(TestItem.PublicKeyA, "8.8.8.8", 30303, true);
+        Peer previous = context.PeerPool.GetOrAdd(oldNode);
+        using OwnedSession owned = new();
+        Session session = owned.Session;
+        session.ObsoleteRemoteNodeId = oldNode.Id;
+        previous.InSession = session;
+        context.Stats.ReportDisconnect(oldNode, DisconnectType.Local, DisconnectReason.BreachOfProtocol);
+        clock.Advance(TimeSpan.FromMinutes(2));
+
+        Peer replacement = context.PeerPool.Replace(session);
+        Peer expected = fullyPinned ? held! : replacement;
+        context.PeerPool.Peers.TryGetValue(expected.Node.Id, out Peer? published);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replacement.InSession, Is.SameAs(session));
+            Assert.That(replacement.Node.Id, Is.EqualTo(TestItem.PublicKeyB));
+            Assert.That(context.PeerPool.Peers.ContainsKey(oldNode.Id), Is.False);
+            Assert.That(context.PeerPool.Peers.ContainsKey(replacement.Node.Id), Is.EqualTo(!fullyPinned));
+            Assert.That(context.PeerPool.Peers.Count, Is.EqualTo(1));
+            Assert.That(published, Is.SameAs(expected));
+            Assert.That(context.Stats.IsInboundBanned(oldNode, clock.GetUtcNow().UtcDateTime), Is.True);
+            Assert.That(replacement.Stats!.IsInboundBanned(clock.GetUtcNow().UtcDateTime), Is.False);
+        }
+        clock.Advance(TimeSpan.FromMinutes(13) - TimeSpan.FromTicks(1));
+        Assert.That(context.Stats.IsInboundBanned(oldNode, clock.GetUtcNow().UtcDateTime), Is.True);
+        clock.Advance(TimeSpan.FromTicks(1));
+        context.PeerPool.Peers.TryGetValue(expected.Node.Id, out published);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Stats.IsInboundBanned(oldNode, clock.GetUtcNow().UtcDateTime), Is.False);
+            Assert.That(published, Is.SameAs(expected));
+        }
+    }
+
+    [Test]
+    public async Task Saturated_stats_preserve_rejections_and_pool_hello_when_protection_can_be_reclaimed([Values] Rejection rejection, [Values] bool compatibilityRecords)
+    {
+        ManualTimeProvider clock = new();
+        await using PeerManagerTests.Context context = new(maxStats: 4, timeProvider: clock);
+        NodeStatsManager stats = (NodeStatsManager)context.Stats;
+        List<IDisposable> leases = [];
+        Node remote = new(TestItem.PublicKeyB, "8.8.8.8", 30303);
+        bool banned = rejection != Rejection.None;
+        try
+        {
+            if (banned)
+            {
+                Assert.That(stats.TryAcquire(remote, true, out _, out IDisposable? lease), Is.True);
+                leases.Add(lease!);
+                if (rejection == Rejection.WrongChain) stats.ReportFailedValidation(remote, CompatibilityValidationType.NetworkId);
+                else stats.ReportDisconnect(remote, DisconnectType.Local, DisconnectReason.BreachOfProtocol);
+            }
+            foreach (PublicKey key in TestItem.PublicKeys.Skip(10).Take(banned ? 3 : 4))
+            {
+                Node node = new(key, "9.9.9.9", 30303);
+                if (compatibilityRecords) stats.ReportFailedValidation(node, CompatibilityValidationType.NetworkId);
+                else
+                {
+                    Assert.That(stats.TryAcquire(node, true, out _, out IDisposable? lease), Is.True);
+                    leases.Add(lease!);
+                }
+            }
+
+            context.RlpxPeer.CreateIncoming(CreateIncomingSessionTemplate(remote.Id));
+            Session incoming = context.Sessions.Single();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(incoming.IsClosing, Is.EqualTo(banned));
+                Assert.That(context.PeerManager.ActivePeers.Count, Is.EqualTo(banned ? 0 : 1));
+                Assert.That(context.PeerPool.Peers.ContainsKey(remote.Id), Is.EqualTo(!banned && compatibilityRecords));
+
+                if (rejection == Rejection.WrongChain)
+                    Assert.That(stats.FindCompatibilityValidationResult(remote), Is.EqualTo(CompatibilityValidationType.NetworkId));
+                else if (banned) Assert.That(stats.GetOrAdd(remote).IsInboundBanned(clock.GetUtcNow().UtcDateTime), Is.True);
+                else if (context.PeerManager.ActivePeers.Count == 1)
+                    Assert.That(context.PeerManager.ActivePeers.Single().InSession, Is.SameAs(incoming));
+            }
+        }
+        finally
+        {
+            foreach (IDisposable lease in leases) lease.Dispose();
+        }
+    }
+
+    public enum Rejection { None, Misconduct, WrongChain }
+
+    private sealed class OwnedSession : IDisposable
+    {
+        public Session Session { get; } = CreateIncomingSessionTemplate(TestItem.PublicKeyB);
+        public void Dispose()
+        {
+            Session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Local, "test cleanup");
+            Session.Dispose();
+        }
     }
 
     private static MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> GetAccountRangeDictionary(Snap1ProtocolHandler handler)

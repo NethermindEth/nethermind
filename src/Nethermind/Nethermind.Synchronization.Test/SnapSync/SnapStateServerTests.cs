@@ -60,7 +60,7 @@ public class SnapStateServerTests
     {
         private readonly TestRawTrieStore _store;
         private readonly StateTree _tree;
-        private readonly MemDb _clientStateDb;
+        private readonly SnapshotableMemDb _clientStateDb;
 
         public ISnapStateServer Server { get; }
         public SnapProvider SnapProvider { get; }
@@ -74,7 +74,7 @@ public class SnapStateServerTests
             _tree = new StateTree(_store, LimboLogs.Instance);
             Server = new SnapStateServer(_store.AsReadOnly(), LimboLogs.Instance, lastNStateRootTracker);
 
-            _clientStateDb = new MemDb();
+            _clientStateDb = new SnapshotableMemDb();
             INodeStorage nodeStorage = new NodeStorage(_clientStateDb);
             PatriciaSnapTrieFactory snapTrieFactory = new(nodeStorage, _clientStateDb, LimboLogs.Instance);
             using ProgressTracker progressTracker = new(snapTrieFactory, new TestSyncConfig(), new StateSyncPivot(null!, new TestSyncConfig(), LimboLogs.Instance), LimboLogs.Instance);
@@ -140,8 +140,7 @@ public class SnapStateServerTests
     {
         using IWriteBatch batch = context.BeginWriteBatch();
         foreach (PathWithAccount pwa in TestItem.Tree.AccountsWithPaths)
-            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account
-                ?? throw new InvalidOperationException("A test account entry must contain an account value."));
+            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account.ToAccount());
     }
 
     private static void FillMultipleAccounts(ISnapServerContext context, int count)
@@ -227,7 +226,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = useCorrectRoot ? context.RootHash : TestItem.KeccakA,
@@ -242,9 +241,10 @@ public class SnapStateServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(expectedResult));
-            // On success the stale empty storage root must be replaced by the verified one.
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(response.PathAndAccounts[0].Account!.StorageRoot, Is.EqualTo(storageRoot));
         }
+        if (useCorrectRoot) AssertRefreshedStorage(context, stale);
     }
 
     // The range proof can omit the leaf node. Verification must still succeed by setting the account from the
@@ -273,7 +273,7 @@ public class SnapStateServerTests
         proofs.Dispose();
 
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = new ByteArrayListAdapter(trimmedProofs) };
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = context.RootHash,
@@ -288,8 +288,24 @@ public class SnapStateServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(storageRoot));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(response.PathAndAccounts[0].Account!.StorageRoot, Is.EqualTo(storageRoot));
         }
+        AssertRefreshedStorage(context, stale);
+    }
+
+    private static void AssertRefreshedStorage(ISnapServerContext context, PathWithAccount account)
+    {
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
+            context.Server.GetStorageRanges(context.RootHash, [account], ValueKeccak.Zero, ValueKeccak.MaxValue, 4000, CancellationToken.None);
+        using SlotsAndProofs response = new() { PathsAndSlots = slots, Proofs = proofs };
+        using StorageRange request = new()
+        {
+            RootHash = context.RootHash,
+            StartingHash = ValueKeccak.Zero,
+            Accounts = new ArrayPoolList<PathWithAccount>(1) { account }
+        };
+        Assert.That(context.SnapProvider.AddStorageRange(request, response), Is.EqualTo(AddRangeResult.OK));
     }
 
     // A non-existent account is a terminal no-op only when its absence is *proven* by the verified range -
@@ -306,7 +322,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = context.RootHash,
@@ -322,7 +338,7 @@ public class SnapStateServerTests
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             // Absent account: nothing adopted, storage root unchanged.
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
     }
 
@@ -394,7 +410,7 @@ public class SnapStateServerTests
         context.SetRawAccount(accountPath, accountRlp);
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
-        PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
+        PathWithAccount[] accounts = [new(accountPath, AccountStruct.TotallyEmpty)];
         RlpReaderException? expectedException = null;
         Account? expected = null;
         if (accountRlp.Length > 0)
@@ -494,6 +510,204 @@ public class SnapStateServerTests
         Assert.That(result.Count, Is.EqualTo(1));
     }
 
+    private static IEnumerable<TestCaseData> PathsNoNodeCanSitAt()
+    {
+        byte[] tooLongByOne = new byte[33];
+        tooLongByOne[0] = 0x1a;
+        yield return new TestCaseData(tooLongByOne).SetName("{m}: 65 nibbles");
+        yield return new TestCaseData(new byte[34]).SetName("{m}: 66 nibbles");
+        yield return new TestCaseData(GethLongPath).SetName("{m}: 108 nibbles");
+        yield return new TestCaseData(new byte[] { 0x20 }).SetName("{m}: Leaf flag");
+        yield return new TestCaseData(new byte[] { 0x3a }).SetName("{m}: Odd leaf flag");
+        yield return new TestCaseData(new byte[] { 0x40, 0x00 }).SetName("{m}: Unknown flag");
+        yield return new TestCaseData(new byte[1 << 20]).SetName("{m}: 1 MB");
+    }
+
+    /// <summary>The path of geth's devp2p snap-test "nonsensically long path" GetTrieNodes case.</summary>
+    private static readonly byte[] GethLongPath =
+    [
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8,
+        0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8, 0, 1, 2, 3, 4, 5, 6, 7, 8
+    ];
+
+    [TestCaseSource(nameof(PathsNoNodeCanSitAt))]
+    public void TestGetTrieNodes_PathNoNodeCanSitAt_IsAnsweredWithEmptySlot(byte[] path)
+    {
+        using ISnapServerContext context = CreateContext();
+        Hash256 storageRoot = FillAccountWithDefaultStorage(context);
+        byte[] accountPath = TestItem.Tree.AccountAddress0.BytesToArray();
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
+            new PathGroup { Group = [[]] },
+            new PathGroup { Group = [path] },
+            new PathGroup { Group = [accountPath, [], path, []] },
+            new PathGroup { Group = [[]] }
+        ]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(6), "every path keeps its slot");
+            Assert.That(ValueKeccak.Compute(result[0]), Is.EqualTo(context.RootHash.ValueHash256));
+            Assert.That(result[1].Length, Is.Zero);
+            Assert.That(ValueKeccak.Compute(result[2]), Is.EqualTo(storageRoot.ValueHash256));
+            Assert.That(result[3].Length, Is.Zero);
+            Assert.That(ValueKeccak.Compute(result[4]), Is.EqualTo(storageRoot.ValueHash256));
+            Assert.That(ValueKeccak.Compute(result[5]), Is.EqualTo(context.RootHash.ValueHash256));
+        }
+    }
+
+    /// <summary>
+    /// A path with a leaf or unknown compact flag names no node, even where the walk meets a branch, whose children it
+    /// must not index with the flag's terminator nibble: it is answered with an empty slot, as account and storage path.
+    /// </summary>
+    [TestCase("0x20")]
+    [TestCase("0x3a")]
+    [TestCase("0x4000")]
+    public void TestGetTrieNodes_FlaggedPathAtBranch_IsAnsweredWithEmptySlot(string pathHex)
+    {
+        byte[] path = Bytes.FromHexString(pathHex);
+        using ISnapServerContext context = CreateContext();
+        FillMultipleAccounts(context, 256);
+        Hash256 storageRoot = FillAccountWithStorage(context, 256);
+        byte[] accountPath = TestItem.Tree.AccountAddress0.BytesToArray();
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
+            new PathGroup { Group = [path] },
+            new PathGroup { Group = [accountPath, path, []] },
+            new PathGroup { Group = [[]] }
+        ]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(4), "every path keeps its slot");
+            Assert.That(result[0].Length, Is.Zero);
+            Assert.That(result[1].Length, Is.Zero);
+            Assert.That(ValueKeccak.Compute(result[2]), Is.EqualTo(storageRoot.ValueHash256));
+            Assert.That(ValueKeccak.Compute(result[3]), Is.EqualTo(context.RootHash.ValueHash256));
+        }
+    }
+
+    [Test]
+    public void TestGetTrieNodes_GethLongPath_IsAnsweredWithEmptySlot()
+    {
+        using ISnapServerContext context = CreateContext();
+        FillWithTestAccounts(context);
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = [GethLongPath] }]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(result[0].Length, Is.Zero);
+        }
+    }
+
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(1 << 20)]
+    public void TestGetTrieNodes_AccountKeyLongerThanHash_IsAnsweredLikeMissingAccount(int extraBytes)
+    {
+        using ISnapServerContext context = CreateContext();
+        FillAccountWithDefaultStorage(context);
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
+            new PathGroup { Group = [[.. new byte[extraBytes], .. TestItem.Tree.AccountAddress0.Bytes], [], [0x00, 0x01]] },
+            new PathGroup { Group = [[]] }
+        ]);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(1));
+            Assert.That(ValueKeccak.Compute(result[0]), Is.EqualTo(context.RootHash.ValueHash256));
+        }
+    }
+
+    /// <summary>
+    /// A path too long for any trie is answered like a missing node, or a missing account as an account key, without the
+    /// request decoding, copying or hex-expanding it.
+    /// </summary>
+    [Test]
+    public void TestGetTrieNodes_MegabytePaths_AreAnsweredWithoutCopies()
+    {
+        using ISnapServerContext context = CreateContext();
+        Hash256 storageRoot = FillAccountWithDefaultStorage(context);
+        byte[] accountPath = TestItem.Tree.AccountAddress0.BytesToArray();
+        byte[] huge = new byte[1 << 20];
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
+            new PathGroup { Group = [huge] },
+            new PathGroup { Group = [accountPath, huge, []] },
+            new PathGroup { Group = [huge, [], huge] },
+            new PathGroup { Group = [[]] }
+        ]);
+        // Served once first, so the measured request allocates nothing the first one does.
+        context.Server.GetTrieNodes(pathSet, context.RootHash, default)!.Dispose();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, default)!;
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(4), "every path keeps its slot, and the missing account's group has none");
+            Assert.That(result[0].Length, Is.Zero);
+            Assert.That(result[1].Length, Is.Zero);
+            Assert.That(ValueKeccak.Compute(result[2]), Is.EqualTo(storageRoot.ValueHash256));
+            Assert.That(ValueKeccak.Compute(result[3]), Is.EqualTo(context.RootHash.ValueHash256));
+            Assert.That(allocated, Is.LessThan(huge.Length / 4), "no path of a megabyte is copied");
+        }
+    }
+
+    /// <summary>
+    /// The shape of geth's devp2p snap-test "known accounts" GetTrieNodes case: every prefix of an account key, 1 to 65
+    /// nibbles long, with its last nibble zeroed. Here the key's leaf sits two levels down, so the first two paths name
+    /// nodes and the rest, the 65-nibble one included, are empty.
+    /// </summary>
+    [Test]
+    public void TestGetTrieNodes_GethAccountPathPrefixes()
+    {
+        using ISnapServerContext context = CreateContext();
+        Hash256 key = TestItem.Tree.AccountAddress0;
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            batch.SetAccount(key, Build.An.Account.WithBalance(1).TestObject);
+            batch.SetAccount(new Hash256("0x0100000000000000000000000000000000000000000000000000000000000000"), Build.An.Account.WithBalance(2).TestObject);
+            batch.SetAccount(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), Build.An.Account.WithBalance(3).TestObject);
+        }
+
+        PathGroup[] groups = new PathGroup[65];
+        for (int length = 1; length <= groups.Length; length++)
+            groups[length - 1] = new PathGroup { Group = [MakeGethSnapPath(key, length)] };
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
+        using IByteArrayList result = context.Server.GetTrieNodes(pathSet, context.RootHash, 5000, default)!;
+        using RlpPathGroupList rootPath = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = [[]] }]);
+        using IByteArrayList root = context.Server.GetTrieNodes(rootPath, context.RootHash, default)!;
+        ValueHash256 firstHash = ValueKeccak.Compute(result[0]);
+        ValueHash256 secondHash = ValueKeccak.Compute(result[1]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(65));
+            Assert.That(root[0].IndexOf(firstHash.Bytes), Is.Not.Negative, "the first path names a child of the root");
+            Assert.That(result[0].IndexOf(secondHash.Bytes), Is.Not.Negative, "the second path names a child of the first");
+            for (int i = 2; i < result.Count; i++)
+                Assert.That(result[i].Length, Is.Zero, $"path of {i + 1} nibbles");
+        }
+    }
+
+    /// <summary>geth's devp2p snap-test makeSnapPath: the first <paramref name="length"/> nibbles of the key and its terminator, the last one zeroed, compact-encoded.</summary>
+    private static byte[] MakeGethSnapPath(Hash256 key, int length)
+    {
+        byte[] nibbles = [.. Nibbles.BytesToNibbleBytes(key.Bytes), 16];
+        nibbles = nibbles[..length];
+        nibbles[^1] = 0;
+        return Nibbles.ToCompactHexEncoding(nibbles);
+    }
+
     [Test]
     public void TestNoState([Values] bool withLastNStateTracker)
     {
@@ -585,7 +799,7 @@ public class SnapStateServerTests
                 Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
                 batch.SetSlot(path, TestItem.KeccakA, [(byte)(i + 1)]);
                 batch.SetAccount(path, Build.An.Account.WithBalance(1).TestObject);
-                accounts[i] = new PathWithAccount(path, null);
+                accounts[i] = new PathWithAccount(path, default);
             }
         }
 
@@ -646,7 +860,7 @@ public class SnapStateServerTests
             {
                 Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
                 batch.SetAccount(path, AccountShapes[i % AccountShapes.Length]);
-                expected.Add(new PathWithAccount(path, AccountShapes[i % AccountShapes.Length]));
+                expected.Add(new PathWithAccount(path, AccountShapes[i % AccountShapes.Length].ToStruct()));
             }
         }
 
@@ -701,7 +915,7 @@ public class SnapStateServerTests
             }
         }
 
-        PathWithAccount[] accounts = [.. accountPaths.Select(static path => new PathWithAccount(path, null))];
+        PathWithAccount[] accounts = [.. accountPaths.Select(static path => new PathWithAccount(path, default))];
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> served, IByteArrayList? proofs) =
             context.Server.GetStorageRanges(context.RootHash, accounts, null, null, byteLimit, CancellationToken.None);
         using IByteArrayList? servedProofs = proofs;
@@ -849,7 +1063,7 @@ public class SnapStateServerTests
             StorageRange storageRangeRequest = new()
             {
                 StartingHash = Keccak.Zero,
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct()) }
             };
             AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
@@ -904,7 +1118,7 @@ public class SnapStateServerTests
                 StorageRange storageRangeRequest = new()
                 {
                     StartingHash = startRange,
-                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct()) }
                 };
                 AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
@@ -946,7 +1160,7 @@ public class SnapStateServerTests
                 for (int j = 0; j < i; j += 1)
                     batch.SetSlot(storagePath, TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
                 batch.SetAccount(address, TestItem.GenerateRandomAccount());
-                accountWithStorage.Add(new PathWithAccount(address.ToAccountPath, new Account(0)));
+                accountWithStorage.Add(new PathWithAccount(address.ToAccountPath, new AccountStruct(0)));
             }
         }
 

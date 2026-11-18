@@ -123,6 +123,104 @@ public class SnapFlatStateServerTests
         Assert.That(result, Is.Null);
     }
 
+    /// <summary>
+    /// Paths no node can sit at, such as geth's devp2p snap-test sends (a 65-nibble account key prefix, a 55-byte path),
+    /// are answered with empty slots in their positions, as the trie server answers them.
+    /// </summary>
+    [Test]
+    public void GetTrieNodes_AnswersPathsNoNodeCanSitAtWithEmptySlots()
+    {
+        TestRawTrieStore trieStore = new(new MemDb());
+        StateTree stateTree = new(trieStore, LimboLogs.Instance);
+        Hash256 addressHash = new("0x0000000000000000000000000000000000000000000000000000000001101234");
+        StorageTree storageTree = new(trieStore.GetTrieStore(addressHash), LimboLogs.Instance);
+        for (int i = 0; i < 16; i++)
+        {
+            storageTree.Set(Keccak.Compute(i.ToBigEndianByteArray()).Bytes, Rlp.Encode((UInt256)i + 1));
+        }
+        storageTree.Commit();
+        stateTree.Set(addressHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+        stateTree.Set(new Hash256("0x0100000000000000000000000000000000000000000000000000000000000000"), Build.An.Account.WithBalance(2).TestObject);
+        stateTree.Set(new Hash256("0x1000000000000000000000000000000000000000000000000000000000000000"), Build.An.Account.WithBalance(3).TestObject);
+        stateTree.Commit();
+        ISnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
+
+        // geth's makeSnapPath: the first 1 to 65 nibbles of the key and its terminator, the last one zeroed. The key's
+        // leaf sits two levels down, so only the first two name nodes.
+        byte[] keyNibbles = [.. Nibbles.BytesToNibbleBytes(addressHash.Bytes), 16];
+        PathGroup[] groups = new PathGroup[68];
+        for (int length = 1; length <= 65; length++)
+        {
+            byte[] nibbles = keyNibbles[..length];
+            nibbles[^1] = 0;
+            groups[length - 1] = new PathGroup { Group = [Nibbles.ToCompactHexEncoding(nibbles)] };
+        }
+        byte[] longPath = new byte[55];
+        byte[] megabytePath = new byte[1 << 20];
+        byte[] pathOf65Nibbles = groups[64].Group[0];
+        groups[65] = new PathGroup { Group = [longPath] };
+        groups[66] = new PathGroup { Group = [addressHash.BytesToArray(), [], longPath, pathOf65Nibbles, megabytePath, []] };
+        // An account key too long for any account: the group gets no slots.
+        groups[67] = new PathGroup { Group = [megabytePath, [], []] };
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(groups);
+        using IByteArrayList flat = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
+        using IByteArrayList trie = trieServer.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
+        byte[][] flatNodes = Enumerable.Range(0, flat.Count).Select(i => flat[i].ToArray()).ToArray();
+        byte[] storageRootNode = storageTree.GetNodeByPath([], storageTree.RootHash)!;
+        byte[][] expectedStorageNodes = [storageRootNode, [], [], [], storageRootNode];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flatNodes, Is.EqualTo(Enumerable.Range(0, trie.Count).Select(i => trie[i].ToArray()).ToArray()));
+            Assert.That(flatNodes, Has.Length.EqualTo(71), "every path keeps its slot");
+            Assert.That(flatNodes[..2], Has.All.Not.Empty, "the first two key prefixes name nodes");
+            Assert.That(flatNodes[2..66], Has.All.Empty);
+            Assert.That(flatNodes[66..], Is.EqualTo(expectedStorageNodes), "storage paths keep their slots");
+        }
+    }
+
+    /// <summary>
+    /// A path with a leaf or unknown compact flag names no node, even where the walk meets a branch, whose children it
+    /// must not index with the flag's terminator nibble: both servers answer it with an empty slot, as account and
+    /// storage path.
+    /// </summary>
+    [TestCase("0x20")]
+    [TestCase("0x3a")]
+    [TestCase("0x4000")]
+    public void GetTrieNodes_AnswersFlaggedPathsAtBranchesWithEmptySlots(string pathHex)
+    {
+        byte[] path = Bytes.FromHexString(pathHex);
+        TestRawTrieStore trieStore = new(new MemDb());
+        StateTree stateTree = new(trieStore, LimboLogs.Instance);
+        Hash256 addressHash = Keccak.Compute(TestItem.AddressA.Bytes);
+        StorageTree storageTree = new(trieStore.GetTrieStore(addressHash), LimboLogs.Instance);
+        for (int i = 0; i < 256; i++)
+        {
+            storageTree.Set(Keccak.Compute(i.ToBigEndianByteArray()).Bytes, Rlp.Encode((UInt256)i + 1));
+            stateTree.Set(Keccak.Compute((i + 256).ToBigEndianByteArray()), Build.An.Account.WithBalance((UInt256)i + 1).TestObject);
+        }
+        storageTree.Commit();
+        stateTree.Set(addressHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
+        stateTree.Commit();
+        ISnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
+
+        using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList([
+            new PathGroup { Group = [path] },
+            new PathGroup { Group = [addressHash.BytesToArray(), path, []] },
+            new PathGroup { Group = [[]] }
+        ]);
+        using IByteArrayList flat = _server.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
+        using IByteArrayList trie = trieServer.GetTrieNodes(pathSet, _rootHash, CancellationToken.None)!;
+        byte[][] expected = [[], [], storageTree.GetNodeByPath([], storageTree.RootHash)!, stateTree.GetNodeByPath([], stateTree.RootHash)!];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Enumerable.Range(0, flat.Count).Select(i => flat[i].ToArray()).ToArray(), Is.EqualTo(expected));
+            Assert.That(Enumerable.Range(0, trie.Count).Select(i => trie[i].ToArray()).ToArray(), Is.EqualTo(expected));
+        }
+    }
+
     [Test]
     public void GetStorageRanges_ReturnsEmpty_WhenIndexedStateIsConcurrentlyRemoved()
     {
@@ -169,7 +267,7 @@ public class SnapFlatStateServerTests
         RlpReaderException expected = Assert.Throws<RlpReaderException>(() => AccountDecoder.Instance.Decode(accountRlp))!;
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
-        PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
+        PathWithAccount[] accounts = [new(accountPath, AccountStruct.TotallyEmpty)];
 
         using (Assert.EnterMultipleScope())
         {
@@ -202,7 +300,7 @@ public class SnapFlatStateServerTests
         if (storageRanges)
         {
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> slots, IByteArrayList? proofs) =
-                _server.GetStorageRanges(_rootHash, [new PathWithAccount(addressHash, account)], null, null, 4000, CancellationToken.None);
+                _server.GetStorageRanges(_rootHash, [new PathWithAccount(addressHash, account.ToStruct())], null, null, 4000, CancellationToken.None);
             using (proofs)
             {
                 Assert.That(slots, Has.Count.EqualTo(1));
@@ -252,7 +350,7 @@ public class SnapFlatStateServerTests
         ValueHash256 startingHash = new("0x4000000000000000000000000000000000000000000000000000000000000000");
         if (storageRanges)
         {
-            PathWithAccount[] accounts = [new(addressHash, account)];
+            PathWithAccount[] accounts = [new(addressHash, account.ToStruct())];
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> flatSlots, IByteArrayList? flatProofs) =
                 _server.GetStorageRanges(_rootHash, accounts, startingHash, null, 4000, CancellationToken.None);
             (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> trieSlots, IByteArrayList? trieProofs) =
@@ -280,7 +378,7 @@ public class SnapFlatStateServerTests
             using (trieProofs)
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(flatAccounts.Select(static a => (a.Path, a.Account!.Balance)), Is.EqualTo(trieAccounts.Select(static a => (a.Path, a.Account!.Balance))).And.Not.Empty);
+                Assert.That(flatAccounts.Select(static a => (a.Path, a.Account.Balance)), Is.EqualTo(trieAccounts.Select(static a => (a.Path, a.Account.Balance))).And.Not.Empty);
                 Assert.That(ToArrays(flatProofs), Is.EqualTo(ToArrays(trieProofs)).And.Not.Empty);
             }
         }
@@ -323,7 +421,7 @@ public class SnapFlatStateServerTests
         stateTree.Commit();
         SnapStateServer trieServer = ServeTrieState(trieStore, stateTree, addressHash, storageTree);
         ISnapStateServer server = flat ? _server : trieServer;
-        PathWithAccount[] accounts = [new(addressHash, null), new(failingPath, null)];
+        PathWithAccount[] accounts = [new(addressHash, default), new(failingPath, default)];
 
         using SharedByteBufferRentals rentals = new(minimumLength: 1 << 19);
         Action request = failure == RangeFailure.MalformedAccountLeaf
