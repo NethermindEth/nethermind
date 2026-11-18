@@ -1345,12 +1345,11 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             }
         }
 
+        ClearCommitSetQueue();
         if (_logger.IsInfo) _logger.Info($"Saving all commit set took {Stopwatch.GetElapsedTime(start)} for {commitSetCount} commit sets.");
 
         start = Stopwatch.GetTimestamp();
 
-        // Double check
-        ClearCommitSetQueue();
         if (cancellationToken.IsCancellationRequested) return;
 
         // All persisted node including recommitted nodes between head and reorg depth must be removed so that
@@ -1366,7 +1365,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             _dirtyNodesTasks[index] = Task.Run(() =>
             {
                 int persistedCount = dirtyNode.PersistAll(_nodeStorage, cancellationToken);
-                totalPersistedCount += persistedCount;
+                Interlocked.Add(ref totalPersistedCount, persistedCount);
             });
         }
 
