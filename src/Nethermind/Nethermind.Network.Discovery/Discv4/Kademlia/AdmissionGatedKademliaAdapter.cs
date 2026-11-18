@@ -27,10 +27,12 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 internal sealed class AdmissionGatedKademliaAdapter(
     IKademliaAdapter inner,
     DiscoveryNodeAdmission admission,
+    PeerCandidateReservations peerCandidateReservations,
     ILogManager logManager) : IKademliaAdapter
 {
     private readonly IKademliaAdapter _inner = inner;
     private readonly DiscoveryNodeAdmission _admission = admission;
+    private readonly PeerCandidateReservations _peerCandidateReservations = peerCandidateReservations;
     private readonly ILogger _logger = logManager.GetClassLogger<AdmissionGatedKademliaAdapter>();
 
     public IMsgSender? MsgSender
@@ -52,7 +54,7 @@ internal sealed class AdmissionGatedKademliaAdapter(
             }
             else
             {
-                _inner.ReleasePeerCandidate(node);
+                _peerCandidateReservations.Release(node.IdHash);
 
                 if (_logger.IsTrace)
                 {
@@ -61,8 +63,6 @@ internal sealed class AdmissionGatedKademliaAdapter(
             }
         }
     }
-
-    void IKademliaAdapter.ReleasePeerCandidate(Node node) => _inner.ReleasePeerCandidate(node);
 
     public Task<bool> Ping(Node receiver, CancellationToken token) => _inner.Ping(receiver, token);
 

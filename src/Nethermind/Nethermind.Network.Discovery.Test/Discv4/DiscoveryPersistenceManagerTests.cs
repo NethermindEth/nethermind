@@ -187,6 +187,45 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         }
 
         [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Invoke_Restored_Callback_Before_Ping(CancellationToken cancellationToken)
+        {
+            NetworkNode persistedNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("192.168.1.1"), 30303, 30304));
+            Node restoredNode = new(TestItem.PublicKeyA, IPAddress.Parse("2001:db8::1").ToString(), 30305, 30306);
+            _networkStorage.UpdateNodes([persistedNode]);
+
+            List<string> events = [];
+            _discv4Adapter.Ping(Arg.Any<Node>(), Arg.Any<CancellationToken>())
+                .Returns(_ =>
+                {
+                    events.Add("ping");
+                    return Task.FromResult(true);
+                });
+
+            await _persistenceManager.LoadPersistedNodes(
+                cancellationToken,
+                node => node.NodeId.Equals(persistedNode.NodeId) ? restoredNode : null,
+                node => events.Add($"restored:{node.Host}"));
+
+            Assert.That(events, Is.EqualTo(["restored:2001:db8::1", "ping"]));
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task AddPersistedNodes_Should_Not_Invoke_Restored_Callback_When_Restore_Fails(CancellationToken cancellationToken)
+        {
+            _networkStorage.UpdateNodes([NodeA]);
+            bool called = false;
+
+            await _persistenceManager.LoadPersistedNodes(
+                cancellationToken,
+                _ => null,
+                _ => called = true);
+
+            Assert.That(called, Is.False);
+        }
+
+        [Test]
         public async Task RunDiscoveryPersistenceCommit_Should_Update_Nodes_In_Storage()
         {
             Node[] nodes =

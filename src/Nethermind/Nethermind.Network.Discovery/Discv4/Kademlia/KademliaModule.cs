@@ -51,7 +51,6 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                 networkConfig.FilterDiscoveryNodesByRecentIp,
                 ctx.Resolve<IRoutingTable<Node, ValueHash256>>(),
                 ctx.Resolve<KademliaConfig<Node>>(),
-                ctx.ResolveKeyed<INetworkStorage>(DbNames.DiscoveryNodes),
                 filterSize,
                 logManager,
                 ctx.ResolveOptional<IStaticNodesManager>(),
@@ -66,6 +65,7 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             .AddSingleton<IKademliaNodeSource, NodeSource>()
 
             // Some transport wiring.
+            .AddSingleton<PeerCandidateReservations>()
             .AddSingleton<IKademliaAdapter, KademliaAdapter>()
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()

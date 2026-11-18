@@ -44,10 +44,12 @@ public sealed class DiscoveryPersistenceManager(
     /// </summary>
     /// <param name="cancellationToken">Cancellation token to stop the operation.</param>
     /// <param name="nodeFactory">Optional protocol-specific conversion for persisted nodes.</param>
+    /// <param name="onNodeRestored">Optional callback invoked after a node is restored successfully and before it is pinged.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task LoadPersistedNodes(
         CancellationToken cancellationToken,
-        Func<NetworkNode, Node?>? nodeFactory = null)
+        Func<NetworkNode, Node?>? nodeFactory = null,
+        Action<Node>? onNodeRestored = null)
     {
         NetworkNode[] nodes = _discoveryStorage.GetPersistedNodes();
         foreach (NetworkNode networkNode in nodes)
@@ -69,6 +71,8 @@ public sealed class DiscoveryPersistenceManager(
 
                 continue;
             }
+
+            onNodeRestored?.Invoke(node);
 
             try
             {

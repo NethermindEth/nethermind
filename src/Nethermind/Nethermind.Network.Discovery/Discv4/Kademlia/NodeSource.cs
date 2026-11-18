@@ -16,6 +16,7 @@ public sealed class NodeSource(
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
     IForkInfo forkInfo,
+    PeerCandidateReservations peerCandidateReservations,
     ILogManager logManager)
     : IKademliaNodeSource
 {
@@ -23,6 +24,7 @@ public sealed class NodeSource(
 
     private readonly ILogger _logger = logManager.GetClassLogger<NodeSource>();
     private readonly Hash256 _currentNodeHash = kademliaConfig.CurrentNodeId.IdHash;
+    private readonly PeerCandidateReservations _peerCandidateReservations = peerCandidateReservations;
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken token)
     {
@@ -40,7 +42,7 @@ public sealed class NodeSource(
                 {
                     // The adapter reserved this candidate before publishing it. Keep it publishable if the fork
                     // check later accepts it, instead of waiting for unrelated candidates to evict the entry.
-                    discv4Adapter.ReleasePeerCandidate(node);
+                    _peerCandidateReservations.Release(node.IdHash);
                 }
                 else
                 {

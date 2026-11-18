@@ -220,9 +220,11 @@ public class DiscoveryApp : KademliaDiscoveryApp
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
         //Step 1 - read nodes and stats from db
+        DiscoveryNodeAdmission admission = ResolveDiscv4Service<DiscoveryNodeAdmission>();
         await _persistenceManager.LoadPersistedNodes(
             cancellationToken,
-            node => RestorePersistedNode(node, LocalIp));
+            node => RestorePersistedNode(node, LocalIp),
+            admission.AddPersistedNode);
 
         Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
 

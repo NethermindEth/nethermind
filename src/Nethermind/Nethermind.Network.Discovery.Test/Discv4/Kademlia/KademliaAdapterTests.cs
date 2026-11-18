@@ -62,6 +62,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private const int ExpiringRequestTimeoutMs = 100;
 
         private IKademliaAdapter _adapter = null!;
+        private PeerCandidateReservations _reservations = null!;
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
         private IRoutingTable<Node, ValueHash256> _routingTable = null!;
@@ -163,6 +164,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 listenerState.SetDiscoveryAddress(IPAddress.Any);
             }
 
+            _reservations = new PeerCandidateReservations(_kademliaConfig);
             return new KademliaAdapter(
                 new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
                 _routingTable,
@@ -176,6 +178,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                     MaxOutgoingMessagePerSecond = maxOutgoingMessagePerSecond,
                 },
                 _kademliaConfig,
+                _reservations,
                 _nodeRecordProvider,
                 _ipResolver,
                 _nodeStatsManager,
@@ -1271,7 +1274,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 routingTable: _routingTable,
                 logManager: _logManager,
                 admission: admission,
-                innerAdapter: _adapter);
+                innerAdapter: _adapter,
+                reservations: _reservations);
             return container.Resolve<IKademliaAdapter>();
         }
 

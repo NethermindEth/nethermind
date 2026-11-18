@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
@@ -13,6 +14,7 @@ using Nethermind.Core.Test.Threading;
 using Nethermind.Kademlia;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -247,6 +249,32 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Persisted_dual_stack_node_is_exempt_at_its_restored_ipv6_address()
+    {
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("192.0.2.1"),
+            tcpPort: 30303,
+            udpPort: 30304,
+            configureExtras: enr =>
+            {
+                enr.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+                enr.SetEntry(new Tcp6Entry(30306));
+                enr.SetEntry(new Udp6Entry(30305));
+            });
+        Fixture fixture = CreateAdmission(
+            persisted: [new NetworkNode(record.ToString())],
+            localIp: "2001:db8::1");
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Another identity holds the /64, so the persisted node would be filtered without its exemption.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "2001:db8::2")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "2001:db8::1")), Is.True);
+        }
+    }
+
+    [Test]
     public void Trusted_static_and_bootnode_nodes_bypass_the_filter_without_consuming_capacity()
     {
         Fixture fixture = CreateAdmission();
@@ -398,7 +426,7 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void Disabled_admission_accepts_everything_without_reading_persisted_nodes()
+    public void Disabled_admission_accepts_everything()
     {
         Fixture fixture = CreateAdmission(enabled: false);
         Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
@@ -408,7 +436,6 @@ public class DiscoveryNodeAdmissionTests
         {
             Assert.That(fixture.Admission.TryAdmit(first), Is.True);
             Assert.That(fixture.Admission.TryAdmit(second), Is.True);
-            fixture.Storage.DidNotReceive().GetPersistedNodes();
         }
     }
 
@@ -434,6 +461,7 @@ public class DiscoveryNodeAdmissionTests
         KademliaConfig<Node>? config = null,
         NetworkNode[]? persisted = null,
         string currentIp = "198.51.100.1",
+        string? localIp = null,
         TimeProvider? timeProvider = null,
         IStaticNodesManager? staticNodes = null,
         ITrustedNodesManager? trustedNodes = null,
@@ -446,6 +474,7 @@ public class DiscoveryNodeAdmissionTests
             enabled: enabled,
             subnetBucketing: subnetBucketing,
             currentIp: currentIp,
+            localIp: localIp,
             timeProvider: timeProvider,
             persisted: persisted,
             kademliaConfig: config,
@@ -455,13 +484,12 @@ public class DiscoveryNodeAdmissionTests
             trustedNodes: trustedNodes,
             configuredStaticNodes: configuredStaticNodes,
             admittedCapacity: admittedCapacity);
-        return new Fixture(container.Resolve<DiscoveryNodeAdmission>(), routingTable, storage);
+        return new Fixture(container.Resolve<DiscoveryNodeAdmission>(), routingTable);
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
 
     private sealed record Fixture(
         DiscoveryNodeAdmission Admission,
-        IRoutingTable<Node, ValueHash256> RoutingTable,
-        INetworkStorage Storage);
+        IRoutingTable<Node, ValueHash256> RoutingTable);
 }

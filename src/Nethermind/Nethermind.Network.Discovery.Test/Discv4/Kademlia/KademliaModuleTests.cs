@@ -6,11 +6,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Kademlia;
-using Nethermind.Network;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Test.Kademlia;
 using Nethermind.Stats.Model;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia;
@@ -77,25 +75,12 @@ public class KademliaModuleTests
         }
     }
 
-    [Test]
-    public void Disabled_admission_does_not_read_persisted_nodes()
-    {
-        INetworkStorage storage = Substitute.For<INetworkStorage>();
-        using IContainer container = CreateContainer(filterEnabled: false, storage);
-
-        DiscoveryNodeAdmission admission = container.Resolve<DiscoveryNodeAdmission>();
-
-        Assert.That(admission.Enabled, Is.False);
-        storage.DidNotReceive().GetPersistedNodes();
-    }
-
-    private static IContainer CreateContainer(bool filterEnabled, INetworkStorage? storage = null)
+    private static IContainer CreateContainer(bool filterEnabled)
         => DiscoveryAdmissionTestContainer.Create(
             enabled: filterEnabled,
             subnetBucketing: true,
             currentNode: CreateNode(TestItem.PublicKeyF, "198.51.100.1"),
-            useDiscoveryConfigFactory: true,
-            storage: storage);
+            useDiscoveryConfigFactory: true);
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
 }

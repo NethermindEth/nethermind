@@ -36,6 +36,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         private DiscoveryConfig _discoveryConfig = null!;
         private KademliaConfig<Node> _kademliaConfig = null!;
         private IForkInfo _forkInfo = null!;
+        private PeerCandidateReservations _reservations = null!;
         private Channel<Node> _peerCandidates = null!;
 
         [SetUp]
@@ -55,12 +56,14 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _forkInfo = Substitute.For<IForkInfo>();
             _forkInfo.IsForkIdCompatible(Arg.Any<ForkId>())
                 .Returns(static call => call.Arg<ForkId>().ForkHash == CompatibleForkHash);
+            _reservations = new PeerCandidateReservations(_kademliaConfig);
             _nodeSource = new NodeSource(
                 _kademliaDiscovery,
                 _adapter,
                 _discoveryConfig,
                 _kademliaConfig,
                 _forkInfo,
+                _reservations,
                 LimboLogs.Instance);
         }
 
@@ -120,6 +123,13 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             await using IAsyncEnumerator<Node> enumerator = _nodeSource.DiscoverNodes(token).GetAsyncEnumerator(token);
             ValueTask<bool> moveNext = enumerator.MoveNextAsync();
             await _kademliaDiscovery.Started.Task.WaitAsync(token);
+            // The adapter reserves every candidate before publishing it.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_reservations.TryReserve(self.IdHash), Is.True);
+                Assert.That(_reservations.TryReserve(incompatible.IdHash), Is.True);
+                Assert.That(_reservations.TryReserve(compatible.IdHash), Is.True);
+            }
             RaisePeerCandidate(self);
             RaisePeerCandidate(incompatible);
             RaisePeerCandidate(compatible);
@@ -129,9 +139,12 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 #pragma warning restore NUnit2045
             Assert.That(enumerator.Current.Id, Is.EqualTo(compatible.Id));
             // Both dropped candidates were already reserved by the adapter and are released for a later retry.
-            _adapter.Received(1).ReleasePeerCandidate(self);
-            _adapter.Received(1).ReleasePeerCandidate(incompatible);
-            _adapter.DidNotReceive().ReleasePeerCandidate(compatible);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_reservations.Contains(self.IdHash), Is.False, "self should be released");
+                Assert.That(_reservations.Contains(incompatible.IdHash), Is.False, "incompatible should be released");
+                Assert.That(_reservations.Contains(compatible.IdHash), Is.True, "compatible keeps its reservation");
+            }
         }
 
         [Test]

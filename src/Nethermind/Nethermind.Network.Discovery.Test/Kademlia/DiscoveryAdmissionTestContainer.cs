@@ -15,6 +15,7 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
@@ -32,7 +33,9 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 /// clock. A supplied admission may not be combined with a manual clock either; the admission's own clock is used.
 /// Callers that keep using the resolved decorator after this method returns must leave the container undisposed,
 /// since disposal disposes the singleton decorator and forwards <c>DisposeAsync</c> to the inner substitute; callers
-/// that finish inside a scope should dispose it as usual.
+/// that finish inside a scope should dispose it as usual. Persisted nodes are restored with
+/// <see cref="DiscoveryApp.RestorePersistedNode"/> and registered with the admission after the container is built,
+/// mirroring the production startup path.
 /// </remarks>
 internal static class DiscoveryAdmissionTestContainer
 {
@@ -42,6 +45,7 @@ internal static class DiscoveryAdmissionTestContainer
         bool enabled = true,
         bool subnetBucketing = true,
         string currentIp = "198.51.100.1",
+        string? localIp = null,
         TimeProvider? timeProvider = null,
         NetworkNode[]? persisted = null,
         KademliaConfig<Node>? kademliaConfig = null,
@@ -56,6 +60,7 @@ internal static class DiscoveryAdmissionTestContainer
         DiscoveryNodeAdmission? admission = null,
         int admittedCapacity = 100,
         IKademliaAdapter? innerAdapter = null,
+        PeerCandidateReservations? reservations = null,
         INodeHealthTracker<Node>? innerTracker = null)
     {
         if (useDiscoveryConfigFactory && (kademliaConfig is not null || timeProvider is not null))
@@ -133,7 +138,6 @@ internal static class DiscoveryAdmissionTestContainer
                 enabled,
                 admissionRoutingTable,
                 kademliaConfig,
-                storage,
                 admittedCapacity: admittedCapacity,
                 logManager,
                 staticNodes,
@@ -146,12 +150,32 @@ internal static class DiscoveryAdmissionTestContainer
             builder.RegisterInstance(innerTracker).As<INodeHealthTracker<Node>>();
         }
 
+        if (reservations is not null)
+        {
+            builder.RegisterInstance(reservations);
+        }
+
         if (innerAdapter is not null)
         {
             builder.RegisterInstance(innerAdapter).As<IKademliaAdapter>();
             builder.AddDecorator<IKademliaAdapter, AdmissionGatedKademliaAdapter>();
         }
 
-        return builder.Build();
+        IContainer container = builder.Build();
+        if (enabled && persisted is not null && IPAddress.TryParse(localIp ?? currentIp, out IPAddress? localAddress))
+        {
+            // Mirror DiscoveryApp: record the address each persisted node was actually restored with.
+            DiscoveryNodeAdmission resolvedAdmission = container.Resolve<DiscoveryNodeAdmission>();
+            foreach (NetworkNode persistedNode in persisted)
+            {
+                Node? node = DiscoveryApp.RestorePersistedNode(persistedNode, localAddress);
+                if (node is not null)
+                {
+                    resolvedAdmission.AddPersistedNode(node);
+                }
+            }
+        }
+
+        return container;
     }
 }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -34,7 +35,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <para>
 /// Every routing-table node is persisted, so filtering persisted nodes at load could empty the routing
 /// table and hurt bootstrapping more than the subnet concentration this filter addresses. A persisted
-/// node is therefore exempt only at the address stored with it: identity alone does not entitle an
+/// node is therefore exempt only at the address it was restored with: identity alone does not entitle an
 /// ordinary node to skip the filter after it reappears at another address, or persisted identities from
 /// different subnets could all bypass the subnet limit once they move into one subnet after a restart.
 /// An entry without a usable address cannot be exempted and is skipped, so it goes through the filter
@@ -46,7 +47,6 @@ internal sealed class DiscoveryNodeAdmission(
     bool enabled,
     IRoutingTable<Node, ValueHash256> routingTable,
     KademliaConfig<Node> kademliaConfig,
-    INetworkStorage discoveryStorage,
     int admittedCapacity,
     ILogManager logManager,
     IStaticNodesManager? staticNodes = null,
@@ -62,17 +62,10 @@ internal sealed class DiscoveryNodeAdmission(
     private readonly HashSet<PublicKey> _exemptNodeIds = enabled
         ? CreateExemptNodeIds(kademliaConfig, configuredStaticNodes)
         : [];
-    private readonly Dictionary<PublicKey, IPAddress> _persistedAddresses = enabled
-        ? CreatePersistedAddresses(discoveryStorage)
-        : [];
+    private readonly ConcurrentDictionary<PublicKey, IPAddress> _persistedAddresses = new();
     private readonly PublicKey? _selfId = kademliaConfig.CurrentNodeId?.Id;
     private readonly Lock _admitLock = new();
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryNodeAdmission>();
-
-    /// <summary>
-    /// Whether discovery-node admission filtering is enabled.
-    /// </summary>
-    public bool Enabled => _enabled;
 
     /// <summary>
     /// Records the node's address on first contact and returns whether it may be handled.
@@ -133,6 +126,15 @@ internal sealed class DiscoveryNodeAdmission(
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Records a node restored from discovery storage as exempt from the filter at its restored address.
+    /// </summary>
+    /// <param name="node">The node restored from discovery storage.</param>
+    public void AddPersistedNode(Node node)
+    {
+        if (_enabled) _persistedAddresses[node.Id] = node.Address.Address;
     }
 
     private bool RefreshKnownNode(Node node)
@@ -226,20 +228,5 @@ internal sealed class DiscoveryNodeAdmission(
         }
 
         return exempt;
-    }
-
-    private static Dictionary<PublicKey, IPAddress> CreatePersistedAddresses(INetworkStorage discoveryStorage)
-    {
-        Dictionary<PublicKey, IPAddress> persistedAddresses = [];
-        foreach (NetworkNode persistedNode in discoveryStorage.GetPersistedNodes())
-        {
-            IPAddress address = persistedNode.HostIp;
-            if (!address.Equals(IPAddress.None))
-            {
-                persistedAddresses[persistedNode.NodeId] = address;
-            }
-        }
-
-        return persistedAddresses;
     }
 }
