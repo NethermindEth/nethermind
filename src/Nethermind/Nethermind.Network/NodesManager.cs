@@ -7,9 +7,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -41,6 +43,9 @@ public abstract class NodesManager(string path, ILogger logger)
     // so transient (updateFile=false) changes to _nodes never leak into it and a failed load cannot be amplified.
     private ConcurrentDictionary<PublicKey, NetworkNode> _persistedNodes = [];
 
+    // Subscribers of the running DiscoverNetworkNodes enumerations; each only does a non-blocking TryWrite.
+    private Action<NetworkNode>? _nodeAdded;
+
     /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
     protected bool TryAddNode(NetworkNode node)
     {
@@ -48,9 +53,59 @@ public abstract class NodesManager(string path, ILogger logger)
         {
             if (!_nodes.TryAdd(node.NodeId, node)) return false;
             _ipCounts.AddOrUpdate(node.HostIp, 1, static (_, count) => count + 1);
+            // Inside the lock, unlike NodeRemoved: enumerations copy _nodes under it, so each gets an add once; subscribers only TryWrite.
+            _nodeAdded?.Invoke(node);
             return true;
         }
     }
+
+    /// <summary>Yields each managed node once: the nodes present when the enumeration starts, then every node added later.</summary>
+    protected async IAsyncEnumerable<NetworkNode> DiscoverNetworkNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Channel<NetworkNode> added = Channel.CreateUnbounded<NetworkNode>();
+        Action<NetworkNode> onNodeAdded = node => added.Writer.TryWrite(node);
+
+        NetworkNode[] snapshot = Subscribe(onNodeAdded);
+        try
+        {
+            foreach (NetworkNode node in snapshot)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (IsManaged(node)) yield return node;
+            }
+
+            await foreach (NetworkNode node in added.Reader.ReadAllAsync(cancellationToken))
+            {
+                if (IsManaged(node)) yield return node;
+            }
+        }
+        finally
+        {
+            Unsubscribe(onNodeAdded);
+        }
+    }
+
+    // Under the lock that guards every add: a node is either in the returned copy or published to the subscriber.
+    // Every writer of _nodes holds this lock, so walking the dictionary here gives a point-in-time copy.
+    private NetworkNode[] Subscribe(Action<NetworkNode> onNodeAdded)
+    {
+        lock (_indexLock)
+        {
+            _nodeAdded += onNodeAdded;
+            return [.. _nodes.Select(static kvp => kvp.Value)];
+        }
+    }
+
+    private void Unsubscribe(Action<NetworkNode> onNodeAdded)
+    {
+        lock (_indexLock)
+        {
+            _nodeAdded -= onNodeAdded;
+        }
+    }
+
+    // A node removed, or replaced by a later add, after it was copied or queued is not yielded.
+    private bool IsManaged(NetworkNode node) => _nodes.TryGetValue(node.NodeId, out NetworkNode? current) && ReferenceEquals(current, node);
 
     /// <summary>Replaces the whole node set (bulk load) and rebuilds the IP index.</summary>
     protected void SetNodes(ConcurrentDictionary<PublicKey, NetworkNode> nodes)
