@@ -54,7 +54,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     /// A block deeper than the max reorg depth below the highest max block reached may already be compressed and cannot be reverted:
     /// the index is then capped below it, <see cref="MaxBlockNumber"/> becomes null so queries stop using the index,
     /// further forward writes throw until the index is reset, and this call throws.
-    /// The depth is the smallest max reorg depth the index has run with.
+    /// The depth is the smallest max reorg depth the index has run with; every block indexed before that depth was recorded may be compressed.
     /// Only blocks added in forward sync are removed: blocks added in backward sync are kept.
     /// </remarks>
     Task RemoveReorgedAsync(BlockReceipts block);

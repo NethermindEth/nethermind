@@ -666,22 +666,27 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Test]
-        public async Task Set_Compact_ReorgBeyondFirstDepth_AfterDepthRaised_Throws_Test()
+        public async Task Set_Compact_ReorgBeyondFirstDepth_AfterDepthRaised_Throws_Test([Values] bool depthRecorded)
         {
             const ulong firstDepth = 4;
             const ulong raisedDepth = firstDepth * 2;
             BlockReceipts[] blocks = testData.Batches.SelectMany(b => b).ToArray();
+            IDbFactory dbFactory = CreateRecordingDbFactory();
 
-            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: firstDepth))
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: firstDepth, dbFactory: dbFactory))
             {
                 await AddReceiptsAsync(logIndexStorage, testData.Batches);
                 await CompactAsync(logIndexStorage);
+
+                // As an index written before the depth was recorded
+                if (!depthRecorded)
+                    _root.GetColumnDb(LogIndexColumns.Meta).Remove("mrd"u8);
             }
 
             // A second open at the raised depth must not replace the smallest depth the index has run with
-            await CreateLogIndexStorage(maxReorgDepth: raisedDepth).DisposeAsync();
+            await CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory).DisposeAsync();
 
-            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: raisedDepth))
+            await using (ILogIndexStorage logIndexStorage = CreateLogIndexStorage(maxReorgDepth: raisedDepth, dbFactory: dbFactory))
                 await Assert.ThatAsync(() => logIndexStorage.RemoveReorgedAsync(blocks[^((int)firstDepth + 1)]), Throws.TypeOf<LogIndexStateException>());
         }
 

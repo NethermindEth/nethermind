@@ -92,6 +92,7 @@ namespace Nethermind.Db.LogIndex
             public static readonly byte[] UnrevertedReorg = "unr"u8.ToArray();
             public static readonly byte[] PeakMaxBlockNum = "pmx"u8.ToArray();
             public static readonly byte[] MinReorgDepth = "mrd"u8.ToArray();
+            public static readonly byte[] UnknownDepthMaxBlockNum = "umx"u8.ToArray();
         }
 
         public static class Postfix
@@ -196,6 +197,11 @@ namespace Nethermind.Db.LogIndex
         /// </summary>
         private readonly int _minReorgDepth;
 
+        /// <summary>
+        /// The max block of an index written before <see cref="_minReorgDepth"/> was recorded, as values up to it may have been compressed with any depth.
+        /// </summary>
+        private readonly int? _unknownDepthMaxBlock;
+
         private readonly AllMergeOperators _mergeOperators;
         private readonly ICompressor _compressor;
         private readonly ICompactor _compactor;
@@ -272,6 +278,9 @@ namespace Nethermind.Db.LogIndex
 
                 int? storedReorgDepth = LoadRangeBound(SpecialKey.MinReorgDepth);
                 _minReorgDepth = Math.Min(storedReorgDepth ?? _maxReorgDepth, _maxReorgDepth);
+                _unknownDepthMaxBlock = storedReorgDepth is null && _maxBlock is { } maxBlock
+                    ? SaveRangeBound(_metaDb, SpecialKey.UnknownDepthMaxBlockNum, maxBlock)
+                    : LoadRangeBound(SpecialKey.UnknownDepthMaxBlockNum);
                 if (storedReorgDepth != _minReorgDepth)
                     SaveRangeBound(_metaDb, SpecialKey.MinReorgDepth, _minReorgDepth);
 
@@ -580,7 +589,11 @@ namespace Nethermind.Db.LogIndex
 
         private int? GetLastReorgableBlockNumber() => _maxBlock - _maxReorgDepth;
 
-        private int? GetLastPossiblyCompressedBlockNumber() => (_peakMaxBlock > _maxBlock ? _peakMaxBlock : _maxBlock) - _minReorgDepth;
+        private int? GetLastPossiblyCompressedBlockNumber()
+        {
+            int? lastCompressed = (_peakMaxBlock > _maxBlock ? _peakMaxBlock : _maxBlock) - _minReorgDepth;
+            return _unknownDepthMaxBlock > lastCompressed ? _unknownDepthMaxBlock : lastCompressed;
+        }
 
         private static bool IsBlockNewer(int next, int? lastMin, int? lastMax, bool isBackwardSync) => isBackwardSync
             ? lastMin is null || next < lastMin

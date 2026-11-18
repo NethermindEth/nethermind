@@ -8,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -67,6 +68,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     private readonly ILogIndexStorage _logIndexStorage;
     private readonly ILogIndexConfig _config;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly IDb _metadataDb;
     private readonly ILogManager _logManager;
     private Timer? _progressLoggerTimer;
 
@@ -94,7 +96,11 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
     // The first block the forward walk indexes: below the pivot when the stored index ends below the barrier the pivot is raised to,
     // and on an empty index as deep below it as the storage reverts (see GetForwardStart).
     private ulong _forwardProgressStart;
+    private readonly Lock _replacedBlockLock = new();
+    // The lowest block replaced by a reorg that the forward walk has not taken yet
     private long _lowestReplacedBlock = long.MaxValue;
+    // The lowest replaced block not reverted yet, kept in the metadata DB so that a restart reverts it too
+    private long _storedReplacedBlock = long.MaxValue;
     private int _forwardBatchesInFlight;
 
     public string Description => "log index builder";
@@ -103,13 +109,15 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     public LogIndexBuilder(ILogIndexStorage logIndexStorage, ILogIndexConfig config,
         IBlockTree blockTree, ISyncConfig syncConfig, IReceiptStorage receiptStorage,
-        ILogManager logManager, IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
+        ILogManager logManager, [KeyFilter(DbNames.Metadata)] IDb metadataDb,
+        IFlatDbConfig? flatDbConfig = null, IPrunedLogsRetention? prunedLogsRetention = null,
         ISyncPointers? syncPointers = null, IHistoryConfig? historyConfig = null, IBlocksConfig? blocksConfig = null)
     {
         ArgumentNullException.ThrowIfNull(logIndexStorage);
         ArgumentNullException.ThrowIfNull(blockTree);
         ArgumentNullException.ThrowIfNull(receiptStorage);
         ArgumentNullException.ThrowIfNull(logManager);
+        ArgumentNullException.ThrowIfNull(metadataDb);
         ArgumentNullException.ThrowIfNull(syncConfig);
 
         if (config.Enabled)
@@ -123,6 +131,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         _blockTree = blockTree;
         _syncConfig = syncConfig;
         _receiptStorage = receiptStorage;
+        _metadataDb = metadataDb;
         _logManager = logManager;
         _logger = logManager.GetClassLogger<LogIndexBuilder>();
         bool slicesConfigured = prunedLogsRetention is not null && SliceScopeConfig.Parse(flatDbConfig?.HistorySliceAddresses).Count != 0;
@@ -181,6 +190,9 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
         {
             if (!_config.Enabled)
                 return;
+
+            if (_metadataDb.Get(MetadataDbKeys.LogIndexLowestReplacedBlock) is { } storedReplaced)
+                _lowestReplacedBlock = _storedReplacedBlock = storedReplaced.ToLongFromBigEndianByteArrayWithoutLeadingZeros();
 
             _receiptStorage.ReceiptsInserted += OnReceiptsInserted;
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
@@ -324,15 +336,43 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
 
     private void OnBlockReplaced(ulong number)
     {
-        long current = Volatile.Read(ref _lowestReplacedBlock);
-        while ((long)number < current)
+        lock (_replacedBlockLock)
         {
-            long seen = Interlocked.CompareExchange(ref _lowestReplacedBlock, (long)number, current);
-            if (seen == current)
-                return;
-
-            current = seen;
+            _lowestReplacedBlock = long.Min(_lowestReplacedBlock, (long)number);
+            if ((long)number < _storedReplacedBlock)
+                StoreReplacedBlock((long)number);
         }
+    }
+
+    private long TakeReplacedBlock()
+    {
+        lock (_replacedBlockLock)
+        {
+            long replaced = _lowestReplacedBlock;
+            _lowestReplacedBlock = long.MaxValue;
+            return replaced;
+        }
+    }
+
+    /// <summary>Keeps stored only the replaced blocks the forward walk has not taken since the last <see cref="TakeReplacedBlock"/>.</summary>
+    /// <remarks>Called once the taken blocks are reverted or found not indexed, so a restart before then still reverts them.</remarks>
+    private void ReleaseTakenReplacedBlock()
+    {
+        lock (_replacedBlockLock)
+        {
+            if (_lowestReplacedBlock != _storedReplacedBlock)
+                StoreReplacedBlock(_lowestReplacedBlock);
+        }
+    }
+
+    private void StoreReplacedBlock(long number)
+    {
+        if (number == long.MaxValue)
+            _metadataDb.Delete(MetadataDbKeys.LogIndexLowestReplacedBlock);
+        else
+            _metadataDb.Set(MetadataDbKeys.LogIndexLowestReplacedBlock, number.ToBigEndianByteArrayWithoutLeadingZeros());
+
+        _storedReplacedBlock = number;
     }
 
     /// <summary>The highest block the forward index may reach: the finalized block, or the head minus the max reorg depth without one.</summary>
@@ -487,10 +527,15 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             BlockReceipts[] buffer = new BlockReceipts[_config.MaxBatchSize];
             while (!CancellationToken.IsCancellationRequested)
             {
-                if (isForward && Interlocked.Exchange(ref _lowestReplacedBlock, long.MaxValue) is var replaced && replaced < start)
+                if (isForward && TakeReplacedBlock() is var replaced && replaced != long.MaxValue)
                 {
-                    await RevertReplacedBlocksAsync(replaced);
-                    start = GetNextBlockNumber(isForward) ?? start;
+                    if (replaced < start)
+                    {
+                        await RevertReplacedBlocksAsync(replaced);
+                        start = GetNextBlockNumber(isForward) ?? start;
+                    }
+
+                    ReleaseTakenReplacedBlock();
                 }
 
                 // One read per iteration: the exit decision, the recorded floor and the completion test must
@@ -613,7 +658,7 @@ public sealed class LogIndexBuilder : ILogIndexBuilder
             await Task.Delay(QueueDrainPollInterval, CancellationToken);
 
         // Taken again after draining, so a single ascending revert covers the reorgs seen meanwhile
-        replaced = Math.Min(replaced, Interlocked.Exchange(ref _lowestReplacedBlock, long.MaxValue));
+        replaced = Math.Min(replaced, TakeReplacedBlock());
         if (_logIndexStorage.MaxBlockNumber is not { } max || replaced > max)
             return;
 

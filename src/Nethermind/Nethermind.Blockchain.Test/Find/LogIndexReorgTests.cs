@@ -70,7 +70,7 @@ public class LogIndexReorgTests
         LogIndexConfig config = new() { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = 4 };
         LogIndexStorage storage = new(dbFactory, LimboLogs.Instance, config);
         TestErrorLogManager logManager = new();
-        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, receipts, logManager);
+        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, receipts, logManager, new MemDb());
         try
         {
             await builder.StartAsync();
@@ -132,7 +132,7 @@ public class LogIndexReorgTests
         using HyperClockCacheWrapper cache = new();
         LogIndexConfig config = new() { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = 4 };
         LogIndexStorage storage = new(CreateDbFactory(dbPath, cache), LimboLogs.Instance, config);
-        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, receipts, LimboLogs.Instance);
+        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, receipts, LimboLogs.Instance, new MemDb());
         try
         {
             await builder.StartAsync();
@@ -198,7 +198,7 @@ public class LogIndexReorgTests
         using HyperClockCacheWrapper cache = new();
         LogIndexConfig config = new() { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = 4 };
         GatedLogIndexStorage storage = new(CreateDbFactory(dbPath, cache), config, writeGate);
-        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, observedReceipts, LimboLogs.Instance);
+        LogIndexBuilder builder = new(storage, config, tree, new SyncConfig { FastSync = false }, observedReceipts, LimboLogs.Instance, new MemDb());
         try
         {
             await builder.StartAsync();
@@ -222,6 +222,80 @@ public class LogIndexReorgTests
             writeGate.Set();
             await builder.StopAsync();
             await builder.DisposeAsync();
+        }
+    }
+
+    [Test]
+    public async Task Reorg_seen_before_a_restart_is_reverted_after_it()
+    {
+        InMemoryReceiptStorage receipts = new();
+        BlockTree tree = Build.A.BlockTree().OfChainLength(1).TestObject;
+
+        List<Block> chainA = Extend(tree, tree.FindBlock(0, BlockTreeLookupOptions.None)!, ChainALength, TestItem.AddressA, 0, receipts);
+        MoveHead(tree, chainA[..^1], receipts);
+        tree.SyncPivot = (tree.Head!.Number, tree.Head.Hash!);
+
+        // The index reaches block 25, the head minus the max reorg depth, and chain B replaces blocks 23-25, within the revertable depth
+        const int indexedMax = ChainALength - 1 - MaxReorgDepth;
+        List<Block> chainB = Extend(tree, chainA[indexedMax - 4], ChainBLength, TestItem.AddressB, 7, receipts);
+        Block nextToIndex = chainA[indexedMax];
+
+        using TempPath dbPath = TempPath.GetTempDirectory();
+        using HyperClockCacheWrapper cache = new();
+        LogIndexConfig config = new() { Enabled = true, MaxReorgDepth = MaxReorgDepth, MaxBatchSize = 4 };
+        MemDb metadataDb = new();
+
+        LogIndexBuilder? builder = null;
+        Task? stopping = null;
+        ObservedReceiptStorage observedReceipts = new(receipts, block =>
+        {
+            // Chain B becomes canonical while the walk reads the next block, and the builder stops before it reverts the replaced blocks
+            if (block.Hash == nextToIndex.Hash && stopping is null)
+            {
+                MoveHead(tree, chainB, receipts);
+                stopping = builder!.StopAsync();
+                SpinWait.SpinUntil(() => !builder.IsRunning, CatchUpTimeoutMs);
+            }
+
+            return receipts.Get(block);
+        });
+
+        LogIndexStorage storage = new(CreateDbFactory(dbPath, cache), LimboLogs.Instance, config);
+        builder = new(storage, config, tree, new SyncConfig { FastSync = false }, observedReceipts, LimboLogs.Instance, metadataDb);
+        try
+        {
+            await builder.StartAsync();
+            await builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromMilliseconds(CatchUpTimeoutMs));
+            WaitForIndexToCatchUp(builder, storage);
+
+            MoveHead(tree, chainA, receipts);
+            Assert.That(() => stopping, Is.Not.Null.After(CatchUpTimeoutMs, 20));
+            await stopping!;
+        }
+        finally
+        {
+            if (stopping is null)
+                await builder.StopAsync();
+            await builder.DisposeAsync();
+        }
+
+        LogIndexStorage reopened = new(CreateDbFactory(dbPath, cache), LimboLogs.Instance, config);
+        LogIndexBuilder restarted = new(reopened, config, tree, new SyncConfig { FastSync = false }, receipts, LimboLogs.Instance, metadataDb);
+        try
+        {
+            Assert.That(reopened.MaxBlockNumber, Is.EqualTo(indexedMax), "the first run must stop before reverting");
+
+            await restarted.StartAsync();
+            WaitForIndexToCatchUp(restarted, reopened);
+
+            Assert.That(restarted.LastError, Is.Null);
+            AssertIndexedLogsMatchScan(tree, receipts, reopened);
+            Assert.That(metadataDb.KeyExists(MetadataDbKeys.LogIndexLowestReplacedBlock), Is.False, "a reverted block must not be reverted again after the next restart");
+        }
+        finally
+        {
+            await restarted.StopAsync();
+            await restarted.DisposeAsync();
         }
     }
 
