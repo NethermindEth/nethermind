@@ -5,14 +5,10 @@ using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.Kademlia;
-using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Test.Kademlia;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -94,32 +90,12 @@ public class KademliaModuleTests
     }
 
     private static IContainer CreateContainer(bool filterEnabled, INetworkStorage? storage = null)
-    {
-        NetworkConfig networkConfig = new()
-        {
-            ExternalIp = "198.51.100.1",
-            LocalIp = "0.0.0.0",
-            FilterDiscoveryNodesByRecentIp = filterEnabled,
-            FilterDiscoveryNodesBySameSubnet = true,
-        };
-        Node currentNode = CreateNode(TestItem.PublicKeyF, "198.51.100.1");
-        storage ??= Substitute.For<INetworkStorage>();
-        if (filterEnabled)
-        {
-            storage.GetPersistedNodes().Returns([]);
-        }
-
-        IKademliaMessageSender<PublicKey, Node> messageSender = Substitute.For<IKademliaMessageSender<PublicKey, Node>>();
-
-        ContainerBuilder builder = new();
-        builder.AddModule(new KademliaModule(currentNode, []));
-        builder.RegisterInstance(networkConfig).As<INetworkConfig>();
-        builder.RegisterInstance(new DiscoveryConfig()).As<IDiscoveryConfig>();
-        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
-        builder.RegisterInstance(storage).Keyed<INetworkStorage>(DbNames.DiscoveryNodes);
-        builder.RegisterInstance(messageSender).As<IKademliaMessageSender<PublicKey, Node>>();
-        return builder.Build();
-    }
+        => DiscoveryAdmissionTestContainer.Create(
+            enabled: filterEnabled,
+            subnetBucketing: true,
+            currentNode: CreateNode(TestItem.PublicKeyF, "198.51.100.1"),
+            useDiscoveryConfigFactory: true,
+            storage: storage);
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
 }

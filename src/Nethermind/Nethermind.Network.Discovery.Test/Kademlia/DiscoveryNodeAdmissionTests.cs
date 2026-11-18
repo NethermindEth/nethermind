@@ -4,16 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Net;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Kademlia;
-using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -24,26 +22,15 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 public class DiscoveryNodeAdmissionTests
 {
     [Test]
-    public void Rejects_second_node_from_same_subnet()
+    public void Rejects_second_node_from_same_subnet_or_exact_ip(
+        [Values("203.0.113.10", "203.0.113.20")] string secondNodeIp)
     {
         Fixture fixture = CreateAdmission();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.False);
-        }
-    }
-
-    [Test]
-    public void Rejects_second_node_from_same_exact_ip()
-    {
-        Fixture fixture = CreateAdmission();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.10")), Is.False);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, secondNodeIp)), Is.False);
         }
     }
 
@@ -429,32 +416,19 @@ public class DiscoveryNodeAdmissionTests
     {
         IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
         INetworkStorage storage = Substitute.For<INetworkStorage>();
-        if (enabled)
-        {
-            storage.GetPersistedNodes().Returns(persisted ?? []);
-        }
-
-        KademliaConfig<Node> kademliaConfig = config ?? new KademliaConfig<Node>
-        {
-            CurrentNodeId = CreateNode(TestItem.PublicKeyD, "198.51.100.2"),
-        };
-        IPAddress? currentAddress = IPAddress.TryParse(currentIp, out IPAddress? parsed) ? parsed : null;
-        NodeFilter filter = timeProvider is null
-            ? NodeFilter.Create(100, enabled, subnetBucketing, currentAddress)
-            : new NodeFilter(100, !subnetBucketing, currentAddress,
-                (long)TimeSpan.FromMinutes(5).TotalMilliseconds, timeProvider);
-        DiscoveryNodeAdmission admission = new(
-            filter,
-            enabled,
-            routingTable,
-            kademliaConfig,
-            storage,
-            admittedCapacity: 100,
-            LimboLogs.Instance,
-            staticNodes,
-            trustedNodes,
-            configuredStaticNodes);
-        return new Fixture(admission, routingTable, storage);
+        IContainer container = DiscoveryAdmissionTestContainer.Create(
+            enabled: enabled,
+            subnetBucketing: subnetBucketing,
+            currentIp: currentIp,
+            timeProvider: timeProvider,
+            persisted: persisted,
+            kademliaConfig: config,
+            routingTable: routingTable,
+            storage: storage,
+            staticNodes: staticNodes,
+            trustedNodes: trustedNodes,
+            configuredStaticNodes: configuredStaticNodes);
+        return new Fixture(container.Resolve<DiscoveryNodeAdmission>(), routingTable, storage);
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);

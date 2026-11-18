@@ -24,6 +24,7 @@ using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Kademlia.Handlers;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Test.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test;
@@ -286,7 +287,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             }
         }
 
-        private static async Task<Node> ReadGateCandidate(AdmissionGatedKademliaAdapter gate, CancellationToken token)
+        private static async Task<Node> ReadGateCandidate(IKademliaAdapter gate, CancellationToken token)
         {
             await using IAsyncEnumerator<Node> enumerator = gate.ReadPeerCandidates(token).GetAsyncEnumerator(token);
             Assert.That(await enumerator.MoveNextAsync(), Is.True);
@@ -1094,18 +1095,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         public async Task OnPingMessage_FromFilteredIp_IsIgnored()
         {
             INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
-            INetworkStorage storage = Substitute.For<INetworkStorage>();
-            storage.GetPersistedNodes().Returns([]);
-            NodeFilter filter = NodeFilter.Create(100, filterEnabled: true, subnetBucketing: true, IPAddress.Parse("198.51.100.1"));
-            DiscoveryNodeAdmission admission = new(
-                filter,
-                enabled: true,
-                _routingTable,
-                _kademliaConfig,
-                storage,
-                admittedCapacity: 100,
-                _logManager);
-            FilteringNodeHealthTracker filteringTracker = new(admitted, admission, _logManager);
+            (_, INodeHealthTracker<Node> filteringTracker) = CreateAdmission(admitted);
 
             await _adapter.DisposeAsync();
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: filteringTracker);
@@ -1145,20 +1135,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         [CancelAfter(10000)]
         public async Task Filtered_ping_is_still_answered_but_not_admitted(CancellationToken token)
         {
-            INetworkStorage storage = Substitute.For<INetworkStorage>();
-            storage.GetPersistedNodes().Returns([]);
-            NodeFilter filter = NodeFilter.Create(100, filterEnabled: true, subnetBucketing: true, IPAddress.Parse("198.51.100.1"));
-            DiscoveryNodeAdmission admission = new(
-                filter,
-                enabled: true,
-                _routingTable,
-                _kademliaConfig,
-                storage,
-                admittedCapacity: 100,
-                _logManager);
+            DiscoveryNodeAdmission admission = CreateAdmission(TimeProvider.System);
             await _adapter.DisposeAsync();
             _adapter = CreateAdapter(ExpiringRequestTimeoutMs);
-            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+            IKademliaAdapter gate = CreateGate(admission);
 
             // Record the /24 through admission alone, as if a node in it had already been handled.
             Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.10", 30303, 30303)), Is.True);
@@ -1183,7 +1163,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         {
             ManualTimeProvider clock = new();
             DiscoveryNodeAdmission admission = CreateAdmission(clock);
-            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+            IKademliaAdapter gate = CreateGate(admission);
             Queue<PublicKey> pendingPongs = new([TestItem.PublicKeyE, TestItem.PublicKeyD]);
             _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
             {
@@ -1223,9 +1203,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         public async Task Unsolicited_response_through_the_gate_does_not_consume_admission()
         {
             INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
-            (DiscoveryNodeAdmission admission, FilteringNodeHealthTracker tracker) = CreateAdmission(admitted);
+            (DiscoveryNodeAdmission admission, INodeHealthTracker<Node> tracker) = CreateAdmission(admitted);
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: tracker);
-            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+            IKademliaAdapter gate = CreateGate(admission);
 
             PongMsg pong = new(TestItem.PublicKeyB, _timestamper.UnixTime.SecondsLong + 1, TestItem.KeccakA.ValueHash256);
             pong.FarAddress = new IPEndPoint(IPAddress.Parse("203.0.113.20"), 30303);
@@ -1241,9 +1221,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         public async Task Correlated_response_through_the_gate_commits_admission()
         {
             INodeHealthTracker<Node> admitted = Substitute.For<INodeHealthTracker<Node>>();
-            (DiscoveryNodeAdmission admission, FilteringNodeHealthTracker tracker) = CreateAdmission(admitted);
+            (DiscoveryNodeAdmission admission, INodeHealthTracker<Node> tracker) = CreateAdmission(admitted);
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs, nodeHealthTracker: tracker);
-            AdmissionGatedKademliaAdapter gate = new(_adapter, admission, _logManager);
+            IKademliaAdapter gate = CreateGate(admission);
             _receiver = new(TestItem.PublicKeyB, "203.0.113.20", 30303);
             _msgSender.SendMsg(Arg.Any<PingMsg>()).Returns(ci =>
             {
@@ -1261,32 +1241,38 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(admission.TryAdmit(new Node(TestItem.PublicKeyC, "203.0.113.99", 30303, 30303)), Is.False);
         }
 
-        private (DiscoveryNodeAdmission Admission, FilteringNodeHealthTracker Tracker) CreateAdmission(
+        private (DiscoveryNodeAdmission Admission, INodeHealthTracker<Node> Tracker) CreateAdmission(
             INodeHealthTracker<Node> inner)
         {
             DiscoveryNodeAdmission admission = CreateAdmission(TimeProvider.System);
-            return (admission, new FilteringNodeHealthTracker(inner, admission, _logManager));
+            IContainer container = DiscoveryAdmissionTestContainer.Create(
+                currentIp: "198.51.100.1",
+                kademliaConfig: _kademliaConfig,
+                routingTable: _routingTable,
+                logManager: _logManager,
+                admission: admission,
+                innerTracker: inner);
+            return (admission, container.Resolve<INodeHealthTracker<Node>>());
         }
 
         private DiscoveryNodeAdmission CreateAdmission(TimeProvider timeProvider)
-        {
-            INetworkStorage storage = Substitute.For<INetworkStorage>();
-            storage.GetPersistedNodes().Returns([]);
-            NodeFilter filter = new(
-                400,
-                exactMatchOnly: false,
-                IPAddress.Parse("198.51.100.1"),
-                (long)TimeSpan.FromMinutes(5).TotalMilliseconds,
-                timeProvider);
+            => DiscoveryAdmissionTestContainer.Create(
+                currentIp: "198.51.100.1",
+                timeProvider: timeProvider,
+                kademliaConfig: _kademliaConfig,
+                routingTable: _routingTable,
+                logManager: _logManager).Resolve<DiscoveryNodeAdmission>();
 
-            return new DiscoveryNodeAdmission(
-                filter,
-                enabled: true,
-                _routingTable,
-                _kademliaConfig,
-                storage,
-                admittedCapacity: 100,
-                _logManager);
+        private IKademliaAdapter CreateGate(DiscoveryNodeAdmission admission)
+        {
+            IContainer container = DiscoveryAdmissionTestContainer.Create(
+                currentIp: "198.51.100.1",
+                kademliaConfig: _kademliaConfig,
+                routingTable: _routingTable,
+                logManager: _logManager,
+                admission: admission,
+                innerAdapter: _adapter);
+            return container.Resolve<IKademliaAdapter>();
         }
 
         private PingMsg CreatePing(PublicKey publicKey, IPEndPoint address)

@@ -58,11 +58,7 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                 ctx.ResolveOptional<ITrustedNodesManager>(),
                 configuredStaticNodes);
         });
-        builder.AddDecorator<INodeHealthTracker<Node>>((ctx, inner) =>
-            new FilteringNodeHealthTracker(
-                inner,
-                ctx.Resolve<DiscoveryNodeAdmission>(),
-                ctx.Resolve<ILogManager>()));
+        builder.AddDecorator<INodeHealthTracker<Node>, FilteringNodeHealthTracker>();
     }
 
     protected override void RegisterProtocolServices(ContainerBuilder builder) => builder

@@ -53,11 +53,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                     .AddSingleton<DiscV4Services>();
 
                 configureDiscv4Services?.Invoke(builder);
-                builder.AddDecorator<IKademliaAdapter>((ctx, inner) =>
-                    new AdmissionGatedKademliaAdapter(
-                        inner,
-                        ctx.Resolve<DiscoveryNodeAdmission>(),
-                        ctx.Resolve<ILogManager>()));
+                builder.AddDecorator<IKademliaAdapter, AdmissionGatedKademliaAdapter>();
             });
 
         DiscV4Services services = _discv4Services.Resolve<DiscV4Services>();

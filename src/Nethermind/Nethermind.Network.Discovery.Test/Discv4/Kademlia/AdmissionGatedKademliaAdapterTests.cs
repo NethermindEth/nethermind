@@ -7,15 +7,16 @@ using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Kademlia;
-using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Network.Discovery.Test.Kademlia;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,7 +28,7 @@ public class AdmissionGatedKademliaAdapterTests
     [Test]
     public async Task Filtered_ping_is_forwarded_to_inner_so_the_handshake_completes()
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
+        (IKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
         admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
         PingMsg ping = CreatePing(TestItem.PublicKeyB, "203.0.113.20");
 
@@ -41,7 +42,7 @@ public class AdmissionGatedKademliaAdapterTests
     [TestCase(MsgType.Neighbors)]
     public async Task Unsolicited_response_is_left_to_inner_and_does_not_consume_admission(MsgType msgType)
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
+        (IKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
 
         await gate.OnIncomingMsg(CreateResponse(msgType, TestItem.PublicKeyB, "203.0.113.20"));
 
@@ -54,7 +55,7 @@ public class AdmissionGatedKademliaAdapterTests
     [Test]
     public async Task Accepted_ping_is_forwarded_to_inner()
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate();
+        (IKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate();
         PingMsg ping = CreatePing(TestItem.PublicKeyA, "203.0.113.10");
 
         await gate.OnIncomingMsg(ping);
@@ -65,7 +66,7 @@ public class AdmissionGatedKademliaAdapterTests
     [Test]
     public async Task Malformed_ping_is_forwarded_for_the_adapter_to_reject_without_consuming_admission()
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
+        (IKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
         PingMsg malformed = CreatePing(TestItem.PublicKeyA, "203.0.113.10");
         malformed.FarAddress = null;
 
@@ -79,7 +80,7 @@ public class AdmissionGatedKademliaAdapterTests
     [Test]
     public async Task ReadPeerCandidates_admits_bonded_candidates_and_filters_reserved_subnets()
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
+        (IKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
         Node admittedNode = CreateNode(TestItem.PublicKeyA, "203.0.114.10");
         Node filteredNode = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
         admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.113.10"));
@@ -106,11 +107,25 @@ public class AdmissionGatedKademliaAdapterTests
     }
 
     [Test]
-    public async Task Outbound_requests_are_forwarded_regardless_of_admission()
+    public async Task Outbound_requests_are_forwarded([Values] bool receiverAdmitted)
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
-        admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10"));
-        Node receiver = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+        (IKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
+        Node receiver = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        if (receiverAdmitted)
+        {
+            Assert.That(admission.TryAdmit(receiver), Is.True);
+        }
+        else
+        {
+            // Another identity holds the receiver's subnet, so the receiver itself is not admitted.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
+                Assert.That(admission.TryAdmit(receiver), Is.False,
+                    "the receiver's subnet should be held by another identity");
+            }
+        }
+
         CancellationToken token = CancellationToken.None;
         Node[] neighbours = [CreateNode(TestItem.PublicKeyC, "203.0.114.20")];
         inner.Ping(receiver, token).Returns(true);
@@ -130,33 +145,9 @@ public class AdmissionGatedKademliaAdapterTests
     }
 
     [Test]
-    public async Task Outbound_requests_to_an_admitted_receiver_are_forwarded()
-    {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, DiscoveryNodeAdmission admission) = CreateGate();
-        Node receiver = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        admission.TryAdmit(receiver);
-        CancellationToken token = CancellationToken.None;
-        Node[] neighbours = [CreateNode(TestItem.PublicKeyB, "203.0.114.20")];
-        inner.Ping(receiver, token).Returns(true);
-        inner.FindNeighbours(receiver, TestItem.PublicKeyC, token).Returns(neighbours);
-        inner.SendEnrRequest(receiver, token).Returns((EnrResponseMsg?)null);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(await gate.Ping(receiver, token), Is.True);
-            Assert.That(await gate.FindNeighbours(receiver, TestItem.PublicKeyC, token), Is.SameAs(neighbours));
-            Assert.That(await gate.SendEnrRequest(receiver, token), Is.Null);
-        }
-
-        await inner.Received(1).Ping(receiver, token);
-        await inner.Received(1).FindNeighbours(receiver, TestItem.PublicKeyC, token);
-        await inner.Received(1).SendEnrRequest(receiver, token);
-    }
-
-    [Test]
     public void MsgSender_forwards_to_inner()
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate();
+        (IKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate();
         IMsgSender sender = Substitute.For<IMsgSender>();
 
         gate.MsgSender = sender;
@@ -171,7 +162,7 @@ public class AdmissionGatedKademliaAdapterTests
     [Test]
     public async Task DisposeAsync_forwards_to_inner()
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate();
+        (IKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate();
 
         await gate.DisposeAsync();
 
@@ -181,7 +172,7 @@ public class AdmissionGatedKademliaAdapterTests
     [Test]
     public async Task Disabled_admission_forwards_everything()
     {
-        (AdmissionGatedKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate(enabled: false);
+        (IKademliaAdapter gate, IKademliaAdapter inner, _) = CreateGate(enabled: false);
         Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
         PingMsg ping = CreatePing(TestItem.PublicKeyA, "203.0.113.10");
         CancellationToken token = CancellationToken.None;
@@ -194,32 +185,18 @@ public class AdmissionGatedKademliaAdapterTests
         await inner.Received(1).Ping(node, token);
     }
 
-    private static (AdmissionGatedKademliaAdapter Gate, IKademliaAdapter Inner, DiscoveryNodeAdmission Admission)
+    private static (IKademliaAdapter Gate, IKademliaAdapter Inner, DiscoveryNodeAdmission Admission)
         CreateGate(bool enabled = true, bool subnetBucketing = true)
     {
-        IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
-        INetworkStorage storage = Substitute.For<INetworkStorage>();
-        if (enabled)
-        {
-            storage.GetPersistedNodes().Returns([]);
-        }
-
-        KademliaConfig<Node> kademliaConfig = new()
-        {
-            CurrentNodeId = CreateNode(TestItem.PublicKeyD, "198.51.100.2"),
-        };
-        NodeFilter filter = NodeFilter.Create(100, enabled, subnetBucketing, IPAddress.Parse("198.51.100.1"));
-        DiscoveryNodeAdmission admission = new(
-            filter,
-            enabled,
-            routingTable,
-            kademliaConfig,
-            storage,
-            admittedCapacity: 100,
-            LimboLogs.Instance);
         IKademliaAdapter inner = Substitute.For<IKademliaAdapter>();
         inner.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(Task.CompletedTask);
-        return (new AdmissionGatedKademliaAdapter(inner, admission, LimboLogs.Instance), inner, admission);
+        IContainer container = DiscoveryAdmissionTestContainer.Create(
+            enabled,
+            subnetBucketing,
+            innerAdapter: inner);
+        return (container.Resolve<IKademliaAdapter>(),
+            inner,
+            container.Resolve<DiscoveryNodeAdmission>());
     }
 
     private static DiscoveryMsg CreateResponse(MsgType msgType, PublicKey id, string host)
