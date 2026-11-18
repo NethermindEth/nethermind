@@ -178,10 +178,10 @@ public class HeaderStoreTests
     }
 
     [Test]
-    public async Task GetBlockNumbers_resolves_each_block_as_GetBlockNumber_does()
+    public async Task GetBlockNumbers_resolves_each_block_as_GetBlockNumber_does([Values] bool batching)
     {
         MemDb headerDb = new();
-        MemDb blockNumberDb = new();
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
         await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
         using IContainer container = BuildContainer(headerDb, blockNumberDb, writer);
         IHeaderStore store = container.Resolve<IHeaderStore>();
@@ -203,7 +203,20 @@ public class HeaderStoreTests
         {
             Assert.That(numbers, Is.EqualTo(new ulong?[] { 102, null, 101, 100, 103 }));
             Assert.That(numbers, Is.EqualTo(hashes.Select(h => store.GetBlockNumber(new Hash256(h)))));
+            if (blockNumberDb is BatchReadMemDb batch) Assert.That(batch.BatchReads, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public async Task GetBlockNumbers_rejects_a_malformed_block_number_entry([Values] bool batching, [Values(7, 9)] int length)
+    {
+        MemDb blockNumberDb = batching ? new BatchReadMemDb() : new MemDb();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = BuildContainer(new MemDb(), blockNumberDb, writer);
+        IHeaderStore store = container.Resolve<IHeaderStore>();
+        blockNumberDb.Set(TestItem.KeccakA, new byte[length]);
+
+        Assert.Throws<InvalidDataException>(() => store.GetBlockNumbers([TestItem.KeccakA.ValueHash256], new ulong?[1]));
     }
 
     [Test]

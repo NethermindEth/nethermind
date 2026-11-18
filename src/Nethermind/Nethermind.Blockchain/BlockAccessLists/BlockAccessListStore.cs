@@ -135,10 +135,13 @@ public class BlockAccessListStore : IBlockAccessListStore
         }
     }
 
+    /// <remarks>An empty value reads as missing, as <see cref="IReadOnlyKeyValueStore.GetOwnedMemory"/> reads it.</remarks>
     private readonly struct AppendingDecoder(ArrayPoolList<byte> destination) : IValueDecoder<Range?>
     {
         public Range? Decode(ReadOnlySpan<byte> buffer)
         {
+            if (buffer.IsEmpty) return null;
+
             int start = destination.Count;
             destination.AddRange(buffer);
             return new Range(start, destination.Count);
