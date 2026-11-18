@@ -119,7 +119,6 @@ namespace Nethermind.Synchronization.FastSync
             // we want to keep more or less to the same side (left or right - we chose left) so we punish
             // the high child indices
             // we want to go deep first so we add bonus for the depth
-            // depth and rightness are measured against the maxima of the item's own trie type
             float priority = 1.00f - (float)level / Math.Max(maxLevel, (byte)1) + (float)rightness / Math.Max(maxRightness, 1) - (float)_lastSyncProgress / 2;
             return priority;
         }

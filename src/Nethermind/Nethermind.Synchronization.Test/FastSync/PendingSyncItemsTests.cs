@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.Reflection;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
@@ -256,12 +254,8 @@ namespace Nethermind.Synchronization.Test.FastSync
         public void Child_rightness_saturates(NodeType nodeType, int parentLevel, uint parentRightness, int childIndex, uint expected)
         {
             StateSyncItem parent = new(Keccak.Zero, null, TreePath.Empty, NodeDataType.Storage, parentLevel, parentRightness);
-            Assert.That(CalculateRightness(nodeType, parent, childIndex), Is.EqualTo(expected));
+            Assert.That(TreeSync.CalculateRightness(nodeType, parent, childIndex), Is.EqualTo(expected));
         }
-
-        private static readonly Func<NodeType, StateSyncItem, int, uint> CalculateRightness =
-            typeof(TreeSync).GetMethod("CalculateRightness", BindingFlags.NonPublic | BindingFlags.Static)!
-                .CreateDelegate<Func<NodeType, StateSyncItem, int, uint>>();
 
         private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0) =>
             PushItem(items, NodeDataType.Code, 0, 0, progress);

@@ -964,7 +964,7 @@ namespace Nethermind.Synchronization.FastSync
         /// Saturates at <see cref="uint.MaxValue"/>: a storage trie starts from the rightness of its account, so the sum
         /// can pass 32 bits, and a wrapped value would queue a far-right node as a far-left one.
         /// </remarks>
-        private static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
+        internal static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
         {
             // 16^(7 - level), the width of one child at this level; 1 from level 7 down
             ulong childWidth = 1UL << (4 * Math.Max(0, 7 - currentStateSyncItem.Level));
