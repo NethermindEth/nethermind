@@ -722,7 +722,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 else if (AddNodeToPending(new StateSyncItem(account.StorageRoot, updatedAddress, TreePath.Empty, NodeDataType.Storage), dependentItem, "incomplete storage") == AddNodeResult.Added)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
+                    if (_logger.IsInfo) _logger.Info($"Storage {updatedAddress} missing correct storage root {account.StorageRoot}");
                 }
                 else
                 {
@@ -932,7 +932,11 @@ namespace Nethermind.Synchronization.FastSync
                             Hash256 address = finalStorageRoot.Path.ToCommitment();
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
-                            if (addStorageNodeResult == AddNodeResult.AlreadySaved)
+                            if (addStorageNodeResult == AddNodeResult.Added)
+                            {
+                                if (_logger.IsInfo) _logger.Info($"Storage {address} missing storage root {storageRoot}");
+                            }
+                            else if (addStorageNodeResult == AddNodeResult.AlreadySaved)
                             {
                                 isAccountComplete |= dependentItem.ResolveDependency();
                             }

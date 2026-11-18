@@ -323,12 +323,13 @@ namespace Nethermind.Synchronization.SnapSync
                     return result;
                 }
 
+                if (result == AddRangeResult.DifferentRootHash && _logger.IsInfo) _logger.Info($"SNAP - AddStorageRange failed for account {pathWithAccount.Path}, expected storage root hash:{storageRoot} but was {actualRootHash}, startingHash:{request.StartingHash}");
+
                 if (_logger.IsTrace)
                 {
                     string message = result switch
                     {
                         AddRangeResult.MissingRootHashInProofs => $"SNAP - AddStorageRange failed, missing root hash {actualRootHash} in the proofs, startingHash:{request.StartingHash}",
-                        AddRangeResult.DifferentRootHash => $"SNAP - AddStorageRange failed, expected storage root hash:{pathWithAccount.Account.StorageRoot} but was {actualRootHash}, startingHash:{request.StartingHash}",
                         AddRangeResult.InvalidProofNode => $"SNAP - AddStorageRange failed, invalid proof node, startingHash:{request.StartingHash}",
                         AddRangeResult.InvalidOrder => $"SNAP - AddStorageRange failed, slots are not in sorted order, startingHash:{request.StartingHash}",
                         AddRangeResult.OutOfBounds => $"SNAP - AddStorageRange failed, slots are out of bounds, startingHash:{request.StartingHash}",

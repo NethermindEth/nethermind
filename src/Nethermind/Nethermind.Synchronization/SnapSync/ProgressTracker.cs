@@ -279,6 +279,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (rangePhaseFinished)
                 {
                     _logger.Info("Snap - State Ranges (Phase 1 of 2) finished.");
+                    if (_logger.IsInfo) _logger.Info($"Snap - {_pivot.UpdatedStorages.Count} accounts tracked for healing: {string.Join(", ", _pivot.UpdatedStorages)}");
                     _snapTrieFactory.MarkRangePhaseFinished();
                     PublishCoveredAccountKeySpace(AccountKeySpace);
                     // Healing deletes this checkpoint before it writes, and saves it again at a graceful shutdown once its
@@ -773,7 +774,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void TrackAccountToHeal(ValueHash256 path)
         {
-            if (_logger.IsDebug) _logger.Debug($"Tracked {path} for healing");
+            if (_logger.IsInfo) _logger.Info($"Tracked {path} for healing");
             _pivot.UpdatedStorages.Add(path.ToCommitment());
         }
 
