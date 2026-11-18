@@ -277,7 +277,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .Build();
             using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
 
-            StepDependencyException? exception = Assert.ThrowsAsync<StepDependencyException>(() => container.Resolve<EthereumStepsManager>().InitializeAll(source.Token));
+            StepDependencyException? exception = await Assert.ThrowsAsync<StepDependencyException>(() => container.Resolve<EthereumStepsManager>().InitializeAll(source.Token));
 
             using (Assert.EnterMultipleScope())
             {

@@ -82,8 +82,13 @@ public class StandardDbInitializerTests
             .AddSingleton(fileSystem)
             .Build();
 
-        Assert.That(container.ResolveKeyed<IDb>(DbNames.State), Is.TypeOf<FullPruningDb>());
-        Assert.That(fileSystem.ReceivedCalls(), Is.Empty);
+        IDb stateDb = container.ResolveKeyed<IDb>(DbNames.State);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateDb, Is.TypeOf<FullPruningDb>());
+            Assert.That(fileSystem.ReceivedCalls(), Is.Empty);
+        }
     }
 
     private Task<IDbProvider> InitializeStandardDb(bool useReceipts, bool useMemDb, string path)
