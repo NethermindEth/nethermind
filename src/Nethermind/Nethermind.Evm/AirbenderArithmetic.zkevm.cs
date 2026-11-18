@@ -4,17 +4,24 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
 
-/// <summary>The EVM's 256-bit arithmetic on Airbender's u256 delegation.</summary>
+/// <summary>The EVM's 256-bit arithmetic on Airbender's u256 delegation, and in part on OpenVM's bigint extension.</summary>
 /// <remarks>
 /// bflat lists <c>airbender_u256_op</c> in the JIT's <c>JitZkDelegationPInvokes</c>, so each call below is the single
 /// CSR access that runs the delegation on the operands in x10-x12, which changes only a0 and a2. libairbender
-/// exports the same entry point for a JIT without that knob. Only code behind <c>AirbenderFlag</c> reaches this.
+/// exports the same entry point for a JIT without that knob. Only code behind <see cref="IsAvailable"/> reaches this.
 /// Every operand is a 256-bit integer as eight 32-bit words, least significant first, 32-byte aligned and in RAM;
 /// the two operands must not alias.
+/// <para>
+/// On OpenVM's RV32 line the addition, the subtraction, the shifts and the comparisons are one instruction of the
+/// bigint extension each, where software takes a carry chain over eight 32-bit words. On RV64 they stay in software,
+/// which there works on four 64-bit limbs.
+/// </para>
 /// </remarks>
 internal static unsafe class AirbenderArithmetic
 {
@@ -28,10 +35,26 @@ internal static unsafe class AirbenderArithmetic
 
     // 2^i as the i-th of 256 words, then zero, in RAM where the delegation reads its operands.
     private static uint* s_powersOfTwo;
+    // On OpenVM, the shift amount as a 256-bit word: the bigint extension takes it as its second operand.
+    private static ulong* s_shift;
+
+    /// <summary>Whether the guest's zkVM runs the arithmetic below: Airbender, or OpenVM's RV32 line.</summary>
+    internal static bool IsAvailable => AirbenderFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32;
+
+    // Where IsAvailable holds, not Airbender is OpenVM RV32. Tested by the flag, which ILC folds before it links,
+    // so the OpenVM guests reference no Airbender symbol; it does not fold the pointer size.
+    private static bool OnOpenVm => !AirbenderFlag.IsActive;
 
     /// <summary>Prepares the constants of the shifts and of <see cref="IsZero"/>; every handler table that reaches them calls this first.</summary>
     public static void Initialize()
     {
+        if (OnOpenVm)
+        {
+            if (s_shift is null)
+                s_shift = (ulong*)NativeMemory.AllocZeroed(32);
+            return;
+        }
+
         if (s_powersOfTwo is not null)
             return;
 
@@ -66,6 +89,12 @@ internal static unsafe class AirbenderArithmetic
     public static void Add(void* left, void* right)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
+        if (OnOpenVm)
+        {
+            Accelerators.UInt256Add((ulong*)left, (ulong*)left, (ulong*)right);
+            return;
+        }
+
         Accelerators.AirbenderUInt256Op(left, right, AddOp);
     }
 
@@ -82,6 +111,12 @@ internal static unsafe class AirbenderArithmetic
     public static void SubtractFrom(void* subtrahend, void* minuend)
     {
         Debug.Assert((((nuint)subtrahend | (nuint)minuend) & 31) == 0 && subtrahend != minuend);
+        if (OnOpenVm)
+        {
+            Accelerators.UInt256Sub((ulong*)subtrahend, (ulong*)minuend, (ulong*)subtrahend);
+            return;
+        }
+
         Accelerators.AirbenderUInt256Op(subtrahend, minuend, SubtractAndNegateOp);
     }
 
@@ -119,6 +154,13 @@ internal static unsafe class AirbenderArithmetic
     public static void ShiftLeft(void* value, int bits)
     {
         Debug.Assert((uint)bits < 256);
+        if (OnOpenVm)
+        {
+            s_shift[0] = (ulong)bits;
+            Accelerators.UInt256ShiftLeft((ulong*)value, (ulong*)value, s_shift);
+            return;
+        }
+
         MultiplyLow(value, PowerOfTwo(bits));
     }
 
@@ -129,6 +171,13 @@ internal static unsafe class AirbenderArithmetic
     {
         Debug.Assert((uint)bits < 256);
         Debug.Assert(((nuint)value & 31) == 0);
+        if (OnOpenVm)
+        {
+            s_shift[0] = (ulong)bits;
+            Accelerators.UInt256ShiftRight((ulong*)value, (ulong*)value, s_shift);
+            return;
+        }
+
         if (bits == 0)
             return;
 
@@ -140,6 +189,13 @@ internal static unsafe class AirbenderArithmetic
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ShiftRightArithmetic(void* value, int bits)
     {
+        if (OnOpenVm)
+        {
+            s_shift[0] = (ulong)bits;
+            Accelerators.UInt256ShiftRightArithmetic((ulong*)value, (ulong*)value, s_shift);
+            return;
+        }
+
         ulong* limbs = (ulong*)value;
         bool negative = (long)limbs[3] < 0;
         if (negative)
@@ -156,6 +212,15 @@ internal static unsafe class AirbenderArithmetic
     public static bool IsBelowConsuming(void* left, void* right, bool signed)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0);
+        if (OnOpenVm)
+        {
+            if (signed)
+                Accelerators.UInt256LessThanSigned((ulong*)left, (ulong*)left, (ulong*)right);
+            else
+                Accelerators.UInt256LessThan((ulong*)left, (ulong*)left, (ulong*)right);
+            return ((ulong*)left)[0] != 0;
+        }
+
         if (signed)
         {
             ((uint*)left)[7] ^= 0x80000000u;

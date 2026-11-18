@@ -22,6 +22,34 @@ public static partial class Accelerators
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256Mul(ulong* result, ulong* a, ulong* b) => zkvm_u256_mul(result, a, b);
 
+    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void UInt256Add(ulong* result, ulong* a, ulong* b) => zkvm_u256_add(result, a, b);
+
+    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void UInt256Sub(ulong* result, ulong* a, ulong* b) => zkvm_u256_sub(result, a, b);
+
+    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void UInt256ShiftLeft(ulong* result, ulong* a, ulong* b) => zkvm_u256_sll(result, a, b);
+
+    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void UInt256ShiftRight(ulong* result, ulong* a, ulong* b) => zkvm_u256_srl(result, a, b);
+
+    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void UInt256ShiftRightArithmetic(ulong* result, ulong* a, ulong* b) => zkvm_u256_sra(result, a, b);
+
+    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void UInt256LessThanSigned(ulong* result, ulong* a, ulong* b) => zkvm_u256_slt(result, a, b);
+
+    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static unsafe void UInt256LessThan(ulong* result, ulong* a, ulong* b) => zkvm_u256_sltu(result, a, b);
+
     /// <summary>
     /// XORs <paramref name="len"/> bytes of <paramref name="input"/> into the Keccak-f[1600] state <paramref name="buffer"/>.
     /// </summary>
