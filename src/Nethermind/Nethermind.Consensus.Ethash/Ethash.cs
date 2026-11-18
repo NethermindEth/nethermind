@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -159,8 +160,11 @@ namespace Nethermind.Consensus.Ethash
             return (BigInteger)resultAsInteger <= target;
         }
 
-        public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
+        public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null) => Mine(header, startNonce, default);
+
+        public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
@@ -177,6 +181,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] mixHash;
             while (true)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 (mixHash, ValueHash256 result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessOrEqualThanTarget(result.Bytes, header.Difficulty))
                 {
