@@ -296,17 +296,19 @@ jobs:
               "$fixtures/$file" > "$cases/$name.json"
           done < <(awk NF <<< "$CASES")
 
-          # A trusted input has no expected result where the envelope alone invalidates the block, and the tool says so
           extract() {
             dotnet run --project tools/StatelessInputGen/StatelessInputGen.csproj -c release -- \
-              fixture --source "$cases" --output fixture-cases "${@:2}" | tee "$RUNNER_TEMP/$1.log"
+              fixture --source "$cases" --output fixture-cases "${@:3}" | tee "$RUNNER_TEMP/$1.log"
             grep -E '^[^ ]+ [0-9a-f]{86} [0-9a-f]{64}$' "$RUNNER_TEMP/$1.log" > "fixture-cases/$1.txt" || true
+            # A trusted input has no expected result where the envelope alone invalidates the block, so a case
+            # like that would silently drop out of the trusted runs: every case must run in both formats
+            missing=$(awk 'NF { print $1 }' <<< "$CASES" | while read -r name; do
+              grep -q "^$name\.$2 " "fixture-cases/$1.txt" || echo "$name"
+            done)
+            [ -z "$missing" ] || { echo "::error::No $1 expected result for: $(paste -sd " " <<< "$missing")"; exit 1; }
           }
-          extract Ssz
-          extract Trusted --trusted
-          [ "$(wc -l < fixture-cases/Ssz.txt)" -eq "$(awk NF <<< "$CASES" | wc -l)" ] || \
-            { echo "::error::Every case must have an expected result"; exit 1; }
-          [ -s fixture-cases/Trusted.txt ] || { echo "::error::No trusted case has an expected result"; exit 1; }
+          extract Ssz ssz
+          extract Trusted nti --trusted
 
       - name: Upload the fixture cases
         uses: actions/upload-artifact@v7
