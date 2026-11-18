@@ -155,13 +155,9 @@ public static partial class TrustedInput
     /// <summary>Encodes the block and witness of a stateless input as a trusted input.</summary>
     /// <remarks>The engine API envelope, the versioned hashes and the claimed block hash, is not carried over: the
     /// trusted input binds the block through the hash of its header alone.</remarks>
-    public static byte[] FromStatelessInput(ReadOnlySpan<byte> statelessInput) =>
-        FromStatelessInput(statelessInput, includeHints: true);
-
-    /// <inheritdoc cref="FromStatelessInput(ReadOnlySpan{byte})"/>
     /// <param name="statelessInput">The SSZ input to convert.</param>
     /// <param name="includeHints">Whether to collect sender and recovery hints for Airbender batch verification.</param>
-    public static byte[] FromStatelessInput(ReadOnlySpan<byte> statelessInput, bool includeHints)
+    public static byte[] FromStatelessInput(ReadOnlySpan<byte> statelessInput, bool includeHints = true)
     {
         StatelessPayload payload = InputDecoder.Decode(statelessInput);
         Block block = payload.GetBlock();

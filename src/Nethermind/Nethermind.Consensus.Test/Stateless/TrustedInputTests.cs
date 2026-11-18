@@ -117,7 +117,9 @@ public class TrustedInputTests
     [Test]
     public async Task Converted_input_validates_and_reports_the_block_hash([Values] bool amsterdam, [Values] bool includeHints)
     {
-        (byte[] input, Block block) = await CreateInput(amsterdam, includeHints);
+        ValueHash256 message = ValueKeccak.Compute("message"u8);
+        byte[] recoveryCall = RecoveryCall(message, new EthereumEcdsa(BlockchainIds.Mainnet).Sign(TestItem.PrivateKeyB, in message));
+        (byte[] input, Block block) = await CreateInput(amsterdam, includeHints, recoveryCall);
         TrustedPayload payload = TrustedInput.Read(input);
         using Witness witness = payload.Witness;
 
@@ -129,7 +131,7 @@ public class TrustedInputTests
             Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(block.Hash));
             Assert.That(result.SchemaId, Is.EqualTo(amsterdam ? 0x9501 : 0x8001));
             Assert.That(payload.SenderHints.Length, Is.EqualTo(includeHints ? block.Transactions.Length * TrustedInput.SenderHintLength : 0));
-            if (!includeHints) Assert.That(payload.RecoveryHints, Is.Empty);
+            Assert.That(payload.RecoveryHints, Has.Length.EqualTo(includeHints ? TrustedInput.RecoveryHintLength : 0));
         }
     }
 
@@ -231,10 +233,7 @@ public class TrustedInputTests
         EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
         ValueHash256 message = ValueKeccak.Compute("message"u8);
         Signature signature = ecdsa.Sign(TestItem.PrivateKeyB, in message);
-        byte[] call = new byte[128];
-        message.Bytes.CopyTo(call);
-        call[63] = (byte)(27 + signature.RecoveryId);
-        signature.Bytes.CopyTo(call.AsSpan(64));
+        byte[] call = RecoveryCall(message, signature);
         byte[] badV = (byte[])call.Clone();
         badV[63] = 29;
         AuthorizationTuple authorization = ecdsa.Sign(TestItem.PrivateKeyC, BlockchainIds.Mainnet, TestItem.AddressD, 0);
@@ -326,14 +325,23 @@ public class TrustedInputTests
         }
     }
 
-    private static async Task<(byte[] Input, Block Block)> CreateInput(bool amsterdam, bool includeHints = true)
+    private static async Task<(byte[] Input, Block Block)> CreateInput(bool amsterdam, bool includeHints = true, byte[]? recoveryCall = null)
     {
-        (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(amsterdam, currentChainActivation: true);
+        (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(amsterdam, currentChainActivation: true, recoveryCall: recoveryCall);
         using (witness)
         {
             byte[] stateless = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
-            return (TrustedInput.FromStatelessInput(stateless, includeHints), block);
+            return (includeHints ? TrustedInput.FromStatelessInput(stateless) : TrustedInput.FromStatelessInput(stateless, includeHints: false), block);
         }
+    }
+
+    private static byte[] RecoveryCall(in ValueHash256 message, Signature signature)
+    {
+        byte[] call = new byte[128];
+        message.Bytes.CopyTo(call);
+        call[63] = (byte)(27 + signature.RecoveryId);
+        signature.Bytes.CopyTo(call.AsSpan(64));
+        return call;
     }
 
     private static StatelessValidationResult Execute(byte[] input)
