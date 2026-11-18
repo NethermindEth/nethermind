@@ -553,7 +553,10 @@ public class OtsRpcModuleTests
         using JsonDocument parameters = JsonDocument.Parse($"[\"0x{block.Number:x}\",{page},{size}]");
         using JsonRpcResponse response = await f.Container.Resolve<IJsonRpcService>().SendRequestAsync(new JsonRpcRequest
         {
-            JsonRpc = "2.0", Id = 1, Method = "ots_getBlockTransactions", Params = parameters.RootElement
+            JsonRpc = "2.0",
+            Id = 1,
+            Method = "ots_getBlockTransactions",
+            Params = parameters.RootElement
         }, new JsonRpcContext(RpcEndpoint.Http));
         using JsonDocument json = Serialize(response);
         Assert.That(json.RootElement.TryGetProperty("result", out JsonElement result), Is.True, json.RootElement.ToString());
