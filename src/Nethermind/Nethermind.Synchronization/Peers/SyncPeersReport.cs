@@ -192,7 +192,7 @@ namespace Nethermind.Synchronization.Peers
 
         private void AddPeerInfo(PeerInfo peerInfo)
         {
-            INodeStats stats = _stats.GetOrAdd(peerInfo.SyncPeer.Node);
+            INodeStats? stats = _stats.GetStatsOrNull(peerInfo.SyncPeer.Node);
             _stringBuilder.Append("   ").Append(peerInfo);
             _stringBuilder.Append('[').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.Latency));
             _stringBuilder.Append('|').Append(GetPaddedAverageTransferSpeed(stats, TransferSpeedType.Headers));
@@ -204,9 +204,9 @@ namespace Nethermind.Synchronization.Peers
             _stringBuilder.Append('[').Append(peerInfo.SyncPeer.ClientId).Append(']');
         }
 
-        private static string GetPaddedAverageTransferSpeed(INodeStats nodeStats, TransferSpeedType transferSpeedType)
+        private static string GetPaddedAverageTransferSpeed(INodeStats? nodeStats, TransferSpeedType transferSpeedType)
         {
-            long? speed = nodeStats.GetAverageTransferSpeed(transferSpeedType);
+            long? speed = nodeStats?.GetAverageTransferSpeed(transferSpeedType);
             if (speed is null)
             {
                 return "     ";

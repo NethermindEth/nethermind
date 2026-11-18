@@ -54,6 +54,91 @@ public class ColumnsDbTests
     public void TearDown() => _db.Dispose();
 
     [Test]
+    public void Atomic_batch_aborts_after_the_no_wal_flush_boundary_and_retries([Values] bool abort)
+    {
+        IDb first = _db.GetColumnDb(ReceiptsColumns.Blocks);
+        IDb second = _db.GetColumnDb(ReceiptsColumns.Transactions);
+        first.Set([255], [42]);
+        second.Set([255], [43]);
+
+        using (IAtomicColumnsWriteBatch<ReceiptsColumns> batch = _db.StartAtomicWriteBatch())
+        {
+            if (abort)
+            {
+                Stage(batch);
+                batch.Dispose();
+                Assert.Throws<ObjectDisposedException>(() => batch.Commit());
+            }
+            else
+            {
+                Assert.Throws<InvalidOperationException>(() => Stage(batch, fail: true));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 300; i++)
+            {
+                Assert.That(first.Get(BitConverter.GetBytes(i)), Is.Null);
+                Assert.That(second.Get(BitConverter.GetBytes(i)), Is.Null);
+            }
+            Assert.That(first.Get([255]), Is.EqualTo(new byte[] { 42 }));
+            Assert.That(second.Get([255]), Is.EqualTo(new byte[] { 43 }));
+        }
+
+        using (IAtomicColumnsWriteBatch<ReceiptsColumns> retry = _db.StartAtomicWriteBatch())
+        {
+            Stage(retry);
+            retry.Commit();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 300; i++)
+            {
+                Assert.That(first.Get(BitConverter.GetBytes(i)), Is.EqualTo(BitConverter.GetBytes(i + 1)));
+                Assert.That(second.Get(BitConverter.GetBytes(i)), Is.EqualTo(BitConverter.GetBytes(i + 2)));
+            }
+            Assert.That(first.Get([255]), Is.EqualTo(new byte[] { 44 }));
+            Assert.That(second.Get([255]), Is.Null);
+        }
+
+        static void Stage(IAtomicColumnsWriteBatch<ReceiptsColumns> batch, bool fail = false)
+        {
+            IWriteBatch slots = batch.GetColumnBatch(ReceiptsColumns.Blocks);
+            IWriteBatch nodes = batch.GetColumnBatch(ReceiptsColumns.Transactions);
+            slots.Set([255], [44], WriteFlags.DisableWAL);
+            nodes.Set([255], null, WriteFlags.DisableWAL);
+            for (int i = 0; i < 300; i++)
+            {
+                slots.Set(BitConverter.GetBytes(i), BitConverter.GetBytes(i + 1), WriteFlags.DisableWAL);
+                nodes.Set(BitConverter.GetBytes(i), BitConverter.GetBytes(i + 2), WriteFlags.DisableWAL);
+            }
+            if (fail) throw new InvalidOperationException("Interrupted after staging slots and nodes.");
+        }
+    }
+
+    [Test]
+    public void Terminal_atomic_batch_cannot_clear_a_reused_native_buffer([Values] bool commit)
+    {
+        IAtomicColumnsWriteBatch<ReceiptsColumns> first = _db.StartAtomicWriteBatch();
+        IWriteBatch firstColumn = first.GetColumnBatch(ReceiptsColumns.Blocks);
+        firstColumn.Set([1], [2], WriteFlags.DisableWAL);
+        if (commit) first.Commit();
+        else first.Dispose();
+
+        using IAtomicColumnsWriteBatch<ReceiptsColumns> next = _db.StartAtomicWriteBatch();
+        IWriteBatch nextColumn = next.GetColumnBatch(ReceiptsColumns.Blocks);
+        nextColumn.Set([3], [4], WriteFlags.DisableWAL);
+        Assert.Throws<ObjectDisposedException>(first.Clear);
+        Assert.Throws<ObjectDisposedException>(firstColumn.Clear);
+        Assert.Throws<ObjectDisposedException>(() => first.Commit());
+        Assert.Throws<ObjectDisposedException>(() => firstColumn.Set([5], [6]));
+        next.Commit();
+        Assert.That(_db.GetColumnDb(ReceiptsColumns.Blocks).Get([3]), Is.EqualTo(new byte[] { 4 }));
+    }
+
+    [Test]
     public void Snapshots_and_views_do_not_resolve_read_settings_again([Values] bool sequentialReadAhead)
     {
         DbConfig config = new();
@@ -288,6 +373,20 @@ public class ColumnsDbTests
 
         Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, keyLength));
         Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(count));
+    }
+
+    [Test]
+    public void Column_prefetch_reads_ahead_on_Linux_only()
+    {
+        const int count = 10;
+        const int keyLength = 8;
+        byte[] keys = new byte[count * keyLength];
+        for (int i = 0; i < count; i++) BinaryPrimitives.WriteInt64BigEndian(keys.AsSpan(i * keyLength, keyLength), i);
+        long before = Metrics.PrefetchedKeys;
+
+        ((IReadPrefetcher)_db.GetColumnDb(ReceiptsColumns.Blocks)).Prefetch(keys, keyLength);
+
+        Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(OperatingSystem.IsLinux() ? count : 0));
     }
 
     [Test]

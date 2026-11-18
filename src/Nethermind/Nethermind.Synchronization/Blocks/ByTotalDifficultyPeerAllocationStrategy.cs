@@ -21,8 +21,8 @@ namespace Nethermind.Synchronization.Blocks
 
         private static long? GetSpeed(INodeStatsManager nodeStatsManager, PeerInfo peerInfo)
         {
-            long? headersSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Headers);
-            long? bodiesSpeed = nodeStatsManager.GetOrAdd(peerInfo.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Bodies);
+            long? headersSpeed = nodeStatsManager.GetStatsOrNull(peerInfo.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.Headers);
+            long? bodiesSpeed = nodeStatsManager.GetStatsOrNull(peerInfo.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.Bodies);
             if (headersSpeed is null && bodiesSpeed is null)
             {
                 return null;
@@ -32,7 +32,15 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         public PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree)
+            => Allocate(currentPeer, peers, nodeStatsManager, blockTree, false)
+                ?? Allocate(currentPeer, peers, nodeStatsManager, blockTree, true);
+
+        private PeerInfo? Allocate(PeerInfo? currentPeer, IEnumerable<PeerInfo> peers, INodeStatsManager nodeStatsManager, IBlockTree blockTree, bool includeWeakPeers)
         {
+            if (!includeWeakPeers && currentPeer?.HasWeakness(AllocationContexts.ForwardHeader) == true)
+            {
+                currentPeer = null;
+            }
             int nullSpeed = -1;
             decimal averageSpeed = 0M;
             int peersCount = 0;
@@ -49,6 +57,7 @@ namespace Nethermind.Synchronization.Blocks
 
             foreach (PeerInfo info in peers)
             {
+                if (!includeWeakPeers && info.HasWeakness(AllocationContexts.ForwardHeader)) continue;
                 info.EnsureInitialized();
                 peersCount++;
 

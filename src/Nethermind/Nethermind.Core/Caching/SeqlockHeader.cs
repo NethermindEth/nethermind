@@ -11,27 +11,32 @@ namespace Nethermind.Core.Caching;
 /// Shared seqlock header constants and helpers for set-associative caches.
 ///
 /// Header layout (64-bit entry header):
-/// [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
+/// [Lock:1][Epoch:16][Hash:20][Seq:26][Occ:1]
 ///
 /// EpochAndCount layout (64-bit combined field):
-/// [0:1][Epoch:26][Count:37]
-/// Epoch occupies the same bit positions (37-62) as in the entry header,
+/// [0:1][Epoch:16][Count:47]
+/// Epoch occupies the same bit positions (47-62) as in the entry header,
 /// so (epochAndCount &amp; EpochMask) can be used directly for header comparison.
-/// Count occupies bits 0-36 (max ~137 billion). Atomic CAS on Clear() bumps
+/// Count occupies bits 0-46. Atomic CAS on Clear() bumps
 /// epoch and resets count in a single operation — no race window.
+///
+/// The sequence counter has 26 bits, so a reader that stops between its two header loads sees the same header again
+/// only after 2^26 writes to that entry. The epoch has 16 bits and wraps after 65,536 clears. So that an entry from
+/// an epoch that wrapped can never look current, every <see cref="SweepPeriod"/>-th clear wipes all entries of older
+/// epochs (see <see cref="IsSweepEpoch"/>); no entry then outlives half of the epoch range.
 /// </summary>
 internal static class SeqlockHeader
 {
     public const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
 
-    public const int EpochShift = 37;
-    public const long EpochMask = 0x7FFF_FFE0_0000_0000;  // bits 37-62 (26 bits)
+    public const int EpochShift = 47;
+    public const long EpochMask = 0x7FFF_8000_0000_0000;  // bits 47-62 (16 bits)
 
-    public const long HashMask = 0x0000_001F_FFFE_0000;   // bits 17-36 (20 bits)
-    public const int HashFieldShift = 17;                  // lowest bit of HashMask
+    public const long HashMask = 0x0000_7FFF_F800_0000;   // bits 27-46 (20 bits)
+    public const int HashFieldShift = 27;                  // lowest bit of HashMask
     public const long HashRawMask = HashMask >> HashFieldShift; // 20-bit mask at position 0
 
-    public const long SeqMask = 0x0000_0000_0001_FFFE;    // bits 1-16 (16 bits)
+    public const long SeqMask = 0x0000_0000_07FF_FFFE;    // bits 1-26 (26 bits)
     public const long SeqInc = 0x0000_0000_0000_0002;     // +1 in seq field
 
     public const long OccupiedBit = 1L;                    // bit 0
@@ -50,19 +55,31 @@ internal static class SeqlockHeader
     public static long ExtractHashPart(long hashCode, int hashShift) =>
         ((hashCode >> hashShift) & HashRawMask) << HashFieldShift;
 
-    /// <summary>Mask for the count portion of the combined epoch+count field (bits 0-36).</summary>
-    public const long CountMask = (1L << EpochShift) - 1;  // 0x0000_001F_FFFF_FFFF
+    /// <summary>Mask for the count portion of the combined epoch+count field (bits 0-46).</summary>
+    public const long CountMask = (1L << EpochShift) - 1;  // 0x0000_7FFF_FFFF_FFFF
+
+    /// <summary>Clears between two sweeps of older-epoch entries: a quarter of the 16-bit epoch range.</summary>
+    public const long SweepPeriod = 1L << 14;
+
+    private const long SweepEpochMask = (SweepPeriod - 1) << EpochShift;
 
     /// <summary>
-    /// Maximum supported capacity. Leaves 10 bits (1024×) of overflow headroom
-    /// between a realistic max count and the count field limit at bit 36, keeping
-    /// normal counts well away from the epoch boundary at bit 37.
+    /// True for every <see cref="SweepPeriod"/>-th epoch. The clear that publishes it must wipe all entries of older
+    /// epochs, also when the caller did not ask to release references, so that no entry survives an epoch wrap.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool IsSweepEpoch(long epoch) => (epoch & SweepEpochMask) == 0;
+
+    /// <summary>
+    /// Maximum supported capacity. Leaves 20 bits of overflow headroom
+    /// between a realistic max count and the count field limit at bit 46, keeping
+    /// normal counts well away from the epoch boundary at bit 47.
     /// </summary>
     public const uint MaxCapacity = 1u << 27; // 134,217,728
 
     /// <summary>
     /// Atomically bumps the epoch and resets count to zero in one CAS.
-    /// Returns the new epoch tag (bits 37-62, same positions as entry headers).
+    /// Returns the new epoch tag (bits 47-62, same positions as entry headers).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long ClearEpochAndCount(ref long epochAndCount)
@@ -81,17 +98,17 @@ internal static class SeqlockHeader
     }
 
     /// <summary>
-    /// Reads the epoch tag from the combined field (bits 37-62, same positions as entry header).
+    /// Reads the epoch tag from the combined field (bits 47-62, same positions as entry header).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static long ReadEpoch(ref long epochAndCount) => Volatile.Read(ref epochAndCount) & EpochMask;
 
-    /// <summary>Half of the epoch range, in EpochMask bit positions (2^25 &lt;&lt; EpochShift).</summary>
+    /// <summary>Half of the epoch range, in EpochMask bit positions (2^15 &lt;&lt; EpochShift).</summary>
     private const long EpochHalfRangeShifted = 1L << 62;
 
     /// <summary>
     /// True if <paramref name="headerEpoch"/> is strictly older than <paramref name="currentEpoch"/>,
-    /// comparing modularly over the 26-bit epoch field. Used to distinguish stale slots from
+    /// comparing modularly over the 16-bit epoch field. Used to distinguish stale slots from
     /// future-epoch slots a concurrent <see cref="ClearEpochAndCount"/> has published mid-walk.
     /// </summary>
     /// <param name="headerEpoch">Epoch bits as stored in a header — i.e. <c>h &amp; EpochMask</c>.</param>
@@ -104,7 +121,7 @@ internal static class SeqlockHeader
     }
 
     /// <summary>
-    /// Reads the count from the combined field (bits 0-36).
+    /// Reads the count from the combined field (bits 0-46).
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int ReadCount(ref long epochAndCount) => (int)(Volatile.Read(ref epochAndCount) & CountMask);

@@ -758,6 +758,43 @@ public class SessionTests
         Assert.That(session.BytesReceived, Is.EqualTo(data.Length * 5));
     }
 
+    [TestCase(0, "p2p", 0)]
+    [TestCase(9, "p2p", 9)]
+    [TestCase(10, "aaa", 0)]
+    [TestCase(19, "aaa", 9)]
+    [TestCase(20, "bbb", 0)]
+    [TestCase(24, "bbb", 4)]
+    [TestCase(25, "ccc", 0)]
+    [TestCase(26, null, 0)]
+    [TestCase(255, null, 0)]
+    public void Receive_message_enforces_negotiated_id_space(int code, string? protocol, int messageId)
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        IProtocolHandler[] handlers = [BuildHandler("p2p", 10), BuildHandler("aaa", 10), BuildHandler("bbb", 5), BuildHandler("ccc", 1)];
+        foreach (IProtocolHandler handler in handlers) session.AddProtocolHandler(handler);
+        int received = 0;
+        session.MsgReceived += (_, _) => received++;
+        DisconnectReason? reason = null;
+        session.Disconnected += (_, args) => reason = args.DisconnectReason;
+
+        session.ReceiveMessage(new Packet("---", code, new byte[10]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.IsClosing, Is.EqualTo(protocol is null));
+            Assert.That(reason, Is.EqualTo(protocol is null ? DisconnectReason.BreachOfProtocol : (DisconnectReason?)null));
+            Assert.That(received, Is.EqualTo(protocol is null ? 0 : 1));
+            foreach (IProtocolHandler handler in handlers)
+            {
+                handler.Received(handler.ProtocolCode == protocol ? 1 : 0)
+                    .HandleMessage(Arg.Is<Packet>(p => p.Protocol == protocol && p.PacketType == messageId));
+                if (protocol is null) handler.DidNotReceive().HandleMessage(Arg.Any<Packet>());
+            }
+        }
+    }
+
     [Test]
     public void Updates_local_and_remote_metrics_on_disconnects()
     {

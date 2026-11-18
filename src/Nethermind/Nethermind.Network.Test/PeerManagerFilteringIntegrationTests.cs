@@ -44,13 +44,14 @@ public class PeerManagerFilteringIntegrationTests
             MaxOutgoingConnectPerSec = 1000000
         };
 
-        NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
+        using PeerAddressPolicy policy = new(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback), new LocalAddressSource(LimboLogs.Instance, () => []));
+        NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions(), policy);
         IStaticNodesManager staticNodesManager = Substitute.For<IStaticNodesManager>();
         staticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
         TestNodeSource testNodeSource = new();
         CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), staticNodesManager, testNodeSource);
         ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-        IPeerPool peerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
+        IPeerPool peerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager, TimeProvider.System, policy);
         PeerManager peerManager = new(trackingMock, peerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
 
         try
@@ -165,6 +166,7 @@ public class PeerManagerFilteringIntegrationTests
 
     private class Context : IAsyncDisposable
     {
+        private readonly PeerAddressPolicy _addressPolicy;
         public FilterRejectingRlpxMock RlpxMock { get; }
         public PeerManager PeerManager { get; }
         public IPeerPool PeerPool { get; }
@@ -184,13 +186,14 @@ public class PeerManagerFilteringIntegrationTests
                 MaxOutgoingConnectPerSec = 1000000
             };
 
-            NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions());
+            _addressPolicy = new(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback), new LocalAddressSource(LimboLogs.Instance, () => []));
+            NodesLoader nodesLoader = new(networkConfig, stats, storage, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, new NodesLoaderOptions(), _addressPolicy);
             StaticNodesManager = Substitute.For<IStaticNodesManager>();
             StaticNodesManager.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
             TestNodeSource = new TestNodeSource();
             CompositeNodeSource nodeSources = new(nodesLoader, Substitute.For<IDiscoveryApp>(), StaticNodesManager, TestNodeSource);
             ITrustedNodesManager trustedNodesManager = Substitute.For<ITrustedNodesManager>();
-            PeerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager);
+            PeerPool = new PeerPool(nodeSources, stats, storage, networkConfig, LimboLogs.Instance, trustedNodesManager, TimeProvider.System, _addressPolicy);
             PeerManager = new PeerManager(RlpxMock, PeerPool, stats, networkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
         }
 
@@ -198,6 +201,7 @@ public class PeerManagerFilteringIntegrationTests
         {
             await PeerManager.StopAsync();
             await PeerPool.StopAsync();
+            _addressPolicy.Dispose();
         }
     }
 

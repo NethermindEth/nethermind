@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -16,7 +15,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -39,13 +37,15 @@ namespace Nethermind.Synchronization.Peers
         public const int MaxAllocationSlots = byte.MaxValue;
 
         private readonly IBlockTree _blockTree;
+        private readonly ulong _configuredPivotNumber;
+        internal TimeProvider RefreshTimeProvider { get; init; } = TimeProvider.System;
         private readonly ILogger _logger;
-        private readonly Channel<RefreshTotalDiffTask> _peerRefreshQueue = Channel.CreateUnbounded<RefreshTotalDiffTask>();
+        private readonly Lock _refreshLock = new();
 
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new();
         private readonly AllocationAllowances _allocationAllowances;
 
-        private readonly ConcurrentDictionary<PublicKey, CancellationTokenSource> _refreshCancelTokens = new();
+        private readonly Dictionary<PublicKey, RefreshState> _refreshes = [];
 
         private readonly INodeStatsManager _stats;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
@@ -57,7 +57,6 @@ namespace Nethermind.Synchronization.Peers
         private DateTime _lastUselessPeersDropTime = DateTime.UtcNow;
 
         private readonly CancellationTokenSource _refreshLoopCancellation = new();
-        private Task? _refreshLoopTask;
 
         private volatile TaskCompletionSource _signal = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TimeSpan _timeBeforeWakingShallowSleepingPeerUp = TimeSpan.FromMilliseconds(DefaultUpgradeIntervalInMs);
@@ -70,9 +69,7 @@ namespace Nethermind.Synchronization.Peers
             ISyncConfig syncConfig,
             ILogManager logManager)
         : this(blockTree, nodeStatsManager, betterPeerStrategy, logManager, networkConfig.MaxActivePeers, networkConfig.PriorityPeersMaxCount, syncConfig.AllocationSlots)
-        {
-
-        }
+        => _configuredPivotNumber = syncConfig.PivotNumber;
 
         // Internal so Autofac auto-wire only sees the public ctor above. The int defaults here would otherwise
         // win Autofac's "greediest resolvable constructor" race over the INetworkConfig/ISyncConfig overload.
@@ -103,7 +100,11 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsDebug) _logger.Debug($"PeerMaxCount: {PeerMaxCount}, PriorityPeerMaxCount: {PriorityPeerMaxCount}, AllocationSlots: {slots}");
         }
 
-        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts) => ReportWeakPeer(peerInfo, allocationContexts);
+        public void ReportNoSyncProgress(PeerInfo peerInfo, AllocationContexts allocationContexts)
+        {
+            peerInfo.RecordNoProgress(allocationContexts);
+            ReportWeakPeer(peerInfo, allocationContexts, transient: true);
+        }
 
         public void ReportBreachOfProtocol(PeerInfo? peerInfo, DisconnectReason disconnectReason, string details)
         {
@@ -118,7 +119,10 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public void ReportWeakPeer(PeerInfo? weakPeer, AllocationContexts allocationContexts)
+        public void ReportWeakPeer(PeerInfo? weakPeer, AllocationContexts allocationContexts) =>
+            ReportWeakPeer(weakPeer, allocationContexts, transient: false);
+
+        private static void ReportWeakPeer(PeerInfo? weakPeer, AllocationContexts allocationContexts, bool transient)
         {
             if (weakPeer is null)
             {
@@ -128,7 +132,7 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            AllocationContexts sleeps = weakPeer.IncreaseWeakness(allocationContexts);
+            AllocationContexts sleeps = weakPeer.IncreaseWeakness(allocationContexts, transient);
             if (sleeps != AllocationContexts.None)
             {
                 weakPeer.PutToSleep(sleeps, DateTime.UtcNow);
@@ -141,32 +145,11 @@ namespace Nethermind.Synchronization.Peers
             using SyncPeerAllocation syncPeerAllocation = await Allocate(allocationStrategy, context, 1000, token);
             if (!syncPeerAllocation.HasPeer) return null;
 
-            return _stats.GetOrAdd(syncPeerAllocation.Current!.SyncPeer.Node).GetCurrentRequestLimit(requestType);
+            return _stats.GetStatsOrNull(syncPeerAllocation.Current!.SyncPeer.Node)?.GetCurrentRequestLimit(requestType);
         }
 
         public void Start()
         {
-            _refreshLoopTask = Task.Factory.StartNew(
-                    RunRefreshPeerLoop,
-                    _refreshLoopCancellation.Token,
-                    TaskCreationOptions.LongRunning,
-                    TaskScheduler.Default).Unwrap()
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        if (_logger.IsError) _logger.Error("Init peer loop encountered an exception.", t.Exception);
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsDebug) _logger.Debug("Init peer loop stopped.");
-                    }
-                    else if (t.IsCompleted)
-                    {
-                        if (_logger.IsError) _logger.Error("Peer loop completed unexpectedly.");
-                    }
-                });
-
             _isStarted = true;
             StartUpgradeTimer();
         }
@@ -235,7 +218,7 @@ namespace Nethermind.Synchronization.Peers
         public void RefreshTotalDifficulty(ISyncPeer syncPeer, Hash256 blockHash)
         {
             RefreshTotalDiffTask task = new(blockHash, syncPeer);
-            _peerRefreshQueue.Writer.TryWrite(task);
+            QueueRefresh(task);
         }
 
         public void AddPeer(ISyncPeer syncPeer)
@@ -253,7 +236,7 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            PeerInfo peerInfo = new(syncPeer, _allocationAllowances);
+            PeerInfo peerInfo = new(syncPeer, _allocationAllowances, RefreshTimeProvider, _blockTree, _configuredPivotNumber);
             if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
             {
                 return;
@@ -268,17 +251,20 @@ namespace Nethermind.Synchronization.Peers
             }
             if (_logger.IsTrace) TracePeerCount();
 
-            BlockHeader? header = _blockTree.FindHeader(syncPeer.HeadHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            Hash256 expectedHash = syncPeer.HeadHash;
+            ulong expectedNumber = syncPeer.HeadNumber;
+            BlockHeader? header = _blockTree.FindHeader(expectedHash, BlockTreeLookupOptions.None);
             if (header is not null)
             {
-                syncPeer.HeadNumber = header.Number;
-                UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
+                if (syncPeer.TrySetHead(expectedHash, expectedNumber, expectedHash, header.Number))
+                    syncPeer.TotalDifficulty = header.TotalDifficulty ?? syncPeer.TotalDifficulty;
+                syncPeer.IsInitialized = true;
             }
             else
             {
                 if (_logger.IsTrace) TraceAddingToRefreshQueue(syncPeer);
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
-                _peerRefreshQueue.Writer.TryWrite(new RefreshTotalDiffTask(syncPeer));
+                QueueRefresh(new RefreshTotalDiffTask(syncPeer));
             }
         }
 
@@ -299,7 +285,8 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            if (!_peers.TryRemove(id, out _))
+            if (!_peers.TryGetValue(id, out PeerInfo? removedPeer) || !ReferenceEquals(removedPeer.SyncPeer, syncPeer)
+                || !_peers.TryRemove(new KeyValuePair<PublicKey, PeerInfo>(id, removedPeer)))
             {
                 // possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
@@ -314,30 +301,36 @@ namespace Nethermind.Synchronization.Peers
             }
             if (_logger.IsTrace) TracePeerCount();
 
-            if (_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? initCancelTokenSource))
+            CancellationTokenSource? cancellation = null;
+            lock (_refreshLock)
             {
-                try
+                if (_refreshes.TryGetValue(id, out RefreshState? refresh))
                 {
-                    initCancelTokenSource?.Cancel();
-                }
-                catch (ObjectDisposedException)
-                {
-                    // The refresh continuation disposed the source between the lookup and the cancel.
-                    if (_logger.IsTrace) _logger.Trace($"Refresh of {syncPeer.Node?.ToString("c"):hide} completed while the peer was being removed.");
+                    if (ReferenceEquals(refresh.Pending?.SyncPeer, syncPeer)) refresh.Pending = null;
+                    if (ReferenceEquals(refresh.CurrentPeer, syncPeer)) cancellation = refresh.Cancellation;
                 }
             }
+            try { cancellation?.Cancel(); }
+            catch (ObjectDisposedException) { }
         }
 
-        // Replaces only the dictionary target; the refresh continuation retains ownership of the
+        // Replaces only the cancellation target; the refresh worker retains ownership of the
         // original source and disposes it. Used to reproduce the cancel-versus-dispose race.
         internal bool TryReplaceRefreshCancellation(PublicKey id, CancellationTokenSource replacement)
         {
-            if (!_refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current)) return false;
-            return _refreshCancelTokens.TryUpdate(id, replacement, current);
+            lock (_refreshLock)
+            {
+                if (!_refreshes.TryGetValue(id, out RefreshState? refresh) || refresh.Cancellation is null) return false;
+                refresh.Cancellation = replacement;
+                return true;
+            }
         }
 
-        internal bool RefreshCancellationIs(PublicKey id, CancellationTokenSource expected) =>
-            _refreshCancelTokens.TryGetValue(id, out CancellationTokenSource? current) && ReferenceEquals(current, expected);
+        internal bool RefreshCancellationIs(PublicKey id, CancellationTokenSource expected)
+        {
+            lock (_refreshLock)
+                return _refreshes.TryGetValue(id, out RefreshState? refresh) && ReferenceEquals(refresh.Cancellation, expected);
+        }
 
         public void SetPeerPriority(PublicKey id)
         {
@@ -417,61 +410,79 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        private async Task RunRefreshPeerLoop()
+        private void QueueRefresh(RefreshTotalDiffTask task)
         {
-            await foreach (RefreshTotalDiffTask refreshTask in _peerRefreshQueue.Reader.ReadAllAsync(_refreshLoopCancellation.Token))
+            PublicKey id = task.SyncPeer.Node.Id;
+            lock (_refreshLock)
             {
-                ISyncPeer syncPeer = refreshTask.SyncPeer;
-                if (_logger.IsTrace) _logger.Trace($"Refreshing info for {syncPeer:hide}.");
-                CancellationTokenSource initCancelSource = _refreshCancelTokens[syncPeer.Node.Id] = new CancellationTokenSource();
-                CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _refreshLoopCancellation.Token);
-
-#pragma warning disable 4014
-                ExecuteRefreshTask(refreshTask, linkedSource.Token).ContinueWith(t =>
-#pragma warning restore 4014
+                if (!_isStarted || !IsCurrentPeer(task.SyncPeer)) return;
+                if (_refreshes.TryGetValue(id, out RefreshState? existing))
                 {
-                    _refreshCancelTokens.TryRemove(syncPeer.Node.Id, out _);
-                    if (t.IsFaulted)
-                    {
-                        if (t.HasTimeoutException())
-                        {
-                            if (_logger.IsTrace) _logger.Trace($"Refreshing info for {syncPeer:hide} failed due to timeout: {t.Exception.Message:hide}");
-                        }
-                        else if (_logger.IsDebug)
-                        {
-                            _logger.Debug($"Refreshing info for {syncPeer:hide} failed {t.Exception:hide}");
-                        }
-                    }
-                    else if (t.IsCanceled)
-                    {
-                        if (_logger.IsTrace) _logger.Trace($"Refresh peer info canceled: {syncPeer.Node.ToString("s"):hide}");
-                    }
-                    else
-                    {
-                        UpgradeAllocations();
-                        // cases when we want other nodes to resolve the impasse (check Goerli discussion on 5 out of 9 validators)
-                        if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.BestSuggestedHeader?.TotalDifficulty &&
-                            syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
-                        {
-                            Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
-                            if (block is not null) // can be null if fast syncing headers only
-                            {
-                                if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer:hide}");
-                                NotifyPeerBlock?.Invoke(this, new PeerBlockNotificationEventArgs(syncPeer, block));
-                            }
-                        }
-                    }
-
-                    if (_logger.IsTrace) TraceRefreshedPeerInfo(syncPeer);
-
-                    initCancelSource.Dispose();
-                    linkedSource.Dispose();
-                });
+                    existing.Pending = task;
+                    return;
+                }
+                RefreshState state = new() { Pending = task };
+                _refreshes.Add(id, state);
+                state.Work = Task.Run(() => RunPeerRefresh(id, state));
             }
-
-            if (_logger.IsInfo) _logger.Info("Exiting sync peer refresh loop");
         }
 
+        private bool IsCurrentPeer(ISyncPeer peer) =>
+            _peers.TryGetValue(peer.Node.Id, out PeerInfo? current) && ReferenceEquals(current.SyncPeer, peer);
+
+        private async Task RunPeerRefresh(PublicKey id, RefreshState state)
+        {
+            while (true)
+            {
+                RefreshTotalDiffTask refreshTask;
+                CancellationTokenSource cancellation;
+                lock (_refreshLock)
+                {
+                    if (!_isStarted || state.Pending is not { } pending || !IsCurrentPeer(pending.SyncPeer))
+                    {
+                        _refreshes.Remove(id);
+                        return;
+                    }
+                    refreshTask = pending;
+                    state.Pending = null;
+                    state.CurrentPeer = pending.SyncPeer;
+                    cancellation = CancellationTokenSource.CreateLinkedTokenSource(_refreshLoopCancellation.Token);
+                    state.Cancellation = cancellation;
+                }
+                ISyncPeer syncPeer = refreshTask.SyncPeer;
+                try
+                {
+                    await ExecuteRefreshTask(refreshTask, cancellation.Token);
+                    if (_logger.IsTrace) TraceRefreshedPeerInfo(syncPeer);
+                    if (!IsCurrentPeer(syncPeer) || cancellation.IsCancellationRequested) continue;
+                    UpgradeAllocations();
+                    if (syncPeer.TotalDifficulty is { } syncPeerTD && syncPeerTD == _blockTree.BestSuggestedHeader?.TotalDifficulty &&
+                        syncPeer.HeadHash != _blockTree.BestSuggestedHeader?.Hash)
+                    {
+                        Block block = _blockTree.FindBlock(_blockTree.BestSuggestedHeader.Hash!, BlockTreeLookupOptions.None);
+                        if (block is not null)
+                        {
+                            if (_logger.IsDebug) _logger.Debug($"Sending my best block {block} to {syncPeer:hide}");
+                            NotifyPeerBlock?.Invoke(this, new PeerBlockNotificationEventArgs(syncPeer, block));
+                        }
+                    }
+                }
+                catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+                catch (Exception exception)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Refreshing info for {syncPeer:hide} failed {exception:hide}");
+                }
+                finally
+                {
+                    lock (_refreshLock)
+                    {
+                        state.Cancellation = null;
+                        state.CurrentPeer = null;
+                    }
+                    cancellation.Dispose();
+                }
+            }
+        }
         private void StartUpgradeTimer()
         {
             if (_logger.IsDebug) _logger.Debug("Starting eth sync peer upgrade timer");
@@ -544,20 +555,31 @@ namespace Nethermind.Synchronization.Peers
         {
             string? IsPeerWorstWithReason(PeerInfo currentPeer, PeerInfo toCompare)
             {
-                if (toCompare.HeadNumber < currentPeer.HeadNumber)
+                bool currentHasNoProgress = currentPeer.HasNoProgress(AllocationContexts.Headers | AllocationContexts.Blocks | AllocationContexts.ForwardHeader);
+                bool comparedHasNoProgress = toCompare.HasNoProgress(AllocationContexts.Headers | AllocationContexts.Blocks | AllocationContexts.ForwardHeader);
+                if (currentHasNoProgress != comparedHasNoProgress)
                 {
-                    return "LOWEST NUMBER";
+                    return comparedHasNoProgress ? "NO SYNC PROGRESS" : null;
                 }
 
-                if (toCompare.TotalDifficulty is not null &&
-                    currentPeer.TotalDifficulty is not null &&
-                    toCompare.TotalDifficulty < currentPeer.TotalDifficulty)
+                if (!toCompare.IsWithinInitialRefreshInterval && !currentPeer.IsWithinInitialRefreshInterval
+                    && toCompare.ServedHeadNumber != currentPeer.ServedHeadNumber)
                 {
-                    return "LOWEST DIFFICULTY";
+                    return toCompare.ServedHeadNumber < currentPeer.ServedHeadNumber ? "LOWEST SERVED NUMBER" : null;
                 }
 
-                if ((_stats.GetOrAdd(toCompare.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue) >
-                    (_stats.GetOrAdd(currentPeer.SyncPeer.Node).GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue))
+                if (toCompare.EvictionHeadNumber != currentPeer.EvictionHeadNumber)
+                {
+                    return toCompare.EvictionHeadNumber < currentPeer.EvictionHeadNumber ? "LOWEST NUMBER" : null;
+                }
+
+                if (toCompare.HasTimeoutEvidence != currentPeer.HasTimeoutEvidence)
+                {
+                    return toCompare.HasTimeoutEvidence ? "SYNC TIMEOUT" : null;
+                }
+
+                if ((_stats.GetStatsOrNull(toCompare.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue) >
+                    (_stats.GetStatsOrNull(currentPeer.SyncPeer.Node)?.GetAverageTransferSpeed(TransferSpeedType.Latency) ?? long.MaxValue))
                 {
                     return "HIGHEST PING";
                 }
@@ -602,65 +624,59 @@ namespace Nethermind.Synchronization.Peers
         private async Task ExecuteRefreshTask(RefreshTotalDiffTask refreshTotalDiffTask, CancellationToken token)
         {
             ISyncPeer syncPeer = refreshTotalDiffTask.SyncPeer;
-            if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {syncPeer.Node.ToString("s"):hide}");
-
-            Task<BlockHeader?> getHeadHeaderTask = syncPeer.GetHeadBlockHeader(refreshTotalDiffTask.BlockHash ?? syncPeer.HeadHash, token);
-            CancellationTokenSource delaySource = new();
-            CancellationTokenSource linkedSource = CancellationTokenSource.CreateLinkedTokenSource(delaySource.Token, token);
-            Task delayTask = Task.Delay(Timeouts.Eth, linkedSource.Token);
-            Task firstToComplete = await Task.WhenAny(getHeadHeaderTask, delayTask);
-            await firstToComplete.ContinueWith(
-                t =>
+            Hash256 expectedHash = syncPeer.HeadHash;
+            ulong claimedNumber = syncPeer.HeadNumber;
+            Hash256 requestedHash = refreshTotalDiffTask.BlockHash ?? expectedHash;
+            bool requestedHead = requestedHash == expectedHash;
+            void DemoteUnservedHead()
+            {
+                if (requestedHead && _peers.TryGetValue(syncPeer.Node.Id, out PeerInfo? peer) && ReferenceEquals(peer.SyncPeer, syncPeer))
+                    peer.DemoteHeadClaim(requestedHash, claimedNumber);
+            }
+            using CancellationTokenSource timeoutCancellation = new(Timeouts.Eth, RefreshTimeProvider);
+            using CancellationTokenSource requestCancellation = CancellationTokenSource.CreateLinkedTokenSource(token, timeoutCancellation.Token);
+            try
+            {
+                BlockHeader? header = await syncPeer.GetHeadBlockHeader(
+                    requestedHash, requestCancellation.Token).WaitAsync(requestCancellation.Token);
+                token.ThrowIfCancellationRequested();
+                if (!IsCurrentPeer(syncPeer)) return;
+                if (header is null)
                 {
-                    try
-                    {
-                        if (firstToComplete == delayTask)
-                        {
-                            ReportRefreshFailed(syncPeer, "timeout", new TimeoutException());
-                        }
-                        else if (firstToComplete.IsFaulted)
-                        {
-                            ReportRefreshFailed(syncPeer, "faulted", t.Exception);
-                        }
-                        else if (firstToComplete.IsCanceled)
-                        {
-                            _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncCancelled : NodeStatsEventType.SyncInitCancelled);
-                            token.ThrowIfCancellationRequested();
-                        }
-                        else
-                        {
-                            delaySource.Cancel();
-                            BlockHeader? header = getHeadHeaderTask.Result;
-                            if (header is null)
-                            {
-                                ReportRefreshFailed(syncPeer, "null response");
-                                return;
-                            }
-
-                            if (!HeaderValidator.ValidateHash(header))
-                            {
-                                ReportRefreshFailed(syncPeer, "invalid header hash");
-                                return;
-                            }
-
-                            if (_logger.IsTrace) _logger.Trace($"Received head block info from {syncPeer.Node?.ToString("c"):hide} with head block {header.ToString(BlockHeader.Format.Short)}, total difficulty {header.TotalDifficulty}");
-                            if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
-
-                            if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number}");
-
-                            UpdateSyncPeerHeadIfHeaderIsBetter(syncPeer, header);
-
-                            SignalPeersChanged();
-                        }
-                    }
-                    finally
-                    {
-                        linkedSource.Dispose();
-                        delaySource.Dispose();
-                    }
-                }, token);
+                    DemoteUnservedHead();
+                    ReportRefreshFailed(syncPeer, "null response");
+                    return;
+                }
+                if (!HeaderValidator.ValidateHash(header))
+                {
+                    DemoteUnservedHead();
+                    ReportRefreshFailed(syncPeer, "invalid header hash");
+                    return;
+                }
+                if (!syncPeer.IsInitialized) _stats.ReportSyncEvent(syncPeer.Node, NodeStatsEventType.SyncInitCompleted);
+                if (header.Hash != requestedHash)
+                {
+                    ReportRefreshFailed(syncPeer, "unexpected header hash");
+                    return;
+                }
+                UpdateSyncPeerHead(syncPeer, header, expectedHash, claimedNumber, null,
+                    served: refreshTotalDiffTask.BlockHash is null, clearRefresh: refreshTotalDiffTask.BlockHash is null);
+                SignalPeersChanged();
+            }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+            catch (OperationCanceledException)
+            {
+                if (IsCurrentPeer(syncPeer) && ReportRefreshFailedCore(syncPeer, "timeout", new TimeoutException()) >= 3)
+                    DemoteUnservedHead();
+            }
+            catch (Exception exception)
+            {
+                if (IsCurrentPeer(syncPeer))
+                {
+                    if (ReportRefreshFailedCore(syncPeer, "faulted", exception) >= 3) DemoteUnservedHead();
+                }
+            }
         }
-
         /// <summary>
         ///     This is an important operation for long lasting allocations.
         ///     For example the full sync tends to allocate the same peer for many minutes and we use this method to ensure that
@@ -677,58 +693,90 @@ namespace Nethermind.Synchronization.Peers
 
         private void WakeUpPeerThatSleptEnough()
         {
+            bool limitBackoff = PeerCount <= 2;
             foreach (PeerInfo info in AllPeers)
             {
-                info.TryToWakeUp(DateTime.UtcNow, _timeBeforeWakingShallowSleepingPeerUp);
+                info.TryToWakeUp(DateTime.UtcNow, _timeBeforeWakingShallowSleepingPeerUp, limitBackoff);
             }
         }
 
-        public void UpdateSyncPeerHeadIfHeaderIsBetter(ISyncPeer syncPeer, BlockHeader header)
+        /// <inheritdoc />
+        public void UpdateSyncPeerHeadIfHeaderIsBetter(ISyncPeer syncPeer, BlockHeader header, Hash256 consensusRequestedHash) =>
+            UpdateSyncPeerHead(syncPeer, header, syncPeer.HeadHash, syncPeer.HeadNumber, consensusRequestedHash, served: true, clearRefresh: true);
+
+        private void UpdateSyncPeerHead(ISyncPeer syncPeer, BlockHeader header, Hash256 expectedHash, ulong expectedNumber,
+            Hash256? consensusRequestedHash, bool served, bool clearRefresh)
         {
-            if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number}");
-            BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
-            if (parent is not null && (parent.TotalDifficulty ?? 0) != 0)
+            if (!IsCurrentPeer(syncPeer)) return;
+            if (header.Hash is null || !HeaderValidator.ValidateHash(header))
             {
-                UInt256 newTotalDifficulty = (parent.TotalDifficulty ?? UInt256.Zero) + header.Difficulty;
-                bool newValueIsNotWorseThanPeer = _betterPeerStrategy.Compare((newTotalDifficulty, header.Number), syncPeer) >= 0;
-                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number} based on totalDifficulty, newValueIsNotWorseThanPeer {newValueIsNotWorseThanPeer}, newTotalDifficulty: {newTotalDifficulty}, header.Difficulty: {header.Difficulty}, Parent total difficulty: {parent.TotalDifficulty}");
-                if (newValueIsNotWorseThanPeer)
-                {
-                    syncPeer.TotalDifficulty = newTotalDifficulty;
-                    syncPeer.HeadNumber = header.Number;
-                    syncPeer.HeadHash = header.Hash!;
-                    PeerRefreshed?.Invoke(this, new PeerHeadRefreshedEventArgs(syncPeer, header));
-                }
+                ReportRefreshFailed(syncPeer, "invalid header hash");
+                return;
             }
-            else if (header.Number > syncPeer.HeadNumber)
+            BlockHeader? known = _blockTree.FindHeader(header.Hash, BlockTreeLookupOptions.None);
+            bool trusted = known is not null || consensusRequestedHash is { IsZero: false } && consensusRequestedHash == header.Hash;
+            BlockHeader? parent = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None);
+            if (parent is not null && (parent.Number == ulong.MaxValue || header.Number != parent.Number + 1))
             {
-                if (_logger.IsTrace) _logger.Trace($"REFRESH Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} to {header.Number} based on headNumber");
-                syncPeer.HeadNumber = header.Number;
-                syncPeer.HeadHash = header.Hash!;
+                ReportRefreshFailed(syncPeer, "invalid parent number");
+                return;
+            }
+            UInt256? totalDifficulty = trusted ? known?.TotalDifficulty : null;
+            if (trusted && totalDifficulty is null && parent?.TotalDifficulty is { } parentDifficulty)
+                totalDifficulty = parentDifficulty + header.Difficulty;
+            bool better = header.Number > expectedNumber
+                || totalDifficulty is { } difficulty && _betterPeerStrategy.Compare((difficulty, header.Number), syncPeer) > 0;
+            if (better && syncPeer.TrySetHead(expectedHash, expectedNumber, header.Hash, header.Number))
+            {
+                if (totalDifficulty is not null) syncPeer.TotalDifficulty = totalDifficulty;
+                PeerRefreshed?.Invoke(this, new PeerHeadRefreshedEventArgs(syncPeer, header));
             }
             syncPeer.IsInitialized = true;
+            if (trusted && _peers.TryGetValue(syncPeer.Node.Id, out PeerInfo? peer) && ReferenceEquals(peer.SyncPeer, syncPeer))
+            {
+                if (served) peer.RecordServedHead(header.Number);
+                if (clearRefresh) peer.RecordRefreshResponse();
+            }
         }
 
-        public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null)
+        public void ReportRefreshFailed(ISyncPeer syncPeer, string reason, Exception? exception = null) =>
+            ReportRefreshFailedCore(syncPeer, reason, exception);
+
+        private int ReportRefreshFailedCore(ISyncPeer syncPeer, string reason, Exception? exception)
         {
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node?.ToString("c"):hide}, {reason:hide}, {exception:hide}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
-
-            if (exception is OperationCanceledException or TimeoutException)
+            if (IsRefreshTimeout(exception))
             {
-                // We don't want to disconnect on timeout. It could be that we are downloading from the peer, or we have some connection issue.
-                if (_peers.TryGetValue(syncPeer.Node.Id, out PeerInfo? existing))
-                {
-                    ReportWeakPeer(existing, AllocationContexts.All);
-                }
+                if (_peers.TryGetValue(syncPeer.Node.Id, out PeerInfo? existing) && ReferenceEquals(existing.SyncPeer, syncPeer))
+                    return existing.RecordRefreshTimeout();
             }
             else
             {
                 syncPeer.Disconnect(DisconnectReason.PeerRefreshFailed, $"refresh peer info fault - {reason}");
             }
+            return 0;
         }
 
         private void UpdatePeerCountMetric(NodeClientType clientType, int delta) => Metrics.SyncPeers.AddOrUpdate(clientType, Math.Max(0, delta), (_, l) => l + delta);
+
+        private static bool IsRefreshTimeout(Exception? exception)
+        {
+            if (exception is not AggregateException aggregate) return exception is OperationCanceledException or TimeoutException;
+            IReadOnlyCollection<Exception> failures = aggregate.Flatten().InnerExceptions;
+            if (failures.Count == 0) return false;
+            foreach (Exception failure in failures)
+                if (failure is not (OperationCanceledException or TimeoutException)) return false;
+            return true;
+        }
+
+        private sealed class RefreshState
+        {
+            public RefreshTotalDiffTask? Pending;
+            public ISyncPeer? CurrentPeer;
+            public CancellationTokenSource? Cancellation;
+            public Task Work = Task.CompletedTask;
+        }
 
         private class RefreshTotalDiffTask
         {
@@ -748,14 +796,19 @@ namespace Nethermind.Synchronization.Peers
         public async ValueTask DisposeAsync()
         {
             if (!_isStarted) return;
-            _isStarted = false;
+            Task[] refreshTasks;
+            lock (_refreshLock)
+            {
+                _isStarted = false;
+                refreshTasks = new Task[_refreshes.Count];
+                int index = 0;
+                foreach (RefreshState refresh in _refreshes.Values) refreshTasks[index++] = refresh.Work;
+            }
             _refreshLoopCancellation.Cancel();
-            await (_refreshLoopTask ?? Task.CompletedTask);
+            await Task.WhenAll(refreshTasks);
             Parallel.ForEach(_peers, static p => { p.Value.SyncPeer.Disconnect(DisconnectReason.AppClosing, "App Close"); });
 
-            _peerRefreshQueue.Writer.TryComplete();
             _refreshLoopCancellation.Dispose();
-            _refreshLoopTask?.Dispose();
             _upgradeTimer?.Dispose();
         }
     }

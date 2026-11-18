@@ -39,8 +39,9 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
         IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager,
         ISyncConfig syncConfig,
-        ISnapServer snapServer)
-        : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager, syncConfig, snapServer) => _getBlockAccessListsRequests = new(this);
+        ISnapServer snapServer,
+        TimeProvider? timeProvider = null)
+        : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager, syncConfig, snapServer, timeProvider) => _getBlockAccessListsRequests = new(this);
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
@@ -80,11 +81,15 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
     public async Task<IByteArrayList> GetBlockAccessLists(IReadOnlyList<ValueHash256> blockHashes, CancellationToken token)
     {
         BlockAccessListsMessage response = await _nodeStats.RunLatencyRequestSizer(RequestType.SnapRanges, bytesLimit =>
-            SendRequest(new GetBlockAccessListsMessage
+        {
+            Request<GetBlockAccessListsMessage, BlockAccessListsMessage> request = new(new GetBlockAccessListsMessage
             {
                 BlockHashes = blockHashes.ToPooledList(),
                 Bytes = bytesLimit,
-            }, _getBlockAccessListsRequests, token));
+            });
+            _getBlockAccessListsRequests.Send(request);
+            return HandleResponse(request, TransferSpeedType.BlockAccessLists, static req => req.ToString(), token, recordResponseSpeed: false);
+        });
 
         return response.BlockAccessLists;
     }

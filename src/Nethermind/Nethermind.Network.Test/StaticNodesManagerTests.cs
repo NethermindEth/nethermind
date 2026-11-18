@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using Nethermind.Network.StaticNodes;
@@ -140,6 +142,21 @@ namespace Nethermind.Network.Test
             _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
             await _staticNodesManager.InitAsync();
             Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task Static_add_rejects_udp_only_enr_before_mutating_membership([Values] bool ipv6, [Values] bool hasTcp)
+        {
+            using TempPath file = TempPath.GetTempFile();
+            StaticNodesManager manager = new(file.Path, LimboLogs.Instance);
+            NetworkNode node = new(TrustedNodesManagerTests.CreateRecord(ipv6, hasTcp).ToString());
+
+            if (hasTcp) Assert.That(await manager.AddAsync(node, updateFile: false), Is.True);
+            else await Assert.ThrowsAsync<ArgumentException>(() => manager.AddAsync(node, updateFile: false));
+
+            Assert.That(manager.Nodes.Select(value => value.NodeId), hasTcp
+                ? Is.EqualTo(new[] { TestItem.PublicKeyA })
+                : Is.Empty);
         }
     }
 }

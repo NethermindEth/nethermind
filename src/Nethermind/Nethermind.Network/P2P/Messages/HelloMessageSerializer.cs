@@ -84,25 +84,33 @@ namespace Nethermind.Network.P2P.Messages
                 return new Capability(protocolCode, version);
             }, limit: RlpLimit.L64);
 
-            helloMessage.ListenPort = ctx.DecodePositiveInt();
-
-            ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
-            if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
-                publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
+            try
             {
-                throw new NetworkingException(
-                    $"Client {helloMessage.ClientId} sent an invalid public key format " +
-                    $"(length was {publicKeyBytes.Length})",
-                    NetworkExceptionType.HandshakeOrInit);
-            }
-            else
-            {
-                helloMessage.NodeId = new PublicKey(publicKeyBytes);
-            }
+                helloMessage.ListenPort = ctx.ReadInteger<ushort>();
 
-            // EIP-8: later versions can append items.
-            reader.ExitSequenceIgnoringRest(ctx, itemLength);
-            return helloMessage;
+                ReadOnlySpan<byte> publicKeyBytes = ctx.DecodeByteArraySpan(RlpLimit.L64);
+                if (publicKeyBytes.Length != PublicKey.LengthInBytes &&
+                    publicKeyBytes.Length != PublicKey.PrefixedLengthInBytes)
+                {
+                    throw new NetworkingException(
+                        $"Client {helloMessage.ClientId} sent an invalid public key format " +
+                        $"(length was {publicKeyBytes.Length})",
+                        NetworkExceptionType.HandshakeOrInit);
+                }
+                else
+                {
+                    helloMessage.NodeId = new PublicKey(publicKeyBytes);
+                }
+
+                // EIP-8: later versions can append items.
+                reader.ExitSequenceIgnoringRest(ctx, itemLength);
+                return helloMessage;
+            }
+            catch
+            {
+                helloMessage.Dispose();
+                throw;
+            }
         }
     }
 }

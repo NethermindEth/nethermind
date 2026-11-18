@@ -259,6 +259,10 @@ namespace Nethermind.Synchronization
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
 
+                    PeerInfo? servingPeer = _pool.GetPeer(nodeWhoSentTheBlock.Node);
+                    if (servingPeer is not null && ReferenceEquals(servingPeer.SyncPeer, nodeWhoSentTheBlock))
+                        servingPeer.RecordServedHead(block.Number);
+
                     // we want to broadcast original block, lets check if TD changed
                     Block blockToBroadCast = totalDifficulty == block.TotalDifficulty
                         ? block
@@ -277,7 +281,7 @@ namespace Nethermind.Synchronization
                 }
                 else
                 {
-                    LogBlockAuthorNicely(block, nodeWhoSentTheBlock);
+                    _recentlySuggested.Delete(block.Hash);
                     if (_logger.IsDebug) _logger.Debug($"Peer {nodeWhoSentTheBlock:hide} sent block with unknown parent {block}, best suggested {_blockTree.BestSuggestedHeader}.");
                 }
             }
@@ -306,11 +310,12 @@ namespace Nethermind.Synchronization
 
         private void UpdatePeerInfoBasedOnBlockData(Block block, ISyncPeer syncPeer)
         {
-            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD)
+            Hash256 expectedHash = syncPeer.HeadHash;
+            ulong expectedNumber = syncPeer.HeadNumber;
+            if (syncPeer.TotalDifficulty is { } peerTD && (block.TotalDifficulty ?? UInt256.Zero) > peerTD
+                && syncPeer.TrySetHead(expectedHash, expectedNumber, block.Hash!, block.Number))
             {
                 if (_logger.IsTrace) _logger.Trace($"ADD NEW BLOCK Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {block.Number} {block.TotalDifficulty}");
-                syncPeer.HeadNumber = block.Number;
-                syncPeer.HeadHash = block.Hash;
                 syncPeer.TotalDifficulty = block.TotalDifficulty ?? syncPeer.TotalDifficulty;
             }
         }
@@ -404,11 +409,11 @@ namespace Nethermind.Synchronization
         {
             if (!_gossipPolicy.CanGossipBlocks) return;
 
-            if (number > syncPeer.HeadNumber)
+            Hash256 expectedHash = syncPeer.HeadHash;
+            ulong expectedNumber = syncPeer.HeadNumber;
+            if (number > expectedNumber && syncPeer.TrySetHead(expectedHash, expectedNumber, hash, number))
             {
                 if (_logger.IsTrace) _logger.Trace($"HINT Updating header of {syncPeer:hide} from {syncPeer.HeadNumber} {syncPeer.TotalDifficulty} to {number}");
-                syncPeer.HeadNumber = number;
-                syncPeer.HeadHash = hash;
 
                 if (!_recentlySuggested.Contains(hash) && !_blockTree.IsKnownBlock(number, hash))
                 {
@@ -681,6 +686,36 @@ namespace Nethermind.Synchronization
         {
             ulong? number = _headerStore.GetBlockNumber(hash);
             return number is null ? null : _blockStore.GetOwnedRlp(number.Value, hash);
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Reads the block numbers in one batch, as <see cref="FindBlockRlp"/> needs them to find the blocks.
+        /// <see cref="FindBlockRlp"/> then reads each number again, which the block cache usually serves.
+        /// Blocks that only have a legacy hash-keyed number are not prefetched.
+        /// Does nothing outside Linux, where the database does not read ahead, so a response that ends early reads no numbers it does not need.
+        /// </remarks>
+        public void PrefetchBlocks(IReadOnlyList<Hash256> hashes, int start, int count)
+        {
+            if (!OperatingSystem.IsLinux()) return;
+
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
+            _blockStore.Prefetch(blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks)));
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Reads the block numbers in one batch, as <see cref="TryAppendReceipts"/> needs them to find the headers.
+        /// Does nothing outside Linux, as <see cref="PrefetchBlocks"/>.
+        /// </remarks>
+        public void PrefetchReceipts(IReadOnlyList<Hash256> hashes, int start, int count)
+        {
+            if (!OperatingSystem.IsLinux()) return;
+
+            using ArrayPoolSpan<(ulong Number, ValueHash256 Hash)> blocks = new(count);
+            ReadOnlySpan<(ulong Number, ValueHash256 Hash)> known = blocks.Slice(0, _headerStore.GetKnownBlocks(hashes, start, count, blocks));
+            _headerStore.Prefetch(known);
+            _receiptFinder.Prefetch(known);
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

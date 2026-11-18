@@ -73,6 +73,32 @@ public abstract class AssociativeCacheTestsBase
     public void Can_ask_before_first_set() => Assert.That(Get(in _keys[0]), Is.False);
 
     [Test]
+    public void Entry_does_not_come_back_when_the_epoch_wraps_without_releasing_references()
+    {
+        Set(in _keys[0], 0);
+
+        for (int i = 0; i < 1 << 16; i++)
+        {
+            Clear(releaseReferences: false);
+        }
+
+        Assert.That(Get(in _keys[0]), Is.False);
+    }
+
+    [Test]
+    public void Entry_set_after_a_sweep_clear_stays()
+    {
+        for (long i = 0; i < SeqlockHeader.SweepPeriod; i++)
+        {
+            Clear(releaseReferences: false);
+        }
+
+        Set(in _keys[0], 0);
+
+        AssertValue(in _keys[0], 0);
+    }
+
+    [Test]
     public void Beyond_capacity()
     {
         for (int i = 0; i < Capacity * 2; i++)
@@ -286,7 +312,7 @@ public abstract class AssociativeCacheTestsBase
     [Test]
     public void Clear_without_release_invalidates_and_allows_reuse()
     {
-        // Base tests cover Clear() (releaseReferences: true). This tests the fast O(1) path.
+        // Base tests cover Clear() (releaseReferences: true). This tests the fast amortized O(1) path.
         CreateCache(256);
 
         for (int i = 0; i < 16; i++)

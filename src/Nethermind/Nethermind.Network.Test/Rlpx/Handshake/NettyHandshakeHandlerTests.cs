@@ -3,17 +3,22 @@
 
 using System;
 using System.Net;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -24,10 +29,70 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
     [TestFixture]
     public class NettyHandshakeHandlerTests
     {
+        [Test, CancelAfter(10000)]
+        public async Task Closed_session_receipts_are_not_retained_by_the_live_executor(CancellationToken cancellationToken)
+        {
+            try
+            {
+                (WeakReference tracker, Task drained) = CreateAndCloseReceiptSession();
+                await drained.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+                for (int i = 0; i < 3 && tracker.IsAlive; i++)
+                {
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect();
+                }
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_group.TerminationCompletion.IsCompleted, Is.False);
+                    Assert.That(tracker.IsAlive, Is.False);
+                }
+            }
+            finally
+            {
+                await _group.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1));
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private (WeakReference Tracker, Task Drained) CreateAndCloseReceiptSession()
+        {
+            EmbeddedChannel channel = new();
+            Session session = new(30303, new Node(NetTestVectors.StaticKeyB.PublicKey, "127.0.0.1", 30303),
+                channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            IHandshakeService handshakeService = Substitute.For<IHandshakeService>();
+            handshakeService.When(x => x.Agree(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())).Do(call =>
+            {
+                EncryptionHandshake handshake = call.Arg<EncryptionHandshake>();
+                handshake.RemoteNodeId = NetTestVectors.StaticKeyB.PublicKey;
+                handshake.Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
+            });
+            NettyHandshakeHandler handler = new(_serializationService, handshakeService, session,
+                HandshakeRole.Initiator, _logger, _group, TimeSpan.Zero);
+            channel.Pipeline.AddLast(new OneTimeLengthFieldBasedFrameDecoder());
+            channel.Pipeline.AddLast(handler);
+            WeakReference tracker = new(session.InboundReceipts);
+            try
+            {
+                handler.ChannelRead(channel.Pipeline.Context(handler), Unpooled.Buffer(0, 0));
+                Assert.That(session.State, Is.EqualTo(SessionState.Initialized));
+            }
+            finally
+            {
+                channel.FinishAndReleaseAll();
+                session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test completed");
+                session.Dispose();
+            }
+            System.Threading.Tasks.TaskCompletionSource drained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _group.Execute(() => drained.SetResult());
+            return (tracker, drained.Task);
+        }
+
         [SetUp]
         public void Setup()
         {
             _session = Substitute.For<ISession>();
+            _session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
 
             _pipeline = Substitute.For<IChannelPipeline>();
 

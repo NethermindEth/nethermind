@@ -9,9 +9,13 @@ using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Timeout;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
+using Nethermind.Config;
+using Nethermind.Consensus.Scheduler;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -21,12 +25,17 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -37,10 +46,105 @@ namespace Nethermind.Network.Test.Rlpx;
 public class ZeroNettyP2PHandlerTests
 {
     [Test]
+    public void Queued_disconnect_keeps_the_remote_reason_after_channel_closure()
+    {
+        EmbeddedChannel channel = new();
+        Session session = new(30303, new Node(TestItem.PublicKeyB, "127.0.0.1", 30303),
+            channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Channel.Returns(channel);
+        session.Handshake(TestItem.PublicKeyB);
+        session.Init(5, context, Substitute.For<IPacketSender>());
+        MessageSerializationService serializer = new(SerializerInfo.Create(new DisconnectMessageSerializer()));
+        P2PProtocolHandler p2p = new(session, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303),
+            Substitute.For<INodeStatsManager>(), serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance, new NetworkConfig());
+        session.AddProtocolHandler(p2p);
+        DisconnectEventArgs? disconnected = null;
+        session.Disconnected += (_, args) => disconnected = args;
+        IEventExecutor executor = Substitute.For<IEventExecutor>();
+        Queue<Action> queued = new();
+        bool defer = false;
+        executor.GetNext().Returns(executor);
+        executor.InEventLoop.Returns(_ => !defer);
+        executor.When(x => x.Execute(Arg.Any<Action<object, object>>(), Arg.Any<object>(), Arg.Any<object>())).Do(call =>
+        {
+            Action action = () => call.ArgAt<Action<object, object>>(0)(call.ArgAt<object>(1), call.ArgAt<object>(2));
+            if (defer) queued.Enqueue(action);
+            else action();
+        });
+        channel.Pipeline.AddLast(executor, new ZeroNettyP2PHandler(session, LimboLogs.Instance));
+        using DisconnectMessage message = new(EthDisconnectReason.TooManyPeers);
+        IByteBuffer payload = serializer.ZeroSerialize(message);
+        payload.ReadByte();
+        NettyBufferPacket packet = new(payload) { PacketType = (byte)message.PacketType };
+        session.InboundReceipts.Activate();
+        session.InboundReceipts.Stamp(packet);
+        try
+        {
+            defer = true;
+            channel.WriteInbound(packet);
+            channel.Pipeline.FireChannelInactive();
+            session.MarkChannelClosed();
+            Assert.That(disconnected, Is.Null);
+            defer = false;
+            while (queued.TryDequeue(out Action? action)) action();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disconnected?.DisconnectReason, Is.EqualTo(DisconnectReason.TooManyPeers));
+                Assert.That(disconnected?.DisconnectType, Is.EqualTo(DisconnectType.Remote));
+                Assert.That(packet.ReferenceCount, Is.Zero);
+            }
+        }
+        finally
+        {
+            defer = false;
+            while (queued.TryDequeue(out Action? action)) action();
+            channel.FinishAndReleaseAll();
+            session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test completed");
+            session.Dispose();
+        }
+    }
+
+    [Test]
+    public void Receipt_completes_when_decoding_or_session_processing_throws([Values] bool malformedCompressed)
+    {
+        Session session = new(30303, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
+            Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (malformedCompressed) handler.EnableSnappy();
+        NettyBufferPacket packet = new(Unpooled.WrappedBuffer(new byte[] { 0x80 }));
+        session.InboundReceipts.Activate();
+        session.InboundReceipts.Stamp(packet);
+        long watermark = session.InboundReceipts.CaptureWatermark();
+        try
+        {
+            if (malformedCompressed)
+                Assert.That(() => handler.ChannelRead(context, packet), Throws.InstanceOf<CorruptedFrameException>());
+            else
+                Assert.That(() => handler.ChannelRead(context, packet), Throws.InstanceOf<InvalidOperationException>());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(packet.ReferenceCount, Is.Zero);
+                Assert.That(session.InboundReceipts.HasCompleted(watermark), Is.True);
+                Assert.That(session.InboundReceipts.IsClosed, Is.False);
+            }
+        }
+        finally
+        {
+            handler.HandlerRemoved(context);
+            session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Local, "test completed");
+            session.Dispose();
+        }
+    }
+
+    [Test]
     [TestCaseSource(nameof(ExceptionDisconnectCases))]
     public void When_exception_is_thrown_send_disconnect_message(Exception exception, DisconnectReason expectedReason)
     {
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
 
@@ -53,6 +157,7 @@ public class ZeroNettyP2PHandlerTests
     {
         yield return new TestCaseData(new Exception(), DisconnectReason.Exception).SetName("Generic_exception_uses_generic_reason");
         yield return new TestCaseData(new CorruptedFrameException("malformed frame"), DisconnectReason.Exception).SetName("Corrupted_frame_uses_generic_reason");
+        yield return new TestCaseData(new RlpReaderException("malformed message"), DisconnectReason.BreachOfProtocol).SetName("Malformed_RLP_is_a_protocol_breach");
         yield return new TestCaseData(new SocketException((int)SocketError.ConnectionReset), DisconnectReason.ConnectionReset).SetName("Connection_reset_uses_connection_reset_reason");
     }
 
@@ -61,6 +166,7 @@ public class ZeroNettyP2PHandlerTests
     {
         TestLogger logger = new() { IsDebug = false };
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, new OneLoggerLogManager(new ILogger(logger)));
 
         handler.ExceptionCaught(Substitute.For<IChannelHandlerContext>(), exception);
@@ -78,6 +184,7 @@ public class ZeroNettyP2PHandlerTests
     public void When_corrupted_frame_is_received_from_privileged_peer_then_keep_session([Values] bool isStatic)
     {
         ISession session = CreatePrivilegedSession(isStatic);
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         CorruptedFrameException exception = new("malformed frame");
@@ -153,6 +260,7 @@ public class ZeroNettyP2PHandlerTests
     public async Task When_internal_nethermind_exception_is_thrown__then_do_not_disconnect_session()
     {
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
 
@@ -170,6 +278,7 @@ public class ZeroNettyP2PHandlerTests
         channelHandlerContext.Allocator.Returns(allocator);
 
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
 
@@ -227,6 +336,7 @@ public class ZeroNettyP2PHandlerTests
     {
         IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
         channelHandlerContext.Allocator.Returns(allocator);
 
@@ -259,6 +369,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         byte[] payload = [1, 2, 3, 4, 5];
@@ -308,6 +419,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         byte[] payload = new byte[length];
@@ -344,6 +456,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         byte[] payload = [1, 2, 3, 4, 5];
@@ -372,6 +485,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         NettyBufferPacket retained = null;
@@ -427,6 +541,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         Transaction source = new()
@@ -478,18 +593,21 @@ public class ZeroNettyP2PHandlerTests
     }
 
     [Test]
-    public void Snappy_reuses_bounded_output_and_resets_readable_range([Values(1, 65536, 65537)] int length)
+    public void Snappy_reuses_bounded_output_and_resets_readable_range(
+        [Values(1, 65536, 65537)] int length, [Values] bool secondTracked)
     {
         using PooledBufferLeakDetector detector = new();
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         IByteBuffer first = null;
         NettyBufferPacket firstPacket = null;
         byte[] payload = new byte[length];
         new Random(42).NextBytes(payload);
+        DateTimeOffset firstReceipt = DateTimeOffset.UnixEpoch.AddSeconds(10);
         session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
         {
             NettyBufferPacket packet = call.Arg<NettyBufferPacket>();
@@ -497,6 +615,11 @@ public class ZeroNettyP2PHandlerTests
             {
                 first = packet.Buffer;
                 firstPacket = packet;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(packet.ReceiptSequence, Is.EqualTo(42));
+                    Assert.That(packet.ReceivedAt, Is.EqualTo(firstReceipt));
+                }
                 AssertPacket(packet, payload, 7);
                 packet.Protocol = "eth";
                 packet.Buffer.SkipBytes(length);
@@ -507,6 +630,8 @@ public class ZeroNettyP2PHandlerTests
                 AssertPacket(packet, [9, 8, 7], 8);
                 using (Assert.EnterMultipleScope())
                 {
+                    Assert.That(packet.ReceiptSequence, Is.EqualTo(secondTracked ? 83 : 0));
+                    Assert.That(packet.ReceivedAt, Is.EqualTo(secondTracked ? firstReceipt.AddSeconds(1) : (DateTimeOffset?)null));
                     Assert.That(packet.Protocol, Is.Null, "protocol resolution from the previous message must not survive reuse");
                     Assert.That(ReferenceEquals(firstPacket, packet), Is.EqualTo(length == 65536));
                     Assert.That(ReferenceEquals(first, packet.Buffer), Is.EqualTo(length == 65536));
@@ -519,12 +644,18 @@ public class ZeroNettyP2PHandlerTests
         });
         try
         {
-            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, payload, 7));
+            ZeroPacket firstInput = CreateCompressedPacket(detector.Allocator, payload, 7);
+            firstInput.ReceiptSequence = 42;
+            firstInput.ReceivedAt = firstReceipt;
+            handler.ChannelRead(context, firstInput);
             if (length > 65536) Assert.That(first.ReferenceCount, Is.Zero);
             NettyBufferPacket malformed = new(Unpooled.WrappedBuffer(new byte[] { 1 }));
             Assert.That(() => handler.ChannelRead(context, malformed), Throws.InstanceOf<CorruptedFrameException>());
             Assert.That(malformed.ReferenceCount, Is.Zero);
-            handler.ChannelRead(context, CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8));
+            ZeroPacket secondInput = CreateCompressedPacket(detector.Allocator, [9, 8, 7], 8);
+            secondInput.ReceiptSequence = secondTracked ? 83 : 0;
+            secondInput.ReceivedAt = secondTracked ? firstReceipt.AddSeconds(1) : null;
+            handler.ChannelRead(context, secondInput);
         }
         finally
         {
@@ -539,6 +670,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         session.When(s => s.ReceiveMessage(Arg.Any<NettyBufferPacket>())).Do(call =>
@@ -569,6 +701,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         IByteBuffer output = null;
@@ -604,6 +737,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         byte[] payload = new byte[length];
@@ -648,6 +782,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         byte[] payload = new byte[SnappyParameters.MaxSnappyLength + delta];
@@ -697,6 +832,7 @@ public class ZeroNettyP2PHandlerTests
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(allocator);
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
         handler.EnableSnappy();
         int delivered = 0;
@@ -772,5 +908,107 @@ public class ZeroNettyP2PHandlerTests
     private class TestInternalNethermindException : Exception, IInternalNethermindException
     {
 
+    }
+
+    [Test]
+    public void Peer_decoding_errors_disconnect_ordinary_peers_and_repeat_offenders([Values(0, 1, 2)] int privilege)
+    {
+        using Context context = new(privilege);
+        context.ReportInvalidPeerMessage();
+        Assert.That(context.Session.IsClosing, Is.EqualTo(privilege == 0));
+        if (privilege != 0)
+        {
+            using Context restarted = new(privilege);
+            restarted.ReportInvalidPeerMessage();
+            Assert.That(restarted.Session.IsClosing, Is.False, "the count belongs to one session");
+            context.ReportInvalidPeerMessage();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(context.Session.IsClosing, Is.True);
+                Assert.That(restarted.Session.IsClosing, Is.False);
+            }
+        }
+        Assert.That(context.Reason, Is.EqualTo(DisconnectReason.BreachOfProtocol));
+    }
+
+    [Test]
+    public void A_single_privileged_violation_allows_a_later_honest_ping([Values(1, 2)] int privilege)
+    {
+        using Context context = new(privilege);
+        context.ReportInvalidPeerMessage();
+        Assert.That(context.Session.IsClosing, Is.False);
+        NettyBufferPacket ping = new(Unpooled.WrappedBuffer(new byte[] { 0xc0 })) { PacketType = P2PMessageCode.Ping };
+        context.Handler.ChannelRead(context.ChannelContext, ping);
+        context.Sender.Received(1).Enqueue(Arg.Any<PongMessage>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Session.IsClosing, Is.False);
+            Assert.That(ping.ReferenceCount, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Internal_rlp_faults_do_not_count_as_remote_violations([Values(0, 1, 2)] int privilege)
+    {
+        using Context context = new(privilege);
+        context.Handler.ExceptionCaught(context.ChannelContext, new InternalRlpReaderException());
+        context.Handler.ExceptionCaught(context.ChannelContext, new InternalRlpReaderException());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Session.IsClosing, Is.False);
+            Assert.That(context.Reason, Is.Null);
+        }
+        if (privilege != 0)
+        {
+            context.ReportInvalidPeerMessage();
+            Assert.That(context.Session.IsClosing, Is.False);
+        }
+    }
+
+    [Test]
+    public void Unmarked_internal_decoder_failure_keeps_the_generic_reason()
+    {
+        using Context context = new(0);
+        context.Handler.ExceptionCaught(context.ChannelContext, new InvalidOperationException("decoder fault"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Session.IsClosing, Is.True);
+            Assert.That(context.Reason, Is.EqualTo(DisconnectReason.Exception));
+        }
+    }
+
+    private sealed class InternalRlpReaderException() : RlpReaderException("local decoder fault"), IInternalNethermindException;
+
+    private sealed class Context : IDisposable
+    {
+        public Session Session { get; }
+        public ZeroNettyP2PHandler Handler { get; }
+        public IChannelHandlerContext ChannelContext { get; } = Substitute.For<IChannelHandlerContext>();
+        public IPacketSender Sender { get; } = Substitute.For<IPacketSender>();
+        public DisconnectReason? Reason { get; private set; }
+
+        public Context(int privilege)
+        {
+            IChannel channel = Substitute.For<IChannel>();
+            ChannelContext.Channel.Returns(channel);
+            channel.Pipeline.Returns(Substitute.For<IChannelPipeline>());
+            Node node = new(TestItem.PublicKeyB, "127.0.0.1", 30303) { IsStatic = privilege == 1, IsTrusted = privilege == 2 };
+            Session = new Session(30303, node, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session.Disconnected += (_, args) => Reason = args.DisconnectReason;
+            Session.Handshake(node.Id);
+            Session.Init(5, ChannelContext, Sender);
+            MessageSerializationService serializer = new(SerializerInfo.Create(new DisconnectMessageSerializer()));
+            Session.AddProtocolHandler(new P2PProtocolHandler(Session, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303),
+                Substitute.For<INodeStatsManager>(), serializer, Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance, new NetworkConfig()));
+            Handler = new ZeroNettyP2PHandler(Session, LimboLogs.Instance);
+        }
+
+        public void ReportInvalidPeerMessage() => Handler.ExceptionCaught(ChannelContext, new RlpReaderException("Invalid peer message."));
+
+        public void Dispose()
+        {
+            Session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Local, "test cleanup");
+            Session.Dispose();
+        }
     }
 }

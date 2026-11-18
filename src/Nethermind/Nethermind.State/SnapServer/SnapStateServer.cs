@@ -90,7 +90,10 @@ public class SnapStateServer : ISnapStateServer
                 case 1:
                     try
                     {
-                        byte[]? rlp = tree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[0]), rootHash);
+                        // A path no node can sit at is answered like a missing node: with an empty slot.
+                        byte[]? rlp = Nibbles.TryCompactToNodePath(requestedPath[0], out byte[]? nibbles)
+                            ? tree.GetNodeByPath(nibbles, rootHash)
+                            : null;
                         lookups++;
                         writer.WriteValue(rlp);
                         responseSize += rlp?.Length ?? 0;
@@ -104,19 +107,24 @@ public class SnapStateServer : ISnapStateServer
                     try
                     {
                         byte[] accountPathBytes = requestedPath[0];
-                        Hash256 storagePath = new(
-                            accountPathBytes.Length == Hash256.Size
-                                ? accountPathBytes
-                                : accountPathBytes.PadRight(Hash256.Size));
-                        Hash256? storageRoot = GetStorageRootByPath(tree, rootHash, accountPathBytes);
+                        // A key longer than a hash names no account, so its group is answered like a missing account's.
+                        Hash256? storageRoot = accountPathBytes.Length <= Hash256.Size
+                            ? GetStorageRootByPath(tree, rootHash, accountPathBytes)
+                            : null;
                         lookups++;
                         if (storageRoot is not null)
                         {
+                            Hash256 storagePath = new(
+                                accountPathBytes.Length == Hash256.Size
+                                    ? accountPathBytes
+                                    : accountPathBytes.PadRight(Hash256.Size));
                             StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
                             for (int reqStorage = 1; reqStorage < requestedPath.Length && responseSize < byteLimit && lookups < ISnapStateServer.MaxTrieNodeLookups && !cancellationToken.IsCancellationRequested; reqStorage++)
                             {
-                                byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                byte[]? sRlp = Nibbles.TryCompactToNodePath(requestedPath[reqStorage], out byte[]? storageNibbles)
+                                    ? sTree.GetNodeByPath(storageNibbles)
+                                    : null;
                                 lookups++;
                                 writer.WriteValue(sRlp);
                                 responseSize += sRlp?.Length ?? 0;

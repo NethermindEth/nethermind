@@ -11,6 +11,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public ulong StartNumber { get; set; }
         public ulong EndNumber => StartNumber + (ulong)RequestSize - 1;
         public int RequestSize { get; set; }
+        internal int InsertedHeadersCount { get; set; }
         public long ResponseSizeEstimate { get; private set; }
 
         private IOwnedReadOnlyList<BlockHeader?>? _response;

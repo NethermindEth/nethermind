@@ -22,7 +22,6 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
-            batch.MarkSent();
 
             using ArrayPoolList<Hash256> hashes = new(batch.Infos.Length);
             hashes.AddRange(batch.Infos.Where(static i => i is not null).Select(static i => i!.BlockHash));
@@ -34,10 +33,12 @@ namespace Nethermind.Synchronization.FastBlocks
 
             try
             {
+                batch.MarkSent(peerInfo);
                 batch.Response = await peer.GetReceipts(hashes, cancellationToken);
             }
             catch (TimeoutException)
             {
+                if (!cancellationToken.IsCancellationRequested) batch.RequestTimedOut = true;
                 if (Logger.IsDebug) Logger.Debug($"{batch} - request receipts timeout {batch.RequestTime:F2}");
                 return;
             }

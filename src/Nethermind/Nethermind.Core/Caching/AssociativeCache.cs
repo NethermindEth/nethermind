@@ -48,7 +48,7 @@ namespace Nethermind.Core.Caching;
 ///   <item><term>Read path</term><description>McsLock / bitmap update / lock-free seqlock read, spinning briefly on an in-flight write of a key with the same tag</description></item>
 ///   <item><term>Write path</term><description>McsLock / global lock / set-local gate</description></item>
 ///   <item><term>Capacity</term><description>Exact / Exact / Rounded to setCount × 8</description></item>
-///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / O(1) epoch bump + optional O(n) reference release</description></item>
+///   <item><term>Clear</term><description>O(n) zeroing / O(n) zeroing / amortized O(1) epoch bump (O(n) sweep once per 16,384 clears) + optional O(n) reference release</description></item>
 /// </list>
 ///
 /// <para><b>Why <c>TValue : class?</c>:</b> The seqlock read path copies entry fields (Key, Value)
@@ -75,8 +75,8 @@ public sealed partial class AssociativeCache<TKey, TValue>
     private readonly int[] _setGates;
 
     /// <summary>
-    /// Combined [Epoch:26][Count:37] field. Epoch occupies bits 37-62 (same as entry headers).
-    /// Count occupies bits 0-36. Atomic CAS in Clear() bumps epoch + resets count in one operation.
+    /// Combined [Epoch:16][Count:47] field. Epoch occupies bits 47-62 (same as entry headers).
+    /// Count occupies bits 0-46. Atomic CAS in Clear() bumps epoch + resets count in one operation.
     /// </summary>
     private long _epochAndCount;
 
@@ -408,10 +408,12 @@ public sealed partial class AssociativeCache<TKey, TValue>
     }
 
     /// <summary>
-    /// Logically invalidates all entries via O(1) epoch bump.
+    /// Logically invalidates all entries via an epoch bump.
     /// When <paramref name="releaseReferences"/> is true (the default), also walks each set
-    /// under its gate to null out Key/Value fields so the GC can reclaim referenced objects.
-    /// Pass false on hot paths where O(1) clear is preferred and stale GC roots are acceptable.
+    /// under its gate to null out Key/Value fields so the GC can reclaim referenced objects (O(n)).
+    /// When it is false, the clear is amortized O(1): once per 16,384 clears it walks every set (O(n))
+    /// so that no entry outlives half of the epoch range.
+    /// Pass false on hot paths where the amortized O(1) clear is preferred and stale GC roots are acceptable.
     /// </summary>
     public void Clear(bool releaseReferences = true)
     {
@@ -419,7 +421,7 @@ public sealed partial class AssociativeCache<TKey, TValue>
         {
             long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
 
-            if (releaseReferences)
+            if (releaseReferences || IsSweepEpoch(currentEpoch))
             {
                 ClearEntries(currentEpoch);
             }

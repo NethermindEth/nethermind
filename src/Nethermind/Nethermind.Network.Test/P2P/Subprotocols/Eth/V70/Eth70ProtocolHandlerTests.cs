@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Runtime.CompilerServices;
@@ -165,6 +166,21 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_prefetch_receipts_a_window_at_a_time()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, Enumerable.Repeat(Keccak.Zero, 40).ToArray().ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _syncManager.ReceivedWithAnyArgs(3).PrefetchReceipts(null!, 0, 0);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 0, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 16, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 32, 8);
+    }
+
+    [Test]
     public void Should_stop_response_when_receipts_are_not_known_locally()
     {
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
@@ -229,7 +245,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure,
+        _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol,
             Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
     }
 
@@ -248,8 +264,33 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure,
+        _session.Received(1).InitiateDisconnect(DisconnectReason.BreachOfProtocol,
             Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
+    }
+
+    [Test]
+    public void Local_receipts_callback_failure_does_not_penalize_the_requester([Values] bool invalidData)
+    {
+        bool fail = true;
+        TxReceipt[] receipts = BuildSequentialReceipts(2);
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(_ => fail
+            ? throw (invalidData
+                ? (Exception)new InvalidDataException("local receipt storage is invalid")
+                : new SubprotocolException("local receipt service is unavailable"))
+            : receipts);
+
+        HandleIncomingStatusMessage();
+        using GetReceiptsMessage70 failed = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
+        HandleZeroMessage(failed, Eth70MessageCode.GetReceipts);
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        _session.DidNotReceive().DeliverMessage(Arg.Any<ReceiptsMessage70>());
+
+        fail = false;
+        using GetReceiptsMessage70 honest = new(2222, 0, new[] { Keccak.Zero }.ToPooledList());
+        HandleZeroMessage(honest, Eth70MessageCode.GetReceipts);
+        _session.Received(1).DeliverMessage(Arg.Is<ReceiptsMessage70>(message =>
+            message.RequestId == 2222 && message.TxReceipts.Count == 1 && message.TxReceipts[0].Length == 2));
+        _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
     }
 
     [Test]
@@ -1106,7 +1147,7 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
 
-        _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure,
+        _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol,
             Arg.Is<string>(s => s.Contains("Invalid firstBlockReceiptIndex")));
     }
 

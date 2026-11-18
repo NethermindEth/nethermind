@@ -62,8 +62,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             IBackgroundTaskScheduler backgroundTaskScheduler,
             ILogManager logManager,
             ISyncConfig syncConfig,
-            ISnapServer snapServer)
-            : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager)
+            ISnapServer snapServer,
+            TimeProvider? timeProvider = null)
+            : base(session, nodeStats, serializer, backgroundTaskScheduler, logManager, timeProvider)
         {
             _getAccountRangeRequests = new(this);
             _getStorageRangeRequests = new(this);
@@ -282,7 +283,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
             Request<TIn, TOut> request = new(msg);
             messageDictionary.Send(request);
 
-            return await HandleResponse(request, TransferSpeedType.SnapRanges, static req => req.ToString(), token);
+            return await HandleResponse(request, TransferSpeedType.SnapRanges, static req => req.ToString(), token,
+                recordResponseSpeed: msg is not (GetAccountRangeMessage or GetStorageRangeMessage or GetByteCodesMessage or GetTrieNodesMessage));
         }
     }
 }

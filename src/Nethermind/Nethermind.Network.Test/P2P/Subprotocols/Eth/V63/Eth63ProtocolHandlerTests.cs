@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -51,6 +53,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             _disposables.Dispose();
             _ctx.Session.Dispose();
+        }
+
+        [Test]
+        public async Task Unvalidated_node_data_does_not_improve_transfer_speed()
+        {
+            Task<IByteArrayList> task = _ctx.ProtocolHandler.GetNodeData([Keccak.Zero], CancellationToken.None);
+            using NodeDataMessage response = new(new ByteArrayListAdapter(new ArrayPoolList<byte[]>([new byte[256]])));
+            Packet packet = new("eth", Eth63MessageCode.NodeData, new NodeDataMessageSerializer().SerializeToArray(response));
+            _ctx.ProtocolHandler.HandleMessage(packet);
+            using IByteArrayList nodes = await task;
+
+            _ctx.NodeStatsManager.DidNotReceive().ReportTransferSpeedEvent(
+                Arg.Any<Node>(), TransferSpeedType.NodeData, Arg.Is<long>(speed => speed > 0));
         }
 
         [Test]
@@ -213,6 +228,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .TryAppendReceipts(Arg.Any<Hash256>(), Arg.Any<IRlpDecoder<TxReceipt>>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>());
         }
 
+        [Test]
+        public void Should_prefetch_receipt_lookups_a_window_at_a_time()
+        {
+            ServeReceipts([]);
+
+            const int lookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+            _ctx.SyncServer.ReceivedWithAnyArgs((lookups + 15) / 16).PrefetchReceipts(null!, 0, 0);
+            for (int start = 0; start < lookups; start += 16)
+            {
+                _ctx.SyncServer.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), start, Math.Min(16, lookups - start));
+            }
+        }
+
         private ReceiptsMessage ServeReceipts(TxReceipt[] receipts)
         {
             _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
@@ -239,6 +267,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             public readonly GetReceiptsMessageSerializer _getReceiptMessageSerializer = new();
 
             public ISession Session { get; }
+            public INodeStatsManager NodeStatsManager { get; } = Substitute.For<INodeStatsManager>();
 
             private ISyncServer? _syncServer;
             public ISyncServer SyncServer => _syncServer ??= CreateSyncServer();
@@ -262,13 +291,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
                     SyncServer.FindHeader(Arg.Any<Hash256>()).Returns(Build.A.BlockHeader.TestObject);
 
-                    INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
-                    nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
+                    NodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns((c) => new NodeStatsLight((Node)c[0]));
+                    NodeStatsManager.GetStatsOrNull(Arg.Any<Node>()).Returns(c => NodeStatsManager.GetOrAdd(c.Arg<Node>()));
 
                     _protocolHandler = new Eth63ProtocolHandler(
                         Session,
                         _serializationService,
-                        nodeStatsManager,
+                        NodeStatsManager,
                         SyncServer,
                         RunImmediatelyScheduler.Instance,
                         Substitute.For<ITxPool>(),
@@ -297,6 +326,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 _serializationService = new MessageSerializationService(
                     SerializerInfo.Create(_statusMessageSerializer),
                     SerializerInfo.Create(_receiptMessageSerializer),
+                    SerializerInfo.Create(new NodeDataMessageSerializer()),
                     SerializerInfo.Create(_getReceiptMessageSerializer)
                 );
             }

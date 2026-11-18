@@ -200,9 +200,9 @@ public class MessageDictionaryTests
     }
 
     [TestCaseSource(nameof(UncorrelatedContents))]
-    public void ThrowIfNotRequested_rejects_uncorrelated_content(IByteBuffer content)
+    public void ThrowIfNotRequested_rejects_uncorrelated_content(IByteBuffer content, int requestId)
     {
-        _testMessageDictionary.Send(CreateRequest(111));
+        _testMessageDictionary.Send(CreateRequest(requestId));
 
         Assert.That(() => _testMessageDictionary.ThrowIfNotRequested(content.AsSpan()), Throws.TypeOf<SubprotocolException>());
     }
@@ -422,11 +422,13 @@ public class MessageDictionaryTests
 
     private static IEnumerable<TestCaseData> UncorrelatedContents()
     {
-        yield return new TestCaseData(UndecodableResponse.Create(112)).SetName("Not pending request id");
-        yield return new TestCaseData(Unpooled.WrappedBuffer([0x80])).SetName("Unreadable request id");
-        yield return new TestCaseData(Unpooled.WrappedBuffer(Array.Empty<byte>())).SetName("Empty payload");
-        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc1])).SetName("List shorter than its header");
-        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc2, 0x82, 0x01])).SetName("Request id shorter than its header");
+        yield return new TestCaseData(UndecodableResponse.Create(112), 111).SetName("Not pending request id");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0x80]), 111).SetName("Unreadable request id");
+        yield return new TestCaseData(Unpooled.WrappedBuffer(Array.Empty<byte>()), 111).SetName("Empty payload");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc1]), 111).SetName("List shorter than its header");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc2, 0x82, 0x01]), 111).SetName("Request id shorter than its header");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc1, 0x82, 0x04, 0x57]), 1111).SetName("Pending request id crosses the outer list");
+        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc0, 0x6f]), 111).SetName("Pending request id follows an empty outer list");
     }
 
     private static MessageDictionary<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateExpiringDictionary() =>

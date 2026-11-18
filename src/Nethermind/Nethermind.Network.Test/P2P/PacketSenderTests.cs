@@ -161,6 +161,29 @@ namespace Nethermind.Network.Test.P2P
         }
 
         [Test]
+        [NonParallelizable]
+        public void Non_writable_channel_drops_are_counted_without_serializing()
+        {
+            (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage message) = SetupChannel(isActive: true);
+            context.Channel.IsWritable.Returns(false);
+            serializer = Substitute.For<IMessageSerializationService>();
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            sender.HandlerAdded(context);
+            long before = Metrics.P2PMessagesDropped;
+            try
+            {
+                Assert.That(sender.Enqueue(message), Is.Zero);
+                serializer.DidNotReceive().Serialize(message, Arg.Any<System.Buffers.IBufferWriter<byte>>());
+                context.DidNotReceive().WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+                Assert.That(Metrics.P2PMessagesDropped, Is.EqualTo(before + 1));
+            }
+            finally
+            {
+                sender.HandlerRemoved(context);
+            }
+        }
+
+        [Test]
         public async Task Send_after_delay_if_specified()
         {
             (IChannelHandlerContext context, IMessageSerializationService serializer, TestMessage testMessage) = SetupChannel(isActive: true);

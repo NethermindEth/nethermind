@@ -35,7 +35,9 @@ namespace Nethermind.Network.Test.Rlpx
                 SimulateSendLatencyMs = 0,
             };
 
+            using PeerAddressPolicy policy = new(ipResolver, new LocalAddressSource(LimboLogs.Instance, () => []));
             RlpxHost host = new(
+                policy,
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<IHandshakeService>(),
                 Substitute.For<ISessionMonitor>(),

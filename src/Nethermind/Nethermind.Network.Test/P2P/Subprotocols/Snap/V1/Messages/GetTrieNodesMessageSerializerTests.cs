@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using System;
 using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -47,6 +48,101 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetTrieNodesMessageSerializer serializer = new();
 
             AssertByteRoundtrip(serializer, msg);
+        }
+
+        [Test]
+        public void Accepts_full_compact_path([Values] bool storage)
+        {
+            byte[] path = new byte[33];
+            path[^1] = 0x42;
+            PathGroup group = new() { Group = storage ? [TestItem.KeccakA.Bytes.ToArray(), path] : [path] };
+            GetTrieNodesMessage message = new()
+            {
+                RequestId = 1,
+                RootHash = TestItem.KeccakA,
+                Paths = PathGroup.EncodeToRlpPathGroupList([group]),
+                Bytes = 100
+            };
+            AssertByteRoundtrip(new GetTrieNodesMessageSerializer(), message);
+        }
+
+        /// <summary>
+        /// snap/1 answers a well-formed path no trie node can sit at with an empty node rather than dropping the peer, so
+        /// decoding keeps it for the server; one too long for any trie decodes to <see cref="PathGroup.TooLongPath"/>
+        /// instead of a copy, and the message keeps its bytes.
+        /// </summary>
+        [TestCase(true, 33, 0, false)]
+        [TestCase(false, 33, 0x10, false)]
+        [TestCase(true, 34, 0, true)]
+        [TestCase(false, 34, 0, true)]
+        [TestCase(false, 55, 0, true)]
+        [TestCase(false, 65, 0, true)]
+        [TestCase(false, 1 << 20, 0, true)]
+        public void Keeps_path_beyond_its_length_bound(bool accountKey, int length, byte prefix, bool tooLong)
+        {
+            byte[] path = new byte[length];
+            path[0] = prefix;
+            path[^1] = 0x42;
+            PathGroup group = new() { Group = accountKey ? [path, []] : [path] };
+            using GetTrieNodesMessage message = new()
+            {
+                RootHash = TestItem.KeccakA,
+                Paths = PathGroup.EncodeToRlpPathGroupList([group])
+            };
+            GetTrieNodesMessageSerializer serializer = new();
+            byte[] encoded = new byte[serializer.GetLength(message)];
+            serializer.Serialize(encoded, message);
+
+            using GetTrieNodesMessage deserialized = serializer.Deserialize(encoded);
+            byte[][] decoded = deserialized.Paths.Single().Group;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded[0], tooLong ? Is.SameAs(PathGroup.TooLongPath) : Is.EqualTo(path));
+                Assert.That(decoded[1..], Is.EqualTo(group.Group[1..]));
+                Assert.That(serializer.SerializeToArray(deserialized), Is.EqualTo(encoded));
+            }
+        }
+
+        [Test]
+        public void Does_not_copy_path_too_long_for_any_trie()
+        {
+            GetTrieNodesMessageSerializer serializer = new();
+            byte[] Encode(int length)
+            {
+                using GetTrieNodesMessage message = new()
+                {
+                    RootHash = TestItem.KeccakA,
+                    Paths = PathGroup.EncodeToRlpPathGroupList([new PathGroup { Group = [new byte[length]] }])
+                };
+                return serializer.SerializeToArray(message);
+            }
+
+            // Decodes a group once first, so the measured one allocates nothing the first decode does.
+            using (GetTrieNodesMessage warmUp = serializer.Deserialize(Encode(PathGroup.MaxPathLength + 1)))
+                _ = warmUp.Paths[0];
+            using GetTrieNodesMessage deserialized = serializer.Deserialize(Encode(1 << 20));
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            byte[][] decoded = deserialized.Paths[0].Group;
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded, Has.Length.EqualTo(1));
+                Assert.That(decoded[0], Is.SameAs(PathGroup.TooLongPath));
+                Assert.That(allocated, Is.LessThan(4096), "the 1 MB path is not copied");
+            }
+        }
+
+        [TestCase("e501a0{0}c1c501")] // a group item overruns its group
+        [TestCase("e701a0{0}c3c2850001")] // a path overruns its group
+        [TestCase("e701a0{0}c3c2c10101")] // a path is a list
+        public void Rejects_malformed_path_group(string template)
+        {
+            byte[] encoded = Convert.FromHexString(string.Format(template, new string('0', 64)));
+
+            Assert.That(() => new GetTrieNodesMessageSerializer().Deserialize(encoded).Dispose(), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]

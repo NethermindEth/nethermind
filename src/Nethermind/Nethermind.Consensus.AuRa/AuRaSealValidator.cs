@@ -50,6 +50,14 @@ namespace Nethermind.Consensus.AuRa
 
         private IReportingValidator ReportingValidator => _reportingValidator.Value;
 
+        public bool RequiresParentForSyncCredit => true;
+
+        public bool CanCreditChild(BlockHeader parent, BlockHeader child) =>
+            child is AuRaBlockHeader { AuRaStep: { } step }
+            && TryGetValidators(parent, out Address[] validators)
+            && _validSealerStrategy.IsValidSealer(validators, child.Beneficiary, step, out _)
+            && ValidateSeal(child, true);
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             const long rejectedStepDrift = 4;

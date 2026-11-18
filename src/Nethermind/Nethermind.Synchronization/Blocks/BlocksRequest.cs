@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks;
 
@@ -27,6 +28,7 @@ public sealed class BlocksRequest : IDisposable
     public Task DownloadTask { get; set; }
     public int AllCounts => BodiesRequests.Count + BlockAccessListsRequests.Count + ReceiptsRequests.Count;
     private bool _disposed;
+    internal AllocationContexts VerifiedProgressContexts { get; set; }
 
     public override string ToString() => $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {ReceiptsRequests.Count} Receipts";
 

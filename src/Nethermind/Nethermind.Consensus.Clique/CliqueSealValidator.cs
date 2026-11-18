@@ -18,6 +18,8 @@ namespace Nethermind.Consensus.Clique
         private readonly ISnapshotManager _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
         private readonly ILogger _logger = logManager?.GetClassLogger<CliqueSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
 
+        public bool RequiresParentForSyncCredit => true;
+
         public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
         {
             ulong number = header.Number;

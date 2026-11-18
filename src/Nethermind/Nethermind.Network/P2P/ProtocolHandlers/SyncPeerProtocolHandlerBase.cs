@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -38,6 +39,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
+        // The size limits can end a response early, so blocks are read ahead a window at a time, not all at once.
+        protected const int ServingPrefetchWindow = 16;
         public Node Node => Session.Node;
         public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -47,8 +50,46 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
 
-        public ulong HeadNumber { get; set; }
-        public Hash256 HeadHash { get; set; }
+        private HeadClaim _head = new(null, 0);
+
+        private sealed record HeadClaim(Hash256? Hash, ulong Number);
+
+        public ulong HeadNumber
+        {
+            get => Volatile.Read(ref _head).Number;
+            set
+            {
+                HeadClaim previous;
+                do
+                {
+                    previous = Volatile.Read(ref _head);
+                } while (!ReferenceEquals(Interlocked.CompareExchange(ref _head, new(previous.Hash, value), previous), previous));
+            }
+        }
+
+        public Hash256 HeadHash
+        {
+            get => Volatile.Read(ref _head).Hash!;
+            set
+            {
+                HeadClaim previous;
+                do
+                {
+                    previous = Volatile.Read(ref _head);
+                } while (!ReferenceEquals(Interlocked.CompareExchange(ref _head, new(value, previous.Number), previous), previous));
+            }
+        }
+
+        /// <inheritdoc />
+        public void SetHead(Hash256 hash, ulong number) => Volatile.Write(ref _head, new(hash, number));
+
+        /// <inheritdoc />
+        public bool TrySetHead(Hash256 expectedHash, ulong expectedNumber, Hash256 hash, ulong number)
+        {
+            HeadClaim previous = Volatile.Read(ref _head);
+            return previous.Hash == expectedHash && previous.Number == expectedNumber
+                && ReferenceEquals(Interlocked.CompareExchange(ref _head, new(hash, number), previous), previous);
+        }
 
         // this means that we know what the number, hash, and total diff of the head block is
         public bool IsInitialized { get; set; }
@@ -77,7 +118,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             INodeStatsManager statsManager,
             ISyncServer syncServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
-            ILogManager logManager) : base(session, statsManager, serializer, backgroundTaskScheduler, logManager)
+            ILogManager logManager,
+            TimeProvider? timeProvider = null) : base(session, statsManager, serializer, backgroundTaskScheduler, logManager, timeProvider)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
             _timestamper = Timestamper.Default;
@@ -163,6 +205,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
+        void ISyncPeer.NotifyUsefulSyncResponse()
+        {
+            if (Session is Session session) session.MarkUsefulSyncResponse();
+        }
+
         async Task<BlockHeader?> ISyncPeer.GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             Hash256? requestedHash = hash ?? _remoteHeadBlockHash;
@@ -187,10 +234,21 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 return null;
             }
 
+            if (Session is Session session && HeaderValidator.ValidateHash(header) && SyncServer.FindHeader(requestedHash)?.Hash == requestedHash)
+                session.MarkUsefulSyncResponse();
             return header;
         }
 
-        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+        Task<IOwnedReadOnlyList<BlockHeader>?> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token) =>
+            RequestBlockHeaders(startHash, maxBlocks, skip, reverse: false, token);
+
+        Task<IOwnedReadOnlyList<BlockHeader>?> ISyncPeer.GetAncestorHeaders(Hash256 startHash, int maxBlocks, CancellationToken token) =>
+            RequestBlockHeaders(startHash, maxBlocks, 0, reverse: true, token);
+
+        Task<IOwnedReadOnlyList<BlockHeader>?> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, bool reverse, CancellationToken token) =>
+            RequestBlockHeaders(startHash, maxBlocks, skip, reverse, token);
+
+        private async Task<IOwnedReadOnlyList<BlockHeader>?> RequestBlockHeaders(Hash256 startHash, int maxBlocks, int skip, bool reverse, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -200,11 +258,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             GetBlockHeadersMessage msg = new();
             msg.StartBlockHash = startHash;
             msg.MaxHeaders = maxBlocks;
-            msg.Reverse = 0;
+            msg.Reverse = (byte)(reverse ? 1 : 0);
             msg.Skip = skip;
 
-            IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
-            return headers;
+            return await SendRequest(msg, token);
         }
 
         public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token) => throw new NotSupportedException("Fast sync not supported by eth62 protocol");
@@ -333,7 +390,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (msg.MaxHeaders > 1024)
             {
-                throw new EthSyncException("Incoming headers request for more than 1024 headers");
+                throw new InvalidPeerRequestException("Incoming headers request for more than 1024 headers", DisconnectReason.EthSyncException);
             }
 
             Hash256 startingHash = msg.StartBlockHash;
@@ -374,6 +431,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     {
                         break;
                     }
+
+                    int remaining = hashes.Count - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchBlocks(hashes, i, Math.Min(ServingPrefetchWindow, remaining));
 
                     MemoryManager<byte>? block = SyncServer.FindBlockRlp(hashes[i]);
                     if (block is null)
@@ -441,9 +501,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             using ArrayPoolList<Range> blocks = new(hashes.Length);
             try
             {
-                foreach (Hash256 blockHash in hashes)
+                for (int i = 0; i < hashes.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
+
+                    Hash256 blockHash = hashes[i];
+                    int remaining = hashes.Length - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchReceipts(getReceiptsMessage.Hashes, i, Math.Min(ServingPrefetchWindow, remaining));
 
                     int start = buffer.Count;
                     if (!SyncServer.TryAppendReceipts(blockHash, decoder, withBloom, buffer)) break;

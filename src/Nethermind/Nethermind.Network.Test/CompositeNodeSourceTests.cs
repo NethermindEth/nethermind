@@ -7,13 +7,52 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test;
 
 public class CompositeNodeSourceTests
 {
+    [Test]
+    public async Task DiscoverNodes_Completes_after_finite_sources_including_faults([Values] bool fail)
+    {
+        INodeSource first = Substitute.For<INodeSource>();
+        INodeSource second = Substitute.For<INodeSource>();
+        Node node = new(TestItem.PublicKeyA, "1.2.3.4", 1234);
+        first.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(Enumerate(fail, null));
+        second.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(Enumerate(false, node));
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsError.Returns(true);
+        ILogger wrappedLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<CompositeNodeSource>().Returns(wrappedLogger);
+        using CompositeNodeSource source = new([first, second], logManager);
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+
+        List<Node> nodes = await source.DiscoverNodes(timeout.Token).ToListAsync();
+
+        Assert.That(nodes, Is.EqualTo(new[] { node }));
+        logger.Received(fail ? 1 : 0).Error(Arg.Any<string>(), Arg.Any<FormatException>());
+    }
+
+    [Test]
+    public async Task DiscoverNodes_Completes_without_sources()
+    {
+        using CompositeNodeSource source = new();
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        Assert.That(await source.DiscoverNodes(timeout.Token).ToListAsync(), Is.Empty);
+    }
+
+    private static async IAsyncEnumerable<Node> Enumerate(bool fail, Node? node)
+    {
+        await Task.Yield();
+        if (fail) throw new FormatException("Invalid node record");
+        if (node is not null) yield return node;
+    }
+
     [Test]
     public void CompositeNodeSource_ShouldIgnoreNodeRemoved_AfterDispose()
     {

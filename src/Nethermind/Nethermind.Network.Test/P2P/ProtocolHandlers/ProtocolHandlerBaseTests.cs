@@ -10,6 +10,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -188,7 +189,7 @@ public class ProtocolHandlerBaseTests
     public void Scheduling_reports_the_wrapped_message_type([Values] SchedulingPath path)
     {
         NameCapturingBackgroundTaskScheduler scheduler = new();
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+        TestProtocolHandler handler = new(CreateSession(), TimeSpan.FromSeconds(1), scheduler);
 
         Schedule(handler, path, new TestRequestMessage());
 
@@ -257,7 +258,7 @@ public class ProtocolHandlerBaseTests
     {
         const int limit = BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight;
         QueuingBackgroundTaskScheduler scheduler = new();
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+        TestProtocolHandler handler = new(CreateSession(), TimeSpan.FromSeconds(1), scheduler);
         long droppedBefore = Metrics.SyncServeRequestsDroppedOverPeerLimit;
 
         for (int i = 0; i < limit; i++) Schedule(handler, path, new TestRequestMessage(requestFails));
@@ -285,7 +286,7 @@ public class ProtocolHandlerBaseTests
     {
         const int limit = BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight;
         QueuingBackgroundTaskScheduler scheduler = new() { Accept = false };
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+        TestProtocolHandler handler = new(CreateSession(), TimeSpan.FromSeconds(1), scheduler);
 
         for (int i = 0; i < limit; i++) Schedule(handler, path, new TestRequestMessage());
 
@@ -299,7 +300,7 @@ public class ProtocolHandlerBaseTests
     {
         const int limit = BackgroundTaskSchedulerWrapper.MaxSyncServeRequestsInFlight;
         QueuingBackgroundTaskScheduler scheduler = new();
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromSeconds(1), scheduler);
+        TestProtocolHandler handler = new(CreateSession(), TimeSpan.FromSeconds(1), scheduler);
 
         for (int i = 0; i <= limit; i++) handler.ScheduleTransactionServe(new GetPooledTransactionsMessage(new ArrayPoolList<ValueHash256>(0)));
         Assert.That(scheduler.Count, Is.EqualTo(limit));
@@ -317,7 +318,7 @@ public class ProtocolHandlerBaseTests
         [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path,
         [Values] bool bufferFull)
     {
-        ISession session = Substitute.For<ISession>();
+        ISession session = CreateSession();
         session.IsOutboundBufferFull.Returns(bufferFull);
         ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
         TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
@@ -338,7 +339,7 @@ public class ProtocolHandlerBaseTests
     public async Task Skipped_sync_serve_requests_give_back_their_slot(
         [Values(SchedulingPath.SyncServeTask, SchedulingPath.SyncServeValueTask, SchedulingPath.HandlerSyncServe)] SchedulingPath path)
     {
-        ISession session = Substitute.For<ISession>();
+        ISession session = CreateSession();
         session.IsOutboundBufferFull.Returns(true);
         ImmediateBackgroundTaskScheduler scheduler = new(CancellationToken.None);
         TestProtocolHandler handler = new(session, TimeSpan.FromSeconds(1), scheduler);
@@ -360,7 +361,7 @@ public class ProtocolHandlerBaseTests
     [Test]
     public async Task Late_init_message_after_timeout_does_not_throw()
     {
-        ISession session = Substitute.For<ISession>();
+        ISession session = CreateSession();
         TestProtocolHandler handler = new(session, TimeSpan.FromMilliseconds(50));
 
         await handler.StartTimeoutCheck();
@@ -370,28 +371,30 @@ public class ProtocolHandlerBaseTests
     }
 
     [Test]
-    public async Task Operation_canceled_behavior_depends_on_session_closing([Values] bool sessionIsClosing)
+    public async Task Operation_cancellation_is_neutral_regardless_of_session_closing(
+        [Values] bool sessionIsClosing, [Values] bool cancellationRequested)
     {
-        ISession session = Substitute.For<ISession>();
+        ISession session = CreateSession();
         session.IsClosing.Returns(sessionIsClosing);
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
 
         using CancellationTokenSource cancellationTokenSource = new();
-        cancellationTokenSource.Cancel();
+        if (cancellationRequested) cancellationTokenSource.Cancel();
 
         ImmediateBackgroundTaskScheduler backgroundTaskScheduler = new(cancellationTokenSource.Token);
-        TestProtocolHandler handler = new(session, TimeSpan.FromMilliseconds(50), backgroundTaskScheduler);
+        TestProtocolHandler handler = new(session, TimeSpan.FromMilliseconds(50), backgroundTaskScheduler,
+            logManager: new OneLoggerLogManager(new ILogger(logger)));
 
         handler.ScheduleBackgroundTask(static (_, cancellationToken) => ValueTask.FromException(new OperationCanceledException(cancellationToken)));
 
         await backgroundTaskScheduler.ScheduledTask;
 
-        if (sessionIsClosing)
+        using (Assert.EnterMultipleScope())
         {
             session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-        }
-        else
-        {
-            session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, Arg.Any<string>());
+            logger.Received(sessionIsClosing || cancellationRequested ? 0 : 1)
+                .Debug(Arg.Is<string>(message => message.StartsWith("Failure running background task on session ")));
         }
     }
 
@@ -399,7 +402,7 @@ public class ProtocolHandlerBaseTests
     public void Scheduling_does_not_allocate_wrapper_delegate([Values] SchedulingPath path)
     {
         RunnerCapturingBackgroundTaskScheduler scheduler = new();
-        TestProtocolHandler handler = new(Substitute.For<ISession>(), TimeSpan.FromMilliseconds(50), scheduler);
+        TestProtocolHandler handler = new(CreateSession(), TimeSpan.FromMilliseconds(50), scheduler);
         TestRequestMessage request = new();
 
         Schedule(handler, path, request);
@@ -421,7 +424,7 @@ public class ProtocolHandlerBaseTests
         ProjectionResponseMessage response = new(111);
         serializationService.Deserialize<ProjectionResponseMessage>(Arg.Any<ZeroPacket>()).Returns(response);
         TestProtocolHandler handler = new(
-            Substitute.For<ISession>(),
+            CreateSession(),
             TimeSpan.FromMilliseconds(50),
             serializationService: serializationService);
         MessageDictionary<ProjectionRequestMessage, int> requests = new(handler);
@@ -447,12 +450,19 @@ public class ProtocolHandlerBaseTests
         serializationService.Deserialize<TestRequestMessage>(Arg.Any<ArraySegment<byte>>()).Returns(_ => throw exception);
         TestLogger logger = new() { IsTrace = false };
         TestProtocolHandler handler = new(
-            Substitute.For<ISession>(),
+            CreateSession(),
             TimeSpan.FromMilliseconds(50),
             serializationService: serializationService,
             logManager: new OneLoggerLogManager(new ILogger(logger)));
 
         Assert.That(() => handler.Deserialize([]), Throws.TypeOf(exception.GetType()));
         Assert.That(logger.LogList, Is.Empty);
+    }
+
+    private static ISession CreateSession()
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303));
+        return session;
     }
 }

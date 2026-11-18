@@ -89,6 +89,7 @@ public class SimpleDispatcher<T>(
                 if (request is null)
                     break;
 
+                (request as IDispatchTerminal)?.PrepareDispatch(peerPool);
                 try
                 {
                     await inFlightSemaphore.WaitAsync(token);
@@ -97,7 +98,8 @@ public class SimpleDispatcher<T>(
                 {
                     // Mirror a cancelled Allocate: hand the request back to the feed as a
                     // null-peer response instead of dropping it.
-                    HandleResponse(request, null);
+                    try { HandleResponse(request, null); }
+                    finally { (request as IDispatchTerminal)?.CompleteDispatch(); }
                     continue;
                 }
 
@@ -145,7 +147,11 @@ public class SimpleDispatcher<T>(
                 {
                     // The in-flight slot follows the in-flight counter: a started dispatch returns
                     // it in its own finally; every path that never starts one returns it here.
-                    if (!inFlightSlotTransferred) inFlightSemaphore.Release();
+                    if (!inFlightSlotTransferred)
+                    {
+                        try { (request as IDispatchTerminal)?.CompleteDispatch(); }
+                        finally { inFlightSemaphore.Release(); }
+                    }
                 }
             }
         }
@@ -159,6 +165,17 @@ public class SimpleDispatcher<T>(
     }
 
     private async Task DoDispatch(
+        T request,
+        PeerInfo peer,
+        SyncPeerAllocation allocation,
+        SemaphoreSlim processingSemaphore,
+        CancellationToken token)
+    {
+        try { await DoDispatchCore(request, peer, allocation, processingSemaphore, token); }
+        finally { (request as IDispatchTerminal)?.CompleteDispatch(); }
+    }
+
+    private async Task DoDispatchCore(
         T request,
         PeerInfo peer,
         SyncPeerAllocation allocation,
@@ -234,6 +251,9 @@ public class SimpleDispatcher<T>(
 
         switch (result)
         {
+            case SyncResponseHandlingResult.OK:
+                peer.RecordProgress(contexts);
+                break;
             case SyncResponseHandlingResult.LesserQuality:
                 peerPool.ReportWeakPeer(peer, contexts);
                 break;

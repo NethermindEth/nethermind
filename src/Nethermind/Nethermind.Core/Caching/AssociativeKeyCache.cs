@@ -265,10 +265,12 @@ public sealed partial class AssociativeKeyCache<TKey>
     }
 
     /// <summary>
-    /// Logically invalidates all entries via O(1) epoch bump.
+    /// Logically invalidates all entries via an epoch bump.
     /// When <paramref name="releaseReferences"/> is true (the default) and <typeparamref name="TKey"/>
-    /// contains references, also walks each set under its gate to null out Key fields.
-    /// Pass false on hot paths where O(1) clear is preferred and stale GC roots are acceptable.
+    /// contains references, also walks each set under its gate to null out Key fields (O(n)).
+    /// Otherwise the clear is amortized O(1): once per 16,384 clears it walks every set (O(n))
+    /// so that no entry outlives half of the epoch range.
+    /// Pass false on hot paths where the amortized O(1) clear is preferred and stale GC roots are acceptable.
     /// </summary>
     public void Clear(bool releaseReferences = true)
     {
@@ -276,7 +278,7 @@ public sealed partial class AssociativeKeyCache<TKey>
         {
             long currentEpoch = ClearEpochAndCount(ref _epochAndCount);
 
-            if (releaseReferences && RuntimeHelpers.IsReferenceOrContainsReferences<TKey>())
+            if ((releaseReferences && RuntimeHelpers.IsReferenceOrContainsReferences<TKey>()) || IsSweepEpoch(currentEpoch))
             {
                 ClearEntries(currentEpoch);
             }

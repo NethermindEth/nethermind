@@ -22,14 +22,15 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             ISyncPeer peer = peerInfo.SyncPeer;
             batch.ResponseSourcePeer = peerInfo;
-            batch.MarkSent();
 
             try
             {
+                batch.MarkSent(peerInfo);
                 batch.Response = await peer.GetBlockHeaders(batch.StartNumber, batch.RequestSize, 0, cancellationToken);
             }
             catch (TimeoutException)
             {
+                if (!cancellationToken.IsCancellationRequested) batch.RequestTimedOut = true;
                 if (Logger.IsDebug) Logger.Debug($"{batch} - request block header timeout {batch.RequestTime:F2}");
                 return;
             }

@@ -188,13 +188,21 @@ public class HelloMessageSerializerTests
         Assert.Throws<RlpLimitException>(() => _serializer.Deserialize(serialized));
     }
 
-    private byte[] SerializeWithClientId(string clientId)
+    [TestCase(0)]
+    [TestCase(ushort.MaxValue)]
+    public void Listen_port_round_trips(int port)
+    {
+        using HelloMessage message = _serializer.Deserialize(SerializeWithClientId("client", port));
+        Assert.That(message.ListenPort, Is.EqualTo(port));
+    }
+
+    private byte[] SerializeWithClientId(string clientId, int port = 30303)
     {
         using HelloMessage message = new()
         {
             P2PVersion = 5,
             ClientId = clientId,
-            ListenPort = 30303,
+            ListenPort = port,
             NodeId = NetTestVectors.StaticKeyA.PublicKey,
             Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
         };

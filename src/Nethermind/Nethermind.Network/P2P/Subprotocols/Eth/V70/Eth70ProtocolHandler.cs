@@ -58,9 +58,10 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         ILogManager logManager,
         ITxPoolConfig txPoolConfig,
         IChainHeadSpecProvider specProvider,
-        ITxGossipPolicy? transactionsGossipPolicy = null)
+        ITxGossipPolicy? transactionsGossipPolicy = null,
+        TimeProvider? timeProvider = null)
         : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool,
-            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy)
+            gossipPolicy, forkInfo, logManager, txPoolConfig, specProvider, transactionsGossipPolicy, timeProvider)
     {
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _receiptsRequests70 = new MessageDictionary<GetReceiptsMessage70, ReceiptsMessage70>(this);
@@ -110,6 +111,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             {
                 if (cancellationToken.IsCancellationRequested) break;
 
+                int remaining = Math.Min(hashes.Length, MaxReceiptsLookups) - blockIndex;
+                if (blockIndex % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchReceipts(getReceiptsMessage.Hashes, blockIndex, Math.Min(ServingPrefetchWindow, remaining));
+
                 int blockStart = buffer.Count;
                 if (!SyncServer.TryAppendReceipts(hashes[blockIndex], ReceiptMessageDecoder, withBloom: false, buffer)) break;
 
@@ -130,7 +134,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
                 long requestedStartIndex = blockIndex == 0 ? getReceiptsMessage.FirstBlockReceiptIndex : 0;
                 if (requestedStartIndex < 0 || requestedStartIndex > receiptCount)
                 {
-                    throw new SubprotocolException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receiptCount}");
+                    throw new InvalidPeerRequestException($"Invalid firstBlockReceiptIndex {requestedStartIndex} for block receipts length {receiptCount}");
                 }
 
                 int startIndex = (int)requestedStartIndex;
@@ -146,7 +150,7 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
 
                     if (receiptCount == 0 && startIndex != 0)
                     {
-                        throw new SubprotocolException($"Invalid firstBlockReceiptIndex {startIndex} for empty receipts block");
+                        throw new InvalidPeerRequestException($"Invalid firstBlockReceiptIndex {startIndex} for empty receipts block");
                     }
 
                     KeepReceipts(buffer, blocks, blockStart, buffer.Count, 0);

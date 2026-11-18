@@ -21,7 +21,6 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
@@ -219,6 +218,89 @@ public class SyncServerTests
 
         using MemoryManager<byte>? found = ctx.SyncServer.FindBlockRlp(TestItem.KeccakA);
         Assert.That(found?.Memory.ToArray(), Is.EqualTo(headerKnown ? blockRlp : null));
+    }
+
+    [Test]
+    public void Prefetches_the_known_hashes_in_the_window([Values] bool receipts)
+    {
+        Context ctx = new();
+        using PrefetchingTestDb blockDb = new();
+        using PrefetchingTestDb headerDb = new();
+        HeaderStore headerStore = new(headerDb, new MemDb());
+        Block known = Build.A.Block.WithNumber(5).TestObject;
+        Block outside = Build.A.Block.WithNumber(9).TestObject;
+        headerStore.InsertBlockNumber(known.Hash!, known.Number);
+        headerStore.InsertBlockNumber(outside.Hash!, outside.Number);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, headerStore: headerStore, blockStore: new BlockStore(blockDb));
+
+        Action<IReadOnlyList<Hash256>, int, int> prefetch = receipts ? server.PrefetchReceipts : server.PrefetchBlocks;
+
+        prefetch([outside.Hash!, known.Hash!, TestItem.KeccakA, outside.Hash!], 1, 2);
+
+        byte[] knownKey = Bytes.Concat(known.Number.ToBigEndianByteArray(), known.Hash!.BytesToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((receipts ? headerDb : blockDb).Prefetches, OperatingSystem.IsLinux() ? Is.EqualTo(new[] { new[] { knownKey } }) : Is.Empty);
+            Assert.That((receipts ? blockDb : headerDb).Prefetches, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Conditional_server_head_writers_preserve_a_concurrent_protocol_announcement(
+        [Values] bool hint, [Values] bool interleave, [Values] bool higherNumber)
+    {
+        Context ctx = new();
+        BlockTree source = Build.A.BlockTree().OfChainLength(10).TestObject;
+        BlockTree local = Build.A.BlockTree().OfChainLength(9).TestObject;
+        ctx.SyncServer = ctx.CreateSyncServer(local);
+        Block candidate = source.FindBlock(9, BlockTreeLookupOptions.None)!;
+        using SyncPeerPoolTests.HeadRacePeer remote = new(local.Head!.Hash!, 8);
+        if (interleave)
+            remote.OnNumberRead = () => remote.Protocol.SetHead(TestItem.KeccakB, higherNumber ? 20UL : 8UL);
+
+        if (hint) ctx.SyncServer.HintBlock(candidate.Hash!, candidate.Number, remote.Peer);
+        else ctx.SyncServer.AddNewBlock(candidate, remote.Peer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(remote.Protocol.HeadHash, Is.EqualTo(interleave ? TestItem.KeccakB : candidate.Hash));
+            Assert.That(remote.Protocol.HeadNumber, Is.EqualTo(interleave ? higherNumber ? 20UL : 8UL : candidate.Number));
+        }
+    }
+
+    [Test]
+    public void Unknown_parent_block_can_be_gossiped_again_after_parent_arrives()
+    {
+        Context ctx = new();
+        BlockTree remote = Build.A.BlockTree().OfChainLength(10).TestObject;
+        BlockTree local = Build.A.BlockTree().OfChainLength(8).TestObject;
+        List<string> infoMessages = [];
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        logger.When(log => log.Info(Arg.Any<string>())).Do(call => infoMessages.Add(call.Arg<string>()));
+        ILogManager logManager = new OneLoggerLogManager(new ILogger(logger));
+        ctx.SyncServer = ctx.CreateSyncServer(local, Always.Valid, Always.Valid, logManager: logManager);
+        Block child = remote.FindBlock(9, BlockTreeLookupOptions.None)!;
+        Block parent = remote.FindBlock(8, BlockTreeLookupOptions.None)!;
+
+        ctx.SyncServer.AddNewBlock(child, ctx.NodeWhoSentTheBlock);
+        ctx.SyncServer.AddNewBlock(child, ctx.NodeWhoSentTheBlock);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(local.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Null);
+            Assert.That(infoMessages, Is.Empty);
+        }
+        ctx.SyncServer.AddNewBlock(parent, ctx.NodeWhoSentTheBlock);
+        Assert.That(infoMessages, Has.Count.EqualTo(1));
+        Assert.That(infoMessages[0], Does.StartWith($"Discovered new block {parent.ToString(Block.Format.HashNumberAndTx)}"));
+        ctx.SyncServer.AddNewBlock(child, ctx.NodeWhoSentTheBlock);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(local.FindBlock(child.Hash!, BlockTreeLookupOptions.None), Is.Not.Null);
+            Assert.That(infoMessages, Has.Count.EqualTo(2));
+        }
+        Assert.That(infoMessages[1], Does.StartWith($"Discovered new block {child.ToString(Block.Format.HashNumberAndTx)}"));
     }
 
     [TestCase(true, true, true)]
@@ -639,14 +721,24 @@ public class SyncServerTests
         SyncPeerMock syncPeerMock1 = CreateSyncPeerMock(remoteBlockTree, remoteServer1, TestItem.PublicKeyA);
         PeerInfo peer1 = new(syncPeerMock1);
         ISyncServer remoteServer2 = Substitute.For<ISyncServer>();
+        TaskCompletionSource delivered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        remoteServer2.When(server => server.AddNewBlock(
+            Arg.Is<Block>(block => block.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>()))
+            .Do(_ => delivered.TrySetResult());
         SyncPeerMock syncPeerMock2 = CreateSyncPeerMock(remoteBlockTree, remoteServer2, TestItem.PublicKeyB);
         PeerInfo peer2 = new(syncPeerMock2);
         ConfigurePeers(ctx, [peer1, peer2]);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer1.SyncPeer);
         ctx.SyncServer.AddNewBlock(remoteBlockTree.Head!, peer2.SyncPeer);
-        // Notifications fire on a separate task, and one that starts after Close() is dropped, so wait for the delivery.
-        await Wait.ForCondition(() => remoteServer2.ReceivedCalls().Any(static c => c.GetMethodInfo().Name == nameof(ISyncServer.AddNewBlock)), TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(10));
-        await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close());
+        try
+        {
+            Assert.That(async () => await delivered.Task.WaitAsync(TimeSpan.FromSeconds(5)), Throws.Nothing,
+                "block delivery must complete before closing the send queues");
+        }
+        finally
+        {
+            await Task.WhenAll(syncPeerMock1.Close(), syncPeerMock2.Close()).WaitAsync(TimeSpan.FromSeconds(5));
+        }
         remoteServer1.DidNotReceive().AddNewBlock(remoteBlockTree.Head!, Arg.Any<ISyncPeer>());
         remoteServer2.Received().AddNewBlock(Arg.Is<Block>(b => b.Hash == remoteBlockTree.Head!.Hash), Arg.Any<ISyncPeer>());
     }
@@ -1478,14 +1570,17 @@ public class SyncServerTests
             ISealValidator? sealValidator = null,
             ISyncModeSelector? syncModeSelector = null,
             ISpecProvider? specProvider = null,
+            ILogManager? logManager = null,
             IReceiptFinder? receiptFinder = null,
             IHeaderStore? headerStore = null,
-            IChainLevelInfoRepository? chainLevelInfoRepository = null) =>
+            IChainLevelInfoRepository? chainLevelInfoRepository = null,
+            IBlockStore? blockStore = null) =>
+
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
-                Substitute.For<IBlockStore>(),
+                blockStore ?? Substitute.For<IBlockStore>(),
                 headerStore ?? Substitute.For<IHeaderStore>(),
                 new HeaderDecoder(),
                 receiptFinder ?? NullReceiptStorage.Instance,
@@ -1498,7 +1593,7 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 specProvider ?? MainnetSpecProvider.Instance,
-                LimboLogs.Instance,
+                logManager ?? LimboLogs.Instance,
                 chainLevelInfoRepository: chainLevelInfoRepository);
 
         public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>

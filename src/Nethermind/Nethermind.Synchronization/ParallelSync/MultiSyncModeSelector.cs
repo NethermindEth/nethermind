@@ -541,21 +541,33 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private static bool ShouldBeInStateNodesMode(Snapshot best) => best.IsInStateSync;
 
-        private bool AnyDesiredPeerKnown(Snapshot best) =>
-            _betterPeerStrategy.IsDesiredPeer(
-                (best.Peer.TotalDifficulty, best.Peer.Block),
-                (best.ChainDifficulty, best.Header));
+        private bool AnyDesiredPeerKnown(Snapshot best)
+        {
+            if (_betterPeerStrategy.IsDesiredPeer((best.Peer.TotalDifficulty, best.Peer.Block), (best.ChainDifficulty, best.Header)))
+                return true;
+            if (best.IsInAnyBeaconMode || _beaconSyncStrategy.MergeTransitionFinished
+                || !_betterPeerStrategy.IsLowerThanTerminalTotalDifficulty(best.ChainDifficulty)) return false;
+            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+            {
+                if (peer.TotalDifficulty is not null && peer.KnownHeadNumber is { } known && peer.HeadNumber > known
+                    && !peer.HasNoProgress(AllocationContexts.ForwardHeader)) return true;
+            }
+            return false;
+        }
 
         private (UInt256? maxPeerDifficulty, ulong? number) ReloadDataFromPeers()
         {
             UInt256? maxPeerDifficulty = null;
             ulong? number = 0;
+            IEnumerable<PeerInfo> peers = _syncPeerPool.InitializedPeers;
+            bool hasResponsivePeer = peers.Any(static peer => !peer.HasNoProgress(AllocationContexts.ForwardHeader));
 
-            foreach (PeerInfo peer in _syncPeerPool.InitializedPeers)
+            foreach (PeerInfo peer in peers)
             {
+                if (hasResponsivePeer && peer.HasNoProgress(AllocationContexts.ForwardHeader)) continue;
                 UInt256 currentMax = maxPeerDifficulty ?? UInt256.Zero;
                 ulong currentMaxNumber = number ?? 0;
-                bool isNewPeerBetterThanCurrentMax = _betterPeerStrategy.Compare((currentMax, currentMaxNumber), peer.SyncPeer) < 0;
+                bool isNewPeerBetterThanCurrentMax = _betterPeerStrategy.Compare((currentMax, currentMaxNumber), (peer.TotalDifficulty, peer.HeadNumber)) < 0;
 
                 if (isNewPeerBetterThanCurrentMax)
                 {

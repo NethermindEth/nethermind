@@ -26,6 +26,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         }
 
         [Test]
+        public void Empty_and_nonempty_byte_strings_remain_valid()
+        {
+            using ArrayPoolList<byte[]> data = new(2);
+            data.Add([]);
+            data.Add([0x42]);
+            TrieNodesMessageSerializer serializer = new();
+            TrieNodesMessage message = new(new ByteArrayListAdapter(data)) { RequestId = 1 };
+
+            byte[] encoded = serializer.SerializeToArray(message);
+            using TrieNodesMessage decoded = serializer.Deserialize(encoded);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Nodes.Count, Is.EqualTo(2));
+                Assert.That(decoded.Nodes[0].Length, Is.Zero);
+                Assert.That(decoded.Nodes[1].ToArray(), Is.EqualTo(new byte[] { 0x42 }));
+                Assert.That(serializer.SerializeToArray(decoded), Is.EqualTo(encoded));
+            }
+        }
+
+        [Test]
         public void RoundtripWithCorrectLength()
         {
             using ArrayPoolList<byte[]> data = new(2) { new byte[] { 0xde, 0xad, 0xc0, 0xde }, new byte[] { 0xfe, 0xed } };

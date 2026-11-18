@@ -61,6 +61,7 @@ public class SnappyTests
         byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", compressedFileName)));
 
         ISession session = Substitute.For<ISession>();
+        session.InboundReceipts.Returns(PacketReceiptTracker.Closed);
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
 

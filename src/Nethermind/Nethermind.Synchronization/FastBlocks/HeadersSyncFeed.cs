@@ -559,6 +559,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 return SyncResponseHandlingResult.InternalError;
             }
 
+            batch.InsertedHeadersCount = 0;
             _resetLock.EnterReadLock();
             try
             {
@@ -575,19 +576,21 @@ namespace Nethermind.Synchronization.FastBlocks
                         batch.MarkHandlingStart();
                         if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
                         RequeueAsNewBatch(batch, skipPersisted: false);
-                        return batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
+                        return batch.RequestTimedOut ? SyncResponseHandlingResult.Emptish
+                            : batch.ResponseSourcePeer is null ? SyncResponseHandlingResult.NotAssigned : SyncResponseHandlingResult.NoProgress;
                     }
 
                     if (batch.RequestSize == 0)
                     {
-                        return SyncResponseHandlingResult.OK; // 1
+                        return SyncResponseHandlingResult.Emptish;
                     }
 
                     lock (_handlerLock)
                     {
                         batch.MarkHandlingStart();
                         int added = InsertHeaders(batch);
-                        return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                        return batch.InsertedHeadersCount > 0 ? SyncResponseHandlingResult.OK
+                            : added > 0 ? SyncResponseHandlingResult.Emptish : SyncResponseHandlingResult.NoProgress;
                     }
                 }
                 catch (BlockTreeNotReadyException)
@@ -819,6 +822,20 @@ namespace Nethermind.Synchronization.FastBlocks
 
             ulong addedLast = batch.StartNumber == 0 ? 0UL : batch.StartNumber - 1UL;
             ulong addedEarliest = batch.EndNumber + 1UL;
+            BlockHeader? storedBoundary = LowestInsertedBlockHeader;
+            if (storedBoundary is not null && storedBoundary.Number >= batch.StartNumber)
+            {
+                ulong boundaryIndex = storedBoundary.Number - batch.StartNumber;
+                if (boundaryIndex < (ulong)response.Length && response[(int)boundaryIndex] is { } boundary &&
+                    boundary.Number == storedBoundary.Number && boundary.Hash == storedBoundary.Hash)
+                {
+                    addedEarliest = storedBoundary.Number;
+                    addedLast = batch.EndNumber;
+                    nextHeaderHash = storedBoundary.ParentHash!;
+                    nextHeaderTotalDifficulty = DetermineParentTotalDifficulty(storedBoundary);
+                    response = response[..(int)boundaryIndex];
+                }
+            }
             BlockHeader? lowestInsertedHeader = null;
             int skippedAtTheEnd = 0;
             for (int i = response.Length - 1; i >= 0; i--)
@@ -880,6 +897,7 @@ namespace Nethermind.Synchronization.FastBlocks
             if (headersToAdd.Count > 0)
             {
                 InsertHeaders(headersToAdd);
+                batch.InsertedHeadersCount += headersToAdd.Count - (headersToAdd[0].IsGenesis ? 1 : 0);
                 lowestInsertedHeader = headersToAdd[0];
             }
 
@@ -935,15 +953,6 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
             }
 
-            if (added == 0)
-            {
-                if (batch.ResponseSourcePeer is not null)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"{batch} - reporting no progress");
-                    _syncPeerPool.ReportNoSyncProgress(batch.ResponseSourcePeer, AllocationContexts.Headers);
-                }
-            }
-
             if (LowestInsertedBlockHeader is not null)
             {
                 HeadersSyncProgressLoggerReport.Update(_pivotNumber - LowestInsertedBlockHeader.Number + 1);
@@ -970,7 +979,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             "first hash inconsistent with request");
                     }
 
-                    return true;
+                    return false;
                 }
 
                 // response needs to be cached until predecessors arrive
@@ -996,17 +1005,13 @@ namespace Nethermind.Synchronization.FastBlocks
                         return false;
                     }
 
-                    if (header.Number == LowestInsertedBlockHeader?.Number)
+                    // `_dependencies` is only ever read at `lowest - 1`, so an entry at or above the lowest inserted header is dead.
+                    // Those headers are already inserted, so account for them and let the filler ask for the rest.
+                    if (lowestInserted is not null && header.Number >= lowestInserted.Number)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
-                        if (batch.ResponseSourcePeer is not null)
-                        {
-                            _syncPeerPool.ReportBreachOfProtocol(
-                                batch.ResponseSourcePeer,
-                                DisconnectReason.HeaderBatchOnDifferentBranch,
-                                "headers - different branch");
-                        }
-
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - already inserted above {lowestInserted.Number} - no dependency");
+                        addedEarliest = Math.Max(batch.StartNumber, lowestInserted.Number);
+                        addedLast = batch.EndNumber;
                         return false;
                     }
 
@@ -1021,16 +1026,6 @@ namespace Nethermind.Synchronization.FastBlocks
 
                         return false;
                     }
-                    // `_dependencies` is only ever read at `lowest - 1`, so an entry at or above the lowest inserted header is dead.
-                    // Those headers are already inserted, so account for them and let the filler ask for the rest.
-                    if (lowestInserted is not null && header.Number > lowestInserted.Number)
-                    {
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - already inserted above {lowestInserted.Number} - no dependency");
-                        addedEarliest = Math.Max(batch.StartNumber, lowestInserted.Number);
-                        addedLast = batch.EndNumber;
-                        return false;
-                    }
-
                     HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, headerIndex);
                     addedEarliest = dependentBatch.StartNumber;
                     addedLast = dependentBatch.EndNumber;

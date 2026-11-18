@@ -9,7 +9,7 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
+using Autofac;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -20,8 +20,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Timers;
-using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
@@ -38,6 +38,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -57,6 +58,7 @@ using GetReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.
 using GetReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage;
 using NodeDataMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.NodeDataMessage;
 using PooledTransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
+using static Nethermind.Network.Test.P2P.Subprotocols.Eth.PooledTransactionRetryCache;
 using ReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
@@ -88,6 +90,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session.Node.Returns(node);
             _session.When(s => s.DeliverMessage(Arg.Any<P2PMessage>())).Do(c => c.Arg<P2PMessage>().AddTo(_disposables));
             _syncManager = Substitute.For<ISyncServer>();
+            _session.DeliverMessage(Arg.Any<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>()).Returns(call =>
+            {
+                using DisposableByteBuffer encoded = _svc.ZeroSerialize(call.Arg<Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>()).AsDisposable();
+                return encoded.ReadableBytes;
+            });
             _transactionPool = Substitute.For<ITxPool>();
             _specProvider = Substitute.For<ISpecProvider>();
             _syncManager.ServeReceipts(_specProvider);
@@ -100,7 +107,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.Init();
         }
 
-        private Eth66ProtocolHandler CreateHandler(IBackgroundTaskScheduler backgroundTaskScheduler) =>
+        private Eth66ProtocolHandler CreateHandler(IBackgroundTaskScheduler backgroundTaskScheduler, TimeProvider? timeProvider = null, ITxGossipPolicy? txGossipPolicy = null) =>
             new(
                 _session,
                 _svc,
@@ -110,7 +117,32 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _transactionPool,
                 _gossipPolicy,
                 new ForkInfo(_specProvider, _syncManager),
-                LimboLogs.Instance);
+                LimboLogs.Instance, transactionsGossipPolicy: txGossipPolicy, timeProvider: timeProvider);
+
+        [Test]
+        public void Ignored_pooled_reply_releases_the_only_reply_slot()
+        {
+            ITxGossipPolicy policy = Substitute.For<ITxGossipPolicy>();
+            policy.ShouldListenToGossipedTransactions.Returns(true);
+            _handler.Dispose();
+            _handler = CreateHandler(new RecordingBackgroundTaskScheduler { QueueCapacity = 48 }, txGossipPolicy: policy);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+            GetPooledTransactionsMessage66 first = Requests().Single();
+
+            policy.ShouldListenToGossipedTransactions.Returns(false);
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage reply = new(first.RequestId,
+                new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+            HandleZeroMessage(reply, Eth66MessageCode.PooledTransactions);
+
+            policy.ShouldListenToGossipedTransactions.Returns(true);
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakB));
+            Assert.That(Requests().Last().EthMessage.Hashes.AsSpan().ToArray(), Is.EqualTo(new[] { TestItem.KeccakB.ValueHash256 }));
+
+            IEnumerable<GetPooledTransactionsMessage66> Requests() => _session.ReceivedCalls()
+                .SelectMany(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>());
+        }
 
         [TearDown]
         public void TearDown()
@@ -119,6 +151,410 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _session?.Dispose();
             _syncManager?.Dispose();
             _disposables?.Dispose();
+        }
+
+        private void Receive<T>(Eth66ProtocolHandler handler, T message, int code) where T : P2PMessage
+        {
+            using DisposableByteBuffer packet = _svc.ZeroSerialize(message).AsDisposable();
+            packet.ReadByte();
+            handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)code });
+        }
+
+        [Test]
+        public async Task A_full_reply_quota_bounds_refusals_and_preserves_a_ten_second_pause([Values] bool releaseQuota)
+        {
+            HandleIncomingStatusMessage();
+            ManualTimeProvider clock = new();
+            await using IContainer container = CreateRequestedProgressPool(clock);
+            _transactionPool = container.Resolve<ITxPool>();
+            TxPool.TxPool pool = (TxPool.TxPool)_transactionPool;
+            _handler.Dispose();
+            _handler = CreateHandler(new RecordingBackgroundTaskScheduler(), clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            ValueHash256[] held = Enumerable.Range(90000, 32).Select(index => new Hash256(index.ToString("X64")).ValueHash256).ToArray();
+            foreach (ValueHash256 hash in held)
+            {
+                pool.RetryCache.Announced(hash, _handler);
+                _handler.HandleMessage(PooledTransactionRequestMessage.New(hash));
+            }
+            Assert.That(Requests(), Has.Length.EqualTo(32));
+            ValueHash256[] targets = Enumerable.Range(1000, 4064).Select(index => new Hash256(index.ToString("X64")).ValueHash256).ToArray();
+            for (int start = 0; start < targets.Length; start += NewPooledTransactionHashesMessage.MaxCount)
+            {
+                using NewPooledTransactionHashesMessage announcement = new(targets.Skip(start)
+                    .Take(NewPooledTransactionHashesMessage.MaxCount).Select(hash => hash.ToHash256()).ToArray().ToPooledList());
+                HandleZeroMessage(announcement, Eth65MessageCode.NewPooledTransactionHashes);
+            }
+            Assert.That(Requests(), Has.Length.EqualTo(32));
+            int answered = 32;
+            List<ValueHash256> delivered = [];
+            ISession honestSession = Substitute.For<ISession>();
+            honestSession.Node.Returns(new Node(TestItem.PublicKeyB, new IPEndPoint(IPAddress.Loopback, 30304)));
+            List<GetPooledTransactionsMessage66> honestRequests = [];
+            honestSession.DeliverMessage(Arg.Any<P2PMessage>()).Returns(call =>
+            {
+                P2PMessage message = call.Arg<P2PMessage>();
+                message.AddTo(_disposables);
+                if (message is GetPooledTransactionsMessage66 request) honestRequests.Add(request);
+                return 1;
+            });
+            using Eth66ProtocolHandler honest = new(honestSession, _svc,
+                new NodeStatsManager(_timerFactory, LimboLogs.Instance), _syncManager,
+                new RecordingBackgroundTaskScheduler(), pool, _gossipPolicy,
+                new ForkInfo(_specProvider, _syncManager), LimboLogs.Instance, timeProvider: clock);
+            honest.Init();
+            using StatusMessage honestStatus = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            Receive(honest, honestStatus, 0);
+            EthereumEcdsa ecdsa = new(1);
+            Transaction[] honestTransactions = Enumerable.Range(0, 256)
+                .Select(index => Build.A.Transaction.WithNonce((ulong)index).WithGasPrice(2.GWei).WithGasLimit(21000)
+                    .SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject).ToArray();
+            MethodInfo expire = typeof(Eth66ProtocolHandler).GetMethod("ExpirePooledTransactionRequests", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            for (int callback = 0; callback < 49; callback++)
+            {
+                clock.Advance(TimeSpan.FromMilliseconds(700));
+                if (releaseQuota) expire.Invoke(_handler, null);
+                else foreach (ValueHash256 hash in held) _handler.HandleMessage(PooledTransactionRequestMessage.New(hash));
+                if (callback == 14)
+                    foreach (Transaction transaction in honestTransactions)
+                    {
+                        pool.RetryCache.Announced(transaction.Hash!.ValueHash256, honest);
+                        Assert.That(pool.RetryCache.TryDeferRequest(transaction.Hash.ValueHash256, honest), Is.True);
+                    }
+                ProcessRetryTick(pool.RetryCache);
+                if (callback == 14)
+                {
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(honestRequests, Has.Count.EqualTo(1));
+                        Assert.That(honestRequests.SelectMany(static request => request.EthMessage.Hashes),
+                            Is.EquivalentTo(honestTransactions.Select(static transaction => transaction.Hash!.ValueHash256)));
+                    }
+                    long accepted = pool.PendingTransactionsAdded;
+                    using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(honestRequests[0].RequestId,
+                        new PooledTransactionsMessage(honestTransactions.ToPooledList()));
+                    Receive(honest, response, Eth66MessageCode.PooledTransactions);
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(pool.PendingTransactionsAdded - accepted, Is.EqualTo(256));
+                        Assert.That(honestTransactions.All(transaction => pool.ContainsTx(transaction.Hash!, TxType.Legacy)), Is.True);
+                        Assert.That(pool.RetryCache.HandlerReferences(honest), Is.EqualTo((0, 0)));
+                    }
+                }
+                if (releaseQuota)
+                {
+                    GetPooledTransactionsMessage66[] requests = Requests();
+                    foreach (GetPooledTransactionsMessage66 request in requests.Skip(answered))
+                    {
+                        Assert.That(request.EthMessage.Hashes.Count, Is.LessThanOrEqualTo(256));
+                        delivered.AddRange(request.EthMessage.Hashes);
+                        using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage empty = new(request.RequestId,
+                            new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                        HandleZeroMessage(empty, Eth66MessageCode.PooledTransactions);
+                    }
+                    answered = requests.Length;
+                }
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(delivered, releaseQuota ? Is.EquivalentTo(targets) : Is.Empty);
+                Assert.That(pool.RetryCache.RawResourcesInRetryQueue, Is.Zero);
+                Assert.That(pool.RetryCache.TrackedRequestsInUse, Is.Zero);
+                Assert.That(pool.RetryCache.OverflowRequestsInUse, Is.Zero);
+                Assert.That(pool.RetryCache.RetainedAssociationsInUse, Is.Zero);
+                Assert.That(honestRequests, Has.Count.EqualTo(1));
+            }
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            honestSession.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+
+            GetPooledTransactionsMessage66[] Requests() => _session.ReceivedCalls()
+                .SelectMany(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>()).ToArray();
+        }
+
+        [Test]
+        public async Task An_early_accepted_reply_requires_a_positive_completed_send(
+            [Values] RequestSendOutcome outcome, [Values] bool concurrentResponse)
+        {
+            HandleIncomingStatusMessage();
+            ManualTimeProvider clock = new();
+            await using IContainer container = CreateRequestedProgressPool(clock);
+            _transactionPool = container.Resolve<ITxPool>();
+            TxPool.TxPool pool = (TxPool.TxPool)_transactionPool;
+            _handler.Dispose();
+            _handler = CreateHandler(new RecordingBackgroundTaskScheduler(), clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            ValueHash256 backlog = TestItem.KeccakF.ValueHash256;
+            pool.RetryCache.Announced(backlog, _handler);
+            Assert.That(pool.RetryCache.TryDeferRequest(backlog, _handler), Is.True);
+            clock.Advance(TimeSpan.FromSeconds(32));
+            Transaction transaction = Build.A.Transaction.WithGasPrice(2.GWei).WithGasLimit(21000)
+                .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
+            ValueHash256 hash = transaction.Hash!.ValueHash256;
+            pool.RetryCache.Announced(hash, _handler);
+            int deliveries = 0;
+            _session.DeliverMessage(Arg.Any<GetPooledTransactionsMessage66>()).Returns(call =>
+            {
+                deliveries++;
+                long id = call.Arg<GetPooledTransactionsMessage66>().RequestId;
+                if (concurrentResponse) Task.Run(Reply).GetAwaiter().GetResult();
+                else Reply();
+                Assert.That(pool.ContainsTx(hash.ToHash256(), TxType.Legacy), Is.True);
+                return outcome switch
+                {
+                    RequestSendOutcome.Sent => 1,
+                    RequestSendOutcome.Dropped => 0,
+                    _ => throw new InvalidOperationException("local send failed")
+                };
+
+                void Reply()
+                {
+                    using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(id,
+                        new PooledTransactionsMessage(new[] { transaction }.ToPooledList()));
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                }
+            });
+            if (outcome == RequestSendOutcome.Throws)
+                Assert.That(() => _handler.HandleMessage(PooledTransactionRequestMessage.New(hash)), Throws.TypeOf<InvalidOperationException>());
+            else
+                _handler.HandleMessage(PooledTransactionRequestMessage.New(hash));
+            Assert.That(deliveries, Is.EqualTo(1));
+            clock.Advance(TimeSpan.FromSeconds(2));
+            Assert.That(pool.RetryCache.TryDeferRequest(backlog, _handler), Is.EqualTo(outcome == RequestSendOutcome.Sent));
+        }
+
+        [Test]
+        public async Task Accepted_alternate_response_renews_only_the_actual_sending_identity()
+        {
+            HandleIncomingStatusMessage();
+            ManualTimeProvider clock = new();
+            await using IContainer container = CreateRequestedProgressPool(clock);
+            _transactionPool = container.Resolve<ITxPool>();
+            TxPool.TxPool pool = (TxPool.TxPool)_transactionPool;
+            _handler.Dispose();
+            _handler = CreateHandler(RunImmediatelyScheduler.Instance, clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            ISession otherSession = Substitute.For<ISession>();
+            otherSession.Node.Returns(new Node(TestItem.PublicKeyB, new IPEndPoint(IPAddress.Loopback, 30304)));
+            List<GetPooledTransactionsMessage66> sent = [];
+            otherSession.DeliverMessage(Arg.Any<P2PMessage>()).Returns(call =>
+            {
+                P2PMessage message = call.Arg<P2PMessage>();
+                message.AddTo(_disposables);
+                if (message is GetPooledTransactionsMessage66 request) sent.Add(request);
+                return 1;
+            });
+            using Eth66ProtocolHandler other = new(otherSession, _svc,
+                new NodeStatsManager(_timerFactory, LimboLogs.Instance), _syncManager,
+                RunImmediatelyScheduler.Instance, _transactionPool, _gossipPolicy,
+                new ForkInfo(_specProvider, _syncManager), LimboLogs.Instance, timeProvider: clock);
+            other.Init();
+            using StatusMessage status = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+            HandleOther(status, 0);
+            ValueHash256 sourceBacklog = TestItem.KeccakE.ValueHash256;
+            ValueHash256 senderBacklog = TestItem.KeccakF.ValueHash256;
+            pool.RetryCache.Announced(sourceBacklog, _handler);
+            pool.RetryCache.Announced(senderBacklog, other);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool.RetryCache.TryDeferRequest(sourceBacklog, _handler), Is.True);
+                Assert.That(pool.RetryCache.TryDeferRequest(senderBacklog, other), Is.True);
+            }
+            clock.Advance(TimeSpan.FromSeconds(28));
+            Transaction transaction = Build.A.Transaction.WithGasPrice(2.GWei).WithGasLimit(21000)
+                .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
+            ValueHash256 hash = transaction.Hash!.ValueHash256;
+            pool.RetryCache.Announced(hash, _handler);
+            RequestTransaction(transaction);
+            pool.RetryCache.Announced(hash, other);
+            clock.Advance(TimeSpan.FromSeconds(4));
+            ProcessRetryTick(pool.RetryCache);
+            GetPooledTransactionsMessage66 requested = sent.Single(request => request.EthMessage.Hashes.Contains(hash));
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(requested.RequestId,
+                new PooledTransactionsMessage(new[] { transaction }.ToPooledList()));
+            HandleOther(response, Eth66MessageCode.PooledTransactions);
+            Assert.That(pool.ContainsTx(hash.ToHash256(), TxType.Legacy), Is.True);
+            clock.Advance(TimeSpan.FromSeconds(2));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pool.RetryCache.TryDeferRequest(sourceBacklog, _handler), Is.False);
+                Assert.That(pool.RetryCache.TryDeferRequest(senderBacklog, other), Is.True);
+            }
+
+            void HandleOther<T>(T message, int code) where T : P2PMessage
+            {
+                using DisposableByteBuffer packet = _svc.ZeroSerialize(message).AsDisposable();
+                packet.ReadByte();
+                other.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)code });
+            }
+        }
+
+        [Test]
+        public async Task Old_request_tokens_do_not_acquire_replacement_or_later_attempt_credit(
+            [Values("generation", "attempt", "expired", "queuedExpiry")] string replacement)
+        {
+            HandleIncomingStatusMessage();
+            ManualTimeProvider clock = new();
+            await using IContainer container = CreateRequestedProgressPool(clock);
+            _transactionPool = container.Resolve<ITxPool>();
+            TxPool.TxPool pool = (TxPool.TxPool)_transactionPool;
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = replacement == "queuedExpiry" };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler, clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            ValueHash256 backlog = TestItem.KeccakF.ValueHash256;
+            pool.RetryCache.Announced(backlog, _handler);
+            Assert.That(pool.RetryCache.TryDeferRequest(backlog, _handler), Is.True);
+            Transaction transaction = Build.A.Transaction.WithGasPrice(2.GWei).WithGasLimit(21000)
+                .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
+            ValueHash256 hash = transaction.Hash!.ValueHash256;
+            pool.RetryCache.Announced(hash, _handler);
+            long oldId = RequestTransaction(transaction);
+            double elapsed = replacement == "expired" ? 3.6 : 1;
+            clock.Advance(TimeSpan.FromSeconds(elapsed));
+            if (replacement != "queuedExpiry")
+            {
+                if (replacement != "attempt")
+                {
+                    pool.RetryCache.Received(hash);
+                    pool.RetryCache.Announced(hash, _handler);
+                }
+                Assert.That(RequestTransaction(transaction), Is.Not.EqualTo(oldId));
+            }
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(oldId,
+                new PooledTransactionsMessage(new[] { transaction }.ToPooledList()));
+            HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+            if (replacement == "queuedExpiry")
+            {
+                clock.Advance(TimeSpan.FromSeconds(2.5));
+                elapsed += 2.5;
+                await scheduler.Drain(CancellationToken.None);
+            }
+            Assert.That(pool.ContainsTx(hash.ToHash256(), TxType.Legacy), Is.True, "the old payload still undergoes normal transaction validation");
+            clock.Advance(TimeSpan.FromSeconds(34 - elapsed));
+            Assert.That(pool.RetryCache.TryDeferRequest(backlog, _handler), Is.False);
+        }
+
+        [Test]
+        public async Task Only_fresh_accepted_requested_transactions_renew_source_backlog(
+            [Values("accepted", "invalid", "known", "broadcast", "empty", "unmatched", "late", "cancel")] string responseKind)
+        {
+            HandleIncomingStatusMessage();
+            ManualTimeProvider clock = new();
+            await using IContainer container = CreateRequestedProgressPool(clock);
+            _transactionPool = container.Resolve<ITxPool>();
+            TxPool.TxPool pool = (TxPool.TxPool)_transactionPool;
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = responseKind == "cancel" };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler, clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            ValueHash256 backlog = TestItem.KeccakF.ValueHash256;
+            pool.RetryCache.Announced(backlog, _handler);
+            Assert.That(pool.RetryCache.TryDeferRequest(backlog, _handler), Is.True);
+            clock.Advance(TimeSpan.FromSeconds(32));
+            Transaction transaction = Build.A.Transaction.WithGasPrice(2.GWei).WithGasLimit(responseKind == "invalid" ? 1UL : 21000UL)
+                .SignedAndResolved(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
+            ValueHash256 hash = transaction.Hash!.ValueHash256;
+            pool.RetryCache.Announced(hash, _handler);
+            long requestId = RequestTransaction(transaction);
+            if (responseKind == "known")
+                Assert.That(pool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            if (responseKind == "late") clock.Advance(TimeSpan.FromSeconds(3.5));
+            if (responseKind == "broadcast")
+            {
+                using TransactionsMessage broadcast = new(new[] { transaction }.ToPooledList());
+                HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
+            }
+            else
+            {
+                using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                    responseKind == "unmatched" ? requestId + 1 : requestId,
+                    new PooledTransactionsMessage(responseKind == "empty" ? IOwnedReadOnlyList<Transaction>.Empty
+                        : new[] { transaction }.ToPooledList()));
+                HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                if (responseKind == "cancel") await scheduler.Drain(new CancellationToken(true));
+            }
+            if (responseKind != "late") clock.Advance(TimeSpan.FromSeconds(2));
+            Assert.That(pool.RetryCache.TryDeferRequest(backlog, _handler), Is.EqualTo(responseKind == "accepted"));
+            if (responseKind == "accepted")
+            {
+                clock.Advance(TimeSpan.FromSeconds(34));
+                Assert.That(pool.RetryCache.TryDeferRequest(backlog, _handler), Is.False);
+            }
+        }
+
+        [Test]
+        public async Task Pooled_response_context_has_one_owner_through_scheduling(
+            [Values("complete", "cancel", "reject", "continue", "rejectContinuation", "dispose")] string outcome)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true, Reject = outcome == "reject" };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            using CancellationTokenSource cancellation = new();
+            if (outcome == "continue" || outcome == "rejectContinuation")
+                _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+                {
+                    cancellation.Cancel();
+                    scheduler.Reject = outcome == "rejectContinuation";
+                    return AcceptTxResult.Accepted;
+                });
+            int releases = 0;
+            using PooledTransactionRequests.ResponseContext context = new(2, () => releases++);
+            context.Tokens.Add(default);
+            context.Tokens.Add(default);
+            TransactionsMessage response = new(new ArrayPoolList<Transaction>(2)
+            {
+                Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+                Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject
+            });
+            MethodInfo schedule = typeof(Eth62ProtocolHandler).GetMethod("HandlePooledTransactions", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            schedule.Invoke(_handler, [response, true, null, context]);
+            if (outcome == "reject") Assert.That(releases, Is.EqualTo(1));
+            else
+            {
+                Assert.That(releases, Is.Zero);
+                if (outcome == "cancel") cancellation.Cancel();
+                if (outcome == "dispose")
+                {
+                    _session.IsClosing.Returns(true);
+                    _handler.Dispose();
+                }
+                await scheduler.RunNext(cancellation.Token);
+                if (outcome == "continue")
+                {
+                    Assert.That(releases, Is.Zero);
+                    await scheduler.Drain(CancellationToken.None);
+                }
+                Assert.That(releases, Is.EqualTo(1));
+            }
+            context.Dispose();
+            Assert.That(releases, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void Sending_after_expiry_releases_reply_slots_without_a_timer_or_response()
+        {
+            ManualTimeProvider clock = new();
+            RecordingBackgroundTaskScheduler scheduler = new() { QueueCapacity = 8192 };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler, clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            for (int index = 0; index < 32; index++)
+                _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+            Assert.That(_session.ReceivedCalls().Count(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>().Any()), Is.EqualTo(32));
+            clock.Advance(Timeouts.Eth);
+            _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakB));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_session.ReceivedCalls().Count(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>().Any()), Is.EqualTo(33));
+                _transactionPool.DidNotReceive().TryDeferTransactionRequest(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>());
+                _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
         }
 
         [Test]
@@ -264,6 +700,94 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public async Task Local_pooled_reply_faults_remain_neutral_with_exact_protected_capacity([Values(0, 1, 2, 3)] int fault)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true, QueueCapacity = 8192 };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            Exception failure = fault switch
+            {
+                0 => new RlpReaderException("local transaction storage is malformed"),
+                1 => new RlpLimitException("local transaction storage exceeds its read limit"),
+                2 => new System.IO.InvalidDataException("local transaction storage is unavailable"),
+                _ => new OperationCanceledException("local transaction storage operation was cancelled")
+            };
+            bool fail = true;
+            _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(_ =>
+                fail ? throw failure : AcceptTxResult.Accepted);
+            try
+            {
+                for (int round = 0; round < 2; round++)
+                {
+                    for (int index = 0; index < 32; index++)
+                    {
+                        long requestId = RequestTransaction(transaction);
+                        using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(requestId,
+                            new PooledTransactionsMessage(new[] { transaction }.ToPooledList()));
+                        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                    }
+                    Assert.That(scheduler.ScheduledFulfillFuncs.Count, Is.EqualTo((round + 1) * 32));
+                    _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakB));
+                    Assert.That(_session.ReceivedCalls().Count(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>().Any()), Is.EqualTo((round + 1) * 32));
+                    await scheduler.Drain(CancellationToken.None);
+                    _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+                    _transactionPool.Received((round + 1) * 32).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+                    fail = false;
+                }
+            }
+            finally { await scheduler.Drain(new CancellationToken(true)); }
+        }
+
+        [Test]
+        public async Task Pooled_replies_must_be_an_ordered_subset_of_the_requested_hashes(
+            [Values(0, 1, 2, 3, 4)] int replyShape, [Values] bool eth67)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true, QueueCapacity = 8192 };
+            _handler.Dispose();
+            _handler = eth67
+                ? new Nethermind.Network.P2P.Subprotocols.Eth.V67.Eth67ProtocolHandler(_session, _svc,
+                    new NodeStatsManager(_timerFactory, LimboLogs.Instance), _syncManager, scheduler,
+                    _transactionPool, _gossipPolicy, new ForkInfo(_specProvider, _syncManager), LimboLogs.Instance)
+                : CreateHandler(scheduler);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            Transaction first = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+            Transaction second = Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject;
+            Transaction unrequested = Build.A.Transaction.WithNonce(3).SignedAndResolved().TestObject;
+            _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>()).Returns(AnnounceResult.RequestRequired);
+            using NewPooledTransactionHashesMessage announcement = new(new[] { first.Hash!, second.Hash! }.ToPooledList());
+            HandleZeroMessage(announcement, Eth65MessageCode.NewPooledTransactionHashes);
+            long requestId = _session.ReceivedCalls().SelectMany(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>()).Last().RequestId;
+            Transaction[] returned = replyShape switch
+            {
+                0 => [unrequested],
+                1 => [first, first],
+                2 => [],
+                3 => [second],
+                _ => [first, second]
+            };
+            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(requestId,
+                new PooledTransactionsMessage(returned.ToPooledList()));
+            bool rejected = replyShape < 2;
+            try
+            {
+                if (rejected) Assert.Throws<SubprotocolException>(() => HandleZeroMessage(response, Eth66MessageCode.PooledTransactions));
+                else HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                Assert.That(scheduler.ScheduledFulfillFuncs.Count, Is.EqualTo(!rejected ? 1 : 0));
+                await scheduler.Drain(CancellationToken.None);
+                _transactionPool.Received(rejected ? 0 : returned.Length).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+                HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                Assert.That(scheduler.SchedulingAttempts, Is.EqualTo(!rejected ? 1 : 0));
+                for (int index = 0; index < 32; index++) _handler.HandleMessage(PooledTransactionRequestMessage.New(first.Hash!));
+                Assert.That(_session.ReceivedCalls().Count(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>().Any()), Is.EqualTo(33));
+            }
+            finally { await scheduler.Drain(new CancellationToken(true)); }
+        }
+
+        [Test]
         public void Can_handle_pooled_transactions_once()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1), TestItem.PrivateKeyA).TestObject;
@@ -276,6 +800,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleZeroMessage(msg66, Eth66MessageCode.PooledTransactions);
 
             _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+        }
+
+        private long RequestTransactions(params Transaction[] transactions)
+        {
+            _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>()).Returns(AnnounceResult.RequestRequired);
+            using NewPooledTransactionHashesMessage announcement = new(transactions.Select(static tx => tx.Hash!).ToArray().ToPooledList());
+            HandleZeroMessage(announcement, Eth65MessageCode.NewPooledTransactionHashes);
+            return _session.ReceivedCalls().SelectMany(call => call.GetArguments().OfType<GetPooledTransactionsMessage66>()).Last().RequestId;
         }
 
         private long RequestTransaction(Transaction tx)
@@ -302,39 +834,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public enum BudgetMessageKind { Broadcast, CorrelatedPooled, UncorrelatedPooled }
 
         [Test]
-        public void Transaction_count_budget_rejects_before_decoding([Values] bool pooledResponse, [Values] bool malformed)
-        {
-            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
-            _handler.Dispose();
-            _handler = CreateHandler(scheduler);
-            HandleIncomingStatusMessage();
-            using CompositeDisposable reservations = [];
-            ReserveAllButOneMessage(scheduler, reservations);
-            const int count = 16;
-            byte[] transaction = malformed ? [0xc0] : [0xc9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x1b, 0x01, 0x01];
-            using DisposableByteBuffer packet = Unpooled.Buffer(256).AsDisposable();
-            byte[] transactions = RlpTestHelper.EncodeSequence(Enumerable.Repeat(transaction, count).ToArray());
-            if (pooledResponse)
-            {
-                long requestId = RequestTransaction(Build.A.Transaction.SignedAndResolved().TestObject);
-                transactions = RlpTestHelper.EncodeSequence(Rlp.Encode(requestId), transactions);
-            }
-            packet.WriteBytes(transactions);
-
-            Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet)
-            {
-                PacketType = (byte)(pooledResponse ? Eth66MessageCode.PooledTransactions : Eth62MessageCode.Transactions)
-            }), Throws.Nothing);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(scheduler.ScheduledFulfillFuncs, Is.Empty);
-                _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
-            }
-            using InboundTransactionBudget.Reservation? available = new InboundTransactionBudget(scheduler).TryReserve(1);
-            Assert.That(available, Is.Not.Null);
-        }
-
-        [Test]
         public void Transaction_budget_charges_larger_of_wire_bytes_and_count([Values(0, 1, 16, 16384)] int count, [Values(1, 65536)] int bytes)
         {
             InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
@@ -354,62 +853,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             Assert.That(budget.TryReserve(1, int.MaxValue), Is.Null);
             using InboundTransactionBudget.Reservation? available = budget.TryReserve(InboundTransactionBudget.PeerLimit);
             Assert.That(available, Is.Not.Null);
-        }
-
-        [Test]
-        public async Task Budget_rejection_excludes_correlated_responses_from_flood_sampling(
-            [Values] bool peerLimit, [Values] BudgetMessageKind messageKind, [Values] bool malformed)
-        {
-            bool pooledResponse = messageKind != BudgetMessageKind.Broadcast;
-            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
-            _handler.Dispose();
-            _handler = CreateHandler(scheduler);
-            HandleIncomingStatusMessage();
-            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
-            long requestId = RequestTransaction(tx);
-            using CompositeDisposable reservations = [];
-            try
-            {
-                if (peerLimit)
-                {
-                    using TransactionsMessage emptyBroadcast = new(IOwnedReadOnlyList<Transaction>.Empty);
-                    for (int i = 0; i < InboundTransactionBudget.PeerLimit / InboundTransactionBudget.MinimumCharge; i++)
-                        HandleZeroMessage(emptyBroadcast, emptyBroadcast.PacketType);
-                }
-                else
-                {
-                    for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
-                        new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
-                }
-                Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(1));
-                int scheduled = scheduler.ScheduledFulfillFuncs.Count;
-                using P2PMessage response = pooledResponse
-                    ? new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(
-                        messageKind == BudgetMessageKind.UncorrelatedPooled ? requestId ^ 1 : requestId,
-                        new PooledTransactionsMessage(new ArrayPoolList<Transaction>(1) { tx }))
-                    : new TransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty);
-                using DisposableByteBuffer packet = (pooledResponse
-                    ? _svc.ZeroSerialize((Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage)response)
-                    : _svc.ZeroSerialize((TransactionsMessage)response)).AsDisposable();
-                if (malformed)
-                {
-                    packet.EnsureWritable(1);
-                    packet.WriteByte(0);
-                }
-                packet.ReadByte();
-
-                Assert.That(() => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)response.PacketType }), Throws.Nothing);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(messageKind == BudgetMessageKind.CorrelatedPooled ? 0 : 1));
-                    Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(scheduled));
-                    _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-                }
-            }
-            finally
-            {
-                await scheduler.Drain(new CancellationToken(true));
-            }
         }
 
         [Test]
@@ -451,7 +894,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 return AcceptTxResult.Accepted;
             });
             using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
-                RequestTransaction(first), new PooledTransactionsMessage(new[] { first, second }.ToPooledList()));
+                RequestTransactions(first, second), new PooledTransactionsMessage(new[] { first, second }.ToPooledList()));
             HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
 
             await scheduler.RunNext(cancellation.Token);
@@ -468,38 +911,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit - 1; i++)
                 new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
             new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit - InboundTransactionBudget.MinimumCharge)!.AddTo(reservations);
-        }
-
-        [Test]
-        public void Rejected_or_malformed_response_releases_budget([Values] bool malformed)
-        {
-            RecordingBackgroundTaskScheduler scheduler = new() { Reject = true };
-            _handler.Dispose();
-            _handler = CreateHandler(scheduler);
-            HandleIncomingStatusMessage();
-            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
-            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
-                RequestTransaction(tx), new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
-            using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
-            if (malformed)
-            {
-                packet.EnsureWritable(1);
-                packet.WriteByte(0);
-            }
-            packet.ReadByte();
-            Action receive = () => _handler.HandleMessage(new NettyBufferPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions });
-            if (malformed)
-                Assert.That(receive, Throws.Exception);
-            else
-                Assert.That(receive, Throws.Nothing);
-
-            using CompositeDisposable reservations = [];
-            for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
-            {
-                InboundTransactionBudget.Reservation? reservation = new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit);
-                Assert.That(reservation, Is.Not.Null);
-                reservation!.AddTo(reservations);
-            }
         }
 
         [Test]
@@ -900,20 +1311,26 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [TestCase(512, 2)]
         [TestCase(1000, 4)]
         [TestCase(10000, 40)]
-        public void should_request_in_GetPooledTransactionsMessage_up_to_256_txs(int numberOfTransactions, int expectedNumberOfMessages)
+        public async Task should_request_in_GetPooledTransactionsMessage_up_to_256_txs(int numberOfTransactions, int expectedNumberOfMessages)
         {
             const int maxNumberOfTxsInOneMsg = 256;
 
-            _handler = new Eth66ProtocolHandler(
-                _session,
-                _svc,
-                new NodeStatsManager(_timerFactory, LimboLogs.Instance),
-                _syncManager,
-                RunImmediatelyScheduler.Instance,
-                _transactionPool,
-                _gossipPolicy,
-                new ForkInfo(_specProvider, _syncManager),
-                LimboLogs.Instance);
+            HandleIncomingStatusMessage();
+            _handler.Dispose();
+            ManualTimeProvider requestClock = new();
+            _handler = CreateHandler(new RecordingBackgroundTaskScheduler { QueueCapacity = 8192 }, requestClock);
+            _handler.Init();
+            ManualTimeProvider clock = new();
+            await using RetryCache<PooledTransactionRequestMessage, ValueHash256> retry = CreateRetryCache(clock);
+            _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+                .Returns(call =>
+                {
+                    ValueHash256 hash = call.ArgAt<ValueHash256>(0);
+                    return retry.Announced(in hash, call.ArgAt<IMessageHandler<PooledTransactionRequestMessage>>(1));
+                });
+            _transactionPool.TryDeferTransactionRequest(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+                .Returns(call => TryDeferRequest(retry, call.ArgAt<ValueHash256>(0),
+                    call.ArgAt<IMessageHandler<PooledTransactionRequestMessage>>(1)));
 
             using ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
 
@@ -926,11 +1343,38 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             HandleIncomingStatusMessage();
             HandleZeroMessage(hashesMsg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            _session.Received(expectedNumberOfMessages)
-                .DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m =>
-                    m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg ||
-                    m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg
-                ));
+            Assert.That(SentRequests().Length, Is.EqualTo(Math.Min(expectedNumberOfMessages, 32)));
+            int answered = 0;
+            for (int round = 0; round <= (numberOfTransactions + RetryWorkBatchSize - 1) / RetryWorkBatchSize; round++)
+            {
+                GetPooledTransactionsMessage66[] sent = SentRequests();
+                foreach (GetPooledTransactionsMessage66 request in sent.Skip(answered))
+                {
+                    using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                        request.RequestId, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                }
+                answered = sent.Length;
+                if (answered == expectedNumberOfMessages) break;
+                clock.Advance(TimeSpan.FromMilliseconds(500));
+                requestClock.Advance(TimeSpan.FromMilliseconds(500));
+                ProcessRetryTick(retry);
+                Assert.That(SentRequests().Length, Is.GreaterThan(answered));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                _session.Received(expectedNumberOfMessages)
+                    .DeliverMessage(Arg.Is<GetPooledTransactionsMessage66>(m =>
+                        m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg ||
+                        m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
+                Assert.That(SentRequests().SelectMany(static request => request.EthMessage.Hashes),
+                    Is.EquivalentTo(hashes.Select(static hash => hash.ValueHash256)));
+                _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+
+            GetPooledTransactionsMessage66[] SentRequests() => _session.ReceivedCalls()
+                .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage66>()).ToArray();
+
         }
 
         [Test]
@@ -988,10 +1432,150 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
         }
 
+        [Test]
+        public async Task Pooled_reply_expiry_is_neutral_and_returns_capacity([Values(-1, 0, 1)] int deadlineTicks)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true, QueueCapacity = 8192 };
+            _handler.Dispose();
+            ManualTimeProvider clock = new();
+            _handler = CreateHandler(scheduler, clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+            try
+            {
+                for (int i = 0; i < 32; i++) _handler.HandleMessage(PooledTransactionRequestMessage.New(transaction.Hash!));
+                GetPooledTransactionsMessage66[] initial = SentRequests();
+                Assert.That(initial, Has.Length.EqualTo(32));
+                clock.Advance(Timeouts.Eth + TimeSpan.FromTicks(deadlineTicks));
+                using (Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                    initial[0].RequestId, new PooledTransactionsMessage(new ArrayPoolList<Transaction>(1) { transaction })))
+                {
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                }
+                Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(deadlineTicks < 0 ? 1 : 0));
+                await scheduler.Drain(CancellationToken.None);
+                _transactionPool.Received(deadlineTicks < 0 ? 1 : 0).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+                _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakB));
+                Assert.That(SentRequests(), Has.Length.EqualTo(33), "expiry or a completed claim must release protected reply capacity");
+                _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+            finally { await scheduler.Drain(new CancellationToken(true)); }
+
+            GetPooledTransactionsMessage66[] SentRequests() => _session.ReceivedCalls()
+                .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage66>()).ToArray();
+        }
+
+        [Test]
+        public async Task First_pooled_send_cannot_publish_a_timer_after_disposal([Values] bool closing)
+        {
+            HandleIncomingStatusMessage();
+            _handler.Dispose();
+            ManualTimeProvider clock = new();
+            RecordingBackgroundTaskScheduler scheduler = new() { QueueCapacity = 8192 };
+            _handler = CreateHandler(scheduler, clock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            await VerifyFirstPooledSendCannotOutliveDisposal(_handler, _session, clock,
+                () => _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA)), closing,
+                freshClock =>
+                {
+                    _handler = CreateHandler(scheduler, freshClock);
+                    _handler.Init();
+                    HandleIncomingStatusMessage();
+                    return _handler;
+                }, message => _handler.HandleMessage(message));
+        }
+
+        [Test]
+        public async Task Zero_send_retries_original_tracked_and_overflow_hashes([Values(1, 4097)] int hashes)
+        {
+            ManualTimeProvider requestClock = new();
+            HandleIncomingStatusMessage();
+            _handler.Dispose();
+            _handler = CreateHandler(RunImmediatelyScheduler.Instance, requestClock);
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            await VerifyZeroSendRetriesOriginalHashes(_handler, _session, _transactionPool, requestClock, hashes,
+                values =>
+                {
+                    using NewPooledTransactionHashesMessage announcement = new(values);
+                    HandleZeroMessage(announcement, Eth65MessageCode.NewPooledTransactionHashes);
+                }, id =>
+                {
+                    using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                        id!.Value, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                });
+        }
+
+        public enum RequestSendOutcome { Sent, Dropped, Throws }
+
+        [Test]
+        public async Task Failed_modern_sends_release_correlations_and_do_not_admit_responses([Values] RequestSendOutcome outcome)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true, QueueCapacity = 8192 };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler, new ManualTimeProvider());
+            _handler.Init();
+            HandleIncomingStatusMessage();
+            bool sendSucceeds = outcome == RequestSendOutcome.Sent;
+            _session.DeliverMessage(Arg.Any<GetPooledTransactionsMessage66>()).Returns(call =>
+            {
+                if (!sendSucceeds)
+                {
+                    if (outcome == RequestSendOutcome.Throws) throw new InvalidOperationException("local send failed");
+                    return 0;
+                }
+                using DisposableByteBuffer encoded = _svc.ZeroSerialize(call.Arg<GetPooledTransactionsMessage66>()).AsDisposable();
+                return encoded.ReadableBytes;
+            });
+            try
+            {
+                for (int i = 0; i < 32; i++)
+                {
+                    if (outcome == RequestSendOutcome.Throws)
+                        Assert.That(() => _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA)),
+                            Throws.TypeOf<InvalidOperationException>());
+                    else
+                        _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakA));
+                }
+                GetPooledTransactionsMessage66[] attempts = SentRequests();
+                Assert.That(attempts, Has.Length.EqualTo(32));
+                using (Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                    attempts[0].RequestId, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty)))
+                {
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                }
+                Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(outcome == RequestSendOutcome.Sent ? 1 : 0),
+                    "a failed send grants neither a pending correlation nor queued processing");
+                await scheduler.Drain(CancellationToken.None);
+                sendSucceeds = true;
+                _handler.HandleMessage(PooledTransactionRequestMessage.New(TestItem.KeccakB));
+                GetPooledTransactionsMessage66[] sent = SentRequests();
+                Assert.That(sent, Has.Length.EqualTo(33), "failed sends must release all correlation and reply capacity");
+                using (Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
+                    sent[^1].RequestId, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty)))
+                {
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                    HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+                }
+                Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(outcome == RequestSendOutcome.Sent ? 2 : 1));
+                await scheduler.Drain(CancellationToken.None);
+                _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+            }
+            finally { await scheduler.Drain(new CancellationToken(true)); }
+
+            GetPooledTransactionsMessage66[] SentRequests() => _session.ReceivedCalls()
+                .SelectMany(static call => call.GetArguments().OfType<GetPooledTransactionsMessage66>()).ToArray();
+        }
+
         internal sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
+            public int? QueueCapacity { get; init; }
             public bool Defer { get; init; }
-            public bool Reject { get; init; }
+            public bool Reject { get; set; }
             private readonly Queue<Func<CancellationToken, Task>> _pending = new();
 
             public Task RunNext(CancellationToken cancellationToken) => _pending.Dequeue()(cancellationToken);
@@ -1003,11 +1587,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             }
 
             public List<Delegate> ScheduledFulfillFuncs { get; } = [];
+            public int SchedulingAttempts { get; private set; }
             public List<bool> ScheduledRequestsHaveDelegateFields { get; } = [];
 
             public bool TryScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
                 where TReq : notnull, IBackgroundTaskRequest<TReq>
             {
+                SchedulingAttempts++;
                 if (Reject) return false;
                 ScheduledRequestsHaveDelegateFields.Add(HasDelegateField<TReq>());
                 ScheduledFulfillFuncs.Add(fulfillFunc);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -11,6 +12,8 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Synchronization.Blocks;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.ParallelSync
@@ -220,6 +223,7 @@ namespace Nethermind.Synchronization.ParallelSync
             SyncPeerAllocation allocation)
         {
             long dispatchTimeStart = Stopwatch.GetTimestamp();
+            bool locallyRefused = false;
             using (allocation)
             {
                 try
@@ -228,14 +232,20 @@ namespace Nethermind.Synchronization.ParallelSync
                 }
                 catch (ConcurrencyLimitReachedException)
                 {
+                    locallyRefused = true;
+                    if (request is FastBlocksBatch refused) refused.ResponseSourcePeer = null;
                     if (Logger.IsDebug) Logger.Debug($"{request} - concurrency limit reached. Peer: {allocatedPeer:hide}");
                 }
                 catch (TimeoutException)
                 {
+                    if (!cancellationToken.IsCancellationRequested && request is FastBlocksBatch { TimeoutRequestOrdinal: not null } timedOut)
+                        timedOut.RequestTimedOut = true;
                     if (Logger.IsDebug) Logger.Debug($"{request} - timed out. Peer: {allocatedPeer:hide}");
                 }
                 catch (OperationCanceledException)
                 {
+                    if (!cancellationToken.IsCancellationRequested && request is FastBlocksBatch { TimeoutRequestOrdinal: not null } timedOut)
+                        timedOut.RequestTimedOut = true;
                     if (Logger.IsTrace) Logger.Debug($"{request} - Operation was canceled");
                 }
                 catch (SubprotocolException e)
@@ -278,7 +288,9 @@ namespace Nethermind.Synchronization.ParallelSync
                     return;
                 }
 
-                DoHandleResponse(request, allocatedPeer);
+                if (allocatedPeer is not null && request is FastBlocksBatch { RequestTimedOut: true, TimeoutRequestOrdinal: { } ordinal })
+                    allocatedPeer.RecordAllocatedTimeout(Feed.Contexts, ordinal);
+                DoHandleResponse(request, locallyRefused ? null : allocatedPeer);
             }
             finally
             {
@@ -294,8 +306,16 @@ namespace Nethermind.Synchronization.ParallelSync
         {
             try
             {
+                AllocationContexts negativeContexts = Feed.Contexts;
+                if (request is BlocksRequest blocks)
+                {
+                    negativeContexts = AllocationContexts.None;
+                    if (blocks.BodiesRequests.Count > 0) negativeContexts |= AllocationContexts.Bodies;
+                    if (blocks.ReceiptsRequests.Count > 0) negativeContexts |= AllocationContexts.Receipts;
+                    if (blocks.BlockAccessListsRequests.Count > 0) negativeContexts |= AllocationContexts.BlockAccessLists;
+                }
                 SyncResponseHandlingResult result = Feed.HandleResponse(request, allocatedPeer);
-                ReactToHandlingResult(request, result, allocatedPeer);
+                ReactToHandlingResult(request, result, allocatedPeer, negativeContexts);
             }
             catch (ObjectDisposedException)
             {
@@ -312,10 +332,25 @@ namespace Nethermind.Synchronization.ParallelSync
         protected async Task<SyncPeerAllocation> Allocate(T request, CancellationToken cancellationToken) =>
             await SyncPeerPool.Allocate(PeerAllocationStrategyFactory.Create(request), Feed.Contexts, _allocateTimeoutMs, cancellationToken);
 
-        private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer)
+        private void ReactToHandlingResult(T request, SyncResponseHandlingResult result, PeerInfo? peer, AllocationContexts negativeContexts)
         {
             if (peer is not null)
             {
+                void ReportNegative(bool weak)
+                {
+                    if (request is not BlocksRequest)
+                    {
+                        if (weak) SyncPeerPool.ReportWeakPeer(peer, negativeContexts);
+                        else SyncPeerPool.ReportNoSyncProgress(peer, negativeContexts);
+                        return;
+                    }
+                    for (uint bits = (uint)negativeContexts; bits != 0; bits &= bits - 1)
+                    {
+                        AllocationContexts context = (AllocationContexts)(1u << BitOperations.TrailingZeroCount(bits));
+                        if (weak) SyncPeerPool.ReportWeakPeer(peer, context);
+                        else SyncPeerPool.ReportNoSyncProgress(peer, context);
+                    }
+                }
                 switch (result)
                 {
                     case SyncResponseHandlingResult.Emptish:
@@ -323,10 +358,10 @@ namespace Nethermind.Synchronization.ParallelSync
                     case SyncResponseHandlingResult.Ignored:
                         break;
                     case SyncResponseHandlingResult.LesserQuality:
-                        SyncPeerPool.ReportWeakPeer(peer, Feed.Contexts);
+                        ReportNegative(weak: true);
                         break;
                     case SyncResponseHandlingResult.NoProgress:
-                        SyncPeerPool.ReportNoSyncProgress(peer, Feed.Contexts);
+                        ReportNegative(weak: false);
                         break;
                     case SyncResponseHandlingResult.NotAssigned:
                         break;
@@ -334,6 +369,8 @@ namespace Nethermind.Synchronization.ParallelSync
                         Logger.Error($"Feed {Feed} has reported an internal error when handling {request}");
                         break;
                     case SyncResponseHandlingResult.OK:
+                        AllocationContexts usefulContexts = request is BlocksRequest blocks ? blocks.VerifiedProgressContexts : Feed.Contexts;
+                        if (usefulContexts != AllocationContexts.None) peer.RecordProgress(usefulContexts);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(result), result, null);

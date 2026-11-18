@@ -261,6 +261,7 @@ namespace Nethermind.AuRa.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_sealValidator.ValidateParams(parent, block), Is.EqualTo(isValidSealer));
+                Assert.That(_sealValidator.CanCreditChild(parent, block), Is.EqualTo(isValidSealer));
                 _validatorStore.Received().GetValidatorsInfo(parent.Number + 1);
             }
         }

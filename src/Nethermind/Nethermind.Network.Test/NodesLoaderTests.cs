@@ -7,6 +7,7 @@ using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
@@ -14,11 +15,26 @@ using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
+
 namespace Nethermind.Network.Test;
 
 [Parallelizable(ParallelScope.Self)]
 public class NodesLoaderTests
 {
+    private readonly List<PeerAddressPolicy> _addressPolicies = [];
+
+    private PeerAddressPolicy OwnPolicy(PeerAddressPolicy policy)
+    {
+        _addressPolicies.Add(policy);
+        return policy;
+    }
+
+    private void DisposePolicies()
+    {
+        foreach (PeerAddressPolicy policy in _addressPolicies) policy.Dispose();
+        _addressPolicies.Clear();
+    }
+
     private NetworkConfig _networkConfig;
     private INodeStatsManager _statsManager;
     private INetworkStorage _peerStorage;
@@ -31,13 +47,17 @@ public class NodesLoaderTests
         _networkConfig = new NetworkConfig();
         _statsManager = Substitute.For<INodeStatsManager>();
         _peerStorage = Substitute.For<INetworkStorage>();
-        _enode = new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303);
+        _enode = new Enode(TestItem.PublicKeyA, IPAddress.Parse("8.8.8.8"), 30303);
         _loader = CreateLoader();
     }
 
     private NodesLoader CreateLoader(bool loadBootnodesAsPeerCandidates = true) =>
         new(_networkConfig, _statsManager, _peerStorage, _enode, LimboLogs.Instance,
-            new NodesLoaderOptions(LoadBootnodesAsPeerCandidates: loadBootnodesAsPeerCandidates));
+            new NodesLoaderOptions(LoadBootnodesAsPeerCandidates: loadBootnodesAsPeerCandidates),
+            OwnPolicy(new PeerAddressPolicy(new IIPResolver.NethermindIp(IPAddress.Any, _enode.HostIp), new LocalAddressSource(LimboLogs.Instance, () => []))));
+
+    [TearDown]
+    public void TearDown() => DisposePolicies();
 
     [Test]
     public void When_no_peers_then_no_peers_nada_zero()
@@ -112,6 +132,80 @@ public class NodesLoaderTests
         foreach (Node node in nodes)
         {
             Assert.That(node.IsStatic, Is.True);
+        }
+    }
+
+    [TestCase("0.0.0.0", 30303, false)]
+    [TestCase("127.0.0.1", 30303, false)]
+    [TestCase("10.1.2.3", 30303, false)]
+    [TestCase("224.0.0.1", 30303, false)]
+    [TestCase("255.255.255.255", 30303, false)]
+    [TestCase("::", 30303, false)]
+    [TestCase("::1", 30303, false)]
+    [TestCase("fc00::1", 30303, false)]
+    [TestCase("::ffff:127.0.0.1", 30303, false)]
+    [TestCase("8.8.8.8", 0, false)]
+    [TestCase("8.8.8.8", 30303, true)]
+    [TestCase("::ffff:8.8.8.8", 30303, true)]
+    [TestCase("2606:4700:4700::1111", 30303, true)]
+    public void Persisted_addresses_are_validated_before_stats_allocation(string host, int port, bool accepted)
+    {
+        _peerStorage.GetPersistedNodes().Returns([new NetworkNode(TestItem.PublicKeyB, host, port)]);
+
+        Node[] nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToArray();
+
+        Assert.That(nodes.Length, Is.EqualTo(accepted ? 1 : 0));
+        _statsManager.Received(accepted ? 1 : 0).GetStatsOrNull(Arg.Any<Node>());
+    }
+
+    [Test]
+    public void Explicit_static_private_peer_is_still_loaded()
+    {
+        NetworkNode node = new(TestItem.PublicKeyB, "10.1.2.3", 30303);
+        _peerStorage.GetPersistedNodes().Returns([node]);
+        _networkConfig.StaticPeers = node.ToString();
+
+        Node[] nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToArray();
+
+        Assert.That(nodes, Has.Length.EqualTo(1));
+        Assert.That(nodes[0].IsStatic, Is.True);
+    }
+
+    [TestCase(4, 4)]
+    [TestCase(64, 16)]
+    public void Persisted_load_obeys_total_and_normalized_address_limits(int totalLimit, int expected)
+    {
+        _networkConfig.MaxPersistedPeerCount = totalLimit;
+        NetworkNode[] stored = new NetworkNode[20];
+        for (int i = 0; i < stored.Length; i++)
+        {
+            using PrivateKey key = new((i + 1).ToString("x64"));
+            stored[i] = new NetworkNode(key.PublicKey, i % 2 == 0 ? "8.8.8.8" : "::ffff:8.8.8.8", 30303, i);
+        }
+        _peerStorage.GetPersistedNodes().Returns(stored);
+
+        Node[] nodes = _loader.DiscoverNodes(default).ToBlockingEnumerable().ToArray();
+
+        Assert.That(nodes, Has.Length.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Configured_bad_node_does_not_hide_following_valid_bootnode([Values] bool invalidFirst)
+    {
+        NetworkNode valid = new(TestItem.PublicKeyB, "8.8.4.4", 30303, 0);
+        NetworkNode invalid = new(TestItem.PublicKeyC, "8.8.4.5", -1, 0);
+        NetworkConfig config = new() { Bootnodes = invalidFirst ? [invalid, valid] : [valid] };
+        NodesLoader loader = new(config, Substitute.For<INodeStatsManager>(), Substitute.For<INetworkStorage>(),
+            new Enode(TestItem.PublicKeyA, IPAddress.Parse("8.8.8.8"), 30303), LimboLogs.Instance, new NodesLoaderOptions(),
+            OwnPolicy(new PeerAddressPolicy(new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Parse("8.8.8.8")), new LocalAddressSource(LimboLogs.Instance, () => []))));
+
+        Node[] nodes = await loader.DiscoverNodes(default).ToArrayAsync();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodes.Select(node => node.Id), Is.EqualTo(new[] { TestItem.PublicKeyB }));
+            Assert.That(nodes[0].IsBootnode, Is.True);
+            Assert.That(nodes[0].Port, Is.EqualTo(30303));
         }
     }
 }

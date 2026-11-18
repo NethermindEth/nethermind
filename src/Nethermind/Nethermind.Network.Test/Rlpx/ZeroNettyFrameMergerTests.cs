@@ -4,10 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
+using DotNetty.Common.Concurrency;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -24,6 +27,229 @@ namespace Nethermind.Network.Test.Rlpx;
 
 public class ZeroNettyFrameMergerTests
 {
+    [Test]
+    public void non_cell_sessions_do_not_stamp_inbound_packets([Values] bool registered)
+    {
+        PacketReceiptTracker receipts = new();
+        if (registered) receipts.Activate();
+        EmbeddedChannel channel = new(new ZeroFrameMerger(LimboLogs.Instance, receipts));
+        try
+        {
+            Assert.That(channel.WriteInbound(BuildFrame([3, 42], contextId: 0)), Is.True);
+            NettyBufferPacket packet = channel.ReadInbound<NettyBufferPacket>();
+            try
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(packet.ReceiptSequence, Is.EqualTo(registered ? 1 : 0));
+                    Assert.That(packet.ReceivedAt.HasValue, Is.EqualTo(registered));
+                    Assert.That(receipts.CaptureWatermark(), Is.EqualTo(registered ? 1 : 0));
+                }
+            }
+            finally
+            {
+                packet.Release();
+            }
+        }
+        finally
+        {
+            channel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Removing_the_merger_retires_unprocessed_receipts()
+    {
+        PacketReceiptTracker receipts = new();
+        receipts.Activate();
+        ZeroFrameMerger merger = new(LimboLogs.Instance, receipts);
+        EmbeddedChannel channel = new(merger);
+        try
+        {
+            channel.WriteInbound(BuildFrame([3, 42], contextId: 0));
+            long watermark = receipts.CaptureWatermark();
+            Assert.That(receipts.HasCompleted(watermark), Is.False);
+            channel.Pipeline.Remove(merger);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipts.IsClosed, Is.True);
+                Assert.That(receipts.HasCompleted(watermark), Is.True);
+            }
+        }
+        finally
+        {
+            channel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Fixed_receipt_watermark_does_not_wait_for_later_packets()
+    {
+        PacketReceiptTracker receipts = new();
+        receipts.Activate();
+        PacketReceiptTracker.ExpiryGuard guard = receipts.CreateExpiryGuard();
+        NettyBufferPacket first = new(Unpooled.Buffer(0));
+        NettyBufferPacket later = new(Unpooled.Buffer(0));
+        try
+        {
+            receipts.Stamp(first);
+            long watermark = receipts.CaptureWatermark();
+            Assert.That(guard.CanExpire(), Is.False);
+            receipts.Stamp(later);
+            Assert.That(receipts.HasCompleted(watermark), Is.False);
+            receipts.Complete(first.ReceiptSequence);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(guard.CanExpire(), Is.True);
+                Assert.That(receipts.HasCompleted(watermark), Is.True);
+                Assert.That(receipts.HasCompleted(later.ReceiptSequence), Is.False);
+            }
+        }
+        finally
+        {
+            first.Release();
+            later.Release();
+        }
+    }
+
+    [Test]
+    public void Closed_connection_or_executor_retires_receipt_waits([Values] bool stopExecutor)
+    {
+        System.Threading.Tasks.TaskCompletionSource lifetime = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        PacketReceiptTracker receipts = new();
+        receipts.Activate();
+        receipts.BindExecutorLifetime(lifetime.Task);
+        NettyBufferPacket packet = new(Unpooled.Buffer(0));
+        try
+        {
+            receipts.Stamp(packet);
+            long watermark = receipts.CaptureWatermark();
+            Assert.That(receipts.HasCompleted(watermark), Is.False);
+            PacketReceiptTracker.ExpiryGuard guard = receipts.CreateExpiryGuard();
+            Assert.That(guard.CanExpire(), Is.False);
+            if (stopExecutor) lifetime.SetResult();
+            else receipts.Close();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(receipts.IsClosed, Is.True);
+                Assert.That(guard.CanExpire(), Is.True);
+                Assert.That(receipts.HasCompleted(watermark), Is.True);
+            }
+            receipts.Complete(packet.ReceiptSequence);
+            Assert.That(receipts.IsClosed, Is.True);
+        }
+        finally
+        {
+            packet.Release();
+        }
+    }
+
+    [Test]
+    public void Receipt_time_is_the_completed_packet_time([Values] bool chunked)
+    {
+        ManualTimestamper clock = new();
+        PacketReceiptTracker receipts = new();
+        receipts.Activate();
+        receipts.BindClock(clock);
+        EmbeddedChannel channel = new(new ZeroFrameMerger(LimboLogs.Instance, receipts));
+        try
+        {
+            if (chunked)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(channel.WriteInbound(BuildFrame([3, 42], contextId: 1, totalPacketSize: 3)), Is.False);
+                    Assert.That(receipts.CaptureWatermark(), Is.Zero);
+                }
+            }
+            clock.Add(TimeSpan.FromSeconds(11));
+            Assert.That(channel.WriteInbound(chunked
+                ? BuildFrame([43], contextId: 1)
+                : BuildFrame([3, 42, 43], contextId: 0)), Is.True);
+            NettyBufferPacket packet = channel.ReadInbound<NettyBufferPacket>();
+            try
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(packet.ReceivedAt, Is.EqualTo(clock.UtcNowOffset));
+                    Assert.That(packet.ReceiptSequence, Is.EqualTo(1));
+                    Assert.That(receipts.HasCompleted(1), Is.False);
+                }
+            }
+            finally
+            {
+                packet.Release();
+            }
+        }
+        finally
+        {
+            channel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Rejected_handoff_releases_only_unconsumed_packet([Values] bool rejectQueue)
+    {
+        PacketReceiptTracker receipts = new();
+        receipts.Activate();
+        IEventExecutor executor = Substitute.For<IEventExecutor>();
+        bool reject = false;
+        int rejected = 0;
+        IByteBuffer? rejectedBuffer = null;
+        executor.InEventLoop.Returns(_ => !reject);
+        executor.GetNext().Returns(executor);
+        executor.When(x => x.Execute(Arg.Any<Action<object, object>>(), Arg.Any<object>(), Arg.Any<object>())).Do(call =>
+        {
+            if (reject)
+            {
+                if (call.ArgAt<object>(2) is NettyBufferPacket packet)
+                {
+                    rejected++;
+                    rejectedBuffer = packet.Buffer;
+                }
+                throw new RejectedExecutionException("queue rejected");
+            }
+            call.ArgAt<Action<object, object>>(0)(call.ArgAt<object>(1), call.ArgAt<object>(2));
+        });
+        ThrowingPacketConsumer consumer = new();
+        EmbeddedChannel channel = new(new ZeroFrameMerger(LimboLogs.Instance, receipts));
+        channel.Pipeline.AddLast(executor, consumer);
+        IByteBuffer frame = BuildFrame([3, 42], contextId: 0);
+        try
+        {
+            reject = rejectQueue;
+            if (rejectQueue)
+                Assert.That(() => channel.WriteInbound(frame), Throws.Nothing);
+            else
+                Assert.That(() => channel.WriteInbound(frame), Throws.InstanceOf<RejectedExecutionException>());
+            if (rejectQueue) Assert.That(rejectedBuffer, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(rejectQueue ? 1 : 0));
+                if (rejectQueue) Assert.That(rejectedBuffer!.ReferenceCount, Is.Zero);
+                Assert.That(consumer.Received, Is.EqualTo(rejectQueue ? 0 : 1));
+                Assert.That(frame.ReferenceCount, Is.Zero);
+                Assert.That(receipts.IsClosed, Is.EqualTo(rejectQueue));
+            }
+        }
+        finally
+        {
+            reject = false;
+            channel.FinishAndReleaseAll();
+        }
+    }
+
+    private sealed class ThrowingPacketConsumer : SimpleChannelInboundHandler<ZeroPacket>
+    {
+        internal int Received { get; private set; }
+
+        protected override void ChannelRead0(IChannelHandlerContext context, ZeroPacket packet)
+        {
+            Received++;
+            throw new RejectedExecutionException("consumer failed");
+        }
+    }
+
     private class TestFrameHelper : ZeroPacketSplitter
     {
         private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
@@ -425,8 +651,10 @@ public class ZeroNettyFrameMergerTests
     [Test]
     public void Drains_full_frame_and_recovers_when_continuation_header_is_malformed()
     {
+        PacketReceiptTracker receipts = new();
+        receipts.Activate();
         EmbeddedChannel channel = new();
-        channel.Pipeline.AddLast(new ZeroFrameMerger(LimboLogs.Instance));
+        channel.Pipeline.AddLast(new ZeroFrameMerger(LimboLogs.Instance, receipts));
 
         try
         {
@@ -441,6 +669,7 @@ public class ZeroNettyFrameMergerTests
             Assert.That(() => channel.WriteInbound(malformedFrame),
                 Throws.InstanceOf<CorruptedFrameException>(),
                 "a malformed continuation header must reject the entire decoded frame");
+            Assert.That(receipts.IsClosed, Is.False);
 
             IByteBuffer recoveryFrame = BuildFrames(1);
             Assert.That(channel.WriteInbound(recoveryFrame), Is.True,

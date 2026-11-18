@@ -221,9 +221,17 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 int added = InsertBodies(batch);
-                return added == 0
-                    ? SyncResponseHandlingResult.NoProgress
-                    : SyncResponseHandlingResult.OK;
+                if (batch.RequestTimedOut) return SyncResponseHandlingResult.Emptish;
+                if (added != 0) return SyncResponseHandlingResult.OK;
+                if (batch.Response?.Bodies.Length == 0)
+                {
+                    if (FastBlocksBatch.IsBelowAvailableHistory(batch.Infos, batch.EarliestBlockNumberAtRequest))
+                        return SyncResponseHandlingResult.Emptish;
+                    PeerInfo? source = batch.ResponseSourcePeer ?? peer;
+                    if (source?.RecordHistoryEmpty(AllocationContexts.Bodies, batch.Infos) == true)
+                        return SyncResponseHandlingResult.Emptish;
+                }
+                return SyncResponseHandlingResult.NoProgress;
             }
             catch (Exception)
             {
@@ -304,6 +312,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         _blockTree.Insert(header, responses!.GetEncoded(responseIndex).Span, BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks, bodiesWriteFlags: WriteFlags.DisableWAL);
                         _syncStatusList.MarkInserted(blockInfo.BlockNumber);
+                        batch.ResponseSourcePeer?.RecordHistoryData(AllocationContexts.Bodies, header.Number);
                         responseIndex++;
                         rejectedBodyTxRoot = null;
                         validResponsesCount++;

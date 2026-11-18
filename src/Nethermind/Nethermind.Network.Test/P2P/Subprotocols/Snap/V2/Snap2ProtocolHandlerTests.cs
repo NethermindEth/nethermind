@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Blockchain.Synchronization;
@@ -32,6 +33,32 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2;
 
 public class Snap2ProtocolHandlerTests
 {
+    [Test]
+    public async Task Bal_response_defers_speed_sampling_until_validation()
+    {
+        ISession session = Substitute.For<ISession>();
+        Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
+        session.Node.Returns(node);
+        INodeStatsManager stats = Substitute.For<INodeStatsManager>();
+        stats.GetOrAdd(node).Returns(new NodeStatsLight(node));
+        stats.GetStatsOrNull(node).Returns(_ => stats.GetOrAdd(node));
+        IMessageSerializationService serializer = new MessageSerializationService(SerializerInfo.Create(new BlockAccessListsMessageSerializer()));
+        Snap2ProtocolHandler handler = new(session, stats, serializer, RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance, new SyncConfig(), Substitute.For<ISnapServer>());
+        session.When(s => s.DeliverMessage(Arg.Any<GetBlockAccessListsMessage>())).Do(call =>
+        {
+            using BlockAccessListsMessage reply = new(new ByteArrayListAdapter(new ArrayPoolList<byte[]>([new byte[256]])))
+            {
+                RequestId = call.Arg<GetBlockAccessListsMessage>().RequestId
+            };
+            Deliver(handler, serializer, reply, Snap2MessageCode.BlockAccessLists);
+        });
+
+        using IByteArrayList response = await handler.GetBlockAccessLists([TestItem.KeccakA.ValueHash256], CancellationToken.None);
+
+        stats.DidNotReceive().ReportTransferSpeedEvent(session.Node, Arg.Any<TransferSpeedType>(), Arg.Any<long>());
+    }
+
     private static Snap2ProtocolHandler CreateHandler(ISession session, ISnapServer snapServer, IMessageSerializationService serializer) =>
         new(
             session,

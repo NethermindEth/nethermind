@@ -84,6 +84,9 @@ public class NewPooledTransactionHashesMessageSerializerTests
     [Test, NonParallelizable]
     public void Reused_message_over_retained_capacity_clears_fields_and_lists() => AssertReusedMessageClearsFieldsAndLists(129);
 
+    [Test, NonParallelizable]
+    public void Large_announcement_roundtrips_after_message_reuse() => AssertReusedMessageClearsFieldsAndLists(4097);
+
     private static void AssertReusedMessageClearsFieldsAndLists(int count)
     {
         NewPooledTransactionHashesMessageSerializer serializer = new();

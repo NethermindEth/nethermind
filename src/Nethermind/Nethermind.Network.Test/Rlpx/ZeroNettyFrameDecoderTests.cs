@@ -13,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
 using Nethermind.Serialization.Rlp;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx;
@@ -161,14 +162,29 @@ public class ZeroNettyFrameDecoderTests
         new FrameCipher(a.AesSecret).Encrypt(header, 0, Frame.HeaderSize, header, 0);
         outboundMac.AddMac(header, 0, Frame.HeaderSize, header, Frame.HeaderSize, true);
         EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
-        channel.Configuration.Allocator = detector.Allocator;
+        IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
+        IByteBuffer frameBuffer = null;
+        allocator.Buffer(Arg.Any<int>()).Returns(call => detector.Allocator.Buffer(call.Arg<int>()));
+        allocator.Buffer(Arg.Any<int>(), Arg.Any<int>()).Returns(call =>
+            frameBuffer = detector.Allocator.Buffer(call.ArgAt<int>(0), call.ArgAt<int>(1)));
+        channel.Configuration.Allocator = allocator;
         try
         {
             IByteBuffer input = detector.Allocator.Buffer(header.Length).WriteBytes(header);
             if (delta > 0)
                 Assert.That(() => channel.WriteInbound(input), Throws.InstanceOf<DecoderException>());
             else
+            {
                 Assert.That(channel.WriteInbound(input), Is.False, "a valid header alone must not publish a frame");
+                allocator.Received(1).Buffer(64 * 1024, Frame.HeaderSize + length + Frame.CalculatePadding(length));
+                Assert.That(frameBuffer.Capacity, Is.EqualTo(64 * 1024));
+                channel.WriteInbound(detector.Allocator.Buffer(64 * 1024).WriteZero(64 * 1024));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(frameBuffer.Capacity, Is.GreaterThan(64 * 1024).And.LessThanOrEqualTo(128 * 1024));
+                    Assert.That(frameBuffer.WriterIndex, Is.EqualTo(Frame.HeaderSize + 64 * 1024));
+                }
+            }
             Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null);
         }
         finally
@@ -196,6 +212,54 @@ public class ZeroNettyFrameDecoderTests
         encoder.Encode(rawFrame, encoded);
 
         Assert.Throws<CorruptedFrameException>(() => decoder.Decode(encoded));
+    }
+
+    [Test]
+    public void Growing_fragmented_frame_preserves_payload_mac_and_ownership([Values] bool corruptMac)
+    {
+        using PooledBufferLeakDetector detector = new();
+        (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
+        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        const int payloadSize = 65537;
+        byte[] plaintext = new byte[Frame.HeaderSize + payloadSize + Frame.CalculatePadding(payloadSize)];
+        plaintext[0] = 1;
+        plaintext[2] = 1;
+        plaintext[3] = 0xc1;
+        plaintext[4] = 0x80;
+        plaintext.AsSpan(Frame.HeaderSize, payloadSize).Fill(0x5a);
+        using DisposableByteBuffer raw = detector.Allocator.Buffer(plaintext.Length).WriteBytes(plaintext).AsDisposable();
+        using DisposableByteBuffer wire = detector.Allocator.Buffer(plaintext.Length + 2 * Frame.MacSize).AsDisposable();
+        new ZeroFrameEncoderTestWrapper(new FrameCipher(a.AesSecret), outboundMac).Encode(raw, wire);
+        if (corruptMac) wire.SetByte(wire.WriterIndex - 1, wire.GetByte(wire.WriterIndex - 1) ^ 1);
+
+        EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
+        channel.Configuration.Allocator = detector.Allocator;
+        try
+        {
+            while (wire.ReadableBytes > Frame.MacSize)
+            {
+                int length = Math.Min(4096, wire.ReadableBytes - Frame.MacSize);
+                Assert.That(channel.WriteInbound(wire.ReadBytes(length)), Is.False);
+            }
+            IByteBuffer mac = wire.ReadBytes(Frame.MacSize);
+            if (corruptMac)
+            {
+                Assert.That(() => channel.WriteInbound(mac), Throws.InstanceOf<DecoderException>());
+                Assert.That(channel.ReadInbound<IByteBuffer>(), Is.Null);
+            }
+            else
+            {
+                Assert.That(channel.WriteInbound(mac), Is.True);
+                using DisposableByteBuffer decoded = channel.ReadInbound<IByteBuffer>().AsDisposable();
+                Assert.That(decoded.AsSpan(), Is.SequenceEqualTo(plaintext));
+            }
+        }
+        finally
+        {
+            channel.Pipeline.Remove<ZeroFrameDecoder>();
+            channel.FinishAndReleaseAll();
+        }
     }
 
     [Test]

@@ -12,6 +12,9 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class FastBlocksAllocationStrategy(TransferSpeedType speedType, ulong? minNumber, bool priority) : IPeerAllocationStrategy
     {
+        internal FastBlocksAllocationStrategy(TransferSpeedType speedType, ulong? minNumber, bool priority, IPeerAllocationStrategy slowest)
+            : this(speedType, minNumber, priority) => _slowest = slowest;
+
         private readonly ulong? _minNumber = minNumber;
         private readonly bool _priority = priority;
         private readonly IPeerAllocationStrategy _slowest = new BySpeedStrategy(speedType, false);
@@ -24,7 +27,12 @@ namespace Nethermind.Synchronization.FastBlocks
             IBlockTree blockTree)
         {
             IPeerAllocationStrategy strategy = _priority ? _fastest : _slowest;
-            peers = _minNumber is null ? peers : peers.Where(p => p.HeadNumber >= _minNumber);
+            bool CanServe(PeerInfo peer) => _minNumber is null || (peer.HeadNumber >= _minNumber &&
+                (speedType is not (TransferSpeedType.Bodies or TransferSpeedType.Receipts)
+                    || peer.SyncPeer.EarliestBlockNumber <= _minNumber
+                    && peer.HistoryFloor(speedType == TransferSpeedType.Bodies ? AllocationContexts.Bodies : AllocationContexts.Receipts) <= _minNumber));
+            peers = peers.Where(CanServe);
+            if (currentPeer is not null && !CanServe(currentPeer)) currentPeer = null;
             PeerInfo? allocated = strategy.Allocate(currentPeer, peers, nodeStatsManager, blockTree);
             return allocated;
         }

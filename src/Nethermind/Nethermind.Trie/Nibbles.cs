@@ -15,6 +15,9 @@ namespace Nethermind.Trie
     {
         private const int StackAllocLengthLimit = 255;
 
+        /// <summary>The longest path a trie node can sit at: a key of 32 bytes.</summary>
+        public const int MaxNodePathNibbles = 64;
+
         public static Nibble[] FromBytes(params byte[] bytes) => FromBytes(bytes.AsSpan());
 
         public static Nibble[] FromBytes(ReadOnlySpan<byte> bytes)
@@ -120,6 +123,30 @@ namespace Nethermind.Trie
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Decodes a compact-encoded path of a requested trie node, such as a snap GetTrieNodes path, into nibbles.
+        /// </summary>
+        /// <returns>
+        /// <c>false</c> for a path no trie node can sit at: one whose flag would leave the terminator in the decoded
+        /// nibbles, or one longer than <see cref="MaxNodePathNibbles"/> nibbles.
+        /// </returns>
+        public static bool TryCompactToNodePath(byte[] compactPath, [NotNullWhen(true)] out byte[]? nibbles)
+        {
+            if (compactPath.Length > 0)
+            {
+                int flag = compactPath[0] >> 4;
+                int length = 2 * compactPath.Length - (flag == 1 ? 1 : 2);
+                if (flag > 1 || length > MaxNodePathNibbles)
+                {
+                    nibbles = null;
+                    return false;
+                }
+            }
+
+            nibbles = CompactToHexEncode(compactPath);
+            return true;
         }
 
         public static byte[] ToCompactHexEncoding(ReadOnlySpan<byte> nibbles)

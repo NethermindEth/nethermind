@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -150,7 +151,7 @@ public class SeqlockCacheTests
         int entryIndex = replaceKey ? 2 : 0;
         long initialHeader = EntryHeader(entries, entryIndex);
         object entry = entries.GetValue(entryIndex)!;
-        entry.GetType().GetField("HashEpochSeqLock")!.SetValue(entry, initialHeader | 0x1FFFEL);
+        entry.GetType().GetField("HashEpochSeqLock")!.SetValue(entry, initialHeader | SeqlockHeader.SeqMask);
         entries.SetValue(entry, entryIndex);
 
         if (replaceKey)
@@ -163,7 +164,7 @@ public class SeqlockCacheTests
         else cache.Set(in key, UInt256.MaxValue);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(EntryHeader(entries, entryIndex), Is.EqualTo(initialHeader & ~0x1FFFEL));
+            Assert.That(EntryHeader(entries, entryIndex), Is.EqualTo(initialHeader & ~SeqlockHeader.SeqMask));
             Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
             Assert.That(actual, Is.EqualTo(UInt256.MaxValue));
             Assert.That(cache.TryGetValue(in otherKey, out UInt256 otherActual), Is.True);
@@ -172,20 +173,47 @@ public class SeqlockCacheTests
     }
 
     [Test]
-    public void Exhausted_epoch_disables_the_cache_without_reusing_tags()
+    public void Epoch_wrap_empties_the_cache_and_keeps_it_working()
     {
         SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
         ZeroHashKey key = new(1);
         cache.Set(in key, UInt256.One);
-        typeof(SeqlockCache<ZeroHashKey, UInt256>).GetField("_shiftedEpoch", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .SetValue(cache, 0x7FFF_FFE0_0000_0000L);
-        cache.Clear();
+
+        for (int i = 0; i < 1 << 16; i++)
+        {
+            cache.Clear();
+        }
+
+        bool foundAfterWrap = cache.TryGetValue(in key, out _);
         cache.Set(in key, UInt256.MaxValue);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(foundAfterWrap, Is.False);
+            Assert.That(cache.TryGetValue(in key, out UInt256 actual), Is.True);
+            Assert.That(actual, Is.EqualTo(UInt256.MaxValue));
+        }
+    }
+
+    [Test]
+    public void Writer_that_read_the_tag_before_the_wrap_does_not_publish_after_it()
+    {
+        SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
+        ZeroHashKey key = new(1);
+        FieldInfo epoch = typeof(SeqlockCache<ZeroHashKey, UInt256>).GetField("_shiftedEpoch", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        epoch.SetValue(cache, SeqlockHeader.EpochMask);
+        long staleTag = SeqlockHeader.EpochMask | SeqlockHeader.OccupiedBit;
         cache.Clear();
-#pragma warning disable NUnit2045 // The successful prerequisite is required before accessing its result.
-        Assert.That(cache.TryGetValue(in key, out _), Is.False);
-#pragma warning restore NUnit2045
-        Assert.That(cache.TrySetExclusive(in key, UInt256.MaxValue), Is.False);
+
+        Array entries = Entries(cache);
+        object?[] arguments = [entries.GetValue(0), EntryHeader(entries, 0), key, UInt256.One, staleTag, false];
+        MethodInfo write = cache.GetType().GetMethod("WriteEntry", BindingFlags.NonPublic | BindingFlags.Instance)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(write.Invoke(cache, arguments), Is.False);
+            Assert.That((long)epoch.GetValue(cache)!, Is.Zero);
+        }
     }
 
     [Test]
@@ -194,7 +222,7 @@ public class SeqlockCacheTests
         SeqlockCache<ZeroHashKey, UInt256> cache = new(1);
         ZeroHashKey key = new(1);
         cache.Set(in key, UInt256.One);
-        long oldTag = EntryHeader(Entries(cache), 0) & ~0x1FFFEL;
+        long oldTag = EntryHeader(Entries(cache), 0) & ~SeqlockHeader.SeqMask;
         cache.Clear();
         cache.Set(in key, UInt256.MaxValue);
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.FastBlocks
@@ -25,6 +26,16 @@ namespace Nethermind.Synchronization.FastBlocks
         public bool Prioritized { get; set; }
 
         public PeerInfo? ResponseSourcePeer { get; set; }
+        internal bool RequestTimedOut { get; set; }
+        internal ulong? TimeoutRequestOrdinal { get; private set; }
+        internal ulong EarliestBlockNumberAtRequest { get; private set; }
+
+        internal static bool IsBelowAvailableHistory(ReadOnlySpan<BlockInfo?> infos, ulong earliest)
+        {
+            foreach (BlockInfo? info in infos)
+                if (info is not null && info.BlockNumber >= earliest) return false;
+            return !infos.IsEmpty;
+        }
 
         protected FastBlocksBatch()
         {
@@ -42,7 +53,19 @@ namespace Nethermind.Synchronization.FastBlocks
             _handlingEndTime = null;
         }
 
-        public void MarkSent() => _requestSentTime = _stopwatch.ElapsedMilliseconds;
+        public void MarkSent()
+        {
+            _requestSentTime = _stopwatch.ElapsedMilliseconds;
+            RequestTimedOut = false;
+            TimeoutRequestOrdinal = null;
+        }
+
+        internal void MarkSent(PeerInfo peer)
+        {
+            MarkSent();
+            EarliestBlockNumberAtRequest = peer.SyncPeer.EarliestBlockNumber;
+            TimeoutRequestOrdinal = peer.CaptureRequestOrdinal();
+        }
 
         public void MarkValidation() => _validationStartTime = _stopwatch.ElapsedMilliseconds;
 

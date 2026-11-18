@@ -9,6 +9,8 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class FastBlocksPeerAllocationStrategyFactory : IPeerAllocationStrategyFactory<FastBlocksBatch>
     {
+        private readonly IPeerAllocationStrategy _slowestHeader = new BySpeedStrategy(TransferSpeedType.Headers, false);
+
         public IPeerAllocationStrategy Create(FastBlocksBatch request)
         {
             TransferSpeedType speedType = request switch
@@ -20,7 +22,9 @@ namespace Nethermind.Synchronization.FastBlocks
                 _ => TransferSpeedType.Latency
             };
 
-            return new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized);
+            return speedType == TransferSpeedType.Headers
+                ? new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized, _slowestHeader)
+                : new FastBlocksAllocationStrategy(speedType, request.MinNumber, request.Prioritized);
         }
     }
 }

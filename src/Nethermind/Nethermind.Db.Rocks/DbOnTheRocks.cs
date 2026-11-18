@@ -24,7 +24,7 @@ using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Rocks;
 
-public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb
+public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStore, ISnapshotSortedKeyValueStore, IMergeableKeyValueStore, IKeyValueStoreWithSnapshot, IRangeRemovableKeyValueStore, IBatchReadOnlyDb, IReadPrefetcher
 {
     protected ILogger _logger;
 
@@ -693,6 +693,16 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Does nothing outside Linux: there the bindings read the keys before they return, so the caller would wait for them.</remarks>
+    void IReadPrefetcher.Prefetch(ReadOnlySpan<byte> keys, int keyLength)
+    {
+        if (OperatingSystem.IsLinux()) Prefetch(keys, keyLength, _columnFamily, _defaultReadOptions);
+    }
+
+    /// <inheritdoc/>
+    bool IReadPrefetcher.IsCached(ReadOnlySpan<byte> key) => IsCached(key, _columnFamily);
+
     internal int GetCStyleWithColumnFamily(scoped ReadOnlySpan<byte> key, Span<byte> output, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
@@ -1138,12 +1148,45 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         return writeBatch;
     }
 
+    /// <inheritdoc/>
+    public IAtomicWriteBatch StartAtomicWriteBatch()
+    {
+        AtomicRocksDbWriteBatch writeBatch = new(this);
+        _currentBatches.Add(writeBatch);
+        if (_isDisposing)
+        {
+            writeBatch.Dispose();
+            throw new ObjectDisposedException(nameof(DbOnTheRocks));
+        }
+        return writeBatch;
+    }
+
+    internal sealed class AtomicRocksDbWriteBatch(DbOnTheRocks db) : RocksDbWriteBatch(db, atomic: true), IAtomicWriteBatch
+    {
+        public void Commit() { lock (Gate) CommitAtomic(); }
+        public override void Clear() { lock (Gate) base.Clear(); }
+        public override void Delete(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
+        {
+            lock (Gate) base.Delete(key, cf);
+        }
+        public override void Set(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        {
+            lock (Gate) base.Set(key, value, cf, flags);
+        }
+        public override void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        {
+            lock (Gate) base.Merge(key, value, cf, flags);
+        }
+    }
+
     internal class RocksDbWriteBatch : IWriteBatch
     {
         private readonly DbOnTheRocks _dbOnTheRocks;
         private WriteBatch _rocksBatch;
         private WriteFlags _writeFlags = WriteFlags.None;
         private bool _isDisposed;
+        private readonly bool _atomic;
+        protected readonly Lock Gate = new();
 
         [ThreadStatic]
         private static WriteBatch? _reusableWriteBatch;
@@ -1156,12 +1199,12 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         private const int MaxWritesOnNoWal = 256;
         private int _writeCount;
 
-        public RocksDbWriteBatch(DbOnTheRocks dbOnTheRocks)
+        public RocksDbWriteBatch(DbOnTheRocks dbOnTheRocks, bool atomic = false)
         {
             _dbOnTheRocks = dbOnTheRocks;
-            _rocksBatch = CreateWriteBatch();
-
             ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposing, _dbOnTheRocks);
+            _rocksBatch = CreateWriteBatch();
+            _atomic = atomic;
         }
 
         private static WriteBatch CreateWriteBatch()
@@ -1186,20 +1229,26 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             _reusableWriteBatch = batch;
         }
 
-        public void Clear()
+        public virtual void Clear()
         {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
             ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
             _rocksBatch.Clear();
         }
 
         public void Dispose()
         {
-            ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
-
-            if (_isDisposed)
+            using Lock.Scope scope = Gate.EnterScope();
+            if (_isDisposed) return;
+            if (_atomic)
             {
+                _isDisposed = true;
+                ReleaseAtomicBatch();
                 return;
             }
+
+            ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposed, _dbOnTheRocks);
+
             _isDisposed = true;
 
             try
@@ -1216,14 +1265,40 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
         }
 
-        public void Delete(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
+        protected void CommitAtomic()
+        {
+            ObjectDisposedException.ThrowIf(_isDisposed, this);
+            _isDisposed = true;
+            try
+            {
+                ObjectDisposedException.ThrowIf(_dbOnTheRocks._isDisposing, _dbOnTheRocks);
+                _dbOnTheRocks._db.Write(_rocksBatch, _dbOnTheRocks.WriteFlagsToWriteOptions(_writeFlags));
+            }
+            catch (RocksDbException e)
+            {
+                _dbOnTheRocks.HandleFatalDbError(e);
+                throw;
+            }
+            finally
+            {
+                ReleaseAtomicBatch();
+            }
+        }
+
+        private void ReleaseAtomicBatch()
+        {
+            _dbOnTheRocks._currentBatches.TryRemove(this);
+            ReturnWriteBatch(_rocksBatch);
+        }
+
+        public virtual void Delete(ReadOnlySpan<byte> key, IColumnFamilyHandle? cf = null)
         {
             ObjectDisposedException.ThrowIf(_isDisposed, this);
 
             _rocksBatch.Delete(key, cf);
         }
 
-        public void Set(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        public virtual void Set(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
         {
             ObjectDisposedException.ThrowIf(_isDisposed, this);
 
@@ -1237,7 +1312,7 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
             }
             _writeFlags = flags;
 
-            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+            if (!_atomic && (flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
         }
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) =>
@@ -1249,14 +1324,14 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) =>
             Merge(key, value, _dbOnTheRocks._columnFamily, flags);
 
-        public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
+        public virtual void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, IColumnFamilyHandle? cf = null, WriteFlags flags = WriteFlags.None)
         {
             ObjectDisposedException.ThrowIf(_isDisposed, this);
 
             _rocksBatch.Merge(key, value, cf);
             _writeFlags = flags;
 
-            if ((flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
+            if (!_atomic && (flags & WriteFlags.DisableWAL) != 0) FlushOnTooManyWrites();
         }
 
         private void FlushOnTooManyWrites()

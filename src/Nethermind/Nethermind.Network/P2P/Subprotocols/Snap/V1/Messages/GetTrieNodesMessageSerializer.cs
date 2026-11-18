@@ -171,6 +171,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 {
                     ThrowPathsPerGroupLimitExceeded(group.Count);
                 }
+                // Only the shape is checked: snap/1 answers a path no node can sit at, too long for any trie included,
+                // with an empty node, which the server does. RlpPathGroupList does not copy one too long for any trie.
+                for (int j = 0; j < group.Count; j++)
+                {
+                    _ = group.ReadContent(j);
+                }
             }
         }
 

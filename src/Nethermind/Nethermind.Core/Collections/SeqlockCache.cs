@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Caching;
 
 namespace Nethermind.Core.Collections;
 
@@ -15,7 +16,8 @@ namespace Nethermind.Core.Collections;
 /// Design goals:
 /// - Lock-free reads (seqlock pattern) - readers never take locks.
 /// - Best-effort writes - writers skip on contention.
-/// - O(1) logical Clear() via a global epoch (no per-entry zeroing). Cleared entries keep referencing their
+/// - Amortized O(1) logical Clear() via a global epoch (no per-entry zeroing on most calls). Once per 65,536
+///   clears the epoch wraps and that Clear() empties every entry (O(n)). Cleared entries keep referencing their
 ///   key and value until the slot is written again, so a cache sized for its working set holds that working
 ///   set alive whether or not it has been cleared.
 /// - 2-way skew-associative: each way uses independent hash bits for set indexing,
@@ -28,20 +30,21 @@ namespace Nethermind.Core.Collections;
 ///   Bits 22-41: hash signature stored in header (20 bits)
 ///   Bits 42..41+setsBits: way 1 set index (bits 42-55 at the default size, independent from way 0)
 ///
-/// Header layout (64-bit):
-/// [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
+/// Header layout (64-bit), shared with the associative caches (<see cref="SeqlockHeader"/>):
+/// [Lock:1][Epoch:16][Hash:20][Seq:26][Occ:1]
 /// - Lock (bit 63): set during writes - readers retry/miss
-/// - Epoch (bits 37-62): global epoch tag - changes on Clear()
-/// - Hash  (bits 17-36): per-bucket hash signature (20 bits)
-/// - Seq   (bits  1-16): per-entry sequence counter (16 bits) - increments on every successful write
+/// - Epoch (bits 47-62): global epoch tag - changes on Clear()
+/// - Hash  (bits 27-46): per-bucket hash signature (20 bits)
+/// - Seq   (bits  1-26): per-entry sequence counter (26 bits) - increments on every successful write
 /// - Occ   (bit   0): occupied flag - set when slot contains valid data (value may still be null)
 ///
 /// Array layout: [way0_set0..way0_setN, way1_set0..way1_setN] (split, not interleaved).
 /// </summary>
 /// <remarks>
-/// Entry sequences wrap after 65,536 writes without clearing the cache. Validation assumes that fewer than
-/// 65,536 publications to the same entry occur between observing its header and rechecking it or acquiring
-/// its write lock. An operation delayed across a full sequence cycle can encounter ABA.
+/// Entry sequences wrap after 2^26 writes without clearing the cache. Validation assumes that fewer than
+/// 2^26 publications to the same entry occur between observing its header and rechecking it or acquiring
+/// its write lock. The 16-bit epoch wraps after 65,536 clears; the clear that wraps it empties every entry
+/// first (see <see cref="Clear"/>), so a stale entry never looks current.
 /// </remarks>
 /// <typeparam name="TKey">The key type (struct implementing IHash64bit)</typeparam>
 /// <typeparam name="TValue">The cached value type; null and default values are allowed.</typeparam>
@@ -63,20 +66,16 @@ public sealed class SeqlockCache<TKey, TValue>
     private readonly int _sets;
     private readonly int _setMask;
 
-    // Header bit layout:
-    // [Lock:1][Epoch:26][Hash:20][Seq:16][Occ:1]
+    private const long LockMarker = SeqlockHeader.LockMarker;
+    private const int EpochShift = SeqlockHeader.EpochShift;
+    private const long EpochMask = SeqlockHeader.EpochMask;
+    private const long HashMask = SeqlockHeader.HashMask;
+    private const long SeqMask = SeqlockHeader.SeqMask;
+    private const long SeqInc = SeqlockHeader.SeqInc;
+    private const long OccupiedBit = SeqlockHeader.OccupiedBit;
 
-    private const long LockMarker = unchecked((long)0x8000_0000_0000_0000); // bit 63
-
-    private const int EpochShift = 37;
-    private const long EpochMask = 0x7FFF_FFE0_0000_0000;                  // bits 37-62 (26 bits)
-
-    private const long HashMask = 0x0000_001F_FFFE_0000;                   // bits 17-36 (20 bits)
-
-    private const long SeqMask = 0x0000_0000_0001_FFFE;                    // bits 1-16 (16 bits)
-    private const long SeqInc = 0x0000_0000_0000_0002;                    // +1 in seq field
-
-    private const long OccupiedBit = 1L;                                   // bit 0
+    // The lowest signature bit, used to pick a way when both are live.
+    private const long WayPickBit = 1L << SeqlockHeader.HashFieldShift;
 
     // Mask of all "identity" bits for an entry, excluding Lock and Seq.
     private const long TagMask = EpochMask | HashMask | OccupiedBit;
@@ -85,7 +84,7 @@ public sealed class SeqlockCache<TKey, TValue>
     private const long EpochOccMask = EpochMask | OccupiedBit;
 
     // Way 0 uses at most bits 0..MaxSetsBits-1; the hash signature needs independent bits.
-    // HashShift=5 maps header bits 17-36 to original bits 22-41, avoiding overlap with both ways
+    // Shifting left by 5 maps original bits 22-41 to header bits 27-46, avoiding overlap with both ways
     // at any allowed set width.
     private const int HashShift = 5;
 
@@ -100,7 +99,7 @@ public sealed class SeqlockCache<TKey, TValue>
     private readonly Entry[] _entries;
 
     /// <summary>
-    /// Pre-shifted epoch tag, or an unmatchable sentinel after epoch exhaustion.
+    /// Pre-shifted epoch tag, or an unmatchable sentinel while the clear that wraps the epoch empties the entries.
     /// Readers use this directly to avoid shift/mask in the hot path.
     /// </summary>
     private long _shiftedEpoch;
@@ -138,7 +137,7 @@ public sealed class SeqlockCache<TKey, TValue>
         int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
 
         long epochTag = Volatile.Read(ref _shiftedEpoch);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode << HashShift) & HashMask;
         long expectedTag = epochTag | hashPart | OccupiedBit;
 
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
@@ -217,7 +216,7 @@ public sealed class SeqlockCache<TKey, TValue>
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & _setMask;
         int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode << HashShift) & HashMask;
 
         if (TryGetValueCore(in key, idx0, idx1, hashPart, out TValue? value))
         {
@@ -348,7 +347,7 @@ public sealed class SeqlockCache<TKey, TValue>
         bool pick0;
         if (!h0Live && h0 >= 0) pick0 = true;
         else if (!h1Live && h1 >= 0) pick0 = false;
-        else if (h0Live && h1Live) pick0 = (hashPart & (1L << 17)) != 0;
+        else if (h0Live && h1Live) pick0 = (hashPart & WayPickBit) != 0;
         else if (h0 >= 0) pick0 = true;
         else if (h1 >= 0) pick0 = false;
         else return; // both locked, skip
@@ -370,7 +369,7 @@ public sealed class SeqlockCache<TKey, TValue>
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & _setMask;
         int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode << HashShift) & HashMask;
 
         SetCore(in key, value, idx0, idx1, hashPart);
     }
@@ -393,7 +392,7 @@ public sealed class SeqlockCache<TKey, TValue>
         long hashCode = key.GetHashCode64();
         int idx0 = (int)hashCode & _setMask;
         int idx1 = _sets + ((int)(hashCode >> Way1Shift) & _setMask);
-        long hashPart = (hashCode >> HashShift) & HashMask;
+        long hashPart = (hashCode << HashShift) & HashMask;
 
         long epochTag = Volatile.Read(ref _shiftedEpoch);
         long tagToStore = epochTag | hashPart | OccupiedBit;
@@ -422,7 +421,7 @@ public sealed class SeqlockCache<TKey, TValue>
         // Absent: same victim preference as Set (stale/empty first, else alternate by hash bit).
         bool h0Live = (h0 & EpochOccMask) == epochOccTag;
         bool h1Live = (h1 & EpochOccMask) == epochOccTag;
-        bool pick0 = !h0Live || (h1Live && (hashPart & (1L << 17)) != 0);
+        bool pick0 = !h0Live || (h1Live && (hashPart & WayPickBit) != 0);
         return pick0
             ? WriteEntry(ref e0, h0, in key, value, tagToStore)
             : WriteEntry(ref e1, h1, in key, value, tagToStore);
@@ -450,6 +449,14 @@ public sealed class SeqlockCache<TKey, TValue>
             return false;
         }
 
+        // A clear that wraps the epoch may have started since the tag was read; publishing the old tag then could
+        // leave an entry that looks current again after the wrap, so the lock is given up unchanged.
+        if (Volatile.Read(ref _shiftedEpoch) != (tagToStore & EpochMask))
+        {
+            Volatile.Write(ref entry.HashEpochSeqLock, (existing & ~SeqMask) | newSeq);
+            return false;
+        }
+
         // A matching snapshot and successful CAS let the writer retain the stored key.
         if (!keyMatches) entry.Key = key;
         entry.Value = value;
@@ -459,10 +466,16 @@ public sealed class SeqlockCache<TKey, TValue>
     }
 
     /// <summary>
-    /// Clears all cached entries by incrementing the global epoch tag (O(1)).
+    /// Clears all cached entries by incrementing the global epoch tag.
     /// Entries with stale epochs are treated as empty on subsequent lookups.
+    /// Amortized O(1): most calls only increment the epoch, but the call after the last epoch tag
+    /// (once per 65,536 clears) is O(n).
     /// </summary>
-    /// <remarks>After all epoch tags have been used, the cache remains empty rather than reusing a tag.</remarks>
+    /// <remarks>
+    /// The clear after the last epoch tag empties every entry and starts again at epoch 0. It first publishes an
+    /// unmatchable tag, so readers miss and writers do not publish while it runs. It walks the whole cache and spins
+    /// on each entry that a writer holds locked, so that one call has O(n) latency.
+    /// </remarks>
     public void Clear()
     {
         long oldShifted = Volatile.Read(ref _shiftedEpoch);
@@ -470,19 +483,44 @@ public sealed class SeqlockCache<TKey, TValue>
         while (true)
         {
             if ((oldShifted & SeqMask) != 0) return;
-            long oldEpoch = (oldShifted & EpochMask) >> EpochShift;
-            long newEpoch = oldEpoch + 1;
-            // An unmatchable tag disables the cache rather than reusing epochs after exhaustion.
-            long newShifted = oldShifted == EpochMask ? EpochMask | SeqInc : newEpoch << EpochShift;
+            long newShifted = oldShifted == EpochMask ? EpochMask | SeqInc : oldShifted + (1L << EpochShift);
 
             long prev = Interlocked.CompareExchange(ref _shiftedEpoch, newShifted, oldShifted);
             if (prev == oldShifted)
             {
+                if (oldShifted == EpochMask) EmptyAndRestartEpochs();
                 return;
             }
 
             oldShifted = prev;
         }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void EmptyAndRestartEpochs()
+    {
+        ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
+        for (int i = 0; i < _entries.Length; i++)
+        {
+            ref Entry entry = ref Unsafe.Add(ref entries, i);
+            SpinWait spin = default;
+            while (true)
+            {
+                long existing = Volatile.Read(ref entry.HashEpochSeqLock);
+                long newSeq = ((existing & SeqMask) + SeqInc) & SeqMask;
+                if (existing >= 0 && Interlocked.CompareExchange(ref entry.HashEpochSeqLock, newSeq | LockMarker, existing) == existing)
+                {
+                    entry.Key = default;
+                    entry.Value = default;
+                    Volatile.Write(ref entry.HashEpochSeqLock, newSeq);
+                    break;
+                }
+
+                spin.SpinOnce();
+            }
+        }
+
+        Volatile.Write(ref _shiftedEpoch, 0);
     }
 
     /// <summary>For tests: the entries the cache holds, read with no regard for concurrent writers.</summary>

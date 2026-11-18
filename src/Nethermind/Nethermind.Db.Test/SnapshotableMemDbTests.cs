@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.Tracing;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -16,6 +19,151 @@ namespace Nethermind.Db.Test
     {
         private readonly byte[] _sampleValue = { 1, 2, 3 };
         private readonly byte[] _sampleValue2 = { 4, 5, 6 };
+
+        [Test]
+        [NonParallelizable]
+        public void Batch_history_scratch_depends_on_touched_keys(
+            [Values(256, 16384)] int population, [Values] bool retainSnapshot, [Values] bool atomic)
+        {
+            using SnapshotableMemDb db = new();
+            for (int i = 0; i < population; i++) db.Set(BitConverter.GetBytes(i), [1]);
+            using IKeyValueStoreSnapshot? snapshot = retainSnapshot ? db.CreateSnapshot() : null;
+            ArrayPool<(byte[] Key, int Version, byte[]? Value)> pool = ArrayPool<(byte[] Key, int Version, byte[]? Value)>.Shared;
+            using HistoryScratchListener listener = new(pool.GetHashCode());
+            (byte[] Key, int Version, byte[]? Value)[] probe = pool.Rent(1);
+            pool.Return(probe);
+            Assert.That(listener.RentCount, Is.GreaterThan(0));
+            listener.Reset();
+            for (int i = 0; i < 3; i++)
+            {
+                using IWriteBatch batch = atomic ? db.StartAtomicWriteBatch() : db.StartWriteBatch();
+                batch.Set(BitConverter.GetBytes(0), [2]);
+                if (atomic) ((IAtomicWriteBatch)batch).Commit();
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(listener.MaximumLength, Is.LessThanOrEqualTo(16));
+                Assert.That(db.Get(BitConverter.GetBytes(0)), Is.EqualTo(new byte[] { 2 }));
+                Assert.That(db.Get(BitConverter.GetBytes(population - 1)), Is.EqualTo(new byte[] { 1 }));
+                Assert.That(RetainedEntryCount(db), Is.EqualTo(population + (retainSnapshot ? 1 : 0)));
+                if (snapshot is not null) Assert.That(snapshot.Get(BitConverter.GetBytes(0)), Is.EqualTo(new byte[] { 1 }));
+            }
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Atomic_commit_allocation_depends_on_touched_keys(
+            [Values(256, 16384)] int population, [Values] bool retainSnapshot, [Values] bool neverPrune)
+        {
+            using SnapshotableMemDb db = new(neverPrune: neverPrune);
+            for (int i = 0; i < population; i++) db.Set(BitConverter.GetBytes(i), [1]);
+            using IKeyValueStoreSnapshot? snapshot = retainSnapshot ? db.CreateSnapshot() : null;
+            byte[] key = BitConverter.GetBytes(0);
+            for (int i = 0; i < 3; i++)
+            {
+                using IAtomicWriteBatch warmup = db.StartAtomicWriteBatch();
+                warmup.Set(key, [2]);
+                warmup.Commit();
+            }
+            using IAtomicWriteBatch batch = db.StartAtomicWriteBatch();
+            batch.Set(key, [3]);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            batch.Commit();
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(allocated, Is.LessThanOrEqualTo(65_536));
+                Assert.That(db.Get(key), Is.EqualTo(new byte[] { 3 }));
+                Assert.That(db.Get(BitConverter.GetBytes(population - 1)), Is.EqualTo(new byte[] { 1 }));
+                Assert.That(db.WritesCount, Is.EqualTo(population + 4));
+                Assert.That(RetainedEntryCount(db), Is.EqualTo(population + (neverPrune ? 4 : retainSnapshot ? 1 : 0)));
+                if (snapshot is not null) Assert.That(snapshot.Get(key), Is.EqualTo(new byte[] { 1 }));
+            }
+        }
+
+        private sealed class HistoryScratchListener(int poolId) : EventListener
+        {
+            private readonly int _threadId = Environment.CurrentManagedThreadId;
+            internal int RentCount;
+            internal int MaximumLength;
+
+            internal void Reset()
+            {
+                RentCount = 0;
+                MaximumLength = 0;
+            }
+
+            protected override void OnEventSourceCreated(EventSource eventSource)
+            {
+                if (eventSource.Name == "System.Buffers.ArrayPoolEventSource") EnableEvents(eventSource, EventLevel.Verbose);
+            }
+
+            protected override void OnEventWritten(EventWrittenEventArgs eventData)
+            {
+                if (Environment.CurrentManagedThreadId == _threadId && eventData.EventId == 1 &&
+                    eventData.Payload is { Count: >= 3 } && eventData.Payload[2] is int id && id == poolId &&
+                    eventData.Payload[1] is int length)
+                {
+                    RentCount++;
+                    MaximumLength = Math.Max(MaximumLength, length);
+                }
+            }
+        }
+
+        [Test]
+        public void Batch_history_is_bounded_and_preserves_retained_snapshots(
+            [Values] bool atomic, [Values] bool retainSnapshot, [Values] bool neverPrune)
+        {
+            using SnapshotableMemDb db = new(neverPrune: neverPrune);
+            db.Set([1], [2]);
+            using IKeyValueStoreSnapshot? first = retainSnapshot ? db.CreateSnapshot() : null;
+            using IKeyValueStoreSnapshot? retained = retainSnapshot ? db.CreateSnapshot() : null;
+            for (int i = 0; i < 100; i++)
+            {
+                using IWriteBatch batch = atomic ? db.StartAtomicWriteBatch() : db.StartWriteBatch();
+                batch.Set([1], i % 2 == 0 ? new byte[] { 3 } : null);
+                byte[] transient = System.BitConverter.GetBytes(i);
+                batch.Set(transient, [4]);
+                batch.Set(transient, null);
+                if (atomic) ((IAtomicWriteBatch)batch).Commit();
+                if (i == 49)
+                {
+                    first?.Dispose();
+                    first?.Dispose();
+                }
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.Get([1]), Is.Null);
+                Assert.That(RetainedEntryCount(db), Is.EqualTo(neverPrune ? 201 : retainSnapshot ? 2 : 0));
+                if (retained is not null) Assert.That(retained.Get([1]), Is.EqualTo(new byte[] { 2 }));
+            }
+            retained?.Dispose();
+            Assert.That(RetainedEntryCount(db), Is.EqualTo(neverPrune ? 201 : 0));
+        }
+
+        [Test]
+        public void Ordinary_state_factory_batches_discard_deleted_key_history()
+        {
+            using IDb configured = new MemDbFactory().CreateDb(new DbSettings(DbNames.State, "bounded-history"));
+            SnapshotableMemDb db = (SnapshotableMemDb)configured;
+            for (int i = 0; i < 100; i++)
+            {
+                byte[] key = System.BitConverter.GetBytes(i);
+                using (IWriteBatch insert = db.StartWriteBatch()) insert.Set(key, [1]);
+                using IWriteBatch remove = db.StartWriteBatch();
+                remove.Set(key, null);
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.GetAllKeys(), Is.Empty);
+                Assert.That(RetainedEntryCount(db), Is.Zero);
+            }
+        }
+
+        private static int RetainedEntryCount(SnapshotableMemDb db) =>
+            ((SortedSet<(byte[] Key, int Version, byte[]? Value)>)typeof(SnapshotableMemDb)
+                .GetField("_db", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(db)!).Count;
 
         [Test]
         public void Simple_set_get_is_fine()

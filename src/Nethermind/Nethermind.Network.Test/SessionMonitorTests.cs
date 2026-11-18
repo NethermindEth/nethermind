@@ -3,15 +3,26 @@
 
 using System;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using DotNetty.Transport.Channels.Embedded;
+using Nethermind.Config;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -148,15 +159,160 @@ namespace Nethermind.Network.Test
 
         private ISession CreateSession() => CreateSession(_pingSender);
 
-        private ISession CreateSession(IPingSender pingSender)
+        private ISession CreateSession(IPingSender pingSender, IChannel? channel = null)
         {
-            ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            if (channel is null)
+            {
+                channel = Substitute.For<IChannel>();
+                channel.IsWritable.Returns(true);
+            }
+            ISession session = new Session(30312, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.RemoteHost = "1.2.3.4";
             session.RemotePort = 12345;
             session.PingSender = pingSender;
             session.Handshake(TestItem.PublicKeyB);
             session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
             return session;
+        }
+
+        [Test]
+        public async Task Unsolicited_pongs_do_not_prevent_timeout()
+        {
+            ManualTimeProvider time = new();
+            ISession session = CreateSession(_noPong);
+            using P2PProtocolHandler handler = new(session,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303),
+                Substitute.For<INodeStatsManager>(), Substitute.For<IMessageSerializationService>(),
+                Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance, new NetworkConfig(), time);
+            using MonitorHarness monitor = new(session, time);
+            Packet pong = new([]) { Protocol = Protocol.P2P, PacketType = P2PMessageCode.Pong };
+
+            for (int i = 0; i < 4; i++)
+            {
+                time.Advance(TimeSpan.FromSeconds(2));
+                handler.HandleMessage(pong);
+                await monitor.Tick(TimeSpan.Zero);
+            }
+
+            Assert.That(session.IsClosing, Is.True);
+        }
+
+        [Test]
+        public async Task Persistent_non_writability_times_out_independently_of_pongs([Values] bool recovers)
+        {
+            ManualTimeProvider time = new();
+            IChannel channel = Substitute.For<IChannel>();
+            channel.IsWritable.Returns(false);
+            ISession session = CreateSession(_pingSender, channel);
+            DisconnectReason? reason = null;
+            session.Disconnected += (_, args) => reason = args.DisconnectReason;
+            using MonitorHarness monitor = new(session, time);
+
+            await monitor.Tick(TimeSpan.FromSeconds(2));
+            await monitor.Tick(TimeSpan.FromSeconds(29));
+            Assert.That(session.IsClosing, Is.False);
+            if (recovers)
+            {
+                channel.IsWritable.Returns(true);
+                await monitor.Tick(TimeSpan.FromSeconds(2));
+                channel.IsWritable.Returns(false);
+                await monitor.Tick(TimeSpan.FromSeconds(2));
+                await monitor.Tick(TimeSpan.FromSeconds(29));
+                Assert.That(session.IsClosing, Is.False);
+            }
+
+            await monitor.Tick(TimeSpan.FromSeconds(2));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.IsClosing, Is.True);
+                Assert.That(reason, Is.EqualTo(DisconnectReason.ReceiveMessageTimeout));
+            }
+        }
+
+        private sealed class MonitorHarness : IDisposable
+        {
+            private readonly ManualTimeProvider _time;
+            private readonly SessionMonitor _monitor;
+            private readonly ISession _session;
+            private TaskCompletionSource _tick = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public MonitorHarness(ISession session, ManualTimeProvider time)
+            {
+                _time = time;
+                _session = session;
+                InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+                logger.IsTrace.Returns(true);
+                logger.When(l => l.Trace(Arg.Is<string>(s => s.StartsWith("Sent "))))
+                    .Do(_ => _tick.TrySetResult());
+                ILogManager logs = new OneLoggerLogManager(new(logger));
+                _monitor = new SessionMonitor(new NetworkConfig { P2PPingInterval = 1000 }, logs, time);
+                _monitor.AddSession(session);
+                session.LastPongUtc = time.GetUtcNow().UtcDateTime;
+                _monitor.Start();
+            }
+
+            public async Task Tick(TimeSpan elapsed)
+            {
+                _tick = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                _time.AdvanceAndFireTimer(elapsed);
+                await _tick.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            }
+
+            public void Dispose()
+            {
+                _monitor.Stop();
+                if (!_session.IsClosing) _session.MarkDisconnected(DisconnectReason.ClientQuitting, DisconnectType.Remote, "test cleanup");
+                _session.Dispose();
+            }
+        }
+
+        [Test]
+        public async Task Persistent_backpressure_closes_channel_and_releases_queued_buffer()
+        {
+            ManualTimeProvider time = new();
+            IMessageSerializationService serializer = new MessageSerializationService(SerializerInfo.Create(new PingMessageSerializer()));
+            PacketSender sender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
+            NonReadingChannel channel = new(sender);
+            channel.Configuration.WriteBufferLowWaterMark = 0;
+            channel.Configuration.WriteBufferHighWaterMark = 1;
+            Session session = new(30312, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+            {
+                RemoteHost = "1.2.3.4",
+                RemotePort = 12345,
+                PingSender = _pingSender,
+            };
+            session.Handshake(TestItem.PublicKeyB);
+            session.Init(5, channel.Pipeline.Context(sender), sender);
+            try
+            {
+                sender.Enqueue(PingMessage.Instance);
+                Assert.That(channel.IsWritable, Is.False);
+                IByteBuffer buffer = channel.PendingBuffer!;
+                Assert.That(buffer.ReferenceCount, Is.EqualTo(1));
+                using MonitorHarness monitor = new(session, time);
+                await monitor.Tick(TimeSpan.FromSeconds(2));
+                await monitor.Tick(TimeSpan.FromSeconds(31));
+
+                Assert.That(session.IsClosing, Is.True);
+                Assert.That(() =>
+                {
+                    channel.RunPendingTasks();
+                    return channel.Open;
+                }, Is.False.After(5000, 10));
+                Assert.That(buffer.ReferenceCount, Is.Zero);
+            }
+            finally
+            {
+                await channel.CloseAsync();
+                channel.FinishAndReleaseAll();
+            }
+        }
+
+        private sealed class NonReadingChannel(params IChannelHandler[] handlers) : EmbeddedChannel(handlers)
+        {
+            public IByteBuffer? PendingBuffer { get; private set; }
+            protected override void DoWrite(ChannelOutboundBuffer input) => PendingBuffer = input.Current as IByteBuffer;
         }
 
         [Test]
@@ -183,15 +339,6 @@ namespace Nethermind.Network.Test
             Assert.That(spread, Is.GreaterThan(TimeSpan.FromMilliseconds(100)), "Ping time spread should be non-trivial");
         }
 
-        private ISession CreateUnresponsiveSession()
-        {
-            ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-            session.RemoteHost = "1.2.3.4";
-            session.RemotePort = 12345;
-            session.PingSender = _noPong;
-            session.Handshake(TestItem.PublicKeyB);
-            session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
-            return session;
-        }
+        private ISession CreateUnresponsiveSession() => CreateSession(_noPong);
     }
 }

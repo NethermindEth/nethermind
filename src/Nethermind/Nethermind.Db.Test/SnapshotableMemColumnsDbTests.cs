@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -24,6 +28,256 @@ namespace Nethermind.Db.Test
 
         private readonly byte[] _sampleValue = { 1, 2, 3 };
         private readonly byte[] _sampleValue2 = { 4, 5, 6 };
+
+        [Test]
+        public void Atomic_insertion_failure_preserves_publication_and_all_columns(
+            [Values] bool failInsertion, [Values] bool neverPrune)
+        {
+            using SnapshotableMemColumnsDb<TestColumns> db = new(neverPrune);
+            SnapshotableMemDb first = (SnapshotableMemDb)db.GetColumnDb(TestColumns.Column1);
+            SnapshotableMemDb second = (SnapshotableMemDb)db.GetColumnDb(TestColumns.Column2);
+            SnapshotableMemDb empty = (SnapshotableMemDb)db.GetColumnDb(TestColumns.Column3);
+            first.Set([1], [2]);
+            first.Set([2], [8]);
+            second.Set([1], [3]);
+            DatabaseState firstBefore = CaptureState(first);
+            DatabaseState secondBefore = CaptureState(second);
+            DatabaseState emptyBefore = CaptureState(empty);
+            using IColumnDbSnapshot<TestColumns> before = db.CreateSnapshot();
+            int priorInsertions = 0;
+            int observedVersion = -1;
+            long observedWrites = -1;
+            InsertionFaultComparer comparer = new(secondBefore.Version + 1, failInsertion, () =>
+            {
+                priorInsertions = BackingStore(first).Count(entry => entry.Version == firstBefore.Version + 1);
+                observedVersion = Version(first);
+                observedWrites = first.WritesCount;
+            });
+            _storeField.SetValue(second, new SortedSet<(byte[] Key, int Version, byte[]? Value)>(BackingStore(second), comparer));
+            using (IAtomicColumnsWriteBatch<TestColumns> batch = db.StartAtomicWriteBatch())
+            {
+                Stage(batch);
+                if (failInsertion)
+                {
+                    Assert.That(Assert.Throws<IOException>(() => batch.Commit()), Is.SameAs(comparer.Failure));
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(comparer.Failures, Is.EqualTo(1));
+                        Assert.That(priorInsertions, Is.EqualTo(3));
+                        Assert.That(observedVersion, Is.EqualTo(firstBefore.Version));
+                        Assert.That(observedWrites, Is.EqualTo(firstBefore.Writes));
+                        AssertUnchanged(first, firstBefore);
+                        AssertUnchanged(second, secondBefore);
+                        AssertUnchanged(empty, emptyBefore);
+                        Assert.That(first.Get([1]), Is.EqualTo(new byte[] { 2 }));
+                        Assert.That(first.Get([2]), Is.EqualTo(new byte[] { 8 }));
+                        Assert.That(second.Get([1]), Is.EqualTo(new byte[] { 3 }));
+                        Assert.That(first.Get([9]), Is.Null);
+                        Assert.That(second.Get([17]), Is.Null);
+                        Assert.That(before.GetColumn(TestColumns.Column1).Get([1]), Is.EqualTo(new byte[] { 2 }));
+                        Assert.That(before.GetColumn(TestColumns.Column1).Get([2]), Is.EqualTo(new byte[] { 8 }));
+                        Assert.That(before.GetColumn(TestColumns.Column2).Get([1]), Is.EqualTo(new byte[] { 3 }));
+                    }
+                }
+                else batch.Commit();
+                Assert.Throws<ObjectDisposedException>(() => batch.Commit());
+                Assert.Throws<ObjectDisposedException>(() => batch.GetColumnBatch(TestColumns.Column1));
+            }
+            if (failInsertion)
+            {
+                first.Set([33], [34]);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(first.Get([1]), Is.EqualTo(new byte[] { 2 }));
+                    Assert.That(first.Get([2]), Is.EqualTo(new byte[] { 8 }));
+                    Assert.That(first.Get([9]), Is.Null);
+                }
+                using IAtomicColumnsWriteBatch<TestColumns> retry = db.StartAtomicWriteBatch();
+                Stage(retry);
+                retry.Commit();
+            }
+            using IColumnDbSnapshot<TestColumns> after = db.CreateSnapshot();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(before.GetColumn(TestColumns.Column1).Get([1]), Is.EqualTo(new byte[] { 2 }));
+                Assert.That(before.GetColumn(TestColumns.Column1).Get([2]), Is.EqualTo(new byte[] { 8 }));
+                Assert.That(before.GetColumn(TestColumns.Column2).Get([1]), Is.EqualTo(new byte[] { 3 }));
+                Assert.That(before.GetColumn(TestColumns.Column1).Get([9]), Is.Null);
+                Assert.That(before.GetColumn(TestColumns.Column2).Get([17]), Is.Null);
+                Assert.That(after.GetColumn(TestColumns.Column1).Get([1]), Is.EqualTo(new byte[] { 4 }));
+                Assert.That(after.GetColumn(TestColumns.Column1).Get([2]), Is.Null);
+                Assert.That(after.GetColumn(TestColumns.Column1).Get([9]), Is.EqualTo(new byte[] { 6 }));
+                Assert.That(after.GetColumn(TestColumns.Column2).Get([1]), Is.EqualTo(new byte[] { 42 }));
+                Assert.That(after.GetColumn(TestColumns.Column2).Get([17]), Is.EqualTo(new byte[] { 35 }));
+                Assert.That(first.WritesCount, Is.EqualTo(firstBefore.Writes + 5 + (failInsertion ? 1 : 0)));
+                Assert.That(second.WritesCount, Is.EqualTo(secondBefore.Writes + 2));
+                Assert.That(Version(first), Is.EqualTo(firstBefore.Version + 1 + (failInsertion ? 1 : 0)));
+                Assert.That(Version(second), Is.EqualTo(secondBefore.Version + 1));
+                Assert.That(Version(empty), Is.EqualTo(emptyBefore.Version + 1));
+                Assert.That(empty.WritesCount, Is.EqualTo(emptyBefore.Writes));
+                if (failInsertion)
+                {
+                    Assert.That(after.GetColumn(TestColumns.Column1).Get([33]), Is.EqualTo(new byte[] { 34 }));
+                    Assert.That(before.GetColumn(TestColumns.Column1).Get([33]), Is.Null);
+                }
+            }
+
+            static void Stage(IAtomicColumnsWriteBatch<TestColumns> batch)
+            {
+                IWriteBatch first = batch.GetColumnBatch(TestColumns.Column1);
+                first.Set([1], [99]);
+                first.Set([1], [4]);
+                first.Set([2], [7]);
+                first.Set([2], null);
+                first.Set([9], [6]);
+                IWriteBatch second = batch.GetColumnBatch(TestColumns.Column2);
+                second.Set([1], [42]);
+                second.Set([17], [35]);
+                batch.GetColumnBatch(TestColumns.Column3);
+            }
+        }
+
+        [Test]
+        public void Empty_atomic_columns_publish_only_explicitly_acquired_versions()
+        {
+            using SnapshotableMemColumnsDb<TestColumns> db = new();
+            SnapshotableMemDb first = (SnapshotableMemDb)db.GetColumnDb(TestColumns.Column1);
+            SnapshotableMemDb second = (SnapshotableMemDb)db.GetColumnDb(TestColumns.Column2);
+            using (IAtomicColumnsWriteBatch<TestColumns> untouched = db.StartAtomicWriteBatch()) untouched.Commit();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Version(first), Is.Zero);
+                Assert.That(Version(second), Is.Zero);
+            }
+            using (IAtomicColumnsWriteBatch<TestColumns> acquired = db.StartAtomicWriteBatch())
+            {
+                acquired.GetColumnBatch(TestColumns.Column1);
+                acquired.Commit();
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Version(first), Is.EqualTo(1));
+                Assert.That(Version(second), Is.Zero);
+                Assert.That(first.WritesCount, Is.Zero);
+                Assert.That(first.GetAllKeys(), Is.Empty);
+            }
+        }
+
+        private static readonly FieldInfo _storeField = typeof(SnapshotableMemDb).GetField("_db", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        private static readonly FieldInfo _versionField = typeof(SnapshotableMemDb).GetField("_currentVersion", BindingFlags.Instance | BindingFlags.NonPublic)!;
+
+        private static SortedSet<(byte[] Key, int Version, byte[]? Value)> BackingStore(SnapshotableMemDb db) =>
+            (SortedSet<(byte[] Key, int Version, byte[]? Value)>)_storeField.GetValue(db)!;
+
+        private static int Version(SnapshotableMemDb db) => (int)_versionField.GetValue(db)!;
+
+        private static DatabaseState CaptureState(SnapshotableMemDb db) => new(Version(db), db.WritesCount,
+            BackingStore(db).Select(entry => (Convert.ToHexString(entry.Key), entry.Version, entry.Value is null ? null : Convert.ToHexString(entry.Value))).ToArray());
+
+        private static void AssertUnchanged(SnapshotableMemDb db, DatabaseState expected)
+        {
+            DatabaseState actual = CaptureState(db);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual.Version, Is.EqualTo(expected.Version));
+                Assert.That(actual.Writes, Is.EqualTo(expected.Writes));
+                Assert.That(actual.Entries, Is.EqualTo(expected.Entries));
+            }
+        }
+
+        private sealed record DatabaseState(int Version, long Writes, (string Key, int Version, string? Value)[] Entries);
+
+        private sealed class InsertionFaultComparer(int failVersion, bool armed, Action beforeFailure)
+            : IComparer<(byte[] Key, int Version, byte[]? Value)>
+        {
+            private bool _armed = armed;
+            internal int Failures;
+            internal IOException Failure { get; } = new("Injected atomic insertion boundary failure.");
+
+            public int Compare((byte[] Key, int Version, byte[]? Value) x, (byte[] Key, int Version, byte[]? Value) y)
+            {
+                if (_armed && (IsNewWrite(x) || IsNewWrite(y)))
+                {
+                    _armed = false;
+                    Failures++;
+                    beforeFailure();
+                    throw Failure;
+                }
+                int keys = x.Key.AsSpan().SequenceCompareTo(y.Key);
+                return keys == 0 ? x.Version.CompareTo(y.Version) : keys;
+            }
+
+            private bool IsNewWrite((byte[] Key, int Version, byte[]? Value) entry) =>
+                entry.Version == failVersion && entry.Value is [42];
+        }
+
+        [Test]
+        public void Atomic_preparation_failure_does_not_publish_an_earlier_column()
+        {
+            using SnapshotableMemColumnsDb<TestColumns> db = new();
+            SnapshotableMemDb first = (SnapshotableMemDb)db.GetColumnDb(TestColumns.Column1);
+            SnapshotableMemDb second = (SnapshotableMemDb)db.GetColumnDb(TestColumns.Column2);
+            first.Set([1], [2]);
+            second.Set([1], [3]);
+            System.Reflection.FieldInfo version = typeof(SnapshotableMemDb).GetField("_currentVersion", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            version.SetValue(second, int.MaxValue);
+            using (IAtomicColumnsWriteBatch<TestColumns> batch = db.StartAtomicWriteBatch())
+            {
+                batch.GetColumnBatch(TestColumns.Column1).Set([1], [4]);
+                batch.GetColumnBatch(TestColumns.Column2).Set([1], [5]);
+                Assert.Throws<OverflowException>(() => batch.Commit());
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.Get([1]), Is.EqualTo(new byte[] { 2 }));
+                Assert.That(second.Get([1]), Is.EqualTo(new byte[] { 3 }));
+            }
+            version.SetValue(second, 1);
+            using (IAtomicColumnsWriteBatch<TestColumns> retry = db.StartAtomicWriteBatch())
+            {
+                retry.GetColumnBatch(TestColumns.Column1).Set([1], [4]);
+                retry.GetColumnBatch(TestColumns.Column2).Set([1], [5]);
+                retry.Commit();
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.Get([1]), Is.EqualTo(new byte[] { 4 }));
+                Assert.That(second.Get([1]), Is.EqualTo(new byte[] { 5 }));
+            }
+        }
+
+        [Test]
+        public void Atomic_columns_preserve_snapshots_and_abort_without_publication([Values] bool commit)
+        {
+            using SnapshotableMemColumnsDb<TestColumns> db = new();
+            db.GetColumnDb(TestColumns.Column1).Set([1], [2]);
+            db.GetColumnDb(TestColumns.Column2).Set([1], [3]);
+            using IColumnDbSnapshot<TestColumns> before = db.CreateSnapshot();
+            using (IAtomicColumnsWriteBatch<TestColumns> batch = db.StartAtomicWriteBatch())
+            {
+                batch.GetColumnBatch(TestColumns.Column1).Set([1], [4], WriteFlags.DisableWAL);
+                batch.GetColumnBatch(TestColumns.Column2).Set([1], [5], WriteFlags.DisableWAL);
+                for (int i = 0; i < 300; i++)
+                {
+                    batch.GetColumnBatch(TestColumns.Column1).Set(BitConverter.GetBytes(i), [6], WriteFlags.DisableWAL);
+                    batch.GetColumnBatch(TestColumns.Column2).Set(BitConverter.GetBytes(i), [7], WriteFlags.DisableWAL);
+                }
+                if (commit) batch.Commit();
+            }
+            using IColumnDbSnapshot<TestColumns> after = db.CreateSnapshot();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(before.GetColumn(TestColumns.Column1).Get([1]), Is.EqualTo(new byte[] { 2 }));
+                Assert.That(before.GetColumn(TestColumns.Column2).Get([1]), Is.EqualTo(new byte[] { 3 }));
+                Assert.That(after.GetColumn(TestColumns.Column1).Get([1]), Is.EqualTo(new byte[] { commit ? (byte)4 : (byte)2 }));
+                Assert.That(after.GetColumn(TestColumns.Column2).Get([1]), Is.EqualTo(new byte[] { commit ? (byte)5 : (byte)3 }));
+                for (int i = 0; i < 300; i++)
+                {
+                    Assert.That(after.GetColumn(TestColumns.Column1).Get(BitConverter.GetBytes(i)), commit ? Is.EqualTo(new byte[] { 6 }) : Is.Null);
+                    Assert.That(after.GetColumn(TestColumns.Column2).Get(BitConverter.GetBytes(i)), commit ? Is.EqualTo(new byte[] { 7 }) : Is.Null);
+                }
+            }
+        }
 
         [Test]
         public void Can_create_and_get_columns()

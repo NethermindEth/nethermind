@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
@@ -26,12 +27,102 @@ using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 
+using System.Buffers.Binary;
+
+using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Collections;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Stats;
+
+using Nethermind.Core.Exceptions;
+
+using Nethermind.Network.Test.P2P;
+
 namespace Nethermind.Network.Test;
 
 [NonParallelizable]
 [TestFixture]
 public class RlpxHostIntegrationTests
 {
+    [Test]
+    public async Task Three_honest_peers_behind_one_nat_complete_auth()
+    {
+        using CryptoRandom random = new();
+        HandshakeService recipient = RlpxHostIntegrationTests.CreateHandshakeService(TestItem.PrivateKeyA, random);
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, port,
+            filterEnabled: false, handshakeService: recipient);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        List<TcpClient> clients = [];
+        int authenticated = 0;
+        host.SessionCreated += (_, args) => args.Session.HandshakeComplete += (_, _) => Interlocked.Increment(ref authenticated);
+        try
+        {
+            await host.Init();
+            for (int i = 0; i < 3; i++) clients.Add(await ConnectFromAsync(IPAddress.Loopback, port));
+            Assert.That(() => host.PendingInboundConnections, Is.EqualTo(3).After(2000, 10));
+            PrivateKey[] keys = [TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyD];
+            for (int i = 0; i < clients.Count; i++)
+                await RlpxHostIntegrationTests.AuthenticateAsync(clients[i],
+                    RlpxHostIntegrationTests.CreateHandshakeService(keys[i], random));
+            Assert.That(() => Volatile.Read(ref authenticated), Is.EqualTo(3).After(2000, 10));
+            Assert.That(host.PendingInboundConnections, Is.EqualTo(3));
+        }
+        finally
+        {
+            foreach (TcpClient client in clients) client.Dispose();
+            await host.Shutdown();
+        }
+        Assert.That(host.PendingInboundConnections, Is.Zero);
+    }
+
+    private static async Task<TcpClient> ConnectFromAsync(IPAddress source, int port, CancellationToken cancellationToken = default)
+    {
+        TcpClient client = new(new IPEndPoint(source, 0));
+        try
+        {
+            using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(2));
+            await client.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
+            return client;
+        }
+        catch
+        {
+            client.Dispose();
+            throw;
+        }
+    }
+
+    [Test]
+    public async Task Failed_auth_or_handshake_timeout_returns_pending_capacity([Values] bool invalidAuth)
+    {
+        int port = GetAvailablePort();
+        IHandshakeService handshake = Substitute.For<IHandshakeService>();
+        handshake.Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())
+            .Returns(_ => throw new InvalidOperationException("invalid AUTH"));
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, port,
+            maxPendingInboundConnections: 1, filterEnabled: false, handshakeService: handshake);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        using TcpClient client = new();
+        try
+        {
+            await host.Init();
+            await client.ConnectAsync(IPAddress.Loopback, port);
+            Assert.That(() => host.PendingInboundConnections, Is.EqualTo(1).After(2000, 10));
+            if (invalidAuth) await client.GetStream().WriteAsync(new byte[] { 0, 1, 0 });
+            Assert.That(await client.GetStream().ReadAsync(new byte[1]).AsTask().WaitAsync(TimeSpan.FromSeconds(5)), Is.Zero);
+            Assert.That(() => host.PendingInboundConnections, Is.Zero.After(2000, 10));
+            handshake.Received(invalidAuth ? 1 : 0).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+        Assert.That(host.PendingInboundConnections, Is.Zero);
+    }
+
     [TestCase(true, false, null, "203.0.113.1", "203.0.113.1", false, Description = "Exact match: blocks same IP")]
     [TestCase(true, false, null, "203.0.113.1", "198.51.100.1", true, Description = "Exact match: allows different IP")]
     [TestCase(true, true, null, "203.0.113.1", "203.0.113.50", false, Description = "Subnet bucketing: blocks same subnet")]
@@ -66,6 +157,8 @@ public class RlpxHostIntegrationTests
         {
             IPAddress receivedIp = IPAddress.Parse("203.0.113.1");
             ISession receivedSession = Substitute.For<ISession>();
+            receivedSession.Direction.Returns(ConnectionDirection.Out);
+            receivedSession.RemoteHost.Returns(receivedIp.ToString());
             receivedSession.Node.Returns(new Node(TestItem.PublicKeyA, receivedIp.ToString(), 30303));
 
             host.TrackSessionActivity(receivedSession);
@@ -75,6 +168,8 @@ public class RlpxHostIntegrationTests
 
             IPAddress deliveredIp = IPAddress.Parse("198.51.100.1");
             ISession deliveredSession = Substitute.For<ISession>();
+            deliveredSession.Direction.Returns(ConnectionDirection.Out);
+            deliveredSession.RemoteHost.Returns(deliveredIp.ToString());
             deliveredSession.Node.Returns(new Node(TestItem.PublicKeyA, deliveredIp.ToString(), 30303));
 
             host.TrackSessionActivity(deliveredSession);
@@ -102,6 +197,33 @@ public class RlpxHostIntegrationTests
         {
             Assert.That(host.ShouldContact(privilegedIp), Is.True, "first attempt accepted");
             Assert.That(host.ShouldContact(privilegedIp), Is.True, "privileged IP is never rate-limited");
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task Live_session_source_survives_filter_rotation([Values(ConnectionDirection.In, ConnectionDirection.Out)] ConnectionDirection direction)
+    {
+        await using IContainer container = CreateFilterContainer(filterEnabled: true, subnetBucketing: true);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        IPAddress source = IPAddress.Parse("2001:db8:ffff::1");
+        ISession session = Substitute.For<ISession>();
+        session.Direction.Returns(direction);
+        session.State.Returns(SessionState.HandshakeComplete);
+        session.RemoteHost.Returns(source.ToString());
+        session.Node.Returns(new Node(TestItem.PublicKeyA, source.ToString(), 30303));
+        try
+        {
+            Assert.That(host.ShouldContact(source), Is.True);
+            RlpxHost.SessionActivitySubscription subscription = host.TrackSessionActivity(session);
+            for (int i = 0; i < 1000; i++)
+                Assert.That(host.ShouldContact(IPAddress.Parse($"2001:db8:{i:x}::1")), Is.True);
+            Assert.That(host.ShouldContact(IPAddress.Parse("2001:db8:ffff::2")), Is.False);
+            subscription.Detach();
+            Assert.That(host.ShouldContact(source), Is.True, "the live-session guard must release after the underlying cache entry was evicted");
         }
         finally
         {
@@ -618,10 +740,11 @@ public class RlpxHostIntegrationTests
         Node node = CreateDualStackNode(refusedPort, listeningPort);
         IPEndPoint originalAddress = node.Address;
         int originalDiscoveryPort = node.DiscoveryPort;
-#pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out Node? alternate), Is.True);
-#pragma warning restore NUnit2045
-        Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: PeerAddressPermissions.All, out Node? alternate), Is.True);
+            Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(IPAddress.IPv6Loopback, listeningPort)));
+        }
 
         try
         {
@@ -855,8 +978,13 @@ public class RlpxHostIntegrationTests
         {
             await host.Init();
             Task<Socket> acceptTask = listener.AcceptSocketAsync();
+            Assert.That(host.IsEndpointRejected(node), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(host.IsEndpointRejected(node), Is.False, "eligibility must not consume alternate contact pacing");
 
-            Assert.That(await host.ConnectAsync(node), Is.True);
+                Assert.That(await host.ConnectAsync(node), Is.True);
+            }
 
             using Socket accepted = await acceptTask.WaitAsync(TimeSpan.FromSeconds(5));
             using (Assert.EnterMultipleScope())
@@ -926,7 +1054,7 @@ public class RlpxHostIntegrationTests
         string address,
         bool allowNonRoutable,
         bool expected) =>
-        Assert.That(RlpxHost.IsDialAddressAcceptable(IPAddress.Parse(address), allowNonRoutable), Is.EqualTo(expected));
+        Assert.That(RlpxHost.IsDialAddressAcceptable(IPAddress.Parse(address), allowNonRoutable ? PeerAddressPermissions.All : PeerAddressPermissions.None), Is.EqualTo(expected));
 
     [Test]
     public void Alternate_dial_requires_current_verified_record()
@@ -938,7 +1066,7 @@ public class RlpxHostIntegrationTests
         unverified.IsStatic = true;
         unverified.IsTrusted = true;
         unverified.IsBootnode = true;
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(unverified, allowNonRoutable: false, out _), Is.False,
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(unverified, allowNonRoutable: PeerAddressPermissions.None, out _), Is.False,
             "peer role flags must not authenticate an ENR");
 
         Node stale = CreateDualStackNode(
@@ -947,7 +1075,7 @@ public class RlpxHostIntegrationTests
             verified: true,
             sequence: 1);
         stale.ObserveEnrSequence(2);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(stale, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(stale, allowNonRoutable: PeerAddressPermissions.None, out _), Is.False);
     }
 
     [TestCase("10.0.0.1", "::1", false)]
@@ -970,7 +1098,7 @@ public class RlpxHostIntegrationTests
 #pragma warning restore NUnit2045
         Assert.That(node!.SetVerifiedEnr(record), Is.True);
 
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: true, out _), Is.EqualTo(expected));
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(node, allowNonRoutable: PeerAddressPermissions.All, out _), Is.EqualTo(expected));
     }
 
     [Test]
@@ -980,20 +1108,20 @@ public class RlpxHostIntegrationTests
             IPAddress.Parse("8.8.8.8"), 30303,
             IPAddress.Parse("fc00::1"), 30304,
             verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: PeerAddressPermissions.None, out _), Is.False);
 
         Node privateToPrivate = CreateDualStackNode(
             IPAddress.Parse("10.0.0.1"), 30303,
             IPAddress.Parse("fc00::1"), 30304,
             verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(privateToPrivate, allowNonRoutable: true, out _), Is.True);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(privateToPrivate, allowNonRoutable: PeerAddressPermissions.All, out _), Is.True);
 
         NodeRecord mappedRecord = CreateDualStackRecord(
             IPAddress.Parse("8.8.8.8"), 30303,
             IPAddress.Parse("::ffff:8.8.4.4"), 30304,
             sequence: 0);
         Node mapped = CreateNode(mappedRecord, verified: true);
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(mapped, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(mapped, allowNonRoutable: PeerAddressPermissions.None, out _), Is.False);
 
         NodeRecord withdrawal = CreateDualStackRecord(
             IPAddress.Parse("8.8.8.8"), 30303,
@@ -1001,8 +1129,7 @@ public class RlpxHostIntegrationTests
             sequence: 1);
 #pragma warning disable NUnit2045 // The call establishes an output or mutable state needed by later assertions; keep the success prerequisite fail-fast.
         Assert.That(publicToPrivate.SetVerifiedEnr(withdrawal), Is.True);
-#pragma warning restore NUnit2045
-        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: false, out _), Is.False);
+        Assert.That(RlpxHost.TryCreateAlternateDialNode(publicToPrivate, allowNonRoutable: PeerAddressPermissions.None, out _), Is.False);
     }
 
     private static Node CreateDualStackNode(int ipv4Port, int ipv6Port)
@@ -1071,7 +1198,50 @@ public class RlpxHostIntegrationTests
         return CreateContainer(networkConfig, ipResolver, privilegedIpProvider: privilegedIpProvider);
     }
 
-    private static IContainer CreateListenerContainer(
+    [Test]
+    public async Task ConnectAsync_Uses_local_address_policy([Values] bool explicitlyConfigured)
+    {
+        FailingClientChannelFactory factory = new();
+        IIPResolver resolver = Substitute.For<IIPResolver>();
+        resolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
+            new IIPResolver.NethermindIp(IPAddress.Parse("8.8.8.8"), IPAddress.Parse("8.8.8.8"))));
+        NetworkConfig config = new() { LocalIp = "127.0.0.1", P2PPort = GetAvailablePort(), ProcessingThreadCount = 1, RlpxHostShutdownCloseTimeoutMs = 100 };
+        NetworkListenerState listenerState = new(IPAddress.Loopback, IPAddress.Loopback, LimboLogs.Instance);
+        await using IContainer container = CreateContainer(config, resolver, listenerState, channelFactory: factory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        try
+        {
+            await host.Init();
+            Node node = new(TestItem.PublicKeyB, "127.0.0.1", 30303) { IsStatic = explicitlyConfigured };
+            Assert.That(await host.ConnectAsync(node), Is.False);
+            Assert.That(factory.CreatedClientChannels, Is.EqualTo(explicitlyConfigured ? 1 : 0));
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task ConnectAsync_Does_not_dial_own_listener()
+    {
+        FailingClientChannelFactory factory = new();
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, port, channelFactory: factory);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        try
+        {
+            await host.Init();
+            Assert.That(await host.ConnectAsync(new Node(TestItem.PublicKeyB, "127.0.0.1", port)), Is.False);
+            Assert.That(factory.CreatedClientChannels, Is.Zero);
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    internal static IContainer CreateListenerContainer(
         string? localIpConfig,
         IPAddress resolvedLocalIp,
         int port,
@@ -1079,6 +1249,10 @@ public class RlpxHostIntegrationTests
         IChannelFactory? channelFactory = null,
         IPrivilegedIpProvider? privilegedIpProvider = null,
         ILogManager? logManager = null,
+        int maxPendingInboundConnections = 50,
+        bool filterEnabled = true,
+        IHandshakeService? handshakeService = null,
+        int? maxPendingInboundConnectionsPerSource = null,
         long shutdownCloseTimeoutMs = 100)
     {
         NetworkConfig networkConfig = new()
@@ -1087,21 +1261,27 @@ public class RlpxHostIntegrationTests
             P2PPort = port,
             LocalIp = localIpConfig,
             MaxActivePeers = 50,
+            MaxPendingInboundConnections = maxPendingInboundConnections,
+            FilterPeersByRecentIp = filterEnabled,
             RlpxHostShutdownCloseTimeoutMs = shutdownCloseTimeoutMs
         };
+        if (maxPendingInboundConnectionsPerSource is { } sourceCapacity)
+            networkConfig.MaxPendingInboundConnectionsPerSource = sourceCapacity;
         IIPResolver ipResolver = Substitute.For<IIPResolver>();
         ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(
             new ValueTask<IIPResolver.NethermindIp>(new IIPResolver.NethermindIp(resolvedLocalIp, IPAddress.Loopback)));
-        return CreateContainer(networkConfig, ipResolver, listenerState, channelFactory, privilegedIpProvider, logManager);
+        return CreateContainer(networkConfig, ipResolver, listenerState, channelFactory, privilegedIpProvider, logManager, handshakeService);
     }
 
-    private static IContainer CreateContainer(
+    public static IContainer CreateContainer(
         INetworkConfig networkConfig,
         IIPResolver ipResolver,
         NetworkListenerState? listenerState = null,
         IChannelFactory? channelFactory = null,
         IPrivilegedIpProvider? privilegedIpProvider = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        IHandshakeService? handshakeService = null,
+        LocalAddressSource? localAddressSource = null)
     {
         ContainerBuilder builder = new();
         builder.RegisterModule(new NetworkModule(new ConfigProvider(networkConfig)));
@@ -1109,10 +1289,11 @@ public class RlpxHostIntegrationTests
         builder.RegisterInstance(ipResolver);
         builder.RegisterInstance(logManager ?? LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(Substitute.For<IMessageSerializationService>());
-        builder.RegisterInstance<IHandshakeService>(new StubHandshakeService());
+        builder.RegisterInstance<IHandshakeService>(handshakeService ?? new StubHandshakeService());
         builder.RegisterInstance(Substitute.For<ISessionMonitor>());
         builder.RegisterInstance(NullDisconnectsAnalyzer.Instance).As<IDisconnectsAnalyzer>();
         builder.RegisterInstance(privilegedIpProvider ?? Substitute.For<IPrivilegedIpProvider>());
+        if (localAddressSource is not null) builder.RegisterInstance(localAddressSource);
         if (listenerState is not null)
         {
             builder.RegisterInstance(listenerState);
@@ -1222,7 +1403,41 @@ public class RlpxHostIntegrationTests
         public IDatagramSocket CreateDatagramSocket() => throw new NotSupportedException();
     }
 
-    private abstract class ClientChannelFactory : IChannelFactory
+    internal sealed class AcceptedChannelFactory : IChannelFactory
+    {
+        public ConcurrentQueue<IChannel> Accepted { get; } = new();
+        public int ClosedCount
+        {
+            get
+            {
+                int count = 0;
+                foreach (IChannel channel in Accepted)
+                    if (channel.CloseCompletion.IsCompletedSuccessfully) count++;
+                return count;
+            }
+        }
+
+        public IServerChannel CreateServer()
+        {
+            TcpServerSocketChannel channel = new(AddressFamily.InterNetwork);
+            channel.Pipeline.AddLast(new AcceptedChannelObserver(Accepted));
+            return channel;
+        }
+
+        public IChannel CreateClient() => new TcpSocketChannel();
+        public IDatagramSocket CreateDatagramSocket() => throw new NotSupportedException();
+    }
+
+    private sealed class AcceptedChannelObserver(ConcurrentQueue<IChannel> accepted) : ChannelHandlerAdapter
+    {
+        public override void ChannelRead(IChannelHandlerContext context, object message)
+        {
+            if (message is IChannel channel) accepted.Enqueue(channel);
+            context.FireChannelRead(message);
+        }
+    }
+
+    internal abstract class ClientChannelFactory : IChannelFactory
     {
         public int CreatedClientChannels { get; protected set; }
 
@@ -1280,7 +1495,7 @@ public class RlpxHostIntegrationTests
         }
     }
 
-    private sealed class FailingClientChannelFactory : ClientChannelFactory
+    internal sealed class FailingClientChannelFactory : ClientChannelFactory
     {
         public override IChannel CreateClient()
         {
@@ -1344,12 +1559,262 @@ public class RlpxHostIntegrationTests
         return socket;
     }
 
-    private static int GetAvailablePort()
+    public static int GetAvailablePort()
     {
         using System.Net.Sockets.TcpListener listener = new(IPAddress.Loopback, 0);
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
         listener.Stop();
         return port;
+    }
+
+
+    [Test]
+    public void Full_authenticated_table_admits_unrelated_sources_without_forgetting_live_sources([Values] bool allLive)
+    {
+        InboundNodeFilter filter = new(4096, false, null);
+        HashSet<NodeFilter.IpSubnetKey> liveSources = [];
+        for (int i = 0; i < 4096; i++)
+        {
+            IPAddress address = IPAddress.Parse($"2001:db8:{i:x}::1");
+            Assert.That(filter.TryAccept(address), Is.True);
+            if (allLive || i == 0) liveSources.Add(NodeFilter.IpSubnetKey.DefaultKey(address));
+        }
+
+        for (int i = 4096; i < 8192; i++)
+            Assert.That(filter.TryAccept(IPAddress.Parse($"2001:db8:{i:x}::1"), liveSources), Is.True);
+
+        Assert.That(filter.TryAccept(IPAddress.Parse("2001:db8:1fff::2"), liveSources), Is.EqualTo(allLive));
+        Assert.That(filter.TryAccept(IPAddress.Parse("2001:db8:0::2"), liveSources), Is.False);
+        Assert.That(filter.TryAccept(IPAddress.Parse("2001:db8:1::2"), liveSources), Is.EqualTo(!allLive));
+    }
+
+    [Test]
+    public void Inbound_admission_retains_live_restrictions_and_recovers_without_retry_refresh()
+    {
+        long now = 0;
+        TimeProvider clock = Substitute.For<TimeProvider>();
+        clock.TimestampFrequency.Returns(1000);
+        clock.GetTimestamp().Returns(_ => now);
+        InboundNodeFilter filter = new(2, false, null, clock);
+        IPAddress live = IPAddress.Parse("2001:db8:1::1");
+        IPAddress second = IPAddress.Parse("2001:db8:2::1");
+        Assert.That(filter.TryAccept(live), Is.True);
+        HashSet<NodeFilter.IpSubnetKey> liveSources = [NodeFilter.IpSubnetKey.DefaultKey(live)];
+        Assert.That(filter.TryAccept(second), Is.True);
+        for (int i = 3; i < 100; i++)
+            Assert.That(filter.TryAccept(IPAddress.Parse($"2001:db8:{i:x}::1"), liveSources), Is.True);
+        Assert.That(filter.TryAccept(IPAddress.Parse("2001:db8:1::2")), Is.False);
+
+        now = 4 * 60 * 1000;
+        filter.Touch(live);
+        now = 6 * 60 * 1000;
+        Assert.That(filter.TryAccept(second), Is.True, "expired entries return capacity");
+        Assert.That(filter.TryAccept(live, liveSources), Is.False, "activity retains the original live subnet");
+        now = 8 * 60 * 1000;
+        Assert.That(filter.TryAccept(live, liveSources), Is.False);
+        liveSources.Clear();
+        now = 9 * 60 * 1000;
+        Assert.That(filter.TryAccept(live), Is.True, "rejected unauthenticated retries must not extend the restriction");
+    }
+
+    internal static async Task AuthenticateAsync(TcpClient client, HandshakeService initiator, CancellationToken cancellationToken = default)
+    {
+        EncryptionHandshake exchange = new();
+        await client.GetStream().WriteAsync(initiator.Auth(TestItem.PublicKeyA, exchange).Data, cancellationToken);
+        byte[] prefix = new byte[2];
+        await client.GetStream().ReadExactlyAsync(prefix, cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        byte[] ack = new byte[2 + BinaryPrimitives.ReadUInt16BigEndian(prefix)];
+        prefix.CopyTo(ack, 0);
+        await client.GetStream().ReadExactlyAsync(ack.AsMemory(2), cancellationToken).AsTask().WaitAsync(TimeSpan.FromSeconds(5));
+        initiator.Agree(exchange, new Packet(ack));
+    }
+
+    private sealed class RecordingHandshakeService(HandshakeService inner) : IHandshakeService
+    {
+        private int _successfulAuthDecodes;
+        public int SuccessfulAuthDecodes => Volatile.Read(ref _successfulAuthDecodes);
+
+        public Packet Auth(PublicKey remoteNodeId, EncryptionHandshake handshake, bool preEip8Format = false) =>
+            inner.Auth(remoteNodeId, handshake, preEip8Format);
+
+        public Packet Ack(EncryptionHandshake handshake, Packet auth)
+        {
+            Packet ack = inner.Ack(handshake, auth);
+            Interlocked.Increment(ref _successfulAuthDecodes);
+            return ack;
+        }
+
+        public void Agree(EncryptionHandshake handshake, Packet ack) => inner.Agree(handshake, ack);
+    }
+
+    internal static HandshakeService CreateHandshakeService(PrivateKey key, CryptoRandom random)
+    {
+        MessageSerializationService serialization = new(
+            SerializerInfo.Create(new AuthMessageSerializer()),
+            SerializerInfo.Create(new AuthEip8MessageSerializer()),
+            SerializerInfo.Create(new AckMessageSerializer()),
+            SerializerInfo.Create(new AckEip8MessageSerializer()));
+        return new HandshakeService(serialization, new EciesCipher(random), random, new EthereumEcdsa(1), key, LimboLogs.Instance);
+    }
+
+    [Test]
+    public void Accepted_hello_notifies_an_alternate_session([Values] bool validIdentity)
+    {
+        ISession session = Substitute.For<ISession>();
+        session.RemoteNodeId.Returns(TestItem.PublicKeyB);
+        session.Node.Returns(new Node(TestItem.PublicKeyB, "127.0.0.1", 30303));
+        MessageSerializationService serializer = new(SerializerInfo.Create(new HelloMessageSerializer()));
+        using P2PProtocolHandler handler = new(session, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303),
+            Substitute.For<INodeStatsManager>(), serializer, Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance, new NetworkConfig());
+        handler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
+
+        HandleHello(handler, serializer, validIdentity ? TestItem.PublicKeyB : TestItem.PublicKeyC);
+
+        session.Received(validIdentity ? 1 : 0).MarkAuthenticated();
+    }
+
+    [Test]
+    public async Task Pending_lease_follows_alternate_admission_subscriber([Values] bool accept)
+    {
+        using CryptoRandom random = new();
+        HandshakeService recipient = RlpxHostIntegrationTests.CreateHandshakeService(TestItem.PrivateKeyA, random);
+        HandshakeService initiator = RlpxHostIntegrationTests.CreateHandshakeService(TestItem.PrivateKeyB, random);
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, port,
+            maxPendingInboundConnections: 1, filterEnabled: false, handshakeService: recipient);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource<Session> initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        host.SessionCreated += (_, args) => args.Session.Initialized += (_, _) => initialized.TrySetResult((Session)args.Session);
+        using TcpClient client = new();
+        try
+        {
+            await host.Init();
+            await client.ConnectAsync(IPAddress.Loopback, port);
+            await RlpxHostIntegrationTests.AuthenticateAsync(client, initiator);
+            Session session = await initialized.Task.WaitAsync(TimeSpan.FromSeconds(2));
+            int authenticated = 0;
+            session.Authenticated += (_, _) => authenticated++;
+            Assert.That(host.PendingInboundConnections, Is.EqualTo(1), "AUTH and transport initialization retain the lease");
+            MessageSerializationService serializer = new(SerializerInfo.Create(new HelloMessageSerializer()));
+            using P2PProtocolHandler handler = new(session, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, port),
+                Substitute.For<INodeStatsManager>(), serializer, Substitute.For<IBackgroundTaskScheduler>(), LimboLogs.Instance, new NetworkConfig());
+            handler.AddSupportedCapability(new Capability(Protocol.Eth, 66));
+            bool admissionCalled = false;
+            handler.ProtocolInitialized += (_, _) =>
+            {
+                admissionCalled = true;
+                Assert.That(host.PendingInboundConnections, Is.EqualTo(1), "release must follow admission callbacks");
+                if (!accept) session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, "alternate admission rejected Hello");
+            };
+            HandleHello(handler, serializer, TestItem.PublicKeyB);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admissionCalled, Is.True);
+                Assert.That(authenticated, Is.EqualTo(accept ? 1 : 0));
+                Assert.That(session.IsClosing, Is.EqualTo(!accept));
+                Assert.That(() => host.PendingInboundConnections, Is.Zero.After(2000, 10));
+            }
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    private static void HandleHello(P2PProtocolHandler handler, MessageSerializationService serializer, PublicKey identity)
+    {
+        using HelloMessage hello = new()
+        {
+            NodeId = identity,
+            P2PVersion = 5,
+            ClientId = "honest peer",
+            ListenPort = 30303,
+            Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 66) }
+        };
+        P2PProtocolHandlerTests.HandleHello(handler, serializer, hello);
+    }
+
+    [Test]
+    public async Task Zero_still_disables_all_inbound_connections([Values] bool privileged)
+    {
+        IPrivilegedIpProvider privileges = Substitute.For<IPrivilegedIpProvider>();
+        privileges.IsPrivileged(Arg.Any<IPAddress>()).Returns(privileged);
+        int port = GetAvailablePort();
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, port,
+            privilegedIpProvider: privileges, maxPendingInboundConnections: 0);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        using TcpClient client = new();
+        try
+        {
+            await host.Init();
+            await client.ConnectAsync(IPAddress.Loopback, port);
+            Assert.That(await client.GetStream().ReadAsync(new byte[1]).AsTask().WaitAsync(TimeSpan.FromSeconds(2)), Is.Zero);
+            Assert.That(host.PendingInboundConnections, Is.Zero);
+        }
+        finally
+        {
+            await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task Custom_configuration_rejects_negative_pending_capacity_before_starting_host([Values] bool perSource)
+    {
+        INetworkConfig config = Substitute.For<INetworkConfig>();
+        config.MaxPendingInboundConnections.Returns(perSource ? 50 : -1);
+        config.MaxPendingInboundConnectionsPerSource.Returns(perSource ? -1 : 4);
+        config.RlpxHostShutdownCloseTimeoutMs.Returns(100);
+        IIPResolver resolver = Substitute.For<IIPResolver>();
+        resolver.Resolve(Arg.Any<CancellationToken>()).Returns(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback));
+        using PeerAddressPolicy policy = new(resolver, new LocalAddressSource(LimboLogs.Instance, () => []));
+        RlpxHost? host = null;
+        try
+        {
+            Assert.That(() => host = new RlpxHost(policy,
+                Substitute.For<IMessageSerializationService>(),
+                Substitute.For<IHandshakeService>(), Substitute.For<ISessionMonitor>(), NullDisconnectsAnalyzer.Instance,
+                config, resolver, Substitute.For<IPrivilegedIpProvider>(), LimboLogs.Instance, new NetworkListenerState(config, resolver, LimboLogs.Instance)),
+                Throws.TypeOf<InvalidConfigurationException>());
+        }
+        finally
+        {
+            if (host is not null) await host.Shutdown();
+        }
+    }
+
+    [Test]
+    public async Task Privileged_address_can_start_a_handshake_when_the_ordinary_lane_is_full()
+    {
+        IPAddress privileged = IPAddress.Parse("192.0.2.3");
+        IPrivilegedIpProvider privileges = Substitute.For<IPrivilegedIpProvider>();
+        privileges.IsPrivileged(privileged).Returns(true);
+        await using IContainer container = CreateListenerContainer("127.0.0.1", IPAddress.Loopback, 30303,
+            privilegedIpProvider: privileges, maxPendingInboundConnections: 1, filterEnabled: false);
+        RlpxHost host = container.Resolve<RlpxHost>();
+        TaskCompletionSource closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IChannel channel = Substitute.For<IChannel>();
+        channel.CloseCompletion.Returns(closed.Task);
+        RlpxHost.PendingInboundAdmission? Admit(IPAddress address) =>
+            host.TryAdmitInbound(channel, new Session(30303, channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance), address);
+
+        try
+        {
+            Assert.That(Admit(IPAddress.Parse("192.0.2.1")), Is.Not.Null);
+            Assert.That(Admit(IPAddress.Parse("192.0.2.2")), Is.Null);
+            Assert.That(Admit(privileged), Is.Not.Null);
+        }
+        finally { closed.SetResult(); }
+    }
+
+    [Test]
+    public void Negative_pending_capacity_is_a_configuration_error([Values(-1, int.MinValue)] int capacity, [Values] bool perSource)
+    {
+        NetworkConfig config = new();
+        Assert.That(() =>
+        {
+            if (perSource) config.MaxPendingInboundConnectionsPerSource = capacity;
+            else config.MaxPendingInboundConnections = capacity;
+        }, Throws.TypeOf<InvalidConfigurationException>());
     }
 }

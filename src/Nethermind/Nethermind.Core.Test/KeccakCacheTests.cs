@@ -48,7 +48,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Unsupported_lengths_are_not_cached([Values(0, 93, 128, 192)] int length)
+        public void Unsupported_lengths_are_not_cached([Values(0, 89, 128, 192)] int length)
         {
             byte[] input = new byte[length];
             new Random(513).NextBytes(input);
@@ -160,7 +160,7 @@ namespace Nethermind.Core.Test
         [Test]
         [NonParallelizable]
         public void Compute_WithUnalignedInput_MatchesUncachedHash(
-            [Values(20, 32, 63, 64, 65, 92)] int length,
+            [Values(20, 32, 63, 64, 65, 88)] int length,
             [Values(0, 1, 7, 15)] int offset,
             [Values] bool storeComputedHash)
         {
@@ -226,6 +226,28 @@ namespace Nethermind.Core.Test
                 if (KeccakCache.TryGet(input, out ValueHash256 cached))
                     Assert.That(cached, Is.EqualTo(expectedValues[idx]), $"cached iteration {i}, index {idx}");
             });
+        }
+
+        [Test]
+        [NonParallelizable]
+        public void Sequence_does_not_repeat_across_writes_to_one_entry()
+        {
+            const int writes = 100_000;
+            byte[] bytes = new byte[48];
+            new Random(789).NextBytes(bytes);
+            ValueHash256 expected = ValueKeccak.Compute(bytes);
+            KeccakCache.Store(bytes, in expected);
+
+            const ulong versionMask = 0x0007_FFFF_FFFF_FF00;
+            const ulong versionStep = 0x100;
+            ulong previous = KeccakCache.GetSequence(bytes) & versionMask;
+            for (int i = 1; i <= writes; i++)
+            {
+                KeccakCache.Store(bytes, in expected);
+                ulong version = KeccakCache.GetSequence(bytes) & versionMask;
+                Assert.That(version, Is.EqualTo(previous + versionStep), $"version step at write {i}");
+                previous = version;
+            }
         }
     }
 }

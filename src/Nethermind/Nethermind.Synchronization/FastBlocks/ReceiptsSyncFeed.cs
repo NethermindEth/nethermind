@@ -196,7 +196,17 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
 
                 int added = InsertReceipts(batch);
-                return added == 0 ? SyncResponseHandlingResult.NoProgress : SyncResponseHandlingResult.OK;
+                if (batch.RequestTimedOut) return SyncResponseHandlingResult.Emptish;
+                if (added != 0) return SyncResponseHandlingResult.OK;
+                if (batch.Response?.Count == 0)
+                {
+                    if (FastBlocksBatch.IsBelowAvailableHistory(batch.Infos, batch.EarliestBlockNumberAtRequest))
+                        return SyncResponseHandlingResult.Emptish;
+                    PeerInfo? source = batch.ResponseSourcePeer ?? peer;
+                    if (source?.RecordHistoryEmpty(AllocationContexts.Receipts, batch.Infos) == true)
+                        return SyncResponseHandlingResult.Emptish;
+                }
+                return SyncResponseHandlingResult.NoProgress;
             }
             catch (Exception)
             {
@@ -416,6 +426,8 @@ namespace Nethermind.Synchronization.FastBlocks
 
                                 insertedBlocks.Add(blockInfo.BlockNumber);
                                 validResponsesCount++;
+                                // Receipts inserted still encoded never load the block.
+                                batch.ResponseSourcePeer?.RecordHistoryData(AllocationContexts.Receipts, blockInfo.BlockNumber);
                             }
                             catch (InvalidDataException)
                             {

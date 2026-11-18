@@ -29,10 +29,11 @@ public static unsafe partial class KeccakCache
 
     private const int BucketMask = 0x0007_FFFF;
     private const uint HashMask = unchecked((uint)~BucketMask);
-    private const uint LockMarker = 0x0000_8000;
-    private const uint VersionMask = 0x0000_7F80;       // Bits 7-14: 8-bit version counter (0-255)
-    private const uint VersionIncrement = 0x0000_0080;  // Bit 7: increment step for version
-    private const uint HashLengthMask = HashMask | 0x7F;  // Hash (bits 17-31) + Length (bits 0-6)
+    private const int HashShift = 32;                              // Moves hash bits 19-31 to bits 51-63
+    private const ulong LockMarker = 0x0000_0000_0000_0080;        // Bit 7
+    private const ulong VersionMask = 0x0007_FFFF_FFFF_FF00;       // Bits 8-50: 43-bit version counter
+    private const ulong VersionIncrement = 0x0000_0000_0000_0100;  // Bit 8: increment step for version
+    private const ulong HashLengthMask = ((ulong)HashMask << HashShift) | 0x7F;  // Hash (bits 51-63) + Length (bits 0-6)
 
     private const int InputLengthOfKeccak = ValueHash256.MemorySize;
     private const int InputLengthOfAddress = Address.Size;
@@ -59,7 +60,7 @@ public static unsafe partial class KeccakCache
             goto Uncommon;
         }
 
-        ref Entry e = ref GetEntry(input, out uint combined);
+        ref Entry e = ref GetEntry(input, out ulong combined);
         if (TryRead(input, ref e, combined, out keccak256)) return;
         // Cached before the output is written, which may alias the input.
         ValueHash256 digest = ValueKeccak.Compute(input);
@@ -80,7 +81,7 @@ public static unsafe partial class KeccakCache
             Unsafe.SkipInit(out keccak256);
             return false;
         }
-        ref Entry e = ref GetEntry(input, out uint combined);
+        ref Entry e = ref GetEntry(input, out ulong combined);
         return TryRead(input, ref e, combined, out keccak256);
     }
 
@@ -88,12 +89,12 @@ public static unsafe partial class KeccakCache
     internal static void Store(ReadOnlySpan<byte> input, in ValueHash256 keccak256)
     {
         if (input.Length is 0 or > Entry.MaxPayloadLength) return;
-        ref Entry e = ref GetEntry(input, out uint combined);
+        ref Entry e = ref GetEntry(input, out ulong combined);
         Write(input, ref e, combined, in keccak256);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ref Entry GetEntry(ReadOnlySpan<byte> input, out uint combined)
+    private static ref Entry GetEntry(ReadOnlySpan<byte> input, out ulong combined)
     {
         int hashCode = input.FastHash();
         uint index = (uint)hashCode & BucketMask;
@@ -110,23 +111,23 @@ public static unsafe partial class KeccakCache
 
         // Half the hash is encoded in the bucket so we only need half of it and can use other half for length.
         // This allows to create a combined value that represents a part of the hash, the input's length and the lock marker.
-        combined = (HashMask & (uint)hashCode) | (uint)input.Length;
+        combined = ((ulong)(HashMask & (uint)hashCode) << HashShift) | (uint)input.Length;
 
         return ref e;
     }
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryRead(ReadOnlySpan<byte> input, ref Entry e, uint combined, out ValueHash256 keccak256)
+    private static bool TryRead(ReadOnlySpan<byte> input, ref Entry e, ulong combined, out ValueHash256 keccak256)
     {
         // Seqlock pattern: read sequence, speculatively read data, verify sequence unchanged.
         // This is lock-free for reads - no CAS required unless we need to write.
-        uint seq1 = Volatile.Read(ref e.Combined);
+        ulong seq1 = Volatile.Read(ref e.Combined);
 
         // Early exit: lock held or hash/length mismatch (ignoring version bit).
         if ((seq1 & LockMarker) == 0 && (seq1 & HashLengthMask) == combined)
         {
-            // Fast path for 32-byte input - only copy the 32 bytes we need, not full 92-byte Payload
+            // Fast path for 32-byte input - only copy the 32 bytes we need, not full 88-byte Payload
             if (input.Length == InputLengthOfKeccak)
             {
                 // Speculative reads - copy only Vector256 at Aligned32 and the keccak result
@@ -212,14 +213,15 @@ public static unsafe partial class KeccakCache
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Write(ReadOnlySpan<byte> input, ref Entry e, uint combined, in ValueHash256 keccak256)
+    private static void Write(ReadOnlySpan<byte> input, ref Entry e, ulong combined, in ValueHash256 keccak256)
     {
-        uint existing = Volatile.Read(ref e.Combined);
+        ulong existing = Volatile.Read(ref e.Combined);
 
-        // Increment 8-bit version counter (wraps after 256) to detect ABA in seqlock readers.
-        // 256 writes needed to wrap = ~8-13μs, far exceeding ~50ns read window.
-        uint newVersion = ((existing & VersionMask) + VersionIncrement) & VersionMask;
-        uint toStore = combined | newVersion;
+        // A reader can be descheduled between its speculative reads for any time, and the inputs written
+        // meanwhile can share its hash tag and length, so the version must not wrap within any stall:
+        // 2^43 writes to one entry take days, while an 8-bit version wraps in microseconds.
+        ulong newVersion = ((existing & VersionMask) + VersionIncrement) & VersionMask;
+        ulong toStore = combined | newVersion;
 
         // Try to set to the combined locked state, if not already locked.
         if ((existing & LockMarker) == 0 && Interlocked.CompareExchange(ref e.Combined, toStore | LockMarker, existing) == existing)
@@ -259,6 +261,11 @@ public static unsafe partial class KeccakCache
     public static uint GetBucket(ReadOnlySpan<byte> input) => (uint)input.FastHash() & BucketMask;
 
     /// <summary>
+    /// Gets the sequence word of the input's entry for tests.
+    /// </summary>
+    internal static ulong GetSequence(ReadOnlySpan<byte> input) => Volatile.Read(ref GetEntry(input, out _).Combined);
+
+    /// <summary>
     /// An entry to cache keccak
     /// </summary>
     [StructLayout(LayoutKind.Explicit, Size = Size)]
@@ -269,14 +276,14 @@ public static unsafe partial class KeccakCache
         /// </summary>
         public const int Size = 128;
 
-        private const int PayloadStart = sizeof(uint);
+        private const int PayloadStart = sizeof(ulong);
         private const int ValueStart = Size - ValueHash256.MemorySize;
         public const int MaxPayloadLength = ValueStart - PayloadStart;
 
         /// <summary>
-        /// Represents a combined value for: hash, length and a potential <see cref="KeccakCache.LockMarker"/>.
+        /// Represents a combined value for: hash, version, length and a potential <see cref="KeccakCache.LockMarker"/>.
         /// </summary>
-        [FieldOffset(0)] public uint Combined;
+        [FieldOffset(0)] public ulong Combined;
 
         /// <summary>
         /// The actual value
