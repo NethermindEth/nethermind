@@ -28,6 +28,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Init;
 using Nethermind.Logging;
@@ -381,7 +382,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true)
+    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true, byte[]? recoveryCall = null)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -433,10 +434,16 @@ public class StatelessInputGeneratorTests
         {
             Transaction tx = Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
                 .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
+            Transaction[] transactions = recoveryCall is null ? [tx] :
+            [
+                tx,
+                Build.A.Transaction.WithTo(ECRecoverPrecompile.Address).WithData(recoveryCall).WithNonce(1).WithGasLimit(1_000_000)
+                    .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject
+            ];
             Block suggested = Build.A.Block.WithParent(parent).WithPostMergeRules()
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)
                 .WithSlotNumber(amsterdam ? 1UL : null)
-                .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(tx).TestObject;
+                .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(transactions).TestObject;
             StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
             using IDisposable scope = env.WorldState.BeginScope(parent);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);
