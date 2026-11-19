@@ -23,7 +23,8 @@ public class EmptyCatchBlockAnalyzerTests
     [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (e is not OperationCanceledException) { }", "Exception")]
     [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (e is OperationCanceledException && Flag) { }", "Exception")]
     [TestCase("try { Work(); Work(); } {|#0:catch|} (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { }", "Exception")]
-    [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (Other is OperationCanceledException) { }", "Exception")]
+    [TestCase("Exception other = null; try { Work(); } {|#0:catch|} (Exception e) when (other is OperationCanceledException) { }", "Exception")]
+    [TestCase("Exception other = null; try { Work(); } {|#0:catch|} (Exception e) when (other is OperationCanceledException or ChannelClosedException) { }", "Exception")]
     [TestCase("try { Work(); } {|#0:catch|} (InvalidOperationException) { /* ignored */ }", "InvalidOperationException")]
     [TestCase("try { Work(); } {|#0:catch|} (CustomException) { }", "CustomException")]
     public Task Empty_catch_reports_diagnostic(string body, string caught) =>
@@ -99,7 +100,6 @@ public class EmptyCatchBlockAnalyzerTests
         class Test
         {
             bool Flag;
-            Exception Other;
             void Work() { }
             void M()
             {
