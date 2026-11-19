@@ -33,8 +33,8 @@ public enum ReqRespFailureReason
     /// <summary>The channel failed below the req/resp framing: a read, write or half-close did not succeed.</summary>
     Transport,
 
-    /// <summary>The request was already served when the channel failed while its tail was still being watched.</summary>
-    TransportAfterServed,
+    /// <summary>The channel failed while the tail of an accepted request was watched, during serving or the linger after it.</summary>
+    TransportWhileWatchingTail,
 }
 
 /// <summary>An outbound request cut by one of its bounds; the message names the bound and what the request was waiting for.</summary>
@@ -453,7 +453,7 @@ public abstract class ReqRespProtocolBase
             catch (Exception)
             {
                 // Awaited only when disposing, so an escaping exception must not fail the listener.
-                RecordFailure(protocolId, ReqRespFailureReason.TransportAfterServed);
+                RecordFailure(protocolId, ReqRespFailureReason.TransportWhileWatchingTail);
             }
         }
 
