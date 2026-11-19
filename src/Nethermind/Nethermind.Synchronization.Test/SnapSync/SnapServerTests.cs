@@ -332,10 +332,36 @@ public class SnapServerTests
 
         using IByteArrayList result = _server.GetBlockAccessLists(request, long.MaxValue, CancellationToken.None);
 
-        Assert.That(result.Count, Is.EqualTo(expected.Count));
+        AssertServed(result, expected, expected.Count);
+    }
+
+    [Test]
+    public void GetBlockAccessLists_serves_lists_up_to_the_hard_byte_limit([Values(1, 2, 20)] int count)
+    {
+        const int listSize = 200_000;
+        List<ValueHash256> request = [];
+        List<byte[]> expected = [];
+        for (int i = 0; i < count; i++)
+        {
+            Hash256 hash = Keccak.Compute(BitConverter.GetBytes(i));
+            byte[] bal = new byte[listSize];
+            new Random(i).NextBytes(bal);
+            GivenBlock(hash, (ulong)i, bal);
+            request.Add(hash.ValueHash256);
+            expected.Add(bal);
+        }
+
+        using IByteArrayList result = _server.GetBlockAccessLists(request, long.MaxValue, CancellationToken.None);
+
+        AssertServed(result, expected, Math.Min(count, (int)(ISnapStateServer.HardResponseByteLimit / listSize) + 1));
+    }
+
+    private static void AssertServed(IByteArrayList result, List<byte[]> expected, int served)
+    {
+        Assert.That(result.Count, Is.EqualTo(served));
         using (Assert.EnterMultipleScope())
         {
-            for (int i = 0; i < expected.Count; i++)
+            for (int i = 0; i < served; i++)
             {
                 Assert.That(result[i], Is.SequenceEqualTo(expected[i]), $"block {i}");
             }
@@ -345,6 +371,7 @@ public class SnapServerTests
     [TestCase(1, 0, 1, 1)]
     [TestCase(150, 0, 16, 31)]
     [TestCase(15, 15, 16, 1, Description = "Unknown hashes read no list, so they do not grow the batch")]
+    [TestCase(165, 0, 17, 17, Description = "A batch reads only the lists needed to pass the limit")]
     public void GetBlockAccessLists_reads_little_past_the_byte_limit(long byteLimit, int unknownHashes, int served, int maxReads)
     {
         List<ValueHash256> request = [];
@@ -366,6 +393,29 @@ public class SnapServerTests
         {
             Assert.That(result.Count, Is.EqualTo(served));
             Assert.That(_balDb.Reads, Is.InRange(served - unknownHashes, maxReads));
+        }
+    }
+
+    [Test]
+    public void GetBlockAccessLists_split_batch_reads_no_list_past_the_batch()
+    {
+        // Batches of 1, 1 and 2 lists stop after the fourth list. The cap splits the third batch after the 1,000-byte
+        // list, and the larger mean after it must not pull the 200,000-byte list into the rest of that batch.
+        int[] sizes = [70_000, 70_000, 1_000, 60_000, 200_000];
+        List<ValueHash256> request = [];
+        for (int i = 0; i < sizes.Length; i++)
+        {
+            Hash256 hash = Keccak.Compute(BitConverter.GetBytes(i));
+            GivenBlock(hash, (ulong)i, new byte[sizes[i]]);
+            request.Add(hash.ValueHash256);
+        }
+
+        using IByteArrayList result = _server.GetBlockAccessLists(request, 200_000, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Count, Is.EqualTo(4));
+            Assert.That(_balDb.Reads, Is.EqualTo(4));
         }
     }
 

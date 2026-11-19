@@ -334,9 +334,10 @@ public static partial class TrustedInput
         SpanExtensions.SeedHashes(in seed);
 
         RlpReader headerReader = new(headerRlp);
-        BlockHeader header = Rlp.GetDecoderOrThrow<BlockHeader>().Decode(ref headerReader)
+        BlockHeader header = Rlp.GetDecoderOrThrow<BlockHeader>().Decode(ref headerReader, RlpBehaviors.ExcludeHashes)
             ?? throw new ArgumentException("No block header", nameof(data));
         headerReader.CheckEnd();
+        header.Hash = blockHash;
         // Stateless validation covers proof-of-stake blocks only, as for the engine API payload a stateless input carries.
         header.IsPostMerge = true;
 

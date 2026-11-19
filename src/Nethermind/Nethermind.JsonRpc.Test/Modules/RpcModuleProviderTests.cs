@@ -24,6 +24,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -401,6 +402,31 @@ public class RpcModuleProviderTests
         Assert.That((adminClass is IAdminRpcModule), Is.True);
         IRpcModule historyClass = await moduleProvider.Rent("admin_exportHistory", true);
         Assert.That((historyClass is ITestAdminRpcModule), Is.True);
+    }
+
+    [Test]
+    public void Registers_ordinary_methods_only()
+    {
+        _moduleProvider.Register(new TestModulePool<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()));
+        _moduleProvider.Register(new TestModulePool<ISubscribeRpcModule>(Substitute.For<ISubscribeRpcModule>()));
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Context is inherited through IContextAwareRpcModule; SyncCalls is declared on a class-typed module.
+            foreach (string accessor in new[] { "get_Context", "set_Context", "get_SyncCalls" })
+            {
+                Assert.That(_moduleProvider.Resolve(accessor), Is.Null, accessor);
+            }
+
+            foreach (Type type in new[] { typeof(IAdminRpcModule), typeof(ISubscribeRpcModule), typeof(DirectInvokerRpcModule) })
+            {
+                foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(static m => !m.IsSpecialName))
+                {
+                    Assert.That(_moduleProvider.Resolve(method.Name), Is.Not.Null, $"{type.Name}.{method.Name}");
+                }
+            }
+        }
     }
 
     [Test]

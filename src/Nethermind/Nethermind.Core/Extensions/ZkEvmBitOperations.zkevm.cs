@@ -65,29 +65,16 @@ public static partial class ZkEvmBitOperations
 
     /// <summary>Reads the 8 bytes at <paramref name="source"/>, which need not be aligned, as a big-endian value.</summary>
     /// <remarks>
-    /// Without Zbb the bytes are gathered most significant first. The zkVMs without Zbb also reject misaligned
-    /// accesses, so an unaligned load would be gathered byte by byte anyway; gathering in big-endian order drops
-    /// the reversal on top of it.
+    /// Without Zbb the bytes are gathered most significant first. The zkVMs without Zbb other than OpenVM also reject
+    /// misaligned accesses, so an unaligned load would be gathered byte by byte anyway; gathering in big-endian order
+    /// drops the reversal on top of it. OpenVM takes a misaligned load at the cost of an aligned one, so there one
+    /// load and <see cref="Bswap64"/> cost less than the gather.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong ReadUInt64BigEndian(ref byte source)
     {
-        if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
         if (HasRev8) return ReadUInt64BigEndianByWords(ref source);
-        if (IntPtr.Size == sizeof(uint))
-        {
-            // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.
-            uint high = ((uint)source << 24) | ((uint)Unsafe.Add(ref source, 1) << 16) |
-                ((uint)Unsafe.Add(ref source, 2) << 8) | Unsafe.Add(ref source, 3);
-            uint low = ((uint)Unsafe.Add(ref source, 4) << 24) | ((uint)Unsafe.Add(ref source, 5) << 16) |
-                ((uint)Unsafe.Add(ref source, 6) << 8) | Unsafe.Add(ref source, 7);
-            return ((ulong)high << 32) | low;
-        }
-
-        return ((ulong)source << 56) | ((ulong)Unsafe.Add(ref source, 1) << 48) |
-            ((ulong)Unsafe.Add(ref source, 2) << 40) | ((ulong)Unsafe.Add(ref source, 3) << 32) |
-            ((ulong)Unsafe.Add(ref source, 4) << 24) | ((ulong)Unsafe.Add(ref source, 5) << 16) |
-            ((ulong)Unsafe.Add(ref source, 6) << 8) | Unsafe.Add(ref source, 7);
+        return ReadUInt64BigEndianGathered(ref source);
     }
 
     /// <summary><see cref="ReadUInt64BigEndian"/> without the word loads of <see cref="HasRev8"/>: for sources of no
@@ -96,6 +83,7 @@ public static partial class ZkEvmBitOperations
     internal static ulong ReadUInt64BigEndianGathered(ref byte source)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (OpenVmFlag.IsActive) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
         if (IntPtr.Size == sizeof(uint))
         {
             // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.

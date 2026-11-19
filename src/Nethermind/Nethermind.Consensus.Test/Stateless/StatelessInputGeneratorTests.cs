@@ -302,7 +302,34 @@ public class StatelessInputGeneratorTests
         Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded), Is.EqualTo(ProtocolFork.Current.ToRevision1SchemaId()));
         StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
 
-        Assert.That(input.NewPayloadRequest.ToBlock(requestsEnabled)!.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
+        Block restored = input.NewPayloadRequest.ToBlock(requestsEnabled)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
+            Assert.That(input.NewPayloadRequest.ExecutionPayload.AsExecutionPayload().ExecutionRequests, requestsEnabled ? Is.Empty : Is.Null);
+        }
+    }
+
+    [Test]
+    public void Single_request_group_keeps_its_requests_hash([Values] ExecutionRequestType type)
+    {
+        byte[] requests = new byte[1 + type switch
+        {
+            ExecutionRequestType.Deposit => ExecutionRequestExtensions.DepositRequestsBytesSize,
+            ExecutionRequestType.WithdrawalRequest => ExecutionRequestExtensions.WithdrawalRequestsBytesSize,
+            ExecutionRequestType.ConsolidationRequest => ExecutionRequestExtensions.ConsolidationRequestsBytesSize,
+            ExecutionRequestType.BuilderDepositRequest => ExecutionRequestExtensions.BuilderDepositRequestsBytesSize,
+            _ => ExecutionRequestExtensions.BuilderExitRequestsBytesSize
+        }];
+        requests[0] = (byte)type;
+        Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).TestObject;
+        block.ExecutionRequests = [requests];
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+
+        byte[] encoded = NewPayloadRequest<SszExecutionPayload>.Encode(NewPayloadRequest<SszExecutionPayload>.From(block, SszExecutionPayload.From(block)));
+        NewPayloadRequest<SszExecutionPayload>.Decode(encoded, out NewPayloadRequest<SszExecutionPayload> decoded);
+
+        Assert.That(decoded.ToBlock(requestsEnabled: true)!.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
     }
 
     [Test]

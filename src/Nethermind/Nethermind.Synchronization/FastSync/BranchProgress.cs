@@ -86,7 +86,7 @@ namespace Nethermind.Synchronization.FastSync
                 syncItem.ParentBranchChildIndex,
                 syncItem.BranchChildIndex,
                 syncItem.NodeDataType,
-                NodeProgressState.Requested);
+                nodeProgressState);
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void ReportSynced(int level, int parentIndex, int childIndex, NodeDataType nodeDataType, NodeProgressState nodeProgressState)

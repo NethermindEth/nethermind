@@ -302,6 +302,7 @@ namespace Nethermind.JsonRpc.Modules
 
             IEnumerable<MethodInfo> methods = type.GetMethods(methodFlags)
                 .Concat(type.GetInterfaces().SelectMany(i => i.GetMethods(methodFlags)))
+                .Where(static x => !x.IsSpecialName) // property and event accessors are not JSON-RPC methods
                 .DistinctBy(x => x.Name);
 
             return methods.ToDictionary(

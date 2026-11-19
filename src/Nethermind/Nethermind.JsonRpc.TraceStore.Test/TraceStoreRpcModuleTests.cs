@@ -547,24 +547,27 @@ public class TraceStoreRpcModuleTests
     }
 
     [Test]
-    public async Task trace_filter_from_store_stops_the_stored_window_read_when_the_request_times_out([Values] bool streaming, [Values(1, 2)] int parallelization)
+    public async Task trace_filter_from_store_stops_the_stored_window_read_when_the_request_is_cancelled([Values] bool streaming, [Values(1, 2)] int parallelization)
     {
-        const int timeoutMs = 50;
         const int windowSize = 64;
-        CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance), static () => Thread.Sleep(timeoutMs));
-        using TestContext test = new(parallelization, streaming, chainLength: windowSize + 1, serializer: serializer, timeoutMs: timeoutMs);
+        using CancellationTokenSource timeout = new();
+        CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance), timeout.Cancel);
+        using TestContext test = new(parallelization, streaming, chainLength: windowSize + 1, serializer: serializer);
         StoreCallOnEveryBlock(test, serializer);
 
-        Exception? failure = await Assert.CatchAsync(async () =>
+        JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
+        try
         {
-            using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest });
-            await Serialize(response);
-        });
-
-        using (Assert.EnterMultipleScope())
+            await Assert.CatchAsync<OperationCanceledException>(async () =>
+            {
+                using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest });
+                await Serialize(response);
+            });
+            Assert.That(serializer.DeserializeCount, Is.InRange(1, windowSize - 1));
+        }
+        finally
         {
-            Assert.That(failure, Is.InstanceOf<OperationCanceledException>());
-            Assert.That(serializer.DeserializeCount, Is.LessThan(windowSize));
+            JsonRpcConfigExtension.EndTimeoutInFlow(timeout);
         }
     }
 

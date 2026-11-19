@@ -38,8 +38,8 @@ namespace Nethermind.Db.FullPruning
         /// An interrupted full pruning leaves its half-written copy next to the live inner DB, and the next
         /// pruning clears it when it starts. A caller that is discarding the whole state has no next pruning,
         /// so it reclaims the copy here. The live DB is re-read from disk rather than taken from this factory's
-        /// index, which <see cref="CreateDb"/> and <see cref="GetFullDbPath"/> both advance, so what it deletes
-        /// does not depend on what was called before it and a repeated call deletes nothing more.
+        /// index, which <see cref="CreateDb"/> advances, so what it deletes does not depend on what was called
+        /// before it and a repeated call deletes nothing more.
         /// </remarks>
         /// <returns>The number of directories deleted.</returns>
         public int DeleteStaleInnerDbs()
@@ -48,7 +48,7 @@ namespace Nethermind.Db.FullPruning
             IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
             if (!directory.Exists) return 0;
 
-            int currentIndex = GetStartingIndex(_path) + 1; // GetRocksDbSettings increments before it opens
+            int currentIndex = GetStartingIndex(_path) + 1; // CreateDb increments before it opens
             int deleted = 0;
             foreach (IDirectoryInfo subDirectory in directory.EnumerateDirectories())
             {
@@ -65,35 +65,34 @@ namespace Nethermind.Db.FullPruning
         /// <inheritdoc />
         public IDb CreateDb(DbSettings dbSettings)
         {
-            DbSettings settings = GetRocksDbSettings(dbSettings);
+            DbSettings settings = GetRocksDbSettings(dbSettings, ++_index);
             return _dbFactory.CreateDb(settings);
         }
 
         /// <inheritdoc />
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum
         {
-            DbSettings settings = GetRocksDbSettings(dbSettings);
+            DbSettings settings = GetRocksDbSettings(dbSettings, ++_index);
             return _dbFactory.CreateColumnsDb<T>(settings);
         }
 
         /// <inheritdoc />
+        /// <remarks>The path of the DB that the next <see cref="CreateDb"/> opens; asking for it does not advance the index.</remarks>
         public string GetFullDbPath(DbSettings dbSettings)
         {
-            DbSettings settings = GetRocksDbSettings(dbSettings);
+            DbSettings settings = GetRocksDbSettings(dbSettings, _index + 1);
             return _dbFactory.GetFullDbPath(settings);
         }
 
         // When creating a new DB, we need to change its inner settings
-        private DbSettings GetRocksDbSettings(DbSettings originalSetting)
+        private DbSettings GetRocksDbSettings(DbSettings originalSetting, int index)
         {
-            _index++;
-
             // if its -1 then this is first db.
-            bool firstDb = _index == -1;
+            bool firstDb = index == -1;
 
             // if first DB, then we will put it into main directory and not use indexed subdirectory
-            string dbName = firstDb ? originalSetting.DbName : originalSetting.DbName + _index;
-            string dbPath = firstDb ? originalSetting.DbPath : _fileSystem.Path.Combine(originalSetting.DbPath, _index.ToString());
+            string dbName = firstDb ? originalSetting.DbName : originalSetting.DbName + index;
+            string dbPath = firstDb ? originalSetting.DbPath : _fileSystem.Path.Combine(originalSetting.DbPath, index.ToString());
             DbSettings dbSettings = originalSetting.Clone(dbName, dbPath);
             dbSettings.CanDeleteFolder = !firstDb; // we cannot delete main db folder, only indexed subfolders
             // Inner DBs are tracked via the FullPruningDb wrapper (registered with a stable name)
