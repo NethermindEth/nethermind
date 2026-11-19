@@ -73,6 +73,8 @@ public static class Eip8288Constants
 
     /// <summary>Maximum native aggregation input: its framing, every inner proof at a recursive input's full dependency list and
     /// largest proof, the raw signatures and a full discard list.</summary>
+    /// <remarks>The native backend's input ceiling, which startup checks this against, not a practical bound: real steps are far
+    /// smaller, since aggregate proofs are capped at <see cref="MaxAggregateProofBytes"/>.</remarks>
     public const int MaxAggregationInputBytes = 3 * sizeof(uint)
         + MaxInnerProofsPerStep * (2 * sizeof(uint) + MaxProofDependencies * DependencyTripleLength + MaxProofBytes)
         + MaxRawWitnessesPerStep * (DependencyTripleLength + sizeof(uint) + LeanSphincsWitnessBytes)
