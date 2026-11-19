@@ -33,29 +33,16 @@ public class ProcessExitSourceTests
     }
 
     [Test]
-    public void Cancellation_exits_with_the_code_given_at_that_moment()
-    {
-        using CancellationTokenSource cancellation = new();
-        int exitCode = ExitCodes.SigInt;
-        ProcessExitSource exitSource = new(cancellation.Token, () => exitCode);
-
-        exitCode = ExitCodes.SigTerm;
-        cancellation.Cancel();
-
-        AssertExited(exitSource, ExitCodes.SigTerm);
-    }
-
-    [Test]
     public void Exit_keeps_its_code_when_cancelled_or_exited_again_later()
     {
         using CancellationTokenSource cancellation = new();
-        ProcessExitSource exitSource = new(cancellation.Token, static () => ExitCodes.SigTerm);
+        ProcessExitSource exitSource = new(cancellation.Token);
 
         exitSource.Exit(7);
         cancellation.Cancel();
         exitSource.Exit(ExitCodes.SigTerm);
 
-        Assert.That(exitSource.ExitCode, Is.EqualTo(7));
+        AssertExited(exitSource, 7);
     }
 
     [Test]

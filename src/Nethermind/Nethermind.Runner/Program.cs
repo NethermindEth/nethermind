@@ -276,7 +276,12 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
-    processExitSource = new(cancellationToken, () => Volatile.Read(ref cancellationExitCode));
+    ProcessExitSource exitSource = new(CancellationToken.None);
+    processExitSource = exitSource;
+    // Runs at once if the token is already cancelled; reads the code when the token is cancelled, after the runner's
+    // SIGTERM handler has recorded it.
+    using CancellationTokenRegistration onCancel =
+        cancellationToken.Register(() => exitSource.Exit(Volatile.Read(ref cancellationExitCode)));
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
     EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));

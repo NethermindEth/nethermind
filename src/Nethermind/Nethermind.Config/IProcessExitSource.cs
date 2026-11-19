@@ -20,16 +20,10 @@ public class ProcessExitSource : IProcessExitSource
     private CancellationTokenSource? _cancellationTokenSource;
     private readonly TaskCompletionSource _exitResult = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public ProcessExitSource(CancellationToken cancellationToken) : this(cancellationToken, static () => ExitCodes.SigInt) { }
-
-    /// <param name="cancellationToken">Cancelling it exits with the code from <paramref name="cancellationExitCode"/>.</param>
-    /// <param name="cancellationExitCode">Gives the exit code when <paramref name="cancellationToken"/> is cancelled; called at that moment.</param>
-    public ProcessExitSource(CancellationToken cancellationToken, Func<int> cancellationExitCode)
+    public ProcessExitSource(CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(cancellationExitCode);
-
         _cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        _cancellationTokenSource.Token.Register(() => Exit(cancellationExitCode()));
+        _cancellationTokenSource.Token.Register(() => Exit(ExitCodes.SigInt));
     }
 
     public void Exit(int exitCode)
