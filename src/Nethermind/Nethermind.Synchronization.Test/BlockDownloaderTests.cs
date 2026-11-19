@@ -708,6 +708,7 @@ public partial class BlockDownloaderTests
             .Returns(ci =>
             {
                 IList<Hash256> blockHashes = ci.ArgAt<IList<Hash256>>(0);
+                int responseLength = Math.Min(minResponseLength, blockHashes.Count);
                 lock (requestedHashes)
                 {
                     blockHashes = blockHashes.Where((hash) =>
@@ -728,9 +729,9 @@ public partial class BlockDownloaderTests
                     .Result
                     .Bodies!;
 
-                if (response.Length < minResponseLength)
+                if (response.Length < responseLength)
                 {
-                    BlockBody?[] nullPaddedResponse = new BlockBody[minResponseLength];
+                    BlockBody?[] nullPaddedResponse = new BlockBody[responseLength];
                     for (int i = 0; i < response.Length; i++)
                     {
                         nullPaddedResponse[i] = response[i];

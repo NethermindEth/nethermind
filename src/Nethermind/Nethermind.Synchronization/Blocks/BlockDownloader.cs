@@ -525,7 +525,7 @@ namespace Nethermind.Synchronization.Blocks
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             BlockBody[]? bodies;
             int requestedBodies = response.BodiesRequests?.Count ?? 0;
-            int receivedBodies = response.OwnedBodies?.CountPresent() ?? 0;
+            int receivedBodies = response.OwnedBodies?.Count ?? 0;
             if (receivedBodies > requestedBodies)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {receivedBodies} bodies for {requestedBodies} requested");
