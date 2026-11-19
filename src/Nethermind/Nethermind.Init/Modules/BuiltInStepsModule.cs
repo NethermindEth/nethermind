@@ -20,6 +20,7 @@ public class BuiltInStepsModule : Module
         typeof(InitializeNetwork),
         typeof(InitializeLeanBackend),
         typeof(InitializePrecompiles),
+        typeof(InitializeProofWrapperTransport),
         typeof(InitTxTypesAndRlp),
         typeof(LoadGenesisBlock),
         typeof(LogHardwareInfo),
