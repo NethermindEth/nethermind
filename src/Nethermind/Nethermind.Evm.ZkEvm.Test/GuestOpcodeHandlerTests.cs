@@ -607,6 +607,15 @@ public class GuestOpcodeHandlerTests
             []);
     }
 
+    /// <remarks>An empty range touches no memory, so an offset past the memory charges no expansion.</remarks>
+    [Test]
+    public void Keccak256_of_an_empty_range_leaves_the_empty_digest([Values(0, 31, 1024)] int offset) =>
+        AssertSucceedsOnExactlyItsGas(
+            Code(PUSH1, 0, PUSH2, (byte)(offset >> 8), (byte)offset, KECCAK256, PUSH1, 0, MSTORE, STOP),
+            (3 + 3 + GasCostOf.Sha3) + (3 + 3) + MemoryCost(1),
+            ValueKeccak.OfAnEmptyString.Bytes.ToArray(),
+            []);
+
     [TestCaseSource(nameof(Failures))]
     public void Fails_as_the_shared_handlers_do(byte[] code, EvmExceptionType exception) =>
         Assert.That(Run(code, AmpleGas).Exception, Is.EqualTo(exception));

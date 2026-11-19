@@ -3566,6 +3566,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                      ((offset | length) >> 32)) == 0)
                 {
                     ulong cost = GasCostOf.Sha3 + GasCostOf.Sha3Word * ((length + (EvmStack.WordSize - 1)) >> 5);
+                    // An empty range touches no memory, so its offset may lie past it.
+                    if (length == 0 && Covers(gas, cost))
+                    {
+                        gas -= (nuint)cost;
+                        head--;
+                        lengthLimbs = EmptyKeccakLimb0;
+                        Unsafe.Add(ref lengthLimbs, 1) = EmptyKeccakLimb1;
+                        Unsafe.Add(ref lengthLimbs, 2) = EmptyKeccakLimb2;
+                        Unsafe.Add(ref lengthLimbs, 3) = EmptyKeccakLimb3;
+                        sp = ref Moved(ref sp, -1);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint empty = NextHandler(handlers, ref ip);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, empty);
+                    }
+
                     ref byte data = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, length);
                     if (Covers(gas, cost) && !Unsafe.IsNullRef(ref data))
                     {
@@ -3616,6 +3631,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint shared = Entry(&ExecuteOpcode<KeccakOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
+
+        /// <summary>The limbs of <see cref="ValueKeccak.OfAnEmptyString"/>, least significant first.</summary>
+        private const ulong EmptyKeccakLimb0 = 0x7bfad8045d85a470;
+        private const ulong EmptyKeccakLimb1 = 0xe500b653ca82273b;
+        private const ulong EmptyKeccakLimb2 = 0x927e7db2dcc703c0;
+        private const ulong EmptyKeccakLimb3 = 0xc5d2460186f7233c;
 
         /// <summary>The bits of the index of an entry of <see cref="s_wordKeccakMemo"/>.</summary>
         private const int WordKeccakMemoBits = 12;
