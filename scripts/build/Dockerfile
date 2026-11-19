@@ -10,7 +10,12 @@ ENV CI=true
 
 WORKDIR /nethermind
 
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*; \
+  fi
+
 COPY src/Nethermind src/Nethermind
+COPY src/native src/native
 COPY Directory.*.props .
 COPY Directory.Build.targets .
 COPY global.json .
