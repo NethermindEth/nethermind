@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.Intrinsics.X86;
@@ -65,6 +66,35 @@ namespace Nethermind.Core.Test
             }
 
             Assert.That(keccakHash.Hash.ToHexString(true), Is.EqualTo(result));
+        }
+
+        [TestCase(16)]
+        [TestCase(17)]
+        [TestCase(32)]
+        [TestCase(10_000)]
+        public void Native_absorb_matches_managed_permutation(int blocks)
+        {
+            Assume.That(NativeKeccak.IsAvailable);
+
+            const int rateBytes = 136;
+            byte[] input = new byte[blocks * rateBytes];
+            new Random(blocks).NextBytes(input);
+
+            ulong[] expected = new ulong[25];
+            for (int block = 0; block < blocks; block++)
+            {
+                for (int lane = 0; lane < rateBytes / sizeof(ulong); lane++)
+                {
+                    expected[lane] ^= BinaryPrimitives.ReadUInt64LittleEndian(input.AsSpan(block * rateBytes + lane * sizeof(ulong)));
+                }
+
+                KeccakHash.KeccakF1600Scalar(ref expected[0]);
+            }
+
+            ulong[] actual = new ulong[25];
+            NativeKeccak.Absorb(ref actual[0], ref input[0], blocks);
+
+            Assert.That(actual, Is.EqualTo(expected));
         }
 
         [Test]

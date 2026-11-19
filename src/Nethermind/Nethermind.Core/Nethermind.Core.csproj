@@ -27,14 +27,14 @@
   <PropertyGroup>
     <NativeKeccakDir>$(MSBuildThisFileDirectory)..\..\native\nmkeccak\</NativeKeccakDir>
     <NativeKeccakOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'libnmkeccak.so'))</NativeKeccakOutput>
-    <NativeKeccakSupported Condition="$([MSBuild]::IsOSPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64'">true</NativeKeccakSupported>
+    <NativeKeccakSupported Condition="$([MSBuild]::IsOSPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64' And ('$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'linux-x64')">true</NativeKeccakSupported>
   </PropertyGroup>
 
   <Target Name="BuildNativeKeccak" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'" Inputs="$(NativeKeccakDir)nmkeccak.c;$(NativeKeccakDir)build.sh;@(NativeKeccakSource)" Outputs="$(NativeKeccakOutput)">
     <Exec Command="command -v gcc" IgnoreExitCode="true" StandardOutputImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="GccExitCode" />
     </Exec>
-    <Exec Condition="'$(GccExitCode)' == '0'" Command="sh &quot;$(NativeKeccakDir)build.sh&quot; &quot;$(NativeKeccakOutput)&quot;" />
+    <Exec Condition="'$(GccExitCode)' == '0'" Command="sh &quot;$(NativeKeccakDir)build.sh&quot; &quot;$(NativeKeccakOutput)&quot;" IgnoreExitCode="true" />
   </Target>
 
   <Target Name="IncludeNativeKeccak" AfterTargets="BuildNativeKeccak" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'">
