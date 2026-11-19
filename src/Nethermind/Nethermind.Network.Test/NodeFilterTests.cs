@@ -404,7 +404,8 @@ public class NodeFilterTests
 #pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
         Assert.That(filter.TryAccept(ip), Is.True);
 #pragma warning restore NUnit2045
-        Assert.That(filter.TryRefresh(ip, owner), Is.True);
+        Assert.That(filter.TryAcceptOrRefresh(ip, owner), Is.True, "the owner still holds its reservation");
+        Assert.That(filter.TryAcceptOrRefresh(ip, "other"), Is.False, "an ownerless acceptance does not release the reservation");
     }
 
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Touch refreshes exact match timeout")]

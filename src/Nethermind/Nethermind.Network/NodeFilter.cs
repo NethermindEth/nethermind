@@ -101,37 +101,13 @@ public sealed class NodeFilter
     }
 
     /// <summary>
-    /// Extends a live entry only while <paramref name="owner"/> still holds it.
-    /// </summary>
-    /// <returns>
-    /// <c>false</c> when the entry is missing, expired, or held by someone else. The caller must then run a
-    /// full acceptance check instead of refreshing.
-    /// </returns>
-    internal bool TryRefresh(IPAddress ipAddress, object owner, bool exactOnly = false)
-    {
-        if (_cache is null) return true;
-
-        using Lock.Scope scope = _lock.EnterScope();
-        long now = NowMs();
-        if (!_cache.TryGet(GetKey(ipAddress, exactOnly), out LastSeen lastSeen)
-            || now - lastSeen.Timestamp >= _timeoutMs
-            || !object.Equals(lastSeen.Owner, owner))
-        {
-            return false;
-        }
-
-        Volatile.Write(ref lastSeen.Timestamp, now);
-        return true;
-    }
-
-    /// <summary>
     /// Accepts <paramref name="ipAddress"/>, or extends the live entry that <paramref name="owner"/> already
     /// holds, in one lock scope.
     /// </summary>
     /// <remarks>
-    /// <see cref="TryAccept"/> followed by <see cref="TryRefresh"/> is not equivalent: an insertion for another
-    /// address can evict the entry between the two calls, and the identity that holds it would then be rejected
-    /// against the reservation it owns. Use this method where an owner must be able to reclaim its own entry.
+    /// Unlike <see cref="TryAccept"/>, acceptance and the ownership refresh happen in one lock scope: an insertion
+    /// for another address cannot evict the entry between the two, so an owner is never rejected against the
+    /// reservation it owns. Use this method where an owner must be able to reclaim its own entry.
     /// </remarks>
     internal bool TryAcceptOrRefresh(IPAddress ipAddress, object owner, bool exactOnly = false)
     {
