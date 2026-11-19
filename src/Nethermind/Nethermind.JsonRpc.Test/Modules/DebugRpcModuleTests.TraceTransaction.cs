@@ -290,7 +290,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceTransaction_timeout_wire_contract(
-        [Values("bad", "type", "oversized", "5s", "0s", "-1s", "4294968s")] string duration)
+        [Values("bad", "type", "oversized", "5s", "0s", "-1s", "4294968s", "00:00:05", "5")] string duration)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);
