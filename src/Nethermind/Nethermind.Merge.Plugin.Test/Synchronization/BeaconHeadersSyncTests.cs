@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -453,7 +454,7 @@ public class BeaconHeadersSyncTests
     [Test]
     public async Task Feed_merges_when_a_parked_batch_ends_on_a_known_header([Values] bool trace)
     {
-        const ulong pivotNumber = JoinNumber + 1 + Nethermind.Stats.SyncLimits.GethSyncLimits.MaxHeaderFetch;
+        const ulong pivotNumber = JoinNumber + 1 + GethSyncLimits.MaxHeaderFetch;
         BlockTree remote = Build.A.BlockTree().OfChainLength((int)pivotNumber + 1).TestObject;
         TestLogger logger = new() { IsTrace = trace };
         Context ctx = PrepareJoin(remote, pivotNumber, logger, localChainKnown: true);
