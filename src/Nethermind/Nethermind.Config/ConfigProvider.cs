@@ -6,7 +6,9 @@ using NonBlocking;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Config;
@@ -192,6 +194,10 @@ public class ConfigProvider : IConfigProvider
                             }
                             catch (Exception e)
                             {
+                                // A setter's own configuration error keeps its exit code, which the wrapper below would hide.
+                                if (e is TargetInvocationException { InnerException: IExceptionWithExitCode and Exception setterError })
+                                    ExceptionDispatchInfo.Capture(setterError).Throw();
+
                                 throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
                             }
 
