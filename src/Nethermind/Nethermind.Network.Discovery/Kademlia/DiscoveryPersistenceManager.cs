@@ -16,6 +16,11 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// </summary>
 /// <remarks>
 /// Initializes a new instance of the <see cref="DiscoveryPersistenceManager"/> class.
+/// <para>
+/// discv4 persists the bonded endpoint because its persisted-node admission exemption is scoped to the address
+/// that was admitted, and an ENR may advertise an endpoint that never answered a ping. discv5 has no such
+/// exemption, so it keeps the ENR and lets restore choose a reachable family.
+/// </para>
 /// </remarks>
 /// <param name="discoveryStorage">The network storage for persisting discovery nodes.</param>
 /// <param name="nodeStatsManager">Manager for node statistics.</param>
@@ -23,6 +28,9 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <param name="kademlia">Kademlia table whose live nodes should be persisted.</param>
 /// <param name="discoveryConfig">Configuration for the discovery process.</param>
 /// <param name="logManager">Log manager for logging events.</param>
+/// <param name="persistBondedEndpoint">
+/// Whether to persist the bonded routing endpoint instead of the node's ENR.
+/// </param>
 /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
 public sealed class DiscoveryPersistenceManager(
     INetworkStorage discoveryStorage,
@@ -30,12 +38,14 @@ public sealed class DiscoveryPersistenceManager(
     IKademliaMessageSender<PublicKey, Node> messageSender,
     IKademlia<PublicKey, Node> kademlia,
     IDiscoveryConfig discoveryConfig,
-    ILogManager logManager)
+    ILogManager logManager,
+    bool persistBondedEndpoint = false)
 {
     private readonly INetworkStorage _discoveryStorage = discoveryStorage;
     private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager;
     private readonly IKademliaMessageSender<PublicKey, Node> _messageSender = messageSender;
     private readonly IKademlia<PublicKey, Node> _kademlia = kademlia;
+    private readonly bool _persistBondedEndpoint = persistBondedEndpoint;
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryPersistenceManager>();
     private readonly int _persistenceInterval = discoveryConfig.DiscoveryPersistenceInterval;
 
@@ -134,11 +144,11 @@ public sealed class DiscoveryPersistenceManager(
         }
     }
 
-    private static NetworkNode CreatePersistedNode(Node node, long reputation)
+    private NetworkNode CreatePersistedNode(Node node, long reputation)
     {
-        if (node.Enr is not null)
+        if (!_persistBondedEndpoint && node.Enr is { } enr)
         {
-            return new NetworkNode(node.Enr.ToString()) { Reputation = reputation };
+            return new NetworkNode(enr.ToString()) { Reputation = reputation };
         }
 
         return new NetworkNode(new Enode(node.Id, node.Address.Address, node.Port, node.DiscoveryPort)) { Reputation = reputation };

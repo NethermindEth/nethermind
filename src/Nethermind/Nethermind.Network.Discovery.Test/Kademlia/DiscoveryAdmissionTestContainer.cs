@@ -18,6 +18,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
+using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 
@@ -48,6 +49,7 @@ internal static class DiscoveryAdmissionTestContainer
         string? localIp = null,
         TimeProvider? timeProvider = null,
         NetworkNode[]? persisted = null,
+        IDiscoveryConfig? discoveryConfig = null,
         KademliaConfig<Node>? kademliaConfig = null,
         Node? currentNode = null,
         bool useDiscoveryConfigFactory = false,
@@ -105,7 +107,7 @@ internal static class DiscoveryAdmissionTestContainer
         ContainerBuilder builder = new();
         builder.AddModule(new KademliaModule(currentNode, kademliaConfig.BootNodes));
         builder.RegisterInstance(networkConfig).As<INetworkConfig>();
-        builder.RegisterInstance(new DiscoveryConfig { MaxNodeLifecycleManagersCount = 100 }).As<IDiscoveryConfig>();
+        builder.RegisterInstance(discoveryConfig ?? new DiscoveryConfig { MaxNodeLifecycleManagersCount = 100 }).As<IDiscoveryConfig>();
         builder.RegisterInstance(logManager).As<ILogManager>();
         builder.RegisterInstance(storage).Keyed<INetworkStorage>(DbNames.DiscoveryNodes);
         if (routingTable is not null)
@@ -118,6 +120,7 @@ internal static class DiscoveryAdmissionTestContainer
         }
         builder.RegisterInstance(Substitute.For<IKademliaMessageSender<PublicKey, Node>>())
             .As<IKademliaMessageSender<PublicKey, Node>>();
+        builder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
 
         if (staticNodes is not null) builder.RegisterInstance(staticNodes);
         if (trustedNodes is not null) builder.RegisterInstance(trustedNodes);

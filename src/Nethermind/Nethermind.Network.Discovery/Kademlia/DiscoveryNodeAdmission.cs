@@ -35,11 +35,12 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <para>
 /// Every routing-table node is persisted, so filtering persisted nodes at load could empty the routing
 /// table and hurt bootstrapping more than the subnet concentration this filter addresses. A persisted
-/// node is therefore exempt only at the address it was restored with: identity alone does not entitle an
-/// ordinary node to skip the filter after it reappears at another address, or persisted identities from
-/// different subnets could all bypass the subnet limit once they move into one subnet after a restart.
-/// An entry without a usable address cannot be exempted and is skipped, so it goes through the filter
-/// like any other node.
+/// node is therefore exempt only at the endpoint that was persisted for it: discv4 stores the bonded
+/// endpoint, which is the one the node was admitted at. An ENR record does not prove the endpoint it
+/// advertises was admitted, so it goes through the filter like any other node. Identity alone does not
+/// entitle an ordinary node to skip the filter after it reappears at another address, or persisted
+/// identities from different subnets could all bypass the subnet limit once they move into one subnet
+/// after a restart. An entry without a usable address cannot be exempted and is skipped.
 /// </para>
 /// </remarks>
 internal sealed class DiscoveryNodeAdmission(
@@ -150,10 +151,15 @@ internal sealed class DiscoveryNodeAdmission(
     /// <summary>
     /// Records a node restored from discovery storage as exempt from the filter at its restored address.
     /// </summary>
+    /// <remarks>
+    /// Only an enode record persists the bonded endpoint the node was admitted at. An ENR may advertise an
+    /// endpoint the node never answered a ping from, and a record written before the bonded endpoint was stored
+    /// carries no admitted endpoint, so those nodes go through ordinary admission instead of being exempted.
+    /// </remarks>
     /// <param name="node">The node restored from discovery storage.</param>
     public void AddPersistedNode(Node node)
     {
-        if (_enabled) _persistedAddresses[node.Id] = node.Address.Address;
+        if (_enabled && node.Enr is null) _persistedAddresses[node.Id] = node.Address.Address;
     }
 
     private bool RefreshKnownNode(Node node)

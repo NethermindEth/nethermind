@@ -25,6 +25,8 @@ namespace Nethermind.Network.Discovery.Discv4.Kademlia;
 /// <param name="bootNodes"></param>
 public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNodes) : DiscoveryKademliaModuleBase(currentNode, bootNodes, DbNames.DiscoveryNodes)
 {
+    protected override bool PersistBondedEndpoint => true;
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);

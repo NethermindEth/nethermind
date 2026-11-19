@@ -16,6 +16,15 @@ namespace Nethermind.Network.Discovery.Kademlia;
 
 public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyList<Node> bootNodes, string discoveryStorageKey) : Module
 {
+    /// <summary>
+    /// Whether persisted nodes must restore to the bonded routing endpoint instead of an ENR-advertised one.
+    /// </summary>
+    /// <remarks>
+    /// discv4 enables this because its persisted-node admission exemption is scoped to the address that was
+    /// admitted; an ENR can advertise an endpoint that never answered a ping.
+    /// </remarks>
+    protected virtual bool PersistBondedEndpoint => false;
+
     protected override void Load(ContainerBuilder builder)
     {
         RegisterProtocolServices(builder);
@@ -31,6 +40,7 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
             .AsSelf()
             .WithAttributeFiltering()
             .WithParameter(ResolvedParameter.ForKeyed<INetworkStorage>(discoveryStorageKey))
+            .WithParameter(new TypedParameter(typeof(bool), PersistBondedEndpoint))
             .SingleInstance();
     }
 

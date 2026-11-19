@@ -1,14 +1,25 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Kademlia;
+using Nethermind.Network;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Test.Kademlia;
+using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia;
@@ -72,6 +83,59 @@ public class KademliaModuleTests
         {
             Assert.That(routingTable.TryGet(first.Id.Hash, out _), Is.True);
             Assert.That(routingTable.TryGet(second.Id.Hash, out _), Is.True);
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Discv4_persists_the_bonded_endpoint(CancellationToken cancellationToken)
+    {
+        INetworkStorage storage = Substitute.For<INetworkStorage>();
+        List<NetworkNode> persistedNodes = [];
+        bool captured = false;
+        TaskCompletionSource committed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        storage.When(s => s.UpdateNodes(Arg.Any<IEnumerable<NetworkNode>>()))
+            .Do(call =>
+            {
+                if (captured) return;
+                captured = true;
+                persistedNodes.AddRange(call.Arg<IEnumerable<NetworkNode>>());
+            });
+        storage.When(s => s.Commit()).Do(_ => committed.TrySetResult());
+
+        using IContainer container = DiscoveryAdmissionTestContainer.Create(
+            storage: storage,
+            discoveryConfig: new DiscoveryConfig
+            {
+                DiscoveryPersistenceInterval = 10,
+                MaxNodeLifecycleManagersCount = 100,
+            });
+
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("203.0.114.20"),
+            tcpPort: 30304,
+            udpPort: 30304);
+        Node node = new(TestItem.PublicKeyA, "203.0.113.10", 30304, 30304) { Enr = enr };
+        container.Resolve<IKademlia<PublicKey, Node>>().AddOrRefresh(node);
+
+        using CancellationTokenSource cts = new();
+        Task commitTask = container.Resolve<DiscoveryPersistenceManager>().RunDiscoveryPersistenceCommit(cts.Token);
+        await committed.Task.WaitAsync(cancellationToken);
+        await cts.CancelAsync();
+        try
+        {
+            await commitTask;
+        }
+        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        {
+        }
+
+        NetworkNode persistedNode = persistedNodes.Single(n => n.NodeId.Equals(TestItem.PublicKeyA));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedNode.IsEnode, Is.True);
+            Assert.That(persistedNode.HostIp, Is.EqualTo(IPAddress.Parse("203.0.113.10")));
         }
     }
 

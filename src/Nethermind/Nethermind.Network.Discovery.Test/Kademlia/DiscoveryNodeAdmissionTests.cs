@@ -249,7 +249,22 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void Persisted_dual_stack_node_is_exempt_at_its_restored_ipv6_address()
+    public void Persisted_enode_is_exempt_at_its_stored_address()
+    {
+        Fixture fixture = CreateAdmission(
+            persisted: [new NetworkNode(TestItem.PublicKeyA, "2001:db8::1", 30303)],
+            localIp: "2001:db8::1");
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Another identity holds the /64, so the persisted node would be filtered without its exemption.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "2001:db8::2")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "2001:db8::1")), Is.True);
+        }
+    }
+
+    [Test]
+    public void Persisted_enr_is_not_exempt_at_its_advertised_address()
     {
         NodeRecord record = TestEnrBuilder.BuildSigned(
             TestItem.PrivateKeyA,
@@ -268,9 +283,9 @@ public class DiscoveryNodeAdmissionTests
 
         using (Assert.EnterMultipleScope())
         {
-            // Another identity holds the /64, so the persisted node would be filtered without its exemption.
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "2001:db8::2")), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "2001:db8::1")), Is.True);
+            // The ENR does not prove the advertised endpoint was admitted, so it goes through the filter.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "2001:db8::1")), Is.False);
         }
     }
 
