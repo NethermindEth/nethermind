@@ -29,7 +29,7 @@ public sealed class EmptyCatchBlockAnalyzer : DiagnosticAnalyzer
         "Do not swallow exceptions in an empty catch block",
         "Empty catch block swallows {0}; log the exception or handle it",
         category: "Reliability",
-        defaultSeverity: DiagnosticSeverity.Warning,
+        defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
         description: "A failure swallowed by an empty catch block leaves no trace, which makes it the hardest kind to " +
                      "diagnose on a running node. Log the exception, handle it, or avoid the throw. Catching " +
