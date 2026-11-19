@@ -776,7 +776,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
         }
 
-        public override async Task Execute(CancellationToken cancellationToken) => await Task.Run(static () => throw new TestException());
+        public override async Task Execute(CancellationToken cancellationToken) => await Task.Run(static () => throw new TestException(), CancellationToken.None);
     }
 
     public class StepCStandard : StepC

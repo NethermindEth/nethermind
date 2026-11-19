@@ -185,7 +185,7 @@ namespace Nethermind.Synchronization.ParallelSync
                                     {
                                         SignalActiveTask();
                                     }
-                                });
+                                }, CancellationToken.None);
 
                             if (!Feed.IsMultiFeed)
                             {

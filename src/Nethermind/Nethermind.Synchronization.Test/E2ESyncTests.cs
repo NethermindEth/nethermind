@@ -1199,7 +1199,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         {
             IEnode serverEnode = server.Resolve<IEnode>();
             Node serverNode = new(serverEnode.PublicKey, new IPEndPoint(serverEnode.HostIp, serverEnode.Port));
-            if (!await rlpxHost.ConnectAsync(serverNode))
+            if (!await rlpxHost.ConnectAsync(serverNode, cancellationToken))
             {
                 throw new NetworkingException($"Failed to connect to {serverNode:s}", NetworkExceptionType.TargetUnreachable);
             }

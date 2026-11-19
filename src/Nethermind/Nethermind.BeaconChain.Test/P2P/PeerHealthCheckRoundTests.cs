@@ -153,7 +153,7 @@ public class PeerHealthCheckRoundTests
                     allAsked.Set();
                 }
 
-                if (!allAsked.Wait(RendezvousWait))
+                if (!allAsked.Wait(RendezvousWait, CancellationToken.None))
                 {
                     Interlocked.Increment(ref missedRendezvous);
                 }

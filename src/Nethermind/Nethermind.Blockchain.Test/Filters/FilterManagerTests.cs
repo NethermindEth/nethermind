@@ -325,7 +325,7 @@ public class FilterManagerTests
             {
                 for (int i = 0; i < blocksPerProducer; i++)
                     _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, []));
-            });
+            }, cancellationToken);
         }
 
         Task consumer = Task.Run(async () =>

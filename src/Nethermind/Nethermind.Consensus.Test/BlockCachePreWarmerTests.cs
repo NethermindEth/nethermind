@@ -684,9 +684,9 @@ public class BlockCachePreWarmerTests
         using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
         {
             // Disposing the session cancels its token, which lets a fan-out still held go in any case.
-            using IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
-            Task completion = Task.Run(() => ((PrewarmingSession?)session)?.WaitForCompletion());
-            ended = completion.Wait(TimeSpan.FromSeconds(10));
+            using IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance, testToken);
+            Task completion = Task.Run(() => ((PrewarmingSession?)session)?.WaitForCompletion(), testToken);
+            ended = completion.Wait(TimeSpan.FromSeconds(10), testToken);
         }
 
         Assert.That(ended, Is.True, "the session waited for its token to be cancelled");
@@ -1383,7 +1383,7 @@ public class BlockCachePreWarmerTests
         {
             speculativeToken = token;
             inPass.Set();
-            release.Wait();
+            release.Wait(CancellationToken.None);
             return null;
         }, idlePassDelayMs: 5, cancellation.Token);
         Assert.That(inPass.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be in a pass");

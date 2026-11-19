@@ -439,7 +439,7 @@ namespace Nethermind.Init.Steps
                 catch
                 {
                     // Cancel this step too, so its own dependents finish instead of waiting forever.
-                    _taskCompletedSource.TrySetCanceled();
+                    _taskCompletedSource.TrySetCanceled(CancellationToken.None);
                     throw;
                 }
             }
@@ -456,7 +456,7 @@ namespace Nethermind.Init.Steps
                 catch
                 {
                     //TaskCompletionSource is transitioned to cancelled state to prevent a cascade effect of log statements
-                    _taskCompletedSource.TrySetCanceled();
+                    _taskCompletedSource.TrySetCanceled(CancellationToken.None);
                     throw;
                 }
             }
