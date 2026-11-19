@@ -11,7 +11,7 @@ ENV CI=true
 WORKDIR /nethermind
 
 RUN if [ "$(uname -m)" = "x86_64" ]; then \
-    apt-get update && apt-get install -y --no-install-recommends gcc-15 libc6-dev && rm -rf /var/lib/apt/lists/*; \
+    apt-get update --snapshot 20261119T000000Z && apt-get install -y --no-install-recommends gcc-15 libc6-dev && rm -rf /var/lib/apt/lists/*; \
   fi
 ENV CC=gcc-15
 
