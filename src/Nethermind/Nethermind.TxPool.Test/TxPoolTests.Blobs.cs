@@ -3738,7 +3738,93 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(expected));
 #pragma warning restore NUnit2045
             Assert.That(_txPool.ForgetInvalidBlobProofs(rejected.Hash!), Is.False);
-            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(rejection is OtherRejection.NonceGap ? AcceptTxResult.NonceGap : AcceptTxResult.AlreadyKnown));
+        }
+
+        [Test]
+        public void should_request_blob_tx_announced_after_a_copy_failed_its_sidecar_checks()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = WithInvalidProof(valid);
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+
+            AcceptTxResult rejected = _txPool.SubmitTx(invalid, TxHandlingOptions.None);
+            AnnounceResult announced = _txPool.NotifyAboutTx(valid.Hash!, peer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+                Assert.That(announced, Is.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+
+        [Test]
+        public void should_accept_local_blob_tx_after_a_copy_failed_its_sidecar_checks()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = WithInvalidProof(valid);
+
+            AcceptTxResult rejected = _txPool.SubmitTx(invalid, TxHandlingOptions.None);
+            AcceptTxResult local = _txPool.SubmitTx(valid, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+                Assert.That(local, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
+        public void should_accept_blob_tx_with_nonce_gap_after_the_gap_is_filled()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction first = BlobTx(0);
+            Transaction second = BlobTx(1);
+
+            AcceptTxResult early = _txPool.SubmitTx(second, TxHandlingOptions.None);
+            AcceptTxResult filled = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult again = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(filled, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(again, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Transaction BlobTx(ulong nonce) => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(nonce)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        }
+
+        private static Transaction WithInvalidProof(Transaction valid)
+        {
+            Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)valid.NetworkWrapper!;
+            invalid.NetworkWrapper = wrapper with { Proofs = [(byte)(wrapper.Proofs[0] ^ 1), .. wrapper.Proofs[1..]] };
+            return invalid;
         }
 
         [Test]

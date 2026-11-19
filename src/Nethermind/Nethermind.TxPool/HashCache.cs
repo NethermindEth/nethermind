@@ -68,6 +68,8 @@ namespace Nethermind.TxPool
 
         public void SetInvalidBlobProofs(Hash256 hash) => _invalidBlobProofsCache.Set(in hash.ValueHash256);
 
+        public bool HasInvalidBlobProofs(in ValueHash256 hash) => _invalidBlobProofsCache.GetNoRefresh(in hash);
+
         /// <summary>
         /// Deletes <paramref name="hash"/> from the current block cache only when it was rejected for its sidecar.
         /// </summary>

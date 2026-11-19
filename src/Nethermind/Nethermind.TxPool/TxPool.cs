@@ -1809,6 +1809,11 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
+            if ((handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0 && tx.CarriesBlobs && tx.Hash is { } localHash)
+            {
+                _hashCache.TryDeleteInvalidBlobProofs(localHash);
+            }
+
             AcceptTxResult accepted = AcceptTxResult.Invalid;
 
             // The head spec is only readable under the lock below, so the state is declared here for the
@@ -1833,7 +1838,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    if (accepted == AcceptTxResult.IncompleteBlobData && tx.Hash is not null)
+                    if ((accepted == AcceptTxResult.IncompleteBlobData || (accepted == AcceptTxResult.NonceGap && tx.CarriesBlobs)) && tx.Hash is not null)
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
@@ -1909,7 +1914,7 @@ namespace Nethermind.TxPool
                 return AnnounceResult.Delayed;
             }
 
-            if (!_hashCache.Get(in hash))
+            if (!_hashCache.Get(in hash) || _hashCache.HasInvalidBlobProofs(in hash))
             {
                 return _retryCache.Announced(in hash, retryHandler);
             }
