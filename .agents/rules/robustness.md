@@ -4,7 +4,7 @@ Patterns that cause silent failures, resource leaks, or deadlocks in production.
 
 ## Async
 
-- **Never** use `async void` — exceptions are silently swallowed. Use `async Task`.
+- **Never** use `async void` — exceptions are silently swallowed. Use `async Task`. Enforced by `NETH009`.
 - **Never** call `.Result` or `.Wait()` on a `Task` inside an `async` method — deadlock or thread-pool starvation. Use `await`.
 - A missing `await` on an async call silently discards the result. Only omit `await` when fire-and-forget is the **documented** intent.
 - Async methods that perform I/O or network calls must accept a `CancellationToken` — otherwise they're uncooperative with graceful shutdown.

@@ -13,3 +13,4 @@ NETH005 | Performance | Warning | Span<T>.ToArray() / ReadOnlySpan<T>.ToArray() 
 NETH006 | Reliability | Warning | TaskCompletionSource constructed without TaskCreationOptions.RunContinuationsAsynchronously can run continuations synchronously and deadlock.
 NETH007 | Performance | Warning | IWriteOnlyKeyValueStore.Set called with a value copied from a byte span (Span&lt;byte&gt;/ReadOnlySpan&lt;byte&gt;.ToArray(), or x.BytesToArray() on a type with a Bytes span). Call PutSpan with the span directly instead of allocating an array.
 NETH008 | Security | Error | Sensitive log markers must be written as :hide in an interpolation handled directly by an ILogger log method.
+NETH009 | Reliability | Warning | async void methods and local functions cannot be awaited, and their exceptions escape the caller. Return Task. Event handlers with an (object, EventArgs) signature are exempt.
