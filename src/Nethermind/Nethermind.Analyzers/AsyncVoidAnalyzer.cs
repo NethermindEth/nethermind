@@ -66,9 +66,24 @@ public sealed class AsyncVoidAnalyzer : DiagnosticAnalyzer
         if (eventArgs is null || method.Parameters.Length != 2) return false;
         if (method.Parameters[0].Type.SpecialType != SpecialType.System_Object) return false;
 
-        for (ITypeSymbol? type = method.Parameters[1].Type; type is not null; type = type.BaseType)
+        return DerivesFrom(method.Parameters[1].Type, eventArgs);
+    }
+
+    private static bool DerivesFrom(ITypeSymbol type, INamedTypeSymbol eventArgs)
+    {
+        if (type is ITypeParameterSymbol typeParameter)
         {
-            if (SymbolEqualityComparer.Default.Equals(type, eventArgs)) return true;
+            foreach (ITypeSymbol constraint in typeParameter.ConstraintTypes)
+            {
+                if (DerivesFrom(constraint, eventArgs)) return true;
+            }
+
+            return false;
+        }
+
+        for (ITypeSymbol? current = type; current is not null; current = current.BaseType)
+        {
+            if (SymbolEqualityComparer.Default.Equals(current, eventArgs)) return true;
         }
 
         return false;

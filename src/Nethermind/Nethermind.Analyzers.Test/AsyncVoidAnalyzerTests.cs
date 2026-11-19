@@ -15,6 +15,7 @@ public class AsyncVoidAnalyzerTests
     [TestCase("private async void {|#0:M|}(object sender) => await Task.Yield();")]
     [TestCase("async void {|#0:M|}(object sender, string e) => await Task.Yield();")]
     [TestCase("async void {|#0:M|}(string sender, EventArgs e) => await Task.Yield();")]
+    [TestCase("async void {|#0:M|}<T>(object sender, T e) => await Task.Yield();")]
     public Task Async_void_method_reports_diagnostic(string member) =>
         Verify(WrapMember(member), Diagnostic().WithLocation(0).WithArguments("M"));
 
@@ -46,6 +47,8 @@ public class AsyncVoidAnalyzerTests
     [TestCase("async void OnChanged(object? sender, EventArgs e) => await Task.Yield();")]
     [TestCase("async void OnChanged(object sender, CustomEventArgs e) => await Task.Yield();")]
     [TestCase("async void OnChanged(object sender, DerivedEventArgs e) => await Task.Yield();")]
+    [TestCase("async void OnChanged<T>(object sender, T e) where T : EventArgs => await Task.Yield();")]
+    [TestCase("async void OnChanged<T>(object sender, T e) where T : CustomEventArgs => await Task.Yield();")]
     public Task Event_handler_signature_no_diagnostic(string member) =>
         Verify(WrapMember(member));
 
