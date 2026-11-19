@@ -1,8 +1,4 @@
-# The single source of truth for the toolchain, in CI as well as locally.
-# GitHub's runner images ship rustup, and rustup installs the channel and the
-# components named here on the first cargo invocation, so CI jobs need no
-# toolchain-setup step of their own. The one exception is `rust.yml`'s udeps
-# job, which needs a nightly rustc this file deliberately does not pin.
+# The toolchain the shim builds with, locally and in CI (.github/workflows/arkiv-tests.yml): GitHub's runner images
+# ship rustup, which installs this channel on the first cargo invocation.
 [toolchain]
 channel = "1.97"
-components = ["rustfmt", "clippy"]

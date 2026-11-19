@@ -52,13 +52,16 @@ public static class RabdiFixture
 
     /// <summary>
     /// Opens an <see cref="ArkivChain"/> on Rabdi's genesis over a store in <paramref name="baseDbPath"/>; the test is
-    /// skipped when the native library was not built (<c>-p:BuildArkivNative=true</c>), as Nethermind builds without Rust.
+    /// skipped when the native library was not built (<c>-p:BuildArkivNative=true</c>), as Nethermind builds without Rust,
+    /// and fails instead when <c>ARKIV_REQUIRE_NATIVE</c> is set (the Arkiv CI workflow).
     /// </summary>
     public static ArkivChain OpenChain(string baseDbPath, IDb db, IBlockTree blockTree, ulong checkpointInterval = 0)
     {
         if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "libarkiv_ffi.so")))
         {
-            Assert.Ignore("libarkiv_ffi.so was not built: build with -p:BuildArkivNative=true to run the Arkiv tests");
+            const string Missing = "libarkiv_ffi.so was not built: build with -p:BuildArkivNative=true to run the Arkiv tests";
+            if (Environment.GetEnvironmentVariable("ARKIV_REQUIRE_NATIVE") is not null) Assert.Fail(Missing);
+            Assert.Ignore(Missing);
         }
         ArkivConfig config = new()
         {
