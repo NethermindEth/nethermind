@@ -423,6 +423,25 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>Sets additional diagnostic information for the current action's subsequent error.</summary>
     void ReportActionErrorDetails(string error) { }
 
+    /// <summary>Sets diagnostic information for the current action, optionally excluding instruction and memory tracers.</summary>
+    /// <param name="error">The diagnostic information for the subsequent action error.</param>
+    /// <param name="actionOnly">Whether only leaves tracing actions without instructions or memory receive the information.</param>
+    /// <remarks>Wrappers and composites forward the scope to their children rather than filtering aggregate capabilities.</remarks>
+    void ReportActionErrorDetails(string error, bool actionOnly)
+    {
+        if (!actionOnly || (IsTracingActions && !IsTracingInstructions && !IsTracingMemory))
+            ReportActionErrorDetails(error);
+    }
+
+    /// <summary>Sets Geth's error text for the current creation, whose code deposit failed, before its <see cref="ReportActionError"/>.</summary>
+    /// <param name="error">The error Geth reports, such as <c>max code size exceeded</c>.</param>
+    /// <remarks>
+    /// The action error still reports <see cref="EvmExceptionType.OutOfGas"/> or <see cref="EvmExceptionType.InvalidCode"/>.
+    /// By default this is an action-only detail, see <see cref="ReportActionErrorDetails(string, bool)"/>; tracers that
+    /// write Geth's frame exits alongside instructions take it here.
+    /// </remarks>
+    void ReportCodeDepositError(string error) => ReportActionErrorDetails(error, actionOnly: true);
+
     /// <summary>
     /// Reports the remaining gas observed at an execution-segment boundary.
     /// </summary>

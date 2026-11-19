@@ -20,6 +20,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -76,7 +77,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _genesisBlock = Build.A.Block.Genesis.TestObject;
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
-            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
             _gossipPolicy = Substitute.For<IGossipPolicy>();
             _gossipPolicy.CanGossipBlocks.Returns(true);
             _gossipPolicy.ShouldGossipBlock(Arg.Any<BlockHeader>()).Returns(true);
@@ -84,17 +84,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
+            RecreateHandler();
+        }
+
+        private void RecreateHandler(INodeStatsManager? stats = null, IBackgroundTaskScheduler? scheduler = null, bool init = true)
+        {
+            _handler?.Dispose();
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
-                new NodeStatsManager(timerFactory, LimboLogs.Instance),
+                stats ?? new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
                 _syncManager,
-                RunImmediatelyScheduler.Instance,
+                scheduler ?? RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 _gossipPolicy,
                 LimboLogs.Instance,
                 _txGossipPolicy);
-            _handler.Init();
+            if (init) _handler.Init();
         }
 
         [TearDown]
@@ -134,15 +140,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             _gossipPolicy.CanGossipBlocks.Returns(false);
 
-            _handler = new Eth62ProtocolHandler(
-                _session,
-                _svc,
-                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
-                _syncManager,
-                RunImmediatelyScheduler.Instance,
-                _transactionPool,
-                _gossipPolicy,
-                LimboLogs.Instance);
+            RecreateHandler(init: false);
 
             _syncManager.Received().StopNotifyingPeersAboutNewBlocks();
         }
@@ -575,6 +573,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        [Test]
+        public void Prefetches_requested_bodies_a_window_at_a_time([Values(1, 16, 17, 40)] int count)
+        {
+            Hash256[] hashes = Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString())).ToArray();
+
+            RequestBlockBodies(hashes);
+
+            int[] starts = Enumerable.Range(0, (count + 15) / 16).Select(static w => w * 16).Where(start => count - start > 1).ToArray();
+            _syncManager.ReceivedWithAnyArgs(starts.Length).PrefetchBlocks(null!, 0, 0);
+            foreach (int start in starts) _syncManager.Received(1).PrefetchBlocks(Arg.Any<IReadOnlyList<Hash256>>(), start, Math.Min(16, count - start));
+        }
+
         private void ServeBlock(Hash256 hash, Block block) =>
             _syncManager.FindBlockRlp(hash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
 
@@ -637,17 +647,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _svc = new SerializationBuilder().WithEth()
                 .With(new TransactionsMessageSerializer(new TxPoolConfig { MaxTxSize = maxTxSize }))
                 .TestObject;
-            _handler = new Eth62ProtocolHandler(
-                _session,
-                _svc,
-                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
-                _syncManager,
-                RunImmediatelyScheduler.Instance,
-                _transactionPool,
-                _gossipPolicy,
-                LimboLogs.Instance,
-                _txGossipPolicy);
-            _handler.Init();
+            RecreateHandler();
 
             byte[][] oversizedItems = new byte[skipCount][];
             for (int i = 0; i < oversizedItems.Length; i++)
@@ -667,18 +667,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Should_schedule_transactions_without_value_tuple_request()
         {
             RecordingBackgroundTaskScheduler taskScheduler = new();
-            _handler.Dispose();
-            _handler = new Eth62ProtocolHandler(
-                _session,
-                _svc,
-                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
-                _syncManager,
-                taskScheduler,
-                _transactionPool,
-                _gossipPolicy,
-                LimboLogs.Instance,
-                _txGossipPolicy);
-            _handler.Init();
+            RecreateHandler(scheduler: taskScheduler);
 
             using TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
 
@@ -794,17 +783,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _svc = Build.A.SerializationService().WithEth().With(serializer).TestObject;
 
             AlwaysTimeoutBackgroundTaskScheduler taskScheduler = new(reject);
-            _handler = new Eth62ProtocolHandler(
-                _session,
-                _svc,
-                new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
-                _syncManager,
-                taskScheduler,
-                _transactionPool,
-                _gossipPolicy,
-                LimboLogs.Instance,
-                _txGossipPolicy);
-            _handler.Init();
+            RecreateHandler(scheduler: taskScheduler);
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
@@ -1010,6 +989,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             List<Hash256> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
 
             GetBlockBodiesMessage? getMsg = null;
+
+            NodeStatsLight nodeStats = new(_session.Node, timeProvider: new ManualTimeProvider());
+            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+            nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+            RecreateHandler(stats: nodeStatsManager);
 
             _session
                 .When(session => session.DeliverMessage(Arg.Any<GetBlockBodiesMessage>()))

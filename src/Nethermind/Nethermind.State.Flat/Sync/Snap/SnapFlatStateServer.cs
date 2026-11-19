@@ -68,7 +68,8 @@ public class SnapFlatStateServer(
             using DeferredRlpItemList.Builder builder = new(pathLength);
             DeferredRlpItemList.Builder.Writer writer = builder.BeginRootContainer();
             ReadOnlyStateTrieStoreAdapter trieStore = new(bundle);
-            StateTree tree = new(trieStore, logManager);
+            // Each path is walked from the root, so the request shares the nodes it resolved instead of reading them again.
+            StateTree tree = new(new CachedTrieStore(trieStore), logManager);
             Hash256 stateRoot = stateId.StateRoot.ToCommitment();
             bool abort = false;
             long responseSize = 0;

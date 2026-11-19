@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
@@ -120,7 +121,7 @@ public class ColumnsDbTests
     {
         public CountingRocksDbConfig TableConfig { get; private set; } = null!;
 
-        public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+        public IRocksDbConfig GetForDatabase(string? databaseName, string? columnName)
         {
             IRocksDbConfig config = inner.GetForDatabase(databaseName, columnName);
             return columnName is null ? TableConfig = new CountingRocksDbConfig(config) : config;
@@ -181,6 +182,99 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void Snapshot_dispose_waits_for_a_pinned_read_in_flight([Values] bool hintCacheMiss)
+    {
+        byte[] key = [1, 2, 3];
+        _db.GetColumnDb(ReceiptsColumns.Blocks).PutSpan(key, new byte[64], WriteFlags.None);
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+        IReadOnlyKeyValueStore column = snapshot.GetColumn(ReceiptsColumns.Blocks);
+        using DbOnTheRocksTests.ReadGate gate = new();
+        Task reading = gate.Read(column, key, hintCacheMiss ? ReadFlags.HintCacheMiss : ReadFlags.None);
+
+        Task disposing = Task.Run(snapshot.Dispose);
+        Assert.That(disposing.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the snapshot was disposed under a pinned read");
+
+        gate.Release();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reading.Wait(TimeSpan.FromSeconds(10)), "the read never finished");
+            Assert.That(disposing.Wait(TimeSpan.FromSeconds(10)), "dispose never finished after the read ended");
+            Assert.That(() => column.TryGet(key, ReadFlags.None, static (_, _) => { }, 0), Throws.InstanceOf<ObjectDisposedException>());
+        }
+    }
+
+    [Test]
+    public void Snapshot_dispose_under_concurrent_pinned_reads_lets_each_read_finish_or_throw_object_disposed()
+    {
+        const int Readers = 8;
+        byte[] key = [1, 2, 3];
+        ReceiptsColumns[] columns = Enum.GetValues<ReceiptsColumns>();
+        foreach (ReceiptsColumns column in columns) _db.GetColumnDb(column).PutSpan(key, new byte[64], WriteFlags.None);
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
+
+        using CountdownEvent started = new(Readers);
+        Task<int>[] readers = new Task<int>[Readers];
+        for (int i = 0; i < Readers; i++)
+        {
+            IReadOnlyKeyValueStore column = snapshot.GetColumn(columns[i % columns.Length]);
+            readers[i] = Task.Factory.StartNew(() =>
+            {
+                started.Signal();
+                int reads = 0;
+                try
+                {
+                    while (true)
+                    {
+                        if (!column.TryGet(key, ReadFlags.None, DbOnTheRocksTests.CheckValueLength, 64))
+                        {
+                            throw new InvalidOperationException("the key was not found");
+                        }
+
+                        reads++;
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    return reads;
+                }
+            }, TaskCreationOptions.LongRunning);
+        }
+
+        Assert.That(started.Wait(TimeSpan.FromSeconds(10)), "the readers never started");
+        Thread.Sleep(50);
+        snapshot.Dispose();
+
+        Assert.That(Task.WaitAll(readers, TimeSpan.FromSeconds(10)), "a reader never stopped");
+        int reads = readers.Sum(static r => r.Result);
+        Assert.That(reads, Is.GreaterThan(0));
+    }
+
+    [Test]
+    public void Snapshot_disposed_inside_its_own_read_releases_the_snapshot_and_iterator_managers_when_the_read_ends()
+    {
+        byte[] key = [1, 2, 3];
+        _db.GetColumnDb(ReceiptsColumns.Blocks).PutSpan(key, new byte[64], WriteFlags.None);
+        DbOnTheRocks column = (DbOnTheRocks)_db.GetColumnDb(ReceiptsColumns.Blocks);
+        IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot(sequentialReadAhead: true);
+        IReadOnlyKeyValueStore blocks = snapshot.GetColumn(ReceiptsColumns.Blocks);
+        RocksDbReader transactions = (RocksDbReader)snapshot.GetColumn(ReceiptsColumns.Transactions);
+        ulong snapshotsInRead = 0;
+
+        blocks.TryGet(key, ReadFlags.None, (_, _) =>
+        {
+            snapshot.Dispose();
+            snapshotsInRead = DbOnTheRocksTests.LiveSnapshots(column);
+        }, 0);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshotsInRead, Is.EqualTo(1), "the snapshot was released under its own read");
+            Assert.That(DbOnTheRocksTests.LiveSnapshots(column), Is.Zero, "the read did not release the snapshot when it ended");
+            Assert.That(() => transactions.IteratorManager!.Value, Throws.InstanceOf<ObjectDisposedException>(), "the iterator managers were not released");
+        }
+    }
+
+    [Test]
     public void Prefetch_ignores_a_trailing_partial_key()
     {
         const int count = 10;
@@ -194,6 +288,20 @@ public class ColumnsDbTests
 
         Assert.DoesNotThrow(() => prefetcher.Prefetch(keys, keyLength));
         Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(count));
+    }
+
+    [Test]
+    public void Column_prefetch_reads_ahead_on_Linux_only()
+    {
+        const int count = 10;
+        const int keyLength = 8;
+        byte[] keys = new byte[count * keyLength];
+        for (int i = 0; i < count; i++) BinaryPrimitives.WriteInt64BigEndian(keys.AsSpan(i * keyLength, keyLength), i);
+        long before = Metrics.PrefetchedKeys;
+
+        ((IReadPrefetcher)_db.GetColumnDb(ReceiptsColumns.Blocks)).Prefetch(keys, keyLength);
+
+        Assert.That(Metrics.PrefetchedKeys - before, Is.EqualTo(OperatingSystem.IsLinux() ? count : 0));
     }
 
     [Test]

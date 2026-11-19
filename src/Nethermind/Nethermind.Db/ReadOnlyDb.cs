@@ -29,25 +29,6 @@ namespace Nethermind.Db
             _memDb.Set(key, value, flags);
         }
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-        {
-            get
-            {
-                KeyValuePair<byte[], byte[]?>[] result = wrappedDb[keys];
-                KeyValuePair<byte[], byte[]?>[] memResult = _memDb[keys];
-                for (int i = 0; i < memResult.Length; i++)
-                {
-                    KeyValuePair<byte[], byte[]?> memValue = memResult[i];
-                    if (memValue.Value is not null)
-                    {
-                        result[i] = memValue;
-                    }
-                }
-
-                return result;
-            }
-        }
-
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll().Union(wrappedDb.GetAll());
 
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _memDb.GetAllKeys().Union(wrappedDb.GetAllKeys());

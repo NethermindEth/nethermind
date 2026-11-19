@@ -35,24 +35,6 @@ namespace Nethermind.Db
             set => Set(key, value);
         }
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys]
-        {
-            get
-            {
-                KeyValuePair<byte[], byte[]?>[] result = new KeyValuePair<byte[], byte[]?>[keys.Length];
-                lock (_versionLock)
-                {
-                    ReadsCount += keys.Length;
-                    for (int i = 0; i < keys.Length; i++)
-                    {
-                        byte[] key = keys[i];
-                        result[i] = new KeyValuePair<byte[], byte[]?>(key, GetValueAtVersion(key, _currentVersion));
-                    }
-                }
-                return result;
-            }
-        }
-
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             ReadsCount++;
@@ -694,7 +676,7 @@ namespace Nethermind.Db
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
-                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 _operations.Add((key.ToArray(), value, flags));
             }
 
@@ -704,7 +686,7 @@ namespace Nethermind.Db
 
             public void Clear()
             {
-                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 _operations.Clear();
             }
 

@@ -6,7 +6,7 @@ using System;
 namespace Nethermind.JsonRpc.Exceptions;
 
 /// <summary>A module-selected JSON-RPC error raised during invocation or deferred execution.</summary>
-internal sealed class RpcErrorException(int code, string message) : Exception(message)
+public sealed class RpcErrorException(int code, string message) : Exception(message)
 {
-    internal int Code { get; } = code;
+    public int Code { get; } = code;
 }

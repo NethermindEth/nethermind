@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -33,13 +34,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
         IBlockFinder blockFinder,
         [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
         ISpecProvider specProvider,
+        IPoSSwitcher poSSwitcher,
         IJsonRpcConfig jsonRpcConfig)
         : IProofRpcModule
     {
         // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
         private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
         private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
-        private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, jsonRpcConfig);
+        private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, poSSwitcher, jsonRpcConfig);
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter) =>
             _witnessCall.Execute(tx, blockParameter);

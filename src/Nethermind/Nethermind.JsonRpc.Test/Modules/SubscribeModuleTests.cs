@@ -18,6 +18,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -330,6 +331,56 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
+        }
+
+        [TestCase("1")]
+        [TestCase("[true]")]
+        public async Task NewHeadSubscription_with_an_option_of_another_kind_returns_invalid_params(string option)
+        {
+            using JsonDocument args = JsonDocument.Parse(option);
+
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", args.RootElement);
+            string subscribed = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 1: expected a boolean or an object with includeTransactions"},"id":67}"""));
+                Assert.That(subscribed, Does.Match("""^\{"jsonrpc":"2\.0","result":"0x[0-9a-f]{32}","id":67\}$"""), "a valid subscription still follows");
+            }
+        }
+
+        /// <remarks>An empty string stands for an undefined element, the one kind no JSON text parses to.</remarks>
+        [TestCase("true", true)]
+        [TestCase("false", false)]
+        [TestCase("\"TRUE\"", true)]
+        [TestCase("\"False\"", false)]
+        [TestCase("{\"includeTransactions\":true}", true)]
+        [TestCase("{}", false)]
+        [TestCase("{\"includeTransactions\":1}", false)]
+        [TestCase("\"yes\"", null)]
+        [TestCase("1", null)]
+        [TestCase("[true]", null)]
+        [TestCase("null", null)]
+        [TestCase("", null)]
+        public void TransactionsOption_reads_a_boolean_its_string_or_an_object(string json, bool? expected)
+        {
+            using JsonDocument? document = json.Length == 0 ? null : JsonDocument.Parse(json);
+            TransactionsOption option = new();
+
+            void Read() => option.ReadJson(document?.RootElement ?? default, EthereumJsonSerializer.JsonOptions);
+
+            if (expected is null)
+            {
+                Assert.That(Read, Throws.TypeOf<SafePublicMessageFormatException>()
+                    .With.Message.EqualTo("expected a boolean or an object with includeTransactions"));
+                return;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Read, Throws.Nothing);
+                Assert.That(option.IncludeTransactions, Is.EqualTo(expected));
+            }
         }
 
         [Test]
@@ -1771,6 +1822,260 @@ namespace Nethermind.JsonRpc.Test.Modules
             bool[] admitted = await Task.WhenAll(tasks);
 
             Assert.That(admitted.Count(static a => a), Is.EqualTo(1));
+        }
+
+        [Test]
+        [Repeat(20)]
+        public async Task Concurrent_AddSubscription_keeps_both_limits_and_releases_every_slot()
+        {
+            const int clientCount = 8;
+            const int attemptsPerClient = 8;
+            const int nodeLimit = 10;
+            const int connectionLimit = 3;
+            SubscriptionManager manager = new(NoopSubscriptionFactory(),
+                new JsonRpcConfig { MaxSubscriptions = nodeLimit, MaxSubscriptionsPerConnection = connectionLimit }, LimboLogs.Instance);
+            IJsonRpcDuplexClient[] clients = new IJsonRpcDuplexClient[clientCount];
+            ConcurrentQueue<string>[] admitted = new ConcurrentQueue<string>[clientCount];
+            for (int i = 0; i < clientCount; i++)
+            {
+                clients[i] = Substitute.For<IJsonRpcDuplexClient>();
+                clients[i].Id.Returns($"client-{i}");
+                admitted[i] = new ConcurrentQueue<string>();
+            }
+
+            using Barrier barrier = new(clientCount * attemptsPerClient);
+            List<Task> tasks = [];
+            for (int i = 0; i < clientCount; i++)
+            {
+                for (int j = 0; j < attemptsPerClient; j++)
+                {
+                    int clientIndex = i;
+                    tasks.Add(Task.Factory.StartNew(() =>
+                    {
+                        barrier.SignalAndWait();
+                        try
+                        {
+                            admitted[clientIndex].Enqueue(manager.AddSubscription(clients[clientIndex], "newHeads"));
+                        }
+                        catch (LimitExceededException)
+                        {
+                        }
+                    }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default));
+                }
+            }
+
+            await Task.WhenAll(tasks);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(admitted.Sum(static q => q.Count), Is.EqualTo(nodeLimit));
+                Assert.That(admitted.Select(static q => q.Count), Has.All.LessThanOrEqualTo(connectionLimit));
+            }
+
+            for (int i = 0; i < clientCount; i++)
+            {
+                if (i % 2 == 0)
+                {
+                    foreach (string subscriptionId in admitted[i]) Assert.That(manager.RemoveSubscription(clients[i], subscriptionId), Is.True);
+                }
+                else
+                {
+                    clients[i].Closed += Raise.Event();
+                }
+            }
+
+            foreach (IJsonRpcDuplexClient client in clients)
+            {
+                string[] subscriptionIds = new string[connectionLimit];
+                for (int j = 0; j < connectionLimit; j++) subscriptionIds[j] = manager.AddSubscription(client, "newHeads");
+                Assert.That(() => manager.AddSubscription(client, "newHeads"),
+                    Throws.TypeOf<LimitExceededException>().With.Message.EqualTo($"Too many subscriptions. The connection limit is {connectionLimit}."));
+                foreach (string subscriptionId in subscriptionIds) manager.RemoveSubscription(client, subscriptionId);
+            }
+
+            int refilled = 0;
+            foreach (IJsonRpcDuplexClient client in clients)
+            {
+                for (int j = 0; j < connectionLimit; j++)
+                {
+                    try
+                    {
+                        manager.AddSubscription(client, "newHeads");
+                        refilled++;
+                    }
+                    catch (LimitExceededException)
+                    {
+                    }
+                }
+            }
+
+            Assert.That(refilled, Is.EqualTo(nodeLimit));
+        }
+
+        [Test]
+        [Repeat(20)]
+        public async Task Client_at_its_connection_limit_does_not_take_node_slots_from_other_clients()
+        {
+            const int nodeLimit = 6;
+            const int connectionLimit = 3;
+            SubscriptionManager manager = new(NoopSubscriptionFactory(),
+                new JsonRpcConfig { MaxSubscriptions = nodeLimit, MaxSubscriptionsPerConnection = connectionLimit }, LimboLogs.Instance);
+            IJsonRpcDuplexClient busyClient = Substitute.For<IJsonRpcDuplexClient>();
+            busyClient.Id.Returns("busy-client");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("other-client");
+            IJsonRpcDuplexClient lateClient = Substitute.For<IJsonRpcDuplexClient>();
+            lateClient.Id.Returns("late-client");
+            SubscribeRpcModule busyModule = new(manager) { Context = new JsonRpcContext(RpcEndpoint.Ws, busyClient) };
+            SubscribeRpcModule otherModule = new(manager) { Context = new JsonRpcContext(RpcEndpoint.Ws, otherClient) };
+            SubscribeRpcModule lateModule = new(manager) { Context = new JsonRpcContext(RpcEndpoint.Ws, lateClient) };
+
+            for (int i = 0; i < connectionLimit; i++)
+            {
+                Assert.That(busyModule.eth_subscribe("newHeads").Result.ResultType, Is.EqualTo(ResultType.Success));
+            }
+
+            using CancellationTokenSource stop = new();
+            const int hammers = 4;
+            using Barrier barrier = new(hammers + 1);
+            Task[] hammerTasks = new Task[hammers];
+            for (int i = 0; i < hammers; i++)
+            {
+                hammerTasks[i] = Task.Factory.StartNew(() =>
+                {
+                    barrier.SignalAndWait();
+                    while (!stop.IsCancellationRequested) busyModule.eth_subscribe("newHeads");
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+
+            barrier.SignalAndWait();
+            ResultWrapper<string>[] results = new ResultWrapper<string>[nodeLimit - connectionLimit];
+            for (int i = 0; i < results.Length; i++) results[i] = otherModule.eth_subscribe("newHeads");
+            ResultWrapper<string> overNodeLimit = lateModule.eth_subscribe("newHeads");
+            await stop.CancelAsync();
+            await Task.WhenAll(hammerTasks);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results.Select(static r => r.Result.ResultType), Has.All.EqualTo(ResultType.Success));
+                Assert.That(overNodeLimit.Result.Error, Is.EqualTo($"Too many subscriptions. The node limit is {nodeLimit}."));
+            }
+        }
+
+        [Test]
+        [Repeat(20)]
+        public async Task Refused_adds_racing_a_removal_at_the_node_limit_leave_exactly_the_freed_slot()
+        {
+            const int refusers = 8;
+            SubscriptionManager manager = new(NoopSubscriptionFactory(),
+                new JsonRpcConfig { MaxSubscriptions = 1, MaxSubscriptionsPerConnection = 0 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient holder = Substitute.For<IJsonRpcDuplexClient>();
+            holder.Id.Returns("holder");
+            IJsonRpcDuplexClient lateClient = Substitute.For<IJsonRpcDuplexClient>();
+            lateClient.Id.Returns("late-client");
+            string heldId = manager.AddSubscription(holder, "newHeads");
+
+            int refuserAdmissions = 0;
+            using CancellationTokenSource stop = new();
+            using Barrier barrier = new(refusers + 1);
+            Task[] tasks = new Task[refusers];
+            for (int i = 0; i < refusers; i++)
+            {
+                IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+                client.Id.Returns($"refused-{i}");
+                tasks[i] = Task.Factory.StartNew(() =>
+                {
+                    barrier.SignalAndWait();
+                    while (!stop.IsCancellationRequested)
+                    {
+                        try
+                        {
+                            manager.AddSubscription(client, "newHeads");
+                            Interlocked.Increment(ref refuserAdmissions);
+                            return;
+                        }
+                        catch (LimitExceededException)
+                        {
+                        }
+                    }
+                }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+
+            barrier.SignalAndWait();
+            Assert.That(manager.RemoveSubscription(holder, heldId), Is.True);
+            bool lateAdmitted;
+            try
+            {
+                manager.AddSubscription(lateClient, "newHeads");
+                lateAdmitted = true;
+            }
+            catch (LimitExceededException)
+            {
+                lateAdmitted = false;
+            }
+
+            await stop.CancelAsync();
+            await Task.WhenAll(tasks);
+
+            Assert.That(Volatile.Read(ref refuserAdmissions) + (lateAdmitted ? 1 : 0), Is.EqualTo(1));
+        }
+
+        [TestCase(0, TestName = "Removing_an_open_client_during_its_first_add_disposes_the_subscription")]
+        [TestCase(1, TestName = "Removing_an_open_client_during_a_later_add_disposes_the_subscription")]
+        public void Removing_an_open_client_during_an_add_disposes_the_subscription_and_frees_its_slot(int earlierSubscriptions)
+        {
+            const int nodeLimit = 2;
+            SubscriptionManager? manager = null;
+            bool removeClientOnCreate = false;
+            TrackingSubscription? created = null;
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci =>
+                {
+                    IJsonRpcDuplexClient client = (IJsonRpcDuplexClient)ci[0];
+                    if (removeClientOnCreate) manager!.RemoveClientSubscriptions(client);
+                    return created = new TrackingSubscription(client);
+                });
+            manager = new SubscriptionManager(factory, new JsonRpcConfig { MaxSubscriptions = nodeLimit, MaxSubscriptionsPerConnection = 0 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient removedClient = Substitute.For<IJsonRpcDuplexClient>();
+            removedClient.Id.Returns("removed-client");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("other-client");
+
+            for (int i = 0; i < earlierSubscriptions; i++) manager.AddSubscription(removedClient, "test");
+
+            removeClientOnCreate = true;
+            string subscriptionId = manager.AddSubscription(removedClient, "test");
+            removeClientOnCreate = false;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(created!.Disposed, Is.True);
+                Assert.That(manager.RemoveSubscription(removedClient, subscriptionId), Is.False);
+                for (int i = 0; i < nodeLimit; i++) Assert.DoesNotThrow(() => manager.AddSubscription(otherClient, "test"));
+                Assert.That(() => manager.AddSubscription(otherClient, "test"),
+                    Throws.TypeOf<LimitExceededException>().With.Message.EqualTo($"Too many subscriptions. The node limit is {nodeLimit}."));
+            }
+        }
+
+        [Test]
+        public void AddSubscription_releases_both_slots_when_the_factory_throws()
+        {
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(static _ => throw new InvalidOperationException("factory failed"), ci => new NoopSubscription((IJsonRpcDuplexClient)ci[0]));
+            SubscriptionManager manager = new(factory, new JsonRpcConfig { MaxSubscriptions = 1, MaxSubscriptionsPerConnection = 1 }, LimboLogs.Instance);
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.Id.Returns("failing-client");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("other-client");
+
+            Assert.Throws<InvalidOperationException>(() => manager.AddSubscription(client, "test"));
+            Assert.DoesNotThrow(() => manager.AddSubscription(client, "test"));
+            Assert.That(() => manager.AddSubscription(otherClient, "test"),
+                Throws.TypeOf<LimitExceededException>().With.Message.EqualTo("Too many subscriptions. The node limit is 1."));
         }
 
         private static IContainer BuildSubscriptionContainer(JsonRpcConfig jsonRpcConfig) => new ContainerBuilder()

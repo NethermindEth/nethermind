@@ -38,8 +38,19 @@ public static class JavaScriptConverter
         string hexString => Address.TryParseVariableLength(hexString, out Address parsedAddress, true)
             ? parsedAddress
             : throw new ArgumentException("Not correct address", nameof(address)),
-        _ => new Address(address.ToBytes())
+        _ => BytesToAddress(address.ToBytes())
     } ?? throw new ArgumentException("Not correct address", nameof(address));
+
+    private static Address BytesToAddress(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length >= Address.Size)
+            return new Address(bytes[^Address.Size..]);
+
+        Span<byte> buffer = stackalloc byte[Address.Size];
+        buffer.Clear();
+        bytes.CopyTo(buffer[^bytes.Length..]);
+        return new Address(buffer);
+    }
 
     private static Engine CurrentEngine => Engine.CurrentEngine ?? throw new InvalidOperationException("No engine set");
 

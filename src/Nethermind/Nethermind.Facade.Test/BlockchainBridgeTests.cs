@@ -74,16 +74,7 @@ public class BlockchainBridgeTests
 
         _stateReader.HasStateForBlock(Arg.Any<BlockHeader?>()).Returns(true);
 
-        _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule())
-            .AddSingleton(_blockTree)
-            .AddSingleton<IReceiptFinder>(_receiptStorage)
-            .AddSingleton(_timestamper)
-            .AddSingleton(Substitute.For<ILogFinder>())
-            .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
-            .AddScoped(_transactionProcessor)
-            .AddSingleton(_stateReader)
-            .Build();
+        _container = CreateContainerBuilder().Build();
 
         _specProvider = _container.Resolve<ISpecProvider>();
         _blockchainBridge = _container.Resolve<IBlockchainBridge>();
@@ -92,6 +83,17 @@ public class BlockchainBridgeTests
 
     [TearDown]
     public void TearDown() => _container.Dispose();
+
+    /// <summary>The fixture's registrations; a test that adds services builds its own container from them.</summary>
+    private ContainerBuilder CreateContainerBuilder() => new ContainerBuilder()
+        .AddModule(new TestNethermindModule())
+        .AddSingleton(_blockTree)
+        .AddSingleton<IReceiptFinder>(_receiptStorage)
+        .AddSingleton(_timestamper)
+        .AddSingleton(Substitute.For<ILogFinder>())
+        .AddSingleton<IMiningConfig>(new MiningConfig { Enabled = false })
+        .AddScoped(_transactionProcessor)
+        .AddSingleton(_stateReader);
 
     [Test]
     public void get_transaction_returns_null_when_transaction_not_found()
@@ -815,6 +817,119 @@ public class BlockchainBridgeTests
             Assert.That(header.BaseFeePerGas, Is.EqualTo(snapshot.BaseFeePerGas));
             Assert.That(header.BlobGasUsed, Is.EqualTo(snapshot.BlobGasUsed));
             Assert.That(header.IsPostMerge, Is.EqualTo(snapshot.IsPostMerge));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> PostMergeFlagCases()
+    {
+        foreach (string call in new[] { "Call", "CallWithNumberOverride", "EstimateGas", "CreateAccessList", "EstimateFrameGas" })
+        {
+            yield return new TestCaseData(call, false, true, true).SetArgDisplayNames(call, "unflagged", "switcher post-merge");
+            yield return new TestCaseData(call, true, false, true).SetArgDisplayNames(call, "flagged", "switcher pre-merge");
+            yield return new TestCaseData(call, false, false, false).SetArgDisplayNames(call, "unflagged", "switcher pre-merge");
+        }
+    }
+
+    /// <summary>
+    /// A copy of a stored header, which carries no flag, takes the chain switcher's answer for the source block, as a
+    /// Taiko header keeping its zk gas in the difficulty needs. The switcher writes the flag of the header it gets, as
+    /// <c>PoSSwitcher</c> does, so asking it about the caller's header would show.
+    /// </summary>
+    [TestCaseSource(nameof(PostMergeFlagCases))]
+    public void Calls_restore_the_post_merge_flag_of_their_copy_from_the_chain_switcher(string call, bool callerFlag, bool switcherSays, bool expectMixHash)
+    {
+        List<ulong> classifiedNumbers = [];
+        IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
+        poSSwitcher.IsPostMerge(Arg.Any<BlockHeader>()).Returns(info =>
+        {
+            classifiedNumbers.Add(info.Arg<BlockHeader>().Number);
+            return info.Arg<BlockHeader>().IsPostMerge = switcherSays;
+        });
+        ContainerBuilder builder = CreateContainerBuilder().AddSingleton(poSSwitcher);
+        if (call == "EstimateFrameGas") builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
+        using IContainer container = builder.Build();
+        IBlockchainBridge bridge = container.Resolve<IBlockchainBridge>();
+        BlockHeader header = Build.A.BlockHeader.WithNumber(10).WithTimestamp(1_000).WithDifficulty(5).WithMixHash(TestItem.KeccakH).TestObject;
+        header.IsPostMerge = callerFlag;
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        _ = call switch
+        {
+            "Call" => bridge.Call(header, tx).Error,
+            "CallWithNumberOverride" => bridge.Call(header, tx, null, null, new BlockOverride { Number = 11 }, false, CancellationToken.None).Error,
+            "EstimateGas" => bridge.EstimateGas(header, tx, 1).Error,
+            "CreateAccessList" => bridge.CreateAccessList(header, tx, null, false).Error,
+            _ => bridge.EstimateFrameGas(header, FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(100_000)), [false], [false],
+                1_000_000, 1, null, null, null, CancellationToken.None, out _).Error,
+        };
+
+        ValueHash256 expectedPrevRandao = expectMixHash ? TestItem.KeccakH.ValueHash256 : ((UInt256)5).ToValueHash();
+        ulong expectedNumber = call == "CallWithNumberOverride" ? 11UL : 10UL;
+        _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(ctx =>
+            ctx.PrevRandao == expectedPrevRandao && ctx.Number == expectedNumber));
+        _transactionProcessor.DidNotReceive().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(ctx => ctx.PrevRandao != expectedPrevRandao));
+        poSSwitcher.DidNotReceive().IsPostMerge(header);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.IsPostMerge, Is.EqualTo(callerFlag), "the caller's header keeps its flag");
+            Assert.That(classifiedNumbers, Is.All.EqualTo(10UL), "the switcher sees the source block, not the overridden one");
+        }
+    }
+
+    private static IEnumerable<TestCaseData> PrevRandaoOverrideCases()
+    {
+        static BlockOverride X(ulong? number = null) => new() { PrevRandao = TestItem.KeccakA, Number = number };
+        // call, source number, source flagged (difficulty 0, else 5), override, whether PREVRANDAO is the override
+        yield return new TestCaseData("Call", 30UL, false, X(), true).SetArgDisplayNames("Call", "London");
+        yield return new TestCaseData("EstimateGas", 30UL, false, X(), true).SetArgDisplayNames("EstimateGas", "London");
+        yield return new TestCaseData("EstimateFrameGas", 30UL, false, X(), true).SetArgDisplayNames("EstimateFrameGas", "frame spec");
+        yield return new TestCaseData("Call", 10UL, false, X(30), true).SetArgDisplayNames("Call", "Berlin source, number override to London");
+        yield return new TestCaseData("Call", 0UL, false, X(), true).SetArgDisplayNames("Call", "block 0, London at 0");
+        yield return new TestCaseData("Call", 30UL, false, new BlockOverride { PrevRandao = Hash256.Zero }, true).SetArgDisplayNames("Call", "London, zero override");
+        yield return new TestCaseData("Call", 10UL, false, X(), false).SetArgDisplayNames("Call", "Berlin");
+        yield return new TestCaseData("Call", 30UL, false, X(10), false).SetArgDisplayNames("Call", "London source, number override to Berlin");
+        yield return new TestCaseData("Call", 30UL, false, new BlockOverride { Number = 31 }, false).SetArgDisplayNames("Call", "London, number override only");
+        yield return new TestCaseData("Call", 30UL, true, X(10), true).SetArgDisplayNames("Call", "flagged source, number override to Berlin");
+    }
+
+    /// <summary>
+    /// A <c>prevRandao</c> override decides PREVRANDAO on a block from before the merge when London is active after the
+    /// overrides, as in geth's <c>eth_call</c>; before London the call keeps its block's value. Every frame-gas probe sees it.
+    /// </summary>
+    [TestCaseSource(nameof(PrevRandaoOverrideCases))]
+    public void Calls_take_a_prevRandao_override_from_London_on(string call, ulong number, bool flagged, BlockOverride blockOverride, bool expectOverride)
+    {
+        // Block 0 is the genesis of a chain that starts at London; the other blocks cross London at block 20.
+        ISpecProvider specProvider = (call, number) switch
+        {
+            ("EstimateFrameGas", _) => new TestSpecProvider(Eip8141Prototype.Instance),
+            (_, 0) => new TestSpecProvider(London.Instance),
+            _ => new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)20, London.Instance)),
+        };
+        using IContainer container = CreateContainerBuilder().AddSingleton<IPoSSwitcher>(NoPoS.Instance).AddSingleton(specProvider).Build();
+        IBlockchainBridge bridge = container.Resolve<IBlockchainBridge>();
+        UInt256 difficulty = flagged ? UInt256.Zero : (UInt256)5;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithDifficulty(difficulty).WithMixHash(TestItem.KeccakH).TestObject;
+        header.IsPostMerge = flagged;
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        _ = call switch
+        {
+            "EstimateGas" => bridge.EstimateGas(header, tx, 1, blockOverride: blockOverride).Error,
+            "EstimateFrameGas" => bridge.EstimateFrameGas(header, FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(100_000)), [false], [false],
+                1_000_000, 1, null, null, blockOverride, CancellationToken.None, out _).Error,
+            _ => bridge.Call(header, tx, blockOverride: blockOverride).Error,
+        };
+
+        ValueHash256 expected = expectOverride ? blockOverride.PrevRandao!.ValueHash256 : difficulty.ToValueHash();
+        _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(ctx => ctx.PrevRandao == expected));
+        _transactionProcessor.DidNotReceive().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(ctx => ctx.PrevRandao != expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.IsPostMerge, Is.EqualTo(flagged), "the caller's header keeps its flag");
+            Assert.That(header.MixHash, Is.EqualTo(TestItem.KeccakH));
+            Assert.That(header.Difficulty, Is.EqualTo(difficulty));
+            Assert.That(header.Number, Is.EqualTo(number));
         }
     }
 

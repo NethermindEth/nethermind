@@ -102,8 +102,7 @@ public sealed class BlobArenaManager : IDisposable
     public BlobArenaWriter CreateWriter(long estimatedSize)
     {
         using Lock.Scope scope = _lock.EnterScope();
-        if (_disposed)
-            throw new ObjectDisposedException(nameof(BlobArenaManager));
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
         ushort? chosen = null;
         using ArrayPoolList<ushort> toRemove = new(0);

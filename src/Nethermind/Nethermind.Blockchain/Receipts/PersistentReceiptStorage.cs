@@ -728,6 +728,14 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <inheritdoc/>
+        /// <remarks>Also prefetches the block bodies, which the compact receipts encoding needs. Receipts stored under hash keys are not prefetched.</remarks>
+        public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks)
+        {
+            if (!_legacyHashKey) KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_receiptsDb, blocks);
+            _blockStore.Prefetch(blocks);
+        }
+
+        /// <inheritdoc/>
         /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
         public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination)
         {
@@ -1505,7 +1513,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 for (int i = 0; i < block.TransactionCount; i++)
                 {
-                    Hash256 txHash = block.GetNextTransactionHash();
+                    ValueHash256 txHash = block.GetNextTransactionValueHash();
                     writeBatch[txHash.Bytes] = null;
                 }
             }

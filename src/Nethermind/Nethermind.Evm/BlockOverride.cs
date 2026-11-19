@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
@@ -67,6 +68,13 @@ public class BlockOverride
         // EIP-4844 formula. The override is applied via BlobBaseFeeOverrideCalculatorDecorator
         // (and for simulate via IBlobBaseFeeOverrideProvider) instead.
     }
+
+    /// <summary>
+    /// The <see cref="PrevRandao"/> that PREVRANDAO returns in a single call run under <paramref name="callSpec"/>, the
+    /// spec of the call's block after these overrides, or <c>null</c> when the call keeps its block's own value.
+    /// </summary>
+    /// <remarks>As in geth, where a random value turns the merge rules on only from London: before it, opcode 0x44 reads the difficulty.</remarks>
+    public Hash256? PrevRandaoFor(IReleaseSpec callSpec) => callSpec.IsEip1559Enabled ? PrevRandao : null;
 
     public BlockOverride WithBaseFee(UInt256 baseFee)
     {
