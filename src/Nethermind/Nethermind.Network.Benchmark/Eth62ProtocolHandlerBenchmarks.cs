@@ -4,7 +4,6 @@
 using System;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
-using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
@@ -43,7 +42,7 @@ namespace Nethermind.Network.Benchmarks
         public void SetUp()
         {
             Console.WriteLine("AAA");
-            Session session = new(8545, Substitute.For<IChannel>(), Substitute.For<IDisconnectsAnalyzer>(), NullLogManager.Instance);
+            Session session = new(8545, Substitute.For<IRlpxConnection>(), Substitute.For<IDisconnectsAnalyzer>(), NullLogManager.Instance);
             session.RemoteNodeId = TestItem.PublicKeyA;
             session.RemoteHost = "127.0.0.1";
             session.RemotePort = 30303;

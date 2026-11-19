@@ -3,6 +3,7 @@
 
 
 using System;
+using System.IO;
 using Microsoft.ClearScript;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +33,7 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         {
             return TracerRuntime.CreateValidated(options.Tracer);
         }
-        catch (ArgumentException exception) when (options.CaptureJavaScriptErrors)
+        catch (Exception exception) when (options.CaptureJavaScriptErrors && exception is ArgumentException or InvalidDataException)
         {
             throw new JavaScriptTraceFailure(exception);
         }
@@ -65,7 +66,10 @@ public class GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec 
         Engine engine = new(spec, _runtime);
         try
         {
-            return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options);
+            return _currentTxTracer = new GethLikeJavaScriptTxTracer(engine, _db, _ctx, options)
+            {
+                IsFrameTransaction = tx!.SupportsFrames
+            };
         }
         catch
         {

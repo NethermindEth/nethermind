@@ -109,7 +109,8 @@ internal sealed partial class TracerRuntime : IDisposable
     /// Refuses a tracer no engine could load, returning the runtime inline code was compiled in so the tracer can
     /// reuse it and its cached script, or <see langword="null"/> for a shipped tracer, which needs no compile check.
     /// </summary>
-    /// <exception cref="ArgumentException">The tracer is not found or its code does not compile.</exception>
+    /// <exception cref="ArgumentException">The tracer selector is null.</exception>
+    /// <exception cref="InvalidDataException">The tracer code does not compile.</exception>
     public static TracerRuntime? CreateValidated(string? tracer)
     {
         if (tracer is null)
@@ -131,7 +132,7 @@ internal sealed partial class TracerRuntime : IDisposable
         catch (ScriptEngineException e) when (!e.IsFatal)
         {
             runtime.Dispose();
-            throw new ArgumentException($"Tracer code could not be compiled: {e.Message}", e);
+            throw new InvalidDataException(e.Message, e);
         }
         catch
         {
