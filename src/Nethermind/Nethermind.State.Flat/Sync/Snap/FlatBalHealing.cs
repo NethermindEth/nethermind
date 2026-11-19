@@ -4,6 +4,7 @@
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -25,6 +26,7 @@ public class FlatBalHealing(
     IBlockAccessListStore balStore,
     TrieReassembler trieReassembler,
     FlatTrieVerifier trieVerifier,
+    ISyncConfig syncConfig,
     IPersistence persistence,
     ITreeSyncStore store,
     [KeyFilter(DbNames.Code)] IDb codeDb,
@@ -54,9 +56,13 @@ public class FlatBalHealing(
 
         if (_logger.IsInfo) _logger.Info($"Trie reassembly produced base state root {reassembledRoot}.");
 
-        if (_logger.IsInfo) _logger.Info($"Verifying the reassembled trie at {reassembledRoot} before healing.");
-        bool verified = trieVerifier.VerifyPersisted(reassembledRoot, token);
-        if (_logger.IsInfo) _logger.Info($"Verify before healing {(verified ? "passed" : "failed")} at reassembled root {reassembledRoot}.");
+        if (syncConfig.VerifyReassembledTrieBeforeHealing)
+        {
+            if (_logger.IsInfo) _logger.Info($"Verifying the reassembled trie at {reassembledRoot} before healing.");
+            bool verified = trieVerifier.VerifyPersisted(reassembledRoot, token);
+            if (_logger.IsInfo) _logger.Info($"Verify before healing {(verified ? "passed" : "failed")} at reassembled root {reassembledRoot}.");
+        }
+
         return reassembledRoot;
     }
 

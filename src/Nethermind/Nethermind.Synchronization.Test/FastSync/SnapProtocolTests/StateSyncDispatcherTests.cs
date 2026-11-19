@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -51,7 +54,7 @@ public class StateSyncDispatcherTests
         _pool.Start();
 
         _dispatcher =
-            new StateSyncDispatcherTester(new StateSyncDownloader(_logManager), _pool);
+            new StateSyncDispatcherTester(new StateSyncDownloader(new SyncConfig(), _logManager), _pool);
     }
 
     [TearDown]
@@ -136,5 +139,24 @@ public class StateSyncDispatcherTests
             Assert.That(accountHashes, Is.EqualTo(new[] { TestItem.KeccakA.Bytes.ToArray(), TestItem.KeccakB.Bytes.ToArray() }),
                 "Storage groups must contain the full account hashes in request order.");
         }
+    }
+
+    [Test]
+    public async Task Delays_the_next_request_by_the_downloaded_bytes_at_the_configured_rate()
+    {
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.ProtocolVersion.Returns((byte)66);
+        peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(_ => new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { new byte[200] }));
+        StateSyncDownloader downloader = new(new SyncConfig { StateSyncMaxBytesPerSecond = 1000 }, _logManager);
+
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < 2; i++)
+        {
+            using StateSyncBatch batch = new(Keccak.OfAnEmptyString, NodeDataType.State, [new StateSyncItem(Keccak.EmptyTreeHash, null, TreePath.Empty, NodeDataType.State)]);
+            await downloader.Dispatch(new PeerInfo(peer), batch, CancellationToken.None);
+        }
+
+        Assert.That(Stopwatch.GetElapsedTime(start), Is.GreaterThanOrEqualTo(TimeSpan.FromMilliseconds(190)));
     }
 }

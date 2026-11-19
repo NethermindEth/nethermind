@@ -4,6 +4,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -20,9 +21,11 @@ using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.StateSync
 {
-    public class StateSyncDownloader(ILogManager logManager) : ISyncDownloader<StateSyncBatch>
+    public class StateSyncDownloader(ISyncConfig syncConfig, ILogManager logManager) : ISyncDownloader<StateSyncBatch>
     {
         private readonly ILogger Logger = logManager.GetClassLogger<StateSyncDownloader>();
+        private readonly Lock _rateLimitLock = new();
+        private long _nextRequestTimestamp;
 
         public async Task Dispatch(PeerInfo peerInfo, StateSyncBatch batch, CancellationToken cancellationToken)
         {
@@ -30,6 +33,9 @@ namespace Nethermind.Synchronization.StateSync
             {
                 return;
             }
+
+            TimeSpan rateLimitDelay = Stopwatch.GetElapsedTime(Stopwatch.GetTimestamp(), Volatile.Read(ref _nextRequestTimestamp));
+            if (rateLimitDelay > TimeSpan.Zero) await Task.Delay(rateLimitDelay, cancellationToken);
 
             ISyncPeer peer = peerInfo.SyncPeer;
             Task<IByteArrayList>? task = null;
@@ -66,6 +72,7 @@ namespace Nethermind.Synchronization.StateSync
             try
             {
                 batch.Responses = await task;
+                RecordDownloaded(batch.Responses);
             }
             catch (Exception e)
             {
@@ -75,6 +82,23 @@ namespace Nethermind.Synchronization.StateSync
             {
                 if (hashList is not null) HashList.Return(hashList);
                 getTrieNodesRequest?.Dispose();
+            }
+        }
+
+        /// <summary>Pushes the next request back by the time <paramref name="responses"/> take at <see cref="ISyncConfig.StateSyncMaxBytesPerSecond"/>.</summary>
+        /// <remarks>An idle period does not bank a burst, as the delay never starts from a time in the past.</remarks>
+        private void RecordDownloaded(IByteArrayList responses)
+        {
+            long bytesPerSecond = syncConfig.StateSyncMaxBytesPerSecond;
+            if (bytesPerSecond <= 0) return;
+
+            long bytes = 0;
+            for (int i = 0; i < responses.Count; i++) bytes += responses[i].Length;
+
+            long now = Stopwatch.GetTimestamp();
+            lock (_rateLimitLock)
+            {
+                _nextRequestTimestamp = Math.Max(_nextRequestTimestamp, now) + bytes * Stopwatch.Frequency / bytesPerSecond;
             }
         }
 

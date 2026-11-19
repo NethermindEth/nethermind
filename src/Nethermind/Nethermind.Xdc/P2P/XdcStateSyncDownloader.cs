@@ -7,7 +7,7 @@ using Nethermind.Synchronization.StateSync;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class XdcStateSyncDownloader(ILogManager logManager) : StateSyncDownloader(logManager)
+internal class XdcStateSyncDownloader(ISyncConfig syncConfig, ILogManager logManager) : StateSyncDownloader(syncConfig, logManager)
 {
     /// <remarks>
     /// XDC keeps <c>GetNodeData</c> on every version - it never applied the eth/67 removal - but its versions

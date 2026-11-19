@@ -1496,7 +1496,7 @@ public class SnapProviderTests
             });
 
             RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
-            FlatBalHealing flatHealing = new(blockTree, observedBals, new TrieReassembler(persistence, LimboLogs.Instance), new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), persistence, LimboLogs.Instance, Path.GetTempPath()), persistence,
+            FlatBalHealing flatHealing = new(blockTree, observedBals, new TrieReassembler(persistence, LimboLogs.Instance), new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), persistence, LimboLogs.Instance, Path.GetTempPath()), new SyncConfig(), persistence,
                 Substitute.For<ITreeSyncStore>(), new MemDb(), new Lazy<ICodeRecovery>(Substitute.For<ICodeRecovery>()), LimboLogs.Instance);
             IBalHealing healing = Substitute.For<IBalHealing>();
             healing.Reassemble(Arg.Any<IReadOnlyCollection<Hash256>>(), Arg.Any<CancellationToken>()).Returns(call =>

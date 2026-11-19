@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -56,7 +57,7 @@ public class FlatBalHealingTests
         _blockTree = Substitute.For<IBlockTree>();
         _syncStore = Substitute.For<ITreeSyncStore>();
         _codeRecovery = Substitute.For<ICodeRecovery>();
-        _healing = new(_blockTree, _balStore, _reassembler, new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), _persistence, LimboLogs.Instance, Path.GetTempPath()), _persistence, _syncStore, _codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
+        _healing = new(_blockTree, _balStore, _reassembler, new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), _persistence, LimboLogs.Instance, Path.GetTempPath()), new SyncConfig(), _persistence, _syncStore, _codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
     }
 
     [TearDown]
@@ -560,7 +561,7 @@ public class FlatBalHealingTests
         IBlockAccessListStore throwingStore = Substitute.For<IBlockAccessListStore>();
         throwingStore.Exists(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(true);
         throwingStore.Get(Arg.Any<ulong>(), Arg.Any<Hash256>()).Returns(_ => throw new InvalidOperationException("boom"));
-        FlatBalHealing healing = new(_blockTree, throwingStore, _reassembler, new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), _persistence, LimboLogs.Instance, Path.GetTempPath()), _persistence, _syncStore, _codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
+        FlatBalHealing healing = new(_blockTree, throwingStore, _reassembler, new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), _persistence, LimboLogs.Instance, Path.GetTempPath()), new SyncConfig(), _persistence, _syncStore, _codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
 
         SeedInitialState(Acc(TestItem.AddressA, 100));
         BlockHeader firstPivot = Pivot(10, TestItem.KeccakA);
@@ -757,7 +758,7 @@ public class FlatBalHealingTests
             });
         }
 
-        return new(_blockTree, balStore, new TrieReassembler(persistence, LimboLogs.Instance), new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), persistence, LimboLogs.Instance, Path.GetTempPath()), persistence, _syncStore, codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
+        return new(_blockTree, balStore, new TrieReassembler(persistence, LimboLogs.Instance), new FlatTrieVerifier(Substitute.For<IFlatDbManager>(), persistence, LimboLogs.Instance, Path.GetTempPath()), new SyncConfig(), persistence, _syncStore, codeDb, new Lazy<ICodeRecovery>(_codeRecovery), LimboLogs.Instance);
     }
 
     private void AssertColumnsEqual(IColumnsDb<FlatDbColumns> expected, params FlatDbColumns[] columns)
