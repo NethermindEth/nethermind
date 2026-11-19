@@ -62,23 +62,32 @@ public class InitDatabaseSnapshot(
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
-        if (SnapshotDatabase.Exists(dbPath))
+        // Only the extraction's own marker lets this step delete database content: the checkpoint lives in the snapshot
+        // directory, which can change or be lost, and cannot tell a partial extraction from a synced database.
+        if (SnapshotDatabase.HasUnfinishedExtraction(dbPath))
+        {
+            if (_logger.IsInfo)
+                _logger.Info("Extraction did not complete last time. Restarting. To interrupt press Ctrl^C");
+            await Task.Delay(TimeSpan.FromSeconds(ExtractionRestartDelaySeconds), cancellationToken).ConfigureAwait(false);
+            SnapshotDatabase.Delete(dbPath);
+        }
+        else if (SnapshotDatabase.Exists(dbPath))
         {
             if (checkpoint.Read() < SnapshotStage.Extracted)
             {
-                if (_logger.IsInfo)
-                    _logger.Info("Extraction did not complete last time. Restarting. To interrupt press Ctrl^C");
-                await Task.Delay(TimeSpan.FromSeconds(ExtractionRestartDelaySeconds), cancellationToken).ConfigureAwait(false);
-                SnapshotDatabase.Delete(dbPath);
+                if (_logger.IsWarn)
+                    _logger.Warn($"The database at {dbPath:hide} is not empty and was not written by an unfinished snapshot extraction, so it is kept and snapshot initialization is skipped. To initialize from the snapshot, empty the database directory first; do the same with a partial extraction left by an older version.");
             }
-            else
+            else if (_logger.IsInfo)
             {
-                if (_logger.IsInfo)
-                    _logger.Info($"Database already exists at {dbPath:hide}. Skipping snapshot initialization.");
-                return;
+                _logger.Info($"Database already exists at {dbPath:hide}. Skipping snapshot initialization.");
             }
+
+            return;
         }
-        else if (checkpoint.Read() >= SnapshotStage.Extracted)
+
+        // Also after the cleanup above: a stop between the Extracted checkpoint and the marker removal leaves both.
+        if (checkpoint.Read() >= SnapshotStage.Extracted)
         {
             if (_logger.IsWarn)
                 _logger.Warn($"The snapshot checkpoint indicates a completed extraction, but the database at {dbPath:hide} is missing or empty. Reinitializing from the snapshot.");
@@ -211,9 +220,11 @@ public class InitDatabaseSnapshot(
 
         SnapshotDiskSpace.Check(drives, SnapshotDiskSpace.GetRequiredSpaceForExtraction(GetFileSize(snapshotPath)), "extract");
 
+        SnapshotDatabase.BeginExtraction(dbPath);
         SnapshotExtractor extractor = new(api.LogManager);
         await extractor.ExtractAsync(snapshotPath, dbPath, stripComponents, cancellationToken).ConfigureAwait(false);
         checkpoint.Advance(SnapshotStage.Extracted);
+        SnapshotDatabase.CompleteExtraction(dbPath);
     }
 
     private async Task CheckDiskSpaceBeforeDownloadAsync(

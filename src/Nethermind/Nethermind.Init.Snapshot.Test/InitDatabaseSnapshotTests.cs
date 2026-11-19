@@ -5,6 +5,7 @@ using System.IO.Abstractions;
 using System.Net;
 using System.Security.Cryptography;
 using Nethermind.Api;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
 using NSubstitute;
@@ -286,6 +287,198 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [Test]
+    public async Task Execute_NonEmptyDatabaseWithoutMarker_KeepsItAndSkipsTheSnapshot(
+        [Values(null, "Started", "Downloaded", "Verified", "NotAStage", "Extracted", "Completed")] string? checkpoint,
+        [Values] bool streaming)
+    {
+        using FlakySnapshotServer server = new();
+        byte[] archive = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        server.Content = archive;
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = streaming;
+        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        if (checkpoint is not null)
+            File.WriteAllText(Path.Combine(_snapshotConfig.SnapshotDirectory, $"checkpoint_{_snapshotConfig.SnapshotFileName}"), checkpoint);
+        // A database the node synced itself, or one whose checkpoint went with a changed or lost snapshot directory.
+        string synced = Path.Combine(_dbPath, "state", "000001.sst");
+        Directory.CreateDirectory(Path.GetDirectoryName(synced)!);
+        File.WriteAllBytes(synced, [1, 2, 3]);
+        TestLogger logger = new();
+        _api.LogManager.Returns(new OneLoggerLogManager(new(logger)));
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(synced), Is.True, "a database without the extraction marker is not the snapshot's to delete");
+            Assert.That(server.RequestCount, Is.Zero, "the snapshot must be skipped, not downloaded over the kept database");
+            Assert.That(logger.LogList.Any(static line => line.Contains("was not written by an unfinished snapshot extraction")),
+                Is.EqualTo(checkpoint is not ("Extracted" or "Completed")),
+                "a kept database must be reported with the way to get the snapshot; a completed one is skipped as before");
+        }
+    }
+
+    [TestCase(nameof(SnapshotStage.Verified), TestName = "Execute_InterruptedExtraction_CleansAndExtractsAgain")]
+    [TestCase(nameof(SnapshotStage.Extracted), TestName = "Execute_ExtractionStoppedBeforeRemovingItsMarker_CleansAndExtractsAgain")]
+    [TestCase(nameof(SnapshotStage.Completed), TestName = "Execute_ExtractionCompletedBeforeRemovingItsMarker_CleansAndExtractsAgain")]
+    public async Task Execute_UnfinishedExtraction_CleansAndExtractsAgain(string checkpointOnRestart)
+    {
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        await FailExtraction(step);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(MarkerPath), Is.True, "the extraction must mark the database as its own before writing to it");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "precondition: the failed extraction left files behind");
+        }
+
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles(seed: 43);
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(files));
+        // Extracted, Completed: the node stopped after the checkpoint advanced and before the marker was removed; the
+        // two-phase path removes it after Extracted, the streaming one after Completed, and admission is the same for both.
+        AdvanceCheckpoint(Enum.Parse<SnapshotStage>(checkpointOnRestart));
+
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a43.sst")), Is.EqualTo(files["state/a43.sst"]),
+                "the restart must extract the archive again");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.False, "the restart must delete what the unfinished extraction wrote");
+            Assert.That(File.Exists(MarkerPath), Is.False, "a finished extraction must remove its marker");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Completed));
+        }
+    }
+
+    [Test]
+    public async Task Execute_FileWithMarkerNameButOtherContent_ThrowsAndKeepsTheDatabase()
+    {
+        string synced = Path.Combine(_dbPath, "000001.sst");
+        Directory.CreateDirectory(_dbPath);
+        File.WriteAllBytes(synced, [1, 2, 3]);
+        File.WriteAllText(MarkerPath, "not a marker");
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(
+            () => new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("extraction marker"), "the failure must name the file that blocks the start");
+            Assert.That(File.Exists(synced), Is.True, "a file that only has the marker's name proves nothing, so nothing may be deleted");
+        }
+    }
+
+    [TestCase(1, TestName = "Execute_AfterStreamedExtractionWasInterrupted_CleansAndStreamsAgain")]
+    [TestCase(2, TestName = "Execute_AfterSecondStreamingAttemptWasInterrupted_CleansAndStreamsAgain")]
+    public async Task Execute_AfterStreamedExtractionWasInterrupted_CleansAndStreamsAgain(int interruptedAttempt)
+    {
+        using FlakySnapshotServer server = new();
+        // Uncompressed, so every chunk reaches the extractor as soon as it arrives.
+        byte[] archive = TestArchive.BuildTar(TestArchive.BuildFiles(seed: 42));
+        int earlierRequests = 0;
+        if (interruptedAttempt == 1)
+        {
+            server.Content = archive;
+        }
+        else
+        {
+            // The source changes at the second chunk: after the probe and two chunk requests the first attempt is
+            // cleaned up, and the second attempt streams the new archive.
+            server.Content = TestArchive.BuildTar(TestArchive.BuildFiles(seed: 41));
+            server.SwitchSourceAfterRequests(2, archive, "\"v2\"");
+            earlierRequests = 3;
+        }
+
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        const int chunkSize = 4096;
+        // The probe, then one request per chunk. With one connection the last chunk is requested only after all chunks
+        // but the last two were consumed, so the first file is extracted by then.
+        int lastChunkRequest = earlierRequests + 1 + (archive.Length + chunkSize - 1) / chunkSize;
+        TaskCompletionSource lastChunkRequested = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int requests = 0;
+        server.BeforeResponse = async token =>
+        {
+            if (Interlocked.Increment(ref requests) != lastChunkRequest)
+                return;
+            lastChunkRequested.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, token); // held until the server stops
+        };
+        StreamingSnapshotInitializer initializer = new(_snapshotConfig, server.Url, _dbPath, [],
+            new SnapshotStreamSettings(1, chunkSize, TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50), TimeSpan.FromSeconds(30)),
+            LimboLogs.Instance);
+        using CancellationTokenSource stop = new();
+
+        Task interrupted = initializer.InitializeAsync(new SnapshotCheckpoint(_snapshotConfig, LimboLogs.Instance), stop.Token);
+        try
+        {
+            await lastChunkRequested.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        }
+        finally
+        {
+            stop.Cancel(); // As Ctrl+C would; it also ends the stream when the request never came.
+        }
+
+        await Assert.CatchAsync<OperationCanceledException>(() => interrupted.WaitAsync(TimeSpan.FromSeconds(30)),
+            "precondition: the stream must stop when the node stops");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(MarkerPath), Is.True, "every streamed attempt must mark the database as its own before writing to it");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.True, "precondition: the interrupted stream left files behind");
+        }
+
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles(seed: 43);
+        server.SwitchSourceAfterRequests(0, TestArchive.BuildTar(files), "\"v3\"");
+        using CancellationTokenSource restartTimeout = new(TimeSpan.FromSeconds(60));
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(restartTimeout.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a43.sst")), Is.EqualTo(files["state/a43.sst"]),
+                "the restart must stream the snapshot again");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state", "a42.sst")), Is.False, "the restart must delete what the interrupted stream wrote");
+            Assert.That(File.Exists(MarkerPath), Is.False, "a finished extraction must remove its marker");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Completed));
+        }
+    }
+
+    [Test]
+    public async Task Execute_StreamedSnapshotFailedThenNodeSynced_KeepsTheSyncedDatabase()
+    {
+        using FlakySnapshotServer server = new();
+        server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData([9, 9, 9]));
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(SnapshotDatabase.Exists(_dbPath), Is.False, "precondition: the checksum failed and the extraction was cleaned up");
+            Assert.That(File.Exists(MarkerPath), Is.False, "a cleaned-up attempt must give the database back to the node");
+        }
+
+        string synced = Path.Combine(_dbPath, "state", "000001.sst");
+        Directory.CreateDirectory(Path.GetDirectoryName(synced)!);
+        File.WriteAllBytes(synced, [1, 2, 3]);
+        int requests = server.RequestCount;
+
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(synced), Is.True, "the database the node synced after the failed snapshot must survive the next start");
+            Assert.That(server.RequestCount, Is.EqualTo(requests), "the snapshot must not be retried over the synced database");
+        }
+    }
+
     [TestCase(true, TestName = "Execute_LinkedDatabaseDirectory_RestartedExtractionKeepsTheLink")]
     [TestCase(false, TestName = "Execute_LinkedSubdirectory_RestartedExtractionKeepsTheLink")]
     [Platform(Include = "Linux")] // creating links needs a privilege on Windows
@@ -318,9 +511,12 @@ public class InitDatabaseSnapshotTests
         }
     }
 
-    [TestCase(false, TestName = "Execute_LinkedSubdirectoryWithMissingTarget_StopsAndKeepsTheLink")]
+    [TestCase(true, false, TestName = "Execute_LinkedDatabaseDirectoryWithMissingTarget_StopsAndKeepsTheLink")]
+    [TestCase(false, false, TestName = "Execute_LinkedSubdirectoryWithMissingTarget_StopsAndKeepsTheLink")]
+    [TestCase(true, true, TestName = "Execute_LinkedDatabaseDirectoryInLoop_StopsAndKeepsTheLink")]
+    [TestCase(false, true, TestName = "Execute_LinkedSubdirectoryInLoop_StopsAndKeepsTheLink")]
     [Platform(Include = "Linux")] // creating links needs a privilege on Windows
-    public async Task Execute_LinkWithMissingTarget_StopsAndKeepsTheLink(bool linkDatabaseDirectory)
+    public async Task Execute_LinkThatDoesNotResolve_StopsAndKeepsTheLink(bool linkDatabaseDirectory, bool loop)
     {
         string target = Path.Combine(_tempDir.Path, "other", linkDatabaseDirectory ? "db" : "state");
         Directory.CreateDirectory(target);
@@ -329,9 +525,11 @@ public class InitDatabaseSnapshotTests
         Directory.CreateSymbolicLink(link, target);
         InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
         await FailExtraction(step);
-        // The linked disk is not mounted at the next start.
+        // The linked disk is not mounted at the next start, or its mount point now leads back to the link.
         string unmounted = target + "-unmounted";
         Directory.Move(target, unmounted);
+        if (loop)
+            Directory.CreateSymbolicLink(target, link);
         File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
 
         IOException exception = (await Assert.CatchAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
@@ -342,6 +540,33 @@ public class InitDatabaseSnapshotTests
             Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the link must be neither removed nor replaced by a plain directory");
             Assert.That(File.Exists(Path.Combine(unmounted, linkDatabaseDirectory ? "state/a42.sst" : "a42.sst")), Is.True,
                 "the content behind the link must stay for the cleanup after the disk is back");
+            Assert.That(File.Exists(linkDatabaseDirectory ? Path.Combine(unmounted, Path.GetFileName(MarkerPath)) : MarkerPath), Is.True,
+                "the marker must stay, so the cleanup runs once the disk is back");
+        }
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task Execute_ContentOnlyInLinkedSubdirectoryWithoutMarker_KeepsIt()
+    {
+        using FlakySnapshotServer server = new();
+        server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        string target = Path.Combine(_tempDir.Path, "other", "state");
+        string synced = Path.Combine(target, "000001.sst");
+        Directory.CreateDirectory(target);
+        File.WriteAllBytes(synced, [1, 2, 3]);
+        Directory.CreateDirectory(_dbPath);
+        Directory.CreateSymbolicLink(Path.Combine(_dbPath, "state"), target);
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(synced), Is.True, "files behind a linked subdirectory are database content");
+            Assert.That(server.RequestCount, Is.Zero, "the snapshot must not be streamed over a database held on a linked disk");
         }
     }
 
@@ -365,6 +590,7 @@ public class InitDatabaseSnapshotTests
                 "an extraction never creates a directory link, so the cleanup must stop at one instead of guessing");
             Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the cleanup must not remove a directory link it did not create");
             Assert.That(File.Exists(Path.Combine(target, "keep")), Is.True, "the cleanup must not follow a directory link it did not create");
+            Assert.That(File.Exists(MarkerPath), Is.True, "a cleanup that stopped must keep the marker, so the next start cleans up again");
         }
     }
 
@@ -430,8 +656,13 @@ public class InitDatabaseSnapshotTests
         return new FileInfo(_snapshotPath).Length;
     }
 
+    // Spelled out rather than taken from the production code: the name is an on-disk format.
+    private string MarkerPath => Path.Combine(_dbPath, ".nethermind-snapshot-extracting");
+
     private void AdvanceCheckpoint(SnapshotStage stage) =>
         new SnapshotCheckpoint(_snapshotConfig, LimboLogs.Instance).Advance(stage);
+
+    private SnapshotStage ReadCheckpoint() => new SnapshotCheckpoint(_snapshotConfig, LimboLogs.Instance).Read();
 
     // An extraction that writes the files of seed 42 and then fails, as one cut short does.
     private async Task FailExtraction(InitDatabaseSnapshot step)

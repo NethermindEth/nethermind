@@ -32,6 +32,9 @@ internal sealed class StreamingSnapshotInitializer(
             LogMode(remoteInfo);
             CheckDiskSpace(remoteInfo.Length);
 
+            // Before the first byte lands, and outside the try: a marker that cannot be written must not lead to a delete.
+            SnapshotDatabase.BeginExtraction(dbPath);
+
             bool verified;
             try
             {
@@ -60,7 +63,11 @@ internal sealed class StreamingSnapshotInitializer(
                 throw;
             }
 
-            if (!verified)
+            if (verified)
+            {
+                SnapshotDatabase.CompleteExtraction(dbPath);
+            }
+            else
             {
                 DeleteDatabase();
                 LogContinuingWithoutSnapshot();

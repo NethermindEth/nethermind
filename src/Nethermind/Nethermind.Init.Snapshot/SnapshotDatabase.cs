@@ -9,6 +9,11 @@ internal static class SnapshotDatabase
 {
     private const string MountArtifact = "lost+found";
 
+    // In the database directory, so it stays with the data when the snapshot directory and its checkpoint change or are lost.
+    private const string ExtractionMarker = ".nethermind-snapshot-extracting";
+
+    private static ReadOnlySpan<byte> ExtractionMarkerContent => "Nethermind snapshot extraction in progress"u8;
+
     public static bool Exists(string dbPath)
     {
         if (File.Exists(dbPath))
@@ -20,8 +25,8 @@ internal static class SnapshotDatabase
         {
             foreach (string entry in Entries(dbPath))
             {
-                // An empty linked directory is the operator's disk layout, not database content.
-                if (!IsLinkedDirectory(entry) || Entries(entry).Any())
+                // Neither the marker nor an empty linked directory, which is the operator's disk layout, is database content.
+                if (!IsMarker(entry) && (!IsLinkedDirectory(entry) || Entries(entry).Any()))
                     return true;
             }
         }
@@ -34,9 +39,52 @@ internal static class SnapshotDatabase
     }
 
     /// <summary>
-    /// Empties the database directory. Directory links stay, so the next extraction lands on the same disks: the
-    /// database directory itself when it is a link, and linked subdirectories, whose targets are emptied instead.
-    /// <c>lost+found</c> stays in the database directory and in linked targets.
+    /// Claims the database for an extraction before the extraction writes anything: only this claim lets a later start
+    /// delete the database content.
+    /// </summary>
+    public static void BeginExtraction(string dbPath)
+    {
+        ThrowIfUnavailableLink(dbPath);
+        Directory.CreateDirectory(dbPath);
+        using FileStream marker = new(MarkerPath(dbPath), FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize: 0, FileOptions.WriteThrough);
+        marker.Write(ExtractionMarkerContent);
+        marker.Flush(flushToDisk: true);
+    }
+
+    /// <summary>Releases the claim after a successful extraction. A failure must stop the start.</summary>
+    public static void CompleteExtraction(string dbPath) => File.Delete(MarkerPath(dbPath));
+
+    /// <summary>Whether an extraction claimed the database and did not finish.</summary>
+    /// <exception cref="IOException">
+    /// A file has the marker's name but not its content, so it shows nothing; or the database directory is a link whose
+    /// target is missing, so the marker cannot be read.
+    /// </exception>
+    public static bool HasUnfinishedExtraction(string dbPath)
+    {
+        ThrowIfUnavailableLink(dbPath);
+        string markerPath = MarkerPath(dbPath);
+        if (!Path.Exists(markerPath))
+            return false;
+
+        try
+        {
+            if (File.ReadAllBytes(markerPath).AsSpan().SequenceEqual(ExtractionMarkerContent))
+                return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw UnrecognizedMarker(markerPath, e);
+        }
+
+        throw UnrecognizedMarker(markerPath, null);
+    }
+
+    /// <summary>
+    /// Deletes what an unfinished extraction wrote, then its marker. Directory links stay, so the next extraction lands
+    /// on the same disks: the database directory itself when it is a link, and linked subdirectories, whose targets are
+    /// emptied instead. A link at the top of the database directory whose target is missing or loops, a linked
+    /// subdirectory whose target cannot be read, or a directory link deeper in the content stops the cleanup with the
+    /// marker kept. <c>lost+found</c> stays in the database directory and in linked targets.
     /// </summary>
     public static void Delete(string dbPath)
     {
@@ -47,6 +95,9 @@ internal static class SnapshotDatabase
 
         foreach (string entry in Entries(dbPath).ToArray())
         {
+            if (IsMarker(entry))
+                continue;
+
             if (IsLinkedDirectory(entry))
             {
                 foreach (string nested in LinkedContent(entry))
@@ -57,6 +108,9 @@ internal static class SnapshotDatabase
                 DeleteEntry(entry);
             }
         }
+
+        // Last: a cleanup that stops early keeps the claim, so the next start cleans up again.
+        File.Delete(MarkerPath(dbPath));
 
         if (!IsLinkedDirectory(dbPath))
             TryRemoveDirectoryItself(dbPath);
@@ -84,6 +138,22 @@ internal static class SnapshotDatabase
             Directory.Delete(entry);
         }
     }
+
+    private static string MarkerPath(string dbPath) => Path.Combine(dbPath, ExtractionMarker);
+
+    private static bool IsMarker(string entry) => Path.GetFileName(entry) == ExtractionMarker;
+
+    // The marker behind such a link cannot be read, and the directory cannot be created in its place (mkdir refuses), so
+    // the start stops here with an error that names the link rather than later with a less clear one.
+    private static void ThrowIfUnavailableLink(string dbPath)
+    {
+        if (!Directory.Exists(dbPath) && IsUnresolvedLink(dbPath))
+            throw UnavailableLink(dbPath, null);
+    }
+
+    private static IOException UnrecognizedMarker(string markerPath, Exception? inner) =>
+        new($"The file {(SensitiveLogMasking.Enabled ? "[redacted]" : markerPath)} has the name of the snapshot extraction marker but not its content, so it does not show that the database holds an unfinished extraction, and nothing was deleted. Remove the file; if the database holds a partial extraction, empty the database directory too.",
+            SensitiveLogMasking.Enabled ? null : inner);
 
     private static IEnumerable<string> Entries(string directory) =>
         Directory.EnumerateFileSystemEntries(directory).Where(static entry => Path.GetFileName(entry) != MountArtifact);
