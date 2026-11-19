@@ -519,6 +519,7 @@ public class KeyStoreTests
     [Test]
     public void Reading_derives_scrypt_keys_on_the_calling_thread()
     {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1), "With one processor the library starts no worker thread, so this test would show nothing.");
         KeyStoreItem keyFile = PinnedScryptKeyFile(2, 1, 2, TwoPassesDerivedKey);
         (PrivateKey Key, Result Result) read = default;
 
@@ -535,6 +536,7 @@ public class KeyStoreTests
     [Test]
     public void Writing_derives_scrypt_keys_on_the_calling_thread()
     {
+        Assume.That(Environment.ProcessorCount, Is.GreaterThan(1), "With one processor the library starts no worker thread, so this test would show nothing.");
         using TempPath directory = TempPath.GetTempDirectory();
         FileKeyStore store = CreateStore(new KeyStoreConfig { KeyStoreDirectory = directory.Path, KdfparamsN = 2, KdfparamsR = 1, KdfparamsP = 2 }, FixedRandom());
         PrivateKey key = new(VectorKey);
