@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
 /// buffer grow with the size of each entry.
 /// </remarks>
-public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost, ITraceOperationStart
+public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOperationGasCost, ITraceOperationStart, ITxTracer
 {
     internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
@@ -47,6 +47,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
     private bool _hasPendingOpcode;
     private int _pendingPc;
     private Instruction _pendingOpcode;
+    private bool _actionOnlyDetailReported;
+    private bool _pendingUndefined;
     private ulong _pendingGas;
     private ulong _pendingGasCost;
     private int _pendingDepth;
@@ -111,6 +113,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _hasPendingOpcode = false;
         _pendingPc = 0;
         _pendingOpcode = default;
+        _actionOnlyDetailReported = false;
+        _pendingUndefined = false;
         _pendingGas = 0;
         _pendingGasCost = 0;
         _pendingDepth = 0;
@@ -153,6 +157,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         _hasPendingOpcode = true;
         _pendingPc = pc;
         _pendingOpcode = opcode;
+        _actionOnlyDetailReported = false;
+        _pendingUndefined = false;
         _pendingGas = gas;
         _pendingGasCost = 0;
         _pendingDepth = env.GetGethTraceDepth();
@@ -205,6 +211,18 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             _pendingError = error;
     }
 
+    /// <remarks>
+    /// Only the handler for opcodes the active fork does not define sends an action-only detail on a step that fails as a
+    /// bad instruction; defined opcodes that fail as one, and code deposit errors, do not.
+    /// </remarks>
+    void ITxTracer.ReportActionErrorDetails(string error, bool actionOnly)
+    {
+        if (actionOnly)
+            _actionOnlyDetailReported = true;
+        else
+            ReportActionErrorDetails(error);
+    }
+
     public override void ReportOperationError(EvmExceptionType error)
     {
         if (!_hasPendingOpcode || IsRejectedActionPrecheck(error)) return;
@@ -213,7 +231,11 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
             _pendingGasCost = 0;
             return;
         }
-        if (error == EvmExceptionType.BadInstruction) _pendingGasCost = 0;
+        if (error == EvmExceptionType.BadInstruction)
+        {
+            _pendingGasCost = 0;
+            _pendingUndefined = _actionOnlyDetailReported;
+        }
         // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
         if (error == EvmExceptionType.OutOfGas && !_gasCostReported && _calculatedGasCost is ulong gasCost)
             _pendingGasCost = gasCost;
@@ -350,7 +372,10 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         // Exclude the array separator: Geth counts individually serialized log objects.
         long entryStart = _writer.BytesCommitted + _writer.BytesPending - 1;
         _writer.WriteNumber("pc"u8, _pendingPc);
-        _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
+        if (_pendingUndefined)
+            _writer.WriteString("op"u8, OpcodeJsonNames.GetUndefinedName(_pendingOpcode));
+        else
+            _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
         _writer.WriteNumber("gas"u8, _pendingGas);
         _writer.WriteNumber("gasCost"u8, _pendingGasCost);
         _writer.WriteNumber("depth"u8, _pendingDepth);
