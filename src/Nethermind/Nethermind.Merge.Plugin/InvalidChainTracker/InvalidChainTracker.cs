@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -24,6 +25,7 @@ public class InvalidChainTracker(
     IPoSSwitcher poSSwitcher,
     IBlockFinder blockFinder,
     IBlockCacheService blockCacheService,
+    IStarkProofStore proofStore,
     ILogManager logManager) : IInvalidChainTracker
 {
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher;
@@ -46,7 +48,8 @@ public class InvalidChainTracker(
 
     private void OnBlockchainProcessorInvalidBlock(object? sender, IBlockProcessingQueue.InvalidBlockEventArgs args)
     {
-        Block block = args.InvalidBlock;
+        // A block processed from the block store lacks the EIP-8288 proof kept apart from it; join it on a copy.
+        Block block = proofStore.WithProof(args.InvalidBlock);
         // EIP-8288: a body whose stark_proof does not match the header's stark_proof_hash is not this block's body; it is
         // discarded and requested again, and the block is not invalid.
         if (!BlockValidator.StarkProofMatchesCommitment(block.Header, block.Body)) return;

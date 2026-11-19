@@ -3,11 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -28,7 +30,7 @@ public class InvalidChainTrackerTest
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         BlockCacheService blockCacheService = new();
 
-        _tracker = new(NoPoS.Instance, blockFinder, blockCacheService, new TestLogManager());
+        _tracker = new(NoPoS.Instance, blockFinder, blockCacheService, new StarkProofStore(new TestMemDb()), new TestLogManager());
     }
 
     private List<Hash256> MakeChain(int n, bool connectInReverse = false)
@@ -181,7 +183,7 @@ public class InvalidChainTrackerTest
         IPoSSwitcher poSSwitcher = Substitute.For<IPoSSwitcher>();
         poSSwitcher.IsPostMerge(parentBlockHeader).Returns(false);
 
-        _tracker = new(poSSwitcher, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
+        _tracker = new(poSSwitcher, blockFinder, blockCacheService, new StarkProofStore(new TestMemDb()), new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(invalidBlock, parentBlockHeader.Hash);
 
         AssertInvalid(invalidBlock, Keccak.Zero);
@@ -204,7 +206,7 @@ public class InvalidChainTrackerTest
         IPoSSwitcher alwaysPos = Substitute.For<IPoSSwitcher>();
         alwaysPos.IsPostMerge(Arg.Any<BlockHeader>()).Returns(true);
 
-        _tracker = new(alwaysPos, blockFinder, blockCacheService, new TestLogManager()); // Small max section size, to make sure things propagate correctly
+        _tracker = new(alwaysPos, blockFinder, blockCacheService, new StarkProofStore(new TestMemDb()), new TestLogManager()); // Small max section size, to make sure things propagate correctly
         _tracker.OnInvalidBlock(blockHeader.GetOrCalculateHash(), null);
 
         AssertInvalid(blockHeader.GetOrCalculateHash(), parentBlockHeader.Hash);

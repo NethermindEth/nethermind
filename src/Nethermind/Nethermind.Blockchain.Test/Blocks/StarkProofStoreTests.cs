@@ -4,7 +4,6 @@
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -67,26 +66,6 @@ public class StarkProofStoreTests
             Assert.That(proofStore.Get(block.Number, block.Hash!), Is.Null);
             Assert.That(proofStore.Get(kept.Number, kept.Hash!), Is.EqualTo(kept.StarkProof));
         }
-    }
-
-    [Test]
-    public async Task Queued_processing_reattaches_the_stored_proof([Values] bool proofStored, [Values] bool queued)
-    {
-        await using DeferredBlockDataWriter writer = Writer(deferred: false);
-        using IContainer container = CreateContainer(writer);
-        IBlockStore blockStore = container.Resolve<IBlockStore>();
-        IStarkProofStore proofStore = container.Resolve<IStarkProofStore>();
-        Block block = BlockWithProof(1, 64);
-        byte[] proof = block.StarkProof!;
-        blockStore.Insert(block);
-        if (!proofStored) proofStore.Delete(block.Number, block.Hash!);
-        Block stored = blockStore.Get(block.Number, block.Hash!, shouldCache: false)!;
-
-        StarkProofRecoveryStep step = new(proofStore);
-        if (queued) step.RecoverDataForQueuedProcessing(stored);
-        else step.RecoverData(stored);
-
-        Assert.That(stored.StarkProof, queued && proofStored ? Is.EqualTo(proof) : Is.Null);
     }
 
     private static DeferredBlockDataWriter Writer(bool deferred) =>

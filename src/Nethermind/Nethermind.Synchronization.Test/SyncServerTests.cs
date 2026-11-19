@@ -436,6 +436,7 @@ public class SyncServerTests
             poSSwitcher,
             localBlockTree,
             new BlockCacheService(),
+            Substitute.For<IStarkProofStore>(),
             LimboLogs.Instance);
         InvalidHeaderInterceptor headerValidatorWithInterceptor = new(
             mergeHeaderValidator,
