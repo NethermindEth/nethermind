@@ -54,7 +54,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     // Buffers a run grows past this are dropped at the next start, so a huge transaction is not kept for the env's life.
     private const int RetainedCapacity = 1024;
 
-    internal const int MaxEffects = 4096;
+    internal const int MaxEffects = 16384;
 
     public OutcomeTracer Outcome { get; } = new();
 
