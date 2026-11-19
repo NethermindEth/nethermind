@@ -75,14 +75,17 @@ public class XdcChainSpecTests
         Assert.That(spec.LimitPenaltyEpoch, Is.EqualTo(expectedLimitPenaltyEpoch));
     }
 
-    // The reference client's TestnetChainConfig.PragueBlock; its PrecompiledContractsPrague adds EIP-2537 at 0x0b-0x11.
-    [Test]
-    public void Apothem_Prague_activates_at_the_reference_block([Values(84_332_999UL, 84_333_000UL)] ulong block)
+    // The reference client's TestnetChainConfig.PragueBlock. Its PrecompiledContractsPrague adds EIP-2537 at 0x0b-0x11
+    // and the point evaluation stub at 0x0a, which no earlier set has, EIP-4844 or not.
+    [TestCase("xdc-testnet.json", 71_551_800UL, false)]
+    [TestCase("xdc-testnet.json", 84_332_999UL, false)]
+    [TestCase("xdc-testnet.json", 84_333_000UL, true)]
+    [TestCase("xdc.json", 98_802_000UL, false)]
+    public void Prague_activates_at_the_reference_block(string chainSpecFile, ulong block, bool prague)
     {
-        ChainSpec chainSpec = LoadChainSpec("xdc-testnet.json");
+        ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
         XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, EngineParameters(chainSpec), LimboLogs.Instance);
         IReleaseSpec spec = specProvider.GetXdcSpec(block);
-        bool prague = block >= 84_333_000;
 
         using (Assert.EnterMultipleScope())
         {
@@ -90,7 +93,7 @@ public class XdcChainSpecTests
             Assert.That(spec.IsEip2935Enabled, Is.EqualTo(prague));
             Assert.That(spec.IsEip7623Enabled, Is.EqualTo(prague));
             Assert.That(spec.IsEip7702Enabled, Is.EqualTo(prague));
-            for (byte precompile = 0x0b; precompile <= 0x11; precompile++)
+            for (byte precompile = 0x0a; precompile <= 0x11; precompile++)
             {
                 Assert.That(spec.IsPrecompile(new Address($"0x{precompile:x40}")), Is.EqualTo(prague), $"precompile 0x{precompile:x2}");
             }

@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Precompiles;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Reflection;
 
@@ -86,6 +88,22 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
             else hi = mid;
         }
         return list[lo];
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// XDPoSChain has no Cancun precompile set: 0x0a stays an ordinary empty account whatever EIP-4844 says, and
+    /// joins the set with Prague (the EIP-2537 set) as <see cref="XdcKzgStubPrecompile"/>.
+    /// </remarks>
+    public override FrozenSet<AddressAsKey> BuildPrecompilesCache()
+    {
+        HashSet<AddressAsKey> precompiles = [.. base.BuildPrecompilesCache()];
+        if (IsEip2537Enabled)
+            precompiles.Add(PrecompiledAddresses.PointEvaluation);
+        else
+            precompiles.Remove(PrecompiledAddresses.PointEvaluation);
+
+        return precompiles.ToFrozenSet();
     }
 
     public static XdcReleaseSpec FromReleaseSpec(IReleaseSpec spec)
