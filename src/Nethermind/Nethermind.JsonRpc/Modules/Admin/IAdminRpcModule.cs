@@ -83,7 +83,7 @@ public interface IAdminRpcModule : IContextAwareRpcModule
 
     [JsonRpcMethod(Description = "True if state root for the block is available",
         EdgeCaseHint = "",
-        ExampleResponse = "\"Starting\"",
+        ExampleResponse = "true",
         IsImplemented = true)]
     ResultWrapper<bool> admin_isStateRootAvailable(BlockParameter block);
 

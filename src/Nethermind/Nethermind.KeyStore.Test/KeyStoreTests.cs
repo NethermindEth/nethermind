@@ -6,7 +6,13 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
+using System.Security.Cryptography;
+using System.Text;
+using CryptSharp.Utility;
+using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -365,5 +371,247 @@ public class KeyStoreTests
         string bytesHex = bytes.ToHexString();
         Assert.That(bytesHex, Does.Not.StartWith(bomBytesHex));
         Assert.That(bytesHex, Does.StartWith(validBytesHex));
+    }
+
+    // Password, key, salt and IV of the test vectors of the Web3 Secret Storage definition,
+    // https://ethereum.org/developers/docs/data-structures-and-encoding/web3-secret-storage/
+    private const string VectorPassword = "testpassword";
+    private const string VectorKey = "7a28b5ba57c53603b0b07b56bba752f7784bf506fa95edc395f5cf6c7514fe9d";
+    private const string VectorSalt = "25710c2ccd7c610b24d068af83b959b7a0e5f40641f0c82daeb1345766191034";
+    private const string VectorIv = "740770fce12ce862af21264dab25f1da";
+    private const string Pbkdf2Vector = """{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"6087dab2f9fdbbfaddc31a909735c1e6"},"ciphertext":"5318b4d5bcd28de64ee5559e671353e16f075ecae9f99c7a79a38af5f869aa46","kdf":"pbkdf2","kdfparams":{"c":262144,"dklen":32,"prf":"hmac-sha256","salt":"ae3cd4e7013836a3df6bd7241b12db061dbe2c6785853cce422d148a624ce0bd"},"mac":"517ead924a9d0dc3124507e3393d175ce3ff7c1e96529c6c555ce9e51205e9b2"},"id":"3198bc9c-6672-5ab3-d995-4942343ae5b6","version":3}""";
+
+    // Key files for the vector key, salt and IV with n = 1024, as written with lower-case names.
+    private const string CtrCipherText = "07d6803a09be626843cf064d8e8f986eff6e65f99154e356691f912458153078";
+    private const string CtrMac = "35cd59790186d17560c9c07127567ddb55286c5a5112b7f7f85e09d51610a294";
+    private const string CbcCipherText = "172e3552758013b6b36d714c3b150e3dcab629bde95d3d6f4180f47f657b52852996681653e4ac003f99ee5e9737b1cf";
+    private const string CbcMac = "6adf13188819da274d567b967ddab1885a5b43789bec718d1bee45e3e9b1fc87";
+
+    // Pins the whole file; its ciphertext and MAC match an independent computation of the definition's algorithm.
+    // The definition's own scrypt vector cannot serve here: its derived key does not follow from its salt and parameters.
+    [Test]
+    public void Default_settings_write_the_same_key_file()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        ICryptoRandom random = FixedRandom();
+        FileKeyStore store = CreateStore(new KeyStoreConfig { KeyStoreDirectory = directory.Path }, random);
+        PrivateKey key = new(VectorKey);
+
+        Result result = store.StoreKey(key, VectorPassword.Secure());
+
+        Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+        string file = Encoding.UTF8.GetString(File.ReadAllBytes(store.FindKeyFiles(key.Address).Single()));
+        string id = store.GetKeyData(key.Address).KeyData.Id;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(random.ReceivedCalls().Select(static call => call.GetArguments()[0]), Is.EqualTo(new[] { 32, 16 }), "salt, then IV");
+            Assert.That(file, Is.EqualTo($$$"""{"version":3,"id":"{{{id}}}","address":"008aeeda4d805471df9b2a5b0f38a0c3bcba786b","crypto":{"ciphertext":"1b368ffb2db0fcec8802eceba0b2820ae1069ef3815ac97ca1031371748f6e18","cipherparams":{"iv":"740770fce12ce862af21264dab25f1da"},"cipher":"aes-128-ctr","kdf":"scrypt","kdfparams":{"dklen":32,"salt":"25710c2ccd7c610b24d068af83b959b7a0e5f40641f0c82daeb1345766191034","n":262144,"r":8,"p":1},"mac":"61de4bf77db2f8e07e01232c045e5b455997efeb22bb8ea08a66ff5a252182a6"}}"""));
+        }
+    }
+
+    [TestCase("scrypt", "aes-128-ctr", CtrCipherText, CtrMac)]
+    [TestCase("Scrypt", "aes-128-ctr", CtrCipherText, CtrMac)]
+    [TestCase(" SCRYPT ", "AES-128-CTR", CtrCipherText, CtrMac)]
+    [TestCase("scrypt", "aes-128-cbc", CbcCipherText, CbcMac)]
+    [TestCase("Scrypt", " Aes-128-Cbc ", CbcCipherText, CbcMac)]
+    public void Write_settings_in_any_case_are_written_in_lower_case(string kdf, string cipher, string cipherText, string mac)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        FileKeyStore store = CreateStore(new KeyStoreConfig { KeyStoreDirectory = directory.Path, KdfparamsN = 1024, Kdf = kdf, Cipher = cipher }, FixedRandom());
+
+        KeyStoreItem keyFile = StoreAndReadBack(store);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(keyFile.Crypto.KDF, Is.EqualTo("scrypt"));
+            Assert.That(keyFile.Crypto.Cipher, Is.EqualTo(cipher.Trim().ToLowerInvariant()));
+            Assert.That(keyFile.Crypto.CipherText, Is.EqualTo(cipherText));
+            Assert.That(keyFile.Crypto.MAC, Is.EqualTo(mac));
+        }
+    }
+
+    [TestCase(nameof(IKeyStoreConfig.Kdf), "pbkdf2")]
+    [TestCase(nameof(IKeyStoreConfig.Cipher), "aes-256-gcm")]
+    [TestCase(nameof(IKeyStoreConfig.Cipher), null)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsDklen), 31)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsDklen), 64)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsSaltLen), 15)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 3)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 0)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 1)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsR), 0)]
+    [TestCase(nameof(IKeyStoreConfig.KdfparamsP), 0)]
+    public void Unsupported_write_settings_throw_before_anything_is_written(string setting, object value)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        KeyStoreConfig config = new() { KeyStoreDirectory = directory.Path, KdfparamsN = 1024 };
+        ICryptoRandom random = FixedRandom();
+        FileKeyStore store = CreateStore(config, random);
+        typeof(KeyStoreConfig).GetProperty(setting)!.SetValue(config, value);
+        PrivateKey key = new(VectorKey);
+
+        InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() => store.StoreKey(key, VectorPassword.Secure()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.ExitCode, Is.EqualTo(ExitCodes.ForbiddenOptionValue));
+            Assert.That(exception.Message, Does.StartWith($"KeyStore.{setting} '"));
+            Assert.That(random.ReceivedCalls(), Is.Empty, "no salt or IV requested");
+            Assert.That(store.HasKey(key.Address), Is.False);
+        }
+    }
+
+    [Test]
+    public void Salt_length_setting_is_used([Values(16, 48)] int saltLength)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        FileKeyStore store = CreateStore(new KeyStoreConfig { KeyStoreDirectory = directory.Path, KdfparamsN = 1024, KdfparamsSaltLen = saltLength });
+
+        KeyStoreItem keyFile = StoreAndReadBack(store);
+
+        Assert.That(Bytes.FromHexString(keyFile.Crypto.KDFParams.Salt), Has.Length.EqualTo(saltLength));
+    }
+
+    private static IEnumerable<TestCaseData> ReadableKeyFiles()
+    {
+        yield return new TestCaseData(Parse(Pbkdf2Vector)).SetArgDisplayNames("definition pbkdf2 vector");
+
+        KeyStoreItem otherCase = Parse(Pbkdf2Vector);
+        otherCase.Crypto.KDF = "PBKDF2";
+        otherCase.Crypto.Cipher = " AES-128-CTR ";
+        yield return new TestCaseData(otherCase).SetArgDisplayNames("names in another case");
+
+        byte[] password = Encoding.UTF8.GetBytes(VectorPassword);
+        byte[] salt = Bytes.FromHexString(VectorSalt);
+        // Longer than the 256 bytes that pbkdf2 key files used to be derived with.
+        yield return new TestCaseData(BuildKeyFile(
+            "pbkdf2", new KdfParams { C = 2, DkLen = 272, Prf = "hmac-sha256", Salt = VectorSalt },
+            Rfc2898DeriveBytes.Pbkdf2(password, salt, 2, HashAlgorithmName.SHA256, 272))).SetArgDisplayNames("pbkdf2 with dklen 272");
+
+        // Below the limits for new key files, which do not apply to reading.
+        yield return new TestCaseData(ScryptKeyFile("scrypt", salt[..8], 64)).SetArgDisplayNames("scrypt with an 8-byte salt and dklen 64");
+        yield return new TestCaseData(ScryptKeyFile("scrypt", salt, 64, definitionMac: true)).SetArgDisplayNames("scrypt with dklen 64 and the definition's MAC");
+        yield return new TestCaseData(ScryptKeyFile("scrypt", salt, 16)).SetArgDisplayNames("scrypt with dklen 16");
+        yield return new TestCaseData(ScryptKeyFile("Scrypt", salt, 32)).SetArgDisplayNames("scrypt named Scrypt");
+
+        KeyStoreItem ScryptKeyFile(string kdf, byte[] kdfSalt, int dkLen, bool definitionMac = false) => BuildKeyFile(
+            kdf, new KdfParams { N = 1024, R = 8, P = 1, DkLen = dkLen, Salt = kdfSalt.ToHexString() },
+            SCrypt.ComputeDerivedKey(password, kdfSalt, 1024, 8, 1, null, dkLen), definitionMac);
+    }
+
+    [TestCaseSource(nameof(ReadableKeyFiles))]
+    public void Key_files_are_read_with_their_own_parameters(KeyStoreItem keyFile)
+    {
+        (PrivateKey key, Result result) = Read(keyFile);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+            Assert.That(key?.KeyBytes, Is.EqualTo(Bytes.FromHexString(VectorKey)));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> UnusableKeyFiles()
+    {
+        yield return Case("pbkdf2 without c", static crypto => crypto.KDFParams.C = null, "Incorrect key: pbkdf2 requires a positive c");
+        yield return Case("pbkdf2 with c 0", static crypto => crypto.KDFParams.C = 0, "Incorrect key: pbkdf2 requires a positive c");
+        const string invalidScrypt = "Incorrect key: scrypt requires a power-of-two n above 1 and positive r and p";
+        yield return Case("scrypt without n, r and p", static crypto => crypto.KDF = "scrypt", invalidScrypt);
+        yield return Case("scrypt with n 3", Scrypt(3, 8, 1), invalidScrypt);
+        yield return Case("scrypt with n 0", Scrypt(0, 8, 1), invalidScrypt);
+        yield return Case("scrypt with n 1", Scrypt(1, 8, 1), invalidScrypt);
+        yield return Case("scrypt with r 0", Scrypt(1024, 0, 1), invalidScrypt);
+        yield return Case("scrypt with p 0", Scrypt(1024, 8, 0), invalidScrypt);
+        yield return Case("dklen 15", static crypto => crypto.KDFParams.DkLen = 15, "Unsupported dklen: 15");
+        yield return Case("dklen 64 with a MAC of neither layout", static crypto => (crypto.KDFParams.DkLen, crypto.MAC) = (64, new string('0', 64)), "Incorrect MAC");
+
+        static TestCaseData Case(string name, Action<Crypto> corrupt, string error)
+        {
+            KeyStoreItem keyFile = Parse(Pbkdf2Vector);
+            corrupt(keyFile.Crypto);
+            return new TestCaseData(keyFile, error).SetArgDisplayNames(name);
+        }
+
+        static Action<Crypto> Scrypt(int n, int r, int p) => crypto =>
+        {
+            crypto.KDF = "scrypt";
+            (crypto.KDFParams.N, crypto.KDFParams.R, crypto.KDFParams.P) = (n, r, p);
+        };
+    }
+
+    [TestCaseSource(nameof(UnusableKeyFiles))]
+    public void Key_files_with_unusable_kdf_parameters_fail_without_throwing(KeyStoreItem keyFile, string error)
+    {
+        (PrivateKey key, Result result) = Read(keyFile);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(result.Error, Is.EqualTo(error));
+            Assert.That(key, Is.Null);
+        }
+    }
+
+    private static FileKeyStore CreateStore(IKeyStoreConfig config, ICryptoRandom random = null) =>
+        new(config, new EthereumJsonSerializer(), new AesEncrypter(config, LimboLogs.Instance), random ?? new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config));
+
+    /// <summary>Returns <see cref="VectorSalt"/> and then <see cref="VectorIv"/>, the order in which a key file is written.</summary>
+    private static ICryptoRandom FixedRandom()
+    {
+        ICryptoRandom random = Substitute.For<ICryptoRandom>();
+        random.GenerateRandomBytes(Arg.Any<int>()).Returns(Bytes.FromHexString(VectorSalt), Bytes.FromHexString(VectorIv));
+        return random;
+    }
+
+    /// <summary>Stores the vector key, checks that it reads back and returns its key file.</summary>
+    private static KeyStoreItem StoreAndReadBack(FileKeyStore store)
+    {
+        PrivateKey key = new(VectorKey);
+        Result result = store.StoreKey(key, VectorPassword.Secure());
+        Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+
+        (PrivateKey restored, Result readResult) = store.GetKey(key.Address, VectorPassword.Secure());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readResult.ResultType, Is.EqualTo(ResultType.Success), readResult.Error);
+            Assert.That(restored?.KeyBytes, Is.EqualTo(key.KeyBytes));
+        }
+
+        return store.GetKeyData(key.Address).KeyData;
+    }
+
+    /// <summary>Reads the vector key from <paramref name="keyFile"/> with write settings that new key files cannot use.</summary>
+    private static (PrivateKey Key, Result Result) Read(KeyStoreItem keyFile)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        FileKeyStore store = CreateStore(new KeyStoreConfig { KeyStoreDirectory = directory.Path, Kdf = "pbkdf2", Cipher = "aes-256-gcm", KdfparamsDklen = 64, KdfparamsSaltLen = 8 });
+        Address address = new PrivateKey(VectorKey).Address;
+        store.StoreKey(address, keyFile);
+        return store.GetKey(address, VectorPassword.Secure());
+    }
+
+    private static KeyStoreItem Parse(string json) => new EthereumJsonSerializer().Deserialize<KeyStoreItem>(json);
+
+    /// <summary>
+    /// Builds a key file for the vector key: AES-128-CTR under derived bytes 0..15, MAC keyed by the last 16 derived bytes,
+    /// or by bytes 16..31 as in the definition when <paramref name="definitionMac"/> is set.
+    /// </summary>
+    private static KeyStoreItem BuildKeyFile(string kdf, KdfParams kdfParams, byte[] derivedKey, bool definitionMac = false)
+    {
+        byte[] cipherText = new AesEncrypter(new KeyStoreConfig(), LimboLogs.Instance).Encrypt(Bytes.FromHexString(VectorKey), derivedKey[..16], Bytes.FromHexString(VectorIv), "aes-128-ctr");
+        byte[] macBody = [.. definitionMac ? derivedKey[16..32] : derivedKey[^16..], .. cipherText];
+        return new KeyStoreItem
+        {
+            Version = 3,
+            Crypto = new Crypto
+            {
+                Cipher = "aes-128-ctr",
+                CipherText = cipherText.ToHexString(),
+                CipherParams = new CipherParams { IV = VectorIv },
+                KDF = kdf,
+                KDFParams = kdfParams,
+                MAC = Keccak.Compute(macBody).BytesToArray().ToHexString()
+            }
+        };
     }
 }

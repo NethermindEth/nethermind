@@ -13,6 +13,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Logging;
@@ -179,6 +180,34 @@ public class PluginLoaderTests
             typeof(NethDevPlugin)
         ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
+    }
+
+    [Test]
+    public void Null_order_sorts_like_no_order()
+    {
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
+            typeof(HivePlugin), typeof(EthashPlugin), typeof(CliquePlugin));
+        loader.Load();
+
+        // The text "null" parses to a null order.
+        loader.OrderPlugins(new PluginConfig { PluginOrder = null });
+
+        Assert.That(loader.PluginTypes, Is.EqualTo(new[] { typeof(CliquePlugin), typeof(EthashPlugin), typeof(HivePlugin) }).AsCollection);
+    }
+
+    [TestCase("Hive", "Clique", "Hive")]
+    [TestCase("Hive", "Clique", "hive")]
+    [TestCase("Absent", "Hive", "ABSENT")] // a plugin that is not loaded
+    public void Plugin_named_twice_in_order_is_a_configuration_error(params string[] pluginOrder)
+    {
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
+            typeof(CliquePlugin), typeof(HivePlugin));
+        loader.Load();
+
+        Assert.That(() => loader.OrderPlugins(new PluginConfig { PluginOrder = pluginOrder }),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Message.Contains("Plugin.PluginOrder").And.Message.Contains($"'{pluginOrder[^1]}'")
+                .And.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
     }
 
     [Test]

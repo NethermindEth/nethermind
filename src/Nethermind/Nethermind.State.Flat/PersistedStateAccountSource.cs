@@ -87,7 +87,7 @@ public sealed class PersistedStateAccountSource(IPersistence persistence, ILogMa
         public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None)
         {
             byte[]? rlp = null;
-            reader.TryLoadStateRlp(path, flags | ReadFlags.HintCacheMiss, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
+            reader.TryLoadStateRlp(path, hash.ValueHash256, flags | ReadFlags.HintCacheMiss, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
             return rlp;
         }
     }

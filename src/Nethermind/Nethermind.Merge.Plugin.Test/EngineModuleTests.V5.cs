@@ -339,15 +339,21 @@ public partial class EngineModuleTests
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
-        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = version == 2
-            ? await rpcModule.engine_getBlobsV2(blobVersionedHashes)
-            : await rpcModule.engine_getBlobsV3(blobVersionedHashes);
+        Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> GetBlobs(byte[][] hashes) =>
+            version == 2 ? rpcModule.engine_getBlobsV2(hashes) : rpcModule.engine_getBlobsV3(hashes);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await GetBlobs(blobVersionedHashes);
+        // The size check runs before the sync check, and the sync check before the answer to an empty request.
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> empty = await GetBlobs([]);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> tooLarge = await GetBlobs(Enumerable.Repeat(blobVersionedHashes[0], 129).ToArray());
 
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result, Is.EqualTo(Result.Success));
             Assert.That(result.Data?.Select(static b => b!.Blob), state.Serves ? Is.EqualTo(wrapper.Blobs) : Is.Null);
+            Assert.That(empty.Result, Is.EqualTo(Result.Success));
+            Assert.That(empty.Data, state.Serves ? Is.Empty : Is.Null, "an empty request");
+            Assert.That(tooLarge.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest), "a request of 129 hashes");
         }
     }
 
