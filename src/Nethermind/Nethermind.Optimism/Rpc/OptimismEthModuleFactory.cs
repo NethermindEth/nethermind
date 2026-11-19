@@ -17,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
@@ -54,6 +55,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
     private readonly HeadBlockSignal _headBlockSignal;
     private readonly IBlockForRpcFactory _blockForRpcFactory;
     private readonly ForwardedNonceTracker _nonceTracker;
+    private readonly ProofWrapperService _proofWrapperService;
 
     public OptimismEthModuleFactory(IJsonRpcConfig rpcConfig,
         IBlockchainBridgeFactory blockchainBridgeFactory,
@@ -78,7 +80,8 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         IOptimismConfig config,
         IJsonSerializer jsonSerializer,
         ITimestamper timestamper,
-        IBlockForRpcFactory blockForRpcFactory
+        IBlockForRpcFactory blockForRpcFactory,
+        ProofWrapperService proofWrapperService
     )
     {
         _blockForRpcFactory = blockForRpcFactory;
@@ -118,6 +121,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
         _sealer = sealer;
         _headBlockSignal = new HeadBlockSignal(blockTree);
         _nonceTracker = new ForwardedNonceTracker(blockFinder, stateReader);
+        _proofWrapperService = proofWrapperService;
     }
 
     public override IOptimismEthRpcModule Create() => new OptimismEthRpcModule(
@@ -145,6 +149,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
             _headBlockSignal,
             _capabilitiesProvider,
             _blockForRpcFactory,
-            _nonceTracker
+            _nonceTracker,
+            _proofWrapperService
         );
 }

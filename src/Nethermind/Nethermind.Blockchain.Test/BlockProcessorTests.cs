@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Validators;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Init.Modules;
@@ -2344,7 +2345,8 @@ public partial class BlockProcessorTests
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>(), transactionProcessor,
+                new InclusionListProofService(Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>())),
             LimboLogs.Instance,
             Substitute.For<IWorldStateManager>(),
             preWarmer);
@@ -4424,7 +4426,8 @@ public partial class BlockProcessorTests
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>(), transactionProcessor,
+                new InclusionListProofService(Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>())),
             LimboLogs.Instance,
             Substitute.For<IWorldStateManager>());
 

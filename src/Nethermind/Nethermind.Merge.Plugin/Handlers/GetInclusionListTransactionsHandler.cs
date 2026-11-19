@@ -24,15 +24,14 @@ namespace Nethermind.Merge.Plugin.Handlers;
 /// itself says where that sender's appendable run starts.
 /// </param>
 /// <param name="inclusionListProofs">
-/// Chooses the held verified proof an EIP-8288 list attaches; without it the list carries no dependency-bearing
-/// transaction and an empty proof.
+/// Chooses the held verified proof an EIP-8288 list attaches.
 /// </param>
 public class GetInclusionListTransactionsHandler(
     ITxPool? txPool,
     IBlockTree blockTree,
     ISpecProvider specProvider,
     IChainHeadInfoProvider chainHeadInfo,
-    InclusionListProofService? inclusionListProofs = null) : IHandler<Hash256?, InclusionListBytes>, IHandler<Hash256?, GetInclusionListV2Result>
+    InclusionListProofService inclusionListProofs) : IHandler<Hash256?, InclusionListBytes>, IHandler<Hash256?, GetInclusionListV2Result>
 {
     private readonly InclusionListBuilder? _inclusionListBuilder =
         txPool is null ? null : new(txPool, blockTree, specProvider, chainHeadInfo.ReadOnlyStateProvider, inclusionListProofs);
