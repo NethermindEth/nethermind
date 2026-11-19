@@ -41,10 +41,12 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_single_trace_javascript_callback_errors_keep_their_message(
         [Values("debug_traceCall", "debug_traceTransaction")] string method,
-        [Values("setup", "step", "fault", "result")] string callback, [Values] bool streamMode)
+        [Values("setup", "step", "fault", "enter", "exit", "result")] string callback, [Values] bool mux)
     {
         using Context context = await Context.Create();
-        byte[] code = Prepare.EvmCode.Op(callback == "fault" ? Instruction.INVALID : Instruction.STOP).Done;
+        byte[] code = callback is "enter" or "exit"
+            ? Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.STOP).Done
+            : Prepare.EvmCode.Op(callback == "fault" ? Instruction.INVALID : Instruction.STOP).Done;
         Transaction transaction = Build.A.Transaction
             .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA)).WithCode(code).WithGasLimit(100_000)
             .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
@@ -52,10 +54,15 @@ public partial class DebugRpcModuleTests
         string tracer = "{fault:function(){" + (callback == "fault" ? "throw Error('kaboom');" : "")
             + "},setup:function(){" + (callback == "setup" ? "throw Error('kaboom');" : "")
             + "},step:function(){" + (callback == "step" ? "throw Error('kaboom');" : "")
+            + "},enter:function(){" + (callback == "enter" ? "throw Error('kaboom');" : "")
+            + "},exit:function(){" + (callback == "exit" ? "throw Error('kaboom');" : "")
             + "},result:function(){" + (callback == "result" ? "throw Error('kaboom');" : "return {};") + "}}";
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
         object[] parameters = method == "debug_traceCall"
-            ? [new { from = TestItem.AddressA.ToString(), data = "0x" + Convert.ToHexString(code), gas = "0x186a0" }, "latest", new { tracer, streamMode }]
-            : [transaction.Hash!, new { tracer, streamMode }];
+            ? [new { from = TestItem.AddressA.ToString(), data = "0x" + Convert.ToHexString(code), gas = "0x186a0" }, "latest", options]
+            : [transaction.Hash!, options];
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
