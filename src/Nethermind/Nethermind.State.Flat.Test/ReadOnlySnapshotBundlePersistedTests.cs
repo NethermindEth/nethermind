@@ -213,7 +213,7 @@ public class ReadOnlySnapshotBundlePersistedTests
                 : bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 
             StrongBox<byte[]?> spanRlp = new();
-            bool found = bundle.TryLoadPersistedRlp(storage ? address : null, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
+            bool found = bundle.TryLoadPersistedRlp(storage ? address : null, path, Keccak.Compute("hash"), ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
 
             using (Assert.EnterMultipleScope())
             {
@@ -244,7 +244,7 @@ public class ReadOnlySnapshotBundlePersistedTests
                 }
                 else
                 {
-                    bool found = bundle.TryLoadPersistedRlp(storage ? address : null, persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
+                    bool found = bundle.TryLoadPersistedRlp(storage ? address : null, persistedPath, expectedHash, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
                     if (!found) throw new InvalidOperationException("Missing persisted RLP");
                 }
             }
@@ -277,7 +277,7 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         bundle.WarmUp(storage ? address : null, (hash, 0), ValueKeccak.Zero, forDelete: false);
 
-        Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, action, nodes)), Is.EqualTo(nodeRlp));
+        Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, hash, action, nodes)), Is.EqualTo(nodeRlp));
     }
 
     // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue

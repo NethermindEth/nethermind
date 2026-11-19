@@ -137,9 +137,13 @@ public interface IDebugRpcModule : IRpcModule
     /// <summary>
     /// Returns the stored invalid blocks, or writes them as JSON to <paramref name="file"/> when it is given.
     /// </summary>
+    /// <remarks>
+    /// Unlike Geth, which resolves a relative path against the node's working directory, a relative path is rejected
+    /// with invalid params. Once the request times out, the write stops before the next block.
+    /// </remarks>
     /// <param name="file">Optional absolute local path (not a UNC or device path) of a new file to write the list to; an existing file is never overwritten.</param>
     /// <returns>The list of invalid blocks, or <c>null</c> when it was written to <paramref name="file"/>.</returns>
-    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null.",
+    [JsonRpcMethod(Description = "Return list of invalid blocks. If an absolute local file path is given, writes the list to that new file and returns null. Unlike Geth, a relative path is rejected instead of being resolved against the node's working directory.",
         ResponseDescription = "Each `block` carries full transaction objects.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null);
 

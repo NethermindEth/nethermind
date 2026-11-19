@@ -564,13 +564,13 @@ namespace Nethermind.Trie
         {
             if (StrictAlignmentFlag.IsActive)
             {
-                byte* source = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash));
-                if (((nuint)source & (sizeof(ulong) - 1)) == 0)
+                if (((nuint)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash)) & (sizeof(ulong) - 1)) == 0)
                     return new(MemoryMarshal.Read<ValueHash256>(hash));
 
                 Hash256 read = new(default(ValueHash256));
                 // Written in place before anything else can read it: the new object is not yet shared.
-                Bytes.ReadMisalignedWords(source, (ulong*)Unsafe.AsPointer(ref Unsafe.AsRef(in read.ValueHash256)));
+                Bytes.ReadMisalignedWords((byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(hash)),
+                    (ulong*)Unsafe.AsPointer(ref Unsafe.AsRef(in read.ValueHash256)));
                 return read;
             }
 

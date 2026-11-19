@@ -1,0 +1,89 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
+using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.BeaconChain.StateTransition;
+
+/// <summary>
+/// The consensus-specs top-level <c>state_transition</c> function over <see cref="BeaconStateFulu"/>.
+/// </summary>
+public static class StateTransition
+{
+    /// <summary>
+    /// Applies <paramref name="signedBlock"/> to <paramref name="state"/>: advances the state to
+    /// the block's slot (running epoch processing at boundaries), verifies the proposer signature,
+    /// runs <c>process_block</c>, and validates the block's claimed state root.
+    /// </summary>
+    /// <remarks>
+    /// The proposer signature is verified against the state <em>after</em> slot processing, as the
+    /// spec's <c>verify_block_signature(state, signed_block)</c> runs on the advanced state. On any
+    /// failure the state is left partially mutated and must be discarded.
+    /// </remarks>
+    /// <param name="spec">Resolves the EIP-7892 blob schedule for the block's epoch.</param>
+    /// <param name="validateResult">Whether to assert the block's state root matches the post-state (skip when producing blocks).</param>
+    /// <param name="verifySignatures">Whether to verify the proposer and operation signatures (skip when replaying already-verified blocks).</param>
+    /// <exception cref="BeaconStateException">The block is invalid.</exception>
+    public static void Apply(
+        BeaconStateFulu state,
+        SignedBeaconBlock signedBlock,
+        EpochCache cache,
+        PubkeyCache pubkeys,
+        INewPayloadNotifier notifier,
+        BeaconChainSpec spec,
+        bool validateResult = true,
+        bool verifySignatures = true)
+        => Apply(state, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified: false);
+
+    /// <remarks>A verified proposer verdict must authenticate this exact block and signature under its fork domain. Registry bounds and operation signatures remain checked.</remarks>
+    internal static void Apply(BeaconStateFulu state, SignedBeaconBlock signedBlock, EpochCache cache, PubkeyCache pubkeys,
+        INewPayloadNotifier notifier, BeaconChainSpec spec, bool validateResult, bool verifySignatures, bool proposerSignatureVerified, bool trackBlockChanges = false)
+    {
+        cache.SigningSpec = spec;
+        BeaconBlock block = signedBlock.Message!;
+        SlotProcessing.ProcessSlots(state, block.Slot, cache);
+        ApplyPrepared(state, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified, trackBlockChanges);
+    }
+
+    internal static void ApplyPrepared(BeaconStateFulu state, SignedBeaconBlock signedBlock, EpochCache cache, PubkeyCache pubkeys,
+        INewPayloadNotifier notifier, BeaconChainSpec spec, bool validateResult, bool verifySignatures, bool proposerSignatureVerified = false, bool trackBlockChanges = false)
+    {
+        BeaconBlock block = signedBlock.Message!;
+        if (state.Slot != block.Slot) throw new BeaconStateException("Prepared state does not match the block slot");
+        cache.SigningSpec = spec;
+
+        if (verifySignatures && state.ReadOnlyValidators.Length > pubkeys.Count)
+            pubkeys.Extend(state.ValidatorBuffer!.Items, pubkeys.Count);
+
+        if (verifySignatures && block.ProposerIndex >= (ulong)state.ReadOnlyValidators.Length)
+            throw new BeaconStateException($"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.ReadOnlyValidators.Length})") { RejectGossip = true };
+
+        if (verifySignatures && !proposerSignatureVerified && !SignatureSets.VerifyProposerSignature(state, signedBlock, pubkeys))
+            throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
+
+        // Pre-Fulu epochs have no blob schedule entry; the Electra limit applies.
+        ulong maxBlobsPerBlock = spec.GetBlobParameters(state.GetCurrentEpoch())?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
+        CachedBeaconStateHasher? tracked = trackBlockChanges && validateResult && cache.Hasher is CachedBeaconStateHasher cached && cached.TryBeginBlock(state)
+            ? cached : null;
+        try
+        {
+            BlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures);
+            if (validateResult)
+            {
+                Hash256 actual = tracked?.HashTreeRootAfterBlock(state) ?? cache.Hasher.HashTreeRoot(state);
+                if (block.StateRoot != actual)
+                    throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
+                if (trackBlockChanges && cache.Hasher is CachedBeaconStateHasher verified)
+                    verified.RecordVerifiedPostState(state, actual);
+            }
+        }
+        finally
+        {
+            tracked?.EndBlock(state);
+        }
+    }
+}
