@@ -1080,9 +1080,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         public AssembleStep Decide(in StateId to, in StateId from, SnapshotTier tier)
         {
             if (from == currentPersistedState)
-                // Any chunk spanning at most CompactSize is persistable; a wider large-compacted is skip-only.
+                // Any chunk spanning at most CompactSize is persistable; a wider large-compacted is skip-only. A base
+                // is one committed state and cannot be split, so it is persistable at any width: a bulk import commits
+                // one on top of the persisted base, and skipping it leaves no candidate ever.
                 // from == PreGenesis makes to - from wrap to to + 1 (the genesis-spanning span), as intended.
-                return to.BlockNumber - from.BlockNumber <= compactSize
+                return (to.BlockNumber - from.BlockNumber <= compactSize || tier is SnapshotTier.InMemoryBase or SnapshotTier.PersistedBase)
                     && (finality.GetFinalizedRoot(to.BlockNumber, ref _unavailableRoots) is not { } root || to.StateRoot == root)
                     ? AssembleStep.WinAndStop : AssembleStep.Skip;
             return Height(from) > Height(currentPersistedState) ? AssembleStep.Traverse : AssembleStep.Skip;
