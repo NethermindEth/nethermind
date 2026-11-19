@@ -95,7 +95,7 @@ await File.WriteAllTextAsync(Path.Combine(output, "identity.json"), identity.ToJ
 var failures = 0;
 foreach (var name in cases)
 {
-    var directory = Path.Combine(output, name);
+    var directory = Path.Combine(output, name.Replace("::", "-", StringComparison.Ordinal));
     Directory.CreateDirectory(directory);
     var container = "eez-quorum-" + Guid.NewGuid().ToString("N");
     var launcher = Path.Combine(directory, "eez-proof-signer");

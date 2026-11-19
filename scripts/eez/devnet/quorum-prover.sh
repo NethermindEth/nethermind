@@ -63,6 +63,7 @@ name="$(/usr/bin/jq -er '.container' "$config")"
 mounts=()
 settings=()
 prover_args=()
+cleanup=(--rm)
 if [[ "$profile" == rollupx ]]; then
     [[ "$l1_genesis" == /* && -f "$l1_genesis" ]] || exit 1
     [[ "$manager" =~ ^0x[0-9a-fA-F]{40}$ && "$registry" =~ ^0x[0-9a-fA-F]{40}$ ]] || exit 1
@@ -76,6 +77,8 @@ if [[ "$profile" == rollupx ]]; then
     settings=(--env "EEZ_ROLLUP_MANAGER_ADDRESS=$manager" --env "EEZ_REGISTRY_ADDRESS=$registry"
               --env "EEZ_INITIAL_BLOCK_HASH=$l2_hash" --env "EEZ_L2_BLOCK_TIME_SECS=$block_time")
     prover_args=(--l1-chain-config=/genesis/genesis.json)
+    # The runner removes this container after collecting its logs, even on startup failure.
+    cleanup=()
 elif [[ "$profile" != rollup0 || -n "$l1_genesis$manager$registry" ]]; then
     echo "unexpected quorum signer profile or arguments" >&2
     exit 1
@@ -84,7 +87,7 @@ fi
     --arg rollup "$rollup" --arg endpoint "$listen" \
     '{implementation:"Nethermind", image:$image, attester:$attester, proofSystem:$system,
       rollupId:$rollup, endpoint:$endpoint}' > "$HERE/participant.json"
-exec /usr/bin/docker run --rm --init --name "$name" \
+exec /usr/bin/docker run "${cleanup[@]}" --init --name "$name" \
     --label "nethermind.eez.quorum=$name" \
     --publish "127.0.0.1:$port:50061" \
     --mount "type=bind,src=$genesis,dst=/out/l2-genesis.json,readonly" \
