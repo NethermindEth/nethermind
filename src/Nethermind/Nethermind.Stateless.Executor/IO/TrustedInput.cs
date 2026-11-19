@@ -311,13 +311,17 @@ public static partial class TrustedInput
     /// <remarks>Also installs the run's hash seed, the block hash, before anything downstream is keyed by a hash.</remarks>
     internal static TrustedPayload Read(ReadOnlySpan<byte> data)
     {
-        if (data.Length < HeaderLength
+        uint total = data.Length >= HeaderLength ? BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..]) : 0;
+        if (total < HeaderLength || total > (uint)data.Length
             || BinaryPrimitives.ReadUInt32LittleEndian(data) != Magic
-            || BinaryPrimitives.ReadUInt32LittleEndian(data[4..]) != Version
-            || BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..]) != (uint)data.Length)
+            || BinaryPrimitives.ReadUInt32LittleEndian(data[4..]) != Version)
         {
             throw new ArgumentException("Not a trusted input", nameof(data));
         }
+
+        // What follows the input proper is hints the guest's reader took: see WordDivision.
+        data = data[..(int)total];
+        ValidateLayout(data);
 
         ulong chainId = BinaryPrimitives.ReadUInt64LittleEndian(data[ChainIdOffset..]);
         ushort schemaId = SchemaIdOf(data);
@@ -351,7 +355,7 @@ public static partial class TrustedInput
         Witness witness = new()
         {
             Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
-            State = new ItemList(ReadItems(data, StateNodesList, 0)),
+            State = ReadStateNodes(data),
             Codes = ReadCodes(data),
             Keys = ArrayPoolList<byte[]>.Empty()
         };
@@ -382,7 +386,8 @@ public static partial class TrustedInput
         TransactionDecodingResult decoded = TxsDecoder.DecodeTxsBorrowingBuffers(encodedTransactions, skipErrors: false);
         if (decoded.Error is not null) throw new InvalidOperationException(decoded.Error);
 
-        Block block = new(header, decoded.Transactions, [], withdrawals);
+        // The encodings are the block's own, so its size is their sum rather than a pass over the decoded transactions.
+        Block block = new(header, decoded.Transactions, [], withdrawals) { EncodedTransactions = encodedTransactions };
         if (encodedBlockAccessList is not null)
         {
             if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
@@ -412,6 +417,44 @@ public static partial class TrustedInput
 
         return data.Slice((int)offset, (int)length);
     }
+
+    // Input-backed arrays overwrite their reserved prefixes. Check disjoint ranges before those writes
+    // so every prehashed code and state node keeps the bytes its digest authenticates.
+    private static void ValidateLayout(ReadOnlySpan<byte> data)
+    {
+        Span<(int Start, int End)> ranges = stackalloc (int, int)[9];
+        int used = 0;
+        ReadOnlySpan<int> sections = [BlockHeaderSection, WithdrawalsSection, BlockAccessListSection, SenderHintsSection, RecoveryHintsSection];
+        foreach (int field in sections)
+        {
+            int length = Section(data, field).Length;
+            if (length == 0) continue;
+            int start = (int)BinaryPrimitives.ReadUInt32LittleEndian(data[field..]);
+            ranges[used++] = (start, start + length);
+        }
+
+        for (int field = TransactionsList; field <= CodesList; field += sizeof(uint))
+        {
+            (int position, int count) = ListStart(data, field);
+            int start = position - ListPrefixLength;
+            int padding = field == CodesList ? CodeInfo.ExecutionPadding : 0;
+            for (int i = 0; i < count; i++)
+            {
+                int length = ItemLength(data, position, padding);
+                position = checked(position + ItemStride(length, padding));
+            }
+
+            if ((uint)position > (uint)data.Length) ThrowItemOutOfBounds();
+            ranges[used++] = (start, position);
+        }
+
+        for (int i = 1; i < used; i++)
+            for (int j = 0; j < i; j++)
+                if (ranges[i].Start < ranges[j].End && ranges[j].Start < ranges[i].End)
+                    throw new ArgumentException("Overlapping trusted input regions", nameof(data));
+    }
+
+    private static unsafe partial IOwnedReadOnlyList<byte[]> ReadStateNodes(ReadOnlySpan<byte> data);
 
     /// <summary>Returns the item list whose offset the header holds at <paramref name="field"/>.</summary>
     /// <param name="padding">The bytes each item is followed by before its own padding to 8.</param>
@@ -555,7 +598,7 @@ public static partial class TrustedInput
         public byte[] this[int index] => codes[index].ToArray();
 
         (ValueHash256 Hash, ReadOnlyMemory<byte> Code) IReadOnlyList<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.this[int index] =>
-            (ValueKeccak.Compute(codes[index].Span), codes[index]);
+            (HashOf(codes[index], index), codes[index]);
 
         public ReadOnlySpan<byte[]> AsSpan()
         {
@@ -571,14 +614,21 @@ public static partial class TrustedInput
 
         IEnumerator<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)> IEnumerable<(ValueHash256 Hash, ReadOnlyMemory<byte> Code)>.GetEnumerator()
         {
-            foreach (ReadOnlyMemory<byte> code in codes)
-                yield return (ValueKeccak.Compute(code.Span), code);
+            for (int i = 0; i < codes.Length; i++)
+                yield return (HashOf(codes[i], i), codes[i]);
         }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 
         public void Dispose() { }
+
+        private static ValueHash256 HashOf(ReadOnlyMemory<byte> code, int index) =>
+            TryTakePrehashedCode(code.Span, index, out ValueHash256 hash) ? hash : ValueKeccak.Compute(code.Span);
     }
+
+    /// <summary>The keccak of the <paramref name="index"/>-th code of the input, when the guest's input reader hashed it.</summary>
+    /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial bool TryTakePrehashedCode(ReadOnlySpan<byte> code, int index, out ValueHash256 hash);
 }
 
 /// <summary>A field of a recovery hint, each held in a column of its own.</summary>

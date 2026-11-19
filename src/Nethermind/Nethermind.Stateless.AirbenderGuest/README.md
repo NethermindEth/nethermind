@@ -46,6 +46,19 @@ exercises an unaligned fused PUSH2 jump target, which must work on RV32:
 make verify INPUT=11962427.ssz
 ```
 
+## Record division hints
+
+Place an unhinted trusted fixture in `bin/` and run:
+
+```bash
+make record-division INPUT=25532382.nti
+```
+
+The target records the quotient and remainder at each division in the guest, then
+replays the block with the same binary. It writes `bin/25532382-divisions.nti`
+after every hint is accepted and the public result matches. The normal trusted
+guest can run the resulting input. Regenerate it when the guest arithmetic changes.
+
 ## Notes
 
 - The image keeps its unwind tables, so an exception is caught by the
