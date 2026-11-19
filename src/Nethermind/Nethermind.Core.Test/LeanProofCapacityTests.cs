@@ -12,7 +12,7 @@ public class LeanProofCapacityTests
     [Test]
     public void Mixed_output_reserves_one_guest_for_all_claims()
     {
-        HashSet<FrameDependency> dependencies = Distinct(Eip8288Constants.MaxProofDependencies, Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1);
+        HashSet<FrameDependency> dependencies = Distinct(Eip8288Constants.MaxProofDependencies, Eip8288Constants.MaxInnerProofsPerStep + 1);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(LeanProofCapacity.CapacityError(dependencies), Is.Null);

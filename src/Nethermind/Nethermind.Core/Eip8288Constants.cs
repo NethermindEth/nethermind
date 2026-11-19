@@ -28,14 +28,14 @@ public static class Eip8288Constants
     /// backend's bound is, whatever block size limit a chain configures.</remarks>
     public const int MaxProofDependencies = Eip7934Constants.DefaultMaxRlpBlockSize / DependencyTripleLength;
 
-    /// <summary>Maximum raw leanSTARK witnesses one step of the pinned recursive guest verifies, discarded or redundant ones
-    /// included.</summary>
-    /// <remarks>The draft EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (16), which also counts recursive inputs; the pinned guest
-    /// bounds those separately by <see cref="MaxRecursiveInputsPerStep"/>. Lists carry any number of leanSTARK dependencies:
-    /// more than this many are folded over several steps.</remarks>
-    public const int MaxLeanStarkWitnessesPerStep = 16;
+    /// <summary>EIP-8288 <c>MAX_INNER_PROOFS_PER_STEP</c> (provisional): the most raw leanSTARK witnesses and recursive proofs
+    /// one step of the pinned recursive guest verifies together, discarded or redundant ones included.</summary>
+    /// <remarks>leanSPHINCS witnesses do not count. Lists carry any number of leanSTARK dependencies: more than this many are
+    /// folded over several steps.</remarks>
+    public const int MaxInnerProofsPerStep = 16;
 
-    /// <summary>Maximum recursive proofs one step of the pinned recursive guest folds.</summary>
+    /// <summary>Maximum recursive proofs one step of the pinned recursive guest folds: the native backend's tree arity, within
+    /// <see cref="MaxInnerProofsPerStep"/>.</summary>
     public const int MaxRecursiveInputsPerStep = 16;
 
     /// <summary>Maximum raw witnesses of either scheme one native proving call takes.</summary>
@@ -71,22 +71,20 @@ public static class Eip8288Constants
     public static long IlProofBytes(int starkProofLength, int proofDepCount) =>
         IlProofOverheadBytes + (long)starkProofLength + (long)proofDepCount * DependencyTripleLength;
 
-    /// <summary>Maximum native aggregation input: its framing, every recursive input's full dependency list and largest proof,
-    /// the raw witnesses and a full discard list.</summary>
+    /// <summary>Maximum native aggregation input: its framing, every inner proof at a recursive input's full dependency list and
+    /// largest proof, the raw signatures and a full discard list.</summary>
     public const int MaxAggregationInputBytes = 3 * sizeof(uint)
-        + MaxRecursiveInputsPerStep * (2 * sizeof(uint) + MaxProofDependencies * DependencyTripleLength + MaxProofBytes)
+        + MaxInnerProofsPerStep * (2 * sizeof(uint) + MaxProofDependencies * DependencyTripleLength + MaxProofBytes)
         + MaxRawWitnessesPerStep * (DependencyTripleLength + sizeof(uint) + LeanSphincsWitnessBytes)
-        + MaxLeanStarkWitnessesPerStep * MaxProofBytes
         + MaxProofDependencies * DependencyTripleLength;
 
     /// <summary>Encoded public key and signature size of the pinned NiceTry/Daisugi Keccak SPHINCS scheme.</summary>
     public const int LeanSphincsWitnessBytes = 32 + 6176;
 
     public const byte LeanSphincsScheme = 0x10;
-    /// <summary>EIP-8288 <c>LEANSTARK_SCHEME</c>, enabled here as a deviation from the EIP.</summary>
-    /// <remarks>The EIP reserves it until <c>get_deps_hash</c> is defined for it. This node enables it with the pinned guest's
-    /// generic leanVM proof profile and the split-domain digest of <see cref="Eip8288Dependencies.ComputeDepsHash"/>, which leaves
-    /// every leanSPHINCS-only list at the spec digest.</remarks>
+    /// <summary>EIP-8288 <c>LEANSTARK_SCHEME</c>.</summary>
+    /// <remarks>Verified under the pinned guest's generic leanVM proof profile: the key is <c>get_vk_hash</c> of the program's
+    /// committed bytecode key and the proof shows <c>get_claim_hash(data_hash)</c>.</remarks>
     public const byte LeanStarkScheme = 0x11;
 
     public const ulong LeanSphincsVerificationGas = 3_000;
@@ -116,5 +114,5 @@ public static class Eip8288Constants
     /// <summary>Fiat-Shamir key of the recursive guest in the pinned Nethermind.Crypto.Lean package.</summary>
     public static ReadOnlySpan<byte> AggregatedVk => _aggregatedVk;
 
-    private static readonly byte[] _aggregatedVk = Convert.FromHexString("e09e5acfcfe87832f337eb42acac98246d160bb915b55c55fbd8118b203cbb81");
+    private static readonly byte[] _aggregatedVk = Convert.FromHexString("7bc19d5358f76c4247e85d470681b5c2354c251b6e59f03854d852a9a4a4d0d6");
 }
