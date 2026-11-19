@@ -43,7 +43,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         public void InitBeaconHeaderSync(BlockHeader blockHeader)
         {
             StopBeaconModeControl();
-            _beaconPivot.EnsurePivot(blockHeader);
+            _beaconPivot.EnsurePivot(blockHeader, allowRewind: true);
         }
 
         public void StopBeaconModeControl() => _isInBeaconModeControl = false;
