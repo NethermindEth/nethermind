@@ -580,7 +580,19 @@ static class BasicOptions
     public static Argument<string[]> CommandArguments { get; } = new("arguments")
     {
         Description = "Arguments for the command, such as the database to rewrite in `rewrite-db receipts`.",
-        Arity = ArgumentArity.ZeroOrMore
+        Arity = ArgumentArity.ZeroOrMore,
+        // An unrecognized option is otherwise taken as an argument, which a command may ignore.
+        Validators =
+        {
+            static result =>
+            {
+                foreach (Token token in result.Tokens)
+                {
+                    if (token.Value.StartsWith('-'))
+                        result.AddError($"Unrecognized option '{token.Value}'.");
+                }
+            }
+        }
     };
 
     /// <summary>Logs the errors of a command line that failed to parse.</summary>
@@ -599,7 +611,7 @@ static class BasicOptions
 
         foreach (ParseError error in parseResult.Errors)
         {
-            if (error.SymbolResult is ArgumentResult result && result.Argument == Command)
+            if (error.SymbolResult is ArgumentResult result && (result.Argument == Command || result.Argument == CommandArguments))
                 messages.Insert(unrecognizedOptions++, error.Message);
             else
                 messages.Add(error.Message);

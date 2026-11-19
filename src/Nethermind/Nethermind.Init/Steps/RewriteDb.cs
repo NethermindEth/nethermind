@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -13,7 +12,7 @@ using Nethermind.Db.Rocks;
 
 namespace Nethermind.Init.Steps;
 
-[StepCommand("rewrite-db", "Rewrite a database with the current RocksDB configuration, e.g. `rewrite-db receipts`.")]
+[StepCommand("rewrite-db", "Rewrite a database with the current RocksDB configuration, e.g. `rewrite-db receipts`. Needs free space for a second copy of it.", TakesArguments = true)]
 [RunnerStepDependencies(typeof(StartMonitoring))]
 public class RewriteDb(
     IEnumerable<StepCommandSelection> commandSelections,
@@ -32,7 +31,9 @@ public class RewriteDb(
     internal static string GetDbName(IEnumerable<StepCommandSelection> commandSelections, IInitConfig initConfig, string command)
     {
         // Resolvable without a command line, so the container can build it even when nothing selected it by name.
-        IReadOnlyList<string> arguments = commandSelections.SingleOrDefault()?.Arguments ?? [];
+        IReadOnlyList<string> arguments = [];
+        foreach (StepCommandSelection selection in commandSelections) arguments = selection.Arguments;
+
         return arguments.Count == 1
             ? arguments[0]
             : throw new InvalidConfigurationException(

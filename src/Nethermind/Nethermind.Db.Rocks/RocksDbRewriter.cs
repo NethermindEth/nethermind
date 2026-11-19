@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -51,34 +50,43 @@ public class RocksDbRewriter(
     /// <param name="dbPath">The database directory under the base DB path, e.g. <c>receipts</c>.</param>
     /// <param name="cancellationToken">Stops the copy, leaving the original database in place.</param>
     /// <exception cref="InvalidConfigurationException">
-    /// There is no RocksDB database at <paramref name="dbPath"/>, or an earlier rewrite was interrupted after the
-    /// old database was moved aside.
+    /// <paramref name="dbPath"/> does not name a RocksDB database this can rewrite safely, or an earlier rewrite was
+    /// interrupted after the old database was moved aside.
     /// </exception>
+    /// <remarks>Needs free space for a second copy of the database, which a failed or cancelled copy deletes.</remarks>
     public async Task Rewrite(string dbPath, CancellationToken cancellationToken)
     {
         string fullPath = GetExistingFullPath(dbPath);
         string rewriteFullPath = fullPath + RewriteSuffix;
         string oldFullPath = fullPath + OldSuffix;
 
-        if (Directory.Exists(oldFullPath))
-            throw new InvalidConfigurationException(
-                $"{oldFullPath} is left over from an interrupted rewrite. Restore or delete it before rewriting {dbPath}.",
-                ExitCodes.ForbiddenOptionValue);
-
-        // The old database was never moved aside, so a leftover rewrite is only a partial copy.
-        if (Directory.Exists(rewriteFullPath)) Directory.Delete(rewriteFullPath, true);
-
         (DbOnTheRocks source, string[] families, List<string>? columns) = OpenExisting(dbPath, fullPath);
-        if (_logger.IsInfo) _logger.Info($"Rewriting {fullPath} with column families {string.Join(", ", families)}");
-
         using (source)
         {
-            using DbOnTheRocks target = Open(dbPath, dbPath + RewriteSuffix, columns);
-            foreach (string family in families)
+            // Only after the source holds its lock, so a concurrent run cannot have its copy deleted. The old
+            // database was never moved aside, so a leftover rewrite is only a partial copy.
+            if (Directory.Exists(rewriteFullPath)) Directory.Delete(rewriteFullPath, true);
+            if (_logger.IsInfo) _logger.Info($"Rewriting {fullPath} with column families {string.Join(", ", families)}");
+
+            try
             {
-                await Copy(source, target, columns is null ? null : family, cancellationToken);
+                using DbOnTheRocks target = Open(dbPath, dbPath + RewriteSuffix, columns);
+                foreach (string family in families)
+                {
+                    await Copy(source, target, columns is null ? null : family, cancellationToken);
+                }
+            }
+            catch
+            {
+                // A copy can be as large as the database, so it is not left behind until the next run.
+                if (Directory.Exists(rewriteFullPath)) Directory.Delete(rewriteFullPath, true);
+                throw;
             }
         }
+
+        // Markers kept beside the RocksDB files, such as the flat layout one, belong to the database too.
+        foreach (string marker in Directory.GetFiles(fullPath, "*.marker"))
+            File.Copy(marker, Path.Join(rewriteFullPath, Path.GetFileName(marker)));
 
         Directory.Move(fullPath, oldFullPath);
         Directory.Move(rewriteFullPath, fullPath);
@@ -90,10 +98,14 @@ public class RocksDbRewriter(
     /// <summary>Forces a compaction of the whole key range of every column family in <paramref name="dbPath"/>.</summary>
     /// <param name="dbPath">The database directory under the base DB path, e.g. <c>receipts</c>.</param>
     /// <param name="cancellationToken">Interrupts the running compaction.</param>
-    /// <exception cref="InvalidConfigurationException">There is no RocksDB database at <paramref name="dbPath"/>.</exception>
+    /// <exception cref="InvalidConfigurationException">
+    /// <paramref name="dbPath"/> does not name a RocksDB database this can compact safely.
+    /// </exception>
+    /// <exception cref="IOException">RocksDB reported a background error, so the compaction may not have completed.</exception>
     /// <remarks>
-    /// The bottommost level is forced too, so every file is rewritten under the current configuration rather than
-    /// only the ones the default compaction would pick.
+    /// The bottommost level is forced too, and blob garbage collection relocates every blob, so every file is
+    /// rewritten under the current configuration rather than only the ones the default compaction would pick.
+    /// Needs free space for up to a copy of the largest column family.
     /// </remarks>
     public async Task Compact(string dbPath, CancellationToken cancellationToken)
     {
@@ -108,7 +120,7 @@ public class RocksDbRewriter(
             {
                 try
                 {
-                    await CompactFamily(db, columns is null ? null : family, family);
+                    await CompactFamily(db, columns is null ? null : family, family, cancellationToken);
                 }
                 catch (RocksDbException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -123,15 +135,20 @@ public class RocksDbRewriter(
     /// so a background compaction running alongside is counted too. Progress is bytes read against
     /// <see cref="EstimateCompactionRead"/>.
     /// </remarks>
-    private async Task CompactFamily(DbOnTheRocks db, string? family, string familyName)
+    private async Task CompactFamily(DbOnTheRocks db, string? family, string familyName, CancellationToken cancellationToken)
     {
         IColumnFamilyHandle? familyHandle = GetFamily(db, family);
+        RelocateBlobs(db, familyHandle);
+
         string prefix = $"Compacting {db.Name} {familyName}";
         List<(int Level, long Size)> levels = ReadLevelSizes(db, familyHandle);
         long estimatedRead = EstimateCompactionRead(levels);
         if (_logger.IsInfo)
-            _logger.Info($"{prefix}: {levels.Count} levels ({string.Join(", ", levels.Select(static l => $"L{l.Level} {Mib(l.Size):N0} MiB"))}), " +
-                $"~{Mib(estimatedRead):N0} MiB to read");
+        {
+            string[] levelSizes = new string[levels.Count];
+            for (int i = 0; i < levels.Count; i++) levelSizes[i] = $"L{levels[i].Level} {Mib(levels[i].Size):N0} MiB";
+            _logger.Info($"{prefix}: {levels.Count} levels ({string.Join(", ", levelSizes)}), ~{Mib(estimatedRead):N0} MiB to read");
+        }
 
         (long startRead, long startWritten) = ReadCompactionBytes(db);
         (long lastRead, long lastWritten) = (startRead, startWritten);
@@ -154,10 +171,37 @@ public class RocksDbRewriter(
         }
 
         await compaction;
+        // An interrupted compaction returns normally, and the C API discards the status of a failed one.
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!db._db.TryGetIntProperty("rocksdb.background-errors", out ulong errors) || errors != 0)
+            throw new IOException($"RocksDB reported background errors while compacting {db.Name} {familyName}, so it may not have completed.");
+
         (long totalRead, long totalWritten) = ReadCompactionBytes(db);
         if (_logger.IsInfo)
             _logger.Info($"Compacted {db.Name} {familyName} in {Stopwatch.GetElapsedTime(start)}: " +
                 $"{Mib(totalRead - startRead):N0} MiB read, {Mib(totalWritten - startWritten):N0} MiB written");
+    }
+
+    /// <summary>Makes the compaction move every value out of the existing blob files.</summary>
+    /// <remarks>
+    /// A compaction otherwise rewrites only the blob references, so values written while blob files were enabled
+    /// stay in them. The options last only while the database is open here; the node opens it with its own.
+    /// </remarks>
+    private static void RelocateBlobs(DbOnTheRocks db, IColumnFamilyHandle? family)
+    {
+        const string numBlobFiles = "rocksdb.num-blob-files";
+        bool known = family is null
+            ? db._db.TryGetIntProperty(numBlobFiles, out ulong blobFiles)
+            : db._db.TryGetIntProperty(numBlobFiles, family, out blobFiles);
+        if (known && blobFiles == 0) return;
+
+        KeyValuePair<string, string>[] options =
+        [
+            new("enable_blob_garbage_collection", "true"),
+            new("blob_garbage_collection_age_cutoff", "1.0"),
+        ];
+        if (family is null) db._db.SetOptions(options);
+        else db._db.SetOptions(family, options);
     }
 
     private static double Mib(long bytes) => bytes / 1024.0 / 1024.0;
@@ -173,9 +217,10 @@ public class RocksDbRewriter(
         string stats = (family is null ? db._db.GetProperty(levelStats) : db._db.GetProperty(levelStats, family)) ?? "";
 
         List<(int Level, long Size)> levels = [];
-        foreach (string row in stats.Split('\n').Skip(2))
+        string[] rows = stats.Split('\n');
+        for (int i = 2; i < rows.Length; i++)
         {
-            string[] columns = row.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string[] columns = rows[i].Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (columns.Length != 3) continue;
 
             long size = (long)(double.Parse(columns[2], CultureInfo.InvariantCulture) * 1.MiB);
@@ -228,13 +273,43 @@ public class RocksDbRewriter(
         return long.Parse(statistics.AsSpan(start, (end < 0 ? statistics.Length : end) - start), CultureInfo.InvariantCulture);
     }
 
+    /// <exception cref="InvalidConfigurationException">
+    /// <paramref name="dbPath"/> does not name a RocksDB database directly under the base DB path that can be opened
+    /// here without losing data or state kept beside it.
+    /// </exception>
     private string GetExistingFullPath(string dbPath)
     {
+        // A path could reach outside the base DB path, and a trailing separator would nest the rewrite in the source.
+        if (dbPath is "" or "." or ".." || dbPath.AsSpan().IndexOfAny(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) >= 0)
+            throw Reject($"'{dbPath}' is not the name of a database directory under {initConfig.BaseDbPath}, e.g. receipts.");
+
+        // Its columns need the merge operators of the running log index to read or compact pending merges.
+        if (string.Equals(dbPath, DbNames.LogIndex, StringComparison.OrdinalIgnoreCase))
+            throw Reject($"{DbNames.LogIndex} cannot be rewritten or compacted.");
+
         string fullPath = DbOnTheRocks.GetFullDbPath(dbPath, initConfig.BaseDbPath);
-        return File.Exists(Path.Join(fullPath, "CURRENT"))
-            ? fullPath
-            : throw new InvalidConfigurationException($"There is no RocksDB database at {fullPath}.", ExitCodes.ForbiddenOptionValue);
+        string oldFullPath = fullPath + OldSuffix;
+        bool exists = File.Exists(Path.Join(fullPath, "CURRENT"));
+        if (Directory.Exists(oldFullPath))
+            throw Reject(exists
+                ? $"{oldFullPath} is left over from an interrupted rewrite that already replaced {fullPath}. Delete it first."
+                : $"{fullPath} is missing after an interrupted rewrite. Move the complete copy {fullPath + RewriteSuffix} to {fullPath}, then delete {oldFullPath}.");
+
+        if (!exists) throw Reject($"There is no RocksDB database at {fullPath}.");
+
+        // A rewrite lands beside the link, on the base DB disk, and leaves the linked data behind.
+        if (new DirectoryInfo(fullPath).LinkTarget is not null)
+            throw Reject($"{fullPath} is a link. Run this on the directory it links to instead.");
+
+        // Opening repairs a corrupt database without recording the repair, and a rewrite drops the record, so the
+        // flat state would never learn that it needs to resync.
+        if (File.Exists(RocksDbInstance.CorruptMarkerPath(fullPath)) || File.Exists(RocksDbInstance.RepairedMarkerPath(fullPath)))
+            throw Reject($"{fullPath} has a pending repair. Start the node to complete it first.");
+
+        return fullPath;
     }
+
+    private static InvalidConfigurationException Reject(string message) => new(message, ExitCodes.ForbiddenOptionValue);
 
     /// <summary>Opens an existing database under the current config, with every column family it holds.</summary>
     /// <returns>
@@ -247,7 +322,15 @@ public class RocksDbRewriter(
         using (DbOptions options = new()) families = [.. RocksDb.ListColumnFamilies(options, fullPath)];
 
         // A database opened without column families keeps everything in the default family under the table config.
-        List<string>? columns = families.Length == 1 ? null : [.. families.Where(static f => f != ColumnFamilies.DefaultName)];
+        List<string>? columns = null;
+        if (families.Length != 1)
+        {
+            columns = [];
+            foreach (string family in families)
+            {
+                if (family != ColumnFamilies.DefaultName) columns.Add(family);
+            }
+        }
 
         DbOnTheRocks db = Open(dbPath, dbPath, columns);
         if (columns is null || IsEmpty(db, ColumnFamilies.DefaultName)) return (db, families, columns);
@@ -264,8 +347,15 @@ public class RocksDbRewriter(
     {
         DbSettings settings = new(char.ToUpperInvariant(dbName[0]) + dbName[1..], dbPath);
         IRocksDbConfig tableConfig = rocksDbConfigFactory.GetForDatabase(settings.DbName, null);
-        using RocksDbInstance instance = _dbFactory.Open(settings, tableConfig,
-            columns?.Select(column => (column, rocksDbConfigFactory.GetForDatabase(settings.DbName, column))).ToArray());
+        (string, IRocksDbConfig)[]? columnConfigs = null;
+        if (columns is not null)
+        {
+            columnConfigs = new (string, IRocksDbConfig)[columns.Count];
+            for (int i = 0; i < columns.Count; i++)
+                columnConfigs[i] = (columns[i], rocksDbConfigFactory.GetForDatabase(settings.DbName, columns[i]));
+        }
+
+        using RocksDbInstance instance = _dbFactory.Open(settings, tableConfig, columnConfigs);
         return new DbOnTheRocks(instance, null, settings.DbName, tableConfig, logManager);
     }
 
@@ -351,8 +441,16 @@ public class RocksDbRewriter(
         {
             // Not handed to a writer, so still the reader's to dispose.
             batch?.Dispose();
-            batches.Writer.Complete();
-            await writers;
+            batches.Writer.TryComplete();
+            try
+            {
+                await writers;
+            }
+            finally
+            {
+                // Left over when the writers stopped early on cancellation or a failure.
+                while (batches.Reader.TryRead(out WriteBatch? pending)) pending.Dispose();
+            }
         }
 
         // DbOnTheRocks.Flush logs a failure instead of throwing, which would swap in a copy missing its memtables.

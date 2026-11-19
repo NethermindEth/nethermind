@@ -11,7 +11,7 @@ using Nethermind.Db.Rocks;
 
 namespace Nethermind.Init.Steps;
 
-[StepCommand("compact-db", "Force a compaction of every range of a database with the current RocksDB configuration, e.g. `compact-db receipts`.")]
+[StepCommand("compact-db", "Force a compaction of every range of a database with the current RocksDB configuration, e.g. `compact-db receipts`. Needs free space for up to a copy of its largest column.", TakesArguments = true)]
 [RunnerStepDependencies(typeof(StartMonitoring))]
 public class CompactDb(
     IEnumerable<StepCommandSelection> commandSelections,

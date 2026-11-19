@@ -440,6 +440,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        public async Task Arguments_to_a_command_that_takes_none_are_rejected()
+        {
+            await using IContainer container = CreateNethermindEnvironment(target: null, CommandStep.CommandName, _targetGraph, ["extra"]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None),
+                Throws.TypeOf<InvalidConfigurationException>()
+                    .With.Message.Contains("extra")
+                    .And.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.UnrecognizedOption));
+        }
+
+        [Test]
         public async Task Unregistered_target_names_the_registered_steps()
         {
             await using IContainer container = CreateNethermindEnvironment(typeof(StepA), command: null, [typeof(StepB), typeof(StepCStandard)]);
@@ -513,7 +524,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         private static IContainer CreateNethermindEnvironment(params IEnumerable<StepInfo> stepInfos) =>
             CreateNethermindEnvironment(target: null, command: null, stepInfos);
 
-        private static IContainer CreateNethermindEnvironment(Type? target, string? command, IEnumerable<StepInfo> stepInfos)
+        private static IContainer CreateNethermindEnvironment(Type? target, string? command, IEnumerable<StepInfo> stepInfos, string[]? arguments = null)
         {
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
             consensusPlugin.ApiType.ReturnsForAnyArgs(typeof(NethermindApi));
@@ -523,7 +534,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 .Bind<INethermindApi, NethermindApi>();
 
             if (target is not null) builder.SelectStepTarget(target);
-            if (command is not null) builder.AddSingleton(new StepCommandSelection(command, []));
+            if (command is not null) builder.AddSingleton(new StepCommandSelection(command, arguments ?? []));
 
             return builder.Build();
         }

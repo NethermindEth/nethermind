@@ -21,4 +21,7 @@ public sealed class StepCommandAttribute(string name, string description) : Attr
 
     /// <summary>One line describing the command, shown when an unknown command is requested.</summary>
     public string Description { get; } = description;
+
+    /// <summary>Whether the command reads the arguments that follow its name; a command that does not rejects any.</summary>
+    public bool TakesArguments { get; set; }
 }
