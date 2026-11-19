@@ -933,7 +933,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase("""{"gasPrice":"0x1","maxFeePerGas":"0x2"}""", RpcTransactionErrors.GasPriceInEip1559)]
     [TestCase("""{"maxFeePerGas":"0x1","maxPriorityFeePerGas":"0x2"}""", "maxFeePerGas (1) < maxPriorityFeePerGas (2)")]
-    [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", RpcTransactionErrors.MissingToInBlobTx)]
+    [TestCase("""{"blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"],"maxFeePerBlobGas":"0x1"}""", Nethermind.Core.Messages.TxErrorMessages.TxMissingTo)]
     [TestCase("""{"authorizationList":[]}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
     [TestCase("""{"authorizationList":[],"input":"0x00"}""", Nethermind.Core.Messages.TxErrorMessages.NotAllowedCreateTransaction)]
     public async Task Debug_traceCall_contract_creation_preserves_validation(string fields, string expectedError)
@@ -1591,6 +1591,10 @@ public partial class DebugRpcModuleTests
             ("priority_fee_without_fee_cap", Cancun.Instance, new() { ["maxPriorityFeePerGas"] = "0x3" },
                 $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 3, maxFeePerGas: 0"),
             ("zero_priority_fee_without_fee_cap", Cancun.Instance, new() { ["maxPriorityFeePerGas"] = "0x0" }, null),
+            ("blob_recipient_before_empty_hashes", Cancun.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = Array.Empty<string>() }, TxErrorMessages.TxMissingTo),
+            ("blob_empty_hashes_at_cancun", Cancun.Instance, new() { ["blobVersionedHashes"] = Array.Empty<string>() }, "tracing failed: blob transaction missing blob hashes"),
+            ("fee_order_before_empty_hashes", Cancun.Instance, new() { ["blobVersionedHashes"] = Array.Empty<string>(), ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
+                $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 2, maxFeePerGas: 1"),
             ("authorization_fork_before_empty_list", Cancun.Instance, new() { ["authorizationList"] = Array.Empty<object>() }, Unsupported("setcode")),
             ("blob_recipient_before_london", Berlin.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = blobHashes, ["maxFeePerGas"] = "0x1" }, TxErrorMessages.TxMissingTo),
             ("authorization_recipient_before_london", Berlin.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1" }, TxErrorMessages.NotAllowedCreateTransaction),
