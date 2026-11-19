@@ -104,6 +104,19 @@ public class Eip8288BlockProductionTests
         }
     }
 
+    [Test]
+    public void Production_fails_when_the_inner_processor_never_reports_executed_transactions()
+    {
+        BlockToProduce block = new(Build.A.BlockHeader.TestObject);
+        IBlockProcessor inner = Substitute.For<IBlockProcessor>();
+        inner.ProcessOne(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, Eip8288Prototype.Instance, default)
+            .Returns((block, []));
+        ProductionProofBlockProcessor processor = new(inner, Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(), new CountingVerifier());
+
+        Assert.That(() => processor.ProcessOne(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, Eip8288Prototype.Instance),
+            Throws.InvalidOperationException);
+    }
+
     // EIP-7934 counts the body's stark_proof, which production attaches only after packing: a body that will carry a proof
     // keeps room for the largest admissible one, so packing to the transaction byte budget still yields a block within the cap.
     [Test]

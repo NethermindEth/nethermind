@@ -18,7 +18,7 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <remarks>
 /// The proof is prepared on <see cref="IBlockProcessor.TransactionsExecuted"/>, after the other subscribers and before the
 /// block is finalized, so the header hash covers the commitment and a proof that is not ready fails the pass before its
-/// roots are computed.
+/// roots are computed. An inner processor that never raises the event fails the pass rather than return a block without a proof.
 /// </remarks>
 internal sealed class ProductionProofBlockProcessor(
     IBlockProcessor inner,
@@ -30,8 +30,6 @@ internal sealed class ProductionProofBlockProcessor(
         ?? new(leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier)));
     private (ValueHash256 Dependencies, ValueHash256 VerificationKey)? _productionProofKey;
     private byte[]? _productionProof;
-    private IReleaseSpec? _spec;
-    private CancellationToken _token;
 
     public event Action<Block>? TransactionsExecuted
     {
@@ -57,23 +55,30 @@ internal sealed class ProductionProofBlockProcessor(
             };
         }
 
-        (_spec, _token) = (spec, token);
-        inner.TransactionsExecuted += PrepareProductionProof;
+        bool prepared = false;
+        Action<Block> prepare = block =>
+        {
+            PrepareProductionProof(block, spec, token);
+            prepared = true;
+        };
+        (Block Block, TxReceipt[] Receipts) result;
+        inner.TransactionsExecuted += prepare;
         try
         {
-            return inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
+            result = inner.ProcessOne(suggestedBlock, options, blockTracer, spec, token);
         }
         finally
         {
-            inner.TransactionsExecuted -= PrepareProductionProof;
-            (_spec, _token) = (null, default);
+            inner.TransactionsExecuted -= prepare;
         }
+
+        return prepared
+            ? result
+            : throw new InvalidOperationException($"The block processor did not raise {nameof(IBlockProcessor.TransactionsExecuted)}, so no EIP-8288 proof was attached.");
     }
 
-    private void PrepareProductionProof(Block block)
+    private void PrepareProductionProof(Block block, IReleaseSpec spec, CancellationToken token)
     {
-        IReleaseSpec spec = _spec!;
-        CancellationToken token = _token;
         token.ThrowIfCancellationRequested();
         bool latest = _productionProofCache.ObserveProduction(block.Timestamp, block.Number);
         List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
