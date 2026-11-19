@@ -569,7 +569,7 @@ public class TraceStoreRpcModuleTests
                 using JsonRpcResponse response = test.Module.trace_filter(new TraceFilterForRpc { FromBlock = new BlockParameter(1), ToBlock = BlockParameter.Latest });
                 await Serialize(response);
             });
-            Assert.That(serializer.DeserializeCount, Is.InRange(1, windowSize - 1));
+            Assert.That(serializer.DeserializeCount, Is.InRange(1, parallelization));
         }
         finally
         {
