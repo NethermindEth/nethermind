@@ -1142,12 +1142,26 @@ public partial class DebugRpcModuleTests
     public async Task Debug_malformed_timeout_is_execution_input_error(
         [Values("debug_traceCall", "debug_traceTransactionInBlockByHash", "debug_traceBadBlock", "debug_traceTransactionByBlockhashAndIndex",
             "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionInBlockByIndex")] string method,
-        [Values(null, "noopTracer", "callTracer")] string? tracer,
+        [Values(null, "noopTracer", "callTracer", "muxTracer")] string? tracer,
         [Values(null, false, true)] bool? streamMode)
     {
-        string response = await SendRouteTraceRequest(method, new { tracer, timeout = "bad", streamMode });
+        // A JavaScript mux child reports the duration error through the JavaScript failure path
+        Dictionary<string, object>? tracerConfig = tracer == "muxTracer"
+            ? new() { ["{step:function(){},fault:function(){},result:function(){return {};}}"] = new { } }
+            : null;
+        string response = await SendRouteTraceRequest(method, new { tracer, tracerConfig, timeout = "bad", streamMode });
         const string expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}""";
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBadBlock_empty_block_with_malformed_timeout_returns_empty_result([Values(null, false, true)] bool? streamMode)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock();
+        context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBadBlock", block.Hash!, new { timeout = "bad", streamMode });
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":[],"id":67}""")).Using(JToken.EqualityComparer), response);
     }
 
     private static async Task<string> SendRouteTraceRequest(string method, object options)
@@ -1348,17 +1362,19 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock", "debug_traceBadBlock")] string method,
         [Values("0s", "-1s", "121s", "5s")] string timeout,
         [Values("error", "null", "primitive", "timeout-message")] string failure, [Values] bool mux)
     {
         using Context context = await Context.Create();
         DeadlineExecution clock = new();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        if (method == "debug_traceBadBlock")
+            context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
         object selector = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
             _ => Rlp.Encode(block).ToHexString(true)
         };
         string thrown = failure switch { "null" => "null", "primitive" => "42", "timeout-message" => "Error('execution timeout')", _ => "Error('setup-before-timeout')" };
@@ -1394,7 +1410,7 @@ public partial class DebugRpcModuleTests
                 Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
                 if (failure != "null")
                     Assert.That((string?)traces[i]["error"], Does.Contain(failure switch { "primitive" => "42", "timeout-message" => "execution timeout", _ => "setup-before-timeout" }), response);
-                if (method == "debug_traceBlock") Assert.That(traces[i]["result"], Is.Null, response);
+                if (method is "debug_traceBlock" or "debug_traceBadBlock") Assert.That(traces[i]["result"], Is.Null, response);
                 else Assert.That(traces[i]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
             }
         }

@@ -916,7 +916,8 @@ public class DebugRpcModule(
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
-        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException or TraceDurationFormatException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
