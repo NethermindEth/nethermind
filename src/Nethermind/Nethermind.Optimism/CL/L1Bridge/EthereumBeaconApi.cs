@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 

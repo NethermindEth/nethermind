@@ -18,7 +18,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;

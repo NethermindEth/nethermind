@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;

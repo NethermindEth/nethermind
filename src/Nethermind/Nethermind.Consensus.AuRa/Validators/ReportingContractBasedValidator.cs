@@ -11,7 +11,6 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
