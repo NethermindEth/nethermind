@@ -29,7 +29,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private const int IdlePassDelayMs = 100;
     // A block is expected within the first third of its slot; past that, bet on the next one.
     private const ulong ArrivalGraceSlotFraction = 3;
-    private const ulong SessionGasBudgetBlocks = 2;
+    private const ulong PassGasBudgetBlocks = 2;
+    private const ulong SessionGasBudgetBlocks = 4;
 
     private readonly Lazy<ITxSource> _txSource;
     private readonly IBlockTree _blockTree;
@@ -152,9 +153,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
             Dictionary<AddressAsKey, int> warmedPerSender = [];
             Dictionary<AddressAsKey, SenderSelection> selectedBySender = [];
-            ulong sessionGasRemaining = next.Header.GasLimit <= ulong.MaxValue / SessionGasBudgetBlocks
-                ? next.Header.GasLimit * SessionGasBudgetBlocks
-                : ulong.MaxValue;
+            ulong sessionGasRemaining = BlocksOfGas(next.Header.GasLimit, SessionGasBudgetBlocks);
 
             // Not linked or disposed: it only carries this session's cancellation, and holds no registration or timer.
             CancellationTokenSource session = new();
@@ -239,11 +238,20 @@ public sealed class MempoolStatePrewarmer : IDisposable
         Dictionary<AddressAsKey, SenderSelection> selectedBySender, ref ulong sessionGasRemaining, CancellationToken token)
     {
         NextBlockContext next = PrepareNextBlockContext(parent);
-        Transaction[]? delta = sessionGasRemaining == 0
+        Transaction[]? delta = sessionGasRemaining < MinimumTxGas(next.Spec)
             ? []
             : SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, ref sessionGasRemaining,
-                selectedBySender, token, next.Header.GasLimit);
+                selectedBySender, token, BlocksOfGas(next.Header.GasLimit, PassGasBudgetBlocks));
         return delta is null ? null : (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
+    }
+
+    private static ulong BlocksOfGas(ulong blockGasLimit, ulong blocks) =>
+        blockGasLimit <= ulong.MaxValue / blocks ? blockGasLimit * blocks : ulong.MaxValue;
+
+    private static ulong MinimumTxGas(IReleaseSpec spec)
+    {
+        ulong minimum = spec.IsEip2780Enabled ? GasCostOf.TransactionEip2780 : GasCostOf.Transaction;
+        return spec.IsEip8141Enabled ? Math.Min(minimum, (ulong)Eip8141Constants.IntrinsicGasCost) : minimum;
     }
 
     /// <summary>

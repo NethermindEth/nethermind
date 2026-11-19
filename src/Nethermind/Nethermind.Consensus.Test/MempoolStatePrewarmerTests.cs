@@ -142,7 +142,7 @@ public class MempoolStatePrewarmerTests
     }
 
     [Test]
-    public async Task NextDelta_HoldsNoMoreGasThanThePredictedBlock()
+    public async Task NextDelta_HoldsNoMoreGasThanTwoPredictedBlocks()
     {
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
         Transaction[] transactions = TestItem.Addresses[..8]
@@ -156,7 +156,7 @@ public class MempoolStatePrewarmerTests
         blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
         Transaction[][] deltas = await preWarmer.Deltas.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
-        Assert.That(deltas[0], Is.EqualTo(transactions[..3]));
+        Assert.That(deltas[0], Is.EqualTo(transactions[..6]));
     }
 
     [Test]
@@ -188,10 +188,12 @@ public class MempoolStatePrewarmerTests
     [Test]
     public async Task NextDelta_StopsNewWorkAtTheSessionGasBudget()
     {
-        const ulong blockGasLimit = 30_000_000;
+        const ulong blockGasLimit = 30_005_000;
+        const ulong txGasLimit = 10_000_000;
+        const int newTxsInBudget = 12;
         BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(blockGasLimit).TestObject;
         Transaction[] arrivals = TestItem.Addresses[..20]
-            .Select(static sender => Build.A.Transaction.WithSenderAddress(sender).WithGasLimit(5_000_000).TestObject)
+            .Select(static sender => Build.A.Transaction.WithSenderAddress(sender).WithGasLimit(txGasLimit).TestObject)
             .ToArray();
         RepeatingDeltaPreWarmer preWarmer = new(passes: arrivals.Length);
         using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
@@ -211,9 +213,12 @@ public class MempoolStatePrewarmerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deltas[0], Is.EqualTo(arrivals[..1]));
-            Assert.That(executedGas, Is.EqualTo(2 * blockGasLimit));
+            Assert.That(executedGas, Is.EqualTo(newTxsInBudget * txGasLimit));
+            Assert.That(executedGas, Is.LessThanOrEqualTo(4 * blockGasLimit));
             Assert.That(deltas[^1], Is.Empty);
         }
+
+        txSource.Received(newTxsInBudget).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
     }
 
     [Test]
