@@ -354,12 +354,36 @@ namespace Nethermind.Synchronization.Blocks
 
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
-            BlocksRequestContentType? requestContentType = null;
-
             ArrayPoolList<BlockHeader> receiptsToDownload = [with(headers.Count)];
             ArrayPoolList<int> expectedReceiptCounts = [with(headers.Count)];
             ArrayPoolList<BlockHeader> bodiesToDownload = [with(headers.Count)];
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = [with(headers.Count)];
+            try
+            {
+                return await FillRequest(headers, shouldProcess, shouldDownloadReceipt, receiptsToDownload, expectedReceiptCounts, bodiesToDownload, blockAccessListsToDownload, cancellation);
+            }
+            catch
+            {
+                // The lists go to the request only on success, and the empty request disposes them itself.
+                bodiesToDownload.Dispose();
+                blockAccessListsToDownload.Dispose();
+                receiptsToDownload.Dispose();
+                expectedReceiptCounts.Dispose();
+                throw;
+            }
+        }
+
+        private async Task<BlocksRequest?> FillRequest(
+            IOwnedReadOnlyList<BlockHeader> headers,
+            bool shouldProcess,
+            bool shouldDownloadReceipt,
+            ArrayPoolList<BlockHeader> receiptsToDownload,
+            ArrayPoolList<int> expectedReceiptCounts,
+            ArrayPoolList<BlockHeader> bodiesToDownload,
+            ArrayPoolList<BlockHeader> blockAccessListsToDownload,
+            CancellationToken cancellation)
+        {
+            BlocksRequestContentType? requestContentType = null;
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))

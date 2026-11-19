@@ -904,6 +904,10 @@ public class DebugRpcModule(
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
+        catch (JavaScriptTraceFailure exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
+        }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBadBlock)} request {blockHash}, result: {blockTrace}");
 
@@ -1242,10 +1246,10 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
     {
-        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
+        IEnumerable<Block> blocks = debugBridge.GetBadBlocks();
         if (file is null)
         {
-            return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+            return ResultWrapper<IEnumerable<BadBlock>>.Success(blocks.Select(ToBadBlock));
         }
 
         // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
@@ -1265,10 +1269,18 @@ public class DebugRpcModule(
         // Written next to the target and moved into place, so the target never holds a partial file and a failed
         // write only removes the file this call created.
         string temporaryFile = $"{file}.{Guid.NewGuid():N}.tmp";
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
+        CancellationToken token = timeout.Token;
         try
         {
             using FileStream stream = new(temporaryFile, FileMode.CreateNew, FileAccess.Write);
-            EthereumJsonSerializer.SerializeToStream(stream, badBlocks);
+            // The synchronous serializer takes no token, so the timeout is checked before each block, the unit of work.
+            EthereumJsonSerializer.SerializeToStream(stream, ToBadBlocksUntilCancelled(blocks, token));
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            DeleteTemporaryFile(temporaryFile);
+            throw;
         }
         catch (Exception e)
         {
@@ -1288,6 +1300,17 @@ public class DebugRpcModule(
         }
 
         return ResultWrapper<IEnumerable<BadBlock>>.Success(null);
+
+        BadBlock ToBadBlock(Block block) => new(block, true, specProvider, _blockDecoder, blockForRpcFactory);
+
+        IEnumerable<BadBlock> ToBadBlocksUntilCancelled(IEnumerable<Block> source, CancellationToken cancellationToken)
+        {
+            foreach (Block block in source)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return ToBadBlock(block);
+            }
+        }
 
         void DeleteTemporaryFile(string path)
         {

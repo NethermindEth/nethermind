@@ -913,6 +913,64 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
+    [TestCase(new byte[] { 0x01 })]
+    [TestCase(new byte[] { ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes, 0x83, 1, 2, 3 })]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void ReceiptsIterator_releases_a_malformed_stored_value(byte[] stored)
+    {
+        (PersistentReceiptStorage storage, IndexReadDb blocks) = CreateStorageWithTrackedBlocks();
+        (Block block, _) = PrepareBlock();
+        blocks.Set(StoredReceiptsKey(block), stored);
+
+        Assert.Catch<RlpReaderException>(() => storage.TryGetReceiptsIterator(block.Number, block.Hash!, out _));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.SpanReads, Is.EqualTo(1));
+            Assert.That(blocks.Releases, Is.EqualTo(1));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ReceiptsIterator_keeps_a_well_formed_stored_value_until_disposed()
+    {
+        (PersistentReceiptStorage storage, IndexReadDb blocks) = CreateStorageWithTrackedBlocks();
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        storage.Insert(block, receipts);
+        storage.ClearCache();
+
+        Assert.That(storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
+                Assert.That(receipt.GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
+                Assert.That(blocks.SpanReads, Is.EqualTo(1));
+                Assert.That(blocks.Releases, Is.Zero);
+            }
+        }
+        finally
+        {
+            iterator.Dispose();
+        }
+
+        Assert.That(blocks.Releases, Is.EqualTo(1));
+    }
+
+    private (PersistentReceiptStorage Storage, IndexReadDb Blocks) CreateStorageWithTrackedBlocks()
+    {
+        IndexReadDb blocks = new();
+        IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call => call.Arg<ReceiptsColumns>() == ReceiptsColumns.Blocks
+            ? blocks
+            : _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>()));
+        columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
+        PersistentReceiptStorage storage = new(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
+            _receiptConfig, _decoder, logManager: _logManager)
+        { MigratedBlockNumber = 0 };
+        return (storage, blocks);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_returns_empty_on_empty_span() =>
         Assert.That(_storage.Get(Keccak.Zero), Is.EqualTo(Array.Empty<TxReceipt>()));
