@@ -18,11 +18,7 @@ public class ProcessExitSourceTests
 
         Assert.That(() => exitSource.Exit(7), Throws.InstanceOf<AggregateException>());
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exitSource.ExitCode, Is.EqualTo(7));
-            Assert.That(exitSource.ExitTask.IsCompletedSuccessfully, Is.True);
-        }
+        AssertExited(exitSource, 7);
     }
 
     [Test]
@@ -33,11 +29,7 @@ public class ProcessExitSourceTests
 
         cancellation.Cancel();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exitSource.ExitCode, Is.EqualTo(ExitCodes.SigInt));
-            Assert.That(exitSource.ExitTask.IsCompletedSuccessfully, Is.True);
-        }
+        AssertExited(exitSource, ExitCodes.SigInt);
     }
 
     [Test]
@@ -50,11 +42,7 @@ public class ProcessExitSourceTests
         exitCode = ExitCodes.SigTerm;
         cancellation.Cancel();
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(exitSource.ExitCode, Is.EqualTo(ExitCodes.SigTerm));
-            Assert.That(exitSource.ExitTask.IsCompletedSuccessfully, Is.True);
-        }
+        AssertExited(exitSource, ExitCodes.SigTerm);
     }
 
     [Test]
@@ -104,6 +92,15 @@ public class ProcessExitSourceTests
         finally
         {
             sourceField.SetValue(exitSource, null);
+        }
+    }
+
+    private static void AssertExited(ProcessExitSource exitSource, int expectedExitCode)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitSource.ExitCode, Is.EqualTo(expectedExitCode));
+            Assert.That(exitSource.ExitTask.IsCompletedSuccessfully, Is.True);
         }
     }
 }
