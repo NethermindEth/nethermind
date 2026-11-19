@@ -889,7 +889,7 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
-    public async Task Rejects_more_bodies_than_requested_without_decoding_them()
+    public async Task Rejects_more_bodies_than_requested_without_decoding_them([Values] bool lastEntryEmpty)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();
@@ -905,15 +905,22 @@ public partial class BlockDownloaderTests
         ctx.ConfigureBestPeer(peerInfo);
 
         BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
-        int bodyCount = blockRequest.BodiesRequests.Count + 1;
+        int present = lastEntryEmpty ? blockRequest.BodiesRequests.Count : blockRequest.BodiesRequests.Count + 1;
         byte[] body = ThrowingHeaderDecoder.BodyWithUncle();
-        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(body.Length * bodyCount);
-        Range[] ranges = new Range[bodyCount];
-        for (int i = 0; i < bodyCount; i++)
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(body.Length * (blockRequest.BodiesRequests.Count + 1));
+        Range[] ranges = new Range[blockRequest.BodiesRequests.Count + 1];
+        for (int i = 0; i < present; i++)
         {
             body.CopyTo(memory.Memory[(i * body.Length)..]);
             ranges[i] = new Range(i * body.Length, (i + 1) * body.Length);
         }
+
+        if (lastEntryEmpty)
+        {
+            memory.Memory.Span[present * body.Length] = Rlp.EmptyListByte;
+            ranges[present] = new Range(present * body.Length, present * body.Length + 1);
+        }
+
         blockRequest.OwnedBodies = new OwnedBlockBodies(memory, ranges, ThrowingHeaderDecoder.BodyDecoder);
 
         SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
