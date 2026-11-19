@@ -16,6 +16,11 @@
     <type fullname="Nethermind.Core.OpenVmFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
+    <!-- What only the RV32 line has: aligned word accesses, and the bigint extension's 256-bit ADD, SUB, shifts and
+         comparisons. -->
+    <type fullname="Nethermind.Core.OpenVm32Flag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
   </assembly>
   <assembly fullname="Nethermind.Evm">
     <!-- mul.S multiplies on the bigint extension. -->

@@ -14,7 +14,9 @@ namespace Nethermind.Evm;
 /// <remarks>
 /// bflat lists <c>airbender_u256_op</c> in the JIT's <c>JitZkDelegationPInvokes</c>, so each call below is the single
 /// CSR access that runs the delegation on the operands in x10-x12, which changes only a0 and a2. libairbender
-/// exports the same entry point for a JIT without that knob. Only code behind <see cref="IsAvailable"/> reaches this.
+/// exports the same entry point for a JIT without that knob. Only code behind <see cref="IsAvailable"/> reaches
+/// <see cref="Initialize"/>, <see cref="Add"/>, <see cref="SubtractFrom"/>, the shifts and
+/// <see cref="IsBelowConsuming"/>; only code behind <see cref="AirbenderFlag"/> reaches the other members.
 /// Every operand is a 256-bit integer as eight 32-bit words, least significant first, 32-byte aligned and in RAM;
 /// the two operands must not alias.
 /// <para>
@@ -39,16 +41,12 @@ internal static unsafe class AirbenderArithmetic
     private static ulong* s_shift;
 
     /// <summary>Whether the guest's zkVM runs the arithmetic below: Airbender, or OpenVM's RV32 line.</summary>
-    internal static bool IsAvailable => AirbenderFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32;
-
-    // Where IsAvailable holds, not Airbender is OpenVM RV32. Tested by the flag, which ILC folds before it links,
-    // so the OpenVM guests reference no Airbender symbol; it does not fold the pointer size.
-    private static bool OnOpenVm => !AirbenderFlag.IsActive;
+    internal static bool IsAvailable => AirbenderFlag.IsActive || OpenVm32Flag.IsActive;
 
     /// <summary>Prepares the constants of the shifts and of <see cref="IsZero"/>; every handler table that reaches them calls this first.</summary>
     public static void Initialize()
     {
-        if (OnOpenVm)
+        if (OpenVm32Flag.IsActive)
         {
             if (s_shift is null)
             {
@@ -93,7 +91,7 @@ internal static unsafe class AirbenderArithmetic
     public static void Add(void* left, void* right)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0 && left != right);
-        if (OnOpenVm)
+        if (OpenVm32Flag.IsActive)
         {
             Accelerators.UInt256Add((ulong*)left, (ulong*)left, (ulong*)right);
             return;
@@ -115,7 +113,7 @@ internal static unsafe class AirbenderArithmetic
     public static void SubtractFrom(void* subtrahend, void* minuend)
     {
         Debug.Assert((((nuint)subtrahend | (nuint)minuend) & 31) == 0 && subtrahend != minuend);
-        if (OnOpenVm)
+        if (OpenVm32Flag.IsActive)
         {
             Accelerators.UInt256Sub((ulong*)subtrahend, (ulong*)minuend, (ulong*)subtrahend);
             return;
@@ -158,7 +156,7 @@ internal static unsafe class AirbenderArithmetic
     public static void ShiftLeft(void* value, int bits)
     {
         Debug.Assert((uint)bits < 256);
-        if (OnOpenVm)
+        if (OpenVm32Flag.IsActive)
         {
             s_shift[0] = (ulong)bits;
             Accelerators.UInt256ShiftLeft((ulong*)value, (ulong*)value, s_shift);
@@ -175,7 +173,7 @@ internal static unsafe class AirbenderArithmetic
     {
         Debug.Assert((uint)bits < 256);
         Debug.Assert(((nuint)value & 31) == 0);
-        if (OnOpenVm)
+        if (OpenVm32Flag.IsActive)
         {
             s_shift[0] = (ulong)bits;
             Accelerators.UInt256ShiftRight((ulong*)value, (ulong*)value, s_shift);
@@ -193,7 +191,7 @@ internal static unsafe class AirbenderArithmetic
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ShiftRightArithmetic(void* value, int bits)
     {
-        if (OnOpenVm)
+        if (OpenVm32Flag.IsActive)
         {
             s_shift[0] = (ulong)bits;
             Accelerators.UInt256ShiftRightArithmetic((ulong*)value, (ulong*)value, s_shift);
@@ -216,7 +214,7 @@ internal static unsafe class AirbenderArithmetic
     public static bool IsBelowConsuming(void* left, void* right, bool signed)
     {
         Debug.Assert((((nuint)left | (nuint)right) & 31) == 0);
-        if (OnOpenVm)
+        if (OpenVm32Flag.IsActive)
         {
             if (signed)
                 Accelerators.UInt256LessThanSigned((ulong*)left, (ulong*)left, (ulong*)right);
