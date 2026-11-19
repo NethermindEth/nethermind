@@ -1467,7 +1467,7 @@ public class SnapProviderTests
 
         TestMemDb db = new();
         NodeStorage nodeStorage = new(db);
-        SnapUpperBoundAdapter adapter = new(new RawScopedTrieStore(nodeStorage));
+        SnapUpperBoundAdapter adapter = new(new RawScopedTrieStore(nodeStorage), boundWholePath: false);
         StateTree stree = new(adapter, LimboLogs.Instance);
         TestSnapTrieFactory factory = new(() => new PatriciaSnapStateTree(stree, adapter, nodeStorage));
         Assert.That(SnapProviderHelper.AddAccountRange(
@@ -1619,6 +1619,104 @@ public class SnapProviderTests
         }
 
         static ValueHash256 SlotKey(int slot) => Keccak.Compute(slot.ToBigEndianByteArray());
+    }
+
+    /// <summary>
+    /// A storage of slot pairs that share all but their last nibble, downloaded with the pivot moving back and forth
+    /// between a root holding every pair and one that deleted the first slot of each. A range ending at a first slot at
+    /// the full root is continued at the other from the second slot, which stands alone under the path of the pair there,
+    /// so that range rebuilds its leaf at that path, reaching back over the deleted slot. Healing at the last root
+    /// removes the deleted slots from flat only when no range persisted such a node: it matches the last root by hash,
+    /// so healing would skip it and leave the slot under it.
+    /// </summary>
+    [Test]
+    public async Task Flat_snap_sync_of_a_storage_over_moving_roots_heals_to_the_last_root_without_stale_slots()
+    {
+        const int pairCount = 64;
+        const int requestsPerRoot = 3;
+        const int lastAlternatingRequest = 60;
+
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        SnapStateServer server = new(sourceStore.AsReadOnly(), LimboLogs.Instance);
+        Dictionary<ValueHash256, Account> accounts = [];
+        for (int i = 0; i < 8; i++) accounts[Keccak.Compute(i.ToBigEndianByteArray())] = Build.An.Account.WithBalance((UInt256)(i + 1)).TestObject;
+        ValueHash256 owner = accounts.Keys.First();
+        StorageTree storage = new(sourceStore.GetTrieStore(owner.ToCommitment()), LimboLogs.Instance);
+        for (int pair = 0; pair < pairCount; pair++)
+        {
+            storage.Set(PairSlot(pair, 0), [1]);
+            storage.Set(PairSlot(pair, 1), [2]);
+            // Single slots between the pairs, so that the ranges do not all end on the second slot of a pair.
+            storage.Set(Keccak.Compute((pairCount + pair).ToBigEndianByteArray()), [3]);
+        }
+
+        BlockHeader withPairs = CommitSource(1);
+        for (int pair = 0; pair < pairCount; pair++) storage.Set(PairSlot(pair, 0), [0], rlpEncode: false);
+        BlockHeader withoutFirstSlots = CommitSource(2);
+
+        TestSyncConfig syncConfig = new() { SnapSync = true, EnableSnapDoubleWriteCheck = true, SnapSyncAccountRangePartitionCount = 1 };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(withPairs, withoutFirstSlots);
+        await RunSnapSync(CreateFlatSnapTrieFactory(db, syncConfig), syncConfig, pivot, server, beforeRequest: request =>
+            pivot.Header = request < lastAlternatingRequest && request / requestsPerRoot % 2 == 0 ? withPairs : withoutFirstSlots);
+        RocksDbPersistence persistence = new(db, LimboLogs.Instance, NullTrieNodeLog.Instance);
+        await HealWithTrieNodes(persistence, syncConfig, pivot, sourceStore);
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await RunSnapSync(CreateFlatSnapTrieFactory(atLastRootDb, syncConfig), syncConfig, new HealingPivot(withoutFirstSlots, withoutFirstSlots), server);
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        TestErrorLogManager verifierErrors = new();
+        FlatTrieVerifier verifier = new(verifierErrors);
+        verifier.Verify(reader, new FlatLocalDbContext.ReadOnlyTrieStore(reader), withoutFirstSlots.StateRoot!, default);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivot.UpdatedStorages, Does.Contain(owner.ToCommitment()), "the storage downloaded over both roots is healed");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+            Assert.That(ReadColumn(db, FlatDbColumns.Account), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Account)), "account column");
+            Assert.That(verifier.Stats, Is.EqualTo(new FlatTrieVerifier.VerificationStats(accounts.Count, 2 * pairCount, 0, 0, 0, 0)), "flat against trie");
+            Assert.That(verifierErrors.Errors, Is.Empty, "trie node hashes");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber)
+        {
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                accounts[owner] = accounts[owner].WithChangedStorageRoot(storage.RootHash);
+                foreach ((ValueHash256 path, Account account) in accounts) sourceTree.Set(path, account);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+
+        static ValueHash256 PairSlot(int pair, byte slot)
+        {
+            ValueHash256 path = Keccak.Compute(pair.ToBigEndianByteArray());
+            path.BytesAsSpan[^1] = slot;
+            return path;
+        }
+    }
+
+    /// <summary>Heals the state at the pivot with trie nodes, answering each request from <paramref name="source"/>.</summary>
+    private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source)
+    {
+        TreeSync treeSync = new(new MemDb(), new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance),
+            Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
+        treeSync.ResetStateRootToBestSuggested();
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        while (!treeSync.IsSyncRoundFinished())
+        {
+            StateSyncBatch? batch = await treeSync.PrepareRequest();
+            Assert.That(batch?.RequestedNodes, Is.Not.Null.And.Not.Empty, "healing stalled before the root was saved");
+
+            ArrayPoolList<byte[]> responses = [with(batch!.RequestedNodes!.Count)];
+            foreach (StateSyncItem item in batch.RequestedNodes) responses.Add(source.GetTrieStore(item.Address).LoadRlp(item.Path, item.Hash)!);
+            batch.Responses = new ByteArrayListAdapter(responses);
+            Assert.That(treeSync.HandleResponse(batch, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+        }
     }
 
     public enum HealingStop { DuringReassembly, AfterChunk, AfterRound, AwaitingFinalPivot }

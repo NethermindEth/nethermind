@@ -21,7 +21,9 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
     void SetRootFromProof(TrieNode root);
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
     void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries);
-    void Commit(ValueHash256 upperBound);
+
+    /// <summary>Persists the nodes within [<paramref name="lowerBound"/>, <paramref name="upperBound"/>] that are not boundary proof nodes, and the entries up to <paramref name="upperBound"/>.</summary>
+    void Commit(ValueHash256 lowerBound, ValueHash256 upperBound);
 
     /// <summary>
     /// Removes data that an earlier range left at paths that <paramref name="node"/>, a boundary branch or extension this

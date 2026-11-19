@@ -889,7 +889,9 @@ namespace Nethermind.Synchronization.SnapSync
             if (dispose) storageRange.Dispose();
         }
 
-        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount)
+        /// <param name="runRoot">The storage root the range ending at <paramref name="lastProcessedHash"/> was verified against.</param>
+        /// <param name="runStart">Where the consecutive ranges of the storage downloaded at <paramref name="runRoot"/> begin.</param>
+        public void EnqueueNextSlot(StorageRange parentRequest, int accountIndex, ValueHash256 lastProcessedHash, int slotCount, in ValueHash256 runRoot, in ValueHash256 runStart)
         {
             ValueHash256 limitHash = accountIndex == 0 ? parentRequest.LimitHash ?? Keccak.MaxValue : ValueKeccak.MaxValue;
             if (lastProcessedHash > limitHash)
@@ -918,9 +920,12 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
                     StartingHash = lastProcessedHash.IncrementPath(),
-                    LimitHash = halfOfLeftHash
+                    LimitHash = halfOfLeftHash,
+                    PrevRunRoot = runRoot,
+                    PrevRunStart = runStart
                 });
 
+                // Continues no range: the half before it may download at another root.
                 NextSlotRange.Enqueue(new StorageRange
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
@@ -938,7 +943,9 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     Accounts = new ArrayPoolList<PathWithAccount>(1) { account },
                     StartingHash = lastProcessedHash.IncrementPath(),
-                    LimitHash = limitHash
+                    LimitHash = limitHash,
+                    PrevRunRoot = runRoot,
+                    PrevRunStart = runStart
                 };
                 NextSlotRange.Enqueue(storageRange);
             }

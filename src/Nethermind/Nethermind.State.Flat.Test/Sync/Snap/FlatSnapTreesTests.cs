@@ -359,7 +359,7 @@ public class FlatSnapTreesTests
         ValueHash256 highPath = PathHash("99");
 
         tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
-        tree.Commit(PathHash("55"));
+        tree.Commit(ValueKeccak.Zero, PathHash("55"));
 
         Assert.That(writer.SetAccountRawCalls, Has.One.EqualTo((lowPath, account)));
     }
@@ -373,7 +373,7 @@ public class FlatSnapTreesTests
 
         tree.BulkSetAndUpdateRootHash([new PathWithAccount(PathHash("11"), new AccountStruct(1, 100))]);
 
-        Assert.That(() => tree.Commit(new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
+        Assert.That(() => tree.Commit(ValueKeccak.Zero, new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
             Throws.Exception.With.Message.Contain("Double account flat write"));
     }
 }

@@ -286,7 +286,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(account.Path);
             return BuildAndVerifyRoot(tree, slots, startingHash ?? ValueKeccak.Zero,
-                limitHash ?? ValueKeccak.MaxValue, account.Account.StorageRoot, proofs).result;
+                limitHash ?? ValueKeccak.MaxValue, account.Account.StorageRoot, keepLeftLeaf: false, proofs).result;
         }
 
         internal static AddRangeResult VerifyAlternateStorageRange(ISnapTrieFactory factory, ValueHash256 accountPath,
@@ -327,7 +327,7 @@ namespace Nethermind.Synchronization.SnapSync
                 if (connected.Count != nodes.Count) return AddRangeResult.InvalidProof;
                 using ISnapTree<PathWithStorageSlot> tree = factory.CreateStorageTree(accountPath);
                 return BuildAndVerifyRoot(tree, slots, startingHash ?? ValueKeccak.Zero,
-                    limitHash ?? ValueKeccak.MaxValue, candidateRoot, proofs).result;
+                    limitHash ?? ValueKeccak.MaxValue, candidateRoot, keepLeftLeaf: false, proofs).result;
             }
             catch (Exception exception) when (IsInvalidProofException(exception))
             {
@@ -349,7 +349,7 @@ namespace Nethermind.Synchronization.SnapSync
             using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
 
             (AddRangeResult result, bool moreChildrenToRight, _) = CommitRange(
-                tree, accounts, startingHash, limitHash, expectedRootHash, proofs, partitionStart ?? ValueKeccak.Zero);
+                tree, accounts, startingHash, runStart: null, limitHash, expectedRootHash, proofs, partitionStart ?? ValueKeccak.Zero);
             if (result != AddRangeResult.OK)
                 return (result, true, null, null, tree.RootHash);
 
@@ -369,11 +369,16 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes, tree.RootHash);
         }
 
+        /// <param name="runStart">
+        /// Where the consecutive ranges of this storage downloaded at its root, this one included, begin; no node
+        /// reaching below it is persisted.
+        /// </param>
         public static (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) AddStorageRange(
             ISnapTrieFactory factory,
             PathWithAccount account,
             IReadOnlyList<PathWithStorageSlot> slots,
             in ValueHash256? startingHash,
+            in ValueHash256 runStart,
             in ValueHash256? limitHash,
             IByteArrayList? proofs = null
         )
@@ -390,7 +395,7 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 effectiveStartingHash = startingHash ?? ValueKeccak.Zero;
 
             (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) = CommitRange(
-                tree, slots, effectiveStartingHash, effectiveLimitHash, account.Account.StorageRoot, proofs);
+                tree, slots, effectiveStartingHash, runStart, effectiveLimitHash, account.Account.StorageRoot, proofs);
             if (result != AddRangeResult.OK)
                 return (result, true, tree.RootHash, false);
             return (AddRangeResult.OK, moreChildrenToRight, tree.RootHash, isRootPersisted);
@@ -412,20 +417,26 @@ namespace Nethermind.Synchronization.SnapSync
             IByteArrayList? proofs)
         {
             using ISnapTree<PathWithAccount> tree = factory.CreateStateTree();
-            return BuildAndVerifyRoot(tree, accounts, startingHash, limitHash, expectedRootHash, proofs).result;
+            return BuildAndVerifyRoot(tree, accounts, startingHash, limitHash, expectedRootHash, keepLeftLeaf: false, proofs).result;
         }
 
+        /// <param name="runStart">
+        /// Where the consecutive ranges of a storage trie downloaded at <paramref name="expectedRootHash"/> begin, or
+        /// <c>null</c> for the account trie, whose leaves are persisted whatever their path reaches, as flat keeps no full
+        /// account hash to rebuild a missing one from.
+        /// </param>
         private static (AddRangeResult result, bool moreChildrenToRight, bool isRootPersisted) CommitRange<TEntry>(
             ISnapTree<TEntry> tree,
             IReadOnlyList<TEntry> entries,
             in ValueHash256 startingHash,
+            in ValueHash256? runStart,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
             IByteArrayList? proofs,
             ValueHash256? accountPartitionStart = null) where TEntry : ISnapEntry
         {
             (AddRangeResult result, List<(TrieNode, TreePath)>? sortedBoundaryList, bool moreChildrenToRight) =
-                BuildAndVerifyRoot(tree, entries, startingHash, limitHash, expectedRootHash, proofs);
+                BuildAndVerifyRoot(tree, entries, startingHash, limitHash, expectedRootHash, keepLeftLeaf: runStart is not null, proofs);
 
             if (result != AddRangeResult.OK)
                 return (result, true, false);
@@ -444,6 +455,11 @@ namespace Nethermind.Synchronization.SnapSync
                 if (!moreChildrenToRight) upperBound = ValueKeccak.MaxValue;
             }
 
+            // A storage node is persisted only when its whole path lies within [runStart, upperBound]: one reaching
+            // further stands for slots another range writes, maybe at another root, and would hide them from healing.
+            // The range continuing this one at the same root persists what reaches past it.
+            if (runStart is not null) upperBound = moreChildrenToRight && lastPath < limitHash ? lastPath : limitHash;
+
             StitchBoundaries(sortedBoundaryList, tree, startingHash);
             ValueHash256 cleanupEnd = accountPartitionStart is not null && limitHash < upperBound ? limitHash : upperBound;
             ValueHash256 cleanupStart = accountPartitionStart ?? ValueKeccak.Zero;
@@ -452,9 +468,13 @@ namespace Nethermind.Synchronization.SnapSync
             else
                 DeleteOutsideChildren(sortedBoundaryList, tree, upperBound, cleanupStart, cleanupEnd);
 
-            tree.Commit(upperBound);
+            ValueHash256 lowerBound = runStart ?? ValueKeccak.Zero;
+            tree.Commit(lowerBound, upperBound);
 
-            bool isRootPersisted = sortedBoundaryList is not { Count: > 0 } || sortedBoundaryList[0].Item1.IsPersisted;
+            // Without proofs the root is committed as any other node, so only when its path, the whole key space, is in bounds.
+            bool isRootPersisted = sortedBoundaryList is { Count: > 0 }
+                ? sortedBoundaryList[0].Item1.IsPersisted
+                : lowerBound == ValueKeccak.Zero && upperBound == ValueKeccak.MaxValue;
             return (AddRangeResult.OK, moreChildrenToRight, isRootPersisted);
         }
 
@@ -468,6 +488,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
+            bool keepLeftLeaf,
             IByteArrayList? proofs) where TEntry : ISnapEntry
         {
             if (typeof(TEntry) == typeof(PathWithStorageSlot) && proofs is { Count: > 0 })
@@ -507,7 +528,7 @@ namespace Nethermind.Synchronization.SnapSync
             try
             {
                 (result, sortedBoundaryList, moreChildrenToRight) =
-                    FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, proofs);
+                    FillBoundaryTree(tree, startingHash, lastPath, limitHash, expectedRootHash, keepLeftLeaf, isProofOfAbsence ? null : entries[0].Path, proofs);
                 if (result == AddRangeResult.OK) tree.BulkSetAndUpdateRootHash(entries);
             }
             catch (Exception exception) when (IsInvalidProofException(exception))
@@ -542,6 +563,8 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 endHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
+            bool keepLeftLeaf,
+            in ValueHash256? firstEntryPath,
             IByteArrayList? proofs = null
         ) where TEntry : ISnapEntry
         {
@@ -703,7 +726,19 @@ namespace Nethermind.Synchronization.SnapSync
                             {
                                 // If its a leaf, its path + key must be outside the boundary.
                                 TreePath wholePath = childPath.Append(child.Key);
-                                if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
+                                if (keepLeftLeaf && leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0)
+                                {
+                                    // The leaf before the range: its path reaches into this range, so the range it
+                                    // belongs to does not persist it. Kept as a node, it is persisted here when this
+                                    // range continues that one at the same root, and refused by the lower bound
+                                    // otherwise. The entries start past it, so one under its path does not fit the proof.
+                                    if (firstEntryPath is { } firstEntry && TreePath.FromPath(firstEntry.Bytes).CompareToTruncated(childPath, childPath.Length) == 0)
+                                        return (AddRangeResult.InvalidProof, null, true);
+
+                                    child.IsBoundaryProofNode = false;
+                                    node.SetChild(ci, child);
+                                }
+                                else if (leftBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) > 0 || rightBoundaryPath.CompareToTruncated(wholePath, wholePath.Length) < 0)
                                 {
                                     // Leaf are range proof, proof that the range covers the requested path.
                                     // But we dont persist them as it should be persisted by the range itself through

@@ -22,8 +22,9 @@ public class PatriciaSnapStorageTree(StorageTree tree, SnapUpperBoundAdapter ada
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries) =>
         ISnapTree<PathWithStorageSlot>.DoBulkSetAndUpdateRootHash(tree, entries);
 
-    public void Commit(ValueHash256 upperBound)
+    public void Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
+        adapter.LowerBound = lowerBound;
         adapter.UpperBound = upperBound;
         tree.Commit(writeFlags: WriteFlags.DisableWAL);
         batch.Commit();

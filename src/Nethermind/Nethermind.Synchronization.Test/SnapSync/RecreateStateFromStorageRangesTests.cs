@@ -194,6 +194,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
                     new PathWithStorageSlot(new ValueHash256("0x290decd9548b62a8d60345a988386fc84ba6bc95484008f6362f93160ef3e563"), Bytes.FromHexString("94654f75e491acf8c380d2a6906e67e2e56813665e")),
                 ],
                 Keccak.Zero,
+                Keccak.Zero,
                 null,
                 proofs: new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2)
                 {
@@ -229,6 +230,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
                     new PathWithStorageSlot(ValueKeccak.MaxValue, []),
                 ],
                 Keccak.Zero,
+                Keccak.Zero,
                 null,
                 proofs: proofs);
 
@@ -250,6 +252,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
                 factory,
                 pathWithAccount,
                 Array.Empty<PathWithStorageSlot>(), // Empty slots list
+                Keccak.Zero,
                 Keccak.Zero,
                 null,
                 proofs: null);
@@ -277,7 +280,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             using ByteArrayListAdapter proofs = new(proofList);
 
             (AddRangeResult result, _, _, _) = SnapProviderHelper.AddStorageRange(
-                factory, account, slots, Keccak.Zero, null,
+                factory, account, slots, Keccak.Zero, Keccak.Zero, null,
                 proofs);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.InvalidProof));

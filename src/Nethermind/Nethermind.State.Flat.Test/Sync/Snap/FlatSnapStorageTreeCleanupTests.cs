@@ -55,7 +55,7 @@ public class FlatSnapStorageTreeCleanupTests
         using (FlatSnapStorageTree tree = NewTree())
         {
             tree.DeleteOutsideChildren(TreePath.Empty, extension, ValueKeccak.Zero, ValueKeccak.MaxValue);
-            tree.Commit(ValueKeccak.MaxValue);
+            tree.Commit(ValueKeccak.Zero, ValueKeccak.MaxValue);
         }
 
         Assert.That(HasNode(AccountA, stale), Is.False);
@@ -72,7 +72,7 @@ public class FlatSnapStorageTreeCleanupTests
         {
             tree.BulkSetAndUpdateRootHash([new PathWithStorageSlot(SlotKey, Rlp.Encode(new byte[] { 1 }))]);
             tree.DeleteOutsideCompleteTree(ValueKeccak.Zero, ValueKeccak.MaxValue);
-            tree.Commit(ValueKeccak.MaxValue);
+            tree.Commit(ValueKeccak.Zero, ValueKeccak.MaxValue);
         }
 
         Assert.That(HasNode(AccountA, stale), Is.False);

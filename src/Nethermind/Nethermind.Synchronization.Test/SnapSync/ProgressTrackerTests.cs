@@ -751,7 +751,7 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 1_000_000_000);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 1_000_000_000, Keccak.EmptyTreeHash, Keccak.Zero);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
@@ -798,7 +798,7 @@ public class ProgressTrackerTests
             StartingHash = new ValueHash256(start),
             LimitHash = limitHash
         };
-        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 100000000);
+        progressTracker.EnqueueNextSlot(storageRange, 0, lastProcessedHash, 100000000, Keccak.EmptyTreeHash, Keccak.Zero);
 
         //ignore account range
         bool isFinished = progressTracker.IsFinished(out _);
@@ -1252,9 +1252,9 @@ public class ProgressTrackerTests
         }
         Assert.That(feed.HandleResponse(batch, peer), Is.EqualTo(priorFailures
             ? SyncResponseHandlingResult.LesserQuality : SyncResponseHandlingResult.NoProgress));
-        first.Received(1).Commit(Arg.Any<ValueHash256>());
-        failed.DidNotReceive().Commit(Arg.Any<ValueHash256>());
-        last.Received(1).Commit(Arg.Any<ValueHash256>());
+        first.Received(1).Commit(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>());
+        failed.DidNotReceive().Commit(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>());
+        last.Received(1).Commit(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>());
         tracker.IsFinished(out SnapSyncBatch? retry);
         using (retry)
         {
@@ -1540,7 +1540,7 @@ public class ProgressTrackerTests
             }
             provider.ReleaseRequest(retry, true);
         }
-        first.Received(1).Commit(Arg.Any<ValueHash256>());
+        first.Received(1).Commit(Arg.Any<ValueHash256>(), Arg.Any<ValueHash256>());
         Assert.That(tracker.IsSnapGetRangesFinished(), Is.True);
         tracker.EnqueueAccountRefresh(accounts[0], null, null);
         Assert.That(tracker.AccountsToRefreshCount, Is.EqualTo(1), "the completed prefix must release retry ownership");

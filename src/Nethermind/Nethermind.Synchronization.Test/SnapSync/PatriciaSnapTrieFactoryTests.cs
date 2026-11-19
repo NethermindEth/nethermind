@@ -120,7 +120,7 @@ public class PatriciaSnapTrieFactoryTests
         {
             tree.BulkSetAndUpdateRootHash(slots);
             expectedRoot = tree.RootHash;
-            Assert.Throws<IOException>(() => tree.Commit(ValueKeccak.MaxValue));
+            Assert.Throws<IOException>(() => tree.Commit(ValueKeccak.Zero, ValueKeccak.MaxValue));
         }
         using (Assert.EnterMultipleScope())
         {
@@ -134,7 +134,7 @@ public class PatriciaSnapTrieFactoryTests
         {
             retry.BulkSetAndUpdateRootHash(slots);
             Assert.That(retry.RootHash, Is.EqualTo(expectedRoot));
-            retry.Commit(ValueKeccak.MaxValue);
+            retry.Commit(ValueKeccak.Zero, ValueKeccak.MaxValue);
         }
         StorageTree stored = new(new RawScopedTrieStore(nodes, address), expectedRoot, LimboLogs.Instance);
         using (Assert.EnterMultipleScope())

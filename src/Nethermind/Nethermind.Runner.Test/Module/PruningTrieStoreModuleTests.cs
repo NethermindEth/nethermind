@@ -268,7 +268,7 @@ public class PruningTrieStoreModuleTests
         {
             storage.BulkSetAndUpdateRootHash([new PathWithStorageSlot(ValueKeccak.Zero, [1])]);
             root = storage.RootHash;
-            storage.Commit(ValueKeccak.MaxValue);
+            storage.Commit(ValueKeccak.Zero, ValueKeccak.MaxValue);
         }
         byte[] persisted = container.Resolve<INodeStorage>().Get(address, TreePath.Empty, root.ValueHash256);
         Assert.That(persisted, Is.Not.Null);

@@ -530,7 +530,9 @@ namespace Nethermind.Synchronization.SnapSync
                     BlockNumber = request.BlockNumber,
                     RootHash = request.RootHash,
                     StartingHash = request.StartingHash,
-                    LimitHash = request.LimitHash
+                    LimitHash = request.LimitHash,
+                    PrevRunRoot = request.PrevRunRoot,
+                    PrevRunStart = request.PrevRunStart
                 });
             }
             else _progressTracker.EnqueueAccountStorage(request.Accounts[index]);
@@ -583,7 +585,12 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256? limitHash = accountIndex == 0 ? request.LimitHash : null;
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight, Hash256 computedRoot, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, capturedAccount, slots, startingHash, limitHash, proofs);
+                // A refresh of the other half of a split storage can replace the account meanwhile, and the range has
+                // to be verified against the root its run is decided on.
+                ValueHash256 storageRoot = capturedAccount.Account.StorageRoot;
+                ValueHash256 runStart = accountIndex == 0 && request.PrevRunRoot == storageRoot ? request.PrevRunStart : startingHash ?? ValueKeccak.Zero;
+
+                (AddRangeResult result, bool moreChildrenToRight, Hash256 computedRoot, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, capturedAccount, slots, startingHash, runStart, limitHash, proofs);
                 actualRootHash = computedRoot;
                 if (result == AddRangeResult.OK)
                 {
@@ -591,7 +598,7 @@ namespace Nethermind.Synchronization.SnapSync
                     Interlocked.Exchange(ref pathWithAccount.EmptyStorageResponses, 0);
                     if (moreChildrenToRight)
                     {
-                        _progressTracker.EnqueueNextSlot(request, accountIndex, slots[^1].Path, slots.Count);
+                        _progressTracker.EnqueueNextSlot(request, accountIndex, slots[^1].Path, slots.Count, storageRoot, runStart);
                     }
                     else if (accountIndex == 0 && request.Accounts.Count == 1)
                     {
@@ -600,9 +607,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (!moreChildrenToRight && (limitHash == null || limitHash == ValueKeccak.MaxValue) && !isRootPersisted)
                     {
-                        // Sometimes the stitching does not work. Likely because part of the storage is using different
-                        // pivot, sometimes the proof is in a form that we cannot cleanly verify if it should persist or not,
-                        // but also because of stitching bug. So we just force trigger healing and continue on with our lives.
+                        // The root is persisted only once every range of the storage is stitched under it, which takes
+                        // them all to be downloaded at one root without a split, so a refreshed or split storage is left
+                        // for healing.
                         _progressTracker.TrackAccountToHeal(accounts[accountIndex].Path);
                     }
 
