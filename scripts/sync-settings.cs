@@ -102,7 +102,7 @@ internal static class SyncSettings
             // Leader and follower configs are written together; cancelling between or during writes would split them.
             cancellationToken.ThrowIfCancellationRequested();
             foreach (var (target, config) in updated)
-                await File.WriteAllTextAsync(Path.Combine(directory, target + ".json"), config.ToJsonString(indentedJson), CancellationToken.None);
+                await File.WriteAllTextAsync(Path.Combine(directory, target + ".json"), config.ToJsonString(indentedJson));
 
             async Task<JsonNode?> Request(string method, string? tag)
             {
