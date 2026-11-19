@@ -579,7 +579,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
             if (required)
             {
-                if (_captureErrors) throw new ArgumentException($"trace object must expose required function {name}");
+                if (_captureErrors) throw new ArgumentException($"trace object must expose a function {name}()");
                 throw new InvalidDataException($"trace object must expose a function {name}()");
             }
             return TracerFunctions.none;
