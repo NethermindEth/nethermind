@@ -93,7 +93,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             }
         }
 
-        public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false, bool allowRewind = false)
+        public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
             bool beaconPivotExists = BeaconPivotExists();
             if (blockHeader is not null)
@@ -108,7 +108,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
                 }
 
-                if (beaconPivotExists && (blockHeader.Hash == PivotHash || !allowRewind && PivotNumber > blockHeader.Number))
+                if (beaconPivotExists && blockHeader.Hash == PivotHash)
                 {
                     return;
                 }
@@ -157,7 +157,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
     public interface IBeaconPivot : IPivot
     {
-        void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false, bool allowRewind = false);
+        void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false);
 
         void RemoveBeaconPivot();
 
