@@ -92,4 +92,21 @@
       Command="ln -sfn &quot;$(_SharedRuntimesDir)&quot; &quot;$(OutputPath)runtimes&quot;" />
   </Target>
 
+  <PropertyGroup>
+    <ExcludeNativeKeccak Condition="'$(RuntimeIdentifier)' != '' And '$(RuntimeIdentifier)' != 'linux-x64'">true</ExcludeNativeKeccak>
+  </PropertyGroup>
+
+  <Target Name="ExcludeNativeKeccakFromOutput" AfterTargets="GetCopyToOutputDirectoryItems" Condition="'$(ExcludeNativeKeccak)' == 'true'">
+    <ItemGroup>
+      <_SourceItemsToCopyToOutputDirectory Remove="@(_SourceItemsToCopyToOutputDirectory)" Condition="'%(Filename)%(Extension)' == 'libnmkeccak.so'" />
+      <AllItemsFullPathWithTargetPath Remove="@(AllItemsFullPathWithTargetPath)" Condition="'%(Filename)%(Extension)' == 'libnmkeccak.so'" />
+    </ItemGroup>
+  </Target>
+
+  <Target Name="ExcludeNativeKeccakFromPublish" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(ExcludeNativeKeccak)' == 'true'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'libnmkeccak.so'" />
+    </ItemGroup>
+  </Target>
+
 </Project>
