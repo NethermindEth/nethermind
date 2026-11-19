@@ -179,7 +179,7 @@ public class Program
 
                 // Create and start proxy
                 ProxyServer proxy = new(config, logManager);
-                await proxy.StartAsync(ct);
+                await proxy.StartAsync(CancellationToken.None);
 
                 // Wait for Ctrl+C
                 CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
