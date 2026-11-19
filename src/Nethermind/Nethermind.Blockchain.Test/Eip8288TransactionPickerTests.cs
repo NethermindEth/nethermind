@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Autofac;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.ProofAggregation;
@@ -14,11 +16,16 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -90,6 +97,47 @@ public class Eip8288TransactionPickerTests
         }
     }
 
+    // A contribution is committed once the executor's verdict on its candidate is final: the last transaction's on the read
+    // that proof attachment makes, and none for a transaction that fails. Processing works on a copy of the suggested block,
+    // so a rebuild or retry from that block starts with no committed contributions.
+    [Test]
+    public void Contributions_of_included_transactions_are_committed_through_the_last_one([Values] bool lastFails)
+    {
+        FrameDependency first = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        FrameDependency last = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakB.ValueHash256, default);
+        Transaction firstTx = DependencyBearingTransaction(first);
+        Transaction lastTx = DependencyBearingTransaction(last);
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        proofs.AddVerified([first], [[1]], null);
+        proofs.AddVerified([last], [[2]], null);
+        ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(call =>
+        {
+            if (lastFails && call.Arg<Transaction>() == lastTx) return TransactionResult.ErrorType.InsufficientSenderBalance;
+            call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, new GasConsumed(GasCostOf.Transaction, GasCostOf.Transaction), [], []);
+            return TransactionResult.Ok;
+        });
+        BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, Substitute.For<IWorldState>(),
+            CreatePicker(Eip8288Prototype.Instance, proofs), LimboLogs.Instance, NullBlockAccessListManager.Instance, NullTxPool.Instance);
+        BlockToProduce suggested = new(Build.A.BlockHeader.WithGasLimit(10_000_000).TestObject, [firstTx, lastTx], []);
+        BlockToProduce processed = (BlockToProduce)suggested.WithReplacedHeader(suggested.Header.Clone());
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(processed);
+        executor.SetBlockExecutionContext(new BlockExecutionContext(processed.Header, Eip8288Prototype.Instance));
+
+        executor.ProcessTransactions(processed, ProcessingOptions.ProducingBlock, receiptsTracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Transactions, Is.EqualTo(lastFails ? (Transaction[])[firstTx] : [firstTx, lastTx]));
+            Assert.That(processed.LeanProduction.ProofInputs.Select(static input => input.Deps.Single()),
+                Is.EqualTo(lastFails ? (FrameDependency[])[first] : [first, last]));
+            Assert.That(processed.LeanProduction.Budget.Missing([first, last]), Is.EqualTo(lastFails ? (FrameDependency[])[last] : []));
+            Assert.That(suggested.LeanProduction.ProofInputs, Is.Empty);
+            Assert.That(suggested.LeanProduction.Budget.Missing([first, last]), Has.Count.EqualTo(2));
+        }
+    }
+
     private static BlockProcessor.AddingTxEventArgs CanAdd(BlockProcessor.IBlockProductionTransactionPicker picker, Block block, Transaction candidate)
     {
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
@@ -97,12 +145,14 @@ public class Eip8288TransactionPickerTests
         return picker.CanAddTransaction(block, candidate, new HashSet<Transaction>(), state, 0, 0);
     }
 
-    private static Transaction DependencyBearingTransaction()
+    private static Transaction DependencyBearingTransaction(FrameDependency? dependency = null)
     {
-        Transaction transaction = Build.A.Transaction.WithGasLimit(5_000_000).WithSenderAddress(TestItem.AddressA).TestObject;
+        FrameDependency verified = dependency ?? new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction transaction = Build.A.Transaction.WithGasLimit(5_000_000).WithSenderAddress(TestItem.AddressA)
+            .WithHash(Keccak.Compute(verified.DataHash.Bytes)).TestObject;
         transaction.Type = TxType.FrameTx;
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
-            Eip8288Dependencies.Serialize([new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)]))];
+            Eip8288Dependencies.Serialize([verified]))];
         return transaction;
     }
 
