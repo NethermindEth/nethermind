@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.IO;
 using System.IO.Pipelines;
 using System.Text;
 using System.Text.Json;
@@ -617,7 +618,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Specified_javascript_request_cancellation_interrupts_user_code(
-        [Values("construction", "setup", "step", "result")] string phase)
+        [Values("construction", "setup", "step", "result", "result-getter", "toJSON")] string phase)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
@@ -634,7 +635,9 @@ public partial class DebugRpcModuleTests
             + (phase == "construction" ? "marker:(function(){" + body + "})()," : "")
             + "setup:function(){" + (phase == "setup" ? body : "") + "},"
             + "step:function(){" + (phase == "step" ? body : "") + "},"
-            + "result:function(){" + (phase == "result" ? body : "") + "return {};}}";
+            + "result:function(){" + (phase == "result" ? body : "") + "return "
+            + (phase == "result-getter" ? "{get value(){" + body + "return 1;}}"
+                : phase == "toJSON" ? "{toJSON:function(){" + body + "return 1;}}" : "{}") + ";}}";
         OperationCanceledException failure = Assert.Catch<OperationCanceledException>(() =>
         {
             using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock, script, external: external.Token);
@@ -706,7 +709,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Specified_javascript_owned_interrupt_is_typed(
-        [Values("result", "step")] string callback, [Values] bool emptyScope)
+        [Values("result", "step", "result-getter", "toJSON")] string callback, [Values] bool emptyScope)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
@@ -717,7 +720,9 @@ public partial class DebugRpcModuleTests
         string body = "expireTrace();for(let i=0;i<10000;i++){};";
         using GethLikeJavaScriptTxTracer tracer = CreateDeadlineJavaScriptTracer(engine, chain, clock,
             "{fault:function(){},step:function(){" + (callback == "step" ? body : "")
-                + "},result:function(){" + (callback == "result" ? body : "") + "return {};}}",
+                + "},result:function(){" + (callback == "result" ? body : "") + "return "
+                + (callback == "result-getter" ? "{get value(){" + body + "return 1;}}"
+                    : callback == "toJSON" ? "{toJSON:function(){" + body + "return 1;}}" : "{}") + ";}}",
             emptyScope ? new GethTraceDeadlineScope() : null);
         void Trace()
         {
@@ -3931,6 +3936,209 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Result_json_preserves_unrecoverable_failures(
+        [Values("host", "fatal", "cancellation", "interrupt")] string kind, [Values] bool getter)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        Action fail = kind switch
+        {
+            "host" => () => throw new InvalidOperationException("result host failure"),
+            "fatal" => () => throw CreateException(true, true, null),
+            "cancellation" => () => throw new OperationCanceledException(),
+            _ => engine.Interrupt
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.failResult=action;}}"))
+            installer.InvokeMethod("install", fail);
+        string value = getter ? "{get value(){failResult();return 1;}}" : "{toJSON:function(){failResult();return 1;}}";
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){return " + value + ";}}", true);
+        Exception failure = Assert.Catch(() => tracer.BuildResult())!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure, Is.Not.TypeOf<JavaScriptTraceFailure>());
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Result_json_active_cycle_is_rejected([Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){var n=0;var o={get self(){return n++===0?o:1;}};return o;}}", capture);
+        if (capture)
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.EqualTo(JavaScriptResultDepthError));
+        }
+        else
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<JavaScriptTraceFailure>().With.Message.EqualTo(JavaScriptResultDepthError));
+    }
+
+    [Test]
+    public async Task Result_json_null_throw_is_a_script_failure([Values] bool getter, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        string value = getter ? "{get value(){throw null;}}" : "{toJSON:function(){throw null;}}";
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){return " + value + ";}}", capture);
+        if (capture)
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.Not.Null);
+        }
+        else
+        {
+            InvalidDataException failure = Assert.Throws<InvalidDataException>(() => tracer.BuildResult())!;
+            Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
+        }
+    }
+
+    [Test]
+    public async Task Result_json_preserves_input_abort_diagnostic([Values] bool getter, [Values] bool stack)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        string invalidRead = stack ? "saved.stack.peek(-1)" : "saved.memory.slice(-1,1)";
+        string body = "try{" + invalidRead + ";}catch(e){}return 'input abort was swallowed';";
+        string value = getter ? "{get value(){" + body + "}}" : "{toJSON:function(){" + body + "}}";
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},step:function(log){this.saved=log;},result:function(){var saved=this.saved;return " + value + ";}}", true);
+        tracer.SetOperationStack(default);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        Assert.That(result.TraceError, Is.EqualTo(stack
+            ? "tracer accessed out of bound stack: size 0, index -1"
+            : "tracer accessed out of bound memory: offset -1, end 1"));
+    }
+
+    [Test]
+    public async Task Result_json_root_nonfinite_is_rejected([Values("NaN", "Infinity", "-Infinity")] string expression, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){return " + expression + ";}}", capture);
+        string expected = "json: unsupported value: " + (expression == "NaN" ? "NaN" : expression == "Infinity" ? "+Inf" : "-Inf");
+        if (capture)
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.EqualTo(expected));
+        }
+        else
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<InvalidDataException>().With.Message.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Result_json_script_failure_preserves_diagnostic([Values] bool getter, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        string value = getter
+            ? "{get value(){throw Error('serialization failure');}}"
+            : "{toJSON:function(){throw Error('serialization failure');}}";
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){return " + value + ";}}", capture);
+        if (capture)
+        {
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(result.TraceError, Is.EqualTo("Error: serialization failure"));
+        }
+        else
+        {
+            InvalidDataException failure = Assert.Throws<InvalidDataException>(() => tracer.BuildResult())!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure.Message, Is.EqualTo("Error: serialization failure"));
+                Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
+            }
+        }
+    }
+
+    [Test]
+    public async Task Result_json_depth_boundary([Values(4096, 4097)] int depth, [Values] bool array, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        string wrap = array ? "[o]" : "{a:o}";
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){var o=1;for(var i=0;i<" + depth + ";i++)o=" + wrap + ";return o;}}", capture);
+        if (depth > EthereumJsonSerializer.DefaultMaxDepth && !capture)
+        {
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<JavaScriptTraceFailure>().With.Message.EqualTo(JavaScriptResultDepthError));
+            return;
+        }
+        using GethLikeTxTrace result = tracer.BuildResult();
+        if (depth > EthereumJsonSerializer.DefaultMaxDepth)
+            Assert.That(result.TraceError, Is.EqualTo(JavaScriptResultDepthError));
+        else
+        {
+            Assert.That(result.TraceError, Is.Null);
+            string json = JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions);
+            using JsonDocument document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = depth });
+            Assert.That(document.RootElement.ValueKind, Is.EqualTo(array ? JsonValueKind.Array : JsonValueKind.Object));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> ResultJsonSemanticsCases()
+    {
+        (string Name, string Expression, string Expected)[] cases =
+        [
+            ("toJSON", "Object.defineProperty({x:1},'toJSON',{value:function(key){return 'sentinel:'+key;}})", "\"sentinel:\""),
+            ("date", "new Date('2020-01-02T03:04:05.000Z')", "\"2020-01-02T03:04:05.000Z\""),
+            ("nested_receiver_key", "({nested:{n:7,toJSON:function(key){return this.n+':'+key;}}})", "{\"nested\":\"7:nested\"}"),
+            ("replacement_once", "({toJSON:function(){return {toJSON:function(){throw Error('called twice');},ok:1};}})", "{\"ok\":1}"),
+            ("undefined_property", "({a:{toJSON:function(){return undefined;}},b:1})", "{\"b\":1}"),
+            ("undefined_array", "[{toJSON:function(){return undefined;}}]", "[null]"),
+            ("undefined_root_replacement", "({toJSON:function(){return undefined;}})", "null"),
+            ("nonfinite_properties", "({a:NaN,b:Infinity,c:-Infinity})", "{\"a\":null,\"b\":null,\"c\":null}"),
+            ("nonfinite_array", "[NaN,Infinity,-Infinity]", "[null,null,null]"),
+            ("callable_property", "({a:function(){},b:1})", "{\"b\":1}"),
+            ("callable_array", "[function(){},undefined,,Symbol('x')]", "[null,null,null,null]"),
+            ("symbol_property", "({a:Symbol('x'),b:1})", "{\"b\":1}"),
+            ("value_getter_once", "(function(){var n=0;return {get value(){return ++n;}};})()", "{\"value\":1}"),
+            ("own_properties", "Object.create({inherited:1},{own:{value:2,enumerable:true}})", "{\"own\":2}"),
+            ("typed_array", "new Uint8Array([0,1,255])", "{\"0\":0,\"1\":1,\"2\":255}"),
+            ("big_integer", "bigInt('123456789012345678901234567890')", "\"123456789012345678901234567890\""),
+            ("captured_stringify", "(function(){JSON.stringify=function(){throw Error('replaced');};return {ok:1};})()", "{\"ok\":1}"),
+            ("proxy_prototype_trap", "new Proxy({a:1},{getPrototypeOf:function(){throw Error('prototype trap');}})", "{\"a\":1}"),
+            ("toStringTag_getter", "({get [Symbol.toStringTag](){throw Error('tag getter');},a:1})", "{\"a\":1}"),
+            ("boxed_with_array_prototype", "Object.setPrototypeOf(new Number(7),Array.prototype)", "7"),
+            ("array_replaced_by_box", "Object.assign([],{toJSON:function(){return new Number(7);}})", "7"),
+            ("boxed_number", "new Number(7)", "7"),
+            ("boxed_boolean", "new Boolean(false)", "false"),
+            ("boxed_string", "new String('hello')", "\"hello\""),
+            ("primitive_number", "42", "42"),
+            ("primitive_string", "'hello'", "\"hello\""),
+            ("primitive_unicode_extension", "'日本'", "\"日本\""),
+            ("primitive_null", "null", "{}"),
+            ("primitive_undefined", "undefined", "{}"),
+            ("primitive_symbol", "Symbol('x')", "{}"),
+            ("root_function", "function(){}", "null")
+        ];
+        foreach ((string name, string expression, string expected) in cases)
+            foreach (bool capture in new[] { false, true })
+                yield return new TestCaseData(expression, expected, capture).SetName($"Result_json_semantics_{name}_{capture}");
+    }
+
+    [TestCaseSource(nameof(ResultJsonSemanticsCases))]
+    public async Task Result_json_semantics(string expression, string expected, bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(ctx,db){return " + expression + ";}}", capture);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TraceError, Is.Null);
+            Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
     public async Task Result_getter_is_read_once_in_both_modes([Values] bool capture)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
@@ -4109,20 +4317,20 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public void Capture_preserves_receiver_getter_count_and_arguments([Values] bool twoArguments)
+    public void Capture_preserves_receiver_getter_count_and_arguments([Values(1, 2, 3)] int argumentCount)
     {
         using Engine engine = new(Prague.Instance);
         engine.PrepareNullThrowCapture();
         object receiver = engine.CreateTracer("""
-            {reads:0,marker:7,get result(){this.reads++;return function(a,b){
-                return [this.marker,this.reads,arguments.length,a,b].join(':');
+            {reads:0,marker:7,get result(){this.reads++;return function(a,b,c){
+                return [this.marker,this.reads,arguments.length,a,b,c].join(':');
             };}}
             """);
         using ScriptObject callback = (ScriptObject)((ScriptObject)receiver).GetProperty("result");
-        object? result = engine.InvokeCapturingNull(receiver, callback, 11, 13, twoArguments, out bool observed);
+        object? result = engine.InvokeCapturingNull(receiver, callback, 11, 13, argumentCount >= 2, out bool observed, 17, argumentCount == 3);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(twoArguments ? "7:1:2:11:13" : "7:1:1:11:"));
+            Assert.That(result, Is.EqualTo(argumentCount switch { 1 => "7:1:1:11::", 2 => "7:1:2:11:13:", _ => "7:1:3:11:13:17" }));
             Assert.That(observed, Is.False);
         }
     }
