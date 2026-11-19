@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.IO;
+using System.Text;
 using System.Linq;
 using System.Threading;
 using FastEnumUtility;
@@ -213,10 +214,10 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     /// the trace keeps nothing in the V8 heap. The bytes are written to the response verbatim.
     /// </summary>
     /// <remarks>
-    /// Renders with the static <see cref="EthereumJsonSerializer.JsonOptions"/>, since the request's serializer
-    /// is not reachable from the tracer; the response serializer's depth limit is applied when the bytes are
-    /// written, see <see cref="RenderedJsonConverter"/>. A result nested too deep to render, or cyclic, fails the
-    /// trace like an error the script throws.
+    /// Script objects use JavaScript JSON semantics with the depth bound from <see cref="EthereumJsonSerializer.JsonOptions"/>;
+    /// primitive values use their separate host representation. The request's serializer is not reachable here, so
+    /// its depth limit is applied when the bytes are written, see <see cref="RenderedJsonConverter"/>.
+    /// A result nested too deep to render, or cyclic, fails the trace like an error the script throws.
     /// </remarks>
     private RenderedJson MaterializeResult(object? scriptResult)
     {
@@ -224,14 +225,51 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _engine.ThrowIfInterrupted();
         NumberConversion previousConversion = ForcedNumberConversion.Value;
         ForcedNumberConversion.Value = NumberConversion.Raw;
+        bool observedNullThrow = false;
         try
         {
-            return new RenderedJson(TypeInfoJsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions));
+            // Geth marshals primitive Goja values directly; only objects use JavaScript stringify semantics.
+            if (scriptResult is null) return new RenderedJson("{}"u8.ToArray());
+            if (scriptResult is double number && !double.IsFinite(number))
+            {
+                string value = double.IsNaN(number) ? "NaN" : number > 0 ? "+Inf" : "-Inf";
+                InvalidDataException failure = new($"json: unsupported value: {value}");
+                if (_captureErrors) throw new JavaScriptTraceFailure(failure);
+                throw failure;
+            }
+            byte[] json = scriptResult is IJavaScriptObject
+                ? Encoding.UTF8.GetBytes(_engine.StringifyResult(scriptResult, EthereumJsonSerializer.JsonOptions.MaxDepth, out observedNullThrow))
+                : TypeInfoJsonSerializer.SerializeToUtf8Bytes(scriptResult, EthereumJsonSerializer.JsonOptions);
+            if (_captureErrors)
+            {
+                _engine.ThrowIfInputFailed();
+                CheckDeadline();
+            }
+            return new RenderedJson(json);
         }
         catch (JavaScriptResultDepthException exception)
         {
             _engine.ThrowIfInterrupted();
             throw new JavaScriptTraceFailure(exception);
+        }
+        catch (Exception exception) when (IsOwnDeadlineInterruption(exception))
+        {
+            _external.ThrowIfCancellationRequested();
+            throw new GethTraceDeadlineException();
+        }
+        catch (Exception exception) when (!_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
+        {
+            _engine.ThrowIfInterrupted();
+            CheckDeadline();
+            throw new InvalidDataException(exception.Message, exception);
+        }
+        catch (Exception exception) when (_captureErrors
+            && (_engine.TryGetInputError(exception, out string? inputError, observedNullThrow)
+                || JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow)))
+        {
+            CheckDeadline();
+            _engine.ThrowIfInterrupted();
+            throw new JavaScriptTraceFailure(exception, inputError ?? exception.Message);
         }
         finally
         {
