@@ -51,7 +51,7 @@ internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProduction
     {
         BlockProcessor.AddingTxEventArgs args = _inner.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider,
             cumulativeBlockExecutionGas, cumulativeBlockStateGas);
-        if (args.Action != BlockProcessor.TxAction.Stop && !(block is BlockToProduce producing && producing.LeanProduction.IsPrepared(args)))
+        if (args.Action != BlockProcessor.TxAction.Stop && !(block is BlockToProduce producing && producing.LeanProduction.IsChecked(args)))
             Check(args);
         return args;
     }
@@ -67,10 +67,11 @@ internal sealed class Eip8288TransactionPicker : BlockProcessor.IBlockProduction
     {
         Block block = args.Block;
         Transaction currentTx = args.Transaction;
+        BlockToProduce? producing = block as BlockToProduce;
+        producing?.LeanProduction.MarkChecked(args);
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         if (!spec.IsEip8288Enabled) return args.Action == BlockProcessor.TxAction.Add;
 
-        BlockToProduce? producing = block as BlockToProduce;
         if (producing is not null && producing.TxByteLength + currentTx.GetLength(false) + StarkProofReserve(producing, currentTx) > _maxTxLengthBytes)
         {
             // If smallest tx is too large, stop picking

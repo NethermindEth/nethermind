@@ -12,14 +12,24 @@ namespace Nethermind.Consensus.ProofAggregation;
 /// <remarks>
 /// A candidate's contribution is held as pending until the executor's verdict on it is final, which is the
 /// <see cref="BlockProcessor.AddingTxEventArgs.Action"/> of the args it was picked with: the executor sets <c>Skip</c> there
-/// when the transaction fails or is rolled back. It is committed on the next pick or the next read of <see cref="ProofInputs"/>.
+/// when the transaction fails or is rolled back. It is committed on the next pick or the next read of <see cref="ProofInputs"/> or <see cref="Budget"/>.
 /// </remarks>
 internal sealed class LeanBlockProduction
 {
     private readonly List<AggregationInput> _proofInputs = [];
+    private LeanProofBudget _budget = new();
     private Pending? _pending;
+    private BlockProcessor.AddingTxEventArgs? _checked;
 
-    public LeanProofBudget Budget { get; private init; } = new();
+    /// <summary>The witnesses committed so far, the pending contribution included once its transaction is.</summary>
+    public LeanProofBudget Budget
+    {
+        get
+        {
+            Settle();
+            return _budget;
+        }
+    }
 
     /// <summary>The verified proof input of the block's inclusion lists, if any.</summary>
     public AggregationInput? InclusionListProofInput { get; set; }
@@ -28,7 +38,7 @@ internal sealed class LeanBlockProduction
     public IReadOnlySet<FrameDependency>? DependencyLimit { get; set; }
 
     /// <summary>The proof inputs of the transactions included so far.</summary>
-    public List<AggregationInput> ProofInputs
+    public IReadOnlyList<AggregationInput> ProofInputs
     {
         get
         {
@@ -44,17 +54,20 @@ internal sealed class LeanBlockProduction
         _pending = new(args, contribution, required);
     }
 
-    public bool IsPrepared(BlockProcessor.AddingTxEventArgs args) => ReferenceEquals(_pending?.Args, args);
+    /// <summary>Records that the checks ran on <paramref name="args"/>, so they are not repeated for the same candidate.</summary>
+    public void MarkChecked(BlockProcessor.AddingTxEventArgs args) => _checked = args;
+
+    public bool IsChecked(BlockProcessor.AddingTxEventArgs args) => ReferenceEquals(_checked, args);
 
     /// <summary>Commits the pending contribution if its transaction was included.</summary>
-    public void Settle()
+    private void Settle()
     {
         if (_pending is not { } pending) return;
         _pending = null;
         if (pending.Args.Action != BlockProcessor.TxAction.Add) return;
         AggregationInput contribution = pending.Contribution;
         if (contribution.Deps.Count != 0 || contribution.RecursiveProofs.Count != 0) _proofInputs.Add(contribution);
-        Budget.Commit(contribution, pending.Required);
+        _budget.Commit(contribution, pending.Required);
     }
 
     public LeanBlockProduction Clone()
@@ -62,7 +75,7 @@ internal sealed class LeanBlockProduction
         Settle();
         LeanBlockProduction clone = new()
         {
-            Budget = Budget.Clone(),
+            _budget = _budget.Clone(),
             InclusionListProofInput = InclusionListProofInput,
             DependencyLimit = DependencyLimit
         };
