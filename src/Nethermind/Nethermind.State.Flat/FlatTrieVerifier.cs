@@ -45,6 +45,8 @@ public class FlatTrieVerifier
     private long _mismatchedSlot;
     private long _missingInFlat;
     private long _missingInTrie;
+    // Each storage trie is read through its own HashVerifyingTrieStore, so their counts are summed here.
+    private long _storageTrieHashMismatchCount;
     private int _busyStorageWorkers;
     private int _offloadedPartitions;
 
@@ -142,14 +144,15 @@ public class FlatTrieVerifier
             progressTracker.Finish();
         }
 
-        if (verifyingTrieStore.HashMismatchCount > 0)
+        long hashMismatchCount = verifyingTrieStore.HashMismatchCount + Interlocked.Read(ref _storageTrieHashMismatchCount);
+        if (hashMismatchCount > 0)
         {
-            if (_logger.IsError) _logger.Error($"Hash verification found {verifyingTrieStore.HashMismatchCount} mismatches");
+            if (_logger.IsError) _logger.Error($"Hash verification found {hashMismatchCount} mismatches");
         }
 
         bool isOk = Stats.MismatchedAccount == 0 && Stats.MismatchedSlot == 0 &&
                     Stats.MissingInFlat == 0 && Stats.MissingInTrie == 0 &&
-                    verifyingTrieStore.HashMismatchCount == 0;
+                    hashMismatchCount == 0;
 
         if (!isOk)
         {
@@ -512,7 +515,7 @@ public class FlatTrieVerifier
             return;
         }
 
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
+        HashVerifyingTrieStore storageTrieStore = (HashVerifyingTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
 
         // A single whale contract otherwise pins one worker for the whole channel drain.
         if (ShouldSplitStorage(storageTrieStore, job.StorageRoot))
@@ -523,6 +526,8 @@ public class FlatTrieVerifier
         {
             VerifyStorageHashedRange(job, reader, storageTrieStore, ValueKeccak.Zero, ValueKeccak.MaxValue, endExclusive: false, cancellationToken);
         }
+
+        Interlocked.Add(ref _storageTrieHashMismatchCount, storageTrieStore.HashMismatchCount);
     }
 
     /// <summary>
@@ -743,7 +748,7 @@ public class FlatTrieVerifier
             return;
         }
 
-        IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
+        HashVerifyingTrieStore storageTrieStore = (HashVerifyingTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
 
         using HashSortedSlotPool flatSlots = new(_scratchDirectory, _logManager, cancellationToken) { MaxInMemoryEntries = PreimageSlotsInMemory };
         using (IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue))
@@ -797,6 +802,8 @@ public class FlatTrieVerifier
                 hasTrie = trieIter.MoveNext();
             }
         }
+
+        Interlocked.Add(ref _storageTrieHashMismatchCount, storageTrieStore.HashMismatchCount);
     }
 
     private static int CompareStorageKeys(in ValueHash256 flatKey, in TreePath triePath, bool hasFlat, bool hasTrie) =>
@@ -1033,12 +1040,12 @@ public class FlatTrieVerifier
     /// <summary>
     /// Wrapper around IScopedTrieStore that verifies hashes of loaded RLP data.
     /// </summary>
-    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, Hash256? address, ILogger logger, HashVerifyingTrieStore? stateTrieStore = null) : IScopedTrieStore
+    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, Hash256? address, ILogger logger) : IScopedTrieStore
     {
         private long _hashMismatchCount;
 
         /// <remarks>Counted per RLP load, not per distinct node — re-descents re-verify and re-count
-        /// the same corrupt node. Storage-trie stores count into the state-trie store, so its count covers both.</remarks>
+        /// the same corrupt node.</remarks>
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
@@ -1068,7 +1075,7 @@ public class FlatTrieVerifier
             Hash256 computed = Keccak.Compute(rlp);
             if (computed != expectedHash)
             {
-                Interlocked.Increment(ref (stateTrieStore ?? this)._hashMismatchCount);
+                Interlocked.Increment(ref _hashMismatchCount);
                 if (address is null)
                 {
                     if (logger.IsError) logger.Error(
@@ -1085,7 +1092,7 @@ public class FlatTrieVerifier
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null
                 ? this
-                : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), address, logger, stateTrieStore ?? this);
+                : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), address, logger);
 
         public INodeStorage.KeyScheme Scheme => inner.Scheme;
 
