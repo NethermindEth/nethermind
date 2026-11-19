@@ -56,8 +56,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// <summary>Selects how a frame credits and, under EIP-158, bumps the nonce of the account it executes in.</summary>
     private static delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
         // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
-        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
-        SelectInitializeFrameCore(spec);
+        SpecFlags.Eip158(spec) && !SpecFlags.Eip8360(spec)
+            ? spec.IsEip7928Enabled ? &InitializeFrameRecordingNoOpCredit : &InitializeFrameSkippingNoOpCredit
+            : SelectInitializeFrameCore(spec);
 
     /// <summary>The frame entry both builds select from, by the EIP-158 and EIP-8360 flags.</summary>
     private static delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrameCore(IReleaseSpec spec) =>
@@ -93,7 +94,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
     /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
     /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
-    /// Not selected under EIP-7928, whose access-list tracking observes the credit.
+    /// Under EIP-7928, whose access-list tracking observes the credit, <see cref="InitializeFrameRecordingNoOpCredit"/> runs instead.
     /// </remarks>
     private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
     {
@@ -101,6 +102,26 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         ExecutionType executionType = state.ExecutionType;
         if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
             return true;
+
+        return InitializeFrameCore<OnFlag, OffFlag>(vm, state);
+    }
+
+    /// <summary>
+    /// <see cref="InitializeFrameSkippingNoOpCredit"/> under EIP-7928, which records the account the skipped credit would have.
+    /// </summary>
+    /// <remarks>
+    /// A zero credit changes no balance, so all it leaves in the block access list is the account's entry, which
+    /// <see cref="IWorldState.AddAccountRead"/> makes without reading the balance or journaling a write.
+    /// </remarks>
+    private static bool InitializeFrameRecordingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+    {
+        ExecutionEnvironment env = state.Env;
+        ExecutionType executionType = state.ExecutionType;
+        if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
+        {
+            vm._worldState.AddAccountRead(env.ExecutingAccount);
+            return true;
+        }
 
         return InitializeFrameCore<OnFlag, OffFlag>(vm, state);
     }
