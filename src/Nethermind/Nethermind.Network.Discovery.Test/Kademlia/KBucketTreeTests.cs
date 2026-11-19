@@ -17,13 +17,15 @@ public class KBucketTreeTests
     private static KBucketTree<int, int> CreateTree(
         int k = 4,
         int beta = 0,
-        Func<int, int, int>? mergeOnRefresh = null) => new(
+        Func<int, int, int>? mergeOnRefresh = null,
+        Func<int, bool>? canPromoteReplacement = null) => new(
         new KademliaConfig<int>
         {
             CurrentNodeId = SelfHash,
             KSize = k,
             Beta = beta,
-            MergeOnRefresh = mergeOnRefresh
+            MergeOnRefresh = mergeOnRefresh,
+            CanPromoteReplacement = canPromoteReplacement
         },
         IntNodeHashProvider.Instance,
         Int32KademliaDistance.Instance);
@@ -143,6 +145,82 @@ public class KBucketTreeTests
         {
             Assert.That(tree.GetKNearestNeighbour(replacementHash), Is.EqualTo(new[] { 2 }));
             Assert.That(tree.TryGet(activeHash, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void Remove_should_honour_a_promotion_check_installed_after_construction()
+    {
+        int active1 = KeyAtDistance(31, 0x10);
+        int active2 = KeyAtDistance(31, 0x11);
+        int cached = KeyAtDistance(31, 0x14);
+        KademliaConfig<int> config = new() { CurrentNodeId = SelfHash, KSize = 2, Beta = 0 };
+        KBucketTree<int, int> tree = new(config, IntNodeHashProvider.Instance, Int32KademliaDistance.Instance);
+
+        Add(tree, active1);
+        Add(tree, active2);
+        Add(tree, cached);
+
+        // Discovery installs the check only after the tree exists, because the admission decision needs the table.
+        config.CanPromoteReplacement = node => node != cached;
+
+        tree.Remove(active1);
+
+        Assert.That(tree.TryGet(cached, out _), Is.False);
+    }
+
+    [Test]
+    public void Remove_should_not_promote_a_replacement_rejected_by_admission()
+    {
+        int active1 = KeyAtDistance(31, 0x10);
+        int active2 = KeyAtDistance(31, 0x11);
+        int accepted = KeyAtDistance(31, 0x14);
+        int rejected = KeyAtDistance(31, 0x15);
+        KBucketTree<int, int> tree = CreateTree(k: 2, beta: 0, canPromoteReplacement: node => node != rejected);
+
+        Add(tree, active1);
+        Add(tree, active2);
+        Add(tree, accepted);
+        Add(tree, rejected);
+
+        // Both cached entries are outside the active bucket, so only a promotion can surface either one.
+        Assert.That(tree.GetKNearestNeighbour(active2), Is.EqualTo(new[] { active2, active1 }));
+
+        tree.Remove(active1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.TryGet(accepted, out _), Is.True);
+            Assert.That(tree.TryGet(rejected, out _), Is.False);
+            Assert.That(tree.GetKNearestNeighbour(active2), Is.EqualTo(new[] { accepted, active2 }));
+        }
+    }
+
+    [Test]
+    public void Remove_should_reject_mutating_reentry_from_promotion()
+    {
+        int active1 = KeyAtDistance(31, 0x10);
+        int active2 = KeyAtDistance(31, 0x11);
+        int cached = KeyAtDistance(31, 0x14);
+        KBucketTree<int, int>? tree = null;
+        tree = CreateTree(k: 2, beta: 0, canPromoteReplacement: _ =>
+        {
+            tree!.Remove(active2);
+            return true;
+        });
+
+        Add(tree, active1);
+        Add(tree, active2);
+        Add(tree, cached);
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => tree.Remove(active1))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("must not mutate"));
+            Assert.That(tree.TryGet(active2, out _), Is.True);
+            Assert.That(tree.TryGet(active1, out _), Is.False);
         }
     }
 

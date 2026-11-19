@@ -136,7 +136,7 @@ internal static class DiscoveryAdmissionTestContainer
             NodeFilter filter = enabled
                 ? new NodeFilter(400, !subnetBucketing, currentAddress, (long)AdmissionWindow.TotalMilliseconds, timeProvider)
                 : NodeFilter.AcceptAll;
-            builder.RegisterInstance(new DiscoveryNodeAdmission(
+            DiscoveryNodeAdmission manualAdmission = new(
                 filter,
                 enabled,
                 admissionRoutingTable,
@@ -145,7 +145,10 @@ internal static class DiscoveryAdmissionTestContainer
                 logManager,
                 staticNodes,
                 trustedNodes,
-                configuredStaticNodes?.ToArray()));
+                configuredStaticNodes?.ToArray());
+            // Mirror the production module: a promoted replacement is re-checked by the same admission.
+            kademliaConfig.CanPromoteReplacement = manualAdmission.TryAdmitPromoted;
+            builder.RegisterInstance(manualAdmission);
         }
 
         if (innerTracker is not null)

@@ -69,4 +69,15 @@ public class KademliaConfig<TNode>
     /// acquire a lock that callers can hold while entering that routing table (which would invert the lock order).
     /// </remarks>
     public Func<TNode, TNode, TNode>? MergeOnRefresh { get; set; }
+
+    /// <summary>
+    /// Validates a node taken from a bucket's replacement cache before it is promoted into the bucket.
+    /// </summary>
+    /// <remarks>
+    /// The function runs while the routing table is locked. The merge contract applies here too: it must return
+    /// promptly, must not throw, must not perform I/O or mutate the routing table that invoked it, and must not
+    /// acquire a lock that callers can hold while entering that routing table (which would invert the lock order).
+    /// Returning <see langword="false"/> discards the cached entry.
+    /// </remarks>
+    public Func<TNode, bool>? CanPromoteReplacement { get; set; }
 }

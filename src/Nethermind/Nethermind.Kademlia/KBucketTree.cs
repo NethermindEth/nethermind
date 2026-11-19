@@ -29,11 +29,15 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
     private readonly int _k;
     private readonly TKadKey _currentNodeHash;
     private readonly IKademliaDistance<TKadKey> _distance;
+    // Read on every removal rather than captured: discovery installs the promotion check after this tree is built,
+    // because the admission decision needs the table it guards.
+    private readonly KademliaConfig<TNode> _config;
     private readonly Func<TNode, TNode, TNode>? _mergeOnRefresh;
     private readonly ILogger _logger;
 
     private readonly Lock _lock = new();
     private bool _isMergingRefresh;
+    private bool _isPromoting;
 
     public KBucketTree(
         KademliaConfig<TNode> config,
@@ -53,6 +57,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         _b = config.Beta;
         _distance = distance;
         _currentNodeHash = nodeHashProvider.GetHash(config.CurrentNodeId);
+        _config = config;
         _mergeOnRefresh = config.MergeOnRefresh;
         _root = new TreeNode(config.KSize, distance.Zero);
         _logger = loggerFactory.CreateLogger<KBucketTree<TNode, TKadKey>>();
@@ -66,7 +71,7 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         TNode nodeToStore = node;
         lock (_lock)
         {
-            ThrowIfMergeReentered();
+            ThrowIfCallbackReentered();
             KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
             if (_mergeOnRefresh is not null && bucket.TryGetStored(nodeHash, out TNode? previous))
             {
@@ -194,23 +199,38 @@ public class KBucketTree<TNode, TKadKey> : IRoutingTable<TNode, TKadKey>
         TNode? removedNode;
         lock (_lock)
         {
-            ThrowIfMergeReentered();
+            ThrowIfCallbackReentered();
             if (_logger.IsEnabled(LogLevel.Trace)) _logger.LogTrace($"Attempting to remove node {nodeHash}");
 
             KBucket<TNode, TKadKey> bucket = GetBucketForHash(nodeHash);
             removedNode = bucket.GetByHash(nodeHash);
-            removed = bucket.RemoveAndReplace(nodeHash);
+            // The admission decision that let a node into the replacement cache may no longer hold, so re-run it
+            // here; promotion otherwise bypasses the admission filter that gates the health tracker.
+            _isPromoting = true;
+            try
+            {
+                removed = bucket.RemoveAndReplace(nodeHash, _config.CanPromoteReplacement);
+            }
+            finally
+            {
+                _isPromoting = false;
+            }
         }
 
         if (removed && removedNode is not null) OnNodeRemoved?.Invoke(this, removedNode);
         return removed;
     }
 
-    private void ThrowIfMergeReentered()
+    private void ThrowIfCallbackReentered()
     {
         if (_isMergingRefresh)
         {
             throw new InvalidOperationException("MergeOnRefresh must not mutate the routing table that invoked it.");
+        }
+
+        if (_isPromoting)
+        {
+            throw new InvalidOperationException("CanPromoteReplacement must not mutate the routing table that invoked it.");
         }
     }
 

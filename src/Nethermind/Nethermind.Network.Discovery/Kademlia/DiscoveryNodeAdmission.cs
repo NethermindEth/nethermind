@@ -149,6 +149,42 @@ internal sealed class DiscoveryNodeAdmission(
     }
 
     /// <summary>
+    /// Re-validates a node taken from a bucket's replacement cache before it is promoted into the bucket.
+    /// </summary>
+    /// <remarks>
+    /// Runs while the routing table is locked, so unlike <see cref="TryAdmit"/> it takes neither the admission lock
+    /// nor a routing-table read: an ordinary admission holds the admission lock while it probes the table, and the
+    /// inverse order here would deadlock. The node is not an active entry yet, so the table probe has nothing to
+    /// add; the admitted cache and the address filter are leaf locks that no caller holds while entering the table.
+    /// A node that no longer holds its reservation is filtered like any other node, and flags on the cached instance
+    /// are ignored because the operator may have removed it from its manager since it was cached.
+    /// </remarks>
+    public bool TryAdmitPromoted(Node node)
+    {
+        if (!_enabled) return true;
+
+        if (_filter.TryRefresh(node.Address.Address, node.Id))
+        {
+            _admitted.TryReserve(node.Id);
+            return true;
+        }
+
+        if (IsSelf(node) || IsExemptWithoutInstanceFlags(node) || IsManagedExempt(node.Id))
+        {
+            _admitted.TryReserve(node.Id);
+            return true;
+        }
+
+        if (!AdmitAddress(node))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Discovery node filtered by recent IP on replacement promotion: {node:hide}.");
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Records a node restored from discovery storage as exempt from the filter at its restored address.
     /// </summary>
     /// <remarks>
@@ -201,6 +237,12 @@ internal sealed class DiscoveryNodeAdmission(
     private bool IsPersistedAtSameAddress(Node node)
         => _persistedAddresses.TryGetValue(node.Id, out IPAddress? persistedAddress)
            && persistedAddress.Equals(node.Address.Address);
+
+    // A promotion re-checks an instance cached minutes earlier, so flags on it are stale evidence: the operator may
+    // have removed the node from its manager while it waited. Configuration-backed identities and live manager
+    // membership are what remain; the per-call flag path belongs to TryAdmit, where the flags are current.
+    private bool IsExemptWithoutInstanceFlags(Node node)
+        => _exemptNodeIds.Contains(node.Id) || IsPersistedAtSameAddress(node);
 
     private bool IsManagedExempt(PublicKey nodeId)
     {

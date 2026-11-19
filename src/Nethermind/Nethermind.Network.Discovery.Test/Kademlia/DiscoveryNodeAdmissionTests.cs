@@ -195,6 +195,79 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Promotion_extends_a_live_reservation_for_the_cached_node()
+    {
+        ManualTimeProvider clock = new();
+        Fixture fixture = CreateAdmission(timeProvider: clock);
+        Node cached = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        Assert.That(fixture.Admission.TryAdmit(cached), Is.True);
+        clock.Advance(TimeSpan.FromMinutes(4));
+        Assert.That(fixture.Admission.TryAdmitPromoted(cached), Is.True);
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Only the promotion's renewal keeps the window alive: six minutes after the first admission, an
+            // unrefreshed entry would have expired and let another identity take the subnet.
+            Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.False);
+            Assert.That(fixture.Admission.TryAdmitPromoted(cached), Is.True);
+        }
+    }
+
+    [Test]
+    public void Promotion_rejects_a_replacement_whose_reservation_was_taken_over()
+    {
+        ManualTimeProvider clock = new();
+        Fixture fixture = CreateAdmission(timeProvider: clock);
+        Node cached = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        Assert.That(fixture.Admission.TryAdmit(cached), Is.True);
+        clock.Advance(TimeSpan.FromMinutes(5));
+        Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmitPromoted(cached), Is.False);
+            // The identity that holds the reservation is still promotable.
+            Assert.That(fixture.Admission.TryAdmitPromoted(sameSubnet), Is.True);
+        }
+    }
+
+    [Test]
+    public void Promotion_admits_a_configured_exempt_replacement_without_a_reservation()
+    {
+        ManualTimeProvider clock = new();
+        Node self = CreateNode(TestItem.PublicKeyF, "198.51.100.1");
+        Node bootnode = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Fixture fixture = CreateAdmission(
+            timeProvider: clock,
+            config: new KademliaConfig<Node>
+            {
+                CurrentNodeId = self,
+                BootNodes = [bootnode],
+            });
+        Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        // A bootnode never creates a reservation, so the subnet is free for another identity to take.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(bootnode), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.True);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            // The configured identity stays exempt even though another identity now holds the subnet.
+            Assert.That(fixture.Admission.TryAdmitPromoted(bootnode), Is.True);
+            Assert.That(fixture.Admission.TryAdmitPromoted(sameSubnet), Is.True);
+        }
+    }
+
+    [Test]
     public void Reclaims_its_live_address_reservation_after_its_identity_is_evicted()
     {
         ManualTimeProvider clock = new();
@@ -513,6 +586,31 @@ public class DiscoveryNodeAdmissionTests
             // ...but it does not restore the identity's exemption.
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.False);
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.False);
+        }
+    }
+
+    [Test]
+    public void Promotion_drops_a_stale_static_flag_after_the_node_leaves_its_manager()
+    {
+        List<NetworkNode> staticNodesList = [new(TestItem.PublicKeyA, "203.0.113.10", 30303)];
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns(_ => staticNodesList);
+        Fixture fixture = CreateAdmission(staticNodes: staticNodes);
+        Node cached = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        cached.IsStatic = true;
+        Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        Assert.That(fixture.Admission.TryAdmit(cached), Is.True);
+
+        // The operator removes the node while it waits in a replacement cache, and another identity takes the subnet.
+        staticNodesList.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.True);
+            // The cached instance still carries the flag, but the removal is observed on the next admission.
+            Assert.That(fixture.Admission.TryAdmitPromoted(cached), Is.False);
+            Assert.That(fixture.Admission.TryAdmitPromoted(sameSubnet), Is.True);
         }
     }
 

@@ -87,6 +87,24 @@ public class KademliaModuleTests
     }
 
     [Test]
+    public void Promotion_reuses_the_discovery_admission_decision()
+    {
+        using IContainer container = CreateContainer(filterEnabled: true);
+        DiscoveryNodeAdmission admission = container.Resolve<DiscoveryNodeAdmission>();
+        KademliaConfig<Node> kademliaConfig = container.Resolve<KademliaConfig<Node>>();
+        Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node second = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        Assert.That(admission.TryAdmit(first), Is.True);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(kademliaConfig.CanPromoteReplacement, Is.Not.Null);
+            Assert.That(kademliaConfig.CanPromoteReplacement!(second), Is.False);
+        }
+    }
+
+    [Test]
     [CancelAfter(10000)]
     public async Task Discv4_persists_the_bonded_endpoint(CancellationToken cancellationToken)
     {

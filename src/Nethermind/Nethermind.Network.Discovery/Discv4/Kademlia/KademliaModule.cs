@@ -48,16 +48,21 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
                 networkConfig.StaticPeers,
                 logManager.GetClassLogger<KademliaModule>());
 
-            return new DiscoveryNodeAdmission(
+            KademliaConfig<Node> kademliaConfig = ctx.Resolve<KademliaConfig<Node>>();
+            DiscoveryNodeAdmission admission = new(
                 filter,
                 networkConfig.FilterDiscoveryNodesByRecentIp,
                 ctx.Resolve<IRoutingTable<Node, ValueHash256>>(),
-                ctx.Resolve<KademliaConfig<Node>>(),
+                kademliaConfig,
                 filterSize,
                 logManager,
                 ctx.ResolveOptional<IStaticNodesManager>(),
                 ctx.ResolveOptional<ITrustedNodesManager>(),
                 configuredStaticNodes);
+
+            // Promoting a cached replacement bypasses the health tracker, so it re-runs this same decision.
+            kademliaConfig.CanPromoteReplacement = admission.TryAdmitPromoted;
+            return admission;
         });
         builder.AddDecorator<INodeHealthTracker<Node>, FilteringNodeHealthTracker>();
     }
