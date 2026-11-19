@@ -8,6 +8,7 @@ using System.Linq;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using CryptSharp.Utility;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -22,6 +23,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.KeyStore.Test;
 
@@ -381,6 +383,14 @@ public class KeyStoreTests
     private const string VectorIv = "740770fce12ce862af21264dab25f1da";
     private const string Pbkdf2Vector = """{"crypto":{"cipher":"aes-128-ctr","cipherparams":{"iv":"6087dab2f9fdbbfaddc31a909735c1e6"},"ciphertext":"5318b4d5bcd28de64ee5559e671353e16f075ecae9f99c7a79a38af5f869aa46","kdf":"pbkdf2","kdfparams":{"c":262144,"dklen":32,"prf":"hmac-sha256","salt":"ae3cd4e7013836a3df6bd7241b12db061dbe2c6785853cce422d148a624ce0bd"},"mac":"517ead924a9d0dc3124507e3393d175ce3ff7c1e96529c6c555ce9e51205e9b2"},"id":"3198bc9c-6672-5ab3-d995-4942343ae5b6","version":3}""";
 
+    // Derived keys for the vector password and salt with dklen 32, computed with OpenSSL's scrypt.
+    private const string LargeBlockDerivedKey = "d6304d0c7c7cd966f96284f9a6f07bb50b638f2f7a0dd24713ee040085c8552d"; // n 2, r 1024, p 2
+    private const string GethLightDerivedKey = "985a445d8002572e42728e638a71ab2cfe916d6595b62c1951812caedc416a1b"; // n 4096, r 8, p 6
+    private const string ManyPassesDerivedKey = "cfe7efb752920799112b1e709fd8d715543ac7c27749af721815e8e4f83574be"; // n 1024, r 8, p 16
+    private const string TwoPassesDerivedKey = "96acb7880103371e32d2133e61539c4485ceeab471e95819d5c41140d7c421fd"; // n 2, r 1, p 2
+
+    private const string ScryptLimits = "scrypt may use at most 2 GiB of memory and n * r * p of at most 16777216";
+
     // Key files for the vector key, salt and IV with n = 1024, as written with lower-case names.
     private const string CtrCipherText = "07d6803a09be626843cf064d8e8f986eff6e65f99154e356691f912458153078";
     private const string CtrMac = "35cd59790186d17560c9c07127567ddb55286c5a5112b7f7f85e09d51610a294";
@@ -441,13 +451,25 @@ public class KeyStoreTests
     [TestCase(nameof(IKeyStoreConfig.KdfparamsN), 1)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsR), 0)]
     [TestCase(nameof(IKeyStoreConfig.KdfparamsP), 0)]
-    public void Unsupported_write_settings_throw_before_anything_is_written(string setting, object value)
+    public void Unsupported_write_settings_throw_before_anything_is_written(string setting, object value) =>
+        AssertWriteThrowsBeforeAnythingIsWritten(config => typeof(KeyStoreConfig).GetProperty(setting)!.SetValue(config, value), Does.StartWith($"KeyStore.{setting} '"));
+
+    // Above the library's own range checks too, so that a missing check fails at once instead of allocating gigabytes.
+    [TestCase(1024, 1 << 24, 1)]
+    [TestCase(1024, 8, 1 << 22)]
+    public void Write_settings_above_the_scrypt_limits_throw_before_anything_is_written(int n, int r, int p) =>
+        AssertWriteThrowsBeforeAnythingIsWritten(
+            config => (config.KdfparamsN, config.KdfparamsR, config.KdfparamsP) = (n, r, p),
+            Is.EqualTo($"KeyStore.KdfparamsN '{n}', KeyStore.KdfparamsR '{r}' and KeyStore.KdfparamsP '{p}' are not supported together for new key files: {ScryptLimits}."));
+
+    /// <summary>Changes the settings after the store is created, as the checks run on every write.</summary>
+    private static void AssertWriteThrowsBeforeAnythingIsWritten(Action<KeyStoreConfig> changeSettings, IResolveConstraint message)
     {
         using TempPath directory = TempPath.GetTempDirectory();
         KeyStoreConfig config = new() { KeyStoreDirectory = directory.Path, KdfparamsN = 1024 };
         ICryptoRandom random = FixedRandom();
         FileKeyStore store = CreateStore(config, random);
-        typeof(KeyStoreConfig).GetProperty(setting)!.SetValue(config, value);
+        changeSettings(config);
         PrivateKey key = new(VectorKey);
 
         InvalidConfigurationException exception = Assert.Throws<InvalidConfigurationException>(() => store.StoreKey(key, VectorPassword.Secure()));
@@ -455,10 +477,105 @@ public class KeyStoreTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.ExitCode, Is.EqualTo(ExitCodes.ForbiddenOptionValue));
-            Assert.That(exception.Message, Does.StartWith($"KeyStore.{setting} '"));
+            Assert.That(exception.Message, message);
             Assert.That(random.ReceivedCalls(), Is.Empty, "no salt or IV requested");
             Assert.That(store.HasKey(key.Address), Is.False);
         }
+    }
+
+    // The first rows are parameters in use: the defaults (also geth's standard ones), geth's light ones, the definition's
+    // example and RFC 7914's vectors, the largest of which needs 1 GiB. The others are a key file whose worker threads
+    // overflowed their stack before (n 2, r 1024, p 2), the limits' boundaries and values far above them.
+    [TestCase(262144, 8, 1, ExpectedResult = true)]
+    [TestCase(4096, 8, 6, ExpectedResult = true)]
+    [TestCase(262144, 1, 8, ExpectedResult = true)]
+    [TestCase(16, 1, 1, ExpectedResult = true)]
+    [TestCase(1024, 8, 16, ExpectedResult = true)]
+    [TestCase(16384, 8, 1, ExpectedResult = true)]
+    [TestCase(1048576, 8, 1, ExpectedResult = true)]
+    [TestCase(2, 1024, 2, ExpectedResult = true)]
+    [TestCase(262144, 8, 8, ExpectedResult = true, Description = "work at the limit")]
+    [TestCase(262144, 8, 9, ExpectedResult = false, Description = "work above the limit")]
+    [TestCase(2, 2396745, 1, ExpectedResult = true, Description = "the largest r within the memory limit, where n + 2p + 3 equals the divided limit")]
+    [TestCase(2, 2396746, 1, ExpectedResult = false, Description = "memory above the limit by the three extra blocks")]
+    [TestCase(2, 1, 8388605, ExpectedResult = true, Description = "the largest p within the memory limit")]
+    [TestCase(2, 1, 8388606, ExpectedResult = false, Description = "memory above the limit by the input blocks held twice")]
+    [TestCase(2097152, 8, 1, ExpectedResult = false, Description = "memory above the limit, work at the limit")]
+    [TestCase(1 << 30, 8, 1, ExpectedResult = false)]
+    [TestCase(2, 1 << 25, 1, ExpectedResult = false, Description = "128 * r above int.MaxValue")]
+    [TestCase(1 << 30, int.MaxValue, int.MaxValue, ExpectedResult = false, Description = "no overflow")]
+    public bool Scrypt_limits(int n, int r, int p) => FileKeyStore.IsWithinScryptLimits(n, r, p);
+
+    [Test]
+    public void Thread_probe_sees_a_started_thread() =>
+        Assert.That(OtherThreadsReachedBy(static () =>
+        {
+            Thread thread = new(static () => { });
+            thread.Start();
+            thread.Join();
+        }), Is.Positive);
+
+    // With p above 1 and more than one processor the library mixes on worker threads unless it is limited to one.
+    [Test]
+    public void Reading_derives_scrypt_keys_on_the_calling_thread()
+    {
+        KeyStoreItem keyFile = PinnedScryptKeyFile(2, 1, 2, TwoPassesDerivedKey);
+        (PrivateKey Key, Result Result) read = default;
+
+        int otherThreads = OtherThreadsReachedBy(() => read = Read(keyFile));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(otherThreads, Is.Zero);
+            Assert.That(read.Result.ResultType, Is.EqualTo(ResultType.Success), read.Result.Error);
+            Assert.That(read.Key?.KeyBytes, Is.EqualTo(Bytes.FromHexString(VectorKey)));
+        }
+    }
+
+    [Test]
+    public void Writing_derives_scrypt_keys_on_the_calling_thread()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        FileKeyStore store = CreateStore(new KeyStoreConfig { KeyStoreDirectory = directory.Path, KdfparamsN = 2, KdfparamsR = 1, KdfparamsP = 2 }, FixedRandom());
+        PrivateKey key = new(VectorKey);
+        Result result = default;
+
+        int otherThreads = OtherThreadsReachedBy(() => result = store.StoreKey(key, VectorPassword.Secure()));
+
+        Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), result.Error);
+        Crypto written = store.GetKeyData(key.Address).KeyData.Crypto;
+        Crypto expected = PinnedScryptKeyFile(2, 1, 2, TwoPassesDerivedKey).Crypto;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(otherThreads, Is.Zero);
+            Assert.That(Bytes.FromHexString(written.CipherText), Is.EqualTo(Bytes.FromHexString(expected.CipherText)));
+            Assert.That(Bytes.FromHexString(written.MAC), Is.EqualTo(Bytes.FromHexString(expected.MAC)));
+        }
+    }
+
+    /// <summary>
+    /// Counts the changes of execution context that <paramref name="action"/> caused on other threads. A started thread
+    /// receives the context when it starts and gives it up when it ends, so zero means that the action started no thread.
+    /// </summary>
+    private static int OtherThreadsReachedBy(Action action)
+    {
+        int caller = Environment.CurrentManagedThreadId;
+        int reached = 0;
+        AsyncLocal<bool> probe = new(_ =>
+        {
+            if (Environment.CurrentManagedThreadId != caller) Interlocked.Increment(ref reached);
+        });
+        probe.Value = true;
+        try
+        {
+            action();
+        }
+        finally
+        {
+            probe.Value = false;
+        }
+
+        return reached;
     }
 
     [Test]
@@ -487,6 +604,14 @@ public class KeyStoreTests
         yield return new TestCaseData(BuildKeyFile(
             "pbkdf2", new KdfParams { C = 2, DkLen = 272, Prf = "hmac-sha256", Salt = VectorSalt },
             Rfc2898DeriveBytes.Pbkdf2(password, salt, 2, HashAlgorithmName.SHA256, 272))).SetArgDisplayNames("pbkdf2 with dklen 272");
+        yield return new TestCaseData(BuildKeyFile(
+            "pbkdf2", new KdfParams { C = 2, DkLen = 1024, Prf = "hmac-sha256", Salt = VectorSalt },
+            Rfc2898DeriveBytes.Pbkdf2(password, salt, 2, HashAlgorithmName.SHA256, 1024))).SetArgDisplayNames("pbkdf2 with dklen 1024");
+
+        // With p above 1. The first one ended the process while its passes ran on the library's worker threads.
+        yield return new TestCaseData(PinnedScryptKeyFile(2, 1024, 2, LargeBlockDerivedKey)).SetArgDisplayNames("scrypt with n 2, r 1024 and p 2");
+        yield return new TestCaseData(PinnedScryptKeyFile(4096, 8, 6, GethLightDerivedKey)).SetArgDisplayNames("scrypt with geth's light parameters");
+        yield return new TestCaseData(PinnedScryptKeyFile(1024, 8, 16, ManyPassesDerivedKey)).SetArgDisplayNames("scrypt with n 1024, r 8 and p 16");
 
         // Below the limits for new key files, which do not apply to reading.
         yield return new TestCaseData(ScryptKeyFile("scrypt", salt[..8], 64)).SetArgDisplayNames("scrypt with an 8-byte salt and dklen 64");
@@ -522,7 +647,13 @@ public class KeyStoreTests
         yield return Case("scrypt with n 1", Scrypt(1, 8, 1), invalidScrypt);
         yield return Case("scrypt with r 0", Scrypt(1024, 0, 1), invalidScrypt);
         yield return Case("scrypt with p 0", Scrypt(1024, 8, 0), invalidScrypt);
+        // Above the library's own range checks too, so that a missing check fails at once instead of allocating gigabytes.
+        yield return Case("scrypt with r 2^24", Scrypt(1024, 1 << 24, 1), $"Unsupported scrypt parameters: n 1024, r 16777216, p 1; {ScryptLimits}");
+        yield return Case("scrypt with p 2^22", Scrypt(1024, 8, 1 << 22), $"Unsupported scrypt parameters: n 1024, r 8, p 4194304; {ScryptLimits}");
         yield return Case("dklen 15", static crypto => crypto.KDFParams.DkLen = 15, "Unsupported dklen: 15");
+        yield return Case("pbkdf2 with dklen 1025", static crypto => (crypto.KDFParams.C, crypto.KDFParams.DkLen) = (2, 1025), "Unsupported dklen: 1025");
+        yield return Case("pbkdf2 with dklen int.MaxValue", static crypto => (crypto.KDFParams.C, crypto.KDFParams.DkLen) = (2, int.MaxValue), $"Unsupported dklen: {int.MaxValue}");
+        yield return Case("scrypt with dklen 1025", static crypto => (crypto.KDF, crypto.KDFParams.N, crypto.KDFParams.R, crypto.KDFParams.P, crypto.KDFParams.DkLen) = ("scrypt", 1024, 8, 1, 1025), "Unsupported dklen: 1025");
         yield return Case("dklen 64 with a MAC of neither layout", static crypto => (crypto.KDFParams.DkLen, crypto.MAC) = (64, new string('0', 64)), "Incorrect MAC");
 
         static TestCaseData Case(string name, Action<Crypto> corrupt, string error)
@@ -591,6 +722,9 @@ public class KeyStoreTests
     }
 
     private static KeyStoreItem Parse(string json) => new EthereumJsonSerializer().Deserialize<KeyStoreItem>(json);
+
+    private static KeyStoreItem PinnedScryptKeyFile(int n, int r, int p, string derivedKey) => BuildKeyFile(
+        "scrypt", new KdfParams { N = n, R = r, P = p, DkLen = 32, Salt = VectorSalt }, Bytes.FromHexString(derivedKey));
 
     /// <summary>
     /// Builds a key file for the vector key: AES-128-CTR under derived bytes 0..15, MAC keyed by the last 16 derived bytes,
