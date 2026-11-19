@@ -1835,7 +1835,7 @@ namespace Nethermind.TxPool
                 {
                     canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
-                    if (accepted && tx.SupportsBlobs) _hashCache.DeleteNonceGap(tx.SenderAddress!, tx.Nonce);
+                    if (accepted && tx.CarriesBlobs) _hashCache.DeleteNonceGap(tx.SenderAddress!, tx.Nonce);
                 }
                 else
                 {

@@ -3822,6 +3822,33 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_accept_blob_tx_with_nonce_gap_after_a_blob_frame_tx_fills_the_gap([Values] bool gappedIsFrame)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction first = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            Transaction second = gappedIsFrame
+                ? BuildBlobFrameTx(nonce: 1, blobCount: 1, withSidecar: true)
+                : Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                    .WithNonce(1UL)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            AcceptTxResult early = _txPool.SubmitTx(second, TxHandlingOptions.None);
+            AcceptTxResult filled = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult again = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(filled, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(again, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
         public void should_not_request_blob_tx_with_nonce_gap_again_while_the_gap_is_open()
         {
             _txPool = CreatePool(
