@@ -37,7 +37,7 @@
     <Exec Condition="'$(GccExitCode)' == '0'" Command="sh &quot;$(NativeKeccakDir)build.sh&quot; &quot;$(NativeKeccakOutput)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="NativeKeccakExitCode" />
     </Exec>
-    <Warning Condition="'$(GccExitCode)' != '0'" Text="libnmkeccak.so was not built (no C compiler found); Keccak-256 uses the C# absorb." />
+    <Warning Condition="'$(GccExitCode)' != '0' And '$(CC)' != '' And ('$(TARGETARCH)' == '' Or '$(TARGETARCH)' == 'amd64')" Text="libnmkeccak.so was not built (no C compiler found); Keccak-256 uses the C# absorb." />
     <Warning Condition="'$(GccExitCode)' == '0' And '$(NativeKeccakExitCode)' != '0'" Text="libnmkeccak.so was not built (build.sh exit code $(NativeKeccakExitCode)); Keccak-256 uses the C# absorb." />
   </Target>
 
