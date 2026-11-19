@@ -104,7 +104,6 @@ jobs:
               Nethermind.CensorshipDetector.Plugin.Test
               Nethermind.Era1.Test
               Nethermind.Facade.Test
-              Nethermind.InvalidChainDump.Test
               Nethermind.OpcodeTracing.Plugin.Test
               Nethermind.Serialization.JsonGenerator.Test
               Nethermind.Shutter.Test
