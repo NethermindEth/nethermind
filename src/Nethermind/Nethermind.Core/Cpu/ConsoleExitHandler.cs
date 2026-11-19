@@ -71,7 +71,7 @@ internal class ConsoleExitHandler : IDisposable
         catch (Exception e)
         {
             // we don't care about exceptions here, it's shutdown and we just try to cleanup whatever we can
-            LogSkipped($"Failed to kill the process tree of {process.Id}", e);
+            LogSkipped("Failed to kill the process tree", e);
         }
     }
 
