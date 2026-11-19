@@ -199,8 +199,8 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ Whether to reassemble the trie over the flat state once the Snap sync state ranges finish, and verify the flat state against it before healing. Only applies to the flat state layout.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifyReassembledTrieBeforeHealing { get; set; }
 
-    [ConfigItem(Description = "_Technical._ The maximum bytes per second the state sync downloads, including Snap sync healing. `0` to disable the limit.", DefaultValue = "10000000", HiddenFromDocs = true)]
-    long StateSyncMaxBytesPerSecond { get; set; }
+    [ConfigItem(Description = "_Technical._ The maximum trie nodes per second the state sync downloads, including Snap sync healing. `0` to disable the limit.", DefaultValue = "0", HiddenFromDocs = true)]
+    long StateSyncMaxNodesPerSecond { get; set; }
 
     [ConfigItem(Description = "_Technical._ Max distance of state sync from best suggested header.", DefaultValue = "128", HiddenFromDocs = true)]
     ulong StateMaxDistanceFromHead { get; set; }

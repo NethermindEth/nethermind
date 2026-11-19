@@ -87,7 +87,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool NeedToWaitForHeader { get; set; }
         public bool VerifyTrieOnStateSyncFinished { get; set; }
         public bool VerifyReassembledTrieBeforeHealing { get; set; }
-        public long StateSyncMaxBytesPerSecond { get; set; } = 10.MB;
+        public long StateSyncMaxNodesPerSecond { get; set; }
         public bool TrieHealing { get; set; } = true;
         public ulong StateMaxDistanceFromHead { get; set; } = 128;
         public ulong StateMinDistanceFromHead { get; set; } = 32;

@@ -142,13 +142,13 @@ public class StateSyncDispatcherTests
     }
 
     [Test]
-    public async Task Delays_the_next_request_by_the_downloaded_bytes_at_the_configured_rate()
+    public async Task Delays_the_next_request_by_the_downloaded_nodes_at_the_configured_rate()
     {
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.ProtocolVersion.Returns((byte)66);
         peer.GetNodeData(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(_ => new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { new byte[200] }));
-        StateSyncDownloader downloader = new(new SyncConfig { StateSyncMaxBytesPerSecond = 1000 }, _logManager);
+            .Returns(_ => new ByteArrayListAdapter(new ArrayPoolList<byte[]>(2) { new byte[32], new byte[32] }));
+        StateSyncDownloader downloader = new(new SyncConfig { StateSyncMaxNodesPerSecond = 10 }, _logManager);
 
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < 2; i++)

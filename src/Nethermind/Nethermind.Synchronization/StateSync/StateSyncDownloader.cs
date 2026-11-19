@@ -72,7 +72,7 @@ namespace Nethermind.Synchronization.StateSync
             try
             {
                 batch.Responses = await task;
-                RecordDownloaded(batch.Responses);
+                RecordDownloaded(batch.Responses.Count);
             }
             catch (Exception e)
             {
@@ -85,20 +85,17 @@ namespace Nethermind.Synchronization.StateSync
             }
         }
 
-        /// <summary>Pushes the next request back by the time <paramref name="responses"/> take at <see cref="ISyncConfig.StateSyncMaxBytesPerSecond"/>.</summary>
+        /// <summary>Pushes the next request back by the time <paramref name="nodeCount"/> nodes take at <see cref="ISyncConfig.StateSyncMaxNodesPerSecond"/>.</summary>
         /// <remarks>An idle period does not bank a burst, as the delay never starts from a time in the past.</remarks>
-        private void RecordDownloaded(IByteArrayList responses)
+        private void RecordDownloaded(int nodeCount)
         {
-            long bytesPerSecond = syncConfig.StateSyncMaxBytesPerSecond;
-            if (bytesPerSecond <= 0) return;
-
-            long bytes = 0;
-            for (int i = 0; i < responses.Count; i++) bytes += responses[i].Length;
+            long nodesPerSecond = syncConfig.StateSyncMaxNodesPerSecond;
+            if (nodesPerSecond <= 0) return;
 
             long now = Stopwatch.GetTimestamp();
             lock (_rateLimitLock)
             {
-                _nextRequestTimestamp = Math.Max(_nextRequestTimestamp, now) + bytes * Stopwatch.Frequency / bytesPerSecond;
+                _nextRequestTimestamp = Math.Max(_nextRequestTimestamp, now) + nodeCount * Stopwatch.Frequency / nodesPerSecond;
             }
         }
 
