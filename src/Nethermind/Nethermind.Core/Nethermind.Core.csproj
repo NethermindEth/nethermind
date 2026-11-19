@@ -26,7 +26,7 @@
 
   <PropertyGroup>
     <NativeKeccakDir>$(MSBuildThisFileDirectory)..\..\native\nmkeccak\</NativeKeccakDir>
-    <NativeKeccakOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', 'libnmkeccak.so'))</NativeKeccakOutput>
+    <NativeKeccakOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', '$(Configuration)', 'libnmkeccak.so'))</NativeKeccakOutput>
     <NativeKeccakSupported Condition="$([MSBuild]::IsOSPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64' And ('$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'linux-x64')">true</NativeKeccakSupported>
   </PropertyGroup>
 
