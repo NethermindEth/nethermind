@@ -115,6 +115,12 @@
     <Folder Include="wwwroot\js\" />
   </ItemGroup>
 
+  <Target Name="ExcludeNativeKeccakFromOtherRuntimes" AfterTargets="ComputeResolvedFilesToPublishList" Condition="'$(RuntimeIdentifier)' != '' And '$(RuntimeIdentifier)' != 'linux-x64'">
+    <ItemGroup>
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(Filename)%(Extension)' == 'libnmkeccak.so'" />
+    </ItemGroup>
+  </Target>
+
   <Target Name="CollectPlugins" AfterTargets="AfterBuild;AfterPublish">
     <ItemGroup>
       <PluginsForBuild Include="$(OutputPath)\Nethermind.Merge.AuRa.*;$(OutputPath)\Nethermind.Shutter.*;$(OutputPath)\Nethermind.Merge.Plugin.*;$(OutputPath)\Nethermind.Consensus.AuRa.*;$(OutputPath)\Nethermind.Init.*;$(OutputPath)\Nethermind.HealthChecks.*;$(OutputPath)\Nethermind.Api.*;$(OutputPath)\Nethermind.EthStats.*;$(OutputPath)\Nethermind.JsonRpc.TraceStore.*;$(OutputPath)\Nethermind.Init.Snapshot.*;$(OutputPath)\Nethermind.Optimism.*;$(OutputPath)\Nethermind.ExternalSigner.Plugin.*;$(OutputPath)\Nethermind.Taiko.*;$(OutputPath)\Nethermind.Flashbots.*;$(OutputPath)\Nethermind.TrustedInput.*;$(OutputPath)\Nethermind.StateDiff.Core.*;$(OutputPath)\Nethermind.StateDiffsWriter.*;$(OutputPath)\Nethermind.OpcodeTracing.Plugin.*;$(OutputPath)\Nethermind.CensorshipDetector.Plugin.*" />
