@@ -6,9 +6,11 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -18,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -276,6 +279,34 @@ public partial class EngineModuleTests
 
     // EIPs#12475: engine_getInclusionListV2 returns the list's transactions with its recursiveStark. Without a dependency-bearing
     // pool transaction the proof is empty: "0x" with no proofDeps.
+    // The engine recheck and the block validator leave out the same frame entries: a blob-carrying one is skipped by both,
+    // so its omission leaves the recheck decided rather than waiting on a prefix simulation the validator never asks for.
+    [Test]
+    public async Task Inclusion_list_recheck_skips_omitted_blob_carrying_frame_entries_as_the_validator_does()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 parent = chain.BlockTree.HeadHash!;
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV6(new(parent, Keccak.Zero, parent),
+            BuildPerListPayloadAttributes([]));
+        GetPayloadV6Result produced = (await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!))).Data!;
+        ResultWrapper<PayloadStatusV2> inserted = await rpc.engine_newPayloadV7(produced.ExecutionPayload,
+            [], Keccak.Zero, produced.ExecutionRequests, []);
+        Assert.That(inserted.Data.Status, Is.EqualTo(PayloadStatus.Valid), inserted.Result.Error);
+        await chain.WaitForCommitted(produced.ExecutionPayload.BlockHash);
+        Transaction blobCarrying = BlobCarryingFrameTransaction(chain.SpecProvider.ChainId);
+        Block block = chain.BlockTree.FindBlock(produced.ExecutionPayload.BlockHash, BlockTreeLookupOptions.None)!;
+
+        bool? rechecked = chain.Container.Resolve<IInclusionListComplianceEvaluator>().TryEvaluate(block.Hash!,
+            [TxDecoder.Instance.Encode(blobCarrying, RlpBehaviors.SkipTypedWrapping).Bytes]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(InclusionListValidator.OmitsFrameEntry(block, [blobCarrying]), Is.False);
+            Assert.That(rechecked, Is.True);
+        }
+    }
+
     [Test]
     public async Task GetInclusionListV2_returns_transactions_with_an_empty_proof()
     {
@@ -449,6 +480,34 @@ public partial class EngineModuleTests
             DecodedMaxFeePerGas = 100.GWei,
             MaxFee = 1.Ether
         };
+    }
+
+    /// <summary>A signed, dependency-free frame transaction carrying one blob.</summary>
+    private static Transaction BlobCarryingFrameTransaction(ulong chainId)
+    {
+        TxFrame[] frames =
+        [
+            new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, executionGasLimit: FrameTxTestFrames.PrefixFrameGas,
+                stateGasLimit: 0, UInt256.Zero, default)
+        ];
+        byte[] blobHash = new byte[32];
+        blobHash[0] = KzgPolynomialCommitments.KzgBlobHashVersionV1;
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = chainId,
+            SenderAddress = TestItem.PrivateKeyB.Address,
+            NonceKeys = [],
+            Frames = frames,
+            BlobVersionedHashes = [blobHash],
+            GasLimit = FrameTxValidation.TotalGasLimit(frames),
+            GasPrice = 1.GWei,
+            DecodedMaxFeePerGas = 100.GWei,
+            MaxFee = 1.Ether
+        };
+        FrameTxTestFrames.SignSecp256k1(transaction, TestItem.PrivateKeyB, TestItem.PrivateKeyB.Address);
+        transaction.Hash = transaction.CalculateHash();
+        return transaction;
     }
 
     /// <summary>A funded, signed frame transaction whose only dependency is <paramref name="dependency"/>.</summary>

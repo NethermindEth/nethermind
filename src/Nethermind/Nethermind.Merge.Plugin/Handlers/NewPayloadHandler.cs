@@ -583,10 +583,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (spec.IsEip8288Enabled)
         {
             inclusionList = InclusionListProofValidator.SelectEligible(inclusionList, block.InclusionLists, spec);
-            HashSet<Hash256> included = [];
-            foreach (Transaction tx in block.Transactions) if (tx.Hash is { } hash) included.Add(hash);
-            foreach (Transaction tx in inclusionList)
-                if (tx.SupportsFrames && !tx.SupportsBlobs && (tx.Hash is null || !included.Contains(tx.Hash))) omittedFrame = true;
+            omittedFrame = InclusionListValidator.OmitsFrameEntry(block, inclusionList);
         }
 
         InclusionListCommittedState state = new(new SpecificBlockReadOnlyStateProvider(_stateReader, block.Header),
