@@ -42,7 +42,7 @@ public class OptimismCLP2PMessageIdTests
         byte[] expected = SHA256.HashData(
             [0x01, 0x00, 0x00, 0x00, .. BitConverter.GetBytes((ulong)Topic.Length), .. Encoding.ASCII.GetBytes(Topic), .. payload])[..20];
 
-        MessageId id = OptimismCLP2P.CalculateMessageId(CreateMessage(compressed));
+        MessageId id = OptimismCLP2P.CreatePubsubSettings().GetMessageId(CreateMessage(compressed));
 
         Assert.That(id.Bytes, Is.EqualTo(expected));
     }
@@ -52,7 +52,7 @@ public class OptimismCLP2PMessageIdTests
     {
         byte[] compressed = [0x05, 0x10, .. "hello"u8];
 
-        MessageId id = OptimismCLP2P.CalculateMessageId(CreateMessage(compressed));
+        MessageId id = OptimismCLP2P.CreatePubsubSettings().GetMessageId(CreateMessage(compressed));
 
         Assert.That(id.Bytes, Is.EqualTo(Bytes.FromHexString("0x0089d50f80a1e1668e93fef3bd0d075261438c71")));
     }
@@ -66,7 +66,7 @@ public class OptimismCLP2PMessageIdTests
         byte[] expected = SHA256.HashData(
             [0x00, 0x00, 0x00, 0x00, .. BitConverter.GetBytes((ulong)Topic.Length), .. Encoding.ASCII.GetBytes(Topic), .. raw])[..20];
 
-        MessageId id = OptimismCLP2P.CalculateMessageId(CreateMessage(raw));
+        MessageId id = OptimismCLP2P.CreatePubsubSettings().GetMessageId(CreateMessage(raw));
 
         using (Assert.EnterMultipleScope())
         {
@@ -333,7 +333,7 @@ public class OptimismCLP2PMessageIdTests
     private static byte[] CompressWithHeader(byte[] payload, int minHeaderLength) =>
         [.. LengthHeader(payload.Length, minHeaderLength), .. Snappy.CompressToArray(payload)[LengthHeader(payload.Length).Length..]];
 
-    private static byte[] MessageIdOf(byte[] data) => OptimismCLP2P.CalculateMessageId(CreateMessage(data)).Bytes;
+    private static byte[] MessageIdOf(byte[] data) => OptimismCLP2P.CreatePubsubSettings().GetMessageId(CreateMessage(data)).Bytes;
 
     private static byte[] ExpectedMessageId(bool validDomain, byte[] body) =>
         SHA256.HashData([validDomain ? (byte)1 : (byte)0, 0, 0, 0, .. BitConverter.GetBytes((ulong)Topic.Length), .. Encoding.ASCII.GetBytes(Topic), .. body])[..20];

@@ -2223,6 +2223,8 @@ namespace Nethermind.Blockchain
         /// outside the lock with this call's own hashes.
         /// A <see cref="Keccak.Zero"/> hash means the caller does not know that block, so the previously known
         /// <see cref="FinalizedHash"/>/<see cref="SafeHash"/> is kept rather than cleared, matching other execution clients.
+        /// A kept safe block below a finalized block that moved past it is replaced with that finalized block, so the safe
+        /// block is never older than the finalized one.
         /// </remarks>
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
@@ -2230,7 +2232,8 @@ namespace Nethermind.Blockchain
             using (_forkChoiceLock.EnterScope())
             {
                 if (finalizedBlockHash == Keccak.Zero) finalizedBlockHash = FinalizedHash ?? finalizedBlockHash;
-                if (safeBlockHash == Keccak.Zero) safeBlockHash = SafeHash ?? safeBlockHash;
+                bool safeKept = safeBlockHash == Keccak.Zero;
+                if (safeKept) safeBlockHash = SafeHash ?? safeBlockHash;
 
                 bool finalizedAdvanced = finalizedBlockHash is not null
                     && finalizedBlockHash != Keccak.Zero
@@ -2238,6 +2241,9 @@ namespace Nethermind.Blockchain
                 finalizedHeader = finalizedAdvanced
                     ? FindHeader(finalizedBlockHash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded)
                     : null;
+
+                if (safeKept && finalizedHeader is not null && _headerStore.GetBlockNumber(safeBlockHash!) < finalizedHeader.Number)
+                    safeBlockHash = finalizedBlockHash;
 
                 PersistForkChoice(finalizedBlockHash, safeBlockHash);
 

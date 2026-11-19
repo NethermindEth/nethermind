@@ -1032,6 +1032,68 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(fees[1], Is.LessThan(fees[0]), "next fee must be lower since BlobGasUsed=0 reduces excess blob gas");
         }
 
+        [Test]
+        public void GetFeeHistory_CacheCleanedUp_CleansUpAgainAtLaterHead()
+        {
+            PrebuiltChainBlockTree chain = new(length: 4096);
+            BodyReadHookBlockTree blockTree = new(chain);
+            // Each cleanup keeps the head and its parent.
+            using FeeHistoryOracle oracle = new(blockTree, NullReceiptStorage.Instance, new TestSingleReleaseSpecProvider(Cancun.Instance), new JsonRpcConfig(), maxDistanceFromHead: 1);
+
+            CacheHeads(oracle, chain, 0, 2047);
+            Assert.That(IsReadFromTree(oracle, blockTree, 0), Is.False, "2048 entries start no cleanup");
+
+            // The 2049th entry starts a cleanup at head 2048.
+            CacheHeads(oracle, chain, 2048, 2048);
+            Assert.That(() => IsReadFromTree(oracle, blockTree, 2046), Is.True.After(10_000, 10));
+            Assert.That(IsReadFromTree(oracle, blockTree, 2047), Is.False, "the oldest block within the distance stays");
+
+            // 2049 entries again at head 4095, from 2047 up: only a second cleanup removes block 2048.
+            CacheHeads(oracle, chain, 2049, 4095);
+            Assert.That(() => IsReadFromTree(oracle, blockTree, 2048), Is.True.After(10_000, 10));
+        }
+
+        [Test]
+        public void GetFeeHistory_HeadBelowCacheDistance_CleanupRemovesNothing()
+        {
+            PrebuiltChainBlockTree chain = new(length: 2051);
+            BodyReadHookBlockTree blockTree = new(chain);
+            using FeeHistoryOracle oracle = new(blockTree, NullReceiptStorage.Instance, new TestSingleReleaseSpecProvider(Cancun.Instance), new JsonRpcConfig(), maxDistanceFromHead: 2049);
+
+            // Blocks 0 to 2048 are 2049 entries, which start a cleanup at a head below the distance.
+            chain.SetHead(2048);
+            oracle.GetFeeHistory(1024, new BlockParameter(2048UL), []).Dispose();
+            oracle.GetFeeHistory(1024, new BlockParameter(1024UL), []).Dispose();
+            oracle.GetFeeHistory(1, new BlockParameter(0UL), []).Dispose();
+
+            // At head 2050 a cleanup removes block 0 only, and it starts after the first one ended.
+            chain.SetHead(2050);
+            Assert.That(() => IsReadFromTree(oracle, blockTree, 0), Is.True.After(10_000, 10));
+
+            int readsBefore = blockTree.TotalBodyReads;
+            oracle.GetFeeHistory(1024, new BlockParameter(2048UL), []).Dispose();
+            oracle.GetFeeHistory(1024, new BlockParameter(1024UL), []).Dispose();
+            Assert.That(blockTree.TotalBodyReads, Is.EqualTo(readsBefore), "blocks 1 to 2048 are still cached");
+        }
+
+        /// <summary>Moves the head through <paramref name="from"/> to <paramref name="to"/>, caching each one as a request for the latest block does.</summary>
+        private static void CacheHeads(FeeHistoryOracle oracle, PrebuiltChainBlockTree chain, ulong from, ulong to)
+        {
+            for (ulong number = from; number <= to; number++)
+            {
+                chain.SetHead(number);
+                oracle.GetFeeHistory(1, BlockParameter.Latest, []).Dispose();
+            }
+        }
+
+        /// <returns>Whether a request for the block reads it from the tree, which it does once the block is not cached.</returns>
+        private static bool IsReadFromTree(FeeHistoryOracle oracle, BodyReadHookBlockTree blockTree, ulong blockNumber)
+        {
+            int readsBefore = blockTree.BodyReads(blockNumber);
+            oracle.GetFeeHistory(1, new BlockParameter(blockNumber), []).Dispose();
+            return blockTree.BodyReads(blockNumber) > readsBefore;
+        }
+
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
             IBlockTree? blockTree = null,
             IReceiptStorage? receiptStorage = null,
@@ -1150,6 +1212,37 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _bodyReads.AddOrUpdate(blockNumber, 1, static (_, reads) => reads + 1);
                 BeforeBodyRead?.Invoke(blockNumber);
             }
+        }
+
+        /// <summary>A canonical chain of blocks built in advance, whose head the test sets.</summary>
+        /// <remarks>Lookups by hash are answered only together with the block number, as the oracle makes them for ancestors and rewards; a newest block given by hash is not supported.</remarks>
+        private sealed class PrebuiltChainBlockTree : BlockTreeTestDouble
+        {
+            private readonly Block[] _blocks;
+
+            public PrebuiltChainBlockTree(int length)
+            {
+                _blocks = new Block[length];
+                _blocks[0] = Build.A.Block.Genesis.TestObject;
+                for (int i = 1; i < length; i++)
+                {
+                    _blocks[i] = Build.A.Block.WithParent(_blocks[i - 1]).TestObject;
+                }
+            }
+
+            public void SetHead(ulong blockNumber) => Head = _blocks[blockNumber];
+
+            public override Block? FindBlock(ulong blockNumber, BlockTreeLookupOptions options) =>
+                blockNumber < (ulong)_blocks.Length ? _blocks[blockNumber] : null;
+
+            public override Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+                blockNumber is { } number && FindBlock(number, options) is { } block && block.Hash == blockHash ? block : null;
+
+            public override BlockHeader? FindHeader(ulong blockNumber, BlockTreeLookupOptions options) =>
+                FindBlock(blockNumber, options)?.Header;
+
+            public override BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, ulong? blockNumber = null) =>
+                FindBlock(blockHash, options, blockNumber)?.Header;
         }
 
         /// <summary>A request held at a body read by <see cref="FeeHistoryTestBlockchain.PauseUncachedRequest"/>.</summary>

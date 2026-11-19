@@ -239,12 +239,12 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
-    public async Task InitializeAsync_ProbeFailsTransientlyOnce_RetriesAndCompletes()
+    public async Task InitializeAsync_ProbeFailsTransientlyOnce_RetriesAndCompletes([Values(408, 429, 500, 503)] int statusCode)
     {
         Dictionary<string, byte[]> files = TestArchive.BuildFiles();
         byte[] archive = TestArchive.BuildTarZst(files);
         _server.Content = archive;
-        _server.ServerErrorFirstRequests = 1;
+        _server.FailRequestWithStatus = (1, statusCode);
         _config.Checksum = Convert.ToHexString(SHA256.HashData(archive));
         SnapshotCheckpoint checkpoint = CreateCheckpoint();
 

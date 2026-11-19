@@ -165,6 +165,21 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_prefetch_receipts_a_window_at_a_time()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, Enumerable.Repeat(Keccak.Zero, 40).ToArray().ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _syncManager.ReceivedWithAnyArgs(3).PrefetchReceipts(null!, 0, 0);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 0, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 16, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 32, 8);
+    }
+
+    [Test]
     public void Should_stop_response_when_receipts_are_not_known_locally()
     {
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
