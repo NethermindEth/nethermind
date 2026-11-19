@@ -123,6 +123,28 @@ public class OwnedBlockBodies : IDisposable, IReadOnlyList<BlockBody?>
     public BlockBody? DecodeWithEncodedTransactions(int index) =>
         (_decoder ?? BlockBodyDecoder.Instance).DecodeWithEncodedTransactions(GetEncoded(index));
 
+    public int CountPresent()
+    {
+        int count = 0;
+        if (_bodies is not null)
+        {
+            foreach (BlockBody? body in _bodies)
+            {
+                if (body is not null) count++;
+            }
+
+            return count;
+        }
+
+        if (_encodedBodies is null) return 0;
+        foreach (Range body in _encodedBodies)
+        {
+            if (body.End.Value - body.Start.Value > 1) count++;
+        }
+
+        return count;
+    }
+
     private BlockBody?[] DecodeBodies()
     {
         IMemoryOwner<byte> memory = _memoryOwner ?? throw new ObjectDisposedException(nameof(OwnedBlockBodies));

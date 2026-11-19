@@ -888,6 +888,41 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Rejects_more_bodies_than_requested_without_decoding_them()
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        int bodyCount = blockRequest.BodiesRequests.Count + 1;
+        byte[] body = ThrowingHeaderDecoder.BodyWithUncle();
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(body.Length * bodyCount);
+        Range[] ranges = new Range[bodyCount];
+        for (int i = 0; i < bodyCount; i++)
+        {
+            body.CopyTo(memory.Memory[(i * body.Length)..]);
+            ranges[i] = new Range(i * body.Length, (i + 1) * body.Length);
+        }
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, ranges, ThrowingHeaderDecoder.BodyDecoder);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "more block bodies received than requested");
+        ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+    }
+
+    [Test]
     public async Task Reports_breach_on_receipts_that_do_not_decode()
     {
         await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig { FastSync = true, SnapSync = true }));

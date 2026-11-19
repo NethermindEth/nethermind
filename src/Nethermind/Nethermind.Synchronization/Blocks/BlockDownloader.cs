@@ -524,17 +524,29 @@ namespace Nethermind.Synchronization.Blocks
             using BlocksRequest _ = response;
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             BlockBody[]? bodies;
-            try
+            int requestedBodies = response.BodiesRequests?.Count ?? 0;
+            int receivedBodies = response.OwnedBodies?.CountPresent() ?? 0;
+            if (receivedBodies > requestedBodies)
             {
-                bodies = response.OwnedBodies?.Bodies;
-            }
-            // Any decode failure comes from the bytes the peer sent, so it is the peer's fault.
-            catch (Exception e)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {e.Message}");
-                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {receivedBodies} bodies for {requestedBodies} requested");
+                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "more block bodies received than requested");
                 bodies = null;
                 result = SyncResponseHandlingResult.LesserQuality;
+            }
+            else
+            {
+                try
+                {
+                    bodies = response.OwnedBodies?.Bodies;
+                }
+                // Any decode failure comes from the bytes the peer sent, so it is the peer's fault.
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {e.Message}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+                    bodies = null;
+                    result = SyncResponseHandlingResult.LesserQuality;
+                }
             }
 
             response.OwnedBodies?.Disown();
