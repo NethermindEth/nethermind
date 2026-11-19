@@ -58,7 +58,7 @@ public enum FrameFlags : byte
     /// <summary>Ties the frame to the batch it opens or continues: any member failing unrolls them all.</summary>
     AtomicBatch = 0x4,
 
-    /// <summary>EIP-7906: the frame's state changes survive a failed <c>ASSERT</c> assertion.</summary>
+    /// <summary>EIP-7906: the frame's state changes survive a failed <c>ASSERT</c> frame.</summary>
     AssertExempt = 0x8,
 }
 
@@ -117,6 +117,6 @@ public class TxFrame(FrameMode mode, FrameFlags flags, Address? target, ulong ex
     /// <summary>Whether the frame belongs to an atomic batch, whose members stand or fall together.</summary>
     public bool IsAtomicBatch => (Flags & FrameFlags.AtomicBatch) != 0;
 
-    /// <summary>Whether a failed EIP-7906 <c>ASSERT</c> assertion leaves the frame's state changes in place.</summary>
+    /// <summary>Whether a failed EIP-7906 <c>ASSERT</c> frame leaves the frame's state changes in place.</summary>
     public bool IsAssertExempt => (Flags & FrameFlags.AssertExempt) != 0;
 }
