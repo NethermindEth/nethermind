@@ -52,6 +52,14 @@ public class MisalignedWordsTests
                 b[skewB + i] ^= 0x10;
                 Assert.That(Bytes.SequenceEqualByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.False, $"byte {i}");
                 Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.EqualTo(i), $"prefix {i}");
+                Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length - 1)), Is.EqualTo(i), $"prefix {i}, second shorter");
+                Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length - 1), b.AsSpan(skewB, length)), Is.EqualTo(i), $"prefix {i}, first shorter");
+                if (i + 1 < length)
+                {
+                    b[skewB + i + 1] ^= 0x10;
+                    Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.EqualTo(i), $"prefix {i}, later byte also changed");
+                    b[skewB + i + 1] ^= 0x10;
+                }
                 b[skewB + i] ^= 0x10;
             }
         }
