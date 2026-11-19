@@ -63,10 +63,11 @@ internal sealed class CandidatePrefix : IDisposable
 
         for (int index = Count; index < count; index++)
         {
-            _transactions.Set(Rlp.EncodeToCappedArray(index, _pool).AsSpan(),
+            ReadOnlySpan<byte> key = Rlp.EncodeToCappedArray(index, _pool).AsSpan();
+            _transactions.Set(key,
                 TxDecoder.Instance.EncodeToCappedArray(transactions[index], RlpBehaviors.SkipTypedWrapping, _pool));
             TxReceipt receipt = receipts[index];
-            _receipts.Set(Rlp.EncodeToCappedArray(index, _pool).AsSpan(), ReceiptTrieDecoder.EncodeToCappedArray(receipt, _receiptBehavior, _pool));
+            _receipts.Set(key, ReceiptTrieDecoder.EncodeToCappedArray(receipt, _receiptBehavior, _pool));
             _bloom.Accumulate(receipt.Bloom);
         }
 

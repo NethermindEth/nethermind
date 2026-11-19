@@ -86,6 +86,31 @@ public class CandidatePrefixTests
     }
 
     [Test]
+    public void Extend_BeyondTheCachedIndexKeys_MatchesTheFromScratchPrefix()
+    {
+        const int cachedKeys = 1024;
+        Transaction[] transactions = new Transaction[cachedKeys + 2];
+        TxReceipt[] receipts = new TxReceipt[transactions.Length];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = _transactions[i % TransactionCount];
+            receipts[i] = _receipts[i % TransactionCount];
+        }
+
+        IReceiptSpec spec = Substitute.For<IReceiptSpec>();
+        spec.IsEip658Enabled.Returns(true);
+        using CandidatePrefix prefix = new(spec, transactions.Length);
+        prefix.Extend(transactions, receipts, cachedKeys);
+        prefix.Extend(transactions, receipts, transactions.Length);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(prefix.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(transactions)));
+            Assert.That(prefix.ReceiptsRoot, Is.EqualTo(ReceiptTrie.CalculateRoot(spec, receipts, ReceiptTrieDecoder)));
+        }
+    }
+
+    [Test]
     public void Extend_ShorterOrBeyondTheBlock_IsRejected()
     {
         using CandidatePrefix prefix = new(Substitute.For<IReceiptSpec>(), TransactionCount);
