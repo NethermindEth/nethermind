@@ -1239,6 +1239,25 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void A_recorder_reused_after_overflow_keeps_the_next_footprint()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            FootprintRecorder recorder = new(worldState);
+            TransactionFootprint? capped = RecordEffects(worldState, recorder,
+                active => AddEffects(active, FootprintRecorder.MaxEffects + 1));
+            TransactionFootprint? next = RecordEffects(worldState, recorder, active => AddEffects(active, 1));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(capped, Is.Null);
+                Assert.That(next, Is.Not.Null);
+            }
+        }
+    }
+
+    [Test]
     public void A_code_write_past_the_effect_limit_keeps_no_code()
     {
         byte[] code = [0x60, 0x00];
@@ -1263,18 +1282,23 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         using (worldState.BeginScope(Parent))
         {
-            Snapshot before = worldState.TakeSnapshot();
             recorder = new FootprintRecorder(worldState);
-            Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
-            recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
-            recorder.GetNonce(TestItem.AddressA);
-            run(recorder);
-            recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
-            TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
-            recorder.Stop();
-            worldState.Restore(before);
-            return footprint;
+            return RecordEffects(worldState, recorder, run);
         }
+    }
+
+    private TransactionFootprint? RecordEffects(IWorldState worldState, FootprintRecorder recorder, Action<FootprintRecorder> run)
+    {
+        Snapshot before = worldState.TakeSnapshot();
+        Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
+        recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+        recorder.GetNonce(TestItem.AddressA);
+        run(recorder);
+        recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
+        recorder.Stop();
+        worldState.Restore(before);
+        return footprint;
     }
 
     private void AddEffects(FootprintRecorder recorder, int count)
