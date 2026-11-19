@@ -97,7 +97,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private int _currentRecoveryQueueSize;
     private bool _isProcessingBlock;
-    private const int MaxBranchSize = 8192;
     private readonly CompositeBlockTracer _compositeBlockTracer = new();
     private readonly Stopwatch _stopwatch = new();
     private readonly BlockProcessingPauseGate _pauseGate = new();

@@ -30,7 +30,6 @@ namespace Nethermind.Consensus.AuRa
         IBlocksConfig blocksConfig,
         ILogManager logManager,
         ISigner signer,
-        ISpecProvider specProvider,
         IGasPriceOracle gasPriceOracle,
         ReportingContractBasedValidator.Cache reportingValidatorCache,
         ulong posdaoTransition, bool forSealing = false) : IAuRaValidatorFactory
@@ -47,7 +46,6 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlocksConfig _blocksConfig = blocksConfig;
         private readonly ILogManager _logManager = logManager;
         private readonly ISigner _signer = signer;
-        private readonly ISpecProvider _specProvider = specProvider;
         private readonly IGasPriceOracle _gasPriceOracle = gasPriceOracle;
         private readonly ReportingContractBasedValidator.Cache _reportingValidatorCache = reportingValidatorCache;
         private readonly ulong _posdaoTransition = posdaoTransition;
@@ -98,7 +96,6 @@ namespace Nethermind.Consensus.AuRa
                         _blocksConfig,
                         _stateProvider,
                         _reportingValidatorCache,
-                        _specProvider,
                         _gasPriceOracle,
                         _logManager),
 

@@ -110,7 +110,6 @@ public class JsonRpcWebSocketsModuleTests
 
         return new JsonRpcWebSocketsModule(
             processor,
-            Substitute.For<IJsonRpcService>(),
             new NullJsonRpcLocalStats(),
             LimboLogs.Instance,
             new EthereumJsonSerializer(),

@@ -31,7 +31,7 @@ namespace Nethermind.Consensus.Ethash
         public Ethash(ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger<Ethash>() ?? throw new ArgumentNullException(nameof(logManager));
-            _hintBasedCache = new HintBasedCache(BuildCache, logManager);
+            _hintBasedCache = new HintBasedCache(BuildCache);
         }
 
         public const int WordBytes = 4; // bytes in word

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Stateless.Execution;
@@ -50,6 +51,7 @@ partial class Program
     /// while reporting the first, which would otherwise recurse.
     /// </remarks>
     [UnmanagedCallersOnly(EntryPoint = "ZkvmThrow")]
+    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Invoked by the zkVM runtime through the ZkvmThrow export.")]
     static unsafe void HandleException(void* exception)
     {
         if (_handlingException || StatelessExecutor.FailureOutput.IsEmpty)

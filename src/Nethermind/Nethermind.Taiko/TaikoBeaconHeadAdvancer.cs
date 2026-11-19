@@ -126,7 +126,6 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
                 if (beaconBlock is not null)
                 {
                     target = beaconBlock;
-                    bestNumber = beaconBlock.Number;
                 }
             }
         }

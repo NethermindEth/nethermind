@@ -5,7 +5,6 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Events;
-using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test;
@@ -27,7 +26,7 @@ public class HintBasedCacheTests
     [Test]
     public void Without_hint_return_null()
     {
-        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet());
         for (uint i = 0; i < 1000; i++)
         {
             Assert.That(hintBasedCache.Get(i), Is.Null);
@@ -41,7 +40,7 @@ public class HintBasedCacheTests
     [Test]
     public async Task With_hint_returns_value()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 0, 200000);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 7, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
 
@@ -59,7 +58,7 @@ public class HintBasedCacheTests
     [Test]
     public void Get_returns_the_cached_instance()
     {
-        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 200000, 200000);
         IEthashDataSet firstGet = hintBasedCache.Get(Ethash.GetEpoch(200000UL));
         Assert.That(hintBasedCache.Get(Ethash.GetEpoch(200000UL)), Is.Not.Null.And.SameAs(firstGet));
@@ -68,7 +67,7 @@ public class HintBasedCacheTests
     [Test]
     public void Sync_hint_and_get()
     {
-        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 200000, 200000);
         using (Assert.EnterMultipleScope())
         {
@@ -83,7 +82,7 @@ public class HintBasedCacheTests
     public async Task Many_threads()
     {
         ulong range = 10000000UL;
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         void KeepHinting(Guid guid, ulong start)
         {
             for (ulong i = start; i <= range; i++)
@@ -120,7 +119,7 @@ public class HintBasedCacheTests
     [Test]
     public async Task Different_users_reuse_cached_epochs()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 0, 200000);
         hintBasedCache.Hint(_guidB, 0, 200000);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 7, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
@@ -138,7 +137,7 @@ public class HintBasedCacheTests
     [Test]
     public async Task Different_users_can_use_cache()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 0, 29999);
         hintBasedCache.Hint(_guidB, 30000, 59999);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 2, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
@@ -156,7 +155,7 @@ public class HintBasedCacheTests
     [Test]
     public async Task Different_users_can_use_disconnected_epochs()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 0, 29999);
         hintBasedCache.Hint(_guidB, 120000, 149999);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 2, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
@@ -173,7 +172,7 @@ public class HintBasedCacheTests
     [Test]
     public async Task Moving_range_evicts_cached_epochs()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 0, 209999);
         hintBasedCache.Hint(_guidA, 30000, 239999);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 7, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
@@ -191,7 +190,7 @@ public class HintBasedCacheTests
     [Test]
     public async Task Can_hint_far()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         hintBasedCache.Hint(_guidA, 1000000000, 1000000000);
         await Wait.ForCondition(() => hintBasedCache.CachedEpochsCount == 1, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(10));
 
@@ -206,14 +205,14 @@ public class HintBasedCacheTests
     [Test]
     public void Throws_on_wide_hint()
     {
-        HintBasedCache hintBasedCache = new(e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(e => new NullDataSet());
         Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, 0, 1000000000));
     }
 
     [Test]
     public void Throws_on_hint_above_the_maximum_epoch()
     {
-        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet());
         ulong blockNumber = (ulong)uint.MaxValue * Ethash.EpochLength;
 
         Assert.Throws<InvalidOperationException>(() => hintBasedCache.Hint(_guidA, blockNumber, blockNumber));
@@ -222,7 +221,7 @@ public class HintBasedCacheTests
     [Test]
     public void Throws_on_hint_whose_epoch_only_fits_uint_when_truncated()
     {
-        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet());
         // Truncating this epoch to uint would wrap it to 5 and accept it as an ordinary early epoch.
         ulong epoch = (1UL << 32) + 5;
         ulong blockNumber = epoch * Ethash.EpochLength;
@@ -233,7 +232,7 @@ public class HintBasedCacheTests
     [Test]
     public void Builds_a_single_epoch_at_the_maximum_supported_epoch()
     {
-        HintBasedCache hintBasedCache = new(static e => new NullDataSet(), LimboLogs.Instance);
+        HintBasedCache hintBasedCache = new(static e => new NullDataSet());
         ulong blockNumber = Ethash.MaxEpoch * Ethash.EpochLength;
 
         hintBasedCache.Hint(_guidA, blockNumber, blockNumber);

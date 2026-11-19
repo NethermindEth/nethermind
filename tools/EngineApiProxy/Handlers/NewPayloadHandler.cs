@@ -299,17 +299,4 @@ public class NewPayloadHandler(
             _ => string.Empty
         };
     }
-
-    private static string ExtractParentBeaconBlockRoot(JsonArray parameters)
-    {
-        if (parameters is null || parameters.Count < 3)
-            return string.Empty;
-
-        // The parentBeaconBlockRoot is the third parameter in the NewPayloadV4 request
-        JsonNode? parentBeaconBlockRoot = parameters[2];
-        if (parentBeaconBlockRoot is null || parentBeaconBlockRoot.GetValueKind() == JsonValueKind.Null)
-            return string.Empty;
-
-        return parentBeaconBlockRoot.ToString();
-    }
 }

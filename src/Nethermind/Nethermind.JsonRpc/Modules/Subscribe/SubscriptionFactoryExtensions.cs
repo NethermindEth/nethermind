@@ -58,7 +58,7 @@ public static class SubscriptionFactoryExtensions
         subscriptionFactory.RegisterSubscriptionType<TransactionHashesFilter?>(
             SubscriptionType.EthSubscription.TransactionReceipts,
             (jsonRpcDuplexClient, filter) =>
-            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, blockTree, specProvider, logManager, payloads, filter)
+            new TransactionReceiptsSubscription(jsonRpcDuplexClient, receiptMonitor, specProvider, logManager, payloads, filter)
             );
     }
 

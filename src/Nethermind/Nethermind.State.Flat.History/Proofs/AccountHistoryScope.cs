@@ -16,7 +16,6 @@ internal sealed class AccountHistoryScope(
     CommitmentDepthPolicy policy)
     : TrieHistoryScope(rows, rowFormat, commitments, policy)
 {
-    private static readonly AccountDecoder Decoder = new();
 
     public override bool HasCommitmentRows(int depth) => depth <= Policy.AccountCheckpointDepth && !Policy.IsComposedAccountDepth(depth);
 

@@ -16,7 +16,6 @@ namespace Nethermind.State.Flat.Persistence;
 public class RefCountingPersistenceReader : RefCountingDisposable, IPersistence.IPersistenceReader, IPersistence.IPrefetchingReader
 {
     private const int NoAccessors = 0; // Same as parent's constant
-    private const int Disposing = -1; // Same as parent's constant
     private readonly IPersistence.IPersistenceReader _innerReader;
     private CancellationTokenSource? _cts = new();
     public RefCountingPersistenceReader(IPersistence.IPersistenceReader innerReader, ILogger logger)

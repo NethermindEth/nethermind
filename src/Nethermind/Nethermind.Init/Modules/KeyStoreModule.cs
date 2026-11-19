@@ -58,7 +58,7 @@ public class KeyStoreModule : Module
         IKeyStoreConfig keyStoreConfig = ctx.Resolve<IKeyStoreConfig>();
         ITimestamper timestamper = ctx.Resolve<ITimestamper>();
         ProtectedPrivateKeyFactory keyFactory = new(ctx.Resolve<ICryptoRandom>(), timestamper, keyStoreConfig.KeyStoreDirectory);
-        return new ProtectedKeyStoreWallet(ctx.Resolve<IKeyStore>(), keyFactory, timestamper, logManager);
+        return new ProtectedKeyStoreWallet(ctx.Resolve<IKeyStore>(), keyFactory, logManager);
     }
 
     private static ISigner CreateSigner(IComponentContext ctx)

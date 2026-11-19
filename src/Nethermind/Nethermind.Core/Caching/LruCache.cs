@@ -15,7 +15,6 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, int> _cacheMap;
         private readonly McsLock _lock = new();
-        private readonly string _name;
         private readonly LruSlots<LruCacheItem> _slots;
         private readonly bool _notifyEviction;
 
@@ -23,7 +22,6 @@ namespace Nethermind.Core.Caching
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
-            _name = name;
             _maxCapacity = maxCapacity;
             _slots = new(maxCapacity, Math.Min(startCapacity, maxCapacity));
             // Subclasses may override Evict; retain their notifications outside the lock.

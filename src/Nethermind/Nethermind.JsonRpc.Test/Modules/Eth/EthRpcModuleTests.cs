@@ -290,7 +290,6 @@ public partial class EthRpcModuleTests
                 @this.RpcConfig,
                 @this.Bridge,
                 @this.BlockFinder,
-                @this.BlockTree,
                 @this.ReceiptFinder,
                 @this.StateReader,
                 txPool,

@@ -116,7 +116,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_filter is not { AcceptsAnyBlock: true, FromBlock.Type: BlockParameterType.Latest, ToBlock.Type: BlockParameterType.Latest })
                 return filter;
 
-            foreach (Hash256[]? topic in filter.Topics ?? [])
+            foreach (Hash256[]? _ in filter.Topics ?? [])
                 return filter;
 
             return null;

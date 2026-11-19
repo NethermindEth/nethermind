@@ -273,7 +273,6 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
             }
         }
 
-        bool readCompleted = false;
         try
         {
             bool loaded = _blobTxStorage is IBlobTxElidedReadStorage elidedReadStorage
@@ -285,7 +284,7 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool, IDis
                 return false;
             }
 
-            readCompleted = TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
+            bool readCompleted = TryCompleteValueWithoutBlobsRead(hash, lightTx, lightCellMask, loadedTx, out blobTx);
             if (readCompleted)
             {
                 TryPersistMetadataRecord(loadedTx);

@@ -167,7 +167,6 @@ public sealed class SszMiddleware
     private async Task ProcessSszRequestAsync(HttpContext ctx)
     {
         string? fork = null;
-        Task? forkError = null;
         string? authHeader = ctx.Request.Headers.Authorization;
         if (authHeader is null || !await _auth.Authenticate(authHeader))
         {
@@ -182,7 +181,7 @@ public sealed class SszMiddleware
             await SszEndpointHandlerBase.WriteErrorAsync(ctx, StatusCodes.Status404NotFound,
                 "Unknown SSZ endpoint", SszRestErrorCodes.MethodNotFound);
         }
-        else if (forkScoped && !TryResolveFork(ctx, out fork, out forkError))
+        else if (forkScoped && !TryResolveFork(ctx, out fork, out Task? forkError))
         {
             Metrics.SszRestRequestsClientErrorTotal++;
             await forkError!;

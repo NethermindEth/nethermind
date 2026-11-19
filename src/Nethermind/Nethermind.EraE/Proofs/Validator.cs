@@ -11,7 +11,6 @@ namespace Nethermind.EraE.Proofs;
 
 public sealed class Validator
 {
-    private readonly ISpecProvider _specProvider;
     private readonly IHistoricalSummariesProvider? _historicalSummariesProvider;
     private readonly IReadOnlyList<ValueHash256>? _trustedAccumulators;
     private readonly IReadOnlyList<ValueHash256>? _trustedHistoricalRoots;
@@ -24,7 +23,6 @@ public sealed class Validator
         IHistoricalSummariesProvider? historicalSummariesProvider,
         IBlocksConfig? blocksConfig = null)
     {
-        _specProvider = specProvider;
         if (specProvider.BeaconChainGenesisTimestamp.HasValue)
         {
             ulong secondsPerSlot = blocksConfig?.SecondsPerSlot ?? 12;

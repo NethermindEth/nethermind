@@ -15,13 +15,10 @@ using Nethermind.Logging;
 
 namespace Nethermind.Wallet
 {
-    public class ProtectedKeyStoreWallet(IKeyStore keyStore, IProtectedPrivateKeyFactory protectedPrivateKeyFactory, ITimestamper timestamper, ILogManager logManager) : IWallet
+    public class ProtectedKeyStoreWallet(IKeyStore keyStore, IProtectedPrivateKeyFactory protectedPrivateKeyFactory, ILogManager logManager) : IWallet
     {
-        private static readonly TimeSpan DefaultExpirationTime = TimeSpan.FromMinutes(5);
-
         private readonly IKeyStore _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
         private readonly IProtectedPrivateKeyFactory _protectedPrivateKeyFactory = protectedPrivateKeyFactory ?? throw new ArgumentNullException(nameof(protectedPrivateKeyFactory));
-        private readonly ITimestamper _timestamper = timestamper ?? Timestamper.Default;
         private readonly ILogger _logger = logManager?.GetClassLogger<ProtectedKeyStoreWallet>() ?? throw new ArgumentNullException(nameof(logManager));
 
         private readonly LruCache<String, ProtectedPrivateKey> _unlockedAccounts = new(100, nameof(ProtectedKeyStoreWallet));

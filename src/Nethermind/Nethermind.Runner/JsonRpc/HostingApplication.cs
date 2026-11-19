@@ -13,10 +13,8 @@ namespace Nethermind.Runner.JsonRpc;
 
 internal sealed class HostingApplication(
     RequestDelegate application,
-    ILogManager logManager,
     HttpContextFactory httpContextFactory) : IHttpApplication<HostingApplication.Context>
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<HostingApplication>();
     private readonly RequestDelegate _application = application;
     private readonly HttpContextFactory? _httpContextFactory = httpContextFactory;
 
@@ -39,17 +37,14 @@ internal sealed class HostingApplication(
             hostContext = new Context();
         }
 
-        HttpContext httpContext;
         DefaultHttpContext defaultHttpContext = (DefaultHttpContext?)hostContext.HttpContext;
         if (defaultHttpContext is null)
         {
-            httpContext = _httpContextFactory.Create(contextFeatures);
-            hostContext.HttpContext = httpContext;
+            hostContext.HttpContext = _httpContextFactory.Create(contextFeatures);
         }
         else
         {
             _httpContextFactory.Initialize(defaultHttpContext, contextFeatures);
-            httpContext = defaultHttpContext;
         }
 
         return hostContext;

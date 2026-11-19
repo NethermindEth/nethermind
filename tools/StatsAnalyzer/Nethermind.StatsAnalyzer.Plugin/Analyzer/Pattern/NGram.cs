@@ -85,7 +85,7 @@ public readonly struct NGram(ulong value = NGram.Null) : IEquatable<NGram>
     public static byte[] ToBytes(ulong ngram)
     {
         byte[] instructions = new byte[MaxSize];
-        int i = 0;
+        int i;
         for (i = 0; i < instructions.Length; i++)
         {
             instructions[instructions.Length - 1 - i] = (byte)((ngram & ByteIndexes[i]) >> (i * 8));

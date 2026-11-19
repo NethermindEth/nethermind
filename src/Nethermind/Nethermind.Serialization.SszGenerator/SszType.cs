@@ -462,9 +462,6 @@ class SszType
     private static bool HasAttribute(ITypeSymbol typeSymbol, string attributeName) =>
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
 
-    private static bool HasPropertyAttribute(IPropertySymbol property, string attributeName) =>
-        property.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);
-
     private static bool HasAnyFieldIndex(ITypeSymbol typeSymbol) =>
         GetPublicProperties(typeSymbol).Any(property => property.GetAttributes().Any(a => a.AttributeClass?.Name == "SszFieldAttribute"));
 

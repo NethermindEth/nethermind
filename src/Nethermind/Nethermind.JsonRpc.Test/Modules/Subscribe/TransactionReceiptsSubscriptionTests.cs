@@ -29,7 +29,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
     {
         private IJsonRpcDuplexClient _jsonRpcDuplexClient = null!;
         private IReceiptMonitor _receiptCanonicalityMonitor = null!;
-        private IBlockTree _blockTree = null!;
         private readonly ISpecProvider _specProvider = new TestSpecProvider(Cancun.Instance);
         private ILogManager _logManager = null!;
 
@@ -42,7 +41,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         {
             _jsonRpcDuplexClient = Substitute.For<IJsonRpcDuplexClient>();
             _receiptCanonicalityMonitor = Substitute.For<IReceiptMonitor>();
-            _blockTree = Substitute.For<IBlockTree>();
             _logManager = Substitute.For<ILogManager>();
         }
 
@@ -62,7 +60,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             using TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
-                _blockTree,
                 _specProvider,
                 _logManager,
                 filter);
@@ -122,7 +119,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             if (shouldThrow)
             {
                 Action act = () => new TransactionReceiptsSubscription(
-                    _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _specProvider, _logManager, filter);
+                    _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _specProvider, _logManager, filter);
 
                 using (Assert.EnterMultipleScope())
                 {
@@ -135,7 +132,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Assert.That(ParseFilter(filterJson).TransactionHashes, Is.EquivalentTo(hashes));
 
                 using TransactionReceiptsSubscription subscription = new(
-                    _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _blockTree, _specProvider, _logManager, filter);
+                    _jsonRpcDuplexClient, _receiptCanonicalityMonitor, _specProvider, _logManager, filter);
 
                 Assert.That(subscription, Is.Not.Null);
                 Assert.That(subscription.Id, Does.StartWith("0x"));
@@ -431,7 +428,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TransactionReceiptsSubscription subscription = new(
                 _jsonRpcDuplexClient,
                 _receiptCanonicalityMonitor,
-                _blockTree,
                 _specProvider,
                 _logManager,
                 null);

@@ -16,7 +16,6 @@ using Nethermind.Sockets;
 namespace Nethermind.JsonRpc.WebSockets;
 
 public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
-    IJsonRpcService jsonRpcService,
     IJsonRpcLocalStats jsonRpcLocalStats,
     ILogManager logManager,
     IJsonSerializer jsonSerializer,
@@ -31,7 +30,6 @@ public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
     private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
 
     private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
-    private readonly IJsonRpcService _jsonRpcService = jsonRpcService;
     private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
     private readonly ILogManager _logManager = logManager;
     private readonly IJsonSerializer _jsonSerializer = jsonSerializer;

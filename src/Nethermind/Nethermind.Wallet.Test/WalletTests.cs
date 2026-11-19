@@ -62,7 +62,6 @@ public class WalletTests
                                 LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config)),
                             new ProtectedPrivateKeyFactory(new CryptoRandom(),
                                 Timestamper.Default, config.KeyStoreDirectory),
-                            Timestamper.Default,
                             LimboLogs.Instance);
                         wallet.SetupTestAccounts(3);
 
@@ -183,8 +182,7 @@ public class WalletTests
         File.Move(Directory.GetFiles(directory.Path).Single(), Path.Combine(directory.Path, $"{TestItem.AddressD.ToString(false, false)}.json"));
         IWallet wallet = walletType == WalletType.KeyStore
             ? new DevKeyStoreWallet(keyStore, LimboLogs.Instance, createTestAccounts: false)
-            : new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default, directory.Path),
-                Timestamper.Default, LimboLogs.Instance);
+            : new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(new CryptoRandom(), Timestamper.Default, directory.Path), LimboLogs.Instance);
         Assert.That(wallet.GetAccounts(), Does.Not.Contain(TestItem.AddressD), "precondition: the account list only names UTC key files");
         if (unlocked)
             Assert.That(wallet.UnlockAccount(TestItem.AddressD, passphrase), Is.True, "precondition: unlocking finds the key file");

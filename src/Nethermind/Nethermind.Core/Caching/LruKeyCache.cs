@@ -12,7 +12,7 @@ namespace Nethermind.Core.Caching
     public sealed class LruKeyCache<TKey>(int maxCapacity, int startCapacity, string name) where TKey : notnull
     {
         private readonly int _maxCapacity = maxCapacity;
-        private readonly string _name = name ?? throw new ArgumentNullException(nameof(name));
+        public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
         private readonly Dictionary<TKey, int> _cacheMap = typeof(TKey) == typeof(byte[])
                 ? [with((IEqualityComparer<TKey>)Bytes.EqualityComparer)]
                 : [with(startCapacity)];

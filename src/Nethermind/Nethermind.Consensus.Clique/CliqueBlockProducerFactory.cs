@@ -33,7 +33,6 @@ internal sealed class CliqueBlockProducerFactory(
         return new CliqueBlockProducer(
             env.TxSource,
             env.ChainProcessor,
-            env.ReadOnlyStateProvider,
             timestamper,
             cryptoRandom,
             snapshotManager,

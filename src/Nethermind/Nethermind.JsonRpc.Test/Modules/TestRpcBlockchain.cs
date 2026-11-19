@@ -199,7 +199,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             @this.RpcConfig,
             @this.Bridge,
             @this.BlockFinder,
-            @this.BlockTree,
             @this.Container.ResolveKeyed<IReceiptFinder>(IReceiptFinder.RegenerableKey),
             @this.StateReader,
             @this.TxPool,

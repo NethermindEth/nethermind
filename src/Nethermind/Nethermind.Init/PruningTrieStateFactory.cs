@@ -40,7 +40,6 @@ public class PruningTrieStateFactory(
     NodeStorageCache? nodeStorageCache = null
 )
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<PruningTrieStateFactory>();
 
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {

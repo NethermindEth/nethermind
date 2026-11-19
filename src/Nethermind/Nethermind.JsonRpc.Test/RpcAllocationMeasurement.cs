@@ -205,7 +205,7 @@ public class RpcAllocationMeasurement
     }
 
     private static IEthRpcModule CreateEthModule(TestRpcBlockchain chain) => new EthRpcModule(
-        chain.RpcConfig, chain.Bridge, chain.BlockFinder, chain.BlockTree, chain.ReceiptFinder, chain.StateReader, chain.TxPool, chain.TxSender, chain.TestWallet,
+        chain.RpcConfig, chain.Bridge, chain.BlockFinder, chain.ReceiptFinder, chain.StateReader, chain.TxPool, chain.TxSender, chain.TestWallet,
         NullLogManager.Instance, chain.SpecProvider, chain.GasPriceOracle,
         new EthSyncingInfo(chain.BlockTree, Substitute.For<ISyncPointers>(), chain.Container.Resolve<ISyncConfig>(),
             new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), Synchronization.No.BeaconSync, chain.LogManager),

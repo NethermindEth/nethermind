@@ -155,7 +155,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
         Task[] refreshTasks = CancelAndGetRefreshTasks();
         if (refreshTasks.Length == 0) return;
 
-        bool completed = false;
+        bool completed;
         try
         {
             completed = Task.WaitAll(refreshTasks, _refreshPingTimeout + TimeSpan.FromMilliseconds(500));
