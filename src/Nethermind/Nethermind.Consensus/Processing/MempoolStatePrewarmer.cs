@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -236,7 +235,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         Dictionary<AddressAsKey, SenderSelection> selectedBySender, CancellationToken token)
     {
         NextBlockContext next = PrepareNextBlockContext(parent);
-        Transaction[]? delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit).Select(static tx => tx.Transaction), warmedPerSender, selectedBySender, token);
+        Transaction[]? delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender, token);
         return delta is null ? null : (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
     }
 
@@ -248,13 +247,13 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// <remarks>The optional scratch dictionary is owned by one speculative session and cleared between passes.</remarks>
     /// <returns>The delta, or <see langword="null"/> when <paramref name="token"/> ends the pass before selection completes;
     /// nothing is then recorded as warmed.</returns>
-    internal static Transaction[]? SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
+    internal static Transaction[]? SelectDelta(IEnumerable<MempoolTransaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
         Dictionary<AddressAsKey, SenderSelection>? bySender = null, CancellationToken token = default)
     {
         bySender ??= [];
         bySender.Clear();
-        using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<Transaction> collection ? collection.Count : 0);
-        foreach (Transaction tx in orderedTxs)
+        using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<MempoolTransaction> collection ? collection.Count : 0);
+        foreach (MempoolTransaction mempoolTx in orderedTxs)
         {
             // Each pull runs the producer's ordering and filters; a block arriving must not wait for the whole selection.
             if (token.IsCancellationRequested)
@@ -263,6 +262,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
                 return null;
             }
 
+            Transaction tx = mempoolTx.Transaction;
             if (tx.SenderAddress is not Address sender) continue;
             ref SenderSelection group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
             int index = transactions.Count;

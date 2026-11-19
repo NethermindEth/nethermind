@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Blockchain.Tracing;
@@ -78,7 +77,7 @@ namespace Nethermind.Consensus.Processing
 
                 // Don't use blockToProduce.Transactions.Count() as that would fully enumerate which is expensive
                 int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
-                IEnumerable<MempoolTransaction> transactions = blockToProduce?.Transactions ?? block.Transactions.Select(static tx => (MempoolTransaction)tx);
+                IEnumerable<MempoolTransaction> transactions = block.GetMempoolTransactions();
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
                 using ArrayPoolListRef<MempoolTransaction> includedMempoolTx = new(blockToProduce is not null ? txCount : 0);

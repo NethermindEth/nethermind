@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Config;
@@ -27,6 +28,19 @@ namespace Nethermind.Consensus.Processing
             }
 
             return false;
+        }
+
+        /// <summary>Returns the transactions of <paramref name="block"/>, each with the blob sidecar it travels with.</summary>
+        /// <remarks>Only a <see cref="BlockToProduce"/> holds sidecars; the transactions of any other block come without one.</remarks>
+        public static IEnumerable<MempoolTransaction> GetMempoolTransactions(this Block block) =>
+            block is BlockToProduce blockToProduce ? blockToProduce.Transactions : WrapTransactions(block.Transactions);
+
+        private static IEnumerable<MempoolTransaction> WrapTransactions(Transaction[] transactions)
+        {
+            foreach (Transaction tx in transactions)
+            {
+                yield return tx;
+            }
         }
 
         public static bool IsByNethermindNode(this Block block) => block.Header.IsByNethermindNode();
