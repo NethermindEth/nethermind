@@ -57,14 +57,13 @@ public static class StarkProofStoreExtensions
     }
 
     /// <summary>Returns <paramref name="block"/> with the <see cref="Block.EncodedSize"/> it has with its proof, leaving the proof unread.</summary>
-    /// <remarks>For a hashes-only block, whose transactions are not there to recompute the size from.</remarks>
+    /// <remarks>For a hashes-only block, whose transactions are not there to recompute the size from. A block without a stored
+    /// size, as a cached or pending one is, has its proof joined instead, so the size computed from its body includes it.</remarks>
     public static Block WithProofSize(this IStarkProofStore proofStore, Block block)
     {
-        if (!CommitsToMissingProof(block) || block.EncodedSize is not { } storedSize
-            || proofStore.GetEncodedLength(block.Number, block.Hash!) is not { } proofLength)
-        {
-            return block;
-        }
+        if (!CommitsToMissingProof(block)) return block;
+        if (block.EncodedSize is not { } storedSize) return proofStore.WithProof(block);
+        if (proofStore.GetEncodedLength(block.Number, block.Hash!) is not { } proofLength) return block;
 
         Block withSize = block.WithReplacedBody(block.Body);
         withSize.EncodedSize = SizeWithProof(storedSize, proofLength);

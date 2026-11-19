@@ -71,9 +71,10 @@ public class StarkProofStoreTests
 
     // A stored block's size is that of its proofless encoding; the RPC size is that of the block with its proof.
     [Test]
-    public async Task Joined_size_is_that_of_the_block_with_its_proof([Values(0, 1, 55, 56, 320 * 1024)] int proofBytes, [Values(0x01, 0xff)] byte fill)
+    public async Task Joined_size_is_that_of_the_block_with_its_proof(
+        [Values(0, 1, 55, 56, 320 * 1024)] int proofBytes, [Values(0x01, 0xff)] byte fill, [Values] bool deferred, [Values] bool cached)
     {
-        await using DeferredBlockDataWriter writer = Writer(deferred: false);
+        await using DeferredBlockDataWriter writer = Writer(deferred);
         using IContainer container = CreateContainer(writer);
         IBlockStore blockStore = container.Resolve<IBlockStore>();
         IStarkProofStore proofStore = container.Resolve<IStarkProofStore>();
@@ -82,14 +83,16 @@ public class StarkProofStoreTests
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
         int size = Rlp.Encode(block).Bytes.Length;
-        blockStore.Insert(block);
+        blockStore.InsertDeferred(block);
+        // A cached or pending block is a copy without a stored size, unlike one decoded from the database.
+        if (cached) blockStore.Cache(block);
         Block stored = blockStore.Get(block.Number, block.Hash!, shouldCache: false)!;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(proofStore.GetEncodedLength(block.Number, block.Hash!), Is.EqualTo(Rlp.LengthOf(block.StarkProof)));
-            Assert.That(proofStore.WithProofSize(stored).EncodedSize, Is.EqualTo(size));
-            Assert.That(proofStore.WithProof(stored).EncodedSize, Is.EqualTo(size));
+            Assert.That(RpcSize(proofStore.WithProofSize(stored)), Is.EqualTo(size));
+            Assert.That(RpcSize(proofStore.WithProof(stored)), Is.EqualTo(size));
         }
     }
 
@@ -112,6 +115,9 @@ public class StarkProofStoreTests
         block.Header.Hash = block.Header.CalculateHash();
         return block;
     }
+
+    /// <summary>The size <c>BlockForRpc</c> reports.</summary>
+    private static int RpcSize(Block block) => block.EncodedSize ?? new BlockDecoder().GetLength(block, RlpBehaviors.None);
 
     private static Block WithoutProof(Block block) =>
         new(block.Header, new BlockBody(block.Transactions, block.Uncles, block.Withdrawals));

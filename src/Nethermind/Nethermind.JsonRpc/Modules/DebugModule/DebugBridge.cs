@@ -406,7 +406,7 @@ public class DebugBridge : IDebugBridge
     /// and one whose proof is not available is not found.</remarks>
     private byte[]? GetBlockRlp(ulong number, Hash256 hash)
     {
-        if (_starkProofStore.GetEncodedLength(number, hash) is null)
+        if (_starkProofStore.Get(number, hash) is not { } proof)
         {
             return _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number)?.RecursiveStark is null
                 ? _blockStore.GetRlp(number, hash)
@@ -414,7 +414,7 @@ public class DebugBridge : IDebugBridge
         }
 
         Block? block = _blockStore.Get(number, hash, shouldCache: false);
-        return block is null || _starkProofStore.WithAvailableProof(block) is not { } withProof ? null : _blockDecoder.EncodeAsBytes(withProof);
+        return block is null ? null : _blockDecoder.EncodeAsBytes(block.WithReplacedBody(new BlockBody(block.Transactions, block.Uncles, block.Withdrawals, proof)));
     }
 
     public Block? GetBlock(BlockParameter param)
