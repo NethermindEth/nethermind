@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.Intrinsics.X86;
@@ -241,6 +242,30 @@ namespace Nethermind.Core.Test
 
                 Assert.That(actual, Is.EqualTo(expected), $"Permutation mismatch for test case {testCase}.");
             }
+        }
+
+        [Test]
+        public void Scalar_absorb_matches_per_block_permutation([Values(1, 2, 7, 30)] int blocks)
+        {
+            const int rateBytes = 136;
+            byte[] input = new byte[blocks * rateBytes];
+            new Random(blocks).NextBytes(input);
+
+            ulong[] expected = new ulong[25];
+            for (int block = 0; block < blocks; block++)
+            {
+                for (int lane = 0; lane < rateBytes / sizeof(ulong); lane++)
+                {
+                    expected[lane] ^= BinaryPrimitives.ReadUInt64LittleEndian(input.AsSpan(block * rateBytes + lane * sizeof(ulong)));
+                }
+
+                KeccakHash.KeccakF1600Scalar(ref expected[0]);
+            }
+
+            ulong[] actual = new ulong[25];
+            KeccakHash.AbsorbBlocksScalar(ref actual[0], ref input[0], blocks);
+
+            Assert.That(actual, Is.EqualTo(expected));
         }
 
         [Test]

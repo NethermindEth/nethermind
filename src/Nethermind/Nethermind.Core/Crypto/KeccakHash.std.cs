@@ -22,8 +22,14 @@ public sealed partial class KeccakHash
     /// <summary>Whether whole 136-byte rate blocks are permuted one by one with <see cref="KeccakF1600Avx512VL"/>
     /// rather than absorbed by <see cref="AbsorbBlocksScalar"/>: on Intel AVX-512VL cores, where the scalar absorb
     /// is not faster on every microarchitecture.</summary>
-    private static readonly bool PermutesBlocksWithAvx512VL =
-        Avx512F.VL.IsSupported && X86Base.CpuId(0, 0) is (_, 0x756E6547, 0x6C65746E, 0x49656E69);
+    private static readonly bool PermutesBlocksWithAvx512VL = Avx512F.VL.IsSupported && IsGenuineIntel();
+
+    private static bool IsGenuineIntel()
+    {
+        (_, int ebx, int ecx, int edx) = X86Base.CpuId(0, 0);
+        ReadOnlySpan<int> vendor = [ebx, edx, ecx];
+        return MemoryMarshal.AsBytes(vendor).SequenceEqual("GenuineIntel"u8);
+    }
 
     /// <inheritdoc cref="KeccakHash.InitializeState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -99,7 +105,7 @@ public sealed partial class KeccakHash
     /// <summary>XORs each of <paramref name="blocks"/> 136-byte rate blocks of <paramref name="input"/> into the state
     /// and permutes after each, keeping the lanes in locals between blocks; zero blocks permutes once.</summary>
     /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
-    private static void AbsorbBlocksScalar(ref ulong state, ref byte input, int blocks)
+    internal static void AbsorbBlocksScalar(ref ulong state, ref byte input, int blocks)
     {
         Debug.Assert(blocks >= 0);
         Span<ulong> st = MemoryMarshal.CreateSpan(ref state, STATE_LANES);
