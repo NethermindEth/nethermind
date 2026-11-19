@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -27,11 +28,29 @@ internal static unsafe class WordDivision
     public static void DivRem(in UInt256 dividend, in UInt256 divisor, out UInt256 quotient, out UInt256 remainder)
     {
         Debug.Assert(!divisor.IsZero);
-        if (TryHinted(in dividend, in divisor, out quotient, out remainder)) return;
+        if (TryHinted(in dividend, in divisor, out quotient, out remainder))
+        {
+            if (TraceDivisionHints) IO.PrintLine("DIV-HIT");
+            return;
+        }
         quotient = default;
         remainder = default;
         fixed (UInt256* u = &dividend, v = &divisor, q = &quotient, r = &remainder)
             DivRem((uint*)u, SignificantDigits((uint*)u), (uint*)v, (uint*)q, (uint*)r);
+        if (TraceDivisionHints) TraceDivision(in quotient, in remainder);
+    }
+
+    // Enabled only in the recording build. Production guests contain neither UART call.
+    private static bool TraceDivisionHints => false;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceDivision(in UInt256 quotient, in UInt256 remainder)
+    {
+        Span<char> line = stackalloc char[4 + 128];
+        "DIV:".CopyTo(line);
+        Convert.TryToHexString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in quotient, 1)), line[4..68], out _);
+        Convert.TryToHexString(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in remainder, 1)), line[68..], out _);
+        IO.PrintLine(line);
     }
 
     /// <summary>The division hints of the input, one for each call of <see cref="TryHinted"/> in the order of the calls.</summary>

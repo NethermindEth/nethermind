@@ -81,8 +81,15 @@ $(GUEST_DIR)/bin/%.hex: $(GUEST_DIR)/bin/%.raw
 .PHONY: test-division
 test-division: dotnet-build
 	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=division-test \
-		BFLAT_DOCKER_ARGS='$(BFLAT_DOCKER_ARGS) --mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Evm/WordDivision.zkevm.cs",target=/test/WordDivision.cs,readonly --mount type=bind,source="$(MAKEFILE_DIR)/../../../scripts/guest-tests/airbender/Division.cs",target=/test/Division.cs,readonly' \
-		GUEST_SOURCES='/test/Division.cs /test/WordDivision.cs'
+		BFLAT_DOCKER_ARGS='$(BFLAT_DOCKER_ARGS) --mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Evm/WordDivision.zkevm.cs",target=/test/WordDivision.cs,readonly' \
+		GUEST_SOURCES='$(SRC_DIR)/tests/Division.cs /test/WordDivision.cs'
 	dotnet run --file "$(MAKEFILE_DIR)/../../../scripts/ci/airbender-division-input.cs" -- "$(GUEST_DIR)/bin/division-test.hex"
 	$(AIRBENDER_CLI) run --bin "$(GUEST_DIR)/bin/division-test.bin" --text "$(GUEST_DIR)/bin/division-test.text" \
 		--input-file "$(GUEST_DIR)/bin/division-test.hex" --cycles 10000000 --expected-results 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+# Record and replay the same arithmetic build. INPUT is an unhinted framed .nti under bin/.
+.PHONY: record-division
+record-division:
+	@$(REQUIRE_INPUT)
+	$(MAKE) build GUEST_NAME=division-recorder GUEST_INPUT=Trusted GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/trace-division.xml'
+	dotnet run --file "$(MAKEFILE_DIR)/../../../scripts/ci/record-airbender-divisions.cs" -- "$(GUEST_DIR)" "$(INPUT)"

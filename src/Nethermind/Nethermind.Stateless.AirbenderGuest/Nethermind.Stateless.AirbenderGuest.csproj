@@ -2,4 +2,8 @@
 
   <Import Project="..\Nethermind.Stateless.Guest\Guest.props" />
 
+  <ItemGroup>
+    <Compile Remove="tests/Division.cs" />
+  </ItemGroup>
+
 </Project>
