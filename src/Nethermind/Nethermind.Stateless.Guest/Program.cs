@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Stateless.Execution;
 using Nethermind.Zkvm.Abstractions;
 
@@ -23,7 +24,7 @@ partial class Program
 {
     static int Main()
     {
-        ReadOnlySpan<byte> input = IO.ReadInput();
+        ReadOnlySpan<byte> input = AirbenderFlag.IsActive ? IO.ReadPrehashedInput() : IO.ReadInput();
         ReadOnlySpan<byte> output = Execute(input);
 
         WriteOutput(output);
