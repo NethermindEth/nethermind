@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Db;
+using Nethermind.Db.Rocks.Config;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -40,6 +41,7 @@ public class TraceStorePlugin(ITraceStoreConfig traceStoreConfig, IJsonRpcConfig
         {
             builder
                 .AddDatabase(DbName)
+                .AddDecorator<IRocksDbConfigFactory, TraceStoreRocksDbConfigFactory>()
                 .AddSingleton<TraceStorePruner>()
                 .AddSingleton<ITraceSerializer<ParityLikeTxTrace>, ITraceStoreConfig, ILogManager>((config, logManager) =>
                     new ParityLikeTraceSerializer(logManager, config.MaxDepth, config.VerifySerialized))

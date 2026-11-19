@@ -16,7 +16,7 @@ public interface ISparseBlobPoolPeer
     /// <summary>Gets whether the peer session is closing.</summary>
     bool IsClosing { get; }
     /// <summary>Attempts to request the specified cells from this peer.</summary>
-    bool TrySendGetCells(Hash256 hash, BlobCellMask requestMask);
+    bool TrySendGetCells(in ValueHash256 hash, BlobCellMask requestMask);
     /// <summary>Attempts to request a pooled transaction from this peer.</summary>
     bool TrySendPooledTransactionRequest(Hash256 hash);
     /// <summary>Expires bounded per-peer sparse-blob state at the supplied registry time.</summary>

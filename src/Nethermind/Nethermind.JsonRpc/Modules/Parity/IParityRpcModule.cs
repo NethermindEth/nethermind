@@ -25,13 +25,13 @@ namespace Nethermind.JsonRpc.Modules.Parity
         [JsonRpcMethod(Description = "Returns the node enode URI.", IsImplemented = true, ExampleResponse = "enode://a9cfa3cb16b537e131b0f141b5ef0c0ab9bf0dbec7799c3fc7bf8a974ff3e74e9b3258951b285dfed07ab395049bcd65fed96116bb92561612682551ec458497@18.193.43.58:30303")]
         ResultWrapper<string> parity_enode();
 
-        [JsonRpcMethod(Description = "", IsImplemented = true, ExampleResponse = "true")]
+        [JsonRpcMethod(Description = "", IsImplemented = true, RequiresAuthentication = true, ExampleResponse = "true")]
         ResultWrapper<bool> parity_setEngineSigner([JsonRpcParameter(ExampleValue = "[\"707Fc13C0eB628c074f7ff514Ae21ACaeE0ec072\",\"testPass\"]")] Address address, string password);
 
-        [JsonRpcMethod(Description = "", IsImplemented = true)]
+        [JsonRpcMethod(Description = "", IsImplemented = true, RequiresAuthentication = true)]
         ResultWrapper<bool> parity_setEngineSignerSecret(string privateKey);
 
-        [JsonRpcMethod(Description = "", IsImplemented = true)]
+        [JsonRpcMethod(Description = "", IsImplemented = true, RequiresAuthentication = true)]
         ResultWrapper<bool> parity_clearEngineSigner();
 
         [JsonRpcMethod(Description = "Returns connected peers. Peers with non-empty protocols have completed handshake.", IsImplemented = true)]

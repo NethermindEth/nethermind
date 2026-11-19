@@ -11,16 +11,20 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
+using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -401,6 +405,31 @@ public class RpcModuleProviderTests
     }
 
     [Test]
+    public void Registers_ordinary_methods_only()
+    {
+        _moduleProvider.Register(new TestModulePool<IAdminRpcModule>(Substitute.For<IAdminRpcModule>()));
+        _moduleProvider.Register(new TestModulePool<ISubscribeRpcModule>(Substitute.For<ISubscribeRpcModule>()));
+        _moduleProvider.Register(new TestModulePool<DirectInvokerRpcModule>(new DirectInvokerRpcModule()));
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Context is inherited through IContextAwareRpcModule; SyncCalls is declared on a class-typed module.
+            foreach (string accessor in new[] { "get_Context", "set_Context", "get_SyncCalls" })
+            {
+                Assert.That(_moduleProvider.Resolve(accessor), Is.Null, accessor);
+            }
+
+            foreach (Type type in new[] { typeof(IAdminRpcModule), typeof(ISubscribeRpcModule), typeof(DirectInvokerRpcModule) })
+            {
+                foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly).Where(static m => !m.IsSpecialName))
+                {
+                    Assert.That(_moduleProvider.Resolve(method.Name), Is.Not.Null, $"{type.Name}.{method.Name}");
+                }
+            }
+        }
+    }
+
+    [Test]
     public void ModuleFactory_FromDI_IsLazy([Values] bool preload)
     {
         IContainer container = new ContainerBuilder()
@@ -412,6 +441,138 @@ public class RpcModuleProviderTests
         _ = container.Resolve<IRpcModuleProvider>();
 
         Assert.That(container.Resolve<TestRpcModuleDependencies>().WasRequested, Is.EqualTo(preload));
+    }
+
+    [Test]
+    public void Eth_calls_within_the_limit_start_at_once()
+    {
+        using IContainer container = CreateEthCallLimitedContainer(limit: 2);
+        IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
+
+        ValueTask<IRpcModule> first = provider.Rent("eth_call", true);
+        ValueTask<IRpcModule> second = provider.Rent("eth_estimateGas", true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsCompletedSuccessfully, Is.True);
+            Assert.That(second.IsCompletedSuccessfully, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Eth_call_above_the_limit_waits_until_a_call_returns()
+    {
+        using IContainer container = CreateEthCallLimitedContainer(limit: 1);
+        IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
+        IRpcModule held = await provider.Rent("eth_call", true);
+
+        ValueTask<IRpcModule> waiting = provider.Rent("eth_createAccessList", true);
+        Assert.That(waiting.IsCompleted, Is.False);
+
+        provider.Return("eth_call", held);
+
+        Assert.That(await waiting.AsTask().WaitAsync(TimeSpan.FromSeconds(10)), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Eth_call_wait_times_out_without_holding_a_slot()
+    {
+        using IContainer container = CreateEthCallLimitedContainer(limit: 1, timeout: 200);
+        IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
+        IRpcModule held = await provider.Rent("eth_call", true);
+
+        Assert.That(async () => await provider.Rent("eth_call", true), Throws.TypeOf<ModuleRentalTimeoutException>());
+
+        provider.Return("eth_call", held);
+        ValueTask<IRpcModule> next = provider.Rent("eth_call", true);
+        ValueTask<IRpcModule> overLimit = provider.Rent("eth_call", true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.IsCompletedSuccessfully, Is.True);
+            Assert.That(overLimit.IsCompleted, Is.False);
+        }
+
+        Assert.That(async () => await overLimit, Throws.TypeOf<ModuleRentalTimeoutException>());
+    }
+
+    [Test]
+    public async Task Cancelled_eth_call_wait_does_not_hold_a_slot()
+    {
+        using IContainer container = CreateEthCallLimitedContainer(limit: 1);
+        IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
+        IRpcModule held = await provider.Rent("eth_call", true);
+        using CancellationTokenSource cancellation = new();
+
+        ValueTask<IRpcModule> cancelled = provider.Rent("eth_call", true, cancellation.Token);
+        await cancellation.CancelAsync();
+
+        Assert.That(async () => await cancelled, Throws.InstanceOf<OperationCanceledException>());
+
+        provider.Return("eth_call", held);
+        ValueTask<IRpcModule> next = provider.Rent("eth_call", true);
+        ValueTask<IRpcModule> overLimit = provider.Rent("eth_call", true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next.IsCompletedSuccessfully, Is.True);
+            Assert.That(overLimit.IsCompleted, Is.False);
+        }
+
+        provider.Return("eth_call", await next);
+        Assert.That(await overLimit.AsTask().WaitAsync(TimeSpan.FromSeconds(10)), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Other_eth_methods_do_not_wait_for_the_eth_call_limit()
+    {
+        using IContainer container = CreateEthCallLimitedContainer(limit: 1);
+        IRpcModuleProvider provider = container.Resolve<IRpcModuleProvider>();
+        await provider.Rent("eth_call", true);
+
+        Assert.That(provider.Rent("eth_blockNumber", true).IsCompletedSuccessfully, Is.True);
+    }
+
+    private static IContainer CreateEthCallLimitedContainer(int limit, int timeout = 30_000)
+    {
+        IRpcModuleFactory<IEthRpcModule> ethModuleFactory = Substitute.For<IRpcModuleFactory<IEthRpcModule>>();
+        ethModuleFactory.Create().Returns(Substitute.For<IEthRpcModule>());
+        return new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig { EthCallMaxConcurrentRequests = limit, Timeout = timeout }))
+            .AddSingleton(ethModuleFactory)
+            .Build();
+    }
+
+    [Test]
+    public void Engine_signer_methods_are_served_only_to_authenticated_callers(
+        [Values("parity_setEngineSigner", "parity_setEngineSignerSecret", "parity_clearEngineSigner")] string method)
+    {
+        RegisterParityModule();
+        JsonRpcUrl authenticatedUrl = new("http", "127.0.0.1", 8551, RpcEndpoint.Http, true, [ModuleType.Parity]);
+        JsonRpcUrl urlWithoutParity = new("http", "127.0.0.1", 8545, RpcEndpoint.Http, false, [ModuleType.Eth]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.Http)), Is.EqualTo(ModuleResolution.NotAuthenticated));
+            Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.Ws)), Is.EqualTo(ModuleResolution.NotAuthenticated));
+            Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.Http, url: authenticatedUrl)), Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.Http, url: urlWithoutParity)), Is.EqualTo(ModuleResolution.Disabled));
+            Assert.That(_moduleProvider.Check(method, new JsonRpcContext(RpcEndpoint.IPC)), Is.EqualTo(ModuleResolution.Enabled));
+        }
+    }
+
+    [Test]
+    public void Parity_methods_without_the_authentication_flag_are_served_to_unauthenticated_callers()
+    {
+        RegisterParityModule();
+
+        Assert.That(_moduleProvider.Check("parity_enode", new JsonRpcContext(RpcEndpoint.Http)), Is.EqualTo(ModuleResolution.Enabled));
+    }
+
+    private void RegisterParityModule()
+    {
+        _moduleProvider = CreateProvider(new JsonRpcConfig { EnabledModules = [ModuleType.Parity] });
+        _moduleProvider.Register(new SingletonModulePool<IParityRpcModule>(Substitute.For<IParityRpcModule>(), true));
     }
 
     private static IRpcModuleProvider CreateEraAdminModuleProvider() =>

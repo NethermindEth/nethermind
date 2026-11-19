@@ -77,7 +77,8 @@ public class AdminModuleTests
         _blockTree = Build.A.BlockTree().OfChainLength(5).TestObject;
         _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _blockTree, _logManager, MainnetSpecProvider.Instance);
         _stateReader = Substitute.For<IStateReader>();
-        _networkConfig = new NetworkConfig();
+        // Distinct ports, so a result that swaps them shows.
+        _networkConfig = new NetworkConfig { DiscoveryPort = 30301 };
 
         IPeerPool peerPool = Substitute.For<IPeerPool>();
         ConcurrentDictionary<PublicKeyAsKey, Peer> dict = new();
@@ -97,7 +98,7 @@ public class AdminModuleTests
 
         SubscriptionFactory subscriptionFactory = new();
         subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
-        _subscriptionManager = new SubscriptionManager(subscriptionFactory, _logManager);
+        _subscriptionManager = new SubscriptionManager(subscriptionFactory, new JsonRpcConfig(), _logManager);
 
         _adminRpcModule = new AdminRpcModule(
             _blockTree,
@@ -419,6 +420,32 @@ public class AdminModuleTests
     }
 
     [Test]
+    public void AdminSubscribe_AboveTheConnectionLimit_ReturnsLimitExceeded()
+    {
+        SubscriptionFactory subscriptionFactory = new();
+        subscriptionFactory.RegisterPeerEventsSubscription(_logManager, _peerPool, _rlpxPeer);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig { MaxSubscriptionsPerConnection = 1 }))
+            .AddSingleton<ISubscriptionFactory>(subscriptionFactory)
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope();
+        _subscriptionManager = scope.Resolve<ISubscriptionManager>();
+        IAdminRpcModule adminRpcModule = BuildAdminRpcModuleWith();
+        adminRpcModule.Context = new JsonRpcContext(RpcEndpoint.Ws, _jsonRpcDuplexClient);
+
+        ResultWrapper<string> first = adminRpcModule.admin_subscribe("peerEvents");
+        ResultWrapper<string> refused = adminRpcModule.admin_subscribe("peerEvents");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(refused.ErrorCode, Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(refused.Result.Error, Is.EqualTo("Too many subscriptions. The connection limit is 1."));
+            Assert.That(refused.IsTemporary, Is.True);
+        }
+    }
+
+    [Test]
     public async Task AdminSubscribe_WithTooLongStringArgs_ReturnsInvalidParams()
     {
         string args = new('a', 1_000_001);
@@ -490,6 +517,21 @@ public class AdminModuleTests
         string serialized = RpcTest.SerializeResponse(jsonRpcResult.Response);
         string expectedResult = BuildExpectedMessageNotification(subscriptionId, expectedType, TestItem.PublicKeyA.Hash.ToString(false));
         Assert.That(expectedResult, Is.EqualTo(serialized), $"a {expectedType} event must serialize with type '{expectedType}'");
+    }
+
+    // An inbound session raises its message events with its node only once something has read it.
+    [TestCase(true, TestName = "PeerEvents_OnMsgReceivedWithoutNode_SendsNothing")]
+    [TestCase(false, TestName = "PeerEvents_OnMsgDeliveredWithoutNode_SendsNothing")]
+    public void PeerEventsSubscription_OnMessageEventWithoutNode_DoesNotThrowAndSendsNothing(bool isReceived)
+    {
+        PeerEventArgs peerEventArgs = new(null!, "BitTorrent", 1, 2);
+        ISession session = _existingSession1;
+        Action raise = isReceived
+            ? () => session.MsgReceived += Raise.EventWith(new object(), peerEventArgs)
+            : () => session.MsgDelivered += Raise.EventWith(new object(), peerEventArgs);
+
+        RaisePeerEventAndCapture(() => Assert.That(() => raise(), Throws.Nothing, "the handler runs on the p2p path"), out _,
+            disposeSubscription: true, shouldReceive: false);
     }
 
     [TestCase(true, "msgrecv", TestName = "PeerEvents_OnMsgReceivedAcrossExistingSessions_NotifiesEach")]
@@ -829,17 +871,61 @@ public class AdminModuleTests
         Assert.That(nodeInfo.Enr, Is.Null, "the ENR is unavailable when discovery is disabled");
     }
 
+    // Calls run concurrently and each response is serialized after its call returns, so no call may change another's result.
+    [Test]
+    public async Task AdminNodeInfo_EachCall_ReturnsAResultOfItsOwn()
+    {
+        Block firstHead = _blockTree.Head!;
+        NodeInfo first = (await _adminRpcModule.admin_nodeInfo()).Data;
+        string firstSerialized = _serializer.Serialize(first);
+        Block next = Build.A.Block.WithParent(firstHead).TestObject;
+        _blockTree.SuggestBlock(next);
+        _blockTree.TryUpdateMainChain(next.Header, wereProcessed: true, forceUpdateHeadBlock: true, next);
+
+        NodeInfo second = (await _adminRpcModule.admin_nodeInfo()).Data;
+
+        Assert.That(second.Protocols["eth"].HeadHash, Is.EqualTo(next.Hash), "precondition: the second call sees the new head");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Protocols["eth"].HeadHash, Is.EqualTo(firstHead.Hash), "the first result keeps its head");
+            Assert.That(_serializer.Serialize(first), Is.EqualTo(firstSerialized), "the first result serializes as it did");
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(second.Ports, Is.Not.SameAs(first.Ports));
+            Assert.That(second.Protocols, Is.Not.SameAs(first.Protocols));
+            Assert.That(second.Protocols["eth"], Is.Not.SameAs(first.Protocols["eth"]));
+        }
+    }
+
+    // One read of the head gives both its hash and its total difficulty: a second read could see another head.
+    [Test]
+    public async Task AdminNodeInfo_PairsTheHeadHashWithItsTotalDifficulty()
+    {
+        Block head = Build.A.Block.WithNumber(7).WithDifficulty(5).WithTotalDifficulty(42L).TestObject;
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.Head.Returns(head);
+        blockTree.HeadHash.Returns(TestItem.KeccakA);
+
+        NodeInfo nodeInfo = (await BuildAdminRpcModuleWith(blockTree: blockTree).admin_nodeInfo()).Data;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nodeInfo.Protocols["eth"].HeadHash, Is.EqualTo(head.Hash), "the hash of the head read");
+            Assert.That(nodeInfo.Protocols["eth"].Difficulty, Is.EqualTo(head.TotalDifficulty), "that head's total difficulty");
+        }
+    }
+
     private IAdminRpcModule BuildAdminRpcModuleWith(
         IStaticNodesManager? staticNodesManager = null,
         ITrustedNodesManager? trustedNodesManager = null,
         IPeerPool? peerPool = null,
         IBlockProcessingPauseControl? blockProcessingPauseControl = null,
         INodeRecordProvider? nodeRecordProvider = null,
-        string enode = _enodeString)
+        string enode = _enodeString,
+        IBlockTree? blockTree = null)
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters() };
         return new AdminRpcModule(
-            _blockTree,
+            blockTree ?? _blockTree,
             _networkConfig,
             peerPool ?? Substitute.For<IPeerPool>(),
             staticNodesManager ?? Substitute.For<IStaticNodesManager>(),

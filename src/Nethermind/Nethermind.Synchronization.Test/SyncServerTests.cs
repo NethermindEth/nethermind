@@ -41,6 +41,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
@@ -218,6 +219,31 @@ public class SyncServerTests
 
         using MemoryManager<byte>? found = ctx.SyncServer.FindBlockRlp(TestItem.KeccakA);
         Assert.That(found?.Memory.ToArray(), Is.EqualTo(headerKnown ? blockRlp : null));
+    }
+
+    [Test]
+    public void Prefetches_the_known_hashes_in_the_window([Values] bool receipts)
+    {
+        Context ctx = new();
+        using PrefetchingTestDb blockDb = new();
+        using PrefetchingTestDb headerDb = new();
+        HeaderStore headerStore = new(headerDb, new MemDb());
+        Block known = Build.A.Block.WithNumber(5).TestObject;
+        Block outside = Build.A.Block.WithNumber(9).TestObject;
+        headerStore.InsertBlockNumber(known.Hash!, known.Number);
+        headerStore.InsertBlockNumber(outside.Hash!, outside.Number);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, headerStore: headerStore, blockStore: new BlockStore(blockDb));
+
+        Action<IReadOnlyList<Hash256>, int, int> prefetch = receipts ? server.PrefetchReceipts : server.PrefetchBlocks;
+
+        prefetch([outside.Hash!, known.Hash!, TestItem.KeccakA, outside.Hash!], 1, 2);
+
+        byte[] knownKey = Bytes.Concat(known.Number.ToBigEndianByteArray(), known.Hash!.BytesToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((receipts ? headerDb : blockDb).Prefetches, OperatingSystem.IsLinux() ? Is.EqualTo(new[] { new[] { knownKey } }) : Is.Empty);
+            Assert.That((receipts ? blockDb : headerDb).Prefetches, Is.Empty);
+        }
     }
 
     [TestCase(true, true, true)]
@@ -1194,25 +1220,119 @@ public class SyncServerTests
 
     /// <param name="start">The number of the canonical start header, or -1 for the side block at <see cref="SideBlockNumber"/>.</param>
     /// <param name="missing">Whether the canonical header at <see cref="MissingHeaderNumber"/> is deleted.</param>
+    /// <param name="batched">Whether the server reads main chain requests in batches.</param>
     [Test]
     public void FindHeadersRlp_encodes_the_headers_that_the_block_tree_finds(
         [Values(-1, 0, 5, 19)] int start,
         [Values(0, 1, 4, 30)] int count,
         [Values(0, 2)] int skip,
         [Values] bool reverse,
-        [Values] bool missing)
+        [Values] bool missing,
+        [Values] bool batched)
     {
-        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(20);
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
         BlockTree tree = builder.TestObject;
         Block sideBlock = Build.A.Block.WithParent(tree.FindBlock(SideBlockNumber - 1, BlockTreeLookupOptions.None)!).WithDifficulty(1).TestObject;
         tree.SuggestBlock(sideBlock);
         if (missing) builder.HeaderStore.Delete(tree.FindHash(MissingHeaderNumber)!);
-        ((IClearableCache)builder.HeaderStore).ClearCache();
 
         Hash256 startHash = start < 0 ? sideBlock.Hash! : tree.FindHash((ulong)start)!;
-        using IOwnedReadOnlyList<byte> rlp = new Context().CreateSyncServer(tree, headerStore: builder.HeaderStore)
-            .FindHeadersRlp(startHash, count, skip, reverse);
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched, startHash, count, skip, reverse);
 
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, count, skip, reverse)));
+            Assert.That(levels.BatchedReads, batched && skip > 0 && count > 0 ? Is.Positive : Is.Zero);
+            if (start < 0 && batched && skip > 0 && count > 0) Assert.That(levels.BatchedLevels, Is.EqualTo(1), "levels read in batches from a side chain start");
+        }
+    }
+
+    /// <remarks>
+    /// A forward walk stops at a level without a main chain block, so the batched read answers it alone. A reverse walk
+    /// takes the best block of such a level, so the walk answers it.
+    /// </remarks>
+    [Test]
+    public void FindHeadersRlp_with_a_skip_answers_as_the_walk_at_a_level_without_a_main_chain_block([Values] bool reverse)
+    {
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
+        BlockTree tree = builder.TestObject;
+        ulong holeNumber;
+        if (reverse)
+        {
+            holeNumber = 10;
+            ChainLevelInfo level = levels.LoadLevel(holeNumber)!;
+            level.HasBlockOnMainChain = false;
+            levels.PersistLevel(holeNumber, level);
+        }
+        else
+        {
+            holeNumber = tree.BestKnownNumber + 1;
+            tree.SuggestBlock(Build.A.Block.WithParent(tree.FindBlock(holeNumber - 1, BlockTreeLookupOptions.None)!).TestObject);
+        }
+
+        Hash256 startHash = tree.FindHash(reverse ? holeNumber + 9 : holeNumber - 6)!;
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched: true, startHash, 5, 2, reverse);
+        int walkLevelReads = levels.LevelReads;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, startHash, 5, 2, reverse)));
+            Assert.That(levels.BatchedReads, Is.Positive);
+            Assert.That(walkLevelReads, reverse ? Is.Positive : Is.Zero, "levels read by the walk");
+        }
+    }
+
+    /// <remarks>
+    /// The reorg replaces the chain above block 8 after the batched read copies the start level and before it reads
+    /// the others, so the read finds the start on the old branch and the next headers on the new one.
+    /// </remarks>
+    [Test]
+    public void FindHeadersRlp_with_a_skip_stops_at_a_header_that_a_reorg_during_the_read_moved_off_the_main_chain()
+    {
+        BlockTreeBuilder builder = BuildBlockTree(out CountingChainLevelInfoRepository levels);
+        BlockTree tree = builder.TestObject;
+        BlockHeader start = tree.FindHeader(10, BlockTreeLookupOptions.None)!;
+        levels.DuringNextBatchedRead = () =>
+        {
+            Block parent = tree.FindBlock(8, BlockTreeLookupOptions.None)!;
+            for (int i = 0; i < 11; i++)
+            {
+                parent = Build.A.Block.WithParent(parent).WithDifficulty(parent.Difficulty * 2).TestObject;
+                tree.SuggestBlock(parent);
+            }
+
+            tree.TryUpdateMainChain(parent.Header, wereProcessed: true, forceUpdateHeadBlock: true);
+        };
+
+        using IOwnedReadOnlyList<byte> rlp = FindHeadersRlp(builder, levels, batched: true, start.Hash!, 5, 1, false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindHash(10), Is.Not.EqualTo(start.Hash), "reorg ran");
+            Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(EncodeHeadersTheTreeFinds(tree, start.Hash!, 1, 0, false)));
+        }
+    }
+
+    private static BlockTreeBuilder BuildBlockTree(out CountingChainLevelInfoRepository levels)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree();
+        levels = new CountingChainLevelInfoRepository(new ChainLevelInfoRepository(builder.BlockInfoDb));
+        return builder.WithChainLevelInfoRepository(levels).OfChainLength(20);
+    }
+
+    /// <summary>Calls <see cref="SyncServer.FindHeadersRlp"/> with the header and level caches empty, so that every read goes to the database.</summary>
+    private static IOwnedReadOnlyList<byte> FindHeadersRlp(BlockTreeBuilder builder, CountingChainLevelInfoRepository levels, bool batched, Hash256 startHash, int count, int skip, bool reverse)
+    {
+        SyncServer server = new Context()
+            .CreateSyncServer(builder.TestObject, headerStore: builder.HeaderStore, chainLevelInfoRepository: batched ? levels : null);
+        ((IClearableCache)builder.HeaderStore).ClearCache();
+        levels.ClearCache();
+        levels.ResetCounts();
+        return server.FindHeadersRlp(startHash, count, skip, reverse);
+    }
+
+    private static byte[] EncodeHeadersTheTreeFinds(BlockTree tree, Hash256 startHash, int count, int skip, bool reverse)
+    {
         HeaderDecoder decoder = new();
         using IOwnedReadOnlyList<BlockHeader> headers = tree.FindHeaders(startHash, count, skip, reverse);
         List<byte> expected = [];
@@ -1222,7 +1342,56 @@ public class SyncServerTests
             expected.AddRange(decoder.Encode(header));
         }
 
-        Assert.That(rlp.AsSpan().ToArray(), Is.EqualTo(expected.ToArray()));
+        return [.. expected];
+    }
+
+    /// <summary>Counts the batched main chain reads and the other level reads that reach a repository.</summary>
+    private sealed class CountingChainLevelInfoRepository(ChainLevelInfoRepository inner) : IChainLevelInfoRepository
+    {
+        public int BatchedReads { get; private set; }
+        public int BatchedLevels { get; private set; }
+        public int LevelReads { get; private set; }
+
+        public void ResetCounts() => BatchedReads = BatchedLevels = LevelReads = 0;
+        public void ClearCache() => ((IClearableCache)inner).ClearCache();
+
+        public void Delete(ulong number, BatchWrite? batch = null) => inner.Delete(number, batch);
+        public void PersistLevel(ulong number, ChainLevelInfo level, BatchWrite? batch = null) => inner.PersistLevel(number, level, batch);
+        public BatchWrite StartBatch() => inner.StartBatch();
+
+        public ChainLevelInfo? LoadLevel(ulong number)
+        {
+            LevelReads++;
+            return inner.LoadLevel(number);
+        }
+
+        public ChainLevelInfo? LoadLevelWithoutCaching(ulong number)
+        {
+            LevelReads++;
+            return inner.LoadLevelWithoutCaching(number);
+        }
+
+        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers)
+        {
+            LevelReads++;
+            return inner.MultiLoadLevel(in blockNumbers);
+        }
+
+        /// <summary>Runs before the next batched read of more than one level.</summary>
+        public Action? DuringNextBatchedRead { get; set; }
+
+        public void GetMainChainBlocksWithoutCaching(ReadOnlyMemory<ulong> blockNumbers, Memory<(ValueHash256 BlockHash, UInt256 TotalDifficulty)> blocks)
+        {
+            BatchedReads++;
+            BatchedLevels += blockNumbers.Length;
+            if (blockNumbers.Length > 1 && DuringNextBatchedRead is { } action)
+            {
+                DuringNextBatchedRead = null;
+                action();
+            }
+
+            inner.GetMainChainBlocksWithoutCaching(blockNumbers, blocks);
+        }
     }
 
     [Test]
@@ -1335,12 +1504,15 @@ public class SyncServerTests
             ISyncModeSelector? syncModeSelector = null,
             ISpecProvider? specProvider = null,
             IReceiptFinder? receiptFinder = null,
-            IHeaderStore? headerStore = null) =>
+            IHeaderStore? headerStore = null,
+            IChainLevelInfoRepository? chainLevelInfoRepository = null,
+            IBlockStore? blockStore = null) =>
+
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
-                Substitute.For<IBlockStore>(),
+                blockStore ?? Substitute.For<IBlockStore>(),
                 headerStore ?? Substitute.For<IHeaderStore>(),
                 new HeaderDecoder(),
                 receiptFinder ?? NullReceiptStorage.Instance,
@@ -1353,7 +1525,8 @@ public class SyncServerTests
                 Policy.FullGossip,
                 HistoryPruner,
                 specProvider ?? MainnetSpecProvider.Instance,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                chainLevelInfoRepository: chainLevelInfoRepository);
 
         public SyncServer CreateSyncServer(IBlockAccessListStore blockAccessListStore) =>
             new(

@@ -14,7 +14,7 @@ on:
     inputs:
       release:
         description: Release tag
-        default: tests-zkevm-benchmark@v21.0.5
+        default: tests-zkevm-benchmark@v21.0.7
         type: string
       gas_values:
         description: Gas values
@@ -31,7 +31,7 @@ concurrency:
 
 env:
   FIXTURES_REPOSITORY: ethereum/execution-specs
-  RELEASE: ${{ inputs.release || 'tests-zkevm-benchmark@v21.0.5' }}
+  RELEASE: ${{ inputs.release || 'tests-zkevm-benchmark@v21.0.7' }}
   GUEST_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest
 
 jobs:

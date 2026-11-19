@@ -12,14 +12,14 @@ namespace Nethermind.State.Snap
     {
         public PathWithAccount() { }
 
-        public PathWithAccount(ValueHash256 path, Account? account)
+        public PathWithAccount(ValueHash256 path, in AccountStruct account)
         {
             Path = path;
             Account = account;
         }
 
         public ValueHash256 Path { get; set; }
-        public Account? Account { get; set; }
+        public AccountStruct Account { get; set; }
 
         /// <summary>
         /// Consecutive storage-range responses for this account that carried no slots and no proof. Snap sync
@@ -29,8 +29,8 @@ namespace Nethermind.State.Snap
 
         public byte[] ToRlpValue()
         {
-            Account account = Account ?? throw new InvalidOperationException("An account value is required when encoding a SNAP trie entry.");
-            return account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : Rlp.Encode(account);
+            if (Account.IsNull) throw new InvalidOperationException("An account value is required when encoding a SNAP trie entry.");
+            return Account.IsTotallyEmpty ? StateTree.EmptyAccountRlp : AccountDecoder.Instance.Encode(Account);
         }
     }
 }

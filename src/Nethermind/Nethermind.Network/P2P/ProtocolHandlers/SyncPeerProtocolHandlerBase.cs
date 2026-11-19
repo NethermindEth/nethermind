@@ -38,6 +38,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         internal static ulong SoftOutgoingMessageSizeLimit = 2UL.MiB;
         internal static ulong HardOutgoingReceiptsMessageSizeLimit = 10UL.MiB;
         internal static ulong HardOutgoingBodiesMessageSizeLimit = 15UL.MiB;
+        // The size limits can end a response early, so blocks are read ahead a window at a time, not all at once.
+        protected const int ServingPrefetchWindow = 16;
         public Node Node => Session.Node;
         public string? ClientId => Node.ClientId;
         public virtual UInt256? TotalDifficulty { get; set; } = UInt256.Zero; // for compatibility with old code, which relies on 0 being the default value
@@ -375,6 +377,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                         break;
                     }
 
+                    int remaining = hashes.Count - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchBlocks(hashes, i, Math.Min(ServingPrefetchWindow, remaining));
+
                     MemoryManager<byte>? block = SyncServer.FindBlockRlp(hashes[i]);
                     if (block is null)
                     {
@@ -437,13 +442,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // Before eth/69 the message encodes receipts with the registered decoder, which a plugin can replace.
             // Stored receipts are copied without this decoder, so such a plugin must also decorate IReceiptFinder.
             IRlpDecoder<TxReceipt> decoder = withBloom ? Rlp.GetDecoderOrThrow<TxReceipt>() : ReceiptDecoder69;
-            ArrayPoolList<byte> buffer = new(0);
+            ArrayPoolList<byte> buffer = [with(GetReceiptsBufferCapacity(hashes.Length))];
             using ArrayPoolList<Range> blocks = new(hashes.Length);
             try
             {
-                foreach (Hash256 blockHash in hashes)
+                for (int i = 0; i < hashes.Length; i++)
                 {
                     if (cancellationToken.IsCancellationRequested) break;
+
+                    Hash256 blockHash = hashes[i];
+                    int remaining = hashes.Length - i;
+                    if (i % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchReceipts(getReceiptsMessage.Hashes, i, Math.Min(ServingPrefetchWindow, remaining));
 
                     int start = buffer.Count;
                     if (!SyncServer.TryAppendReceipts(blockHash, decoder, withBloom, buffer)) break;
@@ -479,6 +488,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private static readonly RefRlpReaderFunc<TxReceipt[]> DecodeReceipts69 = static (ref RlpReader reader) =>
             reader.DecodeNonNullArray(static (ref RlpReader receipt) => ReceiptDecoder69.Decode(ref receipt)!);
+
+        /// <summary>The initial capacity of the buffer that the receipts of <paramref name="blocks"/> blocks are served from.</summary>
+        /// <remarks>
+        /// Sized up front, so the buffer does not double as it fills and copy the response at each step. A response stops
+        /// after the block that crosses the soft limit, so twice the limit holds it unless that block is larger than the limit.
+        /// </remarks>
+        private protected static int GetReceiptsBufferCapacity(int blocks) =>
+            (int)Math.Min((ulong)blocks * ReceiptsBufferBlockEstimate, 2 * SoftOutgoingMessageSizeLimit);
+
+        private const int ReceiptsBufferBlockEstimate = 128 * 1024;
 
         internal static ulong GetMaxReceiptsResponseSize(ulong receiptsContentSize) =>
             receiptsContentSize > int.MaxValue / 2

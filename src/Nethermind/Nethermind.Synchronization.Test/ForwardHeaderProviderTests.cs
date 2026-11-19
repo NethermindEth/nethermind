@@ -498,7 +498,9 @@ public partial class ForwardHeaderProviderTests
     [Test]
     public async Task Cached_pin_is_kept_when_owner_sleeps_only_for_other_contexts([Values(
         AllocationContexts.Bodies,
-        AllocationContexts.Blocks)] AllocationContexts sleepContexts)
+        AllocationContexts.Blocks,
+        AllocationContexts.Headers,
+        AllocationContexts.All)] AllocationContexts sleepContexts)
     {
         await using IContainer node = CreateNode();
         Context ctx = node.Resolve<Context>();

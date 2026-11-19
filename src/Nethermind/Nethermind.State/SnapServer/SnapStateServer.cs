@@ -152,7 +152,7 @@ public class SnapStateServer : ISnapStateServer
             (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
                 rootHash,
                 startingHash,
-                limitHash?.ToCommitment() ?? Keccak.MaxValue,
+                limitHash ?? ValueKeccak.MaxValue,
                 byteLimit,
                 null,
                 null,
@@ -250,29 +250,29 @@ public class SnapStateServer : ISnapStateServer
     }
 
     private (long bytesSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
-        in ValueHash256 rootHash,
+        Hash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256 limitHash,
         long byteLimit,
-        in ValueHash256? storage,
-        in ValueHash256? storageRoot,
+        Hash256? storage,
+        Hash256? storageRoot,
         RangeQueryVisitor.ILeafValueCollector valueCollector,
         CancellationToken cancellationToken)
     {
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, ISnapStateServer.HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new();
-        tree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
+        tree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), rootHash, opt, storageAddr: storage, storageRoot: storageRoot);
 
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
         return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
-    private Hash256? GetStorageRootByPath(StateTree tree, in ValueHash256 rootHash, ReadOnlySpan<byte> accountPath)
+    private Hash256? GetStorageRootByPath(StateTree tree, Hash256 rootHash, ReadOnlySpan<byte> accountPath)
     {
         try
         {
-            ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash.ToCommitment());
+            ReadOnlySpan<byte> bytes = tree.Get(accountPath, rootHash);
             if (bytes.IsNullOrEmpty())
             {
                 return null;
