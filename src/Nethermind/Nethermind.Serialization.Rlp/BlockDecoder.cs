@@ -187,13 +187,9 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.SkipItem(); // Skip uncles
 
-            if (decoderContext.Position < blockCheck && decoderContext.PeekByte() >= Rlp.EmptyListByte)
+            if (decoderContext.Position != blockCheck)
             {
                 decoderContext.SkipItem(); // Skip withdrawals
-            }
-            if (header.RecursiveStark is not null)
-            {
-                decoderContext.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof)));
             }
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {

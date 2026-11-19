@@ -23,33 +23,43 @@ internal static class PayloadBodiesHandlerHelper
         BlockTreeLookupOptions.RequireCanonical |
         HashLookupOptions;
 
-    public static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, BlockHeader? header, Hash256 blockHash) =>
-        header is null ? null : CreatePayloadBodyV1(blockStore, header.Number, blockHash);
+    public static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, IStarkProofStore proofStore, BlockHeader? header, Hash256 blockHash) =>
+        header is null ? null : CreatePayloadBodyV1(blockStore, proofStore, header, header.Number, blockHash);
 
-    public static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, BlockHeader? header) =>
-        header?.Hash is { } blockHash ? CreatePayloadBodyV1(blockStore, header.Number, blockHash) : null;
+    public static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, IStarkProofStore proofStore, BlockHeader? header) =>
+        header?.Hash is { } blockHash ? CreatePayloadBodyV1(blockStore, proofStore, header, header.Number, blockHash) : null;
 
-    public static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, BlockHeader? header, Hash256 blockHash) =>
-        header is null ? null : CreatePayloadBodyV2(blockStore, balStore, header.Number, blockHash);
+    public static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, IStarkProofStore proofStore, BlockHeader? header, Hash256 blockHash) =>
+        header is null ? null : CreatePayloadBodyV2(blockStore, balStore, proofStore, header, header.Number, blockHash);
 
-    public static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, BlockHeader? header) =>
-        header?.Hash is { } blockHash ? CreatePayloadBodyV2(blockStore, balStore, header.Number, blockHash) : null;
+    public static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, IStarkProofStore proofStore, BlockHeader? header) =>
+        header?.Hash is { } blockHash ? CreatePayloadBodyV2(blockStore, balStore, proofStore, header, header.Number, blockHash) : null;
 
-    private static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, ulong blockNumber, Hash256 blockHash)
+    private static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, IStarkProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash)
     {
         byte[]? blockRlp = blockStore.GetRlp(blockNumber, blockHash);
-        return blockRlp is null ? null : PayloadBodiesV1DirectResponse.CreatePayloadBody(blockRlp);
+        return blockRlp is null || !TryGetStarkProof(proofStore, header, blockNumber, blockHash, out byte[]? starkProof)
+            ? null
+            : PayloadBodiesV1DirectResponse.CreatePayloadBody(blockRlp, starkProof);
     }
 
-    private static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, ulong blockNumber, Hash256 blockHash)
+    private static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, IStarkProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash)
     {
         byte[]? blockRlp = blockStore.GetRlp(blockNumber, blockHash);
-        if (blockRlp is null)
+        if (blockRlp is null || !TryGetStarkProof(proofStore, header, blockNumber, blockHash, out byte[]? starkProof))
         {
             return null;
         }
 
         MemoryManager<byte>? blockAccessList = balStore.GetRlp(blockNumber, blockHash);
-        return PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, blockAccessList);
+        return PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, blockAccessList, starkProof);
+    }
+
+    /// <summary>Reads the EIP-8288 proof the block store keeps apart from the body.</summary>
+    /// <returns><c>false</c> when the header commits to a proof that is not stored, so the body is not available.</returns>
+    private static bool TryGetStarkProof(IStarkProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash, out byte[]? starkProof)
+    {
+        starkProof = header.RecursiveStark is null ? null : proofStore.Get(blockNumber, blockHash);
+        return header.RecursiveStark is null || starkProof is not null;
     }
 }

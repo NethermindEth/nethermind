@@ -37,6 +37,8 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             .Bind<IReceiptStorage, IReceiptMigrationStore>()
             .AddSingleton<IBadBlockStore, IDb, IInitConfig, IHeaderDecoder, ILogManager>(CreateBadBlockStore)
             .AddSingleton<IBlockAccessListStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBalStore)
+            .AddSingleton<IStarkProofStore, IDb, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateStarkProofStore)
+            .AddDecorator<IBlockStore, StarkProofSplittingBlockStore>()
             .AddSingleton<IChainLevelInfoRepository, ChainLevelInfoRepository>()
             .AddSingleton<IBlobTxStorage, BlobTxStorage>()
             .AddSingleton<IBlobCustodyTracker, BlobCustodyTracker>()
@@ -105,6 +107,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
             ctx.ResolveKeyed<IDb>(DbNames.Headers);
             ctx.ResolveKeyed<IDb>(DbNames.BlockNumbers);
             ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
+            ctx.ResolveKeyed<IDb>(DbNames.StarkProofs);
             ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
         }
         return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredWrites, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
@@ -118,4 +121,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
 
     private IBlockAccessListStore CreateBalStore([KeyFilter(DbNames.BlockAccessLists)] IDb balDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockAccessListStore(balDb, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);
+
+    private IStarkProofStore CreateStarkProofStore([KeyFilter(DbNames.StarkProofs)] IDb proofDb, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new StarkProofStore(proofDb, deferredWriter, persistenceBarrier);
 }

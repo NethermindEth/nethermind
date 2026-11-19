@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -46,6 +47,7 @@ namespace Nethermind.Synchronization
         private readonly ISyncModeSelector _syncModeSelector;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockAccessListStore _blockAccessListStore;
+        private readonly IStarkProofStore _starkProofStore;
         private readonly IBlockValidator _blockValidator;
         private readonly ISealValidator _sealValidator;
         private readonly IReadOnlyKeyValueStore? _stateDb;
@@ -75,6 +77,7 @@ namespace Nethermind.Synchronization
             IBlockTree blockTree,
             IReceiptFinder receiptFinder,
             IBlockAccessListStore blockAccessListStore,
+            IStarkProofStore starkProofStore,
             IBlockValidator blockValidator,
             ISealValidator sealValidator,
             ISyncPeerPool pool,
@@ -99,6 +102,7 @@ namespace Nethermind.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockAccessListStore = blockAccessListStore ?? throw new ArgumentNullException(nameof(blockAccessListStore));
+            _starkProofStore = starkProofStore ?? throw new ArgumentNullException(nameof(starkProofStore));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _historyPruner = historyPruner ?? throw new ArgumentNullException(nameof(historyPruner));
             _logger = logManager?.GetClassLogger<SyncServer>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -461,7 +465,16 @@ namespace Nethermind.Synchronization
                 : new RlpByteArrayList(builder.ToRlpItemList());
         }
 
-        public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+        /// <remarks>Joins the EIP-8288 proof the block store keeps apart, so a body is served as received. A block whose
+        /// proof is not available is not found: a body without the proof its header commits to is not this block's body.</remarks>
+        public Block? Find(Hash256 hash)
+        {
+            Block? block = _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
+            if (block is null) return null;
+
+            block = _starkProofStore.WithProof(block);
+            return block.StarkProof is null && block.Header.RecursiveStark is not null ? null : block;
+        }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
 

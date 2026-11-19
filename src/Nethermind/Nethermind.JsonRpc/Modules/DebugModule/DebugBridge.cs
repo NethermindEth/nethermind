@@ -51,6 +51,8 @@ public class DebugBridge : IDebugBridge
     private readonly ISyncPointers _syncPointers;
     private readonly IBadBlockStore _badBlockStore;
     private readonly IBlockStore _blockStore;
+    private readonly IStarkProofStore _starkProofStore;
+    private readonly BlockDecoder _blockDecoder;
     private readonly IWorldStateManager _worldStateManager;
     private readonly ITxPool _txPool;
     private readonly Dictionary<string, IDb> _dbMappings;
@@ -67,6 +69,8 @@ public class DebugBridge : IDebugBridge
         ISyncModeSelector syncModeSelector,
         IBadBlockStore badBlockStore,
         IBlockStore blockStore,
+        IStarkProofStore starkProofStore,
+        IHeaderDecoder headerDecoder,
         IWorldStateManager worldStateManager,
         ILogManager logManager,
         BlockTreeMutationLock mutationLock,
@@ -95,6 +99,8 @@ public class DebugBridge : IDebugBridge
         // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
         // deferred-body overlay (a private store would miss a block whose body write is still queued).
         _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
+        _starkProofStore = starkProofStore;
+        _blockDecoder = new BlockDecoder(headerDecoder);
         _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
         IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
@@ -386,18 +392,27 @@ public class DebugBridge : IDebugBridge
         {
             Hash256? hash = _blockTree.FindHash(number);
             if (hash is null) return null;
-            return _blockStore.GetRlp(number, hash);
+            return GetBlockRlp(number, hash);
         }
         else
         {
             BlockHeader? header = _blockTree.FindHeader(parameter);
             if (header is null) return null;
-            return _blockStore.GetRlp(header.Number, header.GetOrCalculateHash());
+            return GetBlockRlp(header.Number, header.GetOrCalculateHash());
         }
     }
 
+    /// <remarks>The block store keeps the EIP-8288 proof apart from the stored encoding, so a block with one is re-encoded.</remarks>
+    private byte[]? GetBlockRlp(ulong number, Hash256 hash)
+    {
+        if (_starkProofStore.Get(number, hash) is not { } proof) return _blockStore.GetRlp(number, hash);
+
+        Block? block = _blockStore.Get(number, hash, shouldCache: false);
+        return block is null ? null : _blockDecoder.EncodeAsBytes(block.WithReplacedBody(new BlockBody(block.Transactions, block.Uncles, block.Withdrawals, proof)));
+    }
+
     public Block? GetBlock(BlockParameter param)
-        => _blockTree.FindBlock(param);
+        => _blockTree.FindBlock(param) is { } block ? _starkProofStore.WithProof(block) : null;
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 

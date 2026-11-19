@@ -1,0 +1,54 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
+
+namespace Nethermind.Blockchain.Blocks;
+
+/// <summary>Stores EIP-8288 block-body <c>stark_proof</c>s by block number and hash, apart from the block bodies.</summary>
+/// <remarks>
+/// A proof is kept for as long as its block body: full validation needs it and it cannot be re-derived.
+/// A missing proof for a block whose header commits to one means the data is not available, not that the block is invalid.
+/// </remarks>
+public interface IStarkProofStore
+{
+    void Insert(ulong blockNumber, Hash256 blockHash, byte[] proof);
+
+    /// <summary>Defers the write off the block-suggestion path; falls back to <see cref="Insert"/> when deferral is disabled.</summary>
+    void InsertDeferred(ulong blockNumber, Hash256 blockHash, byte[] proof) => Insert(blockNumber, blockHash, proof);
+
+    byte[]? Get(ulong blockNumber, Hash256 blockHash);
+    void Delete(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Drops every proof in <c>[fromInclusive, toExclusive)</c> in one operation.</summary>
+    void DeleteRange(ulong fromInclusive, ulong toExclusive);
+}
+
+public static class StarkProofStoreExtensions
+{
+    /// <summary>Returns <paramref name="block"/> carrying the stored proof its header commits to.</summary>
+    /// <returns>A copy carrying the stored proof, leaving the block store's cached instance without it; otherwise
+    /// <paramref name="block"/> itself, which lacks a committed proof only when it is not available.</returns>
+    public static Block WithProof(this IStarkProofStore proofStore, Block block)
+    {
+        if (block.StarkProof is not null || block.Header.RecursiveStark is null || block.Hash is not { } blockHash
+            || proofStore.Get(block.Number, blockHash) is not { } proof)
+        {
+            return block;
+        }
+
+        Block withProof = block.WithReplacedBody(new BlockBody(block.Transactions, block.Uncles, block.Withdrawals, proof));
+        // A stored block's size is that of its stored encoding, and a hashes-only block cannot have it recomputed.
+        if (block.EncodedSize is { } storedSize) withProof.EncodedSize = SizeWithProof(storedSize, proof);
+        return withProof;
+    }
+
+    private static int SizeWithProof(int storedSize, byte[] proof)
+    {
+        int contentLength = storedSize - 1;
+        while (Rlp.LengthOfSequence(contentLength) > storedSize) contentLength--;
+        return Rlp.LengthOfSequence(contentLength + Rlp.LengthOf(proof));
+    }
+}

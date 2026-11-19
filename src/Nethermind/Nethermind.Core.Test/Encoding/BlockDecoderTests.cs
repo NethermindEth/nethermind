@@ -37,7 +37,9 @@ public class BlockDecoderTests
             Assert.That(reader.Position, Is.EqualTo(encoded.Length));
             Assert.That(new Block(block.Header).IsBodyMissing, Is.True);
         }
-        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)!.Value;
+        // The block store keeps the proof apart, so the stored encoding it recovers receipts from has none.
+        block.StarkProof = null;
+        ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, decoder.Encode(block).Bytes, RlpBehaviors.None)!.Value;
         try
         {
             Assert.That(recovery.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(block.Header.RecursiveStark.StarkProofHash));

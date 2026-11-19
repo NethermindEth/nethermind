@@ -48,7 +48,7 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
     IEnumerator<ExecutionPayloadBodyV1Result?> IEnumerable<ExecutionPayloadBodyV1Result?>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    internal static PayloadBody CreatePayloadBody(byte[] blockRlp) => new(blockRlp);
+    internal static PayloadBody CreatePayloadBody(byte[] blockRlp, byte[]? starkProof = null) => new(blockRlp, starkProof);
 
     public struct Enumerator(PayloadBodiesV1DirectResponse response) : IEnumerator<ExecutionPayloadBodyV1Result?>
     {
@@ -97,15 +97,15 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody(byte[] blockRlp)
+    internal readonly struct PayloadBody(byte[] blockRlp, byte[]? starkProof)
     {
         public void WriteTo(PipeWriter writer) =>
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp);
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, starkProof: starkProof);
 
         public ExecutionPayloadBodyV1Result ToResult()
         {
-            (byte[][] transactions, Withdrawal[]? withdrawals, byte[]? proof) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
-            ExecutionPayloadBodyV1Result result = new([], withdrawals, proof);
+            (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+            ExecutionPayloadBodyV1Result result = new([], withdrawals, starkProof);
             result.Transactions = transactions;
             return result;
         }
@@ -160,7 +160,8 @@ internal static class PayloadBodiesDirectResponseWriter
         IBufferWriter<byte> writer,
         byte[] blockRlp,
         MemoryManager<byte>? blockAccessList = null,
-        bool includeBlockAccessList = false)
+        bool includeBlockAccessList = false,
+        byte[]? starkProof = null)
     {
         RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
@@ -173,12 +174,7 @@ internal static class PayloadBodiesDirectResponseWriter
         ctx.SkipItem(); // uncles
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawalsFromBlockRlp(writer, ref ctx, blockEnd);
-        if (ctx.Position < blockEnd)
-        {
-            ReadOnlySpan<byte> proof = ctx.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof)));
-            WriteStarkProof(writer, proof);
-        }
-        ctx.Check(blockEnd);
+        if (starkProof is not null) WriteStarkProof(writer, starkProof);
 
         WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
@@ -264,18 +260,15 @@ internal static class PayloadBodiesDirectResponseWriter
         ArrayPool<byte>.Shared.Return(buffer);
     }
 
-    public static (byte[][] Transactions, Withdrawal[]? Withdrawals, byte[]? StarkProof) DecodePayloadBody(byte[] blockRlp)
+    public static (byte[][] Transactions, Withdrawal[]? Withdrawals) DecodePayloadBody(byte[] blockRlp)
     {
         RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
         ctx.SkipItem(); // header
         byte[][] transactions = GetTransactionsFromBlockRlp(ref ctx);
         ctx.SkipItem(); // uncles
-        Withdrawal[]? withdrawals = ctx.Position < blockEnd && ctx.PeekByte() >= Rlp.EmptyListByte ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
-        byte[]? proof = ctx.Position < blockEnd
-            ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof))) : null;
-        ctx.Check(blockEnd);
-        return (transactions, withdrawals, proof);
+        Withdrawal[]? withdrawals = ctx.Position != blockEnd ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
+        return (transactions, withdrawals);
     }
 
     public static byte[][] GetTransactionsFromBlockRlp(byte[] blockRlp)
@@ -366,7 +359,7 @@ internal static class PayloadBodiesDirectResponseWriter
 
     private static void WriteWithdrawalsFromBlockRlp(IBufferWriter<byte> writer, ref RlpReader ctx, int blockEnd)
     {
-        if (ctx.Position == blockEnd || ctx.PeekByte() < Rlp.EmptyListByte)
+        if (ctx.Position == blockEnd)
         {
             writer.Write("null"u8);
             return;

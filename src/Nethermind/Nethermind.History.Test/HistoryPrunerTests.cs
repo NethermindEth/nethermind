@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
@@ -445,6 +446,8 @@ public class HistoryPrunerTests
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: syncPivot, blockHashes: blockHashes);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
+        IStarkProofStore proofStore = testBlockchain.Container.Resolve<IStarkProofStore>();
+        for (int i = 1; i <= blocks; i++) proofStore.Insert((ulong)i, blockHashes[i], [(byte)i]);
 
         if (primeWithOldestRead)
             CheckOldestAndCutoff(1, finalCutoff, historyPruner);
@@ -458,6 +461,8 @@ public class HistoryPrunerTests
                 CheckBlockPruned(testBlockchain, blockHashes, i);
             else
                 CheckBlockPreserved(testBlockchain, blockHashes, i);
+            // EIP-8288 proofs are pruned with their bodies.
+            Assert.That(proofStore.Get(i, blockHashes[(int)i]), i < expectedPruneBelow ? Is.Null : Is.Not.Null);
         }
 
         CheckHeadPreserved(testBlockchain, blocks);

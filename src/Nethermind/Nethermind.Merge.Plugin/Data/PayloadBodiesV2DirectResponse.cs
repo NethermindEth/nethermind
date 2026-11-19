@@ -76,11 +76,12 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
     internal static PayloadBody CreatePayloadBody(
         byte[] blockRlp,
-        MemoryManager<byte>? blockAccessList)
+        MemoryManager<byte>? blockAccessList,
+        byte[]? starkProof = null)
     {
         try
         {
-            return new PayloadBody(blockRlp, blockAccessList);
+            return new PayloadBody(blockRlp, blockAccessList, starkProof);
         }
         catch
         {
@@ -129,9 +130,9 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
             _blockAccessList = blockAccessList;
         }
 
-        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList)
+        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList, byte[]? starkProof = null)
         {
-            _starkProof = null;
+            _starkProof = starkProof;
             _transactions = null;
             _blockRlp = blockRlp;
             _withdrawals = null;
@@ -142,7 +143,7 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         {
             if (_blockRlp is { } blockRlp)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList, includeBlockAccessList: true);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList, includeBlockAccessList: true, _starkProof);
             }
             else
             {
@@ -154,8 +155,8 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         {
             if (_blockRlp is { } blockRlp)
             {
-                (byte[][] transactions, Withdrawal[]? withdrawals, byte[]? proof) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
-                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray(), proof)
+                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray(), _starkProof)
                 {
                     Transactions = transactions
                 };
