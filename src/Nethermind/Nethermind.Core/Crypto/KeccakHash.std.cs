@@ -20,8 +20,8 @@ public sealed partial class KeccakHash
     private const int TEMP_BUFF_SIZE = 144;
 
     /// <summary>Whether whole 136-byte rate blocks are permuted one by one with <see cref="KeccakF1600Avx512VL"/>
-    /// rather than absorbed by <see cref="AbsorbBlocksScalar"/>: on every AVX-512VL core except AMD Zen 5 and later,
-    /// the only ones where the scalar absorb was measured faster.</summary>
+    /// rather than absorbed by <see cref="AbsorbBlocksScalar"/>: on every AVX-512VL core except AMD family 1Ah and
+    /// later. The scalar absorb was measured faster on Zen 5 only; later AMD families are assumed to follow it.</summary>
     private static readonly bool PermutesBlocksWithAvx512VL = Avx512F.VL.IsSupported && !IsAmdZen5OrLater();
 
     /// <summary>Whether the vendor id is <c>AuthenticAMD</c> and the CPUID family is 1Ah (Zen 5) or later.</summary>
