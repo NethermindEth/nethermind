@@ -112,6 +112,7 @@ public class TrustedInputTests
     private const int WitnessHeadersList = 60;
     private const int StateNodesList = 64;
     private const int CodesList = 68;
+    private const int TotalLengthOffset = 72;
     // Codes carry their execution padding before the padding to 8.
     private const int CodeExecutionPadding = 34;
 
@@ -341,6 +342,15 @@ public class TrustedInputTests
         (byte[] input, _) = await CreateInput(amsterdam: false);
         byte[] extended = [.. input, 0, 0, 0, 0, 0, 0, 0, 0];
         Assert.That(StatelessExecutor.ExecuteTrusted(extended), Is.EqualTo(StatelessExecutor.ExecuteTrusted(input)));
+    }
+
+    [Test]
+    public async Task Declared_size_must_fit_the_header_and_input([Values] bool belowHeader)
+    {
+        (byte[] input, _) = await CreateInput(amsterdam: false);
+        uint size = (uint)(belowHeader ? TrustedInput.HeaderLength - 1 : input.Length + 1);
+        BinaryPrimitives.WriteUInt32LittleEndian(input.AsSpan(TotalLengthOffset), size);
+        Assert.That(() => TrustedInput.Read(input), Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("data"));
     }
 
     [Test]

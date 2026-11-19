@@ -119,10 +119,10 @@ jobs:
         working-directory: src/Nethermind/${{ matrix.project }}
         run: make build GUEST_INPUT=${{ matrix.input }}
 
-      - name: Check division hints in the Airbender simulator
+      - name: Check trusted-input fallbacks in the Airbender simulator
         if: matrix.vm == 'airbender' && matrix.input == 'Trusted'
         working-directory: src/Nethermind/Nethermind.Stateless.AirbenderGuest
-        run: make test-division GUEST_INPUT=Trusted
+        run: make test-trusted-input GUEST_INPUT=Trusted
 
       - name: Upload guest binary
         uses: actions/upload-artifact@v7

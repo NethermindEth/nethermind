@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Zkvm.Abstractions;
@@ -11,6 +12,7 @@ class Program
     static int Main()
     {
         IO.ReadInput();
+        if (!CheckWitnessFallback()) return 1;
         // The fixture repeats each hint so we can check both acceptance and the public fallback.
         if (!Check(23, 5, true) || !Check(23, 5, false) || !Check(23, 5, false)
             || !Check(0, 2, false) || !Check(0, 3, false) || !Check(23, 5, false)
@@ -22,6 +24,24 @@ class Program
         output[0] = 1;
         IO.WriteOutput(output);
         return 0;
+    }
+
+    static unsafe bool CheckWitnessFallback()
+    {
+        int reads = 0;
+        byte[][] ReadNodes()
+        {
+            reads++;
+            return [[1], [2], [3]];
+        }
+
+        using AirbenderWitnessNodes nodes = new(null, null, 3, ReadNodes);
+        if (nodes.TryAttach() || nodes.Count != 3 || reads != 0) return false;
+        if (nodes[1][0] != 2 || nodes.AsSpan()[2][0] != 3) return false;
+        int index = 0;
+        foreach (byte[] node in nodes)
+            if (node[0] != ++index) return false;
+        return index == 3 && reads == 1;
     }
 
     static bool Check(ulong numerator, ulong denominator, bool expectedAcceptance)

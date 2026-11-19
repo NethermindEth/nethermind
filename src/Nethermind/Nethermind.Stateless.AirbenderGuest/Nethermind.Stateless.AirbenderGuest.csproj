@@ -3,7 +3,7 @@
   <Import Project="..\Nethermind.Stateless.Guest\Guest.props" />
 
   <ItemGroup>
-    <Compile Remove="tests/Division.cs" />
+    <Compile Remove="tests/TrustedInput.cs" />
   </ItemGroup>
 
 </Project>

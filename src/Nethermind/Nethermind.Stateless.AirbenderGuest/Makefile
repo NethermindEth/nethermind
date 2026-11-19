@@ -77,19 +77,23 @@ $(GUEST_DIR)/bin/%.hex: $(GUEST_DIR)/bin/%.raw
 
 .PHONY: verify
 
-# Compile the production division implementation against the same guest runtime and native delegation.
-.PHONY: test-division
-test-division: dotnet-build
-	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=division-test \
-		BFLAT_DOCKER_ARGS='$(BFLAT_DOCKER_ARGS) --mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Evm/WordDivision.zkevm.cs",target=/test/WordDivision.cs,readonly' \
-		GUEST_SOURCES='$(SRC_DIR)/tests/Division.cs /test/WordDivision.cs'
-	dotnet run --file "$(MAKEFILE_DIR)/../../../scripts/ci/airbender-division-input.cs" -- "$(GUEST_DIR)/bin/division-test.hex"
-	$(AIRBENDER_CLI) run --bin "$(GUEST_DIR)/bin/division-test.bin" --text "$(GUEST_DIR)/bin/division-test.text" \
-		--input-file "$(GUEST_DIR)/bin/division-test.hex" --cycles 10000000 --expected-results 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# Exercise the witness fallback and the division delegation against the production guest runtime.
+.PHONY: test-trusted-input
+test-trusted-input: dotnet-build $(GUEST_DIR)/bin/trusted-input-test.hex
+	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=trusted-input-test \
+		BFLAT_DOCKER_ARGS='$(BFLAT_DOCKER_ARGS) --mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Evm/WordDivision.zkevm.cs",target=/test/WordDivision.cs,readonly \
+		--mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Consensus/Stateless/AirbenderWitnessNodes.zkevm.cs",target=/test/WitnessNodes.cs,readonly' \
+		GUEST_SOURCES='$(SRC_DIR)/tests/TrustedInput.cs /test/WordDivision.cs /test/WitnessNodes.cs'
+	$(AIRBENDER_CLI) run --bin "$(GUEST_DIR)/bin/trusted-input-test.bin" --text "$(GUEST_DIR)/bin/trusted-input-test.text" \
+		--input-file "$(GUEST_DIR)/bin/trusted-input-test.hex" --cycles 10000000 --expected-results 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+
+$(GUEST_DIR)/bin/trusted-input-test.hex: $(MAKEFILE_DIR)/../../../scripts/ci/airbender-division-input.cs
+	mkdir -p "$(@D)"
+	dotnet run --file "$<" -- "$@"
 
 # Record and replay the same arithmetic build. INPUT is an unhinted framed .nti under bin/.
 .PHONY: record-division
 record-division:
 	@$(REQUIRE_INPUT)
 	$(MAKE) build GUEST_NAME=division-recorder GUEST_INPUT=Trusted GUEST_SUBSTITUTIONS='$(GUEST_SUBSTITUTIONS) --substitution $(SRC_DIR)/trace-division.xml'
-	dotnet run --file "$(MAKEFILE_DIR)/../../../scripts/ci/record-airbender-divisions.cs" -- "$(GUEST_DIR)" "$(INPUT)"
+	cd "$(MAKEFILE_DIR)/../../.." && dotnet run --file scripts/ci/record-airbender-divisions.cs -- "$(GUEST_DIR)" "$(INPUT)"
