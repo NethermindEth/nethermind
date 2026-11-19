@@ -1193,53 +1193,93 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    [TestCase(FootprintRecorder.MaxEffects, true)]
-    [TestCase(FootprintRecorder.MaxEffects + 1, false)]
-    public void A_run_with_more_effects_than_the_limit_leaves_no_footprint(int effects, bool kept)
+    public enum EffectLimitRun
     {
-        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        using (worldState.BeginScope(Parent))
-        {
-            Snapshot before = worldState.TakeSnapshot();
-            FootprintRecorder recorder = new(worldState);
-            Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
-            recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
-            recorder.GetNonce(TestItem.AddressA);
-            for (int i = 0; i < effects; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
-            recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
-            TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
-            recorder.Stop();
-            worldState.Restore(before);
+        AtTheLimit,
+        PastTheLimit,
+        RevertedBelowTheLimit,
+        RevertedAfterAnUnrecordedEffect,
+        NotReverted,
+    }
 
-            Assert.That(footprint is not null, Is.EqualTo(kept));
+    [TestCase(EffectLimitRun.AtTheLimit, true)]
+    [TestCase(EffectLimitRun.PastTheLimit, false)]
+    [TestCase(EffectLimitRun.RevertedBelowTheLimit, true)]
+    [TestCase(EffectLimitRun.RevertedAfterAnUnrecordedEffect, false)]
+    [TestCase(EffectLimitRun.NotReverted, false)]
+    public void A_run_keeps_its_footprint_only_while_every_effect_is_recorded(EffectLimitRun run, bool kept)
+    {
+        TransactionFootprint? footprint = RecordEffects(recorder =>
+        {
+            switch (run)
+            {
+                case EffectLimitRun.AtTheLimit:
+                    AddEffects(recorder, FootprintRecorder.MaxEffects);
+                    break;
+                case EffectLimitRun.PastTheLimit:
+                    AddEffects(recorder, FootprintRecorder.MaxEffects + 1);
+                    break;
+                case EffectLimitRun.RevertedBelowTheLimit:
+                case EffectLimitRun.NotReverted:
+                    AddEffects(recorder, 1);
+                    Snapshot belowTheLimit = recorder.TakeSnapshot();
+                    AddEffects(recorder, FootprintRecorder.MaxEffects + 1);
+                    if (run == EffectLimitRun.RevertedBelowTheLimit) recorder.Restore(belowTheLimit);
+                    break;
+                case EffectLimitRun.RevertedAfterAnUnrecordedEffect:
+                    AddEffects(recorder, FootprintRecorder.MaxEffects + 1);
+                    Snapshot atTheLimit = recorder.TakeSnapshot();
+                    AddEffects(recorder, 1);
+                    recorder.Restore(atTheLimit);
+                    break;
+            }
+        }, out _);
+
+        Assert.That(footprint is not null, Is.EqualTo(kept));
+    }
+
+    [Test]
+    public void A_code_write_past_the_effect_limit_keeps_no_code()
+    {
+        byte[] code = [0x60, 0x00];
+        TransactionFootprint? footprint = RecordEffects(active =>
+        {
+            AddEffects(active, FootprintRecorder.MaxEffects);
+            active.InsertCode(TestItem.AddressB, ValueKeccak.Compute(code), code, Spec);
+        }, out FootprintRecorder recorder);
+        StateEffect unrecorded = (StateEffect)typeof(FootprintRecorder)
+            .GetField("_unrecordedEffect", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(recorder)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprint, Is.Null);
+            Assert.That(unrecorded.Code, Is.Null);
         }
     }
 
-    [TestCase(1, FootprintRecorder.MaxEffects, false, false)]
-    [TestCase(1, FootprintRecorder.MaxEffects, true, true)]
-    [TestCase(FootprintRecorder.MaxEffects + 1, 1, true, false)]
-    public void Restore_keeps_a_footprint_only_if_all_discarded_effects_are_reverted(
-        int effectsBeforeSnapshot, int effectsAfterSnapshot, bool reverted, bool keepsFootprint)
+    private TransactionFootprint? RecordEffects(Action<FootprintRecorder> run, out FootprintRecorder recorder)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         using (worldState.BeginScope(Parent))
         {
             Snapshot before = worldState.TakeSnapshot();
-            FootprintRecorder recorder = new(worldState);
+            recorder = new FootprintRecorder(worldState);
             Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
             recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
             recorder.GetNonce(TestItem.AddressA);
-            for (int i = 0; i < effectsBeforeSnapshot; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
-            Snapshot call = recorder.TakeSnapshot();
-            for (int i = 0; i < effectsAfterSnapshot; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
-            if (reverted) recorder.Restore(call);
+            run(recorder);
             recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
             TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
             recorder.Stop();
             worldState.Restore(before);
-
-            Assert.That(footprint is not null, Is.EqualTo(keepsFootprint));
+            return footprint;
         }
+    }
+
+    private void AddEffects(FootprintRecorder recorder, int count)
+    {
+        for (int i = 0; i < count; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
     }
 
     [Test]
