@@ -241,12 +241,9 @@ public sealed class MempoolStatePrewarmer : IDisposable
         NextBlockContext next = PrepareNextBlockContext(parent);
         Transaction[]? delta = sessionGasRemaining == 0
             ? []
-            : SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender, token,
-                Math.Min(next.Header.GasLimit, sessionGasRemaining));
-        if (delta is null) return null;
-
-        foreach (Transaction tx in delta) sessionGasRemaining -= tx.GasLimit;
-        return (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
+            : SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, ref sessionGasRemaining,
+                selectedBySender, token, next.Header.GasLimit);
+        return delta is null ? null : (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
     }
 
     /// <summary>
@@ -260,6 +257,14 @@ public sealed class MempoolStatePrewarmer : IDisposable
     internal static Transaction[]? SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
         Dictionary<AddressAsKey, SenderSelection>? bySender = null, CancellationToken token = default, ulong gasBudget = ulong.MaxValue)
     {
+        ulong sessionGasRemaining = ulong.MaxValue;
+        return SelectDelta(orderedTxs, warmedPerSender, ref sessionGasRemaining, bySender, token, gasBudget);
+    }
+
+    internal static Transaction[]? SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
+        ref ulong sessionGasRemaining, Dictionary<AddressAsKey, SenderSelection>? bySender, CancellationToken token, ulong gasBudget)
+    {
+        ulong newGas = 0;
         bySender ??= [];
         bySender.Clear();
         using ArrayPoolListRef<(Transaction tx, int next)> transactions = new(orderedTxs is ICollection<Transaction> collection ? collection.Count : 0);
@@ -273,17 +278,27 @@ public sealed class MempoolStatePrewarmer : IDisposable
             }
 
             if (tx.SenderAddress is not Address sender) continue;
-            if (tx.GasLimit > gasBudget) break;
-            gasBudget -= tx.GasLimit;
             ref SenderSelection group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
+            if (!exists) warmedPerSender.TryGetValue(sender, out group.Warmed);
+            if (group.Skipped) continue;
+            bool isNew = group.Count >= group.Warmed;
+            if (tx.GasLimit > gasBudget || (isNew && tx.GasLimit > sessionGasRemaining - newGas))
+            {
+                group.Skipped = true;
+                continue;
+            }
+
+            gasBudget -= tx.GasLimit;
+            if (isNew) newGas += tx.GasLimit;
             int index = transactions.Count;
-            if (exists) transactions.GetRef(group.Last).next = index;
+            if (group.Count > 0) transactions.GetRef(group.Last).next = index;
             else group.First = index;
             group.Last = index;
             group.Count++;
             transactions.Add((tx, -1));
         }
 
+        sessionGasRemaining -= newGas;
         return SelectGroupedDelta(transactions.AsSpan(), bySender, warmedPerSender);
     }
 
@@ -335,6 +350,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         int position = 0;
         foreach (KeyValuePair<AddressAsKey, SenderSelection> senderGroup in bySender)
         {
+            if (senderGroup.Value.Count == 0) continue;
             for (int index = senderGroup.Value.First; index >= 0; index = transactions[index].next)
                 delta[position++] = transactions[index].tx;
             warmedPerSender.Add(senderGroup.Key, senderGroup.Value.Count);
@@ -371,6 +387,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
         public int First;
         public int Last;
         public int Count;
+        public int Warmed;
+        public bool Skipped;
     }
 
     private readonly record struct NextBlockContext(BlockHeader Header, IReleaseSpec Spec);
