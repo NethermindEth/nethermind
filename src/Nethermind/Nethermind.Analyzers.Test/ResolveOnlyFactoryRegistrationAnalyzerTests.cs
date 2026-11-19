@@ -58,6 +58,11 @@ public class ResolveOnlyFactoryRegistrationAnalyzerTests
         Verify(Register("AddSingleton<Foo>", "{|#0:ctx => new Foo(ctx.Resolve<IDep1>(), ctx.Resolve<IDep2>())|}"),
             Diagnostic().WithLocation(0).WithArguments("Foo", "AddSingleton"));
 
+    [Test]
+    public Task Factory_creating_generic_type_reports_type_arguments() =>
+        Verify(Register("AddSingleton", "{|#0:ctx => new Generic<int>(ctx.Resolve<IDep1>())|}"),
+            Diagnostic().WithLocation(0).WithArguments("Generic<int>", "AddSingleton"));
+
     [TestCase("ctx => { IDep1 dep1 = ctx.Resolve<IDep1>(); return new Foo(dep1, ctx.Resolve<IDep2>()); }")]
     [TestCase("ctx => new Foo(ctx.Resolve<IDep1>(), ctx.Resolve<IDep2>()) { Name = \"x\" }")]
     [TestCase("ctx => new Foo(ctx.Resolve<IDep1>(), new Dep2())")]
@@ -117,6 +122,7 @@ public class ResolveOnlyFactoryRegistrationAnalyzerTests
                 public TwoConstructors(IDep1 dep1, IDep2 dep2) { }
             }
             public class Keyed([KeyFilter("k")] IDep1 dep1) : IFoo { }
+            public class Generic<T>(IDep1 dep1) : IFoo { }
             public class InternalConstructor : IFoo
             {
                 public InternalConstructor(IDep1 dep1) { }

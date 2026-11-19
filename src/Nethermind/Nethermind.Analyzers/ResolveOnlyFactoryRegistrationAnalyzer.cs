@@ -74,7 +74,7 @@ public sealed class ResolveOnlyFactoryRegistrationAnalyzer : DiagnosticAnalyzer
             if (ReturnedCreation(lambda.Body) is not { } creation) continue;
             if (!OnlyResolvesConstructorArguments(creation, contextParameter, resolution)) continue;
 
-            context.ReportDiagnostic(Diagnostic.Create(Rule, lambda.Syntax.GetLocation(), creation.Type!.Name, method.Name));
+            context.ReportDiagnostic(Diagnostic.Create(Rule, lambda.Syntax.GetLocation(), creation.Type!.ToDisplayString(SymbolDisplayFormat.MinimallyQualifiedFormat), method.Name));
         }
     }
 
