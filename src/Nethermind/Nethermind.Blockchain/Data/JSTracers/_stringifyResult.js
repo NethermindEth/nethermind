@@ -22,7 +22,7 @@
             const toJSON = item.toJSON;
             if (typeof toJSON === 'function') item = apply(toJSON, item, [key]);
         }
-        if (item !== null && typeof item === 'object') {
+        if (item !== null && typeof item === 'object' && !isArray(item)) {
             // Intrinsic brand checks do not run user coercion or Symbol.toStringTag getters.
             for (let i = 0; i < brands.length; i++) {
                 let matched = false;
