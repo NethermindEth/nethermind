@@ -388,7 +388,7 @@ namespace Nethermind.Core.Test
         // is at least 68, which the widest output, 66, exercises at its tightest.
         [Test]
         public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(
-            [Values(20, 32, 300)] int inputLength,
+            [Values(20, 32, 135, 136, 137, 271, 272, 273, 300, 4096)] int inputLength,
             [Values(1, 32, 64, 66)] int outputLength)
         {
             byte[] input = FilledInput(inputLength);
