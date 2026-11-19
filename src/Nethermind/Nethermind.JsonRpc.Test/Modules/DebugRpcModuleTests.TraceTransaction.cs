@@ -242,7 +242,7 @@ public partial class DebugRpcModuleTests
                             : !known
                                 ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""
                                 : duration == "bad"
-                                    ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s')."},"id":67}"""
+                                    ? """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}"""
                                     : tracer is null
                                         ? """{"jsonrpc":"2.0","result":{"structLogs":[],"gas":21000,"failed":false,"returnValue":"0x"},"id":67}"""
                                         : """{"jsonrpc":"2.0","result":{},"id":67}""";
@@ -266,7 +266,7 @@ public partial class DebugRpcModuleTests
         string expected;
         if (timeout == "bad")
         {
-            expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s')."},"id":67}""";
+            expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}""";
         }
         else if (timeout == "5s")
         {

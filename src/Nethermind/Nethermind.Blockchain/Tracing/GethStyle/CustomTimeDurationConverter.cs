@@ -15,9 +15,15 @@ internal sealed class TraceDurationFormatException(string message) : FormatExcep
 internal readonly record struct ParsedTraceDuration(TimeSpan? Value, string? Error = null, string? RawText = null);
 
 /// <summary>
-/// Deserializes a JSON string as a <see cref="TimeSpan"/> using Go's time.ParseDuration format
-/// (e.g. "5s", "100ms", "2m30s"). Serializes back using Go's Duration.String() format.
+/// Deserializes a JSON string as a <see cref="TimeSpan"/> using Go duration syntax or invariant-culture
+/// <see cref="TimeSpan"/> formats. Serializes back using Go's Duration.String() format.
 /// </summary>
+/// <remarks>
+/// Input is intentionally more permissive than Geth: after Go parsing fails, invariant-culture
+/// <c>TimeSpan.TryParse</c> is used for compatibility.
+/// For example, "00:00:05" means five seconds and "5" means five days. Prefer explicit Go units such as "5s"
+/// for unambiguous, portable input. Go's special unitless "0", "+0" and "-0" remain valid.
+/// </remarks>
 public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 {
     private const ulong NsPerTick = 100;
@@ -88,8 +94,8 @@ public sealed class CustomTimeDurationConverter : JsonConverter<TimeSpan?>
 
     private static ParsedTraceDuration Parse(ReadOnlySpan<char> value)
     {
-        if (TryParseGoDuration(value, out TimeSpan result)) return new(result);
-        return new(null, $"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s').", new string(value));
+        if (TryParseGoDuration(value, out TimeSpan result) || TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result)) return new(result);
+        return new(null, $"Cannot parse '{value}' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss').", new string(value));
     }
 
     public override void Write(Utf8JsonWriter writer, TimeSpan? value, JsonSerializerOptions options)
