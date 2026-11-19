@@ -60,7 +60,6 @@ internal static class DiscoveryAdmissionTestContainer
         ITrustedNodesManager? trustedNodes = null,
         IEnumerable<NetworkNode>? configuredStaticNodes = null,
         DiscoveryNodeAdmission? admission = null,
-        int admittedCapacity = 100,
         IKademliaAdapter? innerAdapter = null,
         PeerCandidateReservations? reservations = null,
         INodeHealthTracker<Node>? innerTracker = null)
@@ -80,8 +79,6 @@ internal static class DiscoveryAdmissionTestContainer
         }
 
         logManager ??= LimboLogs.Instance;
-        IRoutingTable<Node, ValueHash256> admissionRoutingTable =
-            routingTable ?? Substitute.For<IRoutingTable<Node, ValueHash256>>();
         storage ??= Substitute.For<INetworkStorage>();
         if (enabled)
         {
@@ -139,9 +136,7 @@ internal static class DiscoveryAdmissionTestContainer
             DiscoveryNodeAdmission manualAdmission = new(
                 filter,
                 enabled,
-                admissionRoutingTable,
                 kademliaConfig,
-                admittedCapacity: admittedCapacity,
                 logManager,
                 staticNodes,
                 trustedNodes,

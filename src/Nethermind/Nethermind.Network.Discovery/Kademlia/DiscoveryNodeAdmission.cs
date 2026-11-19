@@ -4,7 +4,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
-using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Kademlia;
@@ -29,8 +28,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// a node rebuilt from a packet carries no flags. The identity set is built once from configuration: self,
 /// bootnodes, and configured static peers. Static and trusted nodes are resolved live from their managers,
 /// so a removal is observed on the next admission unless the identity is also exempt for an independent
-/// reason. Flags on an admitted instance are evidence for that call only and never create a lasting
-/// entitlement.
+/// reason, and an addition stops the node renewing the reservation it still holds. Flags on an admitted
+/// instance are evidence for that call only and never create a lasting entitlement.
 /// </para>
 /// <para>
 /// Every routing-table node is persisted, so filtering persisted nodes at load could empty the routing
@@ -46,9 +45,7 @@ namespace Nethermind.Network.Discovery.Kademlia;
 internal sealed class DiscoveryNodeAdmission(
     NodeFilter filter,
     bool enabled,
-    IRoutingTable<Node, ValueHash256> routingTable,
     KademliaConfig<Node> kademliaConfig,
-    int admittedCapacity,
     ILogManager logManager,
     IStaticNodesManager? staticNodes = null,
     ITrustedNodesManager? trustedNodes = null,
@@ -56,88 +53,34 @@ internal sealed class DiscoveryNodeAdmission(
 {
     private readonly NodeFilter _filter = filter;
     private readonly bool _enabled = enabled;
-    private readonly IRoutingTable<Node, ValueHash256> _routingTable = routingTable;
-    private readonly RecentNodeFilter<PublicKey> _admitted = new(Math.Max(1, admittedCapacity));
     private readonly IStaticNodesManager? _staticNodes = staticNodes;
     private readonly ITrustedNodesManager? _trustedNodes = trustedNodes;
     private readonly HashSet<PublicKey> _exemptNodeIds = enabled
         ? CreateExemptNodeIds(kademliaConfig, configuredStaticNodes)
         : [];
     private readonly ConcurrentDictionary<PublicKey, IPAddress> _persistedAddresses = new();
-    private readonly PublicKey? _selfId = kademliaConfig.CurrentNodeId?.Id;
-    private readonly Lock _admitLock = new();
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryNodeAdmission>();
 
     /// <summary>
     /// Records the node's address on first contact and returns whether it may be handled.
     /// </summary>
     /// <remarks>
-    /// Safe to call from both the adapter gate and the routing-table decorator for the same message: a node
-    /// admitted by the first call is recognized as known by the second. Self and exempt nodes bypass the
-    /// filter without creating a filter entry. A known node refreshes its own address window, but only while it
-    /// still holds that reservation: identity proves who the sender is, not that it owns an address in the
-    /// subnet it now claims, so a node that moves to a different address or whose window was taken over by
-    /// another identity must pass the filter again. The admitted cache is smaller than the address filter, so
-    /// an identity can be evicted while its reservation is still live; that node renews the reservation it
-    /// still owns instead of being rejected by it.
+    /// Safe to call from both the adapter gate and the routing-table decorator for the same message. Self and
+    /// exempt nodes bypass the filter without creating a filter entry, and an exempt node does not extend a
+    /// reservation it still holds. Every other node is decided by the address entry alone: identity proves who
+    /// the sender is, not that it owns an address in the subnet it claims, so only the identity holding a live
+    /// reservation may extend it, and a node that moves to a different address or whose window was taken over
+    /// by another identity is filtered again. An identity is not remembered separately from its reservation.
     /// </remarks>
     public bool TryAdmit(Node node)
     {
         if (!_enabled) return true;
 
-        // A known node that still owns its address reservation has already passed the filter, so it needs no
-        // exemption check. Exempt nodes never create a reservation, so they still reach IsExempt before
-        // AdmitAddress could create one; a node that became exempt while it still held one keeps refreshing it
-        // until it is evicted or expires.
-        if (IsKnown(node) && _filter.TryRefresh(node.Address.Address, node.Id))
-        {
-            return true;
-        }
-
-        // Self and exempt nodes must not create a filter entry. The configuration-backed, per-call and persisted
-        // sources are checked here without touching the managers; manager membership is resolved once per
-        // admission below instead of on both sides of _admitLock, which duplicated the walk on the unknown path.
-        if (IsSelf(node) || IsExemptWithoutManagers(node))
-        {
-            _admitted.TryReserve(node.Id);
-            return true;
-        }
-
-        // Known nodes keep the refresh behavior of the old lifecycle-manager dictionary. The managed check stays
-        // ahead of RefreshKnownNode so a managed node that lost its reservation is not handed to the filter.
-        if (IsKnown(node))
-        {
-            if (IsManagedExempt(node.Id))
-            {
-                _admitted.TryReserve(node.Id);
-                return true;
-            }
-
-            return RefreshKnownNode(node);
-        }
-
-        using Lock.Scope scope = _admitLock.EnterScope();
-        // Another thread may have admitted this node, and an operator may have added it to a manager, while we
-        // waited for the lock.
-        if (IsExemptWithoutManagers(node) || IsManagedExempt(node.Id))
-        {
-            _admitted.TryReserve(node.Id);
-            return true;
-        }
-
-        if (IsKnown(node))
-        {
-            return RefreshKnownNode(node);
-        }
-
-        // The identity cache can evict a node that still holds a live address reservation, and a full routing
-        // bucket keeps it out of the routing table, so it arrives here as unknown. TryAccept rejects any live
-        // entry regardless of who holds it, so let the owner extend its own reservation instead.
-        if (_filter.TryRefresh(node.Address.Address, node.Id))
-        {
-            _admitted.TryReserve(node.Id);
-            return true;
-        }
+        // Exempt nodes never create a reservation; a node that becomes exempt while it still holds one must stop
+        // renewing it, or a privileged node in a subnet would keep ordinary nodes out indefinitely. The live
+        // exemption is therefore resolved before the reservation is extended. Self is in the configuration-backed
+        // set, so it needs no separate check.
+        if (IsExemptWithoutManagers(node) || IsManagedExempt(node.Id)) return true;
 
         if (!AdmitAddress(node))
         {
@@ -152,28 +95,19 @@ internal sealed class DiscoveryNodeAdmission(
     /// Re-validates a node taken from a bucket's replacement cache before it is promoted into the bucket.
     /// </summary>
     /// <remarks>
-    /// Runs while the routing table is locked, so unlike <see cref="TryAdmit"/> it takes neither the admission lock
-    /// nor a routing-table read: an ordinary admission holds the admission lock while it probes the table, and the
-    /// inverse order here would deadlock. The node is not an active entry yet, so the table probe has nothing to
-    /// add; the admitted cache and the address filter are leaf locks that no caller holds while entering the table.
-    /// A node that no longer holds its reservation is filtered like any other node, and flags on the cached instance
-    /// are ignored because the operator may have removed it from its manager since it was cached.
+    /// Runs while the routing table is locked, so unlike <see cref="TryAdmit"/> it takes no routing-table read; the
+    /// inverse order would deadlock. The node is not an active entry yet, so the table probe has nothing to add, and
+    /// the address filter is a leaf lock that no caller holds while entering the table. A node that no longer holds
+    /// its reservation is filtered like any other node, and flags on the cached instance are ignored because the
+    /// operator may have removed it from its manager since it was cached. Exemption is likewise resolved before the
+    /// reservation is extended, so a node promoted after it became exempt stops renewing the reservation it still
+    /// holds.
     /// </remarks>
     public bool TryAdmitPromoted(Node node)
     {
         if (!_enabled) return true;
 
-        if (_filter.TryRefresh(node.Address.Address, node.Id))
-        {
-            _admitted.TryReserve(node.Id);
-            return true;
-        }
-
-        if (IsSelf(node) || IsExemptWithoutInstanceFlags(node) || IsManagedExempt(node.Id))
-        {
-            _admitted.TryReserve(node.Id);
-            return true;
-        }
+        if (IsExemptWithoutInstanceFlags(node) || IsManagedExempt(node.Id)) return true;
 
         if (!AdmitAddress(node))
         {
@@ -198,31 +132,9 @@ internal sealed class DiscoveryNodeAdmission(
         if (_enabled && node.Enr is null) _persistedAddresses[node.Id] = node.Address.Address;
     }
 
-    private bool RefreshKnownNode(Node node)
-    {
-        // Only the identity holding the live reservation may extend it. A returning identity whose window
-        // was taken over by another node must pass the same admission check as any other address.
-        if (_filter.TryRefresh(node.Address.Address, node.Id)) return true;
-
-        if (!AdmitAddress(node))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Discovery node filtered after losing its address admission: {node:hide}.");
-            return false;
-        }
-
-        return true;
-    }
-
-    private bool AdmitAddress(Node node)
-    {
-        IPAddress address = node.Address.Address;
-        if (!_filter.TryAccept(address, node.Id)) return false;
-
-        _admitted.TryReserve(node.Id);
-        return true;
-    }
-
-    private bool IsSelf(Node node) => _selfId is { } selfId && node.Id == selfId;
+    // Accepting and extending happen in one filter lock scope, so a concurrent admission for the same identity
+    // cannot evict the entry between the two and reject the node against a reservation it already owns.
+    private bool AdmitAddress(Node node) => _filter.TryAcceptOrRefresh(node.Address.Address, node.Id);
 
     // Instance flags are evidence for this call only. Caching them by identity would keep the exemption
     // alive after the operator removes the node from its manager; lasting exemptions come from the
@@ -264,10 +176,6 @@ internal sealed class DiscoveryNodeAdmission(
 
         return false;
     }
-
-    private bool IsKnown(Node node)
-        => _admitted.Contains(node.Id)
-           || _routingTable.TryGet(node.Id.Hash.ValueHash256, out _);
 
     private static HashSet<PublicKey> CreateExemptNodeIds(
         KademliaConfig<Node> kademliaConfig,

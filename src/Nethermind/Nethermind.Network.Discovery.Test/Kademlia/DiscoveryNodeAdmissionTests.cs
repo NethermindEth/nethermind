@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
@@ -76,16 +77,10 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void Known_node_touches_its_address_so_a_same_subnet_node_is_rejected()
+    public void Repeated_contact_keeps_the_subnet_reserved()
     {
         Fixture fixture = CreateAdmission();
         Node known = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        fixture.RoutingTable.TryGet(Arg.Is<ValueHash256>(hash => hash == known.Id.Hash), out _)
-            .Returns(ci =>
-            {
-                ci[1] = known;
-                return true;
-            });
 
         using (Assert.EnterMultipleScope())
         {
@@ -268,17 +263,16 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void Reclaims_its_live_address_reservation_after_its_identity_is_evicted()
+    public void Reclaims_its_live_address_reservation()
     {
         ManualTimeProvider clock = new();
-        Fixture fixture = CreateAdmission(timeProvider: clock, admittedCapacity: 1);
+        Fixture fixture = CreateAdmission(timeProvider: clock);
         Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
 
         Assert.That(fixture.Admission.TryAdmit(node), Is.True);
 
         clock.Advance(TimeSpan.FromMinutes(4));
-        // A newer identity evicts the first one from the admitted cache, and the routing table does not know
-        // it, so the returning node takes the unknown-node path.
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.True);
@@ -286,8 +280,8 @@ public class DiscoveryNodeAdmissionTests
             Assert.That(fixture.Admission.TryAdmit(node), Is.True);
         }
 
-        // The reclaim renewed the window at the contact above: the first reservation would have expired at
-        // five minutes, but the subnet is still the node's.
+        // The contact above renewed the window: the first reservation would have expired at five minutes, but
+        // the subnet is still the node's.
         clock.Advance(TimeSpan.FromMinutes(3));
         Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyC, "203.0.113.99")), Is.False);
     }
@@ -458,29 +452,70 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void Known_node_with_a_live_reservation_does_not_scan_managed_nodes()
+    public void Known_node_that_became_managed_stops_renewing_its_reservation()
     {
-        int scans = 0;
+        ManualTimeProvider clock = new();
+        List<NetworkNode> staticNodesList = [];
         IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns(_ =>
-        {
-            scans++;
-            return new NetworkNode[] { new(TestItem.PublicKeyA, "203.0.113.10", 30303) };
-        });
-        Fixture fixture = CreateAdmission(staticNodes: staticNodes);
+        staticNodes.Nodes.Returns(_ => staticNodesList);
+        Fixture fixture = CreateAdmission(timeProvider: clock, staticNodes: staticNodes);
+        Node ordinary = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
-            Assert.That(scans, Is.GreaterThan(0), "first contact must still check managed exemption");
+            Assert.That(fixture.Admission.TryAdmit(ordinary), Is.True);
+            clock.Advance(TimeSpan.FromMinutes(4));
+            // An ordinary node renews its own reservation.
+            Assert.That(fixture.Admission.TryAdmit(ordinary), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.False);
         }
 
-        scans = 0;
+        // The operator makes the node static while it still holds the subnet.
+        staticNodesList.Add(new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303));
+        clock.Advance(TimeSpan.FromMinutes(4));
+
+        // The exemption admits it, but the live check runs before the reservation is extended...
+        Assert.That(fixture.Admission.TryAdmit(ordinary), Is.True);
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+
+        // ...so the subnet is free once the last renewal expires instead of being held indefinitely.
+        Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.True);
+    }
+
+    [Test]
+    public void Promoted_node_that_became_managed_stops_renewing_its_reservation()
+    {
+        ManualTimeProvider clock = new();
+        List<NetworkNode> staticNodesList = [];
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns(_ => staticNodesList);
+        Fixture fixture = CreateAdmission(timeProvider: clock, staticNodes: staticNodes);
+        Node cached = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
+
+        Assert.That(fixture.Admission.TryAdmit(cached), Is.True);
+        clock.Advance(TimeSpan.FromMinutes(4));
+
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
-            Assert.That(scans, Is.Zero, "a known node that still owns its reservation must not scan managed nodes");
+            // An ordinary node's promotion extends its own reservation.
+            Assert.That(fixture.Admission.TryAdmitPromoted(cached), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.False);
         }
+
+        // The operator makes the node static while it still holds the subnet.
+        staticNodesList.Add(new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303));
+        clock.Advance(TimeSpan.FromMinutes(4));
+
+        // The exemption admits the promotion without extending the reservation...
+        Assert.That(fixture.Admission.TryAdmitPromoted(cached), Is.True);
+
+        clock.Advance(TimeSpan.FromMinutes(2));
+
+        // ...so the subnet is free once the last renewal expires.
+        Assert.That(fixture.Admission.TryAdmit(sameSubnet), Is.True);
     }
 
     [Test]
@@ -505,24 +540,18 @@ public class DiscoveryNodeAdmissionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
-            Assert.That(staticScans, Is.EqualTo(1), "the locked re-check must be the only managed walk");
-            Assert.That(trustedScans, Is.EqualTo(1), "the locked re-check must be the only managed walk");
+            Assert.That(staticScans, Is.EqualTo(1), "admission walks each managed set once");
+            Assert.That(trustedScans, Is.EqualTo(1), "admission walks each managed set once");
         }
     }
 
     [Test]
-    public void Known_managed_node_that_lost_its_reservation_is_still_admitted()
+    public void Managed_node_that_lost_its_reservation_is_still_admitted()
     {
         IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
         staticNodes.Nodes.Returns([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
         Fixture fixture = CreateAdmission(staticNodes: staticNodes);
         Node managed = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        fixture.RoutingTable.TryGet(Arg.Is<ValueHash256>(hash => hash == managed.Id.Hash), out _)
-            .Returns(ci =>
-            {
-                ci[1] = managed;
-                return true;
-            });
 
         using (Assert.EnterMultipleScope())
         {
@@ -644,6 +673,50 @@ public class DiscoveryNodeAdmissionTests
         }
     }
 
+    [Test]
+    public void Concurrent_promotion_and_admission_of_the_same_node_never_reject_it()
+    {
+        ManualTimeProvider clock = new();
+        Fixture fixture = CreateAdmission(timeProvider: clock);
+        Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+
+        for (int i = 0; i < 20; i++)
+        {
+            // Every path expires the reservation, so the racers all fail their refresh check and only one of
+            // them can acquire it; the others must recognize the identity that just reacquired it.
+            clock.Advance(TimeSpan.FromMinutes(5));
+
+            // Dedicated threads start together; pool threads would be injected one at a time and start racing
+            // after the first racer already finished.
+            using Barrier barrier = new(17);
+            bool[] results = new bool[17];
+            Thread[] threads = new Thread[results.Length];
+            for (int index = 0; index < threads.Length; index++)
+            {
+                int racer = index;
+                Thread racerThread = new(() =>
+                {
+                    if (barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                    {
+                        results[racer] = racer == 0
+                            ? fixture.Admission.TryAdmit(node)
+                            : fixture.Admission.TryAdmitPromoted(node);
+                    }
+                })
+                {
+                    IsBackground = true,
+                };
+
+                threads[index] = racerThread;
+                racerThread.Start();
+            }
+
+            foreach (Thread thread in threads) thread.Join();
+
+            Assert.That(results, Is.All.True, $"iteration {i}");
+        }
+    }
+
     private static Fixture CreateAdmission(
         bool enabled = true,
         bool subnetBucketing = true,
@@ -654,11 +727,8 @@ public class DiscoveryNodeAdmissionTests
         TimeProvider? timeProvider = null,
         IStaticNodesManager? staticNodes = null,
         ITrustedNodesManager? trustedNodes = null,
-        IEnumerable<NetworkNode>? configuredStaticNodes = null,
-        int admittedCapacity = 100)
+        IEnumerable<NetworkNode>? configuredStaticNodes = null)
     {
-        IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
-        INetworkStorage storage = Substitute.For<INetworkStorage>();
         IContainer container = DiscoveryAdmissionTestContainer.Create(
             enabled: enabled,
             subnetBucketing: subnetBucketing,
@@ -667,18 +737,15 @@ public class DiscoveryNodeAdmissionTests
             timeProvider: timeProvider,
             persisted: persisted,
             kademliaConfig: config,
-            routingTable: routingTable,
-            storage: storage,
+            routingTable: Substitute.For<IRoutingTable<Node, ValueHash256>>(),
+            storage: Substitute.For<INetworkStorage>(),
             staticNodes: staticNodes,
             trustedNodes: trustedNodes,
-            configuredStaticNodes: configuredStaticNodes,
-            admittedCapacity: admittedCapacity);
-        return new Fixture(container.Resolve<DiscoveryNodeAdmission>(), routingTable);
+            configuredStaticNodes: configuredStaticNodes);
+        return new Fixture(container.Resolve<DiscoveryNodeAdmission>());
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
 
-    private sealed record Fixture(
-        DiscoveryNodeAdmission Admission,
-        IRoutingTable<Node, ValueHash256> RoutingTable);
+    private sealed record Fixture(DiscoveryNodeAdmission Admission);
 }

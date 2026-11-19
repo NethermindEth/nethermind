@@ -62,21 +62,11 @@ public sealed class NodeFilter
     /// Checks whether <paramref name="ipAddress"/> should be accepted.
     /// Returns <c>true</c> if the address was not seen recently, <c>false</c> if it was.
     /// </summary>
-    public bool TryAccept(IPAddress ipAddress, bool exactOnly = false)
-        => TryAccept(ipAddress, owner: null, exactOnly);
-
-    /// <summary>
-    /// Checks whether <paramref name="ipAddress"/> should be accepted and records <paramref name="owner"/> as
-    /// holding the entry when it does.
-    /// </summary>
     /// <remarks>
-    /// <paramref name="owner"/> is an opaque identity compared with <see cref="object.Equals(object)"/>, so it
-    /// must implement value equality. A null owner makes no claim and leaves an existing owner in place, which
-    /// keeps a caller that cannot claim the entry from clearing the identity that holds it. Instances whose
-    /// callers claim ownership should not be shared with owner-less callers, since both compete for the same
-    /// entry.
+    /// Makes no ownership claim: an entry that another identity holds keeps its owner, and callers that need to
+    /// reserve an address for an identity use <see cref="TryAcceptOrRefresh"/> instead.
     /// </remarks>
-    internal bool TryAccept(IPAddress ipAddress, object? owner, bool exactOnly = false)
+    public bool TryAccept(IPAddress ipAddress, bool exactOnly = false)
     {
         if (_cache is null) return true;
 
@@ -92,11 +82,10 @@ public sealed class NodeFilter
                 return false;
 
             Volatile.Write(ref lastSeen.Timestamp, now);
-            if (owner is not null) lastSeen.Owner = owner;
         }
         else
         {
-            _cache.Set(key, new LastSeen(now, owner));
+            _cache.Set(key, new LastSeen(now, owner: null));
         }
         return true;
     }
@@ -132,6 +121,40 @@ public sealed class NodeFilter
         }
 
         Volatile.Write(ref lastSeen.Timestamp, now);
+        return true;
+    }
+
+    /// <summary>
+    /// Accepts <paramref name="ipAddress"/>, or extends the live entry that <paramref name="owner"/> already
+    /// holds, in one lock scope.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TryAccept"/> followed by <see cref="TryRefresh"/> is not equivalent: an insertion for another
+    /// address can evict the entry between the two calls, and the identity that holds it would then be rejected
+    /// against the reservation it owns. Use this method where an owner must be able to reclaim its own entry.
+    /// </remarks>
+    internal bool TryAcceptOrRefresh(IPAddress ipAddress, object owner, bool exactOnly = false)
+    {
+        if (_cache is null) return true;
+
+        IpSubnetKey key = GetKey(ipAddress, exactOnly);
+        using Lock.Scope scope = _lock.EnterScope();
+        long now = NowMs();
+        if (_cache.TryGet(key, out LastSeen lastSeen))
+        {
+            if (now - lastSeen.Timestamp < _timeoutMs && !object.Equals(lastSeen.Owner, owner))
+            {
+                return false;
+            }
+
+            Volatile.Write(ref lastSeen.Timestamp, now);
+            lastSeen.Owner = owner;
+        }
+        else
+        {
+            _cache.Set(key, new LastSeen(now, owner));
+        }
+
         return true;
     }
 

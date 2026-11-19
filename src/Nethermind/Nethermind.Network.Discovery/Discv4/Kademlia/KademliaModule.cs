@@ -52,9 +52,7 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             DiscoveryNodeAdmission admission = new(
                 filter,
                 networkConfig.FilterDiscoveryNodesByRecentIp,
-                ctx.Resolve<IRoutingTable<Node, ValueHash256>>(),
                 kademliaConfig,
-                filterSize,
                 logManager,
                 ctx.ResolveOptional<IStaticNodesManager>(),
                 ctx.ResolveOptional<ITrustedNodesManager>(),

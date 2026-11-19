@@ -329,6 +329,46 @@ public class NodeFilterTests
         }
     }
 
+    [Test]
+    public void TryAcceptOrRefresh_RejectsAnEntryHeldByAnotherOwner()
+    {
+        ManualTimeProvider clock = new();
+        NodeFilter filter = CreateFilter(exactMatchOnly: true, timeoutMs: 100, timeProvider: clock);
+        IPAddress ip = IPAddress.Parse("203.0.113.1");
+
+#pragma warning disable NUnit2045 // Each call mutates the entry, so the assertions cannot share a scope.
+        Assert.That(filter.TryAcceptOrRefresh(ip, "first"), Is.True);
+        Assert.That(filter.TryAcceptOrRefresh(ip, "second"), Is.False, "a live entry admits only its owner");
+        Assert.That(filter.TryAcceptOrRefresh(ip, "first"), Is.True, "the owner extends its own entry");
+#pragma warning restore NUnit2045
+    }
+
+    [Test]
+    public void TryAcceptOrRefresh_ExtendsTheOwnersEntryAndTakesOverAnExpiredOne()
+    {
+        ManualTimeProvider clock = new();
+        NodeFilter filter = CreateFilter(exactMatchOnly: true, timeoutMs: 100, timeProvider: clock);
+        IPAddress ip = IPAddress.Parse("203.0.113.1");
+        const string owner = "identity";
+
+#pragma warning disable NUnit2045 // Each call mutates the entry, so the assertions cannot share a scope.
+        Assert.That(filter.TryAcceptOrRefresh(ip, owner), Is.True, "a fresh entry is accepted");
+
+        clock.Advance(TimeSpan.FromMilliseconds(50));
+
+        Assert.That(filter.TryAcceptOrRefresh(ip, owner), Is.True, "the owner is not rejected by its live entry");
+        Assert.That(filter.TryAcceptOrRefresh(ip, "other"), Is.False, "the extension moved the window");
+
+        clock.Advance(TimeSpan.FromMilliseconds(50));
+
+        Assert.That(filter.TryAcceptOrRefresh(ip, "other"), Is.False, "the entry remains live within the extended window");
+
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+
+        Assert.That(filter.TryAcceptOrRefresh(ip, "other"), Is.True, "an expired entry is taken over");
+#pragma warning restore NUnit2045
+    }
+
     [TestCase(true, "192.0.2.1", "192.0.2.1", Description = "Exact match reaccepts after timeout")]
     [TestCase(false, "203.0.113.1", "203.0.113.50", Description = "Subnet bucket reaccepts after timeout")]
     public void TimeoutExpiry_ReacceptsAfterTimeout(bool exactMatchOnly, string first, string second)
@@ -356,7 +396,7 @@ public class NodeFilterTests
         IPAddress ip = IPAddress.Parse("203.0.113.1");
         const string owner = "identity";
 
-        Assert.That(filter.TryAccept(ip, owner), Is.True);
+        Assert.That(filter.TryAcceptOrRefresh(ip, owner), Is.True);
 
         clock.Advance(TimeSpan.FromMilliseconds(500));
 
