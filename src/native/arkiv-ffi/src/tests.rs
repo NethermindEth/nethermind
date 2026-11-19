@@ -2,7 +2,7 @@
 
 use super::*;
 
-const RABDI_GENESIS: &str = include_str!("../../../Nethermind/Chains/rabdi-genesis.json");
+const RABDI_GENESIS: &str = include_str!("../../../Nethermind/Chains/rabdi.json");
 
 /// `eth_getBlockByNumber(0)` on https://rpc.rabdi.db-chain.testnet.arkiv.network.
 const RABDI_GENESIS_HASH: &str = "0xa65a2b9e25129f0e8ccdf494dfd66ec744bdf400c806b832b1da86b0b939cbce";
