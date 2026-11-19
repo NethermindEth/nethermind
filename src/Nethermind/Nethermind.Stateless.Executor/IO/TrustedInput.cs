@@ -370,8 +370,8 @@ public static partial class TrustedInput
             GetBlock: () => CreateBlock(header, transactions, withdrawals, encodedBlockAccessList),
             Witness: witness,
             EncodedTransactions: transactions,
-            SenderHints: senderHints.ToArray(),
-            RecoveryHints: recoveryHints.ToArray(),
+            SenderHints: RetainHints ? senderHints.ToArray() : [],
+            RecoveryHints: RetainHints ? recoveryHints.ToArray() : [],
             ChainId: chainId,
             SchemaId: schemaId,
             BlockHash: blockHash,
@@ -521,6 +521,9 @@ public static partial class TrustedInput
     /// <summary>The <paramref name="length"/>-byte code at <paramref name="start"/>, followed by its execution padding.</summary>
     /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length);
+
+    /// <summary>Whether <see cref="Read"/> keeps the sender and recovery hints; only Airbender batch-verifies with them.</summary>
+    private static partial bool RetainHints { get; }
 
     private sealed class ItemList(byte[][] items) : IOwnedReadOnlyList<byte[]>
     {

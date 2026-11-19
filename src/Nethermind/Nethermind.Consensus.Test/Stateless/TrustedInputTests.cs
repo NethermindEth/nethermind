@@ -106,6 +106,7 @@ public class TrustedInputTests
         Assert.That(collector.Inputs.ConvertAll(input => BitConverter.ToInt32(input)), Is.EquivalentTo(Enumerable.Range(0, 10_000)));
     }
 
+    private const int RecoveryHintsSection = 80;
     private const int SenderHintsSection = 48;
     private const int TransactionsList = 56;
     private const int WitnessHeadersList = 60;
@@ -290,7 +291,7 @@ public class TrustedInputTests
     }
 
     [Test]
-    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, 17, SenderHintsSection + 4, 72)] int corruptedOffset)
+    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, 17, SenderHintsSection + 4, 72, RecoveryHintsSection + 4)] int corruptedOffset)
     {
         (byte[] input, _) = await CreateInput(amsterdam: false);
         input[corruptedOffset] ^= 1;
