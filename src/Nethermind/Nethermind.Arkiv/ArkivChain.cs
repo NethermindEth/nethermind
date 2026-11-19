@@ -71,7 +71,8 @@ public sealed class ArkivChain : IDisposable
         _blockTree = blockTree;
         _ecdsa = ecdsa;
         _logger = logManager.GetClassLogger<ArkivChain>();
-        string genesisFile = config.GenesisFile ?? throw new InvalidOperationException($"{nameof(IArkivConfig)}.{nameof(IArkivConfig.GenesisFile)} must name the network's genesis file (with config.arkiv.golemdb).");
+        // The network's published genesis file is the chain spec too, so it is the default.
+        string genesisFile = config.GenesisFile ?? initConfig.ChainSpecPath;
         _genesisJson = File.ReadAllText(ResolveGenesisFile(genesisFile));
         _storeDirectory = config.StoreDirectory ?? DefaultStoreDirectory(initConfig.BaseDbPath);
         ArkivNative.Configure(config.NativeLibrary);
@@ -80,7 +81,7 @@ public sealed class ArkivChain : IDisposable
 
     /// <summary>
     /// A relative path is taken from the working directory when it exists there, otherwise from Nethermind's own
-    /// directory, as <c>Init.ChainSpecPath</c> is: <c>chainspec/rabdi-genesis.json</c> ships beside the Runner.
+    /// directory, as <c>Init.ChainSpecPath</c> is: <c>chainspec/rabdi.json</c> ships beside the Runner.
     /// </summary>
     private static string ResolveGenesisFile(string path) =>
         Path.IsPathRooted(path) || File.Exists(path) ? path : Path.Combine(AppContext.BaseDirectory, path);

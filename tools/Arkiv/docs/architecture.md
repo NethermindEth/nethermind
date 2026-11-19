@@ -85,7 +85,7 @@ schemas — all part of the root), identical operation order, identical metering
 | Transaction execution, eth_call, estimateGas | `ITransactionProcessor` decorator | no |
 | Header state root | `FinalizeBlock` override; `IGenesisBuilder` decorator for block 0 | no |
 | Opening state by header | `IWorldStateManager` and `IStateHeaderProvider` decorators translate GolemDB root → local trie root | no |
-| Base-fee floor | chain spec `eip1559BaseFeeMinValue` (existing Nethermind feature) | no |
+| Base-fee floor | `Eip1559BaseFeeMinValue` (existing Nethermind feature), set from the genesis base fee when the chain spec (Rabdi's genesis file) leaves it out | no |
 | Arkiv RPC | `IArkivRpcModule` (`arkiv` namespace) | no |
 | State sync | `IStateSyncRunner` → `ArkivStateSyncRunner`: a peer's GolemDB store over the `arkiv/1` satellite capability (`ArkivProtocolHandler`, `IP2PCapabilityResolver`), checked against the header, account trie rebuilt from it | no |
 | Block production | `ArkivBlockProcessor` on a `BlockToProduce` (purge prepended, native build session); `IBlockProductionTransactionPicker` → `ArkivTransactionPicker` (nonce, balance and fees left to Arkiv's executor) | no |

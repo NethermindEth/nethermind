@@ -10,7 +10,7 @@ public interface IArkivConfig : IConfig
     [ConfigItem(Description = "Runs Nethermind as an Arkiv database-chain execution node (Rabdi and other GolemDB networks).", DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "The network's execution genesis file, the one carrying `config.arkiv.golemdb`. A relative path resolves against the working directory, then against Nethermind's directory (`chainspec/rabdi-genesis.json` ships with it).", DefaultValue = "null")]
+    [ConfigItem(Description = "The network's execution genesis file, the one carrying `config.arkiv.golemdb`. Defaults to `Init.ChainSpecPath`, which is that file for the networks Nethermind ships (`chainspec/rabdi.json`). A relative path resolves against the working directory, then against Nethermind's directory.", DefaultValue = "null")]
     string? GenesisFile { get; set; }
 
     [ConfigItem(Description = "Directory of the GolemDB store holding Arkiv's state. Defaults to `arkiv_golemdb` under the database path.", DefaultValue = "null")]

@@ -10,21 +10,20 @@
 set -euo pipefail
 data=$(realpath -m "$1"); mkdir -p "$data"/{nm,reth}
 : "${ARKIV_DEV_GENESIS:?}" "${NETHERMIND:?}" "${ARKIV_RETH:?}"
-tools=$(cd "$(dirname "$0")/../tools" && pwd)
 NM_RPC=${NM_RPC:-38545}; NM_ENGINE=${NM_ENGINE:-38551}; NM_P2P=${NM_P2P:-31303}
 RETH_RPC=${RETH_RPC:-18645}; RETH_ENGINE=${RETH_ENGINE:-18651}; RETH_P2P=${RETH_P2P:-31304}
 chains="$NETHERMIND/chainspec"
 
 [ -s "$data/jwt.hex" ] || { head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$data/jwt.hex"; chmod 600 "$data/jwt.hex"; }
-jq --slurpfile r "$chains/rabdi-genesis.json" \
+jq --slurpfile r "$chains/rabdi.json" \
   'del(.config.osakaTime) | .alloc += ($r[0].alloc | with_entries(select(.value.code != null and .value.code != "0x")))' \
   "$ARKIV_DEV_GENESIS" > "$data/genesis.json"
-python3 "$tools/genesis_to_chainspec.py" "$data/genesis.json" arkiv-dev > "$data/chainspec.json"
-jq --arg spec "$data/chainspec.json" --arg genesis "$data/genesis.json" \
-  '.Init.ChainSpecPath = $spec | del(.Init.GenesisHash) | .Init.BaseDbPath = "nethermind_db/dev" | .Init.LogFileName = "dev.log"
-   | .Arkiv.GenesisFile = $genesis | .Arkiv.CheckpointInterval = 100 | .Network.StaticPeers = "" | .Network.MaxActivePeers = 8 | .Network.FilterPeersByRecentIp = false
+# The genesis file is the chain spec too (Nethermind reads geth-style genesis files, the plugin its Arkiv section).
+jq --arg genesis "$data/genesis.json" \
+  '.Init.ChainSpecPath = $genesis | del(.Init.GenesisHash) | .Init.BaseDbPath = "nethermind_db/dev" | .Init.LogFileName = "dev.log"
+   | .Arkiv.CheckpointInterval = 100 | .Network.StaticPeers = "" | .Network.MaxActivePeers = 8 | .Network.FilterPeersByRecentIp = false
    | .JsonRpc.EnabledModules += ["Testing"]' \
-  "$NETHERMIND/configs/rabdi.json" > "$data/nethermind.json"
+  "$NETHERMIND/configs/rabdi_archive.json" > "$data/nethermind.json"
 
 setsid dotnet "$NETHERMIND/nethermind.dll" -c "$data/nethermind.json" -dd "$data/nm" \
   --JsonRpc.JwtSecretFile "$data/jwt.hex" --JsonRpc.Port "$NM_RPC" --JsonRpc.EnginePort "$NM_ENGINE" \

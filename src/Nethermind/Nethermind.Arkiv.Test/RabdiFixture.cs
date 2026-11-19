@@ -36,7 +36,7 @@ public static class RabdiFixture
 
     private static readonly string Directory = Path.Combine(AppContext.BaseDirectory, "TestData");
 
-    public static string GenesisFile => Path.Combine(AppContext.BaseDirectory, "Chains", "rabdi-genesis.json");
+    public static string GenesisFile => Path.Combine(AppContext.BaseDirectory, "Chains", "rabdi.json");
 
     /// <summary>A block tree that knows <paramref name="blocks"/> (which a test may add to) and block 0.</summary>
     public static IBlockTree BlockTreeOver(Dictionary<Hash256, Block> blocks)

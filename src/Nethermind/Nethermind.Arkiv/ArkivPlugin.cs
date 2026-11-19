@@ -23,6 +23,7 @@ using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Network;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
 
@@ -43,22 +44,23 @@ namespace Nethermind.Arkiv;
 /// <item>state sync: a peer's GolemDB store over <c>arkiv/1</c> instead of snap (<see cref="ArkivStateSyncRunner"/>).</item>
 /// </list>
 /// </remarks>
-public sealed class ArkivPlugin(IArkivConfig config) : INethermindPlugin
+public sealed class ArkivPlugin(IArkivConfig config, ChainSpec chainSpec) : INethermindPlugin
 {
     public string Name => "Arkiv";
     public string Description => "Arkiv database-chain (GolemDB) execution";
     public string Author => "Nethermind";
     public bool Enabled => config.Enabled;
-    public IModule Module => new ArkivModule();
+    public IModule Module => new ArkivModule(chainSpec);
 }
 
-public sealed class ArkivModule : Module
+public sealed class ArkivModule(ChainSpec chainSpec) : Module
 {
     public const string DbName = "arkiv";
 
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
+        ApplyBaseFeeFloor(chainSpec);
 
         builder
             .AddDatabase(DbName)
@@ -101,5 +103,20 @@ public sealed class ArkivModule : Module
             .AddSingleton<IStateSyncRunner, ArkivStateSyncRunner>()
 
             .RegisterSingletonJsonRpcModule<IArkivRpcModule, ArkivRpcModule>();
+    }
+
+    /// <summary>
+    /// Arkiv's one consensus rule on top of Ethereum's: <c>next base fee = max(EIP-1559(parent), genesis base fee)</c>
+    /// from block 0 (<c>arkiv-reth-chainspec</c>), which is Nethermind's <c>Eip1559BaseFeeMinValue</c>.
+    /// </summary>
+    /// <remarks>
+    /// A network's published genesis file serves as its chain spec, and carries no such parameter, so it is taken from
+    /// the genesis header unless the chain spec sets it.
+    /// </remarks>
+    internal static void ApplyBaseFeeFloor(ChainSpec chainSpec)
+    {
+        if (chainSpec.Parameters.Eip1559BaseFeeMinValue is not null || chainSpec.Genesis is not { } genesis) return;
+        chainSpec.Parameters.Eip1559BaseFeeMinValue = genesis.BaseFeePerGas;
+        chainSpec.Parameters.Eip1559BaseFeeMinValueTransition = 0;
     }
 }
