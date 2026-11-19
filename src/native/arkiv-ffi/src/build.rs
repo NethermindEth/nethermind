@@ -5,14 +5,17 @@
 //! The session lives on its own thread: reth's block executor borrows its state for the whole block, and the host
 //! applies transactions across separate calls.
 
-use std::sync::mpsc;
+use std::collections::BinaryHeap;
+use std::sync::{Arc, mpsc};
 use std::thread;
 
 use alloy_primitives::{Address, B256};
 use arkiv_bindings::{MAX_PURGE_KEYS, PURGE_GAS_LIMIT};
-use arkiv_interfaces::gas::purge_cost;
+use arkiv_interfaces::gas::{OpCost, purge_cost};
 use arkiv_interfaces::query::{AnnotKey, AnnotVal, BuiltIn, Query};
-use arkiv_reth_statemanager::ExecutionKey;
+use arkiv_reth_executor::ArkivEvmFactory;
+use arkiv_reth_statemanager::{BlockSeals, ExecutionKey};
+use reth_ethereum::evm::EthEvmConfig;
 use reth_ethereum::evm::revm::State;
 use reth_ethereum::primitives::{Recovered, SealedBlock};
 use reth_ethereum::{Block, TransactionSigned};
@@ -25,10 +28,6 @@ use crate::{Node, Status};
 /// Entities read per page while collecting expired candidates.
 const PAGE: u64 = 100;
 
-/// The most expired candidates read before choosing: the purge takes at most `MAX_PURGE_KEYS`, so a backlog this deep
-/// is already far more than enough to choose from in expiry order.
-const MAX_CANDIDATES: usize = 4096;
-
 impl Node {
     /// The keys the purge of block `block` names: entities expired by then (`expiresAt ≤ block`), oldest expiry
     /// first and by key within one expiry, at most `MAX_PURGE_KEYS`, stopping before their purge cost would pass
@@ -37,22 +36,28 @@ impl Node {
     pub fn purge_keys(&self, block: u64) -> Result<Vec<B256>, (Status, String)> {
         let at = self.store_head();
         let expired = Query::Lte { key: AnnotKey::BuiltIn(BuiltIn::ExpiresAt), value: AnnotVal::U64(block) };
-        let mut candidates = Vec::new();
+        // The query answers in no particular order, so every expired entity is read, keeping the first
+        // `MAX_PURGE_KEYS` by (expiry, key) in a max-heap: whatever the backlog, these are the ones arkiv-reth names.
+        let mut best: BinaryHeap<(u64, B256, usize)> = BinaryHeap::with_capacity(MAX_PURGE_KEYS + 1);
         let mut offset = 0;
         loop {
             let page = arkiv_reth_rpc::store_reads::query(&*self.store, at, &expired, None, offset, PAGE, false)
                 .map_err(|e| (Status::Internal, format!("expired entities: {e}")))?;
             let read = page.entities.len() as u64;
-            candidates.extend(page.entities.into_iter().map(|e| (e.expires_at, B256::from(e.key), e.indexed_attribute_count())));
+            for entity in page.entities {
+                best.push((entity.expires_at, B256::from(entity.key), entity.indexed_attribute_count()));
+                if best.len() > MAX_PURGE_KEYS {
+                    best.pop();
+                }
+            }
             offset += read;
-            if read < PAGE || candidates.len() >= MAX_CANDIDATES {
+            if read < PAGE {
                 break;
             }
         }
-        candidates.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
         let mut keys = Vec::new();
         let mut gas = 0u64;
-        for (_, key, indexed) in candidates.into_iter().take(MAX_PURGE_KEYS) {
+        for (_, key, indexed) in best.into_sorted_vec() {
             let next = gas.saturating_add(purge_cost(indexed));
             if next > PURGE_GAS_LIMIT {
                 break;
@@ -71,10 +76,12 @@ impl Node {
         if head_tag != header.parent_hash {
             return Err((Status::NotOnHead, format!("block {} builds on {}, the store's head is {head_tag}", header.number, header.parent_hash)));
         }
-        let evm_config = self.evm_config.clone();
+        // The session seals into a registry of its own: discarding its branch must not touch another build's at the
+        // same height (the node's registry drops every candidate at a height when one is adopted or discarded).
+        let seals = Arc::new(BlockSeals::new());
+        let evm_config =
+            EthEvmConfig::new_with_evm_factory(self.spec.clone(), ArkivEvmFactory::new(self.store.clone(), seals.clone(), OpCost::FromStore));
         let genesis_db = self.genesis_db.clone();
-        let seals = self.seals.clone();
-        let node = NodeRef { store: self.store.clone(), seals: seals.clone() };
         let (commands, inbox) = mpsc::channel::<Command>();
         let (ready_tx, ready_rx) = mpsc::channel::<Result<(), String>>();
         let worker = thread::Builder::new()
@@ -116,7 +123,7 @@ impl Node {
                                     // Seals the block's branch; nothing is committed.
                                     let _ = reth_ethereum::evm::primitives::Evm::finish(evm);
                                     let key = ExecutionKey::new(height, taken.iter().map(|(s, n)| (s.into_array(), *n)).collect());
-                                    match node.seals.root_of(&key) {
+                                    match seals.root_of(&key) {
                                         Some(root) => Ok(wire::BlockResult {
                                             state_root: B256::from(root),
                                             gas_used: result.gas_used,
@@ -130,14 +137,14 @@ impl Node {
                                 }
                                 Err(e) => Err(format!("{e}")),
                             };
-                            node.discard_pending(height);
+                            // The session's registry, and the sealed branch in it, is dropped as the thread ends:
+                            // nothing is committed.
                             let _ = reply.send(answer);
                             return;
                         }
                     }
                 }
-                // Dropped without finishing: the executor and its unsealed branch go with it.
-                node.discard_pending(height);
+                // Dropped without finishing: the executor, its branch and the session's registry go with it.
             })
             .map_err(|e| (Status::Internal, format!("spawn the build thread: {e}")))?;
         match ready_rx.recv() {
@@ -145,18 +152,6 @@ impl Node {
             Ok(Err(e)) => Err((Status::InvalidBlock, e)),
             Err(_) => Err((Status::Internal, "the build thread ended before starting".into())),
         }
-    }
-}
-
-/// What the build thread needs of the node.
-struct NodeRef {
-    store: arkiv_reth_statemanager::HostStore,
-    seals: std::sync::Arc<arkiv_reth_statemanager::BlockSeals>,
-}
-
-impl NodeRef {
-    fn discard_pending(&self, height: u64) {
-        let _ = self.seals.adopt(&self.store, height, [0xff; 32], [0xff; 32], &[]);
     }
 }
 

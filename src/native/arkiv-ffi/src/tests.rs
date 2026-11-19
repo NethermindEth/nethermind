@@ -165,3 +165,36 @@ fn a_stores_accounts_are_all_listed() {
     }
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// Builds of one block run side by side (as overlapping payload builds do): finishing one leaves the others' sealed
+/// branches alone, and each reaches the root the header carries.
+#[test]
+fn concurrent_builds_of_one_block_both_finish() {
+    let node = Node::open(RABDI_GENESIS, None).unwrap();
+    let blocks = rabdi_blocks();
+    let (target, senders) = blocks.iter().find(|(block, _)| block.body.transactions.len() > 1).unwrap().clone();
+    for (block, block_senders) in blocks.iter().take_while(|(block, _)| block.header.number < target.header.number) {
+        node.execute_block(block.clone(), block_senders.clone(), true).unwrap();
+    }
+
+    // Finished at the same moment, many times over: with one registry shared, a session finishing could drop the
+    // other's seal between that one sealing and reading its root.
+    for _ in 0..50 {
+        let sessions: Vec<_> = (0..4).map(|_| node.build_begin(target.header.clone()).unwrap()).collect();
+        for session in &sessions {
+            for (tx, sender) in target.body.transactions.iter().zip(&senders) {
+                session.apply(tx.clone(), *sender).unwrap();
+            }
+        }
+        let barrier = std::sync::Barrier::new(sessions.len());
+        std::thread::scope(|scope| {
+            for session in sessions {
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    assert_eq!(session.finish().unwrap().state_root, target.header.state_root);
+                });
+            }
+        });
+    }
+}
