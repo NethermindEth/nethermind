@@ -1809,6 +1809,11 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.Invalid;
             }
 
+            if ((handlingOptions & TxHandlingOptions.PersistentBroadcast) != 0 && tx.CarriesBlobs && tx.Hash is { } localHash)
+            {
+                _hashCache.TryDeleteInvalidBlobProofs(localHash);
+            }
+
             AcceptTxResult accepted = AcceptTxResult.Invalid;
 
             // The head spec is only readable under the lock below, so the state is declared here for the
@@ -1830,12 +1835,25 @@ namespace Nethermind.TxPool
                 {
                     canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
+                    if (accepted && tx.CarriesBlobs && !KeyedNonceManager.UsesKeyedNonce(tx))
+                        _hashCache.DeleteNonceGap(tx.SenderAddress!, tx.Nonce);
                 }
                 else
                 {
                     if (accepted == AcceptTxResult.IncompleteBlobData && tx.Hash is not null)
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
+                    }
+                    else if (accepted == AcceptTxResult.NonceGap && tx.CarriesBlobs && tx.Hash is { } hash
+                        && tx.SenderAddress is { } sender)
+                    {
+                        ulong predecessorNonce = tx.Nonce - 1;
+                        _hashCache.SetNonceGap(sender, predecessorNonce, hash);
+                        if (GapNonceFilter.IsNonceInOrder(tx.Nonce, state.SenderAccount.Nonce, _blobTransactions.GetAccountDomainBucketCount(sender)))
+                        {
+                            _hashCache.DeleteNonceGap(sender, predecessorNonce);
+                            _hashCache.DeleteFromCurrentBlock(hash);
+                        }
                     }
                     else if ((accepted == AcceptTxResult.InvalidBlobProofs || state.SidecarRejected) && tx.Hash is not null)
                     {
@@ -1909,7 +1927,7 @@ namespace Nethermind.TxPool
                 return AnnounceResult.Delayed;
             }
 
-            if (!_hashCache.Get(in hash))
+            if (!_hashCache.Get(in hash) || _hashCache.HasInvalidBlobProofs(in hash))
             {
                 return _retryCache.Announced(in hash, retryHandler);
             }
@@ -3131,9 +3149,9 @@ namespace Nethermind.TxPool
 
         public IEnumerable<Transaction> GetBestTxOfEachSender() => _transactions.GetFirsts();
 
-        public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
+        public bool IsKnown(Hash256? hash) => hash is not null && IsKnown(in hash.ValueHash256);
 
-        public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
+        public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash) && !_hashCache.HasInvalidBlobProofs(in hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;

@@ -3742,6 +3742,195 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void should_request_blob_tx_announced_after_a_copy_failed_its_sidecar_checks()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = WithInvalidProof(valid);
+            IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+
+            AcceptTxResult rejected = _txPool.SubmitTx(invalid, TxHandlingOptions.None);
+            bool known = _txPool.IsKnown(valid.Hash!);
+            AnnounceResult announced = _txPool.NotifyAboutTx(valid.Hash!, peer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+                Assert.That(known, Is.False);
+                Assert.That(announced, Is.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+
+        [Test]
+        public void should_accept_local_blob_tx_after_a_copy_failed_its_sidecar_checks()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction valid = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction invalid = WithInvalidProof(valid);
+
+            AcceptTxResult rejected = _txPool.SubmitTx(invalid, TxHandlingOptions.None);
+            AcceptTxResult local = _txPool.SubmitTx(valid, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+                Assert.That(local, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
+        public void should_accept_blob_tx_with_nonce_gap_after_the_gap_is_filled()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction first = BlobTx(0);
+            Transaction second = BlobTx(1);
+
+            AcceptTxResult early = _txPool.SubmitTx(second, TxHandlingOptions.None);
+            AcceptTxResult filled = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult again = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(filled, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(again, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+
+            Transaction BlobTx(ulong nonce) => Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(nonce)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        }
+
+        [Test]
+        public void should_accept_blob_tx_with_nonce_gap_after_a_blob_frame_tx_fills_the_gap([Values] bool gappedIsFrame)
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetBogotaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction first = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
+            Transaction second = gappedIsFrame
+                ? BuildBlobFrameTx(nonce: 1, blobCount: 1, withSidecar: true)
+                : Build.A.Transaction
+                    .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                    .WithNonce(1UL)
+                    .WithMaxFeePerGas(1.GWei)
+                    .WithMaxPriorityFeePerGas(1.GWei)
+                    .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            AcceptTxResult early = _txPool.SubmitTx(second, TxHandlingOptions.None);
+            AcceptTxResult filled = _txPool.SubmitTx(first, TxHandlingOptions.None);
+            AcceptTxResult again = _txPool.SubmitTx(second, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(filled, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(again, Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        [Test]
+        public void should_not_request_blob_tx_with_nonce_gap_again_while_the_gap_is_open()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gapped = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(1UL)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            IMessageHandler<PooledTransactionRequestMessage> firstPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            IMessageHandler<PooledTransactionRequestMessage> secondPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+
+            AcceptTxResult rejected = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            bool known = _txPool.IsKnown(gapped.Hash!);
+            AnnounceResult first = _txPool.NotifyAboutTx(gapped.Hash!, firstPeer);
+            AnnounceResult second = _txPool.NotifyAboutTx(gapped.Hash!, secondPeer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(known, Is.True);
+                Assert.That(first, Is.Not.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(second, Is.Not.EqualTo(AnnounceResult.RequestRequired));
+            }
+        }
+
+        [Test]
+        public void A_blob_nonce_gap_is_released_when_the_predecessor_arrives_during_rejection()
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsTrace.Returns(true);
+            _logManager = new OneLoggerLogManager(new ILogger(logger));
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction predecessor = OrdinaryBlobTx(TestItem.PrivateKeyA, 0);
+            Transaction gapped = OrdinaryBlobTx(TestItem.PrivateKeyA, 1);
+            List<AcceptTxResult> predecessorResults = [];
+            logger.When(l => l.Trace(Arg.Is<string>(line => line.Contains("nonce in future", StringComparison.Ordinal))))
+                .Do(_ => predecessorResults.Add(_txPool.SubmitTx(predecessor, TxHandlingOptions.None)));
+
+            AcceptTxResult early = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            bool stillKnown = _txPool.IsKnown(gapped.Hash!);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(predecessorResults, Is.EqualTo(new[] { AcceptTxResult.Accepted }));
+                Assert.That(stillKnown, Is.False);
+            }
+        }
+
+        [Test]
+        public void A_keyed_blob_frame_does_not_release_an_account_nonce_gap()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gapped = OrdinaryBlobTx(TestItem.PrivateKeyA, 1);
+            Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
+
+            AcceptTxResult early = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            AcceptTxResult keyedResult = _txPool.SubmitTx(keyed, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(keyedResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.IsKnown(gapped.Hash!), Is.True);
+            }
+        }
+
+        private static Transaction WithInvalidProof(Transaction valid)
+        {
+            Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
+            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)valid.NetworkWrapper!;
+            invalid.NetworkWrapper = wrapper with { Proofs = [(byte)(wrapper.Proofs[0] ^ 1), .. wrapper.Proofs[1..]] };
+            return invalid;
+        }
+
+        [Test]
         public void should_reject_blob_sender_whose_first_nonce_is_in_the_future()
         {
             _txPool = CreatePool(
