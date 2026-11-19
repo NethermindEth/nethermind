@@ -138,6 +138,48 @@ internal class EraWriterTests
     }
 
     [Test]
+    public async Task Finalize_CalledTwice_RejectsSecondCallWithoutChangingFile()
+    {
+        using TempPath tmpFile = TempPath.GetTempFile();
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTotalDifficulty(BlockHeaderBuilder.DefaultDifficulty).TestObject;
+
+        using (FileStream stream = new(tmpFile.Path, FileMode.Create))
+        using (EraWriter sut = new(stream, Substitute.For<ISpecProvider>()))
+        {
+            await sut.Add(block, Array.Empty<TxReceipt>());
+            await sut.Finalize();
+            byte[] finalizedBytes = await ReadArchiveBytes(stream);
+
+            Assert.That(async () => await sut.Finalize(), Throws.TypeOf<EraException>());
+            Assert.That(await ReadArchiveBytes(stream), Is.EqualTo(finalizedBytes));
+        }
+
+        using E2StoreReader fileReader = new(tmpFile.Path);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileReader.First, Is.EqualTo(block.Number));
+            Assert.That(fileReader.BlockCount, Is.EqualTo(1));
+        }
+
+        using EraReader reader = new(tmpFile.Path);
+        (Block readBlock, TxReceipt[] receipts) = await reader.GetBlockByNumber(block.Number);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(readBlock.Number, Is.EqualTo(block.Number));
+            Assert.That(receipts, Is.Empty);
+        }
+
+        static async Task<byte[]> ReadArchiveBytes(FileStream archiveStream)
+        {
+            byte[] bytes = new byte[archiveStream.Length];
+            archiveStream.Position = 0;
+            await archiveStream.ReadExactlyAsync(bytes);
+            return bytes;
+        }
+    }
+
+    [Test]
     public async Task Finalize_AddOneBlock_WritesAccumulatorEntry()
     {
         using MemoryStream stream = new();
