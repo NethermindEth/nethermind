@@ -27,6 +27,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Newtonsoft.Json.Linq;
 using Nethermind.JsonRpc.Test.Data;
@@ -324,6 +325,34 @@ public partial class EthRpcModuleTests
             Assert.That(error, Is.Null, response);
     }
 
+    /// <summary>
+    /// On a block from before the merge a <c>prevRandao</c> override decides PREVRANDAO when the overridden block is from
+    /// London on, as in geth's <c>eth_call</c>. The estimate follows the call, although geth's estimator reads the difficulty.
+    /// </summary>
+    [Test]
+    public async Task Rpc_call_on_a_pre_merge_block_takes_a_prevRandao_override_from_London_on(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values] bool london)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance)),
+            configurer: builder => builder.AddSingleton<IPoSSwitcher>(NoPoS.Instance));
+        BlockHeader head = ctx.Test.BlockTree.Head!.Header;
+        head.Difficulty = (UInt256)5;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = false;
+        // PUSH32 X PREVRANDAO EQ PUSH1 42 JUMPI PUSH1 0 DUP1 REVERT JUMPDEST STOP: stops only when PREVRANDAO is X.
+        string code = $"0x7f{TestItem.KeccakA.ToString(false)}4414602a57600080fd5b00";
+        object stateOverride = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code } };
+        object blockOverride = london ? new { prevRandao = TestItem.KeccakA.ToString() } : new { prevRandao = TestItem.KeccakA.ToString(), number = "0x0" };
+
+        string response = await ctx.Test.TestEthRpc(method, new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString() }, "latest", stateOverride, blockOverride);
+
+        // Under London the call succeeds. On a Berlin block it reads the difficulty and reverts with no data; any other
+        // error fails the test.
+        JToken? expectedError = london ? null : JObject.FromObject(new { code = ErrorCodes.ExecutionReverted, message = "execution reverted", data = "0x" });
+        Assert.That(JToken.DeepEquals(JToken.Parse(response)["error"], expectedError), Is.True, response);
+    }
+
     [Test]
     public async Task Rpc_call_does_not_mutate_the_cached_header(
         [Values("eth_call", "eth_estimateGas")] string method,
@@ -617,6 +646,17 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_with_r_and_s_but_no_v_reports_the_missing_v()
+    {
+        using Context ctx = await Context.Create();
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"r\":\"0x1\",\"s\":\"0x2\"}}");
+
+        string response = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32000,"message":"missing or invalid v for the signature in r and s"},"id":67}"""));
+    }
+
+    [Test]
     public async Task Eth_call_web3_sample_not_enough_gas_other_account()
     {
         using Context ctx = await Context.Create();
@@ -878,7 +918,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_with_accessList()
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList();

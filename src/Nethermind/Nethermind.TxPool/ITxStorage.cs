@@ -88,3 +88,13 @@ internal interface IBlobTxNetworkFormStorage
     /// </returns>
     bool TryGetNetworkForm(in ValueHash256 hash, in UInt256 timestamp, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? networkForm);
 }
+
+/// <summary>Reads stored full blob transactions without decoding their blobs.</summary>
+internal interface IBlobTxElidedReadStorage
+{
+    /// <summary>Reads the stored full record of a blob transaction without its blob and cell payloads.</summary>
+    /// <returns>
+    /// The transaction as <see cref="BlobTransactionPayload.Elide"/> leaves the one <see cref="ITxStorage.TryGet"/> reads.
+    /// </returns>
+    bool TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, [NotNullWhen(true)] out Transaction? transaction);
+}

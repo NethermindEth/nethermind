@@ -52,6 +52,9 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionRemainingGas(1));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportActionErrorDetails("fault", actionOnly: true));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportActionErrorDetails("fault", actionOnly: false));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportCodeDepositError("fault"));
             Assert.Throws<OperationCanceledException>(() => tracer.ReportFrameEnd(0, null));
         }
 

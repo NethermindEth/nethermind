@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(TxReceipt[]))]
 [JsonSerializable(typeof(UInt256?))]
 [JsonSerializable(typeof(byte[][]))]
-[JsonSerializable(typeof(Dictionary<Hash256, byte[]>))]
+[JsonSerializable(typeof(Dictionary<ValueHash256, byte[]>))]
 [JsonSerializable(typeof(Dictionary<string, int>))]
 [JsonSerializable(typeof(Dictionary<UInt256, UInt256>))]
 internal partial class TracingJsonContext : JsonSerializerContext

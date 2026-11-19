@@ -417,6 +417,42 @@ namespace Nethermind.Serialization.Rlp
             writer.EndSequence(sequence);
         }
 
+        public void Encode(in AccountStruct account, ref RlpWriter writer, int contentLength)
+        {
+            RlpSequence sequence = writer.StartSequence(contentLength);
+            writer.Encode(account.Nonce);
+            writer.Encode(account.Balance);
+
+            if (_slimFormat && !account.HasStorage)
+            {
+                writer.EncodeEmptyByteArray();
+            }
+            else
+            {
+                writer.Encode(account.StorageRoot);
+            }
+
+            if (_slimFormat && !account.HasCode)
+            {
+                writer.EncodeEmptyByteArray();
+            }
+            else
+            {
+                writer.Encode(account.CodeHash);
+            }
+
+            writer.EndSequence(sequence);
+        }
+
+        public byte[] Encode(in AccountStruct account)
+        {
+            int contentLength = GetContentLength(account);
+            byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            Encode(account, ref writer, contentLength);
+            return bytes;
+        }
+
         /// <inheritdoc/>
         /// <remarks>
         /// Computes the content length once and reuses it for both sizing the buffer and writing the
@@ -545,6 +581,16 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += Rlp.LengthOfKeccakRlp;
             }
 
+            return contentLength;
+        }
+
+        public int GetLength(in AccountStruct item) => Rlp.LengthOfSequence(GetContentLength(item));
+
+        public int GetContentLength(in AccountStruct item)
+        {
+            int contentLength = Rlp.LengthOf(item.Nonce) + Rlp.LengthOf(item.Balance);
+            contentLength += _slimFormat && !item.HasStorage ? 1 : Rlp.LengthOfKeccakRlp;
+            contentLength += _slimFormat && !item.HasCode ? 1 : Rlp.LengthOfKeccakRlp;
             return contentLength;
         }
 

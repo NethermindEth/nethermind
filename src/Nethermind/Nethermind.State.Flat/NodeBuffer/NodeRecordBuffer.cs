@@ -160,8 +160,7 @@ public sealed class NodeRecordBuffer : INodeRecordBuffer
         lock (_lock)
         {
             ThrowIfUnavailable();
-            if (generation < _oldestLive || generation > _active.Id || _generations[generation & GenerationSlotMask]!.Dropping)
-                throw new ObjectDisposedException(nameof(NodeRecordBufferPin));
+            ObjectDisposedException.ThrowIf(generation < _oldestLive || generation > _active.Id || _generations[generation & GenerationSlotMask]!.Dropping, typeof(NodeRecordBufferPin));
             _pinCount++;
             _generations[generation & GenerationSlotMask]!.PinCount++;
             _generations[generation & GenerationSlotMask]!.HeadPinCount++;

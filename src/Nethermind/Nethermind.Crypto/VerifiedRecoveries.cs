@@ -14,7 +14,8 @@ internal sealed class VerifiedRecoveries
     private readonly byte[] _signatures;
     private readonly byte[] _recoveryIds;
     private readonly byte[] _keys;
-    private readonly Dictionary<RecoveryKey, int>? _indices;
+    private Dictionary<RecoveryKey, int>? _indices;
+    private int _next;
 
     internal VerifiedRecoveries(byte[] messages, byte[] signatures, byte[] recoveryIds, byte[] keys)
     {
@@ -22,35 +23,46 @@ internal sealed class VerifiedRecoveries
         _signatures = signatures;
         _recoveryIds = recoveryIds;
         _keys = keys;
-        if (recoveryIds.Length <= 64) return;
-
-        _indices = [with(recoveryIds.Length)];
-        for (int i = 0; i < recoveryIds.Length; i++)
-            _indices.TryAdd(Key(signatures.AsSpan(i * 64, 64), recoveryIds[i], messages.AsSpan(i * 32, 32)), i);
     }
 
     internal bool TryGetKey(ReadOnlySpan<byte> signature, byte recoveryId, ReadOnlySpan<byte> message, Span<byte> publicKey)
     {
         if (message.Length != 32 || signature.Length != 64) return false;
 
-        if (_indices is not null)
+        // ECRECOVER hints come in call order; EIP-7702 authorization hints follow all of them, so those fall back to the search.
+        int index = _next;
+        if (index >= _recoveryIds.Length || !Matches(index, signature, recoveryId, message))
         {
-            if (!_indices.TryGetValue(Key(signature, recoveryId, message), out int index)) return false;
-            _keys.AsSpan(index * 64, 64).CopyTo(publicKey);
-            return true;
-        }
-
-        for (int i = 0; i < _recoveryIds.Length; i++)
-        {
-            if (_recoveryIds[i] == recoveryId
-                && message.SequenceEqual(_messages.AsSpan(i * 32, 32))
-                && signature.SequenceEqual(_signatures.AsSpan(i * 64, 64)))
+            if (_recoveryIds.Length > 64)
             {
-                _keys.AsSpan(i * 64, 64).CopyTo(publicKey);
-                return true;
+                _indices ??= BuildIndex();
+                if (!_indices.TryGetValue(Key(signature, recoveryId, message), out index)) return false;
+            }
+            else
+            {
+                for (index = 0; index < _recoveryIds.Length; index++)
+                    if (Matches(index, signature, recoveryId, message)) break;
+
+                if (index == _recoveryIds.Length) return false;
             }
         }
-        return false;
+
+        _keys.AsSpan(index * 64, 64).CopyTo(publicKey);
+        _next = index + 1;
+        return true;
+    }
+
+    private bool Matches(int index, ReadOnlySpan<byte> signature, byte recoveryId, ReadOnlySpan<byte> message) =>
+        _recoveryIds[index] == recoveryId
+        && message.SequenceEqual(_messages.AsSpan(index * 32, 32))
+        && signature.SequenceEqual(_signatures.AsSpan(index * 64, 64));
+
+    private Dictionary<RecoveryKey, int> BuildIndex()
+    {
+        Dictionary<RecoveryKey, int> indices = [with(_recoveryIds.Length)];
+        for (int i = 0; i < _recoveryIds.Length; i++)
+            indices.TryAdd(Key(_signatures.AsSpan(i * 64, 64), _recoveryIds[i], _messages.AsSpan(i * 32, 32)), i);
+        return indices;
     }
 
     private static RecoveryKey Key(ReadOnlySpan<byte> signature, byte recoveryId, ReadOnlySpan<byte> message) =>

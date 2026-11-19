@@ -354,12 +354,36 @@ namespace Nethermind.Synchronization.Blocks
 
         private async Task<BlocksRequest?> AssembleRequest(IOwnedReadOnlyList<BlockHeader> headers, bool shouldProcess, bool shouldDownloadReceipt, CancellationToken cancellation)
         {
-            BlocksRequestContentType? requestContentType = null;
-
             ArrayPoolList<BlockHeader> receiptsToDownload = [with(headers.Count)];
             ArrayPoolList<int> expectedReceiptCounts = [with(headers.Count)];
             ArrayPoolList<BlockHeader> bodiesToDownload = [with(headers.Count)];
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = [with(headers.Count)];
+            try
+            {
+                return await FillRequest(headers, shouldProcess, shouldDownloadReceipt, receiptsToDownload, expectedReceiptCounts, bodiesToDownload, blockAccessListsToDownload, cancellation);
+            }
+            catch
+            {
+                // The lists go to the request only on success, and the empty request disposes them itself.
+                bodiesToDownload.Dispose();
+                blockAccessListsToDownload.Dispose();
+                receiptsToDownload.Dispose();
+                expectedReceiptCounts.Dispose();
+                throw;
+            }
+        }
+
+        private async Task<BlocksRequest?> FillRequest(
+            IOwnedReadOnlyList<BlockHeader> headers,
+            bool shouldProcess,
+            bool shouldDownloadReceipt,
+            ArrayPoolList<BlockHeader> receiptsToDownload,
+            ArrayPoolList<int> expectedReceiptCounts,
+            ArrayPoolList<BlockHeader> bodiesToDownload,
+            ArrayPoolList<BlockHeader> blockAccessListsToDownload,
+            CancellationToken cancellation)
+        {
+            BlocksRequestContentType? requestContentType = null;
 
             int bodiesRequestSize =
                 (await _syncPeerPool.EstimateRequestLimit(RequestType.Bodies, EstimatedAllocationStrategy, AllocationContexts.Blocks, cancellation))
@@ -524,17 +548,29 @@ namespace Nethermind.Synchronization.Blocks
             using BlocksRequest _ = response;
             SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
             BlockBody[]? bodies;
-            try
+            int requestedBodies = response.BodiesRequests?.Count ?? 0;
+            int receivedBodies = response.OwnedBodies?.Count ?? 0;
+            if (receivedBodies > requestedBodies)
             {
-                bodies = response.OwnedBodies?.Bodies;
-            }
-            // Any decode failure comes from the bytes the peer sent, so it is the peer's fault.
-            catch (Exception e)
-            {
-                if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {e.Message}");
-                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {receivedBodies} bodies for {requestedBodies} requested");
+                if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "more block bodies received than requested");
                 bodies = null;
                 result = SyncResponseHandlingResult.LesserQuality;
+            }
+            else
+            {
+                try
+                {
+                    bodies = response.OwnedBodies?.Bodies;
+                }
+                // Any decode failure comes from the bytes the peer sent, so it is the peer's fault.
+                catch (Exception e)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block bodies from {peer:hide}: {e.Message}");
+                    if (peer is not null) _syncPeerPool.ReportBreachOfProtocol(peer, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+                    bodies = null;
+                    result = SyncResponseHandlingResult.LesserQuality;
+                }
             }
 
             response.OwnedBodies?.Disown();

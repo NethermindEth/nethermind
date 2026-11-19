@@ -171,10 +171,13 @@ public class McpPriceIsolationTests
             await cancellation.CancelAsync();
             await Assert.CatchAsync<OperationCanceledException>(async () => await work);
             Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 1, TimeSpan.FromSeconds(1)), Is.True,
-                "the body releases its module while the detached worker retains its own");
+                "the detached worker reuses the body's eth_call rental, which stays taken");
             CallToolResult blocked = await executor.ExecuteAsync("blocked", nameof(IEthRpcModule.eth_call),
                 (_, _) => Task.FromResult(executor.Success(new { ok = true })), CancellationToken.None);
             McpAssert.Error(blocked, "resource_exhausted");
+            release.Set();
+            Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 0, TimeSpan.FromSeconds(8)), Is.True,
+                "the rental is returned once the detached worker finishes");
         }
         finally
         {

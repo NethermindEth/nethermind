@@ -129,6 +129,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 // to avoid expensive checks we make this simple check at the beginning
                 else
                 {
+                    // Throws when the progress pointers stay misaligned. The loop in StartAsync logs it and keeps the current mode.
                     Snapshot best = EnsureSnapshot(peerDifficulty, peerBlock.Value, inBeaconControl);
                     best.IsInBeaconHeaders = ShouldBeInBeaconHeaders();
 
@@ -159,42 +160,34 @@ namespace Nethermind.Synchronization.ParallelSync
                     }
                     else
                     {
-                        try
-                        {
-                            best.IsInFastSync = ShouldBeInFastSyncMode(best);
-                            best.IsInStateSync = ShouldBeInStateSyncMode(best);
-                            best.IsInStateNodes = ShouldBeInStateNodesMode(best);
-                            best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
-                            best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
-                            best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
-                            best.IsInFastBlockAccessLists = ShouldBeInFastBlockAccessListsMode(best);
-                            best.IsInFullSync = ShouldBeInFullSyncMode(best);
-                            best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
-                            best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
-                            if (_logger.IsTrace) _logger.Trace($"Snapshot: {BuildStateStringDebug(best)}");
+                        best.IsInFastSync = ShouldBeInFastSyncMode(best);
+                        best.IsInStateSync = ShouldBeInStateSyncMode(best);
+                        best.IsInStateNodes = ShouldBeInStateNodesMode(best);
+                        best.IsInFastHeaders = ShouldBeInFastHeadersMode(best);
+                        best.IsInFastBodies = ShouldBeInFastBodiesMode(best);
+                        best.IsInFastReceipts = ShouldBeInFastReceiptsMode(best);
+                        best.IsInFastBlockAccessLists = ShouldBeInFastBlockAccessListsMode(best);
+                        best.IsInFullSync = ShouldBeInFullSyncMode(best);
+                        best.IsInDisconnected = ShouldBeInDisconnectedMode(best);
+                        best.IsInWaitingForBlock = ShouldBeInWaitingForBlockMode(best);
+                        if (_logger.IsTrace) _logger.Trace($"Snapshot: {BuildStateStringDebug(best)}");
 
-                            newModes = SyncMode.None;
-                            CheckAddFlag(best.IsInBeaconHeaders, SyncMode.BeaconHeaders, ref newModes);
-                            CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
-                            CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
-                            CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
-                            CheckAddFlag(best.IsInFastBlockAccessLists, SyncMode.FastBlockAccessLists, ref newModes);
-                            CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
-                            CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
-                            CheckAddFlag(best.IsInStateNodes, SyncMode.StateNodes, ref newModes);
-                            CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
-                            CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
-                            SyncMode current = Current;
-                            if (IsTheModeSwitchWorthMentioning(current, newModes))
-                            {
-                                if (_logger.IsInfo)
-                                    _logger.Info($"Changing sync {current.ToFlagsString()} to {newModes.ToFlagsString()} at {BuildStateString(best)}");
-                            }
-                        }
-                        catch (InvalidAsynchronousStateException)
+                        newModes = SyncMode.None;
+                        CheckAddFlag(best.IsInBeaconHeaders, SyncMode.BeaconHeaders, ref newModes);
+                        CheckAddFlag(best.IsInFastHeaders, SyncMode.FastHeaders, ref newModes);
+                        CheckAddFlag(best.IsInFastBodies, SyncMode.FastBodies, ref newModes);
+                        CheckAddFlag(best.IsInFastReceipts, SyncMode.FastReceipts, ref newModes);
+                        CheckAddFlag(best.IsInFastBlockAccessLists, SyncMode.FastBlockAccessLists, ref newModes);
+                        CheckAddFlag(best.IsInFastSync, SyncMode.FastSync, ref newModes);
+                        CheckAddFlag(best.IsInFullSync, SyncMode.Full, ref newModes);
+                        CheckAddFlag(best.IsInStateNodes, SyncMode.StateNodes, ref newModes);
+                        CheckAddFlag(best.IsInDisconnected, SyncMode.Disconnected, ref newModes);
+                        CheckAddFlag(best.IsInWaitingForBlock, SyncMode.WaitingForBlock, ref newModes);
+                        SyncMode current = Current;
+                        if (IsTheModeSwitchWorthMentioning(current, newModes))
                         {
-                            newModes = SyncMode.Disconnected;
-                            reason = "Snapshot Misalignment";
+                            if (_logger.IsInfo)
+                                _logger.Info($"Changing sync {current.ToFlagsString()} to {newModes.ToFlagsString()} at {BuildStateString(best)}");
                         }
                     }
 

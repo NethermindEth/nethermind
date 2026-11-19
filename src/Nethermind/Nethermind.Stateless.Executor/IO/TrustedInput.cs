@@ -155,12 +155,17 @@ public static partial class TrustedInput
     /// <summary>Encodes the block and witness of a stateless input as a trusted input.</summary>
     /// <remarks>The engine API envelope, the versioned hashes and the claimed block hash, is not carried over: the
     /// trusted input binds the block through the hash of its header alone.</remarks>
-    public static byte[] FromStatelessInput(ReadOnlySpan<byte> statelessInput)
+    /// <param name="statelessInput">The SSZ input to convert.</param>
+    /// <param name="includeHints">Whether to collect sender and recovery hints for Airbender batch verification.</param>
+    public static byte[] FromStatelessInput(ReadOnlySpan<byte> statelessInput, bool includeHints = true)
     {
         StatelessPayload payload = InputDecoder.Decode(statelessInput);
         Block block = payload.GetBlock();
         using Witness witness = payload.Witness.ToWitness();
-        return Write(payload.ChainId, (ProtocolFork)(payload.SchemaId >> 8), block, payload.EncodedTransactions, witness);
+        ProtocolFork fork = (ProtocolFork)(payload.SchemaId >> 8);
+        return includeHints
+            ? Write(payload.ChainId, fork, block, payload.EncodedTransactions, witness)
+            : Write(payload.ChainId, fork, block, payload.EncodedTransactions, witness, [], []);
     }
 
     /// <summary>The signers' public keys of <paramref name="senderHints"/>, 64 bytes each.</summary>
@@ -330,9 +335,10 @@ public static partial class TrustedInput
         SpanExtensions.SeedHashes(in seed);
 
         RlpReader headerReader = new(headerRlp);
-        BlockHeader header = Rlp.GetDecoderOrThrow<BlockHeader>().Decode(ref headerReader)
+        BlockHeader header = Rlp.GetDecoderOrThrow<BlockHeader>().Decode(ref headerReader, RlpBehaviors.ExcludeHashes)
             ?? throw new ArgumentException("No block header", nameof(data));
         headerReader.CheckEnd();
+        header.Hash = blockHash;
         // Stateless validation covers proof-of-stake blocks only, as for the engine API payload a stateless input carries.
         header.IsPostMerge = true;
 
@@ -364,8 +370,8 @@ public static partial class TrustedInput
             GetBlock: () => CreateBlock(header, transactions, withdrawals, encodedBlockAccessList),
             Witness: witness,
             EncodedTransactions: transactions,
-            SenderHints: senderHints.ToArray(),
-            RecoveryHints: recoveryHints.ToArray(),
+            SenderHints: RetainHints ? senderHints.ToArray() : [],
+            RecoveryHints: RetainHints ? recoveryHints.ToArray() : [],
             ChainId: chainId,
             SchemaId: schemaId,
             BlockHash: blockHash,
@@ -515,6 +521,9 @@ public static partial class TrustedInput
     /// <summary>The <paramref name="length"/>-byte code at <paramref name="start"/>, followed by its execution padding.</summary>
     /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length);
+
+    /// <summary>Whether <see cref="Read"/> keeps the sender and recovery hints; only Airbender batch-verifies with them.</summary>
+    private static partial bool RetainHints { get; }
 
     private sealed class ItemList(byte[][] items) : IOwnedReadOnlyList<byte[]>
     {
