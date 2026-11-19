@@ -82,6 +82,17 @@ gh workflow run eez-devnet-tests.yml --ref <nethermind-branch> \
 
 ## Live profile jobs
 
+The manual `rollupx_quorum` option runs the merged RollupX 2-of-3 outage
+case with one Nethermind prover and two upstream provers. The test suspends
+one upstream prover, settles inbound and outbound calls, and verifies the two
+proofs in mined L1 batches. The job also checks that the candidate signed
+over `prove.v2` and records its immutable image and fixture revisions.
+
+```sh
+gh workflow run eez-devnet-tests.yml --ref <nethermind-branch> \
+  -f rollupx_quorum=true -f rollupx_revision=<rollupx-main-commit>
+```
+
 One CI workflow builds the Nethermind follower and prover images once. Reusable preparation and test workflows keep each profile independent. Preparation runs alongside the common candidate build. Rollup0 does not wait for RollupX preparation, or vice versa. Each producer freezes upstream/Core revisions and prepares runtime binaries, contract artifacts, deploy images and Rust test executables. Test jobs download these same-run artifacts and execute separate suites in parallel. They do not compile Rust or Nethermind. Archives preserve executable modes. Producer artifact names use the run ID so failed-job reruns can reuse successful builds. A standard Actions cache reuses prepared upstream inputs for the selected repository/profile, source/Core revisions, execution settings and adapter/build files. Resolution-only metadata, such as the current upstream main and the selection origin of the same source, does not change the key. Fresh resolution metadata stays outside the cached payload. On a hit, preparation verifies the build identity and combines the current resolution with the cached runtime provenance and binary checksums. A new selected upstream revision or adapter change causes a rebuild. Candidate Nethermind images are still built from the current commit.
 
 The RollupX protocol job has a 20-minute limit, including setup, and an 18-minute upstream execution budget. Every other test job has a 15-minute limit, including setup. Cold build producers have separate limits and can take longer. The limit is a failure boundary; successful CI timings are required before claiming that every partition fits. The final job requires all 20 partitions, matching source manifests, wave prerequisites and complete protocol assignment. A partial job cannot report a complete suite.

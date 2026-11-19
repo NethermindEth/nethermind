@@ -15,6 +15,9 @@ on:
       quorum_revision:
         type: string
         default: ''
+      rollupx_quorum:
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       upstream_revision:
@@ -29,12 +32,16 @@ on:
         description: 'Test the current Rollup0 PR171 head with a Nethermind quorum member; empty runs normal profiles'
         type: string
         default: ''
+      rollupx_quorum:
+        description: 'Run only the RollupX mixed 2-of-3 quorum test'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: eez-live-${{ github.event_name }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}-${{ inputs.quorum_revision != '' && 'quorum' || 'profiles' }}
+  group: eez-live-${{ github.event_name }}-${{ github.ref == 'refs/heads/master' && github.run_id || github.ref }}-${{ inputs.rollupx_quorum && 'rollupx-quorum' || inputs.quorum_revision != '' && 'quorum' || 'profiles' }}
   cancel-in-progress: true
 
 jobs:
@@ -49,10 +56,15 @@ jobs:
       - name: Build follower and prover
         env:
           QUORUM_REVISION: ${{ inputs.quorum_revision }}
+          ROLLUPX_QUORUM: ${{ inputs.rollupx_quorum }}
         run: |
+          if [[ "$ROLLUPX_QUORUM" == true && -n "$QUORUM_REVISION" ]]; then
+            echo "Select only one quorum profile" >&2
+            exit 1
+          fi
           mkdir -p artifacts/eez-candidate
           images=()
-          if [[ -z "$QUORUM_REVISION" ]]; then
+          if [[ -z "$QUORUM_REVISION" && "$ROLLUPX_QUORUM" != true ]]; then
             docker build -t "nethermind:eez-$GITHUB_RUN_ID" --build-arg COMMIT_HASH="$GITHUB_SHA" -f Dockerfile .
             images+=("nethermind:eez-$GITHUB_RUN_ID")
           fi
@@ -69,7 +81,7 @@ jobs:
 
   prepare-rollup0:
     name: Prepare rollup0
-    if: ${{ inputs.quorum_revision == '' }}
+    if: ${{ inputs.quorum_revision == '' && !inputs.rollupx_quorum }}
     uses: ./.github/workflows/eez-devnet-prepare.yml
     with:
       profile: rollup0
@@ -87,7 +99,7 @@ jobs:
 
   rollup0:
     name: rollup0
-    if: ${{ inputs.quorum_revision == '' }}
+    if: ${{ inputs.quorum_revision == '' && !inputs.rollupx_quorum }}
     needs: [candidate, prepare-rollup0]
     uses: ./.github/workflows/eez-devnet-profile.yml
     with:
@@ -96,7 +108,7 @@ jobs:
 
   rollupx:
     name: rollupx
-    if: ${{ inputs.quorum_revision == '' }}
+    if: ${{ inputs.quorum_revision == '' && !inputs.rollupx_quorum }}
     needs: [candidate, prepare-rollupx]
     uses: ./.github/workflows/eez-devnet-profile.yml
     with:
@@ -106,7 +118,7 @@ jobs:
   complete:
     name: Selected upstream partitions
     needs: [rollup0, rollupx]
-    if: ${{ always() && inputs.quorum_revision == '' }}
+    if: ${{ always() && inputs.quorum_revision == '' && !inputs.rollupx_quorum }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -130,6 +142,53 @@ jobs:
         with:
           name: eez-live-summary
           path: artifacts/eez-partitions/summary.json
+          overwrite: true
+
+  rollupx-quorum:
+    name: RollupX 2-of-3 quorum with Nethermind prover
+    if: ${{ inputs.rollupx_quorum }}
+    needs: [candidate, prepare-rollupx]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: eez-inputs-rollupx-${{ github.run_id }}
+          path: artifacts/eez-inputs-rollupx
+      - uses: actions/download-artifact@v8
+        with:
+          name: eez-candidate-${{ github.run_id }}
+          path: artifacts/eez-candidate
+      - uses: foundry-rs/foundry-toolchain@b00af27efadbc7b4ca8b82abbd903b17cc874d2a
+        with:
+          version: v1.7.1
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+      - name: Run the upstream quorum test with the Nethermind prover
+        run: |
+          inputs="$GITHUB_WORKSPACE/artifacts/eez-inputs-rollupx"
+          upstream="$GITHUB_WORKSPACE/upstream"
+          mkdir -p "$upstream"
+          tar -I zstd -xf "$inputs/sources.tar.zst" -C "$upstream"
+          tar -I zstd -xf "$inputs/runtime.tar.zst" -C "$inputs"
+          EEZ_QUORUM_REVISION="$(jq -er '.revision' "$inputs/upstream.json")"
+          export EEZ_QUORUM_REVISION
+          jq -e --arg core "$(git -C "$upstream/eez-core-protocol" rev-parse HEAD)" '.core_revision == $core' "$inputs/upstream.json" >/dev/null
+          zstd -dc artifacts/eez-candidate/images.tar.zst | docker load
+          image="nethermind-eez-prover:rollupx-quorum-$GITHUB_RUN_ID"
+          docker build --build-arg BASE_IMAGE="nethermind-eez-attester:eez-$GITHUB_RUN_ID" \
+            --build-arg PROFILE=rollupx --build-arg STREAMING_WIRE=prove.v2 --build-arg SKIP_CONSENSUS_LAYER_CALLS=true \
+            -t "$image" -f scripts/eez/devnet/Dockerfile.prover scripts/eez/devnet
+          dotnet run --file scripts/eez/devnet/quorum.cs -- "$upstream" "$inputs" "$image" rollupx
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eez-rollupx-quorum-${{ github.run_id }}
+          path: artifacts/eez-quorum
           overwrite: true
 
   quorum:
