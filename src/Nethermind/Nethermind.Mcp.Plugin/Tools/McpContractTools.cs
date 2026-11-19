@@ -269,7 +269,7 @@ internal sealed class McpContractTools(
             return McpEthHelpers.InvalidInput(error);
         }
 
-        return executor.ExecuteAsync("token_info", nameof(IEthRpcModule.eth_call), (eth, _) =>
+        return executor.ExecuteAsync("token_info", nameof(IEthRpcModule.eth_call), (eth, cancellation) =>
         {
             if (!TryResolveBlock(blockParameter, out BlockHeader? header, out BlockParameter? pinned, out CallToolResult? failure))
             {
@@ -289,9 +289,9 @@ internal sealed class McpContractTools(
                     $"{McpEthHelpers.Checksum(address)} has no contract code at block {header.Number} on {chain.NetworkName}; it is not a token (use lookup_address to profile it)."));
             }
 
-            McpTokenInfo? info = tokenMetadata.Get(eth, address, pinned);
-            UInt256? totalSupply = ReadUInt256(eth, address, TotalSupplySelector, pinned);
-            (string standard, string evidence) = DetectStandard(eth, address, pinned, specProvider.GetSpec(header), info, totalSupply);
+            McpTokenInfo? info = tokenMetadata.Get(eth, address, pinned, cancellation);
+            UInt256? totalSupply = ReadUInt256(eth, address, TotalSupplySelector, pinned, cancellation);
+            (string standard, string evidence) = DetectStandard(eth, address, pinned, specProvider.GetSpec(header), info, totalSupply, cancellation);
 
             JsonObject output = new() { ["address"] = McpEthHelpers.Checksum(address) };
             AddBlock(output, header);
@@ -303,7 +303,7 @@ internal sealed class McpContractTools(
             output["totalSupply"] = totalSupply is { } supply ? McpTxFormat.Hex(supply) : null;
             output["totalSupplyFormatted"] = totalSupply is { } s && info?.Decimals is { } supplyDecimals
                 ? McpTokenMetadata.FormatUnits(s, supplyDecimals) : null;
-            output["proxy"] = DetectProxy(eth, address, code, pinned);
+            output["proxy"] = DetectProxy(eth, address, code, pinned, cancellation);
             return Task.FromResult(Success(output));
         }, cancellationToken);
     }
@@ -406,7 +406,7 @@ internal sealed class McpContractTools(
                 cancellation.ThrowIfCancellationRequested();
                 if (stopwatch.Elapsed > _softDeadline) break;
                 processed++;
-                JsonObject entry = TokenBalance(eth, tokenAddress, input, pinned, out UInt256? amount, out McpTokenInfo? info);
+                JsonObject entry = TokenBalance(eth, tokenAddress, input, pinned, cancellation, out UInt256? amount, out McpTokenInfo? info);
                 if (includeUsd && amount is { } balanceAmount && entry["decimals"] is JsonValue decimalsNode
                     && decimalsNode.TryGetValue(out int decimals))
                     valuations.Add((entry, tokenAddress.ToString(), balanceAmount, decimals));
@@ -531,7 +531,7 @@ internal sealed class McpContractTools(
                 }
             }
 
-            LogDecorator decorator = new(tokenMetadata, eth, metadataBlock);
+            LogDecorator decorator = new(tokenMetadata, eth, metadataBlock, cancellation);
             McpAbiCodec.DecodeBudget decodeBudget = new();
             JsonArray entries = [];
             int decodedCount = 0;
@@ -717,7 +717,7 @@ internal sealed class McpContractTools(
             {
                 if (Continue("token"))
                 {
-                    McpTokenInfo? info = tokenMetadata.Get(eth, account, pinned);
+                    McpTokenInfo? info = tokenMetadata.Get(eth, account, pinned, cancellation);
                     if (info is not null && (info.Symbol is not null || info.Decimals is not null))
                     {
                         output["token"] = TokenNode(info);
@@ -726,7 +726,7 @@ internal sealed class McpContractTools(
 
                 if (Continue("proxy"))
                 {
-                    output["proxy"] = DetectProxy(eth, account, code, pinned);
+                    output["proxy"] = DetectProxy(eth, account, code, pinned, cancellation);
                 }
             }
 
@@ -749,11 +749,11 @@ internal sealed class McpContractTools(
         }, cancellationToken);
     }
 
-    private JsonObject TokenBalance(IEthRpcModule eth, Address tokenAddress, byte[] input, BlockParameter block, out UInt256? balanceAmount, out McpTokenInfo? info)
+    private JsonObject TokenBalance(IEthRpcModule eth, Address tokenAddress, byte[] input, BlockParameter block, CancellationToken cancellation, out UInt256? balanceAmount, out McpTokenInfo? info)
     {
         balanceAmount = null;
         JsonObject entry = new() { ["token"] = McpEthHelpers.Checksum(tokenAddress) };
-        info = tokenMetadata.Get(eth, tokenAddress, block);
+        info = tokenMetadata.Get(eth, tokenAddress, block, cancellation);
         if (info is null)
         {
             entry["error"] = "no contract code at this address (or its state is unavailable)";
@@ -763,7 +763,7 @@ internal sealed class McpContractTools(
         entry["name"] = info.Name;
         entry["symbol"] = info.Symbol;
         entry["decimals"] = info.Decimals is { } d ? JsonValue.Create((int)d) : null;
-        CallOutcome outcome = CallContract(eth, tokenAddress, input, block, InternalGas);
+        CallOutcome outcome = CallContract(eth, tokenAddress, input, block, InternalGas, cancellation);
         if (outcome.Data is not { Length: 32 } data)
         {
             entry["error"] = outcome.Data is null
@@ -851,19 +851,19 @@ internal sealed class McpContractTools(
         return McpToolExecutor.Error(McpToolErrorCodes.NotFound, "Transaction not found on this node.");
     }
 
-    private (string Standard, string Evidence) DetectStandard(IEthRpcModule eth, Address address, BlockParameter block, IReleaseSpec spec, McpTokenInfo? info, UInt256? totalSupply)
+    private (string Standard, string Evidence) DetectStandard(IEthRpcModule eth, Address address, BlockParameter block, IReleaseSpec spec, McpTokenInfo? info, UInt256? totalSupply, CancellationToken cancellation)
     {
         if (Erc165TransactionGas(address, Erc165Id, spec) > _maxCallGas)
         {
             return ("unknown", "The configured call gas cap prevents a full ERC-165 interface probe.");
         }
-        if (SupportsInterface(eth, address, Erc165Id, block, spec) && !SupportsInterface(eth, address, InvalidInterfaceId, block, spec))
+        if (SupportsInterface(eth, address, Erc165Id, block, spec, cancellation) && !SupportsInterface(eth, address, InvalidInterfaceId, block, spec, cancellation))
         {
-            if (SupportsInterface(eth, address, Erc721Id, block, spec)) return (McpKnownAbi.Erc721, "supportsInterface(0x80ac58cd) is true (ERC-165)");
-            if (SupportsInterface(eth, address, Erc1155Id, block, spec)) return (McpKnownAbi.Erc1155, "supportsInterface(0xd9b67a26) is true (ERC-165)");
+            if (SupportsInterface(eth, address, Erc721Id, block, spec, cancellation)) return (McpKnownAbi.Erc721, "supportsInterface(0x80ac58cd) is true (ERC-165)");
+            if (SupportsInterface(eth, address, Erc1155Id, block, spec, cancellation)) return (McpKnownAbi.Erc1155, "supportsInterface(0xd9b67a26) is true (ERC-165)");
         }
 
-        UInt256? balance = ReadUInt256(eth, address, Concat(BalanceOfSelector, AddressWord(Address.Zero)), block);
+        UInt256? balance = ReadUInt256(eth, address, Concat(BalanceOfSelector, AddressWord(Address.Zero)), block, cancellation);
         if (totalSupply is not null && balance is not null)
         {
             return (McpKnownAbi.Erc20, "totalSupply() and balanceOf(address) respond like ERC-20 (heuristic; ERC-20 has no interface detection)");
@@ -874,12 +874,12 @@ internal sealed class McpContractTools(
             : "no token functions respond");
     }
 
-    private bool SupportsInterface(IEthRpcModule eth, Address address, byte[] interfaceId, BlockParameter block, IReleaseSpec spec)
+    private bool SupportsInterface(IEthRpcModule eth, Address address, byte[] interfaceId, BlockParameter block, IReleaseSpec spec, CancellationToken cancellation)
     {
         byte[] word = new byte[32];
         interfaceId.CopyTo(word, 0);
         byte[] input = Concat(SupportsInterfaceSelector, word);
-        CallOutcome outcome = CallContract(eth, address, input, block, Erc165TransactionGas(address, interfaceId, spec));
+        CallOutcome outcome = CallContract(eth, address, input, block, Erc165TransactionGas(address, interfaceId, spec), cancellation);
         return ReturnsTrue(outcome.Data);
     }
 
@@ -892,7 +892,7 @@ internal sealed class McpContractTools(
         return Math.Max(intrinsic.FloorGas, checked(intrinsic.Standard + Erc165Gas));
     }
 
-    private JsonObject? DetectProxy(IEthRpcModule eth, Address address, byte[] code, BlockParameter block)
+    private JsonObject? DetectProxy(IEthRpcModule eth, Address address, byte[] code, BlockParameter block, CancellationToken cancellation)
     {
         if (code.Length == MinimalProxyPrefix.Length + Address.Size + MinimalProxySuffix.Length
             && code.AsSpan().StartsWith(MinimalProxyPrefix)
@@ -909,13 +909,13 @@ internal sealed class McpContractTools(
         Address? beacon = ReadStorageAddress(eth, address, BeaconSlot, block);
         if (implementation is null && beacon is null)
         {
-            return DetectLegacyProxy(eth, address, block);
+            return DetectLegacyProxy(eth, address, block, cancellation);
         }
 
         JsonObject proxy = new() { ["type"] = beacon is null ? "EIP-1967" : "EIP-1967 beacon" };
         if (implementation is null && beacon is not null)
         {
-            implementation = ReadAddress(CallContract(eth, beacon, ImplementationSelector, block, InternalGas).Data);
+            implementation = ReadAddress(CallContract(eth, beacon, ImplementationSelector, block, InternalGas, cancellation).Data);
         }
 
         proxy["implementation"] = implementation is null ? null : McpEthHelpers.Checksum(implementation);
@@ -925,7 +925,7 @@ internal sealed class McpContractTools(
     }
 
     // Older proxies: the ZeppelinOS slots, then the EIP-897 implementation() getter (bounded, since any contract may define it).
-    private JsonObject? DetectLegacyProxy(IEthRpcModule eth, Address address, BlockParameter block)
+    private JsonObject? DetectLegacyProxy(IEthRpcModule eth, Address address, BlockParameter block, CancellationToken cancellation)
     {
         if (ReadStorageAddress(eth, address, ZosImplementationSlot, block) is { } zosImplementation)
         {
@@ -934,10 +934,10 @@ internal sealed class McpContractTools(
             return zos;
         }
 
-        UInt256? proxyType = ReadUInt256(eth, address, ProxyTypeSelector, block);
+        UInt256? proxyType = ReadUInt256(eth, address, ProxyTypeSelector, block, cancellation);
         if (proxyType != UInt256.One && proxyType != (UInt256)2) return null;
 
-        Address? getter = ReadAddress(CallContract(eth, address, ImplementationSelector, block, Math.Min(ImplementationGetterGas, _maxCallGas)).Data);
+        Address? getter = ReadAddress(CallContract(eth, address, ImplementationSelector, block, Math.Min(ImplementationGetterGas, _maxCallGas), cancellation).Data);
         return getter is null || getter == address
             ? null
             : new JsonObject { ["type"] = "EIP-897", ["implementation"] = McpEthHelpers.Checksum(getter) };
@@ -965,7 +965,7 @@ internal sealed class McpContractTools(
         cancellation.ThrowIfCancellationRequested();
         Hash256 node = McpEns.NameHash(name);
         byte[] addrCall = Concat(McpEns.AddrSelector, node.Bytes.ToArray());
-        CallOutcome outcome = CallContract(eth, universalResolver, Concat(McpEns.ResolveSelector, EncodeTwoBytes(McpEns.DnsEncode(name), addrCall)), block, UniversalResolverCallGas);
+        CallOutcome outcome = CallContract(eth, universalResolver, Concat(McpEns.ResolveSelector, EncodeTwoBytes(McpEns.DnsEncode(name), addrCall)), block, UniversalResolverCallGas, cancellation);
         if (outcome.Transient)
         {
             return new EnsResolution(node, null, null, null, "none", null, Transient: true);
@@ -1024,7 +1024,7 @@ internal sealed class McpContractTools(
     {
         cancellation.ThrowIfCancellationRequested();
         return chain.EnsRegistryIsAuthoritative && chain.EnsRegistryAddress is { } registry
-            ? ReadAddress(CallContract(eth, registry, Concat(McpEns.OwnerSelector, node.Bytes.ToArray()), block, InternalGas).Data)
+            ? ReadAddress(CallContract(eth, registry, Concat(McpEns.OwnerSelector, node.Bytes.ToArray()), block, InternalGas, cancellation).Data)
             : null;
     }
 
@@ -1032,9 +1032,9 @@ internal sealed class McpContractTools(
     {
         cancellation.ThrowIfCancellationRequested();
         Hash256 node = McpEns.NameHash(name);
-        CallOutcome ownerCall = CallContract(eth, registry, Concat(McpEns.OwnerSelector, node.Bytes.ToArray()), block, InternalGas);
+        CallOutcome ownerCall = CallContract(eth, registry, Concat(McpEns.OwnerSelector, node.Bytes.ToArray()), block, InternalGas, cancellation);
         cancellation.ThrowIfCancellationRequested();
-        CallOutcome resolverCall = CallContract(eth, registry, Concat(McpEns.ResolverSelector, node.Bytes.ToArray()), block, InternalGas);
+        CallOutcome resolverCall = CallContract(eth, registry, Concat(McpEns.ResolverSelector, node.Bytes.ToArray()), block, InternalGas, cancellation);
         if (ownerCall.Transient || resolverCall.Transient)
         {
             return new EnsResolution(node, null, null, null, "none", null, Transient: true);
@@ -1045,7 +1045,7 @@ internal sealed class McpContractTools(
         if (resolver is not null)
         {
             cancellation.ThrowIfCancellationRequested();
-            CallOutcome addressCall = CallContract(eth, resolver, Concat(McpEns.AddrSelector, node.Bytes.ToArray()), block, InternalGas);
+            CallOutcome addressCall = CallContract(eth, resolver, Concat(McpEns.AddrSelector, node.Bytes.ToArray()), block, InternalGas, cancellation);
             if (addressCall.Transient)
             {
                 return new EnsResolution(node, owner, resolver, null, "resolver", null, Transient: true);
@@ -1074,7 +1074,7 @@ internal sealed class McpContractTools(
             cancellation.ThrowIfCancellationRequested();
             string parent = string.Join('.', labels[i..]);
             CallOutcome parentCall = CallContract(eth, registry,
-                Concat(McpEns.ResolverSelector, McpEns.NameHash(parent).Bytes.ToArray()), block, InternalGas);
+                Concat(McpEns.ResolverSelector, McpEns.NameHash(parent).Bytes.ToArray()), block, InternalGas, cancellation);
             if (parentCall.Transient)
             {
                 return new EnsResolution(node, owner, null, null, "none", null, Transient: true);
@@ -1094,7 +1094,7 @@ internal sealed class McpContractTools(
                 return new EnsResolution(node, owner, parentResolver, null, "none",
                     "The configured call gas cap prevents a full ERC-165 wildcard interface probe.");
             }
-            CallOutcome interfaceCall = CallContract(eth, parentResolver, Concat(SupportsInterfaceSelector, interfaceWord), block, interfaceGas);
+            CallOutcome interfaceCall = CallContract(eth, parentResolver, Concat(SupportsInterfaceSelector, interfaceWord), block, interfaceGas, cancellation);
             if (interfaceCall.Transient)
             {
                 return new EnsResolution(node, owner, parentResolver, null, "none", null, Transient: true);
@@ -1107,7 +1107,7 @@ internal sealed class McpContractTools(
 
             cancellation.ThrowIfCancellationRequested();
             byte[] innerCall = Concat(McpEns.AddrSelector, node.Bytes.ToArray());
-            CallOutcome outcome = CallContract(eth, parentResolver, Concat(McpEns.ResolveSelector, EncodeTwoBytes(McpEns.DnsEncode(name), innerCall)), block, InternalGas);
+            CallOutcome outcome = CallContract(eth, parentResolver, Concat(McpEns.ResolveSelector, EncodeTwoBytes(McpEns.DnsEncode(name), innerCall)), block, InternalGas, cancellation);
             if (outcome.Transient)
             {
                 return new EnsResolution(node, owner, parentResolver, null, $"wildcard (ENSIP-10) via {parent}", null, Transient: true);
@@ -1147,7 +1147,7 @@ internal sealed class McpContractTools(
         {
             // ENSIP-19: reverse(address bytes, coin type) returns the primary name only after checking it resolves back to the address.
             CallOutcome outcome = CallContract(eth, universalResolver, Concat(McpEns.ReverseSelector, EncodeBytesAndWord(account.Bytes.ToArray(), McpEns.EthCoinType)),
-                block, UniversalResolverCallGas);
+                block, UniversalResolverCallGas, cancellation);
             if (outcome.Data is { Length: > 0 } data)
             {
                 return McpAbiCodec.TryDecode([McpAbiType.Bytes, McpAbiType.Address, McpAbiType.Address], data, out object?[]? values, out _)
@@ -1209,14 +1209,14 @@ internal sealed class McpContractTools(
     {
         cancellation.ThrowIfCancellationRequested();
         Hash256 reverseNode = McpEns.NameHash(McpEns.ReverseName(account));
-        Address? resolver = ReadAddress(CallContract(eth, registry, Concat(McpEns.ResolverSelector, reverseNode.Bytes.ToArray()), block, InternalGas).Data);
+        Address? resolver = ReadAddress(CallContract(eth, registry, Concat(McpEns.ResolverSelector, reverseNode.Bytes.ToArray()), block, InternalGas, cancellation).Data);
         if (resolver is null)
         {
             return null;
         }
 
         cancellation.ThrowIfCancellationRequested();
-        byte[]? data = CallContract(eth, resolver, Concat(McpEns.NameSelector, reverseNode.Bytes.ToArray()), block, InternalGas).Data;
+        byte[]? data = CallContract(eth, resolver, Concat(McpEns.NameSelector, reverseNode.Bytes.ToArray()), block, InternalGas, cancellation).Data;
         if (data is null || !McpAbiCodec.TryDecode([McpAbiType.Bytes], data, out object?[]? values, out _)
             || DecodePrimaryName(values[0]) is not { Length: > 0 } reverseName)
         {
@@ -1279,10 +1279,10 @@ internal sealed class McpContractTools(
         return McpEthHelpers.RevertError($"{function} reverted: {reason}", revertHex, decoded);
     }
 
-    private static CallOutcome CallContract(IEthRpcModule eth, Address to, byte[] input, BlockParameter block, ulong gas)
+    private static CallOutcome CallContract(IEthRpcModule eth, Address to, byte[] input, BlockParameter block, ulong gas, CancellationToken cancellation)
     {
         LegacyTransactionForRpc transaction = new() { To = to, Input = input, Gas = gas };
-        using ResultWrapper<HexBytes> result = eth.eth_call(transaction, block);
+        using ResultWrapper<HexBytes> result = eth.eth_call(transaction, block, cancellationToken: cancellation);
         if (result.Result.ResultType == ResultType.Success)
         {
             return new CallOutcome(result.Data.Bytes.ToArray(), null, false, null);
@@ -1304,8 +1304,8 @@ internal sealed class McpContractTools(
         return code.Result.ResultType != ResultType.Success || code.Data is { Length: > 0 };
     }
 
-    private UInt256? ReadUInt256(IEthRpcModule eth, Address address, byte[] selector, BlockParameter block) =>
-        CallContract(eth, address, selector, block, InternalGas).Data is { Length: 32 } data ? new UInt256(data, isBigEndian: true) : null;
+    private UInt256? ReadUInt256(IEthRpcModule eth, Address address, byte[] selector, BlockParameter block, CancellationToken cancellation) =>
+        CallContract(eth, address, selector, block, InternalGas, cancellation).Data is { Length: 32 } data ? new UInt256(data, isBigEndian: true) : null;
 
     private static Address? ReadStorageAddress(IEthRpcModule eth, Address address, UInt256 slot, BlockParameter block)
     {
@@ -1562,7 +1562,7 @@ internal sealed class McpContractTools(
     }
 
     /// <summary>Adds token symbols and formatted amounts to decoded token events, looking up at most <see cref="MaxTokenLookups"/> distinct tokens.</summary>
-    private sealed class LogDecorator(McpTokenMetadata metadata, IEthRpcModule eth, BlockParameter block)
+    private sealed class LogDecorator(McpTokenMetadata metadata, IEthRpcModule eth, BlockParameter block, CancellationToken cancellation)
     {
         private readonly Dictionary<AddressAsKey, McpTokenInfo?> _infos = [];
         private int _lookups;
@@ -1598,7 +1598,7 @@ internal sealed class McpContractTools(
                 else
                 {
                     _lookups++;
-                    info = metadata.Get(eth, token, block);
+                    info = metadata.Get(eth, token, block, cancellation);
                     _infos[token] = info;
                 }
             }

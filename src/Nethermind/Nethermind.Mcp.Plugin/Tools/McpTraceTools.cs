@@ -176,7 +176,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
 
             token.ThrowIfCancellationRequested();
             (JsonObject? payload, IResultWrapper? failure) = McpTxCallTree.Run(debug, txHash, _timeout,
-                root => BuildTrace(txHash, blockNumber, root, depthLimit, frameLimit, includeInput), onlyTopCall: depthLimit == 0);
+                root => BuildTrace(txHash, blockNumber, root, depthLimit, frameLimit, includeInput), onlyTopCall: depthLimit == 0, cancellationToken: token);
             if (failure is not null)
             {
                 return executor.Failure("trace_transaction", failure);

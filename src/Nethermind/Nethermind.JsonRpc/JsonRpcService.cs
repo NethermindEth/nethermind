@@ -215,6 +215,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 returnAction = CreateReturnAction(method, rpcModule);
             }
         }
+        catch (Exception ex) when (cancellationToken.IsCancellationRequested && ex is OperationCanceledException or { InnerException: OperationCanceledException })
+        {
+            // Nobody is left to read an answer, so the request ends unanswered, like one abandoned in the module queue.
+            returnImmediately = true;
+            throw new OperationCanceledException(ex.Message, ex, cancellationToken);
+        }
         catch (Exception ex)
         {
             return HandleInvocationException(ex, methodName, request, returnAction);

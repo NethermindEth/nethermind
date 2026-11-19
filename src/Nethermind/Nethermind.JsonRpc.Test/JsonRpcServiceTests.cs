@@ -358,11 +358,8 @@ public class JsonRpcServiceTests
     [Test]
     public async Task Trailing_cancellation_token_is_cancelled_by_request_abort_or_timeout([Values] bool abort)
     {
-        IJsonRpcConfig config = _configurationProvider.GetConfig<IJsonRpcConfig>();
         IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
-        RpcModuleProvider moduleProvider = new(new RealFileSystem(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
-        moduleProvider.Register(new SingletonModulePool<IMetadataTestRpcModule>(new SingletonFactory<IMetadataTestRpcModule>(module), true));
-        JsonRpcService service = new(moduleProvider, _logManager, config, _gcKeeper);
+        JsonRpcService service = CreateServiceFor(module);
         using CancellationTokenSource requestAbort = new();
         TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
         bool cancelledOnlyOnTrigger = false;
@@ -372,18 +369,32 @@ public class JsonRpcServiceTests
             bool cancelledBefore = token.IsCancellationRequested;
             (abort ? requestAbort : timeout).Cancel();
             cancelledOnlyOnTrigger = !cancelledBefore && token.IsCancellationRequested;
+            token.ThrowIfCancellationRequested();
             return ResultWrapper<string>.Success(call.ArgAt<string>(0));
         });
 
         try
         {
-            using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a"), _context, requestAbort.Token);
+            int? errorCode = null;
+            OperationCanceledException? unanswered = null;
+            try
+            {
+                using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a"), _context, requestAbort.Token);
+                errorCode = (response as JsonRpcErrorResponse)?.Error?.Code;
+            }
+            catch (OperationCanceledException exception)
+            {
+                unanswered = exception;
+            }
+
             using JsonRpcResponse extraArgument = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a", "b"), _context);
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(response, Is.Not.InstanceOf<JsonRpcErrorResponse>());
                 Assert.That(cancelledOnlyOnTrigger, Is.True);
+                // An abort ends the request unanswered, like one abandoned in the module queue; a timeout is answered.
+                Assert.That(unanswered?.CancellationToken, Is.EqualTo(abort ? requestAbort.Token : null));
+                Assert.That(errorCode, Is.EqualTo(abort ? null : ErrorCodes.Timeout));
                 AssertInvalidParamsWithoutData(extraArgument, "too many arguments, want at most 1");
             }
         }
@@ -391,6 +402,41 @@ public class JsonRpcServiceTests
         {
             TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
         }
+    }
+
+    [Test]
+    public async Task Request_abort_after_the_method_returned_does_not_cancel_its_returned_timeout_source()
+    {
+        IMetadataTestRpcModule module = Substitute.For<IMetadataTestRpcModule>();
+        JsonRpcService service = CreateServiceFor(module);
+        using CancellationTokenSource requestAbort = new();
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        module.test_cancellation_token(Arg.Any<string>(), Arg.Any<CancellationToken>()).Returns(call => ResultWrapper<string>.Success(call.ArgAt<string>(0)));
+
+        try
+        {
+            using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("test_cancellation_token", "a"), _context, requestAbort.Token);
+            await requestAbort.CancelAsync();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response, Is.Not.InstanceOf<JsonRpcErrorResponse>());
+                // The source goes back to the pool, where a late abort of the finished request would cancel the next renter.
+                Assert.That(timeout.IsCancellationRequested, Is.False);
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    private JsonRpcService CreateServiceFor(IMetadataTestRpcModule module)
+    {
+        IJsonRpcConfig config = _configurationProvider.GetConfig<IJsonRpcConfig>();
+        RpcModuleProvider moduleProvider = new(new RealFileSystem(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        moduleProvider.Register(new SingletonModulePool<IMetadataTestRpcModule>(new SingletonFactory<IMetadataTestRpcModule>(module), true));
+        return new JsonRpcService(moduleProvider, _logManager, config, _gcKeeper);
     }
 
     [Test]
@@ -1908,9 +1954,14 @@ public class JsonRpcServiceTests
         }
     }
 
-    /// <remarks>The aborted rental itself is covered through the processor, in <see cref="JsonRpcProcessorTests"/>.</remarks>
-    [Test]
-    public async Task Cancellation_other_than_the_aborted_rental_keeps_its_error([Values] bool aborted, [Values] bool duringInvocation)
+    /// <remarks>
+    /// The aborted rental itself is covered through the processor, in <see cref="JsonRpcProcessorTests"/>, and an aborted
+    /// request whose method stops on the cancellation in <see cref="Trailing_cancellation_token_is_cancelled_by_request_abort_or_timeout"/>.
+    /// </remarks>
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    [TestCase(true, false)]
+    public async Task Cancellation_other_than_the_aborted_rental_keeps_its_error(bool aborted, bool duringInvocation)
     {
         using CancellationTokenSource transport = new();
         if (aborted) await transport.CancelAsync();

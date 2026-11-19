@@ -1097,6 +1097,29 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task DebugTraceTransaction_buffered_trace_runs_on_the_dispatcher_token()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+
+        try
+        {
+            await SerializedRequest("debug_traceTransaction", TestItem.KeccakA, new { tracer = "noopTracer" });
+            _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, timeout.Token, Arg.Any<GethTraceOptions>(),
+                Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
     public void DebugTraceCall_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest, [Values] bool withOverrides)
     {
         Block validated = Build.A.Block.WithNumber(1).TestObject;

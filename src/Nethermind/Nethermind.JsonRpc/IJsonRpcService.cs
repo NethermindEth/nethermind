@@ -10,8 +10,8 @@ public interface IJsonRpcService
 {
     /// <param name="cancellationToken">Cancelled when the request is aborted, such as by its client disconnecting.</param>
     /// <remarks>
-    /// A module rental the token abandons while still queued throws an <see cref="System.OperationCanceledException"/>
-    /// for this token instead of returning a response.
+    /// A request the token abandons, while queued for a module or while its method stops on the cancellation, throws an
+    /// <see cref="System.OperationCanceledException"/> for this token instead of returning a response.
     /// </remarks>
     ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken = default);
     JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null);
