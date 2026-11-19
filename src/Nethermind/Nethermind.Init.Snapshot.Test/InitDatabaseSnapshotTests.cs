@@ -286,6 +286,126 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [TestCase(true, TestName = "Execute_LinkedDatabaseDirectory_RestartedExtractionKeepsTheLink")]
+    [TestCase(false, TestName = "Execute_LinkedSubdirectory_RestartedExtractionKeepsTheLink")]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task Execute_LinkedLayout_RestartedExtractionKeepsTheLink(bool linkDatabaseDirectory)
+    {
+        // The link points at another disk that holds only lost+found, as a freshly mounted disk does.
+        string target = Path.Combine(_tempDir.Path, "other", linkDatabaseDirectory ? "db" : "state");
+        string keep = Path.Combine(target, "lost+found", "keep");
+        Directory.CreateDirectory(Path.GetDirectoryName(keep)!);
+        File.WriteAllBytes(keep, [1]);
+        string link = linkDatabaseDirectory ? _dbPath : Path.Combine(_dbPath, "state");
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        Directory.CreateSymbolicLink(link, target);
+        string stateOnTarget = linkDatabaseDirectory ? Path.Combine(target, "state") : target;
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+
+        await FailExtraction(step);
+        Assert.That(File.Exists(Path.Combine(stateOnTarget, "a42.sst")), Is.True,
+            "an empty linked layout is a fresh database, so the extraction must write through the link");
+
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the cleanup must keep the link");
+            Assert.That(File.Exists(Path.Combine(stateOnTarget, "a43.sst")), Is.True, "the restarted extraction must land on the linked disk");
+            Assert.That(File.Exists(Path.Combine(stateOnTarget, "a42.sst")), Is.False, "the cleanup must empty the link target");
+            Assert.That(File.Exists(keep), Is.True, "lost+found on the linked disk must survive the cleanup");
+        }
+    }
+
+    [TestCase(false, TestName = "Execute_LinkedSubdirectoryWithMissingTarget_StopsAndKeepsTheLink")]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task Execute_LinkWithMissingTarget_StopsAndKeepsTheLink(bool linkDatabaseDirectory)
+    {
+        string target = Path.Combine(_tempDir.Path, "other", linkDatabaseDirectory ? "db" : "state");
+        Directory.CreateDirectory(target);
+        string link = linkDatabaseDirectory ? _dbPath : Path.Combine(_dbPath, "state");
+        Directory.CreateDirectory(Path.GetDirectoryName(link)!);
+        Directory.CreateSymbolicLink(link, target);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        await FailExtraction(step);
+        // The linked disk is not mounted at the next start.
+        string unmounted = target + "-unmounted";
+        Directory.Move(target, unmounted);
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
+
+        IOException exception = (await Assert.CatchAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("missing or cannot be read"), "the start must stop at a link it cannot follow");
+            Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the link must be neither removed nor replaced by a plain directory");
+            Assert.That(File.Exists(Path.Combine(unmounted, linkDatabaseDirectory ? "state/a42.sst" : "a42.sst")), Is.True,
+                "the content behind the link must stay for the cleanup after the disk is back");
+        }
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task Execute_DirectoryLinkInsideUnfinishedExtraction_StopsWithoutRemovingOrFollowingIt()
+    {
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        await FailExtraction(step);
+        string target = Path.Combine(_tempDir.Path, "elsewhere");
+        Directory.CreateDirectory(target);
+        File.WriteAllBytes(Path.Combine(target, "keep"), [1]);
+        string link = Path.Combine(_dbPath, "state", "linked");
+        Directory.CreateSymbolicLink(link, target);
+
+        IOException exception = (await Assert.CatchAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("directory link"),
+                "an extraction never creates a directory link, so the cleanup must stop at one instead of guessing");
+            Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the cleanup must not remove a directory link it did not create");
+            Assert.That(File.Exists(Path.Combine(target, "keep")), Is.True, "the cleanup must not follow a directory link it did not create");
+        }
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task Execute_FileLinksInsideUnfinishedExtraction_AreDeletedAsLinks()
+    {
+        // The database directory is a link, so a relative ../ link inside it resolves on its target's disk.
+        string disk = Path.Combine(_tempDir.Path, "disk");
+        string target = Path.Combine(disk, "db");
+        Directory.CreateDirectory(target);
+        Directory.CreateSymbolicLink(_dbPath, target);
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        await FailExtraction(step);
+        string outside = Path.Combine(disk, "x");
+        File.WriteAllBytes(outside, [1]);
+        File.CreateSymbolicLink(Path.Combine(target, "top"), Path.Combine("..", "x"));
+        File.CreateSymbolicLink(Path.Combine(target, "state", "nested"), Path.Combine("..", "..", "x"));
+        // Links to files the cleanup deletes too: whichever of a pair comes first, the link is not taken for a missing one.
+        // Half the pairs are created file first and half link first, so in most listing orders some file comes before its link.
+        for (int i = 0; i < 8; i++)
+        {
+            if (i % 2 == 1)
+                File.CreateSymbolicLink(Path.Combine(target, $"z{i}"), $"z{i}-real");
+            File.WriteAllBytes(Path.Combine(target, $"z{i}-real"), [1]);
+            if (i % 2 == 0)
+                File.CreateSymbolicLink(Path.Combine(target, $"z{i}"), $"z{i}-real");
+        }
+
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(target, "state", "a43.sst")), Is.True, "healthy file links must not stop the restart");
+            Assert.That(Directory.EnumerateFileSystemEntries(target).Select(Path.GetFileName), Is.EquivalentTo(new[] { "state", "headers" }),
+                "the file links and the files of the unfinished extraction must be gone");
+            Assert.That(File.Exists(outside), Is.True, "a file link is deleted as a link, never followed");
+        }
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(
@@ -312,6 +432,15 @@ public class InitDatabaseSnapshotTests
 
     private void AdvanceCheckpoint(SnapshotStage stage) =>
         new SnapshotCheckpoint(_snapshotConfig, LimboLogs.Instance).Advance(stage);
+
+    // An extraction that writes the files of seed 42 and then fails, as one cut short does.
+    private async Task FailExtraction(InitDatabaseSnapshot step)
+    {
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 42), endWithLink: true));
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None),
+            "precondition: the extraction must fail after writing the files");
+    }
 
     private static IDriveInfo[] DrivesWithFreeSpace(long freeSpace)
     {

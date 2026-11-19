@@ -273,6 +273,27 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task InitializeAsync_CleanupMeetsLinkWithMissingTarget_StopsWithTheLinkError()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
+        // The disk behind db/state is gone, so the extraction fails on it and the cleanup that follows meets the link.
+        string link = Path.Combine(_dbPath, "state");
+        string target = Path.Combine(_tempDir.Path, "unmounted", "state");
+        Directory.CreateDirectory(_dbPath);
+        Directory.CreateSymbolicLink(link, target);
+
+        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
+            Throws.InstanceOf<IOException>().With.Message.Contains("missing or cannot be read"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the cleanup must keep the link");
+        }
+    }
+
+    [Test]
     public async Task InitializeAsync_InsufficientDiskSpace_Throws()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());

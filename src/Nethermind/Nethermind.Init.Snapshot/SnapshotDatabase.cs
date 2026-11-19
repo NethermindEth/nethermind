@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Logging;
+
 namespace Nethermind.Init.Snapshot;
 
 internal static class SnapshotDatabase
@@ -16,9 +18,10 @@ internal static class SnapshotDatabase
 
         try
         {
-            foreach (string entry in Directory.EnumerateFileSystemEntries(dbPath))
+            foreach (string entry in Entries(dbPath))
             {
-                if (Path.GetFileName(entry) != MountArtifact)
+                // An empty linked directory is the operator's disk layout, not database content.
+                if (!IsLinkedDirectory(entry) || Entries(entry).Any())
                     return true;
             }
         }
@@ -30,24 +33,117 @@ internal static class SnapshotDatabase
         return false;
     }
 
+    /// <summary>
+    /// Empties the database directory. Directory links stay, so the next extraction lands on the same disks: the
+    /// database directory itself when it is a link, and linked subdirectories, whose targets are emptied instead.
+    /// <c>lost+found</c> stays in the database directory and in linked targets.
+    /// </summary>
     public static void Delete(string dbPath)
     {
         if (!Directory.Exists(dbPath))
             return;
 
-        foreach (string entry in Directory.GetFileSystemEntries(dbPath))
-        {
-            if (Path.GetFileName(entry) == MountArtifact)
-                continue;
+        ThrowIfEntryLinkDoesNotResolve(dbPath);
 
-            if (Directory.Exists(entry))
-                Directory.Delete(entry, true);
+        foreach (string entry in Entries(dbPath).ToArray())
+        {
+            if (IsLinkedDirectory(entry))
+            {
+                foreach (string nested in LinkedContent(entry))
+                    DeleteEntry(nested);
+            }
             else
-                File.Delete(entry);
+            {
+                DeleteEntry(entry);
+            }
         }
 
-        TryRemoveDirectoryItself(dbPath);
+        if (!IsLinkedDirectory(dbPath))
+            TryRemoveDirectoryItself(dbPath);
     }
+
+    private static void DeleteEntry(string entry)
+    {
+        if (!Directory.Exists(entry))
+        {
+            // A file, or a link that does not lead to a directory: removed itself, never followed. Links at the top of the
+            // database directory, which route data to disks, were checked before the cleanup began.
+            File.Delete(entry);
+        }
+        else if (IsLink(entry))
+        {
+            // The extractor never creates links (tar link entries are rejected, zip ones are written as regular files),
+            // so it did not create this one: it is neither removed nor followed.
+            throw new SnapshotLinkException(
+                $"The database contains the directory link {(SensitiveLogMasking.Enabled ? "[redacted]" : entry)}, which a snapshot extraction does not create. Remove the link or empty the database directory, then restart.", null);
+        }
+        else
+        {
+            foreach (string nested in Directory.GetFileSystemEntries(entry))
+                DeleteEntry(nested);
+            Directory.Delete(entry);
+        }
+    }
+
+    private static IEnumerable<string> Entries(string directory) =>
+        Directory.EnumerateFileSystemEntries(directory).Where(static entry => Path.GetFileName(entry) != MountArtifact);
+
+    // A linked directory as the drive list (DbDriveInfoProvider) defines it.
+    private static bool IsLinkedDirectory(string path) => Directory.Exists(path) && IsLink(path);
+
+    // A trailing separator would hide the link.
+    private static bool IsLink(string path) => new DirectoryInfo(Path.TrimEndingDirectorySeparator(path)).LinkTarget is not null;
+
+    // A link whose final target is missing, or a link loop. File.Exists cannot tell: it is true for a dangling link. A
+    // relative target is joined to the link's directory as text, so that directory must not be a link itself.
+    private static bool IsUnresolvedLink(string path)
+    {
+        FileSystemInfo? target;
+        try
+        {
+            target = File.ResolveLinkTarget(Path.TrimEndingDirectorySeparator(path), returnFinalTarget: true);
+        }
+        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+        {
+            return false; // Nothing is at the path.
+        }
+        catch (IOException)
+        {
+            return true; // Too many levels of links.
+        }
+
+        return target is not null && !File.Exists(target.FullName) && !Directory.Exists(target.FullName);
+    }
+
+    // The links at the top of the database directory route data to disks: one that does not resolve may lead to a disk that
+    // is not mounted, and removing it would put the next extraction on the disk that holds the link. Checked before anything
+    // is deleted, so a link to a file the cleanup removes first is not taken for a missing one; and through the database
+    // directory's own target, so a relative ../ link resolves as on disk.
+    private static void ThrowIfEntryLinkDoesNotResolve(string dbPath)
+    {
+        string directory = new DirectoryInfo(Path.TrimEndingDirectorySeparator(dbPath)).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? dbPath;
+        foreach (string entry in Entries(directory))
+        {
+            if (!Directory.Exists(entry) && IsUnresolvedLink(entry))
+                throw UnavailableLink(Path.Combine(dbPath, Path.GetFileName(entry)), null);
+        }
+    }
+
+    private static string[] LinkedContent(string link)
+    {
+        try
+        {
+            return Entries(link).ToArray();
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            throw UnavailableLink(link, e);
+        }
+    }
+
+    private static SnapshotLinkException UnavailableLink(string link, Exception? inner) =>
+        new($"The database link {(SensitiveLogMasking.Enabled ? "[redacted]" : link)} points at a target that is missing or cannot be read, so it is neither removed nor replaced. Mount the linked disk or fix the link, then restart.",
+            SensitiveLogMasking.Enabled ? null : inner);
 
     private static bool TryRemoveDirectoryItself(string dbPath)
     {
@@ -62,3 +158,6 @@ internal static class SnapshotDatabase
         }
     }
 }
+
+/// <summary>The cleanup stopped at a link it must neither remove nor follow; the message names the link and the way out.</summary>
+internal sealed class SnapshotLinkException(string message, Exception? innerException) : IOException(message, innerException);
