@@ -96,12 +96,17 @@ fi
 
     def test_wire_dependencies_only_add_direct_edges_to_already_locked_packages(self):
         packages = ["futures-util", "reth-network-peers", "reth-trie-common", "reth-eth-wire", "reth-ecies", "secp256k1"]
-        for missing in (None, "reth-ecies", "unreviewed-api"):
-            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as directory:
+        for tag, secp_version, missing in (
+            ("v2.7.0", "0.30.0", None),
+            ("v2.11.0", "0.33.1", None),
+            ("v2.11.0", "0.30.0", "secp256k1-version"),
+            ("v2.11.0", "0.33.1", "reth-ecies"),
+            ("v2.8.0", "0.30.0", "unreviewed-api"),
+        ):
+            with self.subTest(tag=tag, missing=missing), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 cargo = root / "crates/eez-node-e2e/Cargo.toml"
                 cargo.parent.mkdir(parents=True)
-                tag = "v2.8.0" if missing == "unreviewed-api" else "v2.7.0"
                 (root / "Cargo.toml").write_text('[workspace.dependencies]\nreth-eth-wire-types = { git = "https://github.com/paradigmxyz/reth", tag = "' + tag + '" }\n')
                 original_cargo = '[package]\nname = "eez-node-e2e"\nversion = "0.1.0"\n[dev-dependencies]\ntokio = { workspace = true }\n'
                 cargo.write_text(original_cargo)
@@ -109,22 +114,29 @@ fi
                 original_lock = 'version = 4\n\n[[package]]\nname = "eez-node-e2e"\nversion = "0.1.0"\ndependencies = [\n "tokio",\n]\n'
                 for package in [*packages, "tokio"]:
                     if package != missing:
-                        original_lock += '\n[[package]]\nname = "' + package + '"\nversion = "0.30.0"\n'
+                        version = secp_version if package == "secp256k1" else "1.0.0"
+                        original_lock += '\n[[package]]\nname = "' + package + '"\nversion = "' + version + '"\n'
                 lock.write_text(original_lock)
                 if missing is not None:
                     with self.assertRaisesRegex(ValueError, "absent from the pinned lockfile|native wire API changed"):
-                        embedded.prepare_peer_dependencies(root)
+                        embedded.prepare_peer_probe(root)
                     self.assertEqual(original_cargo, cargo.read_text())
                     self.assertEqual(original_lock, lock.read_text())
                 else:
-                    embedded.prepare_peer_dependencies(root)
+                    probe = embedded.prepare_peer_probe(root)
                     entry = lock.read_text().split('name = "eez-node-e2e"', 1)[1].split("[[package]]", 1)[0]
-                    self.assertIn(' "secp256k1 0.30.0",', entry)
+                    self.assertIn(' "secp256k1 ' + secp_version + '",', entry)
                     self.assertIn(' "tokio",', entry)
                     for package in packages:
                         self.assertIn(package + " = ", cargo.read_text())
+                    if tag == "v2.7.0":
+                        self.assertIn("SecretKey::from_byte_array(&key_bytes.0)", probe)
+                        self.assertIn("key.public_key(secp256k1::SECP256K1)", probe)
+                    else:
+                        self.assertIn("SecretKey::from_secret_bytes(key_bytes.0)", probe)
+                        self.assertIn("key.public_key()", probe)
                     with self.assertRaisesRegex(ValueError, "direct dependencies changed"):
-                        embedded.prepare_peer_dependencies(root)
+                        embedded.prepare_peer_probe(root)
 
     def test_live_native_verification_requires_receipts_above_l1_safe_and_canonical_roots(self):
         transaction = "0x" + "12" * 32

@@ -33,7 +33,7 @@ use reth_trie_common::{
     range_proof::verify_range_proof,
     root::{state_root, storage_root},
 };
-use secp256k1::{SECP256K1, SecretKey};
+use secp256k1::SecretKey;
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
 
@@ -62,16 +62,13 @@ struct Probe {
 impl Probe {
     async fn connect(enode: &str, spec: &ChainSpec, header: &Header, hash: B256) -> Result<Self> {
         let remote: NodeRecord = enode.parse()?;
-        let key = SecretKey::from_slice(
-            alloy_signer_local::PrivateKeySigner::random()
-                .to_bytes()
-                .as_slice(),
-        )?;
+        let key_bytes = alloy_signer_local::PrivateKeySigner::random().to_bytes();
+        let key = SecretKey::from_secret_bytes(key_bytes.0)?;
+        let peer_id = pk2id(&key.public_key());
         let socket = TcpStream::connect(remote.tcp_addr()).await?;
         let encrypted = ECIESStream::connect(socket, key, remote.id).await?;
         let snap = Capability::new_static("snap", 1);
-        let mut hello =
-            HelloMessageWithProtocols::builder(pk2id(&key.public_key(SECP256K1))).build();
+        let mut hello = HelloMessageWithProtocols::builder(peer_id).build();
         hello.client_version = "eez-state-probe/1".into();
         hello.port = 0;
         hello.protocols = vec![EthVersion::Eth68.into(), Protocol::new(snap.clone(), 8)];

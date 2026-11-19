@@ -352,22 +352,24 @@ def prepare_native_finality(upstream):
     control.write_text(original + "\n" + method)
 
 
-def prepare_peer_dependencies(upstream):
+def prepare_peer_probe(upstream):
     cargo = upstream / "crates/eez-node-e2e/Cargo.toml"
     source = cargo.read_text()
     # All packages already belong to the selected source's lockfile. Add direct test edges only.
     workspace = tomllib.loads((upstream / "Cargo.toml").read_text())["workspace"]["dependencies"]
     wire = workspace["reth-eth-wire-types"]
-    if wire.get("git") != "https://github.com/paradigmxyz/reth" or wire.get("tag") != "v2.7.0":
+    tag = wire.get("tag")
+    secp_version = {"v2.7.0": "0.30.0", "v2.11.0": "0.33.1"}.get(tag)
+    if wire.get("git") != "https://github.com/paradigmxyz/reth" or secp_version is None:
         raise ValueError("native wire API changed; review the probe before adapting")
-    transport = "{ git = " + json.dumps(wire["git"]) + ", tag = " + json.dumps(wire["tag"]) + " }"
+    transport = "{ git = " + json.dumps(wire["git"]) + ", tag = " + json.dumps(tag) + " }"
     dependencies = {
         "futures-util": "{ workspace = true }",
         "reth-network-peers": "{ workspace = true }",
         "reth-trie-common": "{ workspace = true }",
         "reth-eth-wire": transport,
         "reth-ecies": transport,
-        "secp256k1": '"0.30"',
+        "secp256k1": json.dumps("=" + secp_version),
     }
     if source.count("[dev-dependencies]\n") != 1:
         raise ValueError("native test dependency boundary changed")
@@ -379,10 +381,13 @@ def prepare_peer_dependencies(upstream):
     end = source.index("\n[[package]]", start)
     entry = source[start:end]
     names = list(dependencies)
-    names[names.index("secp256k1")] = "secp256k1 0.30.0"
+    names[names.index("secp256k1")] = "secp256k1 " + secp_version
     for name in names:
-        package = name.split(" ", 1)[0]
-        if '\nname = "' + package + '"\n' not in source:
+        package, _, version = name.partition(" ")
+        marker = '\nname = "' + package + '"\n'
+        if version:
+            marker += 'version = "' + version + '"\n'
+        if marker not in source:
             raise ValueError("wire test package is absent from the pinned lockfile: " + package)
     original = entry[entry.index("dependencies = [\n") + len("dependencies = [\n"):entry.index("\n]")]
     existing = [line.strip().strip(',').strip('"') for line in original.splitlines()]
@@ -392,6 +397,11 @@ def prepare_peer_dependencies(upstream):
     updated = entry.replace(original, replacement)
     cargo.write_text(updated_cargo)
     lock.write_text(source[:start] + updated + source[end:])
+    probe = Path(__file__).with_name("embedded.peer.rs").read_text()
+    if tag == "v2.7.0":
+        probe = probe.replace("from_secret_bytes(key_bytes.0)", "from_byte_array(&key_bytes.0)")
+        probe = probe.replace("key.public_key()", "key.public_key(secp256k1::SECP256K1)")
+    return probe
 
 
 def prepare(args):
@@ -420,9 +430,8 @@ def prepare(args):
     helper.parent.mkdir()
     helper.write_text(candidate_helper(profile))
     if profile == "rollupx":
-        helper.with_name("peer.rs").write_text(Path(__file__).with_name("embedded.peer.rs").read_text())
+        helper.with_name("peer.rs").write_text(prepare_peer_probe(upstream))
         helper.with_name("bootstrap.rs").write_text(Path(__file__).with_name("embedded.bootstrap.rs").read_text())
-        prepare_peer_dependencies(upstream)
         prepare_native_finality(upstream)
     for path, changed in changes:
         path.write_text(changed)

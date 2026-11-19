@@ -44,7 +44,13 @@ if test ! -x "$EEZ_RUNTIME_DIR/eez-composer"; then
       apt-get update
       apt-get install -y clang libclang-dev pkg-config libssl-dev cmake protobuf-compiler mold
       bash scripts/ci/install-llvm.sh
-      export LLVM_SYS_221_PREFIX=/usr/lib/llvm-22 PATH="/usr/lib/llvm-22/bin:$PATH" RUST_MIN_STACK=16777216
+      for llvm in 22 23; do
+        prefix="/usr/lib/llvm-$llvm"
+        if [[ -x "$prefix/bin/llvm-config" ]]; then
+          export "LLVM_SYS_${llvm}1_PREFIX=$prefix" PATH="$prefix/bin:$PATH"
+        fi
+      done
+      export RUST_MIN_STACK=16777216
       git config --global --add safe.directory /build
       git config --file .gitmodules --get-regexp "^submodule\\..*\\.path$" | while read -r key path; do
         git config --global --add safe.directory "/build/$path"
