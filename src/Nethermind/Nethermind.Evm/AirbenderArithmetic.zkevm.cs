@@ -51,7 +51,11 @@ internal static unsafe class AirbenderArithmetic
         if (OnOpenVm)
         {
             if (s_shift is null)
-                s_shift = (ulong*)NativeMemory.AllocZeroed(32);
+            {
+                ulong* shift = (ulong*)NativeMemory.AlignedAlloc(32, 32);
+                NativeMemory.Clear(shift, 32);
+                s_shift = shift;
+            }
             return;
         }
 

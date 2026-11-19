@@ -22,31 +22,38 @@ public static partial class Accelerators
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256Mul(ulong* result, ulong* a, ulong* b) => zkvm_u256_mul(result, a, b);
 
-    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    /// <summary>Computes <c>(a + b) mod 2^256</c>.</summary>
+    /// <remarks>One instruction of OpenVM's bigint extension, with the contract of <see cref="UInt256Mul"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256Add(ulong* result, ulong* a, ulong* b) => zkvm_u256_add(result, a, b);
 
-    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    /// <summary>Computes <c>(a - b) mod 2^256</c>.</summary>
+    /// <remarks>One instruction of OpenVM's bigint extension, with the contract of <see cref="UInt256Mul"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256Sub(ulong* result, ulong* a, ulong* b) => zkvm_u256_sub(result, a, b);
 
-    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    /// <summary>Computes <c>a</c> shifted left by <c>b</c>, which must be below 256.</summary>
+    /// <remarks>One instruction of OpenVM's bigint extension, with the contract of <see cref="UInt256Mul"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256ShiftLeft(ulong* result, ulong* a, ulong* b) => zkvm_u256_sll(result, a, b);
 
-    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    /// <summary>Computes <c>a</c> shifted right by <c>b</c>, which must be below 256, filling with zeros.</summary>
+    /// <remarks>One instruction of OpenVM's bigint extension, with the contract of <see cref="UInt256Mul"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256ShiftRight(ulong* result, ulong* a, ulong* b) => zkvm_u256_srl(result, a, b);
 
-    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    /// <summary>Computes <c>a</c> shifted right by <c>b</c>, which must be below 256, filling with the sign bit.</summary>
+    /// <remarks>One instruction of OpenVM's bigint extension, with the contract of <see cref="UInt256Mul"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256ShiftRightArithmetic(ulong* result, ulong* a, ulong* b) => zkvm_u256_sra(result, a, b);
 
-    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    /// <summary>Writes 1 if <c>a &lt; b</c> as two's complement integers, else 0, as a 256-bit integer.</summary>
+    /// <remarks>One instruction of OpenVM's bigint extension, with the contract of <see cref="UInt256Mul"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256LessThanSigned(ulong* result, ulong* a, ulong* b) => zkvm_u256_slt(result, a, b);
 
-    /// <summary>One instruction of OpenVM's bigint extension, as <see cref="UInt256Mul"/>.</summary>
+    /// <summary>Writes 1 if <c>a &lt; b</c> as unsigned integers, else 0, as a 256-bit integer.</summary>
+    /// <remarks>One instruction of OpenVM's bigint extension, with the contract of <see cref="UInt256Mul"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static unsafe void UInt256LessThan(ulong* result, ulong* a, ulong* b) => zkvm_u256_sltu(result, a, b);
 
