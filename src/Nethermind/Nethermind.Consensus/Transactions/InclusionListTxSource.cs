@@ -97,7 +97,7 @@ public class InclusionListTxSource(
         PreparedInclusionList prepared = decoded.Prepared.Value;
         block.InclusionListTransactions = prepared.All;
         block.InclusionLists = prepared.Lists;
-        block.InclusionListProofInput = prepared.ProofInput;
+        block.LeanProduction.InclusionListProofInput = prepared.ProofInput;
     }
 
     private PreparedInclusionList Prepare(byte[][] snapshot, InclusionListV1[]? lists, IReleaseSpec spec)

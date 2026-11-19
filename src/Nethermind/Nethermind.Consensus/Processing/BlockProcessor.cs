@@ -307,11 +307,11 @@ public partial class BlockProcessor(
                         IncludableTransactions includable = new(block);
                         (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
                         // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
-                        if (latest && producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduledWithin(attempted))
+                        if (latest && producing.LeanProduction.DependencyLimit is null && !_productionProofCache.IsScheduledWithin(attempted))
                             ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept, leanProofStore, verifier);
                         throw new LeanProofNotReadyException(limit);
                     }
-                    AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
+                    AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProduction.ProofInputs, deps);
                     try
                     {
                         proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
@@ -353,7 +353,7 @@ public partial class BlockProcessor(
     /// </remarks>
     private static void OfferInclusionListProofs(BlockToProduce producing, LeanProofStore store)
     {
-        if (producing.InclusionListProofInput is not { } inclusionList) return;
+        if (producing.LeanProduction.InclusionListProofInput is not { } inclusionList) return;
         foreach (RecursiveProofInput child in inclusionList.RecursiveProofs)
         {
             if (child.InnerDeps is not { Count: > 0 } dependencies) continue;
@@ -422,12 +422,12 @@ public partial class BlockProcessor(
         (AggregationInput Input, long Cost) Cheapest(HashSet<FrameDependency> set)
         {
             List<FrameDependency> canonical = Eip8288Dependencies.Canonicalize(set);
-            AggregationInput best = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, canonical);
+            AggregationInput best = RecursiveStarkAggregator.Combine(producing.LeanProduction.ProofInputs, canonical);
             long bestCost = RecursiveStarkAggregator.EstimatedCost(best);
             foreach (RecursiveProofInput parent in overlaps)
             {
                 if (!Overlaps(parent, set)) continue;
-                AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, canonical, parent);
+                AggregationInput extended = RecursiveStarkAggregator.Combine(producing.LeanProduction.ProofInputs, canonical, parent);
                 long extendedCost = RecursiveStarkAggregator.EstimatedCost(extended);
                 if (extendedCost < bestCost) (best, bestCost) = (extended, extendedCost);
             }
