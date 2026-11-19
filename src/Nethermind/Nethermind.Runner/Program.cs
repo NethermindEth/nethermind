@@ -186,10 +186,16 @@ async Task<int> ConfigureAsync(string[] args)
 
 async Task<int> RunUntilExitAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-    // The handlers of a signal run from the last registered to the first, so this one runs before the handler that
-    // System.CommandLine registered before invoking this action, which cancels the token.
-    using PosixSignalRegistration sigTerm = PosixSignalRegistration.Create(
-        PosixSignal.SIGTERM, _ => Volatile.Write(ref cancellationExitCode, ExitCodes.SigTerm));
+    // The handlers of a signal run from the last registered to the first, so these run before the handlers that
+    // System.CommandLine registered before invoking this action, which cancel the token. After a signal during the
+    // synchronous start, System.CommandLine returns early and removes its handlers while the runner still stops;
+    // cancelling the default handling here keeps a later signal from ending the process before the stop completes.
+    using PosixSignalRegistration sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+    {
+        Volatile.Write(ref cancellationExitCode, ExitCodes.SigTerm);
+        context.Cancel = true;
+    });
+    using PosixSignalRegistration sigInt = PosixSignalRegistration.Create(PosixSignal.SIGINT, static context => context.Cancel = true);
 
     return await RunAsync(parseResult, pluginLoader, cancellationToken);
 }

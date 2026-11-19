@@ -44,6 +44,25 @@ public partial class RunnerProcessTests
         await AssertStoppedWith(runner, ExitCodes.SigTerm);
     }
 
+    [Test]
+    [Platform(Exclude = "Win")]
+    public async Task Second_sigterm_after_an_early_one_waits_for_the_node_to_stop()
+    {
+        using TempPath dataDirectory = TempPath.GetTempDirectory();
+        using RunnerProcess runner = StartIsolatedNode(dataDirectory.Path);
+
+        await runner.WaitForOutputAsync("Generating private key for the node");
+        runner.Terminate();
+        // The last line of the synchronous start. System.CommandLine then returns early and removes its signal handlers,
+        // while the node stops only after a step that does not observe the cancellation, more than a second later.
+        await runner.WaitForOutputAsync("System.Diagnostics.Metrics disabled");
+        await Task.Delay(100);
+        Assume.That(runner.HasExited, Is.False, "The node stopped before the second signal could be sent");
+        runner.Terminate();
+
+        await AssertStoppedWith(runner, ExitCodes.SigTerm);
+    }
+
     /// <summary>Starts a node with no peers, no discovery and every listener on the loopback interface.</summary>
     private static RunnerProcess StartIsolatedNode(string dataDirectory)
     {
@@ -99,6 +118,8 @@ public partial class RunnerProcessTests
             _process.BeginOutputReadLine();
             _process.BeginErrorReadLine();
         }
+
+        public bool HasExited => _process.HasExited;
 
         /// <summary>The output so far, without the console color codes.</summary>
         public string Output
