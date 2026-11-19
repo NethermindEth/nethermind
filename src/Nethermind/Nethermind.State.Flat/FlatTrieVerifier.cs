@@ -100,7 +100,7 @@ public class FlatTrieVerifier
     }
 
     // Internal method for testing with direct components
-    internal void Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken) => VerifyCore(reader, trieStore, stateRoot, cancellationToken);
+    internal bool Verify(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken) => VerifyCore(reader, trieStore, stateRoot, cancellationToken);
 
     private bool VerifyCore(IPersistence.IPersistenceReader reader, IScopedTrieStore trieStore, Hash256 stateRoot, CancellationToken cancellationToken)
     {
@@ -1033,12 +1033,12 @@ public class FlatTrieVerifier
     /// <summary>
     /// Wrapper around IScopedTrieStore that verifies hashes of loaded RLP data.
     /// </summary>
-    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, Hash256? address, ILogger logger) : IScopedTrieStore
+    private sealed class HashVerifyingTrieStore(IScopedTrieStore inner, Hash256? address, ILogger logger, HashVerifyingTrieStore? stateTrieStore = null) : IScopedTrieStore
     {
         private long _hashMismatchCount;
 
         /// <remarks>Counted per RLP load, not per distinct node — re-descents re-verify and re-count
-        /// the same corrupt node.</remarks>
+        /// the same corrupt node. Storage-trie stores count into the state-trie store, so its count covers both.</remarks>
         public long HashMismatchCount => Interlocked.Read(ref _hashMismatchCount);
 
         public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
@@ -1068,7 +1068,7 @@ public class FlatTrieVerifier
             Hash256 computed = Keccak.Compute(rlp);
             if (computed != expectedHash)
             {
-                Interlocked.Increment(ref _hashMismatchCount);
+                Interlocked.Increment(ref (stateTrieStore ?? this)._hashMismatchCount);
                 if (address is null)
                 {
                     if (logger.IsError) logger.Error(
@@ -1085,7 +1085,7 @@ public class FlatTrieVerifier
         public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) =>
             address is null
                 ? this
-                : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), address, logger);
+                : new HashVerifyingTrieStore((IScopedTrieStore)inner.GetStorageTrieNodeResolver(address), address, logger, stateTrieStore ?? this);
 
         public INodeStorage.KeyScheme Scheme => inner.Scheme;
 
