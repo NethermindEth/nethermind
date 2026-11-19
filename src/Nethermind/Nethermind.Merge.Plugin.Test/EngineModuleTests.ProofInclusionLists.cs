@@ -277,8 +277,6 @@ public partial class EngineModuleTests
         source.ReceivedWithAnyArgs(scenario == "valid" ? 1 : 0).Set(default!, default!, default);
     }
 
-    // EIPs#12475: engine_getInclusionListV2 returns the list's transactions with its recursiveStark. Without a dependency-bearing
-    // pool transaction the proof is empty: "0x" with no proofDeps.
     // The engine recheck and the block validator leave out the same frame entries: a blob-carrying one is skipped by both,
     // so its omission leaves the recheck decided rather than waiting on a prefix simulation the validator never asks for.
     [Test]
@@ -307,6 +305,8 @@ public partial class EngineModuleTests
         }
     }
 
+    // EIPs#12475: engine_getInclusionListV2 returns the list's transactions with its recursiveStark. Without a dependency-bearing
+    // pool transaction the proof is empty: "0x" with no proofDeps.
     [Test]
     public async Task GetInclusionListV2_returns_transactions_with_an_empty_proof()
     {

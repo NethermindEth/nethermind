@@ -62,7 +62,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IBlockAccessListStore? _blockAccessListStore;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
-    private readonly InclusionListProofService? _inclusionListProofs;
+    private readonly InclusionListProofService _inclusionListProofs;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -103,7 +103,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ISpecProvider specProvider,
         ITxValidator txValidator,
         ILogManager logManager,
-        InclusionListProofService? inclusionListProofs = null,
+        InclusionListProofService inclusionListProofs,
         TimeProvider? timeProvider = null,
         IBlockAccessListStore? blockAccessListStore = null)
     {
@@ -267,7 +267,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         ValueHash256 InclusionListDigest()
         {
             if (resolvedInclusionListDigest is { } digest) return digest;
-            _inclusionListProofs?.ResolveObligations(block.InclusionLists, _specProvider.GetSpec(block.Header));
+            _inclusionListProofs.ResolveObligations(block.InclusionLists, _specProvider.GetSpec(block.Header));
             return (resolvedInclusionListDigest = ComputeInclusionListDigest(block)).Value;
         }
 
@@ -569,7 +569,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
         }
         CommitteeInclusionList[] decoded = InclusionListV1.Decode(lists);
-        _inclusionListProofs?.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
+        _inclusionListProofs.ResolveObligations(decoded, _specProvider.GetSpec(block.Header));
         block.InclusionLists = decoded;
         return IsInclusionListSatisfied(block, CommitteeInclusionList.Flatten(decoded));
     }
