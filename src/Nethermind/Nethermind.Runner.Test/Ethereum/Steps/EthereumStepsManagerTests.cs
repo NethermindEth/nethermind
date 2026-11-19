@@ -366,6 +366,47 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        [CancelAfter(5000)]
+        public async Task Dependency_tree_names_steps_sharing_a_name_in_full(CancellationToken cancellationToken)
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsDebug.Returns(true);
+            ConcurrentQueue<string> debugMessages = new();
+            logger.When(static l => l.Debug(Arg.Any<string>())).Do(call => debugMessages.Enqueue(call.ArgAt<string>(0)));
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(PluginOne.SharedNameStep), typeof(PluginTwo.SharedNameStep), typeof(StepA));
+            using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+                .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+                .AddSingleton<EthereumStepsManager>());
+
+            await scope.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            string first = typeof(PluginOne.SharedNameStep).FullName!;
+            string second = typeof(PluginTwo.SharedNameStep).FullName!;
+            string nl = Environment.NewLine;
+            Assert.That(debugMessages, Has.One.EqualTo(
+                $"Ethereum steps dependency tree:\n● {nameof(StepA)}{nl}○ {first}{nl}  ● {second} (depends on {first}){nl}"));
+        }
+
+        /// <summary>Holds a step named like the one in <see cref="PluginTwo"/>, as two plugins' steps may be.</summary>
+        private static class PluginOne
+        {
+            internal class SharedNameStep : IStep
+            {
+                public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+        }
+
+        private static class PluginTwo
+        {
+            [RunnerStepDependencies(typeof(PluginOne.SharedNameStep))]
+            internal class SharedNameStep : IStep
+            {
+                public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+            }
+        }
+
+        [Test]
         public async Task With_constructor_without_nethermind_api()
         {
             await using IContainer container = CreateNethermindEnvironment(

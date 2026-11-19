@@ -390,34 +390,35 @@ namespace Nethermind.Init.Steps
         /// </summary>
         private string BuildStepDependencyTree(Dictionary<Type, StepWrapper> stepInfoMap)
         {
+            // Keyed by type, as everywhere else: two steps can share a simple name.
             // Map each step to its direct dependencies
-            Dictionary<string, List<string>> depsMap = stepInfoMap.ToDictionary(
-                kv => kv.Key.Name,
-                kv => kv.Value.Dependencies.Select(d => d.Name).ToList()
+            Dictionary<Type, List<Type>> depsMap = stepInfoMap.ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value.Dependencies.ToList()
             );
 
             // Build children map for topological sorting (parent -> children)
-            Dictionary<string, List<string>> dependentsMap = stepInfoMap.Keys.ToDictionary(t => t.Name, t => new List<string>());
+            Dictionary<Type, List<Type>> dependentsMap = stepInfoMap.Keys.ToDictionary(t => t, t => new List<Type>());
             foreach (KeyValuePair<Type, StepWrapper> kv in stepInfoMap)
             {
-                string node = kv.Key.Name;
+                Type node = kv.Key;
                 foreach (Type dependency in kv.Value.Dependencies)
                 {
-                    if (dependentsMap.ContainsKey(dependency.Name))
-                        dependentsMap[dependency.Name].Add(node);
+                    if (dependentsMap.ContainsKey(dependency))
+                        dependentsMap[dependency].Add(node);
                 }
             }
 
             // Kahn's algorithm to compute topological order
-            Dictionary<string, int> inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
-            Queue<string> queue = new(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
-            List<string> sorted = [];
-            Dictionary<string, int> degree = [with(inDegree)];
+            Dictionary<Type, int> inDegree = depsMap.ToDictionary(kv => kv.Key, kv => kv.Value.Count);
+            Queue<Type> queue = new(inDegree.Where(kv => kv.Value == 0).Select(kv => kv.Key).OrderBy((c) => dependentsMap[c].Count));
+            List<Type> sorted = [];
+            Dictionary<Type, int> degree = [with(inDegree)];
             while (queue.Count > 0)
             {
-                string n = queue.Dequeue();
+                Type n = queue.Dequeue();
                 sorted.Add(n);
-                foreach (string? dependent in dependentsMap[n].OrderBy((c) => dependentsMap[c].Count))
+                foreach (Type dependent in dependentsMap[n].OrderBy((c) => dependentsMap[c].Count))
                 {
                     degree[dependent]--;
                     if (degree[dependent] == 0)
@@ -426,11 +427,11 @@ namespace Nethermind.Init.Steps
             }
 
             // Compute max dependency depth for indentation
-            Dictionary<string, int> depth = [];
-            Dictionary<string, HashSet<string>> allCombinedDeps = [];
-            foreach (string node in sorted)
+            Dictionary<Type, int> depth = [];
+            Dictionary<Type, HashSet<Type>> allCombinedDeps = [];
+            foreach (Type node in sorted)
             {
-                List<string> deps = depsMap[node];
+                List<Type> deps = depsMap[node];
                 depth[node] = deps.Count == 0
                     ? 0
                     : deps.Select(d => depth.GetValueOrDefault(d, 0)).Max() + 1;
@@ -439,23 +440,27 @@ namespace Nethermind.Init.Steps
                 allCombinedDeps[node].AddRange(depsMap[node]);
             }
 
-            Dictionary<string, List<string>> deduplicatedDependency = [];
-            foreach (string node in sorted)
+            Dictionary<Type, List<Type>> deduplicatedDependency = [];
+            foreach (Type node in sorted)
             {
-                HashSet<string> childOnlyAllCombinedDeps = depsMap[node].SelectMany(d => allCombinedDeps[d]).ToHashSet();
+                HashSet<Type> childOnlyAllCombinedDeps = depsMap[node].SelectMany(d => allCombinedDeps[d]).ToHashSet();
                 deduplicatedDependency[node] = depsMap[node].Where(d => !childOnlyAllCombinedDeps.Contains(d)).ToList();
             }
 
+            // A name shared by two steps is written in full.
+            HashSet<string> sharedNames = [.. stepInfoMap.Keys.GroupBy(static t => t.Name).Where(static g => g.Count() > 1).Select(static g => g.Key)];
+            string Display(Type step) => sharedNames.Contains(step.Name) ? step.FullName ?? step.Name : step.Name;
+
             // Build the indented output using reversed indentation
             StringBuilder sb = new();
-            foreach (string node in sorted)
+            foreach (Type node in sorted)
             {
                 int lvl = depth[node];
                 sb.Append(new string(' ', lvl * 2));
-                List<string> deps = deduplicatedDependency[node];
+                List<Type> deps = deduplicatedDependency[node];
                 sb.Append(dependentsMap[node].Count == 0 ? "● " : "○ ");
-                sb.Append(node);
-                sb.AppendLine(deps.Count != 0 ? $" (depends on {string.Join(", ", deps)})" : "");
+                sb.Append(Display(node));
+                sb.AppendLine(deps.Count != 0 ? $" (depends on {string.Join(", ", deps.Select(Display))})" : "");
             }
 
             return sb.ToString();
