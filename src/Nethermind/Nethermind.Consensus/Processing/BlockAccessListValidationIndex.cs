@@ -235,7 +235,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         foreach (AccountChangesAtIndex accountChanges in slice.AccountChanges)
         {
             _addressIndex.TryGetFrozen(accountChanges.Address, out int accountOrdinal);
-            Interlocked.Or(ref _hasAccountWords[accountOrdinal >> WordShift], 1UL << (accountOrdinal & BitMask));
+            SetSharedAccountBit(accountOrdinal);
 
             if (accountChanges.BalanceChange is { } balance)
                 RecordIfOverflow(_lanes.TryAddBalanceUntracked(row, accountOrdinal, balance.Value), index, accountChanges.Address);
@@ -540,13 +540,23 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
             ? TestBit(_extraAccountWords, accountOrdinal)
             : TestBit(_hasAccountWords, accountOrdinal);
 
+    /// <summary>Sets an account's bit in the bitmap part shared with concurrent slice writers.</summary>
+    /// <remarks>
+    /// Atomic on the 32-bit half of the word that holds the bit: 64-bit <see cref="Interlocked.Or(ref ulong, ulong)"/>
+    /// does not compile for the RV32 zkVM guests.
+    /// </remarks>
+    private void SetSharedAccountBit(int accountOrdinal)
+    {
+        Span<uint> halves = MemoryMarshal.Cast<ulong, uint>(_hasAccountWords.AsSpan());
+        Interlocked.Or(ref halves[accountOrdinal >> 5], 1u << (accountOrdinal & 31));
+    }
+
     private void MarkAccount(int accountOrdinal)
     {
         int word = accountOrdinal >> WordShift;
         if (accountOrdinal < _sharedAccountBits)
         {
-            // Shared with concurrent slice writers.
-            Interlocked.Or(ref _hasAccountWords[word], 1UL << (accountOrdinal & BitMask));
+            SetSharedAccountBit(accountOrdinal);
             return;
         }
 
