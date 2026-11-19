@@ -3536,11 +3536,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, shared);
         }
 
-        /// <summary>KECCAK256 of a range inside the active, initialized memory.</summary>
+        /// <summary>KECCAK256 of an empty range or of a range inside the active, initialized memory.</summary>
         /// <remarks>
-        /// Every other case - short gas or stack, a range that grows memory or lies past the initialized memory, an
-        /// offset or length of 2^32 or more - runs the shared KECCAK256 handler instead. Hashing takes a call either way,
-        /// but this handler holds only five values across it, where the shared one saves every callee-saved register.
+        /// Every other case - short gas or stack, a non-empty range that grows memory or lies past the initialized memory,
+        /// or has an offset or length of 2^32 or more - runs the shared KECCAK256 handler instead. Hashing takes a call
+        /// either way, but this handler holds only five values across it, where the shared one saves every callee-saved
+        /// register.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -3566,21 +3567,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                      ((offset | length) >> 32)) == 0)
                 {
                     ulong cost = GasCostOf.Sha3 + GasCostOf.Sha3Word * ((length + (EvmStack.WordSize - 1)) >> 5);
-                    // An empty range touches no memory, so its offset may lie past it.
-                    if (length == 0 && Covers(gas, cost))
-                    {
-                        gas -= (nuint)cost;
-                        head--;
-                        lengthLimbs = EmptyKeccakLimb0;
-                        Unsafe.Add(ref lengthLimbs, 1) = EmptyKeccakLimb1;
-                        Unsafe.Add(ref lengthLimbs, 2) = EmptyKeccakLimb2;
-                        Unsafe.Add(ref lengthLimbs, 3) = EmptyKeccakLimb3;
-                        sp = ref Moved(ref sp, -1);
-                        ip = ref Unsafe.Add(ref ip, 1);
-                        nint empty = NextHandler(handlers, ref ip);
-                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, empty);
-                    }
-
                     ref byte data = ref AlignedMemory(ref state).GetActiveInitializedRange(offset, length);
                     if (Covers(gas, cost) && !Unsafe.IsNullRef(ref data))
                     {
@@ -3625,6 +3611,23 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
+                }
+
+                // An empty range touches no memory, so its offset may lie past it or past 2^32. Checked only here to keep
+                // the common case unchanged; an empty range inside the memory hashes above.
+                if ((length | Unsafe.Add(ref lengthLimbs, 1) | Unsafe.Add(ref lengthLimbs, 2) | Unsafe.Add(ref lengthLimbs, 3)) == 0 &&
+                    Covers(gas, GasCostOf.Sha3))
+                {
+                    gas -= (nuint)GasCostOf.Sha3;
+                    head--;
+                    lengthLimbs = EmptyKeccakLimb0;
+                    Unsafe.Add(ref lengthLimbs, 1) = EmptyKeccakLimb1;
+                    Unsafe.Add(ref lengthLimbs, 2) = EmptyKeccakLimb2;
+                    Unsafe.Add(ref lengthLimbs, 3) = EmptyKeccakLimb3;
+                    sp = ref Moved(ref sp, -1);
+                    ip = ref Unsafe.Add(ref ip, 1);
+                    nint empty = NextHandler(handlers, ref ip);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, empty);
                 }
             }
 
