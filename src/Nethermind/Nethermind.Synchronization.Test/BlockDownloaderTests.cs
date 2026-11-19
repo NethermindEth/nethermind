@@ -565,6 +565,52 @@ public partial class BlockDownloaderTests
         Assert.That(res, Is.Null);
     }
 
+    // The request lists are locals, so the shared pool shows whether they went back: it hands a thread the array that
+    // thread returned last, per size class (the technique of TxTrieTests.Encoding_failure_returns_the_scratch_rental).
+    [Test]
+    public async Task Returns_the_request_lists_to_the_pool_when_assembling_a_request_throws()
+    {
+        IForwardHeaderProvider headerProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(headerProvider));
+        Context ctx = node.Resolve<Context>();
+
+        using IOwnedReadOnlyList<BlockHeader> chain = (await ctx.ResponseBuilder.BuildHeaderResponse(0, 3, Response.AllCorrect))!;
+        // Capacity 100 puts the batch in another size class, so its own return cannot hide the request lists.
+        ArrayPoolList<BlockHeader?> headers = new(100, chain);
+        headerProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers));
+        int estimates = 0;
+        ctx.PeerPool.EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns<Task<int?>>(_ =>
+            {
+                estimates++;
+                throw new InvalidOperationException("estimate failed");
+            });
+
+        int size = headers.Count;
+        BlockHeader[] headerList = ArrayPool<BlockHeader>.Shared.Rent(size);
+        ArrayPool<BlockHeader>.Shared.Return(headerList);
+        int[] countList = ArrayPool<int>.Shared.Rent(size);
+        ArrayPool<int>.Shared.Return(countList);
+
+        Task<BlocksRequest?> request = ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
+        bool completedOnThisThread = request.IsCompleted;
+        BlockHeader[] headerListAfter = ArrayPool<BlockHeader>.Shared.Rent(size);
+        int[] countListAfter = ArrayPool<int>.Shared.Rent(size);
+        ArrayPool<BlockHeader>.Shared.Return(headerListAfter);
+        ArrayPool<int>.Shared.Return(countListAfter);
+        BlocksRequest? result = await request;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedOnThisThread, Is.True, "the pool check needs the request to complete on this thread");
+            Assert.That(result, Is.Null);
+            Assert.That(estimates, Is.EqualTo(1), "the first request-limit estimate must be the throw site");
+            Assert.That(headerListAfter, Is.SameAs(headerList), "the first header list was not returned to the pool");
+            Assert.That(countListAfter, Is.SameAs(countList), "the receipt count list was not returned to the pool");
+        }
+    }
+
     [Test]
     public async Task Skit_spawning_request_when_block_processing_queue_is_high()
     {

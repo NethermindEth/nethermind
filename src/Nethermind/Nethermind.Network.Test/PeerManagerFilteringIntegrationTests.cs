@@ -8,7 +8,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -223,7 +222,7 @@ public class PeerManagerFilteringIntegrationTests
             ConnectedNodeIds.Add(node.Id);
             FirstConnect.TrySetResult(node);
 
-            Session session = new(30303, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30303, node, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
             return Task.FromResult(true);
         }

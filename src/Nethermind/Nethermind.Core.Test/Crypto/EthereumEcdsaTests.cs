@@ -28,6 +28,19 @@ namespace Nethermind.Core.Test.Crypto
             random.NextBytes(keys);
             VerifiedRecoveries recoveries = new(messages, signatures, ids, keys);
             Span<byte> actual = stackalloc byte[64];
+            for (int i = 0; i < count; i++)
+            {
+                byte[] signature = signatures.AsSpan(i * 64, 64).ToArray();
+                signature[63] ^= 1;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(recoveries.TryGetKey(signature, ids[i], messages.AsSpan(i * 32, 32), actual), Is.False);
+                    Assert.That(recoveries.TryGetKey(signatures.AsSpan(i * 64, 64), (byte)(ids[i] ^ 1), messages.AsSpan(i * 32, 32), actual), Is.False);
+                    Assert.That(recoveries.TryGetKey(signatures.AsSpan(i * 64, 64), ids[i], messages.AsSpan(i * 32, 32), actual), Is.True);
+                    Assert.That(actual.ToArray(), Is.EqualTo(keys.AsSpan(i * 64, 64).ToArray()));
+                }
+            }
+
             for (int i = count - 1; i >= 0; i--)
             {
                 byte[] message = messages.AsSpan(i * 32, 32).ToArray();

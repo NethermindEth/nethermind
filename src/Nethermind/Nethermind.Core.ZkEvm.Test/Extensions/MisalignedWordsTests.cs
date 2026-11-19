@@ -8,11 +8,51 @@ using NUnit.Framework;
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
 
 /// <summary>
-/// Covers <see cref="Bytes.WriteMisalignedWords"/>, which only the strict-alignment guest calls, so no host path
-/// reaches it.
+/// Covers <see cref="Bytes.WriteMisalignedWords"/>, <see cref="Bytes.ReadMisalignedWords"/> and
+/// <see cref="Bytes.SequenceEqualByWords"/>, which only the strict-alignment guest calls, so no host path reaches them.
 /// </summary>
 public class MisalignedWordsTests
 {
+    [Test]
+    public unsafe void Reads_the_words([Range(1, 7)] int skew)
+    {
+        byte[] buffer = new byte[5 * sizeof(ulong)];
+        for (int i = 0; i < buffer.Length; i++) buffer[i] = (byte)(i + 1);
+        ulong[] words = new ulong[4];
+
+        fixed (byte* source = buffer)
+        fixed (ulong* destination = words)
+        {
+            Bytes.ReadMisalignedWords(source + skew, destination);
+        }
+
+        byte[] read = new byte[32];
+        Buffer.BlockCopy(words, 0, read, 0, read.Length);
+        Assert.That(read, Is.EqualTo(buffer.AsSpan(skew, 32).ToArray()));
+    }
+
+    [Test]
+    public void Compares_by_words([Range(0, 7)] int skewA, [Range(0, 7)] int skewB, [Values(0, 1, 7, 8, 9, 15, 16, 17, 31, 32)] int length)
+    {
+        byte[] a = new byte[length + 2 * sizeof(ulong)];
+        byte[] b = new byte[length + 2 * sizeof(ulong)];
+        Array.Fill(a, (byte)0xaa);
+        Array.Fill(b, (byte)0xbb);
+        for (int i = 0; i < length; i++) a[skewA + i] = b[skewB + i] = (byte)(i * 7 + 3);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.SequenceEqualByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.True);
+            Assert.That(Bytes.SequenceEqualByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, Math.Max(0, length - 1))), Is.EqualTo(length == 0));
+            for (int i = 0; i < length; i++)
+            {
+                b[skewB + i] ^= 0x10;
+                Assert.That(Bytes.SequenceEqualByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.False, $"byte {i}");
+                b[skewB + i] ^= 0x10;
+            }
+        }
+    }
+
     [Test]
     public unsafe void Writes_the_words_and_keeps_the_bytes_around_them([Range(1, 7)] int skew)
     {

@@ -4,12 +4,9 @@
 using System;
 using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.P2P.EventArg;
-using Nethermind.Stats.Model;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {
@@ -45,15 +42,17 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} will track PeerAdded, PeerRemoved, MsgDelivered and MsgReceived.");
         }
 
+        // The handlers run on the network's threads, a message's on its p2p path, so they must not throw. An inbound session
+        // raises its message events with its node only once something has read it; without one there is nothing to report.
         private void OnPeerAdded(object? sender, PeerEventArgs args)
         {
-            (string localHost, string remoteAddress, PublicKey? peerId) = GetPeerEventInfo(args.Node);
+            if (args.Node is not { } node) return;
             PeerEventResponse response = new()
             {
                 Type = PeerEventType.Add,
-                Peer = peerId,
-                Local = localHost,
-                Remote = remoteAddress,
+                Peer = node.Id,
+                Local = node.Host,
+                Remote = node.Address.ToString(),
             };
 
             ScheduleAction(async () =>
@@ -66,13 +65,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnPeerRemoved(object? sender, PeerEventArgs args)
         {
-            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
+            if (args.Node is not { } node) return;
             PeerEventResponse response = new()
             {
                 Type = PeerEventType.Drop,
-                Peer = peerId,
-                Local = localHost,
-                Remote = remoteAddress,
+                Peer = node.Id,
+                Local = node.Host,
+                Remote = node.Address.ToString(),
             };
 
             ScheduleAction(async () =>
@@ -85,13 +84,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgReceived(object? sender, PeerEventArgs args)
         {
-            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
+            if (args.Node is not { } node) return;
             PeerEventResponse response = new()
             {
                 Type = PeerEventType.MsgRecv,
-                Peer = peerId,
-                Local = localHost,
-                Remote = remoteAddress,
+                Peer = node.Id,
+                Local = node.Host,
+                Remote = node.Address.ToString(),
                 Protocol = args.MessageInfo.Protocol,
                 MsgPacketType = args.MessageInfo.PacketType,
                 MsgSize = args.MessageInfo.Size,
@@ -107,13 +106,13 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnMsgDelivered(object? sender, PeerEventArgs args)
         {
-            (string localHost, string remoteAddress, PublicKey peerId) = GetPeerEventInfo(args.Node);
+            if (args.Node is not { } node) return;
             PeerEventResponse response = new()
             {
                 Type = PeerEventType.MsgSend,
-                Peer = peerId,
-                Local = localHost,
-                Remote = remoteAddress,
+                Peer = node.Id,
+                Local = node.Host,
+                Remote = node.Address.ToString(),
                 Protocol = args.MessageInfo.Protocol,
                 MsgPacketType = args.MessageInfo.PacketType,
                 MsgSize = args.MessageInfo.Size,
@@ -125,17 +124,6 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed message sent.");
             });
-        }
-
-        private (string localHost, string remoteAddress, PublicKey peerId) GetPeerEventInfo(Node node)
-        {
-            PeerInfo peerInfo = new(new Peer(node));
-
-            return (
-                peerInfo.Network.LocalHost,
-                peerInfo.Network.RemoteAddress,
-                peerInfo.Id
-            );
         }
 
         private void OnSessionCreated(object? sender, SessionEventArgs args)
