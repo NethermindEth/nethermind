@@ -25,6 +25,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 {
     private bool _active;
     private bool _opaque;
+    private bool _effectsOverflowed;
 
     private readonly Dictionary<AddressAsKey, int> _accountIndex = [];
     private AccountPrecondition[] _accounts = new AccountPrecondition[32];
@@ -71,6 +72,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         _effectCount = 0;
         _frameCount = 0;
         _opaque = false;
+        _effectsOverflowed = false;
         Machine?.BlockContextReads = BlockContextReads.None;
         if (_accounts.Length > RetainedCapacity)
         {
@@ -121,7 +123,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     public TransactionFootprint? Finish(Transaction tx, in TransactionResult result, bool refreshed = false)
     {
         _active = false;
-        if (_opaque || !result || !Outcome.HasResult) return null;
+        if (_opaque || _effectsOverflowed || !result || !Outcome.HasResult) return null;
 
         // The run skipped the nonce check; only the transaction's own nonce makes it valid.
         if (!_accountIndex.TryGetValue(tx.SenderAddress!, out int senderIndex)) return null;
@@ -343,7 +345,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     {
         if (_effectCount == MaxEffects)
         {
-            _opaque = true;
+            _effectsOverflowed = true;
             _unrecordedEffect = default;
             return ref _unrecordedEffect;
         }
@@ -403,6 +405,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         _effectCount = _frames[i].Effects;
         _frameCount = i + 1;
+        if (_effectCount < MaxEffects) _effectsOverflowed = false;
     }
 
     /// <remarks>

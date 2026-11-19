@@ -1216,6 +1216,30 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void A_run_that_reverts_below_the_effect_limit_keeps_its_footprint([Values] bool reverted)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            Snapshot before = worldState.TakeSnapshot();
+            FootprintRecorder recorder = new(worldState);
+            Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
+            recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+            recorder.GetNonce(TestItem.AddressA);
+            recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
+            Snapshot call = recorder.TakeSnapshot();
+            for (int i = 0; i < FootprintRecorder.MaxEffects + 1; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
+            if (reverted) recorder.Restore(call);
+            recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
+            TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
+            recorder.Stop();
+            worldState.Restore(before);
+
+            Assert.That(footprint is not null, Is.EqualTo(reverted));
+        }
+    }
+
+    [Test]
     public void A_run_recorded_without_its_machine_counts_as_reading_the_whole_block_context()
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
