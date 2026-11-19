@@ -1032,10 +1032,6 @@ public partial class DebugRpcModuleTests
         string method, string configuration, bool empty, bool invalidRlp) =>
         await AssertNativeConfigError(method, "prestateTracer", configuration, empty, invalidRlp: invalidRlp);
 
-    [Test]
-    public async Task Debug_traceTransactionInBlockByHash_native_config_errors_remain_invalid_params() =>
-        await AssertNativeConfigError("debug_traceTransactionInBlockByHash", "prestateTracer", "{\"diffMode\":[]}", empty: false, expectedError: ErrorCodes.InvalidParams);
-
     [TestCase("callTracer", "{\"onlyTopCall\":17}", false, false)]
     [TestCase("prestateTracer", "{\"diffMode\":[]}", false, false)]
     [TestCase("prestateTracer", "17", false, false)]
@@ -1065,10 +1061,7 @@ public partial class DebugRpcModuleTests
             "debug_traceTransaction" => block.Transactions[0].Hash!,
             _ => invalidRlp ? "0xc0" : Rlp.Encode(block).ToHexString(true)
         };
-        object[] parameters = method == "debug_traceTransactionInBlockByHash"
-            ? [target, block.Transactions[0].Hash!, options]
-            : [target, options];
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, target, options);
         JToken json = JToken.Parse(response);
 
         if (unknown)
@@ -1125,37 +1118,74 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_native_config_errors_preserve_route_classification(
-        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall")] string method,
+    public async Task Debug_native_config_errors_are_execution_input_errors_on_every_route(
+        [Values("debug_traceBlockByHash", "debug_traceBlock", "debug_traceTransaction", "debug_traceCall",
+            "debug_traceTransactionInBlockByHash", "debug_traceBadBlock", "debug_traceTransactionByBlockhashAndIndex",
+            "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionInBlockByIndex")] string method,
         [Values("callTracer", "prestateTracer")] string tracer,
         [Values(null, "bad", "5s")] string? timeout,
-        [Values("17", "[]")] string invalidValue) =>
-        await AssertNativeConfigRouteClassification(method, tracer, timeout, invalidValue,
-            method == "debug_traceCall" ? ErrorCodes.InvalidParams : ErrorCodes.InvalidInput);
-
-    private static async Task AssertNativeConfigRouteClassification(string method, string tracer, string? timeout, string invalidValue, int expectedCode)
+        [Values("17", "[]")] string invalidValue)
     {
-        using Context context = await Context.Create();
-        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
-        object selector = method switch
-        {
-            "debug_traceBlockByHash" => block.Hash!,
-            "debug_traceBlock" => new BlockDecoder().Encode(block),
-            "debug_traceTransaction" => block.Transactions[0].Hash!,
-            _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
-        };
         JsonElement tracerConfig = JsonSerializer.Deserialize<JsonElement>($$"""{"onlyTopCall":{{invalidValue}},"diffMode":{{invalidValue}}}""");
         object options = timeout is null ? new { tracer, tracerConfig } : (object)new { tracer, timeout, tracerConfig };
-        object[] parameters = method == "debug_traceCall" ? [selector, "latest", options] : [selector, options];
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        string response = await SendRouteTraceRequest(method, options);
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot convert"), response);
             Assert.That(json["result"], Is.Null, response);
-            if (method == "debug_traceBlockByHash")
-                Assert.That(json["error"]!.ToString(), Does.Contain("Cannot convert"), response);
         }
+    }
+
+    [Test]
+    public async Task Debug_malformed_timeout_is_execution_input_error(
+        [Values("debug_traceCall", "debug_traceTransactionInBlockByHash", "debug_traceBadBlock", "debug_traceTransactionByBlockhashAndIndex",
+            "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionInBlockByIndex")] string method,
+        [Values(null, "noopTracer", "callTracer", "muxTracer")] string? tracer,
+        [Values(null, false, true)] bool? streamMode)
+    {
+        // A JavaScript mux child reports the duration error through the JavaScript failure path
+        Dictionary<string, object>? tracerConfig = tracer == "muxTracer"
+            ? new() { ["{step:function(){},fault:function(){},result:function(){return {};}}"] = new { } }
+            : null;
+        string response = await SendRouteTraceRequest(method, new { tracer, tracerConfig, timeout = "bad", streamMode });
+        const string expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}""";
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBadBlock_empty_block_with_malformed_timeout_returns_empty_result([Values(null, false, true)] bool? streamMode)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock();
+        context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBadBlock", block.Hash!, new { timeout = "bad", streamMode });
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse("""{"jsonrpc":"2.0","result":[],"id":67}""")).Using(JToken.EqualityComparer), response);
+    }
+
+    private static async Task<string> SendRouteTraceRequest(string method, object options)
+    {
+        using Context context = await Context.Create();
+        Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        if (method == "debug_traceBadBlock")
+            context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
+        object selector = method switch
+        {
+            "debug_traceBlockByHash" or "debug_traceBadBlock" or "debug_traceTransactionByBlockhashAndIndex" => block.Hash!,
+            "debug_traceTransactionByBlockAndIndex" => block.Number,
+            "debug_traceBlock" or "debug_traceTransactionInBlockByHash" or "debug_traceTransactionInBlockByIndex" => new BlockDecoder().Encode(block),
+            "debug_traceTransaction" => block.Transactions[0].Hash!,
+            _ => new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }
+        };
+        object[] parameters = method switch
+        {
+            "debug_traceCall" => [selector, "latest", options],
+            "debug_traceTransactionInBlockByHash" => [selector, block.Transactions[0].Hash!, options],
+            "debug_traceTransactionByBlockhashAndIndex" or "debug_traceTransactionByBlockAndIndex" or "debug_traceTransactionInBlockByIndex" => [selector, 0, options],
+            _ => [selector, options]
+        };
+        return await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
     }
 
     [Test]
@@ -1332,17 +1362,19 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceBlock_setup_failure_precedes_timeout_policy(
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock", "debug_traceBadBlock")] string method,
         [Values("0s", "-1s", "121s", "5s")] string timeout,
         [Values("error", "null", "primitive", "timeout-message")] string failure, [Values] bool mux)
     {
         using Context context = await Context.Create();
         DeadlineExecution clock = new();
         Block block = await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        if (method == "debug_traceBadBlock")
+            context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
         object selector = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
             _ => Rlp.Encode(block).ToHexString(true)
         };
         string thrown = failure switch { "null" => "null", "primitive" => "42", "timeout-message" => "Error('execution timeout')", _ => "Error('setup-before-timeout')" };
@@ -1378,7 +1410,7 @@ public partial class DebugRpcModuleTests
                 Assert.That((string?)traces[i]["error"], Is.Not.Null.And.Not.Empty, response);
                 if (failure != "null")
                     Assert.That((string?)traces[i]["error"], Does.Contain(failure switch { "primitive" => "42", "timeout-message" => "execution timeout", _ => "setup-before-timeout" }), response);
-                if (method == "debug_traceBlock") Assert.That(traces[i]["result"], Is.Null, response);
+                if (method is "debug_traceBlock" or "debug_traceBadBlock") Assert.That(traces[i]["result"], Is.Null, response);
                 else Assert.That(traces[i]["result"]?.Type, Is.EqualTo(JTokenType.Null), response);
             }
         }
@@ -1411,7 +1443,7 @@ public partial class DebugRpcModuleTests
             ("nonempty", "5s", null, "callTracer", nullConfig, raw, null, null),
             ("nonempty", 7, null, noop, null, raw, ErrorCodes.InvalidParams, null),
             ("nonempty", new string('x', 65), null, noop, null, raw, ErrorCodes.InvalidParams, null),
-            ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidParams, null),
+            ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidInput, "Cannot parse 'bad' as a duration"),
             ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
             ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
             ("nonempty", "5s", false, null, null, raw, null, null),

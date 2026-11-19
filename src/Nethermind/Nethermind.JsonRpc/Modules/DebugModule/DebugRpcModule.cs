@@ -285,9 +285,10 @@ public class DebugRpcModule(
         {
             return TracingFailed<GethLikeTxTrace>(ex);
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(effective))
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(effective)))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (ArgumentException ex) when (effective.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
         {
@@ -525,9 +526,10 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(blockHash, index, timeout.Token, WithBufferedLimit(options));
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidTransactionException exception)
         {
@@ -564,9 +566,10 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, transactionHash, cancellationToken, WithBufferedLimit(options));
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidTransactionException exception)
         {
@@ -608,9 +611,10 @@ public class DebugRpcModule(
         {
             transactionTrace = debugBridge.GetTransactionTrace(block, targetTxHash, timeout.Token, WithBufferedLimit(options));
         }
-        catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(options))
+        catch (Exception exception) when (exception is NativeTracerConfigException or TraceDurationFormatException
+            || (exception is InvalidDataException && IsJavaScriptOrMuxTracer(options)))
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+            return ResultWrapper<GethLikeTxTrace>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (InvalidTransactionException exception)
         {
@@ -888,7 +892,7 @@ public class DebugRpcModule(
             return stateError;
         }
 
-        if (CanStreamBlockTrace(options))
+        if (options?.ParsedTimeout.Error is null && CanStreamBlockTrace(options))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Success(BuildStreamingBlockResult(
                 (writer, pipeWriter, token) => debugBridge.GetBlockTrace(block, token, options, writer, pipeWriter)));
@@ -904,7 +908,8 @@ public class DebugRpcModule(
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
-        catch (JavaScriptTraceFailure exception)
+        catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException or TraceDurationFormatException
+            || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
