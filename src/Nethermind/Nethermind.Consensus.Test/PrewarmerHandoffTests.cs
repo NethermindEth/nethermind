@@ -1215,8 +1215,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    [Test]
-    public void A_run_that_reverts_below_the_effect_limit_keeps_its_footprint([Values] bool reverted)
+    [TestCase(1, FootprintRecorder.MaxEffects, false, false)]
+    [TestCase(1, FootprintRecorder.MaxEffects, true, true)]
+    [TestCase(FootprintRecorder.MaxEffects + 1, 1, true, false)]
+    public void Restore_keeps_a_footprint_only_if_all_discarded_effects_are_reverted(
+        int effectsBeforeSnapshot, int effectsAfterSnapshot, bool reverted, bool keepsFootprint)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         using (worldState.BeginScope(Parent))
@@ -1226,16 +1229,16 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
             recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
             recorder.GetNonce(TestItem.AddressA);
-            recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
+            for (int i = 0; i < effectsBeforeSnapshot; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
             Snapshot call = recorder.TakeSnapshot();
-            for (int i = 0; i < FootprintRecorder.MaxEffects + 1; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
+            for (int i = 0; i < effectsAfterSnapshot; i++) recorder.AddToBalance(TestItem.AddressB, 1, Spec, out _);
             if (reverted) recorder.Restore(call);
             recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
             TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
             recorder.Stop();
             worldState.Restore(before);
 
-            Assert.That(footprint is not null, Is.EqualTo(reverted));
+            Assert.That(footprint is not null, Is.EqualTo(keepsFootprint));
         }
     }
 

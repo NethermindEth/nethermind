@@ -343,16 +343,16 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     private ref StateEffect AddEffect(EffectKind kind, Address address, int owner)
     {
-        if (_effectCount == MaxEffects)
-        {
-            _effectsOverflowed = true;
-            _unrecordedEffect = default;
-            return ref _unrecordedEffect;
-        }
-
         if (_effectCount == _effects.Length)
         {
-            Array.Resize(ref _effects, _effects.Length * 2);
+            if (_effectCount == MaxEffects)
+            {
+                _effectsOverflowed = true;
+                _unrecordedEffect = default;
+                return ref _unrecordedEffect;
+            }
+
+            Array.Resize(ref _effects, Math.Min(MaxEffects, _effects.Length * 2));
             Array.Resize(ref _owners, _effects.Length);
         }
 
@@ -654,6 +654,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     private void RecordCode(EffectKind kind, Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code)
     {
         ref StateEffect effect = ref AccountEffect(kind, address);
+        if (_effectsOverflowed) return;
+
         effect.CodeHash = codeHash;
         // Copied: the run's buffer may be reused.
         effect.Code = code.ToArray();
