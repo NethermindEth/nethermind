@@ -92,6 +92,8 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(CycleStepB)),
                 new StepInfo(typeof(StepAfterCycle)),
                 new StepInfo(typeof(StepBehindStepAfterCycle)),
+                new StepInfo(typeof(SecondCycleStepA)),
+                new StepInfo(typeof(SecondCycleStepB)),
         ]);
 
     [Test]

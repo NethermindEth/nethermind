@@ -315,6 +315,19 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 Throws.TypeOf<StepDependencyException>().With.Message.EqualTo("Steps depend on each other in a cycle: CycleStepA, CycleStepB."));
         }
 
+        [Test]
+        public async Task Dependency_cycles_joined_by_a_step_name_only_the_cycles()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle), typeof(SecondCycleStepA), typeof(SecondCycleStepB));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
+
+            // StepAfterCycle waits for the first cycle and the second waits for it, but it is on neither cycle.
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(source.Token),
+                Throws.TypeOf<StepDependencyException>().With.Message.EqualTo(
+                    "Steps depend on each other in a cycle: CycleStepA, CycleStepB, SecondCycleStepA, SecondCycleStepB."));
+        }
+
         // The cycle check runs on the graph that will execute: after target pruning and after skipped steps are cleared.
         [Test]
         [CancelAfter(5000)]
@@ -932,6 +945,18 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     [RunnerStepDependencies(typeof(StepAfterCycle))]
     public class StepBehindStepAfterCycle : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(StepAfterCycle), typeof(SecondCycleStepB))]
+    public class SecondCycleStepA : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(SecondCycleStepA))]
+    public class SecondCycleStepB : IStep
     {
         public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }

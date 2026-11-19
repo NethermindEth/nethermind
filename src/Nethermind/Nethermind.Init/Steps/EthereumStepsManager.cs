@@ -324,16 +324,30 @@ namespace Nethermind.Init.Steps
 
             if (waiting.Count == 0) return;
 
-            // A left-over step that no left-over step depends on only waits behind the cycle, so it is not named.
-            do
+            // Name a left-over step only if its dependencies lead back to it; the others wait behind or between cycles.
+            List<string> onCycle = [];
+            HashSet<Type> reached = [];
+            Stack<Type> toVisit = new();
+            foreach (Type step in waiting)
             {
-                HashSet<Type> dependedOn = [];
-                foreach (Type step in waiting) dependedOn.UnionWith(stepInfoMap[step].Dependencies);
-                changed = waiting.RemoveWhere(step => !dependedOn.Contains(step)) > 0;
-            } while (changed);
+                reached.Clear();
+                toVisit.Clear();
+                foreach (Type dependency in stepInfoMap[step].Dependencies) toVisit.Push(dependency);
+                while (toVisit.TryPop(out Type? current))
+                {
+                    if (current == step)
+                    {
+                        onCycle.Add(step.Name);
+                        break;
+                    }
+
+                    if (!waiting.Contains(current) || !reached.Add(current)) continue;
+                    foreach (Type dependency in stepInfoMap[current].Dependencies) toVisit.Push(dependency);
+                }
+            }
 
             throw new StepDependencyException(
-                $"Steps depend on each other in a cycle: {string.Join(", ", waiting.Select(static t => t.Name).Order())}.");
+                $"Steps depend on each other in a cycle: {string.Join(", ", onCycle.Order())}.");
         }
 
         private IStep CreateStepInstance(StepInfo stepInfo)
