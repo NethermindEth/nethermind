@@ -1086,7 +1086,7 @@ public sealed partial class KeccakHash
     /// <remarks>On ZisK a direct DMA call: the struct copy the JIT emits reaches the same precompile through a wrapper
     /// and corelib's copy routine, which spill registers around it. The refs are not pinned: the guest is single-threaded
     /// and collects only when it allocates, so no GC can run between taking their addresses and the call returning.
-    /// On OpenVM, which has no DMA, that copy is a call into corelib's <c>Memmove</c> and then the guest's <c>memmove</c>
+    /// Without DMA, as on OpenVM, that copy is a call into corelib's <c>Memmove</c> and then the guest's <c>memmove</c>
     /// and <c>memcpy</c>, dearer than the twenty-five loads and stores written out.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static unsafe void CopyState(ref ulong lane, ref ulong source)
@@ -1097,14 +1097,8 @@ public sealed partial class KeccakHash
             return;
         }
 
-        if (OpenVmFlag.IsActive)
-        {
-            CopyRate(ref lane, ref source);
-            CopyCapacity(ref lane, ref source);
-            return;
-        }
-
-        Unsafe.As<ulong, KeccakState>(ref lane) = Unsafe.As<ulong, KeccakState>(ref source);
+        CopyRate(ref lane, ref source);
+        CopyCapacity(ref lane, ref source);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
