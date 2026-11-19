@@ -38,6 +38,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     // Per effect: the index of its account, or of its slot for a storage write.
     private int[] _owners = new int[32];
     private int _effectCount;
+    private StateEffect _unrecordedEffect;
 
     private (Snapshot Snapshot, int Effects)[] _frames = new (Snapshot, int)[16];
     private int _frameCount;
@@ -52,6 +53,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     // Buffers a run grows past this are dropped at the next start, so a huge transaction is not kept for the env's life.
     private const int RetainedCapacity = 1024;
+
+    internal const int MaxEffects = 4096;
 
     public OutcomeTracer Outcome { get; } = new();
 
@@ -338,6 +341,13 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     private ref StateEffect AddEffect(EffectKind kind, Address address, int owner)
     {
+        if (_effectCount == MaxEffects)
+        {
+            _opaque = true;
+            _unrecordedEffect = default;
+            return ref _unrecordedEffect;
+        }
+
         if (_effectCount == _effects.Length)
         {
             Array.Resize(ref _effects, _effects.Length * 2);
