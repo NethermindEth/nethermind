@@ -35,10 +35,6 @@ public static partial class Accelerators
 
     [LibraryImport("__Internal")]
     [SuppressGCTransition]
-    private static unsafe partial int airbender_prehashed_nodes(byte* first, byte* last, uint count, byte** hashes, ulong** states);
-
-    [LibraryImport("__Internal")]
-    [SuppressGCTransition]
     private static unsafe partial int airbender_prehashed_code(byte* data, uint index, byte* @out);
 
     [LibraryImport("__Internal")]

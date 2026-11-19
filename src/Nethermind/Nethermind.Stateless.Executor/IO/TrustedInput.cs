@@ -311,16 +311,17 @@ public static partial class TrustedInput
     /// <remarks>Also installs the run's hash seed, the block hash, before anything downstream is keyed by a hash.</remarks>
     internal static TrustedPayload Read(ReadOnlySpan<byte> data)
     {
-        if (data.Length < HeaderLength
+        uint total = data.Length >= HeaderLength ? BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..]) : 0;
+        if (total < HeaderLength || total > (uint)data.Length
             || BinaryPrimitives.ReadUInt32LittleEndian(data) != Magic
-            || BinaryPrimitives.ReadUInt32LittleEndian(data[4..]) != Version
-            || BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..]) > (uint)data.Length)
+            || BinaryPrimitives.ReadUInt32LittleEndian(data[4..]) != Version)
         {
             throw new ArgumentException("Not a trusted input", nameof(data));
         }
 
         // What follows the input proper is hints the guest's reader took: see WordDivision.
-        data = data[..(int)BinaryPrimitives.ReadUInt32LittleEndian(data[TotalLengthOffset..])];
+        data = data[..(int)total];
+        ValidateLayout(data);
 
         ulong chainId = BinaryPrimitives.ReadUInt64LittleEndian(data[ChainIdOffset..]);
         ushort schemaId = SchemaIdOf(data);
@@ -353,7 +354,7 @@ public static partial class TrustedInput
         Witness witness = new()
         {
             Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
-            State = new ItemList(ReadStateNodes(data)),
+            State = ReadStateNodes(data),
             Codes = ReadCodes(data),
             Keys = ArrayPoolList<byte[]>.Empty()
         };
@@ -416,11 +417,46 @@ public static partial class TrustedInput
         return data.Slice((int)offset, (int)length);
     }
 
+    // Input-backed arrays overwrite their reserved prefixes. Check disjoint ranges before those writes
+    // so every prehashed code and state node keeps the bytes its digest authenticates.
+    private static void ValidateLayout(ReadOnlySpan<byte> data)
+    {
+        Span<(int Start, int End)> ranges = stackalloc (int, int)[9];
+        int used = 0;
+        ReadOnlySpan<int> sections = [BlockHeaderSection, WithdrawalsSection, BlockAccessListSection, SenderHintsSection, RecoveryHintsSection];
+        foreach (int field in sections)
+        {
+            int length = Section(data, field).Length;
+            if (length == 0) continue;
+            int start = (int)BinaryPrimitives.ReadUInt32LittleEndian(data[field..]);
+            ranges[used++] = (start, start + length);
+        }
+
+        for (int field = TransactionsList; field <= CodesList; field += sizeof(uint))
+        {
+            (int position, int count) = ListStart(data, field);
+            int start = position - ListPrefixLength;
+            int padding = field == CodesList ? CodeInfo.ExecutionPadding : 0;
+            for (int i = 0; i < count; i++)
+            {
+                int length = ItemLength(data, position, padding);
+                position = checked(position + ItemStride(length, padding));
+            }
+
+            if ((uint)position > (uint)data.Length) ThrowItemOutOfBounds();
+            ranges[used++] = (start, position);
+        }
+
+        for (int i = 1; i < used; i++)
+            for (int j = 0; j < i; j++)
+                if (ranges[i].Start < ranges[j].End && ranges[j].Start < ranges[i].End)
+                    throw new ArgumentException("Overlapping trusted input regions", nameof(data));
+    }
+
+    private static unsafe partial IOwnedReadOnlyList<byte[]> ReadStateNodes(ReadOnlySpan<byte> data);
+
     /// <summary>Returns the item list whose offset the header holds at <paramref name="field"/>.</summary>
     /// <param name="padding">The bytes each item is followed by before its own padding to 8.</param>
-    /// <summary>The state nodes of <paramref name="data"/>.</summary>
-    private static partial byte[][] ReadStateNodes(ReadOnlySpan<byte> data);
-
     private static byte[][] ReadItems(ReadOnlySpan<byte> data, int field, int padding)
     {
         (int position, int count) = ListStart(data, field);

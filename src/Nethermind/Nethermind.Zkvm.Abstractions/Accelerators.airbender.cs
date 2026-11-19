@@ -99,6 +99,7 @@ public static partial class Accelerators
 
     /// <summary>Sets in the 256-byte <paramref name="bloom"/>, and in <paramref name="master"/> unless null, the
     /// three bits the keccak of the 20 or 32 bytes at <paramref name="data"/> picks.</summary>
+    /// <remarks>The native routine reads 32 bytes from <paramref name="data"/> for either length.</remarks>
     public static unsafe void AirbenderBloomSet(byte* bloom, byte* master, byte* data, uint length) =>
         airbender_bloom_set(bloom, master, data, length);
 
@@ -111,20 +112,6 @@ public static partial class Accelerators
 
     /// <summary>Writes a storage slot, index and value as eight little-endian words; zero removes it.</summary>
     public static unsafe int AirbenderMptSetSlot(void* trie, uint* index, uint* value) => airbender_mpt_set_slot(trie, index, value);
-
-    /// <summary>Takes the digests and kept sponge states of the state nodes libairbender hashed while it read the
-    /// trusted input, if <paramref name="count"/> nodes from <paramref name="first"/> to <paramref name="last"/> are those.</summary>
-    /// <param name="hashes">The 32-byte digests, in the nodes' order.</param>
-    /// <param name="states">Three 256-byte aligned states a node, written for full branches only.</param>
-    public static unsafe bool AirbenderPrehashedNodes(byte* first, byte* last, uint count, out byte* hashes, out ulong* states)
-    {
-        byte* h = null;
-        ulong* s = null;
-        bool taken = airbender_prehashed_nodes(first, last, count, &h, &s) != 0;
-        hashes = h;
-        states = s;
-        return taken;
-    }
 
     /// <summary>Writes the digest of the code at <paramref name="data"/> into <paramref name="output"/> if it is the
     /// <paramref name="index"/>-th code libairbender hashed while it read the trusted input.</summary>

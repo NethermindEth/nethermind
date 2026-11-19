@@ -35,15 +35,6 @@ public sealed unsafe class AirbenderTrieScopeProvider(
 {
     private static readonly AccountDecoder _decoder = new();
 
-    /// <summary>Whether libairbender's tries are over exactly <paramref name="nodes"/>.</summary>
-    public static bool TryAttach(ReadOnlySpan<byte[]> nodes)
-    {
-        if (!AirbenderFlag.IsActive || nodes.Length == 0) return false;
-        byte* first = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(nodes[0]));
-        byte* last = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetArrayDataReference(nodes[^1]));
-        return Accelerators.AirbenderMptAttach(first, last, (uint)nodes.Length);
-    }
-
     public bool HasRoot(BlockHeader? baseBlock) => HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash);
 
     private static bool HasRoot(Hash256 root)
@@ -182,7 +173,7 @@ public sealed unsafe class AirbenderTrieScopeProvider(
         public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken = default) =>
             ScopeBalApplier.Apply(this, bal, logManager, cancellationToken);
 
-        public void Dispose() => _storages.Clear();
+        public void Dispose() { }
     }
 
     private sealed class Storage(void* trie) : IWorldStateScopeProvider.IStorageTree

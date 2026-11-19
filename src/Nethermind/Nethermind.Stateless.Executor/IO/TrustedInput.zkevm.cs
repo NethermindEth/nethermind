@@ -3,7 +3,11 @@
 
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
+using Nethermind.Zkvm.Abstractions;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Stateless.Execution.IO;
@@ -92,43 +96,38 @@ public static partial class TrustedInput
         }
     }
 
-    private static partial bool TryTakePrehashedCode(ReadOnlySpan<byte> code, int index, out Nethermind.Core.Crypto.ValueHash256 hash)
+    private static partial bool TryTakePrehashedCode(ReadOnlySpan<byte> code, int index, out ValueHash256 hash)
     {
         hash = default;
         if (!AirbenderFlag.IsActive) return false;
         unsafe
         {
             fixed (byte* data = code)
-            fixed (Nethermind.Core.Crypto.ValueHash256* output = &hash)
+            fixed (ValueHash256* output = &hash)
             {
-                return Nethermind.Zkvm.Abstractions.Accelerators.AirbenderPrehashedCode(data, (uint)index, (byte*)output);
+                return Accelerators.AirbenderPrehashedCode(data, (uint)index, (byte*)output);
             }
         }
     }
 
-    /// <remarks>
-    /// On Airbender libairbender hashed these nodes as it read them and keeps the state and storage tries over them
-    /// (see <c>AirbenderTrieScopeProvider</c>), which asks only whether the list is the one it read: its first and last
-    /// node. The others get no array.
-    /// </remarks>
-    private static partial byte[][] ReadStateNodes(ReadOnlySpan<byte> data) =>
-        (AirbenderFlag.IsActive ? ReadStateNodeEnds(data) : null) ?? ReadItems(data, StateNodesList, 0);
-
-    private static unsafe byte[][]? ReadStateNodeEnds(ReadOnlySpan<byte> data)
+    private static unsafe partial IOwnedReadOnlyList<byte[]> ReadStateNodes(ReadOnlySpan<byte> data)
     {
-        (int position, int count) = ListStart(data, StateNodesList);
-        byte* first = null, last = null;
-        uint read = 0;
-        if (count == 0 || !Nethermind.Zkvm.Abstractions.Accelerators.AirbenderMptNodes(&first, &last, &read)) return null;
-        if (read != (uint)count
-            || first != (byte*)Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), position + ItemPrefixLength)))
+        if (AirbenderFlag.IsActive)
         {
-            return null;
+            (int position, int count) = ListStart(data, StateNodesList);
+            byte* first, last;
+            uint read;
+            byte* input = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(data));
+            if (count > 0 && Accelerators.AirbenderMptNodes(&first, &last, &read)
+                && read == (uint)count && first == input + position + ItemPrefixLength)
+            {
+                // Airbender's input lives in nonmoving RAM for the entire guest execution.
+                int length = data.Length;
+                return new AirbenderWitnessNodes(first, last, count,
+                    () => ReadItems(new ReadOnlySpan<byte>(input, length), StateNodesList, 0));
+            }
         }
 
-        byte[][] ends = new byte[count][];
-        ends[0] = ArrayAt(ref *first, *(int*)(first - ItemPrefixLength));
-        ends[count - 1] = ArrayAt(ref *last, *(int*)(last - ItemPrefixLength));
-        return ends;
+        return new ItemList(ReadItems(data, StateNodesList, 0));
     }
 }

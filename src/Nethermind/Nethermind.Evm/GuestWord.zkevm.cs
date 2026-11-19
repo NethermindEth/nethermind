@@ -372,7 +372,7 @@ internal static unsafe class GuestWord
     {
         if (ZkEvmBitOperations.HasByteReverse) return BitOperations.RotateLeft(BinaryPrimitives.ReverseEndianness(x), 32);
         if (ZkEvmBitOperations.HasRev8)
-            return ((ulong)System.Buffers.Binary.BinaryPrimitives.ReverseEndianness((uint)(x >> 32)) << 32) | System.Buffers.Binary.BinaryPrimitives.ReverseEndianness((uint)x);
+            return ((ulong)BinaryPrimitives.ReverseEndianness((uint)(x >> 32)) << 32) | BinaryPrimitives.ReverseEndianness((uint)x);
 
         x = ((x & m8) << 8) + ((x >> 8) & m8);
         return ((x & m16) << 16) + ((x >> 16) & m16);

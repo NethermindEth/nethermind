@@ -76,3 +76,13 @@ $(GUEST_DIR)/bin/%.hex: $(GUEST_DIR)/bin/%.raw
 	python3 -c "import struct,sys; d=open(sys.argv[1],'rb').read(); n=len(d); d+=bytes(-n % 4); w=[n, *struct.unpack(f'<{len(d)//4}I', d)]; open(sys.argv[2],'w').write(''.join(f'{x:08x}' for x in w))" $< $@
 
 .PHONY: verify
+
+# Compile the production division implementation against the same guest runtime and native delegation.
+.PHONY: test-division
+test-division: dotnet-build
+	$(MAKE) -o dotnet-build build GUEST_INPUT=Trusted GUEST_NAME=division-test \
+		BFLAT_DOCKER_ARGS='$(BFLAT_DOCKER_ARGS) --mount type=bind,source="$(MAKEFILE_DIR)/../Nethermind.Evm/WordDivision.zkevm.cs",target=/test/WordDivision.cs,readonly --mount type=bind,source="$(MAKEFILE_DIR)/../../../scripts/guest-tests/airbender/Division.cs",target=/test/Division.cs,readonly' \
+		GUEST_SOURCES='/test/Division.cs /test/WordDivision.cs'
+	dotnet run --file "$(MAKEFILE_DIR)/../../../scripts/ci/airbender-division-input.cs" -- "$(GUEST_DIR)/bin/division-test.hex"
+	$(AIRBENDER_CLI) run --bin "$(GUEST_DIR)/bin/division-test.bin" --text "$(GUEST_DIR)/bin/division-test.text" \
+		--input-file "$(GUEST_DIR)/bin/division-test.hex" --cycles 10000000 --expected-results 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0

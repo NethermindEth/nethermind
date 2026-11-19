@@ -32,9 +32,21 @@ public partial class Bloom
         return true;
     }
 
-    private unsafe void SetNatively(ReadOnlySpan<byte> sequence, Bloom? masterBloom) =>
-        Accelerators.AirbenderBloomSet(
-            (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(_bloomData.AsSpan())),
-            masterBloom is null ? null : (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(masterBloom._bloomData.AsSpan())),
-            (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(sequence)), (uint)sequence.Length);
+    private unsafe void SetNatively(ReadOnlySpan<byte> sequence, Bloom? masterBloom)
+    {
+        int length = sequence.Length;
+        // libairbender v1.0.7 loads eight words even for a 20-byte address.
+        Span<uint> padded = stackalloc uint[Hash256.Size / sizeof(uint)];
+        scoped ReadOnlySpan<byte> input = sequence;
+        if (length == Address.Size)
+        {
+            sequence.CopyTo(MemoryMarshal.AsBytes(padded));
+            input = MemoryMarshal.AsBytes(padded);
+        }
+
+        fixed (byte* source = input)
+        fixed (byte* bloom = _bloomData.AsSpan())
+        fixed (byte* master = masterBloom is null ? default : masterBloom._bloomData.AsSpan())
+            Accelerators.AirbenderBloomSet(bloom, master, source, (uint)length);
+    }
 }

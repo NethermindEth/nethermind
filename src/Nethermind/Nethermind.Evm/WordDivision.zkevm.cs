@@ -4,7 +4,10 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
 
@@ -37,27 +40,27 @@ internal static unsafe class WordDivision
     {
         public static byte* Next;
         public static byte* End;
-        /// <summary>Five 32-byte aligned words: the dividend, the divisor, two of scratch and a zero.</summary>
+        /// <summary>Four 32-byte aligned words for the operands and scratch.</summary>
         public static UInt256* Scratch;
         public static bool Loaded;
     }
 
-    private const uint Add = 1, Subtract = 2, MultiplyLow = 8, MultiplyHigh = 16, Equal = 32, Copy = 128;
+    private const uint Add = 1, Subtract = 2, MultiplyLow = 8, Equal = 32, Copy = 128;
 
     /// <summary>Takes the quotient and remainder from the next hint if they are those of the division.</summary>
     /// <remarks>
     /// A division is some six hundred instructions; checking one is a dozen 256-bit operations of Airbender's
     /// delegation: q * divisor has no high half, plus r it is the dividend with no carry, and r is below the divisor.
     /// Those hold for one pair only, so a hint that passes is the result, and one that fails is computed instead: a
-    /// wrong hint costs time and changes nothing. The host writes a hint for every call, in the order of the calls.
+    /// wrong hint costs time and changes nothing.
     /// </remarks>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool TryHinted(in UInt256 dividend, in UInt256 divisor, out UInt256 quotient, out UInt256 remainder)
+    internal static bool TryHinted(in UInt256 dividend, in UInt256 divisor, out UInt256 quotient, out UInt256 remainder)
     {
         Unsafe.SkipInit(out quotient);
         Unsafe.SkipInit(out remainder);
-        if (!Nethermind.Core.AirbenderFlag.IsActive) return false;
+        if (!AirbenderFlag.IsActive) return false;
         if (!Hints.Loaded) LoadHints();
         byte* hint = Hints.Next;
         if (hint == Hints.End) return false;
@@ -66,15 +69,12 @@ internal static unsafe class WordDivision
         scratch[0] = dividend;
         scratch[1] = divisor;
         void* q = hint, r = hint + 32;
-        Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 2, q, Copy);
-        Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 2, scratch + 1, MultiplyLow);
-        Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 3, q, Copy);
-        Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 3, scratch + 1, MultiplyHigh);
-        if (Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 3, scratch + 4, Equal) == 0) return false;
-        if (Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 2, r, Add) != 0) return false;
-        if (Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 2, scratch, Equal) == 0) return false;
-        Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 3, r, Copy);
-        if (Nethermind.Zkvm.Abstractions.Accelerators.AirbenderUInt256Op(scratch + 3, scratch + 1, Subtract) == 0) return false;
+        Accelerators.AirbenderUInt256Op(scratch + 2, q, Copy);
+        if (Accelerators.AirbenderUInt256Op(scratch + 2, scratch + 1, MultiplyLow) != 0) return false;
+        if (Accelerators.AirbenderUInt256Op(scratch + 2, r, Add) != 0) return false;
+        if (Accelerators.AirbenderUInt256Op(scratch + 2, scratch, Equal) == 0) return false;
+        Accelerators.AirbenderUInt256Op(scratch + 3, r, Copy);
+        if (Accelerators.AirbenderUInt256Op(scratch + 3, scratch + 1, Subtract) == 0) return false;
         quotient = *(UInt256*)q;
         remainder = *(UInt256*)r;
         return true;
@@ -83,11 +83,10 @@ internal static unsafe class WordDivision
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void LoadHints()
     {
-        Nethermind.Zkvm.Abstractions.Accelerators.AirbenderDivisionHints(out byte* start, out uint count);
+        Accelerators.AirbenderDivisionHints(out byte* start, out uint count);
         Hints.Next = start;
         Hints.End = start + 64 * (nuint)count;
-        Hints.Scratch = (UInt256*)System.Runtime.InteropServices.NativeMemory.AlignedAlloc(5 * 32, 32);
-        Hints.Scratch[4] = default;
+        if (count != 0) Hints.Scratch = (UInt256*)NativeMemory.AlignedAlloc(4 * 32, 32);
         Hints.Loaded = true;
     }
 

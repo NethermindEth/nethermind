@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
@@ -95,7 +96,7 @@ internal static unsafe class SwizzledMemory
             {
                 do
                 {
-                    group = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(*words);
+                    group = BinaryPrimitives.ReverseEndianness(*words);
                     words++;
                     group = ref Unsafe.Add(ref group, 1);
                 }
@@ -108,7 +109,7 @@ internal static unsafe class SwizzledMemory
                 {
                     words++;
                     uint following = *words;
-                    group = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness((current >> shift) | (following << (32 - shift)));
+                    group = BinaryPrimitives.ReverseEndianness((current >> shift) | (following << (32 - shift)));
                     current = following;
                     group = ref Unsafe.Add(ref group, 1);
                 }
@@ -142,7 +143,7 @@ internal static unsafe class SwizzledMemory
                 ref uint word = ref Unsafe.As<byte, uint>(ref next);
                 do
                 {
-                    word = System.Buffers.Binary.BinaryPrimitives.ReverseEndianness(from);
+                    word = BinaryPrimitives.ReverseEndianness(from);
                     word = ref Unsafe.Add(ref word, 1);
                     from = ref Unsafe.Add(ref from, 1);
                 }
