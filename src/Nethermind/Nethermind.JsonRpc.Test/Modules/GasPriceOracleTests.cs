@@ -4,11 +4,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -567,6 +569,71 @@ namespace Nethermind.JsonRpc.Test.Modules
             UInt256 estimate = gasPriceOracle.GetMaxPriorityGasFeeEstimate();
 
             Assert.That(estimate, Is.EqualTo(1.Wei));
+        }
+
+        private static IEnumerable<TestCaseData> PriceCacheCases()
+        {
+            PriceCache set = default;
+            set.Set(TestItem.KeccakA, 5);
+            PriceCache setAgain = set;
+            setAgain.Set(TestItem.KeccakA, 6);
+            yield return new TestCaseData(default(PriceCache), TestItem.KeccakA, null, null).SetName("PriceCache_Default_MissesWithoutLastPrice");
+            yield return new TestCaseData(new PriceCache(null, 7), TestItem.KeccakA, null, (UInt256?)7).SetName("PriceCache_SeededWithoutHead_MissesWithLastPrice");
+            yield return new TestCaseData(set, TestItem.KeccakA, (UInt256?)5, (UInt256?)5).SetName("PriceCache_SetHead_Hits");
+            yield return new TestCaseData(set, TestItem.KeccakB, null, (UInt256?)5).SetName("PriceCache_OtherHead_Misses");
+            // A subclass may refresh the price of the head already stored.
+            yield return new TestCaseData(setAgain, TestItem.KeccakA, (UInt256?)6, (UInt256?)6).SetName("PriceCache_SetHeadAgain_HitsTheNewPrice");
+        }
+
+        [TestCaseSource(nameof(PriceCacheCases))]
+        public void PriceCache_HitsOnlyTheHeadItWasSetFor(PriceCache cache, Hash256 head, UInt256? expectedHit, UInt256? expectedLastPrice)
+        {
+            bool hit = cache.TryGetPrice(head, out UInt256? price);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hit, Is.EqualTo(expectedHit is not null));
+                Assert.That(price, Is.EqualTo(expectedHit));
+                Assert.That(cache.LastPrice, Is.EqualTo(expectedLastPrice));
+            }
+        }
+
+        /// <remarks>
+        /// The oracle's caches are shared by every request thread. A hit must carry the price set for its head, so a reader
+        /// between the two stores of a cache that wrote the head and its price apart would get the other head's price, or
+        /// none on the first store. Time-boxed: it can only fail where the pair is not published as one.
+        /// </remarks>
+        [Test]
+        public void PriceCache_ConcurrentReaders_NeverPairAHeadWithAnotherHeadsPrice()
+        {
+            PriceCache cache = default; // captured by the threads, so one shared location, as the oracle's field is
+            UInt256 priceA = 1, priceB = 2;
+            using CancellationTokenSource stop = new(TimeSpan.FromMilliseconds(300));
+            int mispaired = 0;
+
+            void Write()
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    cache.Set(TestItem.KeccakA, priceA);
+                    cache.Set(TestItem.KeccakB, priceB);
+                }
+            }
+
+            void Read()
+            {
+                while (!stop.IsCancellationRequested)
+                {
+                    if (cache.TryGetPrice(TestItem.KeccakA, out UInt256? a) && !IsPrice(a, priceA)) Interlocked.Increment(ref mispaired);
+                    if (cache.TryGetPrice(TestItem.KeccakB, out UInt256? b) && !IsPrice(b, priceB)) Interlocked.Increment(ref mispaired);
+                }
+            }
+
+            static bool IsPrice(UInt256? price, UInt256 expected) => price is { } value && value == expected;
+
+            Task.WaitAll(Task.Run(Write), Task.Run(Read), Task.Run(Read));
+
+            Assert.That(mispaired, Is.Zero, "hits that carried another head's price or none");
         }
 
         /// <summary>Head header is known but every body lookup fails, as on a node whose bodies were pruned.</summary>

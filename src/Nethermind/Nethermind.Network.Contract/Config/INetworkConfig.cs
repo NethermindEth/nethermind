@@ -111,7 +111,7 @@ public interface INetworkConfig : IConfig
     [ConfigItem(DefaultValue = "8", Description = "The maximum DotNetty arena count. Each arena holds chunks of 4 KiB << `NettyArenaOrder`.")]
     uint MaxNettyArenaCount { get; set; }
 
-    [ConfigItem(DefaultValue = "", Description = "A comma-separated enode list to be used as boot nodes.", IsSensitiveWhenMasked = true)]
+    [ConfigItem(DefaultValue = "[]", Description = "A comma-separated enode list to be used as boot nodes.", IsSensitiveWhenMasked = true)]
     NetworkNode[] Bootnodes { get; set; }
 
     [ConfigItem(DefaultValue = "false", Description = "Whether to enable automatic port forwarding via UPnP.")]

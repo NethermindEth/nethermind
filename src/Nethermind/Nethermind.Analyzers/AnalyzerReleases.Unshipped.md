@@ -14,3 +14,4 @@ NETH006 | Reliability | Warning | TaskCompletionSource constructed without TaskC
 NETH007 | Performance | Warning | IWriteOnlyKeyValueStore.Set called with a value copied from a byte span (Span&lt;byte&gt;/ReadOnlySpan&lt;byte&gt;.ToArray(), or x.BytesToArray() on a type with a Bytes span). Call PutSpan with the span directly instead of allocating an array.
 NETH008 | Security | Error | Sensitive log markers must be written as :hide in an interpolation handled directly by an ILogger log method.
 NETH009 | Reliability | Warning | async void methods and local functions cannot be awaited, and their exceptions escape the caller. Return Task. Event handlers with an (object, EventArgs) signature are exempt.
+NETH011 | Maintainability | Warning | DI factory registration (Add/AddSingleton/AddScoped) whose lambda only does new TImpl(ctx.Resolve&lt;A&gt;(), ...) with each argument resolving the constructor parameter type. Register the type with Add&lt;T, TImpl&gt;() instead.

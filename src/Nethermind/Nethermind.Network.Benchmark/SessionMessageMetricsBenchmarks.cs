@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using BenchmarkDotNet.Attributes;
-using DotNetty.Transport.Channels;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -47,12 +46,9 @@ public class SessionMessageMetricsBenchmarks
         byte[] content = new byte[MessageSize];
         for (int i = 0; i < Peers; i++)
         {
-            IChannel channel = Substitute.For<IChannel>();
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-            context.Channel.Returns(channel);
-            Session session = new(30303, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303 + i), channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30303, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303 + i), Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.Handshake(TestItem.PublicKeyA);
-            session.Init(5, context, sender);
+            session.Init(5, sender);
             session.AddProtocolHandler(new Handler(Protocol.P2P, 5, P2PSpaceSize));
             session.AddProtocolHandler(new Handler(Protocol.Eth, EthVersion, EthSpaceSize));
             sessions[i] = session;

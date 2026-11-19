@@ -820,16 +820,25 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             Span<byte> receiptsData = GetOwnedReceiptData(blockNumber, blockHash);
-            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
-            if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+            try
             {
-                IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
-                    new RecoveryBlockSource(this, blockNumber, blockHash));
-                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+                if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+                {
+                    IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
+                        new RecoveryBlockSource(this, blockNumber, blockHash));
+                    iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                    return true;
+                }
+                iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
                 return true;
             }
-            iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
-            return true;
+            catch
+            {
+                // No iterator took the value, so nothing else will release it; a malformed one throws here.
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                throw;
+            }
         }
 
         private ReceiptsIterator CreateRecoveryIterator(Span<byte> receiptsData, ulong blockNumber, Hash256 blockHash, IReceiptRefDecoder refDecoder)

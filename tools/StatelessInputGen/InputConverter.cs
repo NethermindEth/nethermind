@@ -13,7 +13,7 @@ internal static class InputConverter
     /// <summary>Converts each stateless input (.ssz) at <paramref name="source"/> to a trusted input (.nti) in
     /// <paramref name="output"/>, printing the result and its keccak a trusted guest validating it reports.</summary>
     /// <param name="zisk">Whether the inputs are, and the outputs are to be, in the Zisk input frame.</param>
-    internal static async Task<int> Convert(string source, string output, bool zisk, CancellationToken cancellationToken = default)
+    internal static async Task<int> Convert(string source, string output, bool zisk, bool includeHints, CancellationToken cancellationToken = default)
     {
         string[] files = File.Exists(source) ? [source] : Directory.GetFiles(source, "*.ssz");
         if (files.Length == 0)
@@ -35,7 +35,7 @@ internal static class InputConverter
                 data = data.AsSpan(ZiskFrame.HeaderLength, (int)length).ToArray();
             }
 
-            byte[] trusted = TrustedInput.FromStatelessInput(data);
+            byte[] trusted = TrustedInput.FromStatelessInput(data, includeHints);
             byte[] result = StatelessValidationResult.Encode(new StatelessValidationResult
             {
                 NewPayloadRequestRoot = Keccak.Compute(TrustedInput.BlockHeaderOf(trusted)),

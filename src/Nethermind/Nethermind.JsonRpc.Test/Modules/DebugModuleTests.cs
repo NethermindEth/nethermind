@@ -1729,6 +1729,40 @@ public class DebugModuleTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void DebugGetBadBlocks_WhenTimedOutDuringWrite_StopsAndLeavesNoFile()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        bool resumedAfterTimeout = false;
+        _debugBridge.GetBadBlocks().Returns(TimeOutAfter(Build.A.Block.WithNumber(1).TestObject, Build.A.Block.WithNumber(2).TestObject));
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => CreateModule().debug_getBadBlocks(file), Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(resumedAfterTimeout, Is.False, "the write stops at the first block after the timeout");
+                Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
+                Assert.That(timeout.DisposeCount, Is.EqualTo(1), "the cancelled timeout source is disposed, not pooled");
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+
+        IEnumerable<Block> TimeOutAfter(Block first, Block second)
+        {
+            yield return first;
+            timeout.Cancel();
+            yield return second;
+            resumedAfterTimeout = true;
+        }
+    }
+
+    [Test]
     public async Task DebugGetBadBlocks_WhenExtraParamGiven_ReturnsInvalidParams()
     {
         _debugBridge.GetBadBlocks().Returns([]);

@@ -106,6 +106,7 @@ public class TrustedInputTests
         Assert.That(collector.Inputs.ConvertAll(input => BitConverter.ToInt32(input)), Is.EquivalentTo(Enumerable.Range(0, 10_000)));
     }
 
+    private const int RecoveryHintsSection = 80;
     private const int SenderHintsSection = 48;
     private const int TransactionsList = 56;
     private const int WitnessHeadersList = 60;
@@ -115,9 +116,13 @@ public class TrustedInputTests
     private const int CodeExecutionPadding = 34;
 
     [Test]
-    public async Task Converted_input_validates_and_reports_the_block_hash([Values] bool amsterdam)
+    public async Task Converted_input_validates_and_reports_the_block_hash([Values] bool amsterdam, [Values] bool includeHints)
     {
-        (byte[] input, Block block) = await CreateInput(amsterdam);
+        ValueHash256 message = ValueKeccak.Compute("message"u8);
+        byte[] recoveryCall = RecoveryCall(message, new EthereumEcdsa(BlockchainIds.Mainnet).Sign(TestItem.PrivateKeyB, in message));
+        (byte[] input, Block block) = await CreateInput(amsterdam, includeHints, recoveryCall);
+        TrustedPayload payload = TrustedInput.Read(input);
+        using Witness witness = payload.Witness;
 
         StatelessValidationResult result = Execute(input);
 
@@ -126,6 +131,8 @@ public class TrustedInputTests
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(block.Hash));
             Assert.That(result.SchemaId, Is.EqualTo(amsterdam ? 0x9501 : 0x8001));
+            Assert.That(payload.SenderHints.Length, Is.EqualTo(includeHints ? block.Transactions.Length * TrustedInput.SenderHintLength : 0));
+            Assert.That(payload.RecoveryHints, Has.Length.EqualTo(includeHints ? TrustedInput.RecoveryHintLength : 0));
         }
     }
 
@@ -227,10 +234,7 @@ public class TrustedInputTests
         EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
         ValueHash256 message = ValueKeccak.Compute("message"u8);
         Signature signature = ecdsa.Sign(TestItem.PrivateKeyB, in message);
-        byte[] call = new byte[128];
-        message.Bytes.CopyTo(call);
-        call[63] = (byte)(27 + signature.RecoveryId);
-        signature.Bytes.CopyTo(call.AsSpan(64));
+        byte[] call = RecoveryCall(message, signature);
         byte[] badV = (byte[])call.Clone();
         badV[63] = 29;
         AuthorizationTuple authorization = ecdsa.Sign(TestItem.PrivateKeyC, BlockchainIds.Mainnet, TestItem.AddressD, 0);
@@ -287,7 +291,7 @@ public class TrustedInputTests
     }
 
     [Test]
-    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, 17, SenderHintsSection + 4, 72)] int corruptedOffset)
+    public async Task Malformed_input_reports_the_sentinel([Values(0, 4, 17, SenderHintsSection + 4, 72, RecoveryHintsSection + 4)] int corruptedOffset)
     {
         (byte[] input, _) = await CreateInput(amsterdam: false);
         input[corruptedOffset] ^= 1;
@@ -322,14 +326,23 @@ public class TrustedInputTests
         }
     }
 
-    private static async Task<(byte[] Input, Block Block)> CreateInput(bool amsterdam)
+    private static async Task<(byte[] Input, Block Block)> CreateInput(bool amsterdam, bool includeHints = true, byte[]? recoveryCall = null)
     {
-        (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(amsterdam, currentChainActivation: true);
+        (Block block, Witness witness, ISpecProvider specProvider) = StatelessInputGeneratorTests.CreateBlock(amsterdam, currentChainActivation: true, recoveryCall: recoveryCall);
         using (witness)
         {
             byte[] stateless = (await InputGenerator.EncodeInput(block, witness, specProvider))!;
-            return (TrustedInput.FromStatelessInput(stateless), block);
+            return (includeHints ? TrustedInput.FromStatelessInput(stateless) : TrustedInput.FromStatelessInput(stateless, includeHints: false), block);
         }
+    }
+
+    private static byte[] RecoveryCall(in ValueHash256 message, Signature signature)
+    {
+        byte[] call = new byte[128];
+        message.Bytes.CopyTo(call);
+        call[63] = (byte)(27 + signature.RecoveryId);
+        signature.Bytes.CopyTo(call.AsSpan(64));
+        return call;
     }
 
     private static StatelessValidationResult Execute(byte[] input)
