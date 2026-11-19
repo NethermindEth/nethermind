@@ -704,11 +704,14 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
-    [TestCase("../JSTracers/callTracer_legacy")]
-    [TestCase(null)]
-    [TestCase("{ ) }")]
-    public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
-        Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
+    [TestCase("../JSTracers/callTracer_legacy", typeof(InvalidDataException), "SyntaxError: Unexpected token '.'")]
+    [TestCase(null, typeof(ArgumentException), "Tracer '' not found")]
+    [TestCase("{ ) }", typeof(InvalidDataException), "SyntaxError: Unexpected token ')'")]
+    public void Unusable_tracer_is_refused_on_construction(string? tracer, Type exceptionType, string message)
+    {
+        Exception error = Assert.Throws(exceptionType, () => GetTracer(tracer!).Dispose())!;
+        Assert.That(error.Message, Is.EqualTo(message));
+    }
 
     [TestCase("flatCallTracer")]
     [TestCase("noSuchTracer.js")]
