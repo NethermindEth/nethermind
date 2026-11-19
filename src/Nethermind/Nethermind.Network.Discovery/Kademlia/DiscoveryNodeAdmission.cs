@@ -72,24 +72,7 @@ internal sealed class DiscoveryNodeAdmission(
     /// reservation may extend it, and a node that moves to a different address or whose window was taken over
     /// by another identity is filtered again. An identity is not remembered separately from its reservation.
     /// </remarks>
-    public bool TryAdmit(Node node)
-    {
-        if (!_enabled) return true;
-
-        // Exempt nodes never create a reservation; a node that becomes exempt while it still holds one must stop
-        // renewing it, or a privileged node in a subnet would keep ordinary nodes out indefinitely. The live
-        // exemption is therefore resolved before the reservation is extended. Self is in the configuration-backed
-        // set, so it needs no separate check.
-        if (IsExemptWithoutManagers(node) || IsManagedExempt(node.Id)) return true;
-
-        if (!AdmitAddress(node))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Discovery node filtered by recent IP: {node:hide}.");
-            return false;
-        }
-
-        return true;
-    }
+    public bool TryAdmit(Node node) => TryAdmitCore(node, trustInstanceFlags: true);
 
     /// <summary>
     /// Re-validates a node taken from a bucket's replacement cache before it is promoted into the bucket.
@@ -103,20 +86,7 @@ internal sealed class DiscoveryNodeAdmission(
     /// reservation is extended, so a node promoted after it became exempt stops renewing the reservation it still
     /// holds.
     /// </remarks>
-    public bool TryAdmitPromoted(Node node)
-    {
-        if (!_enabled) return true;
-
-        if (IsExemptWithoutInstanceFlags(node) || IsManagedExempt(node.Id)) return true;
-
-        if (!AdmitAddress(node))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Discovery node filtered by recent IP on replacement promotion: {node:hide}.");
-            return false;
-        }
-
-        return true;
-    }
+    public bool TryAdmitPromoted(Node node) => TryAdmitCore(node, trustInstanceFlags: false);
 
     /// <summary>
     /// Records a node restored from discovery storage as exempt from the filter at its restored address.
@@ -132,29 +102,46 @@ internal sealed class DiscoveryNodeAdmission(
         if (_enabled && node.Enr is null) _persistedAddresses[node.Id] = node.Address.Address;
     }
 
+    private bool TryAdmitCore(Node node, bool trustInstanceFlags)
+    {
+        if (!_enabled) return true;
+
+        // Exempt nodes never create a reservation; a node that becomes exempt while it still holds one must stop
+        // renewing it, or a privileged node in a subnet would keep ordinary nodes out indefinitely. The live
+        // exemption is therefore resolved before the reservation is extended. Self is in the configuration-backed
+        // set, so it needs no separate check.
+        if (IsExempt(node, trustInstanceFlags) || IsManagedExempt(node.Id)) return true;
+
+        if (AdmitAddress(node)) return true;
+
+        if (_logger.IsTrace)
+        {
+            if (trustInstanceFlags)
+                _logger.Trace($"Discovery node filtered by recent IP: {node:hide}.");
+            else
+                _logger.Trace($"Discovery node filtered by recent IP on replacement promotion: {node:hide}.");
+        }
+
+        return false;
+    }
+
     // Accepting and extending happen in one filter lock scope, so a concurrent admission for the same identity
     // cannot evict the entry between the two and reject the node against a reservation it already owns.
     private bool AdmitAddress(Node node) => _filter.TryAcceptOrRefresh(node.Address.Address, node.Id);
 
-    // Instance flags are evidence for this call only. Caching them by identity would keep the exemption
-    // alive after the operator removes the node from its manager; lasting exemptions come from the
-    // configuration-backed set, and manager membership is resolved live by IsManagedExempt.
-    private bool IsExemptWithoutManagers(Node node)
+    // Instance flags are evidence for the call that carries them only. TryAdmit sees the node's current flags, but
+    // a promotion re-checks an instance cached minutes earlier, whose flags may have gone stale since the operator
+    // could have removed it from its manager while it waited. Caching the flags by identity would keep the exemption
+    // alive after that removal; lasting exemptions come from the configuration-backed set and live manager
+    // membership, resolved by IsManagedExempt.
+    private bool IsExempt(Node node, bool trustInstanceFlags)
         => _exemptNodeIds.Contains(node.Id)
-           || node.IsBootnode
-           || node.IsStatic
-           || node.IsTrusted
+           || (trustInstanceFlags && (node.IsBootnode || node.IsStatic || node.IsTrusted))
            || IsPersistedAtSameAddress(node);
 
     private bool IsPersistedAtSameAddress(Node node)
         => _persistedAddresses.TryGetValue(node.Id, out IPAddress? persistedAddress)
            && persistedAddress.Equals(node.Address.Address);
-
-    // A promotion re-checks an instance cached minutes earlier, so flags on it are stale evidence: the operator may
-    // have removed the node from its manager while it waited. Configuration-backed identities and live manager
-    // membership are what remain; the per-call flag path belongs to TryAdmit, where the flags are current.
-    private bool IsExemptWithoutInstanceFlags(Node node)
-        => _exemptNodeIds.Contains(node.Id) || IsPersistedAtSameAddress(node);
 
     private bool IsManagedExempt(PublicKey nodeId)
     {
