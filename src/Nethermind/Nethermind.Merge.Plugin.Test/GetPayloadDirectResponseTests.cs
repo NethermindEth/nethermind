@@ -13,7 +13,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -208,7 +207,7 @@ public class GetPayloadDirectResponseTests
         ];
         PayloadBodiesV2DirectResponse.PayloadBody?[] itemsV2 =
         [
-            PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, ArrayMemoryManager.From(blockAccessListBytes)),
+            new PayloadBodiesV2DirectResponse.PayloadBody(blockRlp, blockAccessListBytes is null ? default(ReadOnlyMemory<byte>?) : blockAccessListBytes),
             null
         ];
 
@@ -550,8 +549,8 @@ public class GetPayloadDirectResponseTests
         byte[]? blockAccessList,
         bool includeNull) =>
         includeNull
-            ? [PayloadBodiesV2DirectResponse.CreatePayloadBody(transactions, withdrawals, ArrayMemoryManager.From(blockAccessList)), null, PayloadBodiesV2DirectResponse.CreatePayloadBody([], null, null)]
-            : [PayloadBodiesV2DirectResponse.CreatePayloadBody(transactions, withdrawals, ArrayMemoryManager.From(blockAccessList))];
+            ? [new PayloadBodiesV2DirectResponse.PayloadBody(transactions, withdrawals, blockAccessList is null ? default(ReadOnlyMemory<byte>?) : blockAccessList), null, new PayloadBodiesV2DirectResponse.PayloadBody([], null, null)]
+            : [new PayloadBodiesV2DirectResponse.PayloadBody(transactions, withdrawals, blockAccessList is null ? default(ReadOnlyMemory<byte>?) : blockAccessList)];
 
     private static bool GetCanBeStreamable(Type type)
     {

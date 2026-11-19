@@ -49,8 +49,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private bool _failedBeforeExecution;
     private bool _pendingStep;
     private bool _pendingPostStep;
-    private bool _gasCostIsStatic;
     private bool _pendingSelfDestruct;
+    private bool _rootReverted;
+    private string? _codeDepositError;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -59,6 +60,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
+
+    internal bool IsFrameTransaction { get; init; }
 
     /// <summary>Creates a JavaScript tracer using the supplied execution context and engine.</summary>
     /// <remarks>SELFDESTRUCT refunds are credited at transaction finalization, avoiding a second credit at the opcode boundary.</remarks>
@@ -293,12 +296,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _log.gasCost = null;
         _failedBeforeExecution = false;
         _pendingPostStep = false;
-        _gasCostIsStatic = false;
         _pendingStep = opcode is Instruction.KECCAK256 or Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
             or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL
             or Instruction.EXP or Instruction.EXTCODECOPY or Instruction.MCOPY or Instruction.CREATE or Instruction.CREATE2
-            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4
+            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4 or Instruction.SELFDESTRUCT
             or Instruction.BLOCKHASH;
     }
 
@@ -306,7 +308,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
     {
         _log.gasCost = gasCost;
-        _gasCostIsStatic = true;
         if (stackHead < stackInputs)
             _log.error = $"stack underflow ({stackHead} <=> {stackInputs})";
         else if (stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth)
@@ -317,11 +318,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     }
 
     /// <inheritdoc/>
-    public void ReportOperationGasCost(ulong gasCost)
-    {
-        _log.gasCost = gasCost;
-        _gasCostIsStatic = false;
-    }
+    public void ReportOperationGasCost(ulong gasCost) => _log.gasCost = gasCost;
 
     /// <inheritdoc/>
     public void ReportOperationReady(ulong gasCost, string? error)
@@ -330,7 +327,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             return;
 
         _log.gasCost = gasCost;
-        _gasCostIsStatic = false;
         _log.error = error ?? (_log.gas < gasCost ? "out of gas" : null);
         _failedBeforeExecution = _log.error is not null;
         InvokeStep();
@@ -345,11 +341,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             return;
         }
 
-        if (_log.gasCost is null)
-            _log.gasCost = _log.gas - gas;
-        else if (_gasCostIsStatic && !_failedBeforeExecution)
-            // The static cost a step reported leaves out what an opcode that ran paid beyond it.
-            _log.gasCost = Math.Max(_log.gasCost.Value, _log.gas - gas);
+        _log.gasCost ??= _log.gas - gas;
         InvokePostStep();
     }
 
@@ -420,6 +412,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
+        if (_depth == 0 && !IsFrameTransaction) _rootReverted = true;
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 
@@ -435,8 +428,17 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
+        string? error = _codeDepositError ?? evmExceptionType.GetEvmExceptionDescription();
+        // A precompile can fail without running an opcode; its parent's last step is not its error.
+        if (_log.depth == _depth + 1) error = _codeDepositError ?? _log.error ?? error;
+        // The root's error stays for ctx.error, which MarkAsFailed sets.
+        if (_depth > 0)
+            _codeDepositError = null;
+        InvokeExit(0, Array.Empty<byte>(), error);
     }
+
+    /// <inheritdoc/>
+    public override void ReportCodeDepositError(string error) => _codeDepositError = error;
 
     /// <inheritdoc/>
     /// <remarks>
@@ -496,17 +498,17 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
-        _ctx.Output = output;
-        // A revert reason is decoded from the output, which an exceptional halt never has.
-        // The halting step's error carries Geth's detailed text; a failed code deposit or a precompile call has no such step.
-        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _log.error ?? description : error;
+        _ctx.Output = output.AsSpan().ToArray();
+        // A failed code deposit and the halting step carry Geth's detailed text; a precompile call has neither.
+        _ctx.error = _rootReverted ? EvmExceptionType.Revert.GetEvmExceptionDescription()
+            : output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _codeDepositError ?? _log.error ?? description : error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
-        _ctx.Output = output;
+        _ctx.Output = output.AsSpan().ToArray();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -581,7 +583,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
             if (required)
             {
-                if (_captureErrors) throw new ArgumentException($"trace object must expose required function {name}");
+                if (_captureErrors) throw new ArgumentException($"trace object must expose a function {name}()");
                 throw new InvalidDataException($"trace object must expose a function {name}()");
             }
             return TracerFunctions.none;

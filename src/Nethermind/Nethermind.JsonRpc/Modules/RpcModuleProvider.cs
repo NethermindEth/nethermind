@@ -26,14 +26,18 @@ namespace Nethermind.JsonRpc.Modules
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
-        private readonly HashSet<string> _modules = new(StringComparer.OrdinalIgnoreCase);
-        private readonly HashSet<string> _enabledModules = new(StringComparer.OrdinalIgnoreCase);
+        private readonly HashSet<string> _modules = [with(StringComparer.OrdinalIgnoreCase)];
+        private readonly HashSet<string> _enabledModules = [with(StringComparer.OrdinalIgnoreCase)];
 
         private static readonly string[] HotMethodNames =
         [
             "engine_newPayloadV4", "engine_getBlobsV2", "engine_forkchoiceUpdatedV3",
             "eth_call", "eth_getBlockByNumber", "eth_chainId"
         ];
+
+        private static readonly FrozenSet<string> EthCallMethodNames = FrozenSet.Create(StringComparer.Ordinal, "eth_call", "eth_estimateGas", "eth_createAccessList");
+
+        private readonly MethodConcurrencyLimit? _ethCallLimit;
 
         private Dictionary<string, ResolvedMethodInfo> _methods = [];
         private MethodCache? _methodCache;
@@ -57,6 +61,12 @@ namespace Nethermind.JsonRpc.Modules
             {
                 if (_logger.IsWarn) _logger.Warn("Applying JSON RPC filter.");
                 _filter = new RpcMethodFilter(_jsonRpcConfig.CallsFilterFilePath, fileSystem, _logger);
+            }
+
+            int ethCallLimit = jsonRpcConfig.EthCallMaxConcurrentRequests ?? 4 * Environment.ProcessorCount;
+            if (ethCallLimit > 0)
+            {
+                _ethCallLimit = new MethodConcurrencyLimit(ethCallLimit, jsonRpcConfig.Timeout);
             }
 
             _registerMethod = GetType().GetMethods().First(m => m.Name == nameof(Register));
@@ -98,7 +108,14 @@ namespace Nethermind.JsonRpc.Modules
                 methods
                     .ForEach((method) =>
                     {
-                        method.Value.SetPool(rentModule, returnModule, pool);
+                        if (_ethCallLimit is not null && EthCallMethodNames.Contains(method.Key))
+                        {
+                            method.Value.SetPool(_ethCallLimit.WrapRent(rentModule), _ethCallLimit.WrapReturn(returnModule), pool, hasConcurrencyLimit: true);
+                        }
+                        else
+                        {
+                            method.Value.SetPool(rentModule, returnModule, pool);
+                        }
                         methodsByName[method.Key] = method.Value;
                     });
 
@@ -127,9 +144,9 @@ namespace Nethermind.JsonRpc.Modules
 
         private IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> GetMethods<T>(string moduleType) where T : IRpcModule
         {
-            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability)) in GetMethodDict(typeof(T)))
+            foreach ((string name, (MethodInfo info, bool readOnly, RpcEndpoint availability, bool requiresAuthentication)) in GetMethodDict(typeof(T)))
             {
-                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability);
+                ResolvedMethodInfo resolvedMethodInfo = new(moduleType, info, readOnly, availability, requiresAuthentication);
                 if (_filter.AcceptMethod(resolvedMethodInfo.ToString()))
                 {
                     yield return new(name, resolvedMethodInfo);
@@ -224,14 +241,18 @@ namespace Nethermind.JsonRpc.Modules
                 return ModuleResolution.EndpointDisabled;
             }
 
-            if (context.Url is not null)
+            bool isEnabled = context.Url is not null
+                ? context.Url.EnabledModules.Contains(result.ModuleType)
+                : _enabledModules.Contains(result.ModuleType);
+
+            if (!isEnabled)
             {
-                return context.Url.EnabledModules.Contains(result.ModuleType)
-                    ? ModuleResolution.Enabled
-                    : ModuleResolution.Disabled;
+                return ModuleResolution.Disabled;
             }
 
-            return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+            return result.RequiresAuthentication && !context.IsAuthenticated
+                ? ModuleResolution.NotAuthenticated
+                : ModuleResolution.Enabled;
         }
 
         public ResolvedMethodInfo? Resolve(string methodName)
@@ -275,12 +296,13 @@ namespace Nethermind.JsonRpc.Modules
             public ResolvedMethodInfo?[] HotMethods { get; } = hotMethods;
         }
 
-        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint)> GetMethodDict(Type type)
+        private static IDictionary<string, (MethodInfo, bool, RpcEndpoint, bool)> GetMethodDict(Type type)
         {
             BindingFlags methodFlags = BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
             IEnumerable<MethodInfo> methods = type.GetMethods(methodFlags)
                 .Concat(type.GetInterfaces().SelectMany(i => i.GetMethods(methodFlags)))
+                .Where(static x => !x.IsSpecialName) // property and event accessors are not JSON-RPC methods
                 .DistinctBy(x => x.Name);
 
             return methods.ToDictionary(
@@ -288,7 +310,7 @@ namespace Nethermind.JsonRpc.Modules
                 x =>
                 {
                     JsonRpcMethodAttribute? jsonRpcMethodAttribute = x.GetCustomAttribute<JsonRpcMethodAttribute>();
-                    return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All);
+                    return (x, jsonRpcMethodAttribute?.IsSharable ?? true, jsonRpcMethodAttribute?.Availability ?? RpcEndpoint.All, jsonRpcMethodAttribute?.RequiresAuthentication ?? false);
                 });
         }
 
@@ -387,7 +409,8 @@ namespace Nethermind.JsonRpc.Modules
                 string moduleType,
                 MethodInfo methodInfo,
                 bool readOnly,
-                RpcEndpoint availability)
+                RpcEndpoint availability,
+                bool requiresAuthentication = false)
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;
@@ -455,6 +478,7 @@ namespace Nethermind.JsonRpc.Modules
                 ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
                 Availability = availability;
+                RequiresAuthentication = requiresAuthentication;
                 IsTaskWrapped = TryGetTaskResultType(methodInfo.ReturnType, out Type? taskResultType);
                 ResultWrapperType = IsTaskWrapped ? taskResultType : methodInfo.ReturnType;
                 if (!ResultWrapperType.IsAssignableTo(typeof(IResultWrapper)))
@@ -490,6 +514,7 @@ namespace Nethermind.JsonRpc.Modules
             public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
+            public bool RequiresAuthentication { get; }
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }
             internal Type? ErrorDataPayloadType { get; }
@@ -501,15 +526,21 @@ namespace Nethermind.JsonRpc.Modules
             internal TaskResultReader? TaskResultAccessor { get; }
             internal IRpcModulePool? ModulePool { get; private set; }
 
+            public bool HasConcurrencyLimit { get; private set; }
+
+            public bool SharesPoolWith(ResolvedMethodInfo other) => ModulePool is not null && ReferenceEquals(ModulePool, other.ModulePool);
+
             public override string ToString() => MethodInfo.Name;
 
             internal void SetPool(
                 Func<bool, CancellationToken, ValueTask<IRpcModule>> rentModule,
                 Action<IRpcModule> returnModule,
-                IRpcModulePool modulePool)
+                IRpcModulePool modulePool,
+                bool hasConcurrencyLimit = false)
             {
                 _rentModule = rentModule;
                 _returnModule = returnModule;
+                HasConcurrencyLimit = hasConcurrencyLimit;
                 ModulePool = modulePool;
             }
 

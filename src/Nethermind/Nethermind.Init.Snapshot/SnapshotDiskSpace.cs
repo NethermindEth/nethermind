@@ -17,12 +17,11 @@ internal static class SnapshotDiskSpace
 
     public static void Check(IDriveInfo[] drives, long required, string operation)
     {
-        foreach (IDriveInfo drive in drives)
-        {
-            if (drive.AvailableFreeSpace < required)
-                throw new IOException(
-                    $"Insufficient disk space on '{drive.RootDirectory.FullName}' to {operation} the snapshot: " +
-                    $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
-        }
+        // Only the database directory's drive, which GetDriveInfos lists first, must hold the whole snapshot.
+        // A linked disk holds only part of the database; the free-space checks still monitor it.
+        if (drives is [IDriveInfo drive, ..] && drive.AvailableFreeSpace < required)
+            throw new IOException(
+                $"Insufficient disk space on '{drive.RootDirectory.FullName}' to {operation} the snapshot: " +
+                $"need at least {required} bytes, {drive.AvailableFreeSpace} available.");
     }
 }

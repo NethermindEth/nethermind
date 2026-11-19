@@ -199,11 +199,6 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         ulong cumulativeReceiptGas = UpdateCumulativeGasTracking(gasConsumed);
 
         Transaction transaction = CurrentTx!;
-        // Diagnostic-only: effective gas price after EIP-1559 baseFee adjustment.
-        // Computed eagerly so the diagnostic dump (which doesn't run through the
-        // ReceiptForRpc pipeline) doesn't see effectiveGasPrice as null.
-        UInt256 baseFee = Block.Header.BaseFeePerGas;
-        UInt256 effectiveGasPrice = transaction.CalculateEffectiveGasPrice(eip1559Enabled: baseFee > 0, baseFee);
         TxReceipt txReceipt = CreateReceipt();
         txReceipt.Logs = logEntries;
         txReceipt.TxType = transaction.Type;
@@ -218,7 +213,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         // transaction after its trace started must not shift the index of the receipts that follow.
         txReceipt.Index = _txReceipts.Count;
         txReceipt.GasUsed = gasConsumed.SpentGas;  // Post-refund for this tx
-        txReceipt.EffectiveGasPrice = effectiveGasPrice;
+        txReceipt.EffectiveGasPrice = ReceiptEffectiveGasPrice(transaction);
         txReceipt.Sender = transaction.SenderAddress;
         txReceipt.ContractAddress = transaction.CreatesTopLevelContract ? recipient : null;
         txReceipt.TxHash = ReceiptTxHash(transaction);
@@ -257,6 +252,8 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
     /// <summary>The transaction hash a built receipt carries; <see langword="null"/> when the build does not populate it.</summary>
     private static partial Hash256? ReceiptTxHash(Transaction transaction);
+
+    private partial UInt256 ReceiptEffectiveGasPrice(Transaction transaction);
 
     public void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env) =>
         _currentTxTracer.StartOperation(pc, opcode, gas, env);
@@ -322,6 +319,12 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
     /// <inheritdoc/>
     public void ReportActionErrorDetails(string error) => _currentTxTracer.ReportActionErrorDetails(error);
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error, bool actionOnly) => _currentTxTracer.ReportActionErrorDetails(error, actionOnly);
+
+    /// <inheritdoc/>
+    public void ReportCodeDepositError(string error) => _currentTxTracer.ReportCodeDepositError(error);
 
     public void ReportActionError(EvmExceptionType exceptionType) =>
         _currentTxTracer.ReportActionError(exceptionType);

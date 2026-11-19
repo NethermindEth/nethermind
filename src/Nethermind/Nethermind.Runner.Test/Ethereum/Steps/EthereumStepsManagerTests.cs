@@ -392,6 +392,19 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
+        [CancelAfter(5000)]
+        public async Task Optional_step_cancelled_without_shutdown_fails_the_run_only_when_selected([Values] bool selected, CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                selected ? typeof(SelfCancellingOptionalStep) : null, command: null, [typeof(SelfCancellingOptionalStep)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                selected
+                    ? Throws.TypeOf<StepDependencyException>().With.InnerException.TypeOf<OperationCanceledException>()
+                    : Throws.Nothing);
+        }
+
+        [Test]
         public async Task Run_interrupted_by_shutdown_does_not_report_success([Values] bool hasTarget)
         {
             await using IContainer container = CreateNethermindEnvironment(
@@ -565,6 +578,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public bool MustInitialize => false;
 
         public Task Execute(CancellationToken cancellationToken) => throw new TestException();
+    }
+
+    /// <summary>An optional step that ends Canceled without anyone requesting cancellation, e.g. its own timeout.</summary>
+    public class SelfCancellingOptionalStep : IStep
+    {
+        public bool MustInitialize => false;
+
+        public Task Execute(CancellationToken cancellationToken) => throw new OperationCanceledException();
     }
 
     [RunnerStepDependencies(typeof(FailingOptionalStep))]

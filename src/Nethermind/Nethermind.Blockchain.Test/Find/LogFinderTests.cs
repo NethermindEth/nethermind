@@ -870,14 +870,21 @@ public class LogFinderTests
     public void Serialize_DoesNotAllocateAJsonWriterPerInstance()
     {
         const int Count = 64;
+        const int Rounds = 5;
         FilterLog[] logs = Enumerable.Range(0, Count)
             .Select(static i => new FilterLog(i, 1, 2, TestItem.KeccakA, i, TestItem.KeccakB, TestItem.AddressA, [], []))
             .ToArray();
         SerializeAll(logs);
 
-        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
-        SerializeAll(logs);
-        long allocatedPerInstance = (GC.GetAllocatedBytesForCurrentThread() - allocatedBefore) / Count;
+        // The fewest bytes of several rounds: a one-off refill, such as of a pool trimmed by a GC of a parallel test,
+        // lands in one round only, while a writer per instance lands in every round.
+        long allocatedPerInstance = long.MaxValue;
+        for (int round = 0; round < Rounds; round++)
+        {
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            SerializeAll(logs);
+            allocatedPerInstance = Math.Min(allocatedPerInstance, (GC.GetAllocatedBytesForCurrentThread() - allocatedBefore) / Count);
+        }
 
         Assert.That(allocatedPerInstance, Is.LessThan(MaxBytesPerSerializedLogs));
 
@@ -991,7 +998,7 @@ public class LogFinderTests
         {
             Assert.That(logs, Is.Empty);
             index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
-            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeaderIfBloomMatches(default, default!, out _);
+            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeadersIfBloomMatches(default, default!, default, default);
         }
     }
 
@@ -1312,7 +1319,7 @@ public class LogFinderTests
             }
 
             public readonly void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
+                ReadOnlySpan<byte> transactionHashBytes, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
                 _cancellation!.Cancel();
 
             public readonly IEnumerable<FilterLog> Complete() => [];

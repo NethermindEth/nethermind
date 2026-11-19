@@ -16,6 +16,7 @@
 //
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -35,11 +36,12 @@ public class RangeQueryVisitor : INodeRecordVisitor<TreePathContext>, IDisposabl
     private long _currentBytesCount;
     private long _currentLeafCount;
     private bool _lastNodeFound = false;
+    private bool _disposed;
     private readonly ILeafValueCollector _valueCollector;
 
     // For determining proofs
-    private readonly BoundaryNode[] _leftmostNodes = new BoundaryNode[65];
-    private readonly BoundaryNode[] _rightmostNodes = new BoundaryNode[65];
+    private readonly BoundaryNode[] _leftmostNodes = RentBoundaryNodes();
+    private readonly BoundaryNode[] _rightmostNodes = RentBoundaryNodes();
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -112,7 +114,8 @@ public class RangeQueryVisitor : INodeRecordVisitor<TreePathContext>, IDisposabl
 
     public ArrayPoolList<byte[]> GetProofs()
     {
-        HashSet<byte[]> proofs = new(Bytes.EqualityComparer);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        HashSet<byte[]> proofs = [with(Bytes.EqualityComparer)];
 
         AddToProof(_leftmostNodes);
         AddToProof(_rightmostNodes);
@@ -191,6 +194,23 @@ public class RangeQueryVisitor : INodeRecordVisitor<TreePathContext>, IDisposabl
 
     public void Dispose()
     {
+        if (_disposed) return;
+        _disposed = true;
+        ReturnBoundaryNodes(_leftmostNodes);
+        ReturnBoundaryNodes(_rightmostNodes);
+    }
+
+    private static BoundaryNode[] RentBoundaryNodes()
+    {
+        BoundaryNode[] nodes = ArrayPool<BoundaryNode>.Shared.Rent(65);
+        Array.Clear(nodes);
+        return nodes;
+    }
+
+    private static void ReturnBoundaryNodes(BoundaryNode[] nodes)
+    {
+        for (int i = 0; i < nodes.Length; i++) nodes[i].Return();
+        ArrayPool<BoundaryNode>.Shared.Return(nodes);
     }
 
     public interface ILeafValueCollector
@@ -214,10 +234,22 @@ public class RangeQueryVisitor : INodeRecordVisitor<TreePathContext>, IDisposabl
         /// <remarks>Reuses the copy's buffer, as the rightmost node at a depth changes on every visit there.</remarks>
         public void Set(ReadOnlySpan<byte> rlp, int childDepthOffset)
         {
-            if (_rlp is null || _rlp.Length < rlp.Length) _rlp = new byte[rlp.Length];
+            if (_rlp is null || _rlp.Length < rlp.Length)
+            {
+                Return();
+                _rlp = ArrayPool<byte>.Shared.Rent(rlp.Length);
+            }
+
             rlp.CopyTo(_rlp);
             _length = rlp.Length;
             ChildDepthOffset = childDepthOffset;
+        }
+
+        public void Return()
+        {
+            if (_rlp is null) return;
+            ArrayPool<byte>.Shared.Return(_rlp);
+            _rlp = null;
         }
     }
 }

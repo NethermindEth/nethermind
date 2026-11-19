@@ -43,11 +43,18 @@ public static class BlsSigner
     [SkipLocalsInit]
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
+        // IETF BLS CoreVerify requires KeyValidate and a signature in the prime-order subgroup.
+        G2Affine signaturePoint = signature.Point;
+        if (publicKey.IsInf() || !publicKey.InGroup() || !signaturePoint.InGroup())
+        {
+            return false;
+        }
+
         int len = 2 * GT.Sz;
         using ArrayPoolListRef<long> buf = new(len, len);
 
         GT p1 = new(buf.AsSpan()[..GT.Sz]);
-        p1.MillerLoop(signature.Point, G1Affine.Generator(stackalloc long[G1Affine.Sz]));
+        p1.MillerLoop(signaturePoint, G1Affine.Generator(stackalloc long[G1Affine.Sz]));
 
         G2 m = new(stackalloc long[G2.Sz]);
         m.HashTo(message, Cryptosuite);

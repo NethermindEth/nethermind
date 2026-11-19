@@ -16,11 +16,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.JsonRpc.Modules.Admin.Models;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using System.Text.Json;
 using Nethermind.State;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.FluentRlp;
+using Nethermind.JsonRpc.Exceptions;
 
 
 namespace Nethermind.JsonRpc.Modules.Admin;
@@ -35,7 +37,8 @@ public class AdminRpcModule : IAdminRpcModule
     private readonly IEnode _enode;
     private readonly string _dataDir;
     private readonly IStateReader _stateReader;
-    private NodeInfo _nodeInfo = null!;
+    // The node's static metadata, read once at construction; each call copies it into a result of its own.
+    private readonly NodeInfo _staticNodeInfo;
     private readonly ITrustedNodesManager _trustedNodesManager;
     private readonly ISubscriptionManager _subscriptionManager;
     private readonly IJsonRpcConfig _jsonRpcConfig;
@@ -71,7 +74,7 @@ public class AdminRpcModule : IAdminRpcModule
         _blockProcessingPauseControl = blockProcessingPauseControl ?? throw new ArgumentNullException(nameof(blockProcessingPauseControl));
         _nodeRecordProvider = nodeRecordProvider;
 
-        BuildNodeInfo();
+        _staticNodeInfo = BuildStaticNodeInfo();
     }
 
     public ResultWrapper<bool> admin_pauseBlockProcessing()
@@ -152,9 +155,10 @@ public class AdminRpcModule : IAdminRpcModule
 
     public async Task<ResultWrapper<NodeInfo>> admin_nodeInfo()
     {
-        UpdateEthProtocolInfo();
-        await UpdateEnr();
-        return ResultWrapper<NodeInfo>.Success(_nodeInfo);
+        // A result of its own per call: calls run concurrently, and each response is serialized after its call returns.
+        NodeInfo nodeInfo = BuildNodeInfo();
+        nodeInfo.Enr = await GetEnr();
+        return ResultWrapper<NodeInfo>.Success(nodeInfo);
     }
 
     public ResultWrapper<string> admin_dataDir() => ResultWrapper<string>.Success(_dataDir);
@@ -184,6 +188,10 @@ public class AdminRpcModule : IAdminRpcModule
         catch (KeyNotFoundException)
         {
             return ResultWrapper<string>.Fail($"Wrong subscription type: {subscriptionName}.");
+        }
+        catch (LimitExceededException e)
+        {
+            return ResultWrapper<string>.Fail(e.Message, ErrorCodes.LimitExceeded, isTemporary: true);
         }
         catch (ArgumentException e)
         {
@@ -238,9 +246,8 @@ public class AdminRpcModule : IAdminRpcModule
         }
     }
 
-    private void BuildNodeInfo()
-    {
-        _nodeInfo = new NodeInfo
+    private NodeInfo BuildStaticNodeInfo() =>
+        new()
         {
             Name = ProductInfo.ClientId,
             Enode = _enode.Info,
@@ -254,33 +261,48 @@ public class AdminRpcModule : IAdminRpcModule
             }
         };
 
-        UpdateEthProtocolInfo();
+    private NodeInfo BuildNodeInfo()
+    {
+        NodeInfo nodeInfo = new()
+        {
+            Name = _staticNodeInfo.Name,
+            Enode = _staticNodeInfo.Enode,
+            Id = _staticNodeInfo.Id,
+            Ip = _staticNodeInfo.Ip,
+            ListenAddress = _staticNodeInfo.ListenAddress,
+            Ports =
+            {
+                Discovery = _staticNodeInfo.Ports.Discovery,
+                Listener = _staticNodeInfo.Ports.Listener
+            }
+        };
+
+        // One read of the head, so its hash and total difficulty belong to the same block.
+        Block? head = _blockTree.Head;
+        EthProtocolInfo eth = nodeInfo.Protocols[Protocol.Eth];
+        eth.Difficulty = head?.TotalDifficulty ?? 0;
+        eth.NetworkId = _blockTree.NetworkId;
+        eth.ChainId = _blockTree.ChainId;
+        eth.HeadHash = head?.Hash;
+        eth.GenesisHash = _blockTree.GenesisHash;
+        eth.Config = _parameters;
+        return nodeInfo;
     }
 
-    private async Task UpdateEnr()
+    private async Task<string?> GetEnr()
     {
         if (_nodeRecordProvider is null)
         {
-            return;
+            return null;
         }
 
         try
         {
-            _nodeInfo.Enr = (await _nodeRecordProvider.GetCurrentAsync()).ToString();
+            return (await _nodeRecordProvider.GetCurrentAsync()).ToString();
         }
         catch (Exception)
         {
-            _nodeInfo.Enr = null;
+            return null;
         }
-    }
-
-    private void UpdateEthProtocolInfo()
-    {
-        _nodeInfo.Protocols[Protocol.Eth].Difficulty = _blockTree.Head?.TotalDifficulty ?? 0;
-        _nodeInfo.Protocols[Protocol.Eth].NetworkId = _blockTree.NetworkId;
-        _nodeInfo.Protocols[Protocol.Eth].ChainId = _blockTree.ChainId;
-        _nodeInfo.Protocols[Protocol.Eth].HeadHash = _blockTree.HeadHash;
-        _nodeInfo.Protocols[Protocol.Eth].GenesisHash = _blockTree.GenesisHash;
-        _nodeInfo.Protocols[Protocol.Eth].Config = _parameters;
     }
 }

@@ -21,9 +21,16 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     {
         IOwnedReadOnlyList<byte[]?> blockAccessLists = message.BlockAccessLists;
         RlpSequence sequence = writer.StartSequence(GetBlockAccessListsContentLength(blockAccessLists));
-        for (int i = 0; i < blockAccessLists.Count; i++)
+        if (blockAccessLists is PooledBlockAccessLists pooled)
         {
-            WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
+            writer.WriteEncoded(pooled.Encoded);
+        }
+        else
+        {
+            for (int i = 0; i < blockAccessLists.Count; i++)
+            {
+                WriteBlockAccessListEntry(ref writer, blockAccessLists[i]);
+            }
         }
 
         writer.EndSequence(sequence);
@@ -40,6 +47,8 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
 
     private static int GetBlockAccessListsContentLength(IOwnedReadOnlyList<byte[]?> blockAccessLists)
     {
+        if (blockAccessLists is PooledBlockAccessLists pooled) return pooled.Encoded.Length;
+
         int contentLength = 0;
         for (int i = 0; i < blockAccessLists.Count; i++)
         {
@@ -65,7 +74,7 @@ public class BlockAccessListsMessageSerializer : Eth66SerializerBase<BlockAccess
     {
         RlpReader ctx = reader.EnterSequence(out int itemLength);
         int entryCount = ctx.CountItems(RlpLimit);
-        ArrayPoolList<byte[]?> blockAccessLists = new(entryCount);
+        ArrayPoolList<byte[]?> blockAccessLists = [with(entryCount)];
 
         try
         {

@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
-using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
@@ -307,9 +306,9 @@ public class TxGossipAllocationTests
 
     private static NewPooledTransactionHashesMessage68 Announcement(Transaction[] txs)
     {
-        ArrayPoolList<byte> types = new(txs.Length);
-        ArrayPoolList<int> sizes = new(txs.Length);
-        ArrayPoolList<ValueHash256> hashes = new(txs.Length);
+        ArrayPoolList<byte> types = [with(txs.Length)];
+        ArrayPoolList<int> sizes = [with(txs.Length)];
+        ArrayPoolList<ValueHash256> hashes = [with(txs.Length)];
         foreach (Transaction tx in txs)
         {
             types.Add((byte)tx.Type);
@@ -487,7 +486,7 @@ public class TxGossipAllocationTests
             handler = null!;
             return false;
         }
-        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender) { }
+        public void Init(byte p2PVersion, IPacketSender packetSender) { }
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details) =>
             throw new AssertionException($"peer {node.Id} disconnected: {disconnectReason} {details}");
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) { }

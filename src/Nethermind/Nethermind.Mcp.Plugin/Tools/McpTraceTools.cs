@@ -140,7 +140,7 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         return executor.ExecuteAsync<IDebugRpcModule>("trace_transaction", nameof(IDebugRpcModule.debug_traceTransaction), async (debug, token) =>
         {
             ulong blockNumber;
-            using (ModuleLease<IEthRpcModule> eth = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_getTransactionByHash)))
+            using (ModuleLease<IEthRpcModule> eth = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_getTransactionByHash), token))
             {
                 if (eth.Module is null)
                 {

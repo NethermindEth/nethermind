@@ -157,15 +157,6 @@ public class DebugRpcModule(
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
-    private Result<Transaction> ToTraceCallTransaction(TransactionForRpc call, IReleaseSpec spec)
-    {
-        // Geth permits a zero blob fee cap for simulated calls, and defaults an omitted one to zero; retain all other RPC validation.
-        Result<Transaction> result = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(call).ToCallTransaction(spec, jsonRpcConfig.GasCap);
-        if (result.Success(out Transaction? tx, out _) && tx.SupportsBlobs)
-            tx.MaxFeePerBlobGas ??= UInt256.Zero;
-        return result;
-    }
-
     private bool IsTransactionIndexingInProgress()
     {
         if (receiptConfig.TxLookupLimit == ulong.MaxValue || syncProgressResolver.IsFastBlocksReceiptsFinished()) return false;
@@ -190,6 +181,9 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
+        // Geth's traceCall resolves hashes without enforcing requireCanonical.
+        if (blockParameter is { BlockHash: { } hash, RequireCanonical: true })
+            blockParameter = new BlockParameter(hash);
         blockParameter ??= BlockParameter.Latest;
         if (blockParameter.Type == BlockParameterType.Pending)
         {
@@ -219,7 +213,8 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(overrideError, ErrorCodes.InvalidInput);
 
         // The call converts against the fork it runs in, which a block override can change.
-        IReleaseSpec spec = specProvider.GetSpec(options?.BlockOverrides?.ApplyTo(header) ?? header);
+        BlockHeader callHeader = options?.BlockOverrides?.ApplyTo(header) ?? header;
+        IReleaseSpec spec = specProvider.GetSpec(callHeader);
         if (options?.StateOverrides is { } stateOverrides)
         {
             Address[] addresses = new Address[stateOverrides.Count];
@@ -243,7 +238,7 @@ public class DebugRpcModule(
         if (call is LegacyTransactionForRpc { ChainId: { } requestedChainId } && requestedChainId != specProvider.ChainId)
             return ResultWrapper<GethLikeTxTrace>.Fail($"chainId does not match node's (have={requestedChainId}, want={specProvider.ChainId})", ErrorCodes.InvalidInput);
 
-        Result<Transaction> txResult = ToTraceCallTransaction(call, spec);
+        Result<Transaction> txResult = call.ToTraceCallTransaction(spec, jsonRpcConfig.GasCap, callHeader.BaseFeePerGas);
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -304,7 +299,7 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {tx.Hash}", ErrorCodes.ResourceNotFound);
         }
 
-        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceCall)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
 
@@ -909,6 +904,10 @@ public class DebugRpcModule(
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
+        catch (JavaScriptTraceFailure exception)
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
+        }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceBadBlock)} request {blockHash}, result: {blockTrace}");
 
@@ -1077,7 +1076,7 @@ public class DebugRpcModule(
                 RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
         IRlpDecoder<TxReceipt> receiptDecoder = Rlp.GetDecoderOrThrow<TxReceipt>();
 
-        ArrayPoolList<ArrayPoolList<byte>> encoded = new(receipts.Length);
+        ArrayPoolList<ArrayPoolList<byte>> encoded = [with(receipts.Length)];
         try
         {
             foreach (TxReceipt receipt in receipts)
@@ -1247,10 +1246,10 @@ public class DebugRpcModule(
 
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
     {
-        IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
+        IEnumerable<Block> blocks = debugBridge.GetBadBlocks();
         if (file is null)
         {
-            return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+            return ResultWrapper<IEnumerable<BadBlock>>.Success(blocks.Select(ToBadBlock));
         }
 
         // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
@@ -1270,10 +1269,18 @@ public class DebugRpcModule(
         // Written next to the target and moved into place, so the target never holds a partial file and a failed
         // write only removes the file this call created.
         string temporaryFile = $"{file}.{Guid.NewGuid():N}.tmp";
+        using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
+        CancellationToken token = timeout.Token;
         try
         {
             using FileStream stream = new(temporaryFile, FileMode.CreateNew, FileAccess.Write);
-            EthereumJsonSerializer.SerializeToStream(stream, badBlocks);
+            // The synchronous serializer takes no token, so the timeout is checked before each block, the unit of work.
+            EthereumJsonSerializer.SerializeToStream(stream, ToBadBlocksUntilCancelled(blocks, token));
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested)
+        {
+            DeleteTemporaryFile(temporaryFile);
+            throw;
         }
         catch (Exception e)
         {
@@ -1293,6 +1300,17 @@ public class DebugRpcModule(
         }
 
         return ResultWrapper<IEnumerable<BadBlock>>.Success(null);
+
+        BadBlock ToBadBlock(Block block) => new(block, true, specProvider, _blockDecoder, blockForRpcFactory);
+
+        IEnumerable<BadBlock> ToBadBlocksUntilCancelled(IEnumerable<Block> source, CancellationToken cancellationToken)
+        {
+            foreach (Block block in source)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                yield return ToBadBlock(block);
+            }
+        }
 
         void DeleteTemporaryFile(string path)
         {
@@ -1455,7 +1473,7 @@ public class DebugRpcModule(
         // SimulateTxExecutor inserts filler blocks between bundles when BlockOverride.Number has gaps.
         // Pre-compute the block each bundle targets so we can drop fillers from the result, keeping a 1:1
         // mapping to the input bundles, and cap its default gas by that block's spec.
-        HashSet<ulong> bundleBlockNumbers = new(bundles.Length);
+        HashSet<ulong> bundleBlockNumbers = [with(bundles.Length)];
         ulong lastBlockNumber = header.Number;
         ulong lastBlockTime = header.Timestamp;
         foreach (TransactionBundle bundle in bundles)
@@ -1585,7 +1603,7 @@ public class DebugRpcModule(
         if (header is null)
         {
             error = GetFailureResult<TResult, BlockHeader>(
-                new SearchResult<BlockHeader>($"Cannot find header for block hash: {blockHash}", ErrorCodes.ResourceNotFound),
+                new SearchResult<BlockHeader>(badBlocksOnly ? $"bad block {blockHash} not found" : $"block {blockHash} not found", ErrorCodes.ResourceNotFound),
                 debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }

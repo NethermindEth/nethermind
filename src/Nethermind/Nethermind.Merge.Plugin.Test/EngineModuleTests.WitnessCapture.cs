@@ -17,9 +17,11 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -27,10 +29,12 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
@@ -899,6 +903,89 @@ public partial class EngineModuleTests
     }
 
     /// <summary>
+    /// A witness replay is a local query: when it does not reproduce the block, the request fails, but the canonical
+    /// block and its descendants stay valid for the Engine API.
+    /// </summary>
+    [Test]
+    public async Task Witness_replay_that_diverges_from_the_header_fails_and_leaves_the_chain_valid()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        BlockHeader beforeTransfer = chain.BlockTree.Head!.Header;
+        await ProduceCanonicalBlock(chain, BuildWitnessTransfer(chain));
+        await ProduceCanonicalBlock(chain);
+        Block block = chain.BlockTree.Head!;
+
+        // Replaying on the state before the transfer stands in for a node-local fault: execution matches the block
+        // up to the post-state root, which cannot match the header.
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        InvalidBlockException? failure = Assert.Throws<InvalidBlockException>(() =>
+            scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(beforeTransfer, block));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure!.Message, Does.StartWith("InvalidStateRoot"));
+            Assert.That(chain.Container.Resolve<IInvalidChainTracker>().IsOnKnownInvalidChain(block.Hash!, out _), Is.False,
+                "a failed witness replay must not be recorded as an invalid block");
+        }
+
+        // The next payload builds on the block, so the Engine API must still answer VALID for it and its forkchoice.
+        await ProduceCanonicalBlock(chain);
+        Assert.That(chain.BlockTree.Head!.ParentHash, Is.EqualTo(block.Hash));
+    }
+
+    /// <summary>
+    /// Import releases a block's access-list encoding once stored, and trusted inputs serialize that encoding, so a
+    /// witness generation that reproduces the block restores it.
+    /// </summary>
+    [Test]
+    public async Task Witness_of_a_block_whose_access_list_encoding_was_released_restores_it()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        await ProduceCanonicalBlock(chain, BuildWitnessTransfer(chain));
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        block.EncodedBlockAccessList = null;
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>().CreateScope();
+        using Witness witness = scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block);
+
+        Assert.That(block.EncodedBlockAccessList is null ? null : Keccak.Compute(block.EncodedBlockAccessList),
+            Is.EqualTo(block.Header.BlockAccessListHash));
+    }
+
+    /// <summary>
+    /// The header hash does not commit to the EIP-7928 item limit, so a replay that reproduces a block over its limit
+    /// still fails, as validating the processed block would, whether or not the block carries its access list.
+    /// </summary>
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Witness_of_a_reproduced_block_over_the_access_list_item_limit_fails(bool withAccessList)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        await ProduceCanonicalBlock(chain);
+        Block block = chain.BlockTree.Head!;
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!)!;
+        IWitnessGeneratingBlockProcessingEnvFactory envFactory = chain.Container.Resolve<IWitnessGeneratingBlockProcessingEnvFactory>();
+        // Import may release the access-list encoding once the block is stored; a replay that reproduces it restores it.
+        using (IWitnessGeneratingBlockProcessingEnvScope replayScope = envFactory.CreateScope())
+        using (replayScope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, block)) { }
+        Assert.That(block.EncodedBlockAccessList, Is.Not.Null, "precondition: the replay restores the access-list encoding");
+
+        // An empty block executes no transaction, so its outcome does not depend on the gas limit, while its system
+        // contract calls put it over a one-item limit.
+        BlockHeader header = block.Header.Clone();
+        header.GasLimit = Eip7928Constants.ItemCost;
+        header.Hash = header.CalculateHash();
+        Block overLimit = new(header, block.Body, withAccessList ? BlockAccessListDecoder.Instance.Decode(block.EncodedBlockAccessList!) : null);
+
+        using IWitnessGeneratingBlockProcessingEnvScope scope = envFactory.CreateScope();
+        InvalidBlockException? failure = Assert.Throws<InvalidBlockException>(() =>
+            scope.Env.CreateExistingBlockWitnessCollector().GetWitnessForExistingBlock(parent, overLimit));
+
+        Assert.That(failure!.Message, Does.StartWith("BlockAccessListGasLimitExceeded"));
+    }
+
+    /// <summary>
     /// Builds one Amsterdam block on the current head (including <paramref name="txs"/>), submits it via
     /// <c>engine_newPayloadWithWitnessV5</c>, asserts the block is VALID, and returns the produced witness.
     /// </summary>
@@ -949,7 +1036,7 @@ public partial class EngineModuleTests
         stateReader.RunTreeVisitor(collector, parent);
         AccountProof proof = collector.BuildResult();
 
-        HashSet<ValueHash256> witnessNodes = new(witness.State.Count);
+        HashSet<ValueHash256> witnessNodes = [with(witness.State.Count)];
         foreach (byte[] node in witness.State)
             witnessNodes.Add(ValueKeccak.Compute(node));
 

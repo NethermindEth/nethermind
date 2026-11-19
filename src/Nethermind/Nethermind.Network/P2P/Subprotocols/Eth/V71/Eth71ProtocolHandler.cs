@@ -19,6 +19,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -39,6 +40,8 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
     /// Recommended soft limit for BlockAccessLists responses (2 MiB per EIP-8159).
     /// </summary>
     private const int BalResponseSoftLimit = 2 * MemorySizes.MiB;
+
+    private const int BalResponseEntryEstimate = 128 * 1024;
 
     public Eth71ProtocolHandler(
         ISession session,
@@ -87,8 +90,12 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
         using GetBlockAccessListsMessage req = request;
         IOwnedReadOnlyList<Hash256> hashes = req.Hashes;
         ReadOnlySpan<Hash256> hashesSpan = hashes.AsSpan();
-        long totalSize = 0;
-        ArrayPoolList<byte[]?> results = new(hashesSpan.Length);
+        // A response stops after the entry that passes the soft limit, so twice the limit holds it unless that entry is larger than the limit.
+        int capacity = (int)Math.Min((long)hashesSpan.Length * BalResponseEntryEstimate, 2L * BalResponseSoftLimit);
+        // An unavailable list takes one byte, so the buffer is sized for the lists only when the first one is found.
+        ArrayPoolList<byte> buffer = [with(hashesSpan.Length)];
+        Range[] entries = new Range[hashesSpan.Length];
+        int count = 0;
 
         try
         {
@@ -99,24 +106,40 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                     break;
                 }
 
+                int start = buffer.Count;
                 using MemoryManager<byte>? balRlp = SyncServer.GetBlockAccessListRlp(hashesSpan[i]);
-                byte[]? balRlpBytes = balRlp is null ? null : balRlp.Memory.Span.ToArray();
-                results.Add(balRlpBytes);
-                totalSize += BlockAccessListsMessageSerializer.GetBlockAccessListEntryLength(balRlpBytes);
+                if (balRlp is null)
+                {
+                    buffer.Add(Rlp.EmptyByteArrayByte);
+                }
+                else
+                {
+                    if (buffer.Capacity < capacity) buffer = Resize(buffer, capacity);
+                    buffer.AddRange(balRlp.Memory.Span);
+                }
+                entries[count++] = new Range(start, buffer.Count);
 
-                if (totalSize > BalResponseSoftLimit)
+                if (buffer.Count > BalResponseSoftLimit)
                 {
                     break;
                 }
             }
 
-            return Task.FromResult(new BlockAccessListsMessage(req.RequestId, results));
+            return Task.FromResult(new BlockAccessListsMessage(req.RequestId, new PooledBlockAccessLists(buffer, entries, count)));
         }
         catch
         {
-            results.Dispose();
+            buffer.Dispose();
             throw;
         }
+    }
+
+    private static ArrayPoolList<byte> Resize(ArrayPoolList<byte> buffer, int capacity)
+    {
+        using ArrayPoolList<byte> previous = buffer;
+        ArrayPoolList<byte> resized = [with(capacity)];
+        resized.AddRange(previous.AsSpan());
+        return resized;
     }
 
     public async Task<IOwnedReadOnlyList<byte[]?>> GetBlockAccessLists(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
@@ -126,7 +149,7 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
             return IOwnedReadOnlyList<byte[]?>.Empty;
         }
 
-        ArrayPoolList<Hash256> hashList = new(blockHashes.Count);
+        ArrayPoolList<Hash256> hashList = [with(blockHashes.Count)];
         for (int i = 0; i < blockHashes.Count; i++)
         {
             hashList.Add(blockHashes[i]);

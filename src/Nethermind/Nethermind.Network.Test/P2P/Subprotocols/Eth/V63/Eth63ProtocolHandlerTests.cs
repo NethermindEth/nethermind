@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,6 +22,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -146,7 +149,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Should_not_exceed_soft_message_size_limit_for_receipts()
         {
             TxReceipt[] receipts = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray();
-            int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, 512);
+            int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(
+                ReceiptsServingTestHelper.Encode(receipts, Rlp.GetDecoderOrThrow<TxReceipt>(), MainnetSpecProvider.Instance).Length, 512);
             _ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
 
             using GetReceiptsMessage getReceiptsMessage = new(
@@ -193,7 +197,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             TxReceipt[] receipts = [Build.A.Receipt.WithLogs(logs).TestObject];
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(MessageSizeEstimator.EstimateSize(receipts),
+                Assert.That((ulong)ReceiptsServingTestHelper.Encode(receipts, Rlp.GetDecoderOrThrow<TxReceipt>(), MainnetSpecProvider.Instance).Length,
                     Is.GreaterThan(SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit));
 
                 Assert.That(ServeReceipts(receipts).TxReceipts, Is.Empty);
@@ -203,11 +207,25 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Should_bound_receipt_lookups_for_blocks_without_transactions()
         {
-            // A block with no transactions has no receipts, and an empty receipt array adds nothing
-            // to the size estimate, so the soft size limit alone never ends the loop.
+            // A block with no transactions has no receipts, and an empty receipt list adds one byte
+            // to the message size, so the soft size limit alone never ends the loop.
             ServeReceipts([]);
 
-            _ctx.SyncServer.Received(2 * NethermindSyncLimits.MaxReceiptFetch).GetReceipts(Arg.Any<Hash256>());
+            _ctx.SyncServer.Received(2 * NethermindSyncLimits.MaxReceiptFetch)
+                .TryAppendReceipts(Arg.Any<Hash256>(), Arg.Any<IRlpDecoder<TxReceipt>>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>());
+        }
+
+        [Test]
+        public void Should_prefetch_receipt_lookups_a_window_at_a_time()
+        {
+            ServeReceipts([]);
+
+            const int lookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+            _ctx.SyncServer.ReceivedWithAnyArgs((lookups + 15) / 16).PrefetchReceipts(null!, 0, 0);
+            for (int start = 0; start < lookups; start += 16)
+            {
+                _ctx.SyncServer.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), start, Math.Min(16, lookups - start));
+            }
         }
 
         private ReceiptsMessage ServeReceipts(TxReceipt[] receipts)
@@ -238,7 +256,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             public ISession Session { get; }
 
             private ISyncServer? _syncServer;
-            public ISyncServer SyncServer => _syncServer ??= Substitute.For<ISyncServer>();
+            public ISyncServer SyncServer => _syncServer ??= CreateSyncServer();
+
+            private static ISyncServer CreateSyncServer()
+            {
+                ISyncServer syncServer = Substitute.For<ISyncServer>();
+                syncServer.ServeReceipts(MainnetSpecProvider.Instance);
+                return syncServer;
+            }
 
             private Eth63ProtocolHandler? _protocolHandler;
             public Eth63ProtocolHandler ProtocolHandler

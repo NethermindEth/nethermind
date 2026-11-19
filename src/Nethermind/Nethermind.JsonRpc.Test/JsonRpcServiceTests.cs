@@ -37,6 +37,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Net;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.Web3;
 using Nethermind.Logging;
@@ -1529,6 +1530,14 @@ public class JsonRpcServiceTests
     [Test]
     public void IncorrectMethodNameTest() =>
         AssertJsonRpcError(TestRequest(Substitute.For<IEthRpcModule>(), "incorrect_method"), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound("incorrect_method"));
+
+    [TestCase("get_Context")]
+    [TestCase("set_Context")]
+    public void Property_accessor_of_a_module_is_an_unknown_method(string method)
+    {
+        BoundedModulePool<ISubscribeRpcModule> pool = new(new SingletonFactory<ISubscribeRpcModule>(Substitute.For<ISubscribeRpcModule>()), 1, 1000);
+        AssertJsonRpcError(TestRequestWithPool(pool, method), ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(method));
+    }
 
     [Test]
     public async Task Non_array_params_are_rejected_before_module_rental([Values("{\"a\":1}", "\"bar\"", "1", "true")] string rawParams)

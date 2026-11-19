@@ -27,6 +27,7 @@ using Nethermind.Specs.Test;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
+using Nethermind.Consensus;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Newtonsoft.Json.Linq;
 using Nethermind.JsonRpc.Test.Data;
@@ -324,6 +325,34 @@ public partial class EthRpcModuleTests
             Assert.That(error, Is.Null, response);
     }
 
+    /// <summary>
+    /// On a block from before the merge a <c>prevRandao</c> override decides PREVRANDAO when the overridden block is from
+    /// London on, as in geth's <c>eth_call</c>. The estimate follows the call, although geth's estimator reads the difficulty.
+    /// </summary>
+    [Test]
+    public async Task Rpc_call_on_a_pre_merge_block_takes_a_prevRandao_override_from_London_on(
+        [Values("eth_call", "eth_estimateGas")] string method,
+        [Values] bool london)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance)),
+            configurer: builder => builder.AddSingleton<IPoSSwitcher>(NoPoS.Instance));
+        BlockHeader head = ctx.Test.BlockTree.Head!.Header;
+        head.Difficulty = (UInt256)5;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = false;
+        // PUSH32 X PREVRANDAO EQ PUSH1 42 JUMPI PUSH1 0 DUP1 REVERT JUMPDEST STOP: stops only when PREVRANDAO is X.
+        string code = $"0x7f{TestItem.KeccakA.ToString(false)}4414602a57600080fd5b00";
+        object stateOverride = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new { code } };
+        object blockOverride = london ? new { prevRandao = TestItem.KeccakA.ToString() } : new { prevRandao = TestItem.KeccakA.ToString(), number = "0x0" };
+
+        string response = await ctx.Test.TestEthRpc(method, new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString() }, "latest", stateOverride, blockOverride);
+
+        // Under London the call succeeds. On a Berlin block it reads the difficulty and reverts with no data; any other
+        // error fails the test.
+        JToken? expectedError = london ? null : JObject.FromObject(new { code = ErrorCodes.ExecutionReverted, message = "execution reverted", data = "0x" });
+        Assert.That(JToken.DeepEquals(JToken.Parse(response)["error"], expectedError), Is.True, response);
+    }
+
     [Test]
     public async Task Rpc_call_does_not_mutate_the_cached_header(
         [Values("eth_call", "eth_estimateGas")] string method,
@@ -617,6 +646,17 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_with_r_and_s_but_no_v_reports_the_missing_v()
+    {
+        using Context ctx = await Context.Create();
+        using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"r\":\"0x1\",\"s\":\"0x2\"}}");
+
+        string response = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
+
+        Assert.That(response, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32000,"message":"missing or invalid v for the signature in r and s"},"id":67}"""));
+    }
+
+    [Test]
     public async Task Eth_call_web3_sample_not_enough_gas_other_account()
     {
         using Context ctx = await Context.Create();
@@ -689,6 +729,50 @@ public partial class EthRpcModuleTests
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride);
 
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("stack limit reached 1024 (1023)"), serialized);
+    }
+
+    /// <summary>Each call starts from the block's state, whatever an earlier call or run on the same env changed.</summary>
+    /// <remarks>
+    /// The sender pays for the gas of one run only, and a successful run writes a storage slot that the next run would
+    /// return instead of zero. A failed run consumes all its gas, so the rerun that names the failure has the funds only
+    /// when it starts from the block's state.
+    /// </remarks>
+    /// <param name="fails">Whether the call fails with an invalid opcode, which a rerun then names.</param>
+    /// <param name="overridesState">Whether the call runs with a state override, in the env that applies it, rather than in a shared env.</param>
+    [Test]
+    public async Task Eth_call_repeated_starts_from_the_state_of_the_block([Values] bool fails, [Values] bool overridesState)
+    {
+        const string contract = "0xc200000000000000000000000000000000000000";
+        const string sender = "0xc300000000000000000000000000000000000000";
+        // Without fails: return slot 0, then write 1 to it. With fails: INVALID.
+        string code = fails ? "0xfe" : "0x600054600160005560005260206000f3";
+        // With overridesState, the block has STOP, so a run that loses the override fails the assertions.
+        string genesisCode = overridesState ? "0x00" : code;
+        // 100,000 gas at 1 gwei costs 1e14 wei.
+        UInt256 balance = 150_000_000_000_000;
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance), configurer: builder => builder
+            .WithGenesisPostProcessor((_, state) =>
+            {
+                state.CreateAccount(new Address(sender), balance);
+                state.CreateAccount(new Address(contract), UInt256.Zero);
+                state.InsertCode(new Address(contract), Bytes.FromHexString(genesisCode), Osaka.Instance);
+            }));
+        object? transaction = JsonSerializer.Deserialize<object>(
+            $$"""{"from":"{{sender}}","to":"{{contract}}","gas":"0x186a0","gasPrice":"0x3b9aca00"}""");
+        object? stateOverride = JsonSerializer.Deserialize<object>($$$"""{"{{{contract}}}":{"code":"{{{code}}}"}}""");
+
+        for (int call = 0; call < 3; call++)
+        {
+            string serialized = overridesState
+                ? await ctx.Test.TestEthRpc("eth_call", transaction, "latest", stateOverride)
+                : await ctx.Test.TestEthRpc("eth_call", transaction, "latest");
+
+            JToken response = JToken.Parse(serialized);
+            if (fails)
+                Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo("invalid opcode: INVALID"), $"call {call}: {serialized}");
+            else
+                Assert.That(response["result"]?.Value<string>(), Is.EqualTo("0x" + new string('0', 64)), $"call {call}: {serialized}");
+        }
     }
 
     [Test]
@@ -834,7 +918,7 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task Eth_call_with_accessList()
     {
-        TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+        using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .Build(new TestSpecProvider(Berlin.Instance));
 
         (byte[] code, AccessListForRpc accessList) = GetTestAccessList();
@@ -2040,18 +2124,21 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_rejects_differing_data_and_input([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata)
+    public async Task Eth_call_prefers_input_when_data_differs([ValueSource(typeof(TransactionForRpcDeserializationTests), nameof(TransactionForRpcDeserializationTests.DifferingCallData))] string calldata)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Prague.Instance));
         using JsonDocument call = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",{calldata}}}");
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", call.RootElement, "latest");
 
-        JToken? error = JToken.Parse(serialized)["error"];
+        using JsonDocument reference = JsonDocument.Parse($"{{\"from\":\"{TestItem.AddressA}\",\"input\":{call.RootElement.GetProperty("input").GetRawText()}}}");
+        string expected = call.RootElement.GetProperty("input").GetString() == "0x"
+            ? "0x" : "0x0000000000000000000000000000000000000000000000000000000000000001";
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(error?["code"]?.Value<int>(), Is.EqualTo(ErrorCodes.InvalidParams), serialized);
-            Assert.That(error?["message"]?.Value<string>(), Is.EqualTo(RpcTransactionErrors.DataAndInputDiffer), serialized);
+            Assert.That(JToken.Parse(serialized)["error"], Is.Null, serialized);
+            Assert.That((string?)JToken.Parse(serialized)["result"], Is.EqualTo(expected), serialized);
+            Assert.That(serialized, Is.EqualTo(await ctx.Test.TestEthRpc("eth_call", reference.RootElement, "latest")));
         }
     }
 

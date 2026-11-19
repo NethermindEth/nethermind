@@ -55,7 +55,7 @@ public class RangeQueryVisitorTests
         int k = 0;
         foreach ((ValueHash256 _, byte[]? value) in leafCollector.Leafs)
         {
-            Assert.That(Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account), Is.EqualTo(value));
+            Assert.That(AccountDecoder.Instance.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account), Is.EqualTo(value));
         }
     }
 
@@ -108,6 +108,16 @@ public class RangeQueryVisitorTests
         Assert.That(leafCollector.Leafs.Count, Is.EqualTo(0));
         Action act = () => visitor.GetProofs();
         Assert.That(act, Throws.Nothing);
+    }
+
+    [Test]
+    public void GetProofs_after_dispose_throws()
+    {
+        RangeQueryVisitor visitor = new(Keccak.Zero, Keccak.MaxValue, new RlpCollector());
+        _inputTree.Accept(new NodeRecordVisitorAdapter<TreePathContext>(visitor), _inputTree.RootHash, CreateVisitingOptions());
+        visitor.Dispose();
+
+        Assert.That(() => visitor.GetProofs(), Throws.TypeOf<ObjectDisposedException>());
     }
 
     private static VisitingOptions CreateVisitingOptions() => new() { };

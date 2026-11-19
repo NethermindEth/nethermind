@@ -120,6 +120,27 @@ public class TransactionTraceBoundaryTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public void WrapAtStoredIndex_reads_no_stored_index_for_a_reward_trace(bool tracesRewards)
+    {
+        Block block = Build.A.Block.WithTransactions(Decode()).TestObject;
+        IReceiptFinder receipts = Substitute.For<IReceiptFinder>();
+        receipts.FindTransactionIndex(block, TestItem.KeccakA).Returns(7);
+        IPrefixStateSeedSource seeds = Substitute.For<IPrefixStateSeedSource>();
+        seeds.MayCover(block).Returns(true);
+        IBlockTracer tracer = Substitute.For<IBlockTracer>();
+        tracer.IsTracingRewards.Returns(tracesRewards);
+
+        IBlockTracer wrapped = TransactionTraceBoundary.WrapAtStoredIndex(tracer, receipts, seeds, block, TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wrapped is TransactionTraceBoundary, Is.EqualTo(!tracesRewards));
+            receipts.Received(tracesRewards ? 0 : 1).FindTransactionIndex(block, TestItem.KeccakA);
+        }
+    }
+
     private static TransactionTraceBoundary Boundary(Hash256 hash) =>
         (TransactionTraceBoundary)TransactionTraceBoundary.Wrap(NullBlockTracer.Instance, hash);
 

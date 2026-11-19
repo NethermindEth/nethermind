@@ -5,9 +5,11 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
@@ -286,8 +288,11 @@ public static partial class EvmInstructions
             CodeInfo codeInfo = vm.CodeInfoRepository
                 .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
 
-            // Get the external code from the repository.
-            ReadOnlySpan<byte> externalCode = codeInfo.CodeSpan;
+            // Get the external code from the repository. A precompile's code info carries no code, but the account at
+            // its address may hold some.
+            ReadOnlySpan<byte> externalCode = codeInfo.IsPrecompile
+                ? GetCodeAtPrecompileAddress(vm.WorldState, address)
+                : codeInfo.CodeSpan;
 
             vm.VmState.Memory.CopyFromZeroExtendedAfterGas(in a, externalCode, in b, (int)result);
 
@@ -425,14 +430,33 @@ public static partial class EvmInstructions
         }
 
         // No optimization applied: load the account's code from storage.
-        ReadOnlySpan<byte> accountCode = vm.CodeInfoRepository
-            .GetCachedCodeInfo(address, followDelegation: false, spec, out _)
-            .CodeSpan;
-        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst, OnFlag>((uint)accountCode.Length));
+        CodeInfo codeInfo = vm.CodeInfoRepository
+            .GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+        // A precompile's code info carries no code, but the account at its address may hold some, which the
+        // contract check above sees.
+        int codeLength = codeInfo.IsPrecompile
+            ? GetCodeAtPrecompileAddress(vm.WorldState, address).Length
+            : codeInfo.CodeSpan.Length;
+        return new OpcodeResult(programCounter, stack.PushUInt32<TTracingInst, OnFlag>((uint)codeLength));
         // Jump forward to be unpredicted by the branch predictor.
     OutOfGas:
         return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
     StackUnderflow:
         return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+    }
+
+    /// <summary>Reads the code that the account at a precompile's address holds in state.</summary>
+    /// <remarks>
+    /// A call to the address runs the precompile, whose <see cref="CodeInfo"/> carries no code, but EXTCODESIZE and
+    /// EXTCODECOPY report the account's own code, as EXTCODEHASH does. Out of line, as only a precompile's address
+    /// reaches it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ReadOnlySpan<byte> GetCodeAtPrecompileAddress(IWorldState state, Address address)
+    {
+        ValueHash256 codeHash = state.GetCodeHash(address);
+        return codeHash == ValueKeccak.OfAnEmptyString
+            ? default
+            : CodeInfoRepository.GetCodeInfo(state, address, in codeHash).CodeSpan;
     }
 }

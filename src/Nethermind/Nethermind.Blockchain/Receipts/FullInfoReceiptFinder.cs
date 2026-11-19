@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -47,6 +48,9 @@ namespace Nethermind.Blockchain.Receipts
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
         public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination) =>
+            _receiptStorage.TryAppendNetworkReceipts(header, withBloom, destination);
+        public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) => _receiptStorage.Prefetch(blocks);
         public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart) =>
             _receiptStorage.TryGetReceipt(block, txHash, out receipt, out txIndex, out logIndexStart);
         public int FindTransactionIndex(Block block, Hash256 txHash) => _receiptStorage.FindTransactionIndex(block, txHash);

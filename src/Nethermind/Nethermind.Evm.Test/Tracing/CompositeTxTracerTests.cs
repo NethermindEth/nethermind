@@ -21,6 +21,78 @@ namespace Nethermind.Evm.Test.Tracing;
 public class CompositeTxTracerTests
 {
     [Test]
+    public void Action_error_details_follow_leaf_capabilities(
+        [Values] bool actions, [Values] bool instructions, [Values] bool memory, [Values] bool wrapped, [Values] bool actionOnly)
+    {
+        ActionErrorDetailsTracer observer = new(actions, instructions, memory);
+        ActionErrorDetailsTracer native = new(true, false, false);
+        CompositeTxTracer composite = new(observer, native);
+        using ITxTracer tracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(NullTxTracer.Instance, composite.WithCancellation(CancellationToken.None)))
+            {
+                IsTracingInstructions = true,
+                IsTracingMemory = true
+            }
+            : composite;
+
+        tracer.ReportActionErrorDetails("fault", actionOnly);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observer.Reports, Is.EqualTo(actions && (!actionOnly || (!instructions && !memory)) ? 1 : 0));
+            Assert.That(native.Reports, Is.EqualTo(1), "mixed aggregate capabilities must not suppress native details or duplicate delivery");
+        }
+    }
+
+    private sealed class ActionErrorDetailsTracer : TxTracer
+    {
+        public int Reports { get; private set; }
+
+        public ActionErrorDetailsTracer(bool actions, bool instructions, bool memory)
+        {
+            IsTracingActions = actions;
+            IsTracingInstructions = instructions;
+            IsTracingMemory = memory;
+        }
+
+        public override void ReportActionErrorDetails(string error) => Reports++;
+    }
+
+    [Test]
+    public void Code_deposit_error_reaches_every_leaf_that_takes_it([Values] bool wrapped)
+    {
+        CodeDepositErrorTracer exits = new();
+        ActionErrorDetailsTracer native = new(true, false, false);
+        ActionErrorDetailsTracer structLog = new(true, true, true);
+        CompositeTxTracer composite = new(exits, native, structLog);
+        using ITxTracer tracer = wrapped
+            ? new CancellationTxTracer(new CompositeTxTracer(NullTxTracer.Instance, composite.WithCancellation(CancellationToken.None)))
+            : composite;
+
+        tracer.ReportCodeDepositError("max code size exceeded");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exits.Error, Is.EqualTo("max code size exceeded"), "an instruction tracer that takes the error");
+            Assert.That(native.Reports, Is.EqualTo(1), "an action-only leaf gets it as an action detail");
+            Assert.That(structLog.Reports, Is.Zero, "a struct logger keeps it off its steps");
+        }
+    }
+
+    private sealed class CodeDepositErrorTracer : TxTracer
+    {
+        public string? Error { get; private set; }
+
+        public CodeDepositErrorTracer()
+        {
+            IsTracingActions = true;
+            IsTracingInstructions = true;
+        }
+
+        public override void ReportCodeDepositError(string error) => Error = error;
+    }
+
+    [Test]
     public void Storage_instruction_reports_follow_instruction_tracing(
         [Values] bool instructions, [Values] bool storage)
     {
@@ -74,6 +146,20 @@ public class CompositeTxTracerTests
         using CompositeTxTracer tracer = new(filtered, observer);
 
         Assert.That(tracer.InstructionMask, Is.EqualTo(stack || memory || returnData ? UInt256.MaxValue : UInt256.One));
+    }
+
+    /// <param name="readsOutput">What the receipt tracer reports as an output filter; null when it is not one.</param>
+    [Test]
+    public void Reads_the_output_when_a_receipt_tracer_reads_it([Values] bool? readsOutput, [Values] bool siblingTracesReceipt)
+    {
+        ITxTracer receiptTracer = readsOutput is null ? Substitute.For<ITxTracer>() : Substitute.For<ITxTracer, ITxOutputTracingFilter>();
+        receiptTracer.IsTracingReceipt.Returns(true);
+        if (receiptTracer is ITxOutputTracingFilter filter) filter.IsTracingOutput.Returns(readsOutput!.Value);
+        ITxTracer sibling = Substitute.For<ITxTracer>();
+        sibling.IsTracingReceipt.Returns(siblingTracesReceipt);
+        using CompositeTxTracer tracer = new(receiptTracer, sibling);
+
+        Assert.That(tracer.IsTracingOutput, Is.EqualTo(readsOutput is not false || siblingTracesReceipt));
     }
 
     [Test]
@@ -227,7 +313,7 @@ public class CompositeTxTracerTests
     [Test]
     public void Wrapping_tracer_implements_every_meaningful_default_interface_member([Values(typeof(CompositeTxTracer), typeof(CancellationTxTracer))] Type wrapperType)
     {
-        string[] convenienceForwarders = ["get_IsTracing", "ReportStackPush", "ReportMemoryChange"];
+        string[] convenienceForwarders = ["get_IsTracing", "get_IsObservingFeePayment", "ReportStackPush", "ReportMemoryChange"];
 
         MethodInfo[] defaultMembers = typeof(ITxTracer)
             .GetMethods()

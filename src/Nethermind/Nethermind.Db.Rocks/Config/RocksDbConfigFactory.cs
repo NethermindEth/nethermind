@@ -14,7 +14,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
     private readonly ILogger _logger = logManager.GetClassLogger<IRocksDbConfigFactory>();
     private bool _maxOpenFilesInitialized;
 
-    public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+    public IRocksDbConfig GetForDatabase(string? databaseName, string? columnName)
     {
         // Automatically adjust MaxOpenFiles if not configured (only once)
         if (!_maxOpenFilesInitialized)
@@ -62,7 +62,7 @@ public class RocksDbConfigFactory(IDbConfig dbConfig, IPruningConfig pruningConf
         }
 
         IRocksDbConfig rocksDbConfig = new PerTableDbConfig(dbConfig, databaseName, columnName, validateConfig);
-        if (databaseName.StartsWith("State"))
+        if (databaseName?.StartsWith("State") == true)
         {
             if (!pruningConfig.Mode.IsMemory())
             {

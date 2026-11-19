@@ -62,7 +62,7 @@ public class AccountCollector(long byteLimit = 0) : RangeQueryVisitor.ILeafValue
     {
         RlpReader entry = reader.EnterSequence(out int length);
         ValueHash256 path = entry.DecodeValueKeccakNonNull();
-        Account? account = AccountDecoder.Slim.Decode(ref entry, RlpBehaviors.TrustedInput);
+        AccountDecoder.Slim.TryDecodeStruct<OffFlag>(ref entry, out AccountStruct account);
         reader.ExitSequence(entry, length);
         return new PathWithAccount(path, account);
     }

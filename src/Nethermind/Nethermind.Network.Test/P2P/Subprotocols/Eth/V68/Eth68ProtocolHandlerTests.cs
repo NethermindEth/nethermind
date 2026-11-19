@@ -225,7 +225,7 @@ public class Eth68ProtocolHandlerTests
         ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
         int sidecarContentLength = Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs);
+            + Rlp.LengthOf(wrapper.SplitProofs());
         int gethSizeEstimate = tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength);
         Assert.That(gethSizeEstimate, Is.Not.EqualTo(tx.GetLength()));
         using NewPooledTransactionHashesMessage68 hashesMsg = new(
@@ -964,7 +964,7 @@ public class Eth68ProtocolHandlerTests
                 return true;
             });
 
-        ArrayPoolList<ValueHash256> hashes = new(transactionCount);
+        ArrayPoolList<ValueHash256> hashes = [with(transactionCount)];
         for (int i = 0; i < transactionCount; i++)
         {
             hashes.Add(new Hash256(i.ToString("X64")));
@@ -1083,7 +1083,7 @@ public class Eth68ProtocolHandlerTests
         List<ArrayPoolList<byte>> encodings = ReturnStoredEncoding(blobTx, forAnyHash: true);
         int servedCount = (int)(2.MiB / blobTx.GetLength());
 
-        ArrayPoolList<ValueHash256> hashes = new(transactionCount);
+        ArrayPoolList<ValueHash256> hashes = [with(transactionCount)];
         for (int i = 0; i < transactionCount; i++)
         {
             hashes.Add(new Hash256(i.ToString("X64")));
@@ -1116,7 +1116,7 @@ public class Eth68ProtocolHandlerTests
             .Returns(x =>
             {
                 bool found = forAnyHash || x.ArgAt<ValueHash256>(0) == blobTx.Hash!.ValueHash256;
-                ArrayPoolList<byte>? networkForm = found ? new ArrayPoolList<byte>(encoding) : null;
+                ArrayPoolList<byte>? networkForm = found ? [with(encoding)] : null;
                 if (networkForm is not null) encodings.Add(networkForm);
                 x[1] = found ? BlobCellMask.Full : default;
                 x[2] = networkForm;
@@ -1242,8 +1242,10 @@ public class Eth68ProtocolHandlerTests
         const int count = 512;
         using GetReceiptsMessage msg = new(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
         TxReceipt[] receipts = SoftLimitTestHelper.CreateLogHeavyReceipts(100);
-        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(receipts, count);
+        int expectedCount = SoftLimitTestHelper.CountReceiptBlocksWithinSoftLimit(
+            ReceiptsServingTestHelper.Encode(receipts, Rlp.GetDecoderOrThrow<TxReceipt>(), _specProvider).Length, count);
         _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(receipts);
+        _syncManager.ServeReceipts(_specProvider);
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth66MessageCode.GetReceipts);
@@ -1329,7 +1331,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
 
-        ArrayPoolList<Transaction> transactions = new(2);
+        ArrayPoolList<Transaction> transactions = [with(2)];
         using PooledTransactionsMessage response = new(1111, new(transactions));
         if (correlated)
         {
@@ -1380,10 +1382,10 @@ public class Eth68ProtocolHandlerTests
     private void GenerateTxLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<ValueHash256> hashes, out ArrayPoolList<Transaction> txs)
     {
         TxDecoder txDecoder = TxDecoder.Instance;
-        types = new(txCount);
-        sizes = new(txCount);
-        hashes = new(txCount);
-        txs = new(txCount);
+        types = [with(txCount)];
+        sizes = [with(txCount)];
+        hashes = [with(txCount)];
+        txs = [with(txCount)];
 
         for (int i = 0; i < txCount; ++i)
         {

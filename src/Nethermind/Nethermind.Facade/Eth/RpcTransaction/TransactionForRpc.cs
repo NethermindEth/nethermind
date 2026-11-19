@@ -17,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Validation;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
@@ -94,17 +95,18 @@ public abstract class TransactionForRpc
     /// leaves that pair to execution, where it fails before any gas is bought, validates with <see cref="ToTransaction"/>.
     /// </summary>
     /// <remarks>
-    /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
-    /// so the first failing check still names the request.
+    /// Differing non-null input and data take precedence over conversion errors; calls instead prefer input over data.
+    /// Otherwise the fee pair is checked after type-specific and gas price checks and before missing contract data.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
     {
         Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
-        if (result.IsError) return result;
-        return GetSubmissionDataError() is { } error ? Result<Transaction>.Fail(error) : result;
+        return GetSubmissionDataError(result.Error) is { } error && error != result.Error
+            ? Result<Transaction>.Fail(error)
+            : result;
     }
 
-    internal virtual string? GetSubmissionDataError() => null;
+    internal virtual string? GetSubmissionDataError(string? conversionError = null) => conversionError;
 
     private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
@@ -137,6 +139,17 @@ public abstract class TransactionForRpc
             return ordered.IsError ? ordered : TxErrorMessages.InvalidTxType(spec.Name);
         return validateFeeCapOrder ? ordered : result;
     }
+
+    /// <summary>Converts a debug trace call with its message-level fork checks and blob fee defaults.</summary>
+    internal Result<Transaction> ToTraceCallTransaction(IReleaseSpec spec, ulong? gasCap, UInt256 baseFee) =>
+        GetTraceCallForkError(spec, baseFee) is { } error
+            ? Result<Transaction>.Fail(error)
+            : ConvertTraceCallTransaction(spec, gasCap);
+
+    internal virtual string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) => null;
+
+    internal virtual Result<Transaction> ConvertTraceCallTransaction(IReleaseSpec spec, ulong? gasCap) =>
+        ToCallTransaction(spec, gasCap);
 
     private TxType ResolveType(IReleaseSpec? spec)
     {

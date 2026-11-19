@@ -239,6 +239,53 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
         [Test]
+        public unsafe void Input_buffer_code_memory_is_padded_in_place()
+        {
+            byte[] code = [0x60, 0x01, 0x5b];
+            byte[] codeAndPadding = new byte[code.Length + CodeInfo.ExecutionPadding];
+            codeAndPadding.AsSpan().Fill(0xff);
+            code.CopyTo(codeAndPadding, 0);
+
+            ReadOnlyMemory<byte> wrapped = ExecutableCodeMemory.WrapInputBuffer(codeAndPadding, code.Length);
+
+            using MemoryHandle whole = wrapped.Pin();
+            using MemoryHandle tail = wrapped[1..].Pin();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(wrapped.ToArray(), Is.EqualTo(code));
+                Assert.That((nint)whole.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref codeAndPadding[0])));
+                Assert.That((nint)tail.Pointer, Is.EqualTo((nint)Unsafe.AsPointer(ref codeAndPadding[1])));
+                Assert.That(() => ExecutableCodeMemory.WrapInputBuffer(new byte[code.Length + CodeInfo.ExecutionPadding - 1], code.Length), Throws.InstanceOf<ArgumentOutOfRangeException>());
+                Assert.That(codeAndPadding.AsSpan(code.Length).ToArray(), Is.All.EqualTo(0));
+                Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(wrapped.Span), ref codeAndPadding[0]), Is.True);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(wrapped, out byte[]? buffer), Is.True);
+                Assert.That(buffer, Is.SameAs(codeAndPadding));
+                Assert.That(ExecutableCodeMemory.TryGetExecutionBuffer(wrapped, out _), Is.False);
+                Assert.That(ExecutableCodeMemory.IsPlaced(wrapped), Is.False);
+            }
+        }
+
+        [Test]
+        public void Only_the_whole_of_input_buffer_code_memory_is_recognised()
+        {
+            byte[] codeAndPadding = new byte[3 + CodeInfo.ExecutionPadding];
+            ReadOnlyMemory<byte> wrapped = ExecutableCodeMemory.WrapInputBuffer(codeAndPadding, 3);
+            byte[] memory = GC.AllocateArray<byte>(64, pinned: true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(wrapped[..3], out _), Is.True);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(wrapped[1..], out _), Is.False);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(wrapped[..2], out _), Is.False);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(wrapped[1..2], out _), Is.False);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(ExecutableCodeMemory.Wrap(memory.AsSpan(0, 3)), out _), Is.False);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(ExecutableCodeMemory.Place(memory, [0x60, 0x01, 0x5b], out _), out _), Is.False);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(ExecutableCodeMemory.Copy(memory.AsSpan(0, 3)), out _), Is.False);
+                Assert.That(ExecutableCodeMemory.TryGetInputBuffer(codeAndPadding.AsMemory(0, 3), out _), Is.False);
+            }
+        }
+
+        [Test]
         public void Wrapped_code_memory_reads_in_place()
         {
             byte[] memory = GC.AllocateArray<byte>(8, pinned: true);
