@@ -1563,6 +1563,11 @@ public partial class VirtualMachine<TGasPolicy>(
                 return new(default, precompileSuccess: false, shouldRevert: true, EvmExceptionType.OutOfGas);
             }
 
+            if (!success && output.Error is not null && IsTracingActions)
+            {
+                TracePrecompileError(output.Error);
+            }
+
             return new(
                 data,
                 precompileSuccess: success,
@@ -1585,6 +1590,11 @@ public partial class VirtualMachine<TGasPolicy>(
             return new(default, precompileSuccess: false, shouldRevert: true);
         }
     }
+
+    /// <remarks>Like Geth, a precompile that rejects its input after charging gas fails its frame with the precompile's
+    /// own error rather than out of gas. Action-only, so struct logs keep the caller's call step unchanged.</remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void TracePrecompileError(string error) => _txTracer.ReportActionErrorDetails(error, actionOnly: true);
 
     private bool CanReturnIdentityOutputInScratch(VmState<TGasPolicy> state) =>
         !state.IsTopLevel && !IsTracingActions && !_tracerFlags.IsTracingInstructions;

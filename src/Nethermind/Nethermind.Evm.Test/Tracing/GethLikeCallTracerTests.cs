@@ -937,6 +937,59 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test(Description = "Like geth, a precompile that rejects its input after charging gas fails with its own error")]
+    public void Precompile_failure_reports_precompile_error([Values] bool child, [Values] bool enoughGas, [Values] TraceDispatch dispatch)
+    {
+        // One byte is not a multiple of the 192-byte pairing size; the 45000 base cost is charged before the check.
+        byte[] input = [1];
+        Address pairing = new("0x0000000000000000000000000000000000000008");
+        ulong gasLimit = child || enoughGas ? 100000UL : 50000UL;
+        const ulong precompileGas = 50000;
+        byte[] code = Prepare.EvmCode.CallWithInput(pairing, (long)(enoughGas ? precompileGas : ChildGas), input).Op(Instruction.POP).STOP().Done;
+        Transaction? rootCall = child ? null : Build.A.Transaction
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(Sender))
+            .WithData(input)
+            .To(pairing)
+            .SignedAndResolved(SenderKey)
+            .TestObject;
+        (Block block, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, gasLimit, code, transaction: rootCall);
+        GasSpentTracer receipt = new();
+        _processor.CallAndRestore(tx, block.Header, receipt);
+
+        NativeCallTracer native = new(tx, CancunSpec, GetGethTraceOptions(null));
+        GethLikeTxMemoryTracer memory = new(tx, GethTraceOptions.Default);
+        using ITxTracer tracer = dispatch switch
+        {
+            TraceDispatch.Untraced => native,
+            TraceDispatch.Cancelable => native.WithCancellation(CancellationToken.None),
+            _ => new CompositeTxTracer(native.WithCancellation(CancellationToken.None), memory).WithCancellation(CancellationToken.None)
+        };
+        _processor.CallAndRestore(tx, block.Header, tracer);
+        using GethLikeTxTrace callResult = native.BuildResult();
+        using GethLikeTxTrace structResult = memory.BuildResult();
+        NativeCallTracerCallFrame root = (NativeCallTracerCallFrame)callResult.CustomTracerResult!.Value!;
+        NativeCallTracerCallFrame frame = child ? root.Calls.AssertSingle() : root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.To, Is.EqualTo(pairing), "failing frame target");
+            Assert.That(frame.Error, Is.EqualTo(enoughGas ? "bad elliptic curve pairing size" : "out of gas"), "precompile error");
+            Assert.That(root.GasUsed, Is.EqualTo(receipt.SpentGas), "the root reports the transaction's gasUsed");
+            if (child)
+            {
+                Assert.That(root.Error, Is.Null, "the caller survives the precompile's failure");
+                Assert.That(frame.GasUsed, Is.EqualTo(frame.Gas), "a failed precompile consumes all its gas");
+            }
+            else
+            {
+                Assert.That(receipt.SpentGas, Is.EqualTo(gasLimit), "a failed root precompile consumes all its gas");
+            }
+            Assert.That(structResult.Entries.Select(static entry => entry.Error), Is.All.Null, "struct log steps");
+        }
+    }
+
     [Test(Description = "Like geth, a CREATE frame that halts or fails its code deposit reports all its gas as used")]
     public void Failed_create_frame_reports_gas_used([Values] FailedCreate outcome, [Values] TraceDispatch dispatch,
         [Values(Instruction.CREATE, Instruction.CREATE2)] Instruction opcode)
