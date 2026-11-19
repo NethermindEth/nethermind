@@ -201,7 +201,7 @@ namespace Nethermind.Init.Steps
                 // A selected target is the whole job of the run, so its failure is fatal even for an optional step.
                 if (isTarget || stepWrapper.MustInitialize)
                 {
-                    if (_logger.IsError) _logger.Error($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
+                    if (_logger.IsError) _logger.Error($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", SensitiveLogMasking.Enabled ? null : exception);
 
                     // Callers treat a cancellation as a requested shutdown, which this was not.
                     if (exception is OperationCanceledException)
@@ -210,7 +210,7 @@ namespace Nethermind.Init.Steps
                     throw;
                 }
 
-                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception}");
+                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception:hide}");
             }
             finally
             {
