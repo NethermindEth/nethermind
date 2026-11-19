@@ -86,7 +86,6 @@ public class BeaconP2PLoopbackTests
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
-                TestContext.Out.WriteLine($"dial ended by disposal: {e.GetType().Name}: {e.Message}");
             }
         }
 

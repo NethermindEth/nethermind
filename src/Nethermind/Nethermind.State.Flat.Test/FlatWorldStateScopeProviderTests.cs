@@ -3049,7 +3049,6 @@ public class FlatWorldStateScopeProviderTests
         public FlatWorldStateScope? Scope { get; set; }
         public int AddressJobs { get; private set; }
         public int SlotJobs { get; private set; }
-        public int MissingNodeJobs { get; private set; }
         public int LowestCountAfterCompletion { get; private set; } = int.MaxValue;
 
         public bool PushSlotJob(ITrieWarmer.IStorageWarmer storageTree, in UInt256 index, int sequenceId, bool isDelete)
@@ -3059,7 +3058,7 @@ public class FlatWorldStateScopeProviderTests
         {
             // The mocked persistence holds no trie nodes; the real warmer drops the same exception.
             try { storageTree.WarmUpStorageTrie(index, sequenceId, isDelete); }
-            catch (TrieNodeException) { MissingNodeJobs++; }
+            catch (TrieNodeException) { }
             SlotJobs++;
             return Record();
         }
@@ -3067,7 +3066,7 @@ public class FlatWorldStateScopeProviderTests
         public bool PushAddressJob(ITrieWarmer.IAddressWarmer scope, Address? path, int sequenceId)
         {
             try { scope.WarmUpStateTrie(path!, sequenceId); }
-            catch (TrieNodeException) { MissingNodeJobs++; }
+            catch (TrieNodeException) { }
             AddressJobs++;
             return Record();
         }

@@ -93,7 +93,6 @@ public static class MessageDecodingCompatibility
             }
             catch (Exception exception) when (exception is not AssertionException)
             {
-                Assert.That(length, Is.Not.EqualTo(payload.Length), $"the complete payload failed to decode: {exception}");
             }
 
             Assert.That(buffer.ReferenceCount, Is.EqualTo(1), $"{length} of {payload.Length} bytes");

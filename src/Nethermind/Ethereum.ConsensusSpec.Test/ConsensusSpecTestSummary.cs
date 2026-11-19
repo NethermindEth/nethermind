@@ -98,9 +98,8 @@ public static class ConsensusSpecTestSummary
             // The NUnit adapter may lose teardown console output; retain a best-effort report beside the assembly.
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "consensus-spec-report.txt"), report);
         }
-        catch (IOException e)
+        catch (IOException)
         {
-            TestContext.Progress.WriteLine($"[consensus-spec-tests] report file not written: {e.Message}");
         }
     }
 }

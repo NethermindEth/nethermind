@@ -54,8 +54,8 @@ public class PersistedSnapshotTests
         _blobs.Dispose();
         _memArena.Dispose();
         _buffer.Dispose();
-        TestDirectories.TryDelete(_blobsDir);
-        TestDirectories.TryDelete(_memArenaDir);
+        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
+        try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
 
     private PersistedSnapshot CreatePersistedSnapshot(StateId from, StateId to, byte[] data) =>

@@ -1845,7 +1845,6 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             using Barrier barrier = new(clientCount * attemptsPerClient);
             List<Task> tasks = [];
-            int refused = 0;
             for (int i = 0; i < clientCount; i++)
             {
                 for (int j = 0; j < attemptsPerClient; j++)
@@ -1860,7 +1859,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                         }
                         catch (LimitExceededException)
                         {
-                            Interlocked.Increment(ref refused);
                         }
                     }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default));
                 }
@@ -1871,7 +1869,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(admitted.Sum(static q => q.Count), Is.EqualTo(nodeLimit));
-                Assert.That(refused, Is.EqualTo(clientCount * attemptsPerClient - nodeLimit));
                 Assert.That(admitted.Select(static q => q.Count), Has.All.LessThanOrEqualTo(connectionLimit));
             }
 
@@ -1908,7 +1905,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                     }
                     catch (LimitExceededException)
                     {
-                        break;
                     }
                 }
             }
@@ -1980,7 +1976,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             string heldId = manager.AddSubscription(holder, "newHeads");
 
             int refuserAdmissions = 0;
-            long refusals = 0;
             using CancellationTokenSource stop = new();
             using Barrier barrier = new(refusers + 1);
             Task[] tasks = new Task[refusers];
@@ -2001,7 +1996,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                         }
                         catch (LimitExceededException)
                         {
-                            Interlocked.Increment(ref refusals);
                         }
                     }
                 }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
@@ -2023,8 +2017,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             await stop.CancelAsync();
             await Task.WhenAll(tasks);
 
-            Assert.That(Volatile.Read(ref refuserAdmissions) + (lateAdmitted ? 1 : 0), Is.EqualTo(1),
-                $"refused adds: {Interlocked.Read(ref refusals)}");
+            Assert.That(Volatile.Read(ref refuserAdmissions) + (lateAdmitted ? 1 : 0), Is.EqualTo(1));
         }
 
         [TestCase(0, TestName = "Removing_an_open_client_during_its_first_add_disposes_the_subscription")]

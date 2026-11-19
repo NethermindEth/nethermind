@@ -162,7 +162,7 @@ public sealed class ProcessStallWatchdog(ILogManager logManager) : IDisposable
     {
         try
         {
-            if (_logger.IsDebug) _logger.Debug($"Process stall watchdog tick failed: {failure}");
+            if (_logger.IsDebug) _logger.Debug("Process stall watchdog tick failed.");
         }
         catch (Exception loggerFailure)
         {

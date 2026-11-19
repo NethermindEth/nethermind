@@ -31,7 +31,10 @@ public class ArenaReclaimPunchHoleTests
     }
 
     [TearDown]
-    public void TearDown() => TestDirectories.TryDelete(_testDir);
+    public void TearDown()
+    {
+        try { Directory.Delete(_testDir, recursive: true); } catch { /* best-effort */ }
+    }
 
     [Test]
     public void ReservationCleanup_PunchesHole_ForDeadRange_WhenEnabled([Values] bool punchHoleOnReclaim)

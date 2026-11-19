@@ -37,7 +37,10 @@ public class PageResidencyTrackerTests
     }
 
     [TearDown]
-    public void TearDown() => TestDirectories.TryDelete(_tempDir);
+    public void TearDown()
+    {
+        try { Directory.Delete(_tempDir, recursive: true); } catch { /* best-effort */ }
+    }
 
     private sealed class RecordingHandler : IPageEvictionHandler
     {

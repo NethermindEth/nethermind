@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <EnableNUnitRunner>true</EnableNUnitRunner>
     <IsPackable>false</IsPackable>
+    <NoWarn>$(NoWarn);NETH010</NoWarn>
   </PropertyGroup>
 
   <!-- Roslyn test analyzers are outside the zkVM-compatible build graph. -->

@@ -19,7 +19,11 @@ public class EmptyCatchBlockAnalyzerTests
     [TestCase("try { if (Flag) Work(); else Work(); } {|#0:catch|} (ObjectDisposedException) { }", "ObjectDisposedException")]
     [TestCase("try { { Work(); Work(); } } {|#0:catch|} (ObjectDisposedException) { }", "ObjectDisposedException")]
     [TestCase("try { Work(); } {|#0:catch|} (AggregateException) { }", "AggregateException")]
-    [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (e is OperationCanceledException) { }", "Exception")]
+    [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (e is OperationCanceledException or InvalidOperationException) { }", "Exception")]
+    [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (e is not OperationCanceledException) { }", "Exception")]
+    [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (e is OperationCanceledException && Flag) { }", "Exception")]
+    [TestCase("try { Work(); Work(); } {|#0:catch|} (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { }", "Exception")]
+    [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (Other is OperationCanceledException) { }", "Exception")]
     [TestCase("try { Work(); } {|#0:catch|} (InvalidOperationException) { /* ignored */ }", "InvalidOperationException")]
     [TestCase("try { Work(); } {|#0:catch|} (CustomException) { }", "CustomException")]
     public Task Empty_catch_reports_diagnostic(string body, string caught) =>
@@ -66,7 +70,14 @@ public class EmptyCatchBlockAnalyzerTests
     [TestCase("try { Work(); } catch (OperationCanceledException) when (Flag) { }")]
     [TestCase("try { Work(); } catch (ObjectDisposedException) { }")]
     [TestCase("try { Work(); } catch (ObjectDisposedException e) when (Flag) { }")]
-    public Task Cancellation_or_dispose_race_catch_no_diagnostic(string body) =>
+    [TestCase("try { Work(); } catch (ChannelClosedException) { }")]
+    [TestCase("try { Work(); } catch (CustomChannelClosedException) { }")]
+    [TestCase("try { Work(); Work(); } catch (ChannelClosedException) { }")]
+    [TestCase("try { Work(); } catch (Exception e) when (e is OperationCanceledException) { }")]
+    [TestCase("try { Work(); } catch (Exception e) when (e is OperationCanceledException or ChannelClosedException) { }")]
+    [TestCase("try { Work(); } catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException) { }")]
+    [TestCase("try { Work(); } catch (Exception e) when (e is TaskCanceledException or CustomChannelClosedException) { }")]
+    public Task Expected_shutdown_exception_catch_no_diagnostic(string body) =>
         Verify(WrapBody(body));
 
     [TestCase("try { Work(); } catch (Exception e) { Console.WriteLine(e); }")]
@@ -80,12 +91,15 @@ public class EmptyCatchBlockAnalyzerTests
 
     private static string WrapBody(string body) => $$"""
         using System;
+        using System.Threading.Channels;
         using System.Threading.Tasks;
         class CustomException : Exception { }
         class CustomCanceledException : OperationCanceledException { }
+        class CustomChannelClosedException : ChannelClosedException { }
         class Test
         {
             bool Flag;
+            Exception Other;
             void Work() { }
             void M()
             {

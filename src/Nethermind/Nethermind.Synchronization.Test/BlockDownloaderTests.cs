@@ -1529,9 +1529,8 @@ public partial class BlockDownloaderTests
             {
                 await FullSyncFeedComponent.Downloader.Dispatch(peerInfo, blockRequest, default);
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                await TestContext.Out.WriteLineAsync($"Dispatch failed: {exception.Message}");
             }
 
             return FullSyncFeedComponent.Feed.HandleResponse(blockRequest, peerInfo);
@@ -1545,9 +1544,8 @@ public partial class BlockDownloaderTests
             {
                 await FastSyncFeedComponent.Downloader.Dispatch(peerInfo, blockRequest, default);
             }
-            catch (Exception exception)
+            catch (Exception)
             {
-                await TestContext.Out.WriteLineAsync($"Dispatch failed: {exception.Message}");
             }
 
             return FastSyncFeedComponent.Feed.HandleResponse(blockRequest, peerInfo);

@@ -275,17 +275,14 @@ public class MessageDictionaryTests
             Task sendTask = Task.Run(() => dictionary.Send(replacement));
             Assert.That(sendTask.Wait(1000), Is.True);
 
-            bool rejected = false;
             try
             {
                 response.Complete(112, new[] { Build.A.BlockHeader.TestObject }.ToPooledList(), 100);
+                Assert.Fail("A completion with a different request id should be rejected");
             }
             catch (SubprotocolException)
             {
-                rejected = true;
             }
-
-            Assert.That(rejected, Is.True, "A completion with a different request id should be rejected");
         }
 
         using IOwnedReadOnlyList<BlockHeader> responseData = new[] { Build.A.BlockHeader.TestObject }.ToPooledList();
@@ -348,17 +345,14 @@ public class MessageDictionaryTests
         {
             Task sendTask = Task.Run(() => dictionary.Send(replacement));
             Assert.That(sendTask.Wait(1000), Is.True);
-            bool rejected = false;
             try
             {
                 response.Complete(112, rejectedData, 100);
+                Assert.Fail("A completion with a different request id should be rejected");
             }
             catch (SubprotocolException)
             {
-                rejected = true;
             }
-
-            Assert.That(rejected, Is.True, "A completion with a different request id should be rejected");
         }
 
         rejectedData.Received(1).Dispose();

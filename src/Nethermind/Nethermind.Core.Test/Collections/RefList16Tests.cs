@@ -50,17 +50,14 @@ public class RefList16Tests
         }
         Assert.That(pool.Count, Is.EqualTo(16));
 
-        bool threw = false;
         try
         {
             pool.Add(TestItem.KeccakA);
+            Assert.Fail("Should throw `IndexOutOfRangeException`");
         }
         catch (IndexOutOfRangeException)
         {
-            threw = true;
         }
-
-        Assert.That(threw, Is.True, "Should throw `IndexOutOfRangeException`");
     }
 
     [TestCase(-1, TestName = "negative")]
@@ -87,21 +84,16 @@ public class RefList16Tests
         RefList16<Hash256> pool = new(16);
         Assert.That(pool.Count, Is.EqualTo(16), "precondition: the list is constructed full");
 
-        bool threw = false;
         try
         {
             pool.Add(TestItem.KeccakA);
+            Assert.Fail("adding past capacity must throw IndexOutOfRangeException");
         }
         catch (IndexOutOfRangeException)
         {
-            threw = true;
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(threw, Is.True, "adding past capacity must throw IndexOutOfRangeException");
-            Assert.That(pool.Count, Is.EqualTo(16), "a rejected Add must not modify Count");
-        }
+        Assert.That(pool.Count, Is.EqualTo(16), "a rejected Add must not modify Count");
     }
 
     [Test]
@@ -112,30 +104,22 @@ public class RefList16Tests
 
         Assert.That(pool[0], Is.EqualTo(TestItem.KeccakA), "an index within Count returns the stored item");
 
-        bool threwAtCount = false;
         try
         {
             _ = pool[1];
+            Assert.Fail("indexing at Count must throw IndexOutOfRangeException");
         }
         catch (IndexOutOfRangeException)
         {
-            threwAtCount = true;
         }
 
-        bool threwNegative = false;
         try
         {
             _ = pool[-1];
+            Assert.Fail("a negative index must throw IndexOutOfRangeException");
         }
         catch (IndexOutOfRangeException)
         {
-            threwNegative = true;
-        }
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(threwAtCount, Is.True, "indexing at Count must throw IndexOutOfRangeException");
-            Assert.That(threwNegative, Is.True, "a negative index must throw IndexOutOfRangeException");
         }
     }
 }

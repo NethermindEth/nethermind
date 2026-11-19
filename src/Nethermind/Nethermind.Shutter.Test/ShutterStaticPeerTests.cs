@@ -87,7 +87,6 @@ public class ShutterStaticPeerTests
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
-            await TestContext.Out.WriteLineAsync($"Dial interrupted by shutdown: {e.GetType().Name}: {e.Message}");
         }
 
         // Dial timeout is 15 s; a remote losing the connection mid-handshake can take another 30 s to drop it.

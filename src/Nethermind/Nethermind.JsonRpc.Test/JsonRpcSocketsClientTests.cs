@@ -1433,10 +1433,7 @@ public class JsonRpcSocketsClientTests
                 await receiver;
             }
             catch (ObjectDisposedException) { }
-            catch (IOException exception)
-            {
-                await TestContext.Out.WriteLineAsync($"Receiver ended with an IO error after shutdown: {exception.Message}");
-            }
+            catch (IOException) { }
             catch (OperationCanceledException) { }
         }
 

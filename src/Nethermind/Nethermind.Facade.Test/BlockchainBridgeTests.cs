@@ -1530,9 +1530,8 @@ public class BlockchainBridgeTests
             blockchainBridge.Simulate(Build.A.EmptyBlockHeader, new SimulatePayload<TransactionWithSourceDetails>(),
                 Substitute.For<ISimulateBlockTracerFactory<GethStyleTracer>>(), 10_000_000, default);
         }
-        catch (Exception exception)
+        catch (Exception)
         {
-            TestContext.Out.WriteLine($"Simulate on a substitute environment threw: {exception.Message}");
         }
 
         testFactory.Received().Create();

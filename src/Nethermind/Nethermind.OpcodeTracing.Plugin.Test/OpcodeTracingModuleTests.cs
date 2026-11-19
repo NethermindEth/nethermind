@@ -29,16 +29,7 @@ public class OpcodeTracingModuleTests
     [TearDown]
     public void TearDown()
     {
-        if (!Directory.Exists(_tempDir)) return;
-
-        try
-        {
-            Directory.Delete(_tempDir, true);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            TestContext.Out.WriteLine($"Could not delete {_tempDir}: {exception.Message}");
-        }
+        try { Directory.Delete(_tempDir, true); } catch { /* best effort cleanup */ }
     }
 
     [Test]

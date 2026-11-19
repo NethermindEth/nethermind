@@ -58,7 +58,7 @@ public class PersistedSnapshotCompactorTests
     {
         _memArena.Dispose();
         _buffer.Dispose();
-        TestDirectories.TryDelete(_memArenaDir);
+        try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
     }
 
     [OneTimeTearDown]

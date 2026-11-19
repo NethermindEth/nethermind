@@ -282,10 +282,9 @@ public class TestFixtureDownloadCompletenessTests
                         stream.Flush();
                     }
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     // The client closing first is a normal end to this exchange, not a test failure.
-                    TestContext.Out.WriteLine($"Fixture server stopped: {e.GetType().Name}: {e.Message}");
                 }
             })
             { IsBackground = true };

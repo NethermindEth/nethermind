@@ -1465,12 +1465,8 @@ public sealed class BeaconSyncOrchestrator(
             {
                 await _work.Writer.WriteAsync(new ColumnFetchEndedItem(root, complete, refused), token);
             }
-            catch (OperationCanceledException)
+            catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
             {
-            }
-            catch (ChannelClosedException)
-            {
-                if (_logger.IsTrace) _logger.Trace($"By-root column fetch end for {root} is dropped: the work channel is closed");
             }
         }
         finally
@@ -2601,12 +2597,8 @@ public sealed class BeaconSyncOrchestrator(
         {
             await _work.Writer.WriteAsync(new AncestorFetchedItem(root, fetched?.Block, fetched?.Source), token);
         }
-        catch (OperationCanceledException)
+        catch (Exception e) when (e is OperationCanceledException or ChannelClosedException)
         {
-        }
-        catch (ChannelClosedException)
-        {
-            if (_logger.IsTrace) _logger.Trace($"By-root ancestor fetch result for {root} is dropped: the work channel is closed");
         }
     }
 

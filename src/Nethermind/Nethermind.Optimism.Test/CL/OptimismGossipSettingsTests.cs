@@ -71,10 +71,7 @@ public class OptimismGossipSettingsTests
                 Interlocked.Increment(ref admitted);
                 await done.Task;
             }
-            catch (ChannelClosedException exception)
-            {
-                await TestContext.Out.WriteLineAsync($"Gossip stream closed: {exception.Message}");
-            }
+            catch (ChannelClosedException) { }
         });
         BoundedGossipProtocol first = new(inner, budget);
         BoundedGossipProtocol otherVersion = new(inner, budget);
@@ -172,10 +169,7 @@ public class OptimismGossipSettingsTests
                 received.TrySetResult(await call.Arg<IChannel>().ReadPrefixedProtobufAsync(GossipRpc.Parser, 1024, token));
                 await done.Task.WaitAsync(token);
             }
-            catch (ChannelClosedException exception)
-            {
-                await TestContext.Out.WriteLineAsync($"Gossip stream closed: {exception.Message}");
-            }
+            catch (ChannelClosedException) { }
         });
         BoundedGossipProtocol protocol = new(inner, budget);
         ISessionContext peer = Session();
@@ -320,10 +314,7 @@ public class OptimismGossipSettingsTests
                 if (Interlocked.Increment(ref processed) == GossipStreamBudget.MaxStreams + 1) allProcessed.TrySetResult();
                 await channel.ReadVarintUlongAsync(token);
             }
-            catch (ChannelClosedException exception)
-            {
-                await TestContext.Out.WriteLineAsync($"Gossip stream closed: {exception.Message}");
-            }
+            catch (ChannelClosedException) { }
         });
         BoundedGossipProtocol protocol = new(inner, budget);
         Channel[] channels = Enumerable.Range(0, GossipStreamBudget.MaxStreams + 1).Select(_ => new Channel()).ToArray();

@@ -32,7 +32,10 @@ public class PersistedSnapshotLoaderTests
     }
 
     [TearDown]
-    public void TearDown() => TestDirectories.TryDelete(_testDir);
+    public void TearDown()
+    {
+        try { Directory.Delete(_testDir, recursive: true); } catch { /* best-effort */ }
+    }
 
     [Test]
     public void ConversionRegistersOnlyWhenTheArenaSucceeds([Values] bool failArena)

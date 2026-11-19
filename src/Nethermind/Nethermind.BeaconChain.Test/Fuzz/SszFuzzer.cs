@@ -59,13 +59,13 @@ internal static class SszFuzzer
                 {
                     target(input);
                 }
-                catch (Exception e)
+                catch (Exception e) when (!isRefusal(e))
+                {
+                    failures.Add($"input {i}: {e.GetType().Name}: {e.Message}\n  input ({input.Length} bytes): {Preview(input)}\n{e.StackTrace}");
+                }
+                catch (Exception)
                 {
                     // A documented refusal.
-                    if (!isRefusal(e))
-                    {
-                        failures.Add($"input {i}: {e.GetType().Name}: {e.Message}\n  input ({input.Length} bytes): {Preview(input)}\n{e.StackTrace}");
-                    }
                 }
 
                 TimeSpan elapsed = Stopwatch.GetElapsedTime(started);

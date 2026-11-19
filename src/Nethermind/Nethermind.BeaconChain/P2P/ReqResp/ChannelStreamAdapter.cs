@@ -34,10 +34,7 @@ internal sealed class ChannelStreamAdapter(IChannel channel) : ChannelStream(cha
         {
             await _channel.WriteEofAsync(cancellationToken);
         }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (ObjectDisposedException)
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
         {
         }
     }
