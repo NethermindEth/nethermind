@@ -321,9 +321,10 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 Directory.Delete(_dbPath, true);
             }
-            catch
+            catch (Exception e)
             {
                 // ignore
+                TestContext.Out.WriteLine($"Failed to delete test DB directory {_dbPath}: {e.Message}");
             }
         }
 
@@ -338,9 +339,10 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 Directory.Delete(nameof(LogIndexStorageIntegrationTests), true);
             }
-            catch
+            catch (Exception e)
             {
                 // ignore
+                TestContext.Out.WriteLine($"Failed to delete test root directory {nameof(LogIndexStorageIntegrationTests)}: {e.Message}");
             }
         }
 
@@ -902,9 +904,10 @@ namespace Nethermind.Db.Test.LogIndex
                 // force compaction if the error hasn't propagated already
                 await storage.CompactAsync();
             }
-            catch (LogIndexStateException)
+            catch (LogIndexStateException e)
             {
                 // Expected
+                TestContext.Out.WriteLine($"Injected failure surfaced: {e.Message}");
             }
 
             Assert.That(storage.HasBackgroundError, Is.True);

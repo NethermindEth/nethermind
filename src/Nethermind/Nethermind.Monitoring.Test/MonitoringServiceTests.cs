@@ -133,6 +133,7 @@ public class MonitoringServiceTests
     {
         using HttpClient client = new() { Timeout = TimeSpan.FromSeconds(1) };
         DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+        Exception lastError = null;
         while (DateTime.UtcNow < deadline)
         {
             try
@@ -143,10 +144,13 @@ public class MonitoringServiceTests
             }
             catch (Exception e) when (e is HttpRequestException or TaskCanceledException)
             {
+                lastError = e;
             }
 
             await Task.Delay(50);
         }
+
+        if (lastError is not null) await TestContext.Out.WriteLineAsync($"Metrics endpoint never served; last error: {lastError.Message}");
 
         return false;
     }

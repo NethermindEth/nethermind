@@ -153,6 +153,7 @@ public sealed class DiscoveryConnectionsPool(
         }
         catch (Exception e) when (e is ObjectDisposedException or SocketException { SocketErrorCode: SocketError.OperationAborted })
         {
+            if (_logger.IsTrace) _logger.Trace($"Discovery stopped receiving on a closed socket: {e.GetType().Name}");
         }
         catch (SocketException e)
         {

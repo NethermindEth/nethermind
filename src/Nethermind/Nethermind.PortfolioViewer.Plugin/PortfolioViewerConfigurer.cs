@@ -56,8 +56,9 @@ internal sealed class PortfolioViewerStartupFilter : IStartupFilter
 
 /// <summary>Serves the embedded portfolio viewer page and its detection/IPFS/sibling-proxy endpoints under
 /// <c>/portfolio*</c>, so the multi-chain view works through a single JSON-RPC port.</summary>
-public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins)
+public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlCollection jsonRpcUrlCollection, ISiblingNodeRegistry siblings, IDetectionCache detection, IDetectionScanner scanner, IPinnedCidStore pins, ILogManager logManager)
 {
+    private readonly ILogger _logger = logManager.GetClassLogger<PortfolioViewerMiddleware>();
     private static readonly PathString NodesPath = new("/portfolio-nodes");
     private static readonly PathString ProxyPathPrefix = new("/portfolio-rpc");
     private static readonly PathString DetectProxyPathPrefix = new("/portfolio-detect-rpc");
@@ -283,7 +284,11 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
             if (resp.IsSuccessStatusCode) pins.Add(cid);
         }
         // best-effort: no local Kubo RPC (5001), or the content couldn't be retrieved
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (HttpRequestException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Could not pin {cid} on the local IPFS node: {e.Message}");
+        }
     }
 
     // Unpins only the CIDs this plugin pinned (never the user's other pins) and reclaims the space. Issued when
@@ -310,11 +315,19 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
                 if (resp.IsSuccessStatusCode) { pins.Remove(cid); unpinnedAny = true; }
             }
             // best-effort per pin: no local Kubo RPC (5001), or already unpinned
-            catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
+            catch (OperationCanceledException) { }
+            catch (HttpRequestException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Could not unpin {cid} on the local IPFS node: {e.Message}");
+            }
         }
         if (!unpinnedAny) return;
         try { using HttpResponseMessage _ = await IpfsClient.PostAsync($"{IpfsApi}/api/v0/repo/gc", content: null); }
-        catch (Exception e) when (e is HttpRequestException or OperationCanceledException) { }
+        catch (OperationCanceledException) { }
+        catch (HttpRequestException e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Could not garbage-collect the local IPFS node: {e.Message}");
+        }
     }
 
     private async Task ProxyAsync(HttpContext context)

@@ -86,8 +86,9 @@ internal static class PeerSessionNodes
         {
             await from.DialPeerAsync(LoopbackAddress(to), token);
         }
-        catch (PeerConnectionException)
+        catch (PeerConnectionException e)
         {
+            TestContext.Out.WriteLine($"refused dial failed: {e.Message}");
         }
     }
 

@@ -2439,7 +2439,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         });
         // On a slow runner the timeout can expire during the warm-up; the hook then refuses to start, as it should.
         try { for (int i = 0; i < 200; i++) tracer.SetOperationStack(default); }
-        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception)) { }
+        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception))
+        {
+            TestContext.Out.WriteLine($"Trace timeout expired during warm-up: {exception.Message}");
+        }
         bool expired = WaitForInterrupt(engine);
         armed = true;
 

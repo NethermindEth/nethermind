@@ -36,8 +36,9 @@ public class NethermindNodeTests
         {
             await _nethermindContainer.StartAsync();
         }
-        catch when (suppressStartFailures)
+        catch (Exception exception) when (suppressStartFailures)
         {
+            TestContext.Out.WriteLine($"Ignoring container start failure: {exception.Message}");
         }
     }
 

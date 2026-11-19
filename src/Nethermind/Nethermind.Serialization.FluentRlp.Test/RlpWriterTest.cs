@@ -458,14 +458,17 @@ public class RlpWriterTest
 
     private static void SwallowNestedException(ref RlpWriter w)
     {
+        bool swallowed = false;
         try
         {
             w.WriteSequence(static (ref RlpWriter _) => throw new FormatException());
         }
         catch (FormatException)
         {
+            swallowed = true;
         }
 
+        Assert.That(swallowed, Is.True, "the nested write action's exception must reach the caller");
         w.Write(1);
     }
 
@@ -540,13 +543,14 @@ public class RlpWriterTest
             }
         }
 
-        Node? decoded = null;
+        Node? decoded;
         try
         {
             decoded = RlpCodec.Read(input, Node.Read);
         }
         catch (RlpReaderException)
         {
+            return;
         }
 
         if (decoded is not null) Assert.That(Node.Encode(decoded), Is.EqualTo(input));

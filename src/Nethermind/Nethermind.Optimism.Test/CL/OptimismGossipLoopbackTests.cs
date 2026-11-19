@@ -501,6 +501,7 @@ public class OptimismGossipLoopbackTests
             }
             catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
             {
+                await TestContext.Out.WriteLineAsync($"Dial interrupted by shutdown: {e.GetType().Name}: {e.Message}");
             }
         }
 

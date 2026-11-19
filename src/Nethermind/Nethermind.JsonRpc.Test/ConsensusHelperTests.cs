@@ -217,7 +217,10 @@ namespace Nethermind.JsonRpc.Test
                 await TestContext.Out.WriteLineAsync();
                 await TestContext.Out.WriteLineAsync(expectation.ToString());
             }
-            catch (JsonException) { }
+            catch (JsonException exception)
+            {
+                await TestContext.Out.WriteLineAsync($"Cannot print the compared JSON: {exception.Message}");
+            }
         }
 
         private interface IConsensusDataSource<T> : IDisposable

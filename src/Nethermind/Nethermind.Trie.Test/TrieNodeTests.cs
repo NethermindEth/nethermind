@@ -265,13 +265,7 @@ public class TrieNodeTests
         ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
         resolver.LoadRlp(TreePath.Empty, TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
         TrieNode trieNode = new(NodeType.Unknown, TestItem.KeccakA);
-        try
-        {
-            Assert.Throws<TrieException>(() => trieNode.ResolveNode(resolver, TreePath.Empty, ReadFlags.HintReadAhead));
-        }
-        catch (TrieException)
-        {
-        }
+        Assert.Throws<TrieException>(() => trieNode.ResolveNode(resolver, TreePath.Empty, ReadFlags.HintReadAhead));
         resolver.Received().LoadRlp(TreePath.Empty, TestItem.KeccakA, ReadFlags.HintReadAhead);
     }
 

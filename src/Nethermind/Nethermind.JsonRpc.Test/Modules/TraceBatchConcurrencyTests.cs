@@ -186,13 +186,7 @@ public class TraceBatchConcurrencyTests
 
         private static async Task WaitBriefly(Task overlap)
         {
-            try
-            {
-                await overlap.WaitAsync(TimeSpan.FromSeconds(10));
-            }
-            catch (TimeoutException)
-            {
-            }
+            if (await Task.WhenAny(overlap, Task.Delay(TimeSpan.FromSeconds(10))) == overlap) await overlap;
         }
 
         public JsonRpcErrorResponse GetErrorResponse(int errorCode, string errorMessage, in JsonRpcId id, string? methodName = null) =>

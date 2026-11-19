@@ -54,10 +54,7 @@ public class ArenaMetricsTests
     }
 
     [TearDown]
-    public void TearDown()
-    {
-        try { Directory.Delete(_testDir, recursive: true); } catch { /* best-effort */ }
-    }
+    public void TearDown() => TestDirectories.TryDelete(_testDir);
 
     [Test]
     public void ArenaWriter_Complete_AdvancesAllocatedBytes_ByFrontierDelta_NotMappedSize()

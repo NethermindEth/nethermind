@@ -444,9 +444,13 @@ public abstract class ReqRespProtocolBase
                     owner.ReportViolation(context, protocolId, violation);
                 }
             }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception)
             {
                 // Awaited only when disposing, so an escaping exception must not fail the listener.
+                RecordFailure(protocolId, ReqRespFailureReason.Transport);
             }
         }
 

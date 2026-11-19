@@ -776,9 +776,11 @@ namespace Nethermind.Network.Rlpx
                 {
                     _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
                 }
-                catch (InvalidOperationException)
+                catch (InvalidOperationException e)
                 {
                     // Session may already be disposed or in a state that doesn't allow disposal
+                    ILogger logger = _rlpxHost._logger;
+                    if (logger.IsDebug) logger.Debug($"Could not disconnect {_session:hide} on shutdown: {e.Message}");
                 }
             }
 

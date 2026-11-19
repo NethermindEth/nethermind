@@ -129,13 +129,14 @@ namespace Nethermind.Network.Test.P2P
         public void Serializes_after_an_earlier_serialization_on_the_same_thread([Values(-1, 0)] int earlierLengthError)
         {
             (_, IMessageSerializationService earlierSerializer, TestMessage testMessage) = SetupChannel(isActive: true, lengthError: earlierLengthError);
-            IByteBuffer? earlier = null;
-            try
+            if (earlierLengthError != 0)
             {
-                earlier = PacketSender.Serialize(earlierSerializer, testMessage, UnpooledByteBufferAllocator.Default);
+                Assert.That(() => PacketSender.Serialize(earlierSerializer, testMessage, UnpooledByteBufferAllocator.Default), Throws.InvalidOperationException);
             }
-            catch (InvalidOperationException) when (earlierLengthError != 0) { }
-            earlier?.SafeRelease();
+            else
+            {
+                PacketSender.Serialize(earlierSerializer, testMessage, UnpooledByteBufferAllocator.Default).SafeRelease();
+            }
             (_, IMessageSerializationService serializer, _) = SetupChannel(isActive: true, contentLength: 2);
             TestMessage laterMessage = new() { AdaptivePacketType = 0x80 };
 

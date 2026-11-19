@@ -291,6 +291,7 @@ public class DataColumnSidecarsReqRespTests
             }
             catch (Exception e) when (e is OperationCanceledException or IOException)
             {
+                TestContext.Out.WriteLine($"server stopped: {e.GetType().Name}: {e.Message}");
             }
         }
     }

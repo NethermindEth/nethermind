@@ -196,14 +196,8 @@ public class JsonRpcIpcRunnerTests
             {
                 await connection.SendAsync("slow"u8.ToArray(), cts.Token);
                 await connection.SendAsync("fast"u8.ToArray(), cts.Token);
-                try
-                {
-                    await recorder.FastAnswered.WaitAsync(TimeSpan.FromSeconds(1), cts.Token);
-                }
-                catch (TimeoutException)
-                {
-                    // With one worker, the fast request cannot answer until the slow request is released.
-                }
+                // With one worker, the fast request cannot answer until the slow request is released.
+                await Task.WhenAny(recorder.FastAnswered, Task.Delay(TimeSpan.FromSeconds(1), cts.Token));
             }
             finally
             {

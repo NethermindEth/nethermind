@@ -283,6 +283,7 @@ public class LogFinderTests
             return [log];
         }
 
+        bool workerFailureSurfaced = false;
         try
         {
             foreach (TrackedLog log in logFinder.ScanInOrderedChunks(Enumerable.Range(0, 2 * failingItem), Scan))
@@ -291,9 +292,16 @@ public class LogFinderTests
                 if (!workerFails) break;
             }
         }
-        catch (InvalidOperationException) when (workerFails) { }
+        catch (InvalidOperationException) when (workerFails)
+        {
+            workerFailureSurfaced = true;
+        }
 
-        Assert.That(scanned.Where(static l => !l.Disposed), Is.EquivalentTo(yielded));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(workerFailureSurfaced, Is.EqualTo(workerFails));
+            Assert.That(scanned.Where(static l => !l.Disposed), Is.EquivalentTo(yielded));
+        }
     }
 
     [Test]

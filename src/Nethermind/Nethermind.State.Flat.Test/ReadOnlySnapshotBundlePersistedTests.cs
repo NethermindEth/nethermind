@@ -47,8 +47,8 @@ public class ReadOnlySnapshotBundlePersistedTests
         _blobs.Dispose();
         _memArena.Dispose();
         _buffer.Dispose();
-        try { Directory.Delete(_blobsDir, recursive: true); } catch { /* best-effort */ }
-        try { Directory.Delete(_memArenaDir, recursive: true); } catch { /* best-effort */ }
+        TestDirectories.TryDelete(_blobsDir);
+        TestDirectories.TryDelete(_memArenaDir);
     }
 
     [Test]

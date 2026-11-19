@@ -297,8 +297,9 @@ public class PeerAdmissionRaceTests
                         }, TaskScheduler.Default);
                 }
             }
-            catch (Exception) when (token.IsCancellationRequested)
+            catch (Exception e) when (token.IsCancellationRequested)
             {
+                TestContext.Out.WriteLine($"proxy accept loop stopped: {e.GetType().Name}");
             }
         }
 
