@@ -69,6 +69,7 @@ public sealed class FinalizedBlockAccessListProcessor(
         token.ThrowIfCancellationRequested();
         state.Commit(spec);
         state.ApplyBal(list, token);
+        token.ThrowIfCancellationRequested();
         state.RecalculateStateRoot();
         if (state.StateRoot != block.StateRoot)
         {
