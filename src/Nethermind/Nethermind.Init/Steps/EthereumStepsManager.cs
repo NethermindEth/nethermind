@@ -210,7 +210,8 @@ namespace Nethermind.Init.Steps
                     throw;
                 }
 
-                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {exception:hide}");
+                // The run goes on after an optional step, so this line is all that is left of it: keep the type when masked.
+                if (_logger.IsWarn) _logger.Warn($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms {(SensitiveLogMasking.Enabled ? exception.GetType().Name : exception.ToString())}");
             }
             finally
             {

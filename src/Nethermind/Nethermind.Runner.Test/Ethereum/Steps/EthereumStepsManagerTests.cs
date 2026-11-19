@@ -595,7 +595,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 foreach (string text in warnings)
                 {
                     Assert.That(text, masked
-                        ? Does.EndWith("ms [redacted]").And.Not.Contain(FailingStepWithDetails.OuterDetail).And.Not.Contain(FailingStepWithDetails.InnerDetail)
+                        ? Does.EndWith($"ms {thrown.GetType().Name}").And.Not.Contain(FailingStepWithDetails.OuterDetail).And.Not.Contain(FailingStepWithDetails.InnerDetail)
                         : Does.EndWith($"ms {thrown}").And.Contain(FailingStepWithDetails.InnerDetail));
                 }
             }
