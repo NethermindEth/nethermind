@@ -69,6 +69,7 @@ public class ResolveOnlyFactoryRegistrationAnalyzerTests
     [TestCase("ctx => new WithOptional(ctx.Resolve<IDep1>())")]
     [TestCase("ctx => new TwoConstructors(ctx.Resolve<IDep1>())")]
     [TestCase("ctx => new Keyed(ctx.Resolve<IDep1>())")]
+    [TestCase("ctx => new InternalConstructor(ctx.Resolve<IDep1>(), ctx.Resolve<IDep2>())")]
     [TestCase("ctx => Create(ctx.Resolve<IDep1>(), ctx.Resolve<IDep2>())")]
     public Task Factory_with_more_than_constructor_resolution_no_diagnostic(string factory) =>
         Verify(Register("AddSingleton", factory));
@@ -81,10 +82,22 @@ public class ResolveOnlyFactoryRegistrationAnalyzerTests
     public Task Decorator_no_diagnostic() =>
         Verify(Wrap("builder.AddDecorator<IFoo>((ctx, inner) => new Foo(ctx.Resolve<IDep1>(), ctx.Resolve<IDep2>()));"));
 
+    [Test]
+    public Task Factory_calling_private_constructor_no_diagnostic() =>
+        Verify(Wrap(string.Empty, """
+            public class PrivateConstructor : IFoo
+            {
+                public PrivateConstructor(IDep1 dep1) { }
+                private PrivateConstructor(IDep1 dep1, IDep2 dep2) { }
+                public static void Load(ContainerBuilder builder) =>
+                    builder.AddSingleton<IFoo>(ctx => new PrivateConstructor(ctx.Resolve<IDep1>(), ctx.Resolve<IDep2>()));
+            }
+            """));
+
     private static string Register(string method, string factory) =>
         Wrap(method.Contains('<') ? $"builder.{method}({factory});" : $"builder.{method}<IFoo>({factory});");
 
-    private static string Wrap(string statement) => $$"""
+    private static string Wrap(string statement, string extraTypes = "") => $$"""
         {{Stubs}}
         namespace App
         {
@@ -104,6 +117,12 @@ public class ResolveOnlyFactoryRegistrationAnalyzerTests
                 public TwoConstructors(IDep1 dep1, IDep2 dep2) { }
             }
             public class Keyed([KeyFilter("k")] IDep1 dep1) : IFoo { }
+            public class InternalConstructor : IFoo
+            {
+                public InternalConstructor(IDep1 dep1) { }
+                internal InternalConstructor(IDep1 dep1, IDep2 dep2) { }
+            }
+            {{extraTypes}}
             public static class Other
             {
                 public static IComponentContext Context = null!;

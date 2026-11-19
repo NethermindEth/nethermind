@@ -12,8 +12,9 @@ namespace Nethermind.Analyzers;
 /// Reports <c>Add</c>/<c>AddSingleton</c>/<c>AddScoped</c> factory registrations from
 /// <c>Nethermind.Core.ContainerBuilderExtensions</c> whose lambda only does
 /// <c>new TImpl(ctx.Resolve&lt;A&gt;(), ctx.Resolve&lt;B&gt;())</c>, where each argument resolves exactly the
-/// constructor parameter type and <c>TImpl</c> has a single public constructor. Such a factory is equivalent
-/// to a type registration (<c>Add&lt;T, TImpl&gt;()</c>) but has to be edited whenever the constructor changes.
+/// constructor parameter type and the factory calls the single public constructor of <c>TImpl</c>. A type
+/// registration (<c>Add&lt;T, TImpl&gt;()</c>) builds the same object through that constructor and does not have
+/// to be edited whenever the constructor changes.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class ResolveOnlyFactoryRegistrationAnalyzer : DiagnosticAnalyzer
@@ -27,11 +28,13 @@ public sealed class ResolveOnlyFactoryRegistrationAnalyzer : DiagnosticAnalyzer
         category: "Maintainability",
         defaultSeverity: DiagnosticSeverity.Warning,
         isEnabledByDefault: true,
-        description: "A factory such as .Add<IFoo>(ctx => new Foo(ctx.Resolve<A>(), ctx.Resolve<B>())) duplicates " +
-                     "what the container does for a type registration and must be edited whenever Foo gains a " +
-                     "dependency. Use .Add<IFoo, Foo>(), .AddSingleton<IFoo, Foo>() or .AddScoped<IFoo, Foo>(). " +
-                     "Factories that resolve a different type than the parameter, add logic, use an object " +
-                     "initializer, or target a type with several public constructors are not reported.");
+        description: "A factory such as .Add<IFoo>(ctx => new Foo(ctx.Resolve<A>(), ctx.Resolve<B>())) builds Foo " +
+                     "through the same public constructor that a type registration would use, but must be edited " +
+                     "whenever Foo gains a dependency. Use .Add<IFoo, Foo>(), .AddSingleton<IFoo, Foo>() or " +
+                     ".AddScoped<IFoo, Foo>(). Note that the AddSingleton and AddScoped type overloads also register " +
+                     "Foo as itself. Factories that resolve a different type than the parameter, add logic, use an " +
+                     "object initializer, call a non-public constructor, or target a type with several public " +
+                     "constructors are not reported.");
 
     private static readonly ImmutableHashSet<string> RegistrationMethods = ["Add", "AddSingleton", "AddScoped"];
 
@@ -88,6 +91,7 @@ public sealed class ResolveOnlyFactoryRegistrationAnalyzer : DiagnosticAnalyzer
     private static bool OnlyResolvesConstructorArguments(IObjectCreationOperation creation, IParameterSymbol contextParameter, INamedTypeSymbol resolution)
     {
         if (creation.Initializer is not null || creation.Constructor is not { } constructor) return false;
+        if (constructor.DeclaredAccessibility != Accessibility.Public) return false;
         if (creation.Type is not INamedTypeSymbol type || !HasSingleRegistrableConstructor(type)) return false;
         if (constructor.Parameters.IsEmpty || creation.Arguments.Length != constructor.Parameters.Length) return false;
 
