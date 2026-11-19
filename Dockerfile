@@ -12,11 +12,16 @@ ARG TARGETARCH
 
 WORKDIR /nethermind
 
+RUN if [ "$TARGETARCH" = "amd64" ] && [ "$(uname -m)" = "x86_64" ]; then \
+    apt-get update && apt-get install -y --no-install-recommends gcc libc6-dev && rm -rf /var/lib/apt/lists/*; \
+  fi
+
 COPY global.json nuget.config Directory.Build.props Directory.Build.targets Directory.Packages.props ./
 COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props src/Nethermind/Directory.Build.targets src/Nethermind/Nethermind.Runner/packages.lock.json ./
 RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
 
 COPY src/Nethermind src/Nethermind
+COPY src/native src/native
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \

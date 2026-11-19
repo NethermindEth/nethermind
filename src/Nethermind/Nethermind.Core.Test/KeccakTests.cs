@@ -68,13 +68,15 @@ namespace Nethermind.Core.Test
             Assert.That(keccakHash.Hash.ToHexString(true), Is.EqualTo(result));
         }
 
-        [TestCase(16)]
-        [TestCase(17)]
-        [TestCase(32)]
-        [TestCase(10_000)]
-        public void Native_absorb_matches_managed_permutation(int blocks)
+        [Test]
+        public void Native_absorb_matches_managed_permutation([Values(16, 17, 32, 10_000)] int blocks)
         {
-            Assume.That(NativeKeccak.IsAvailable);
+            bool nativeRequired = OperatingSystem.IsLinux() && Avx2.IsSupported && Bmi1.X64.IsSupported && Bmi2.X64.IsSupported
+                && Environment.GetEnvironmentVariable("CI") == "true";
+            if (nativeRequired)
+                Assert.That(NativeKeccak.IsAvailable, Is.True);
+            else
+                Assume.That(NativeKeccak.IsAvailable);
 
             const int rateBytes = 136;
             byte[] input = new byte[blocks * rateBytes];

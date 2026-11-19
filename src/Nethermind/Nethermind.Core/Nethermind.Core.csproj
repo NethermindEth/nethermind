@@ -34,7 +34,7 @@
     <Exec Command="command -v gcc" IgnoreExitCode="true" StandardOutputImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="GccExitCode" />
     </Exec>
-    <Exec Condition="'$(GccExitCode)' == '0'" Command="sh &quot;$(NativeKeccakDir)build.sh&quot; &quot;$(NativeKeccakOutput)&quot;" IgnoreExitCode="true" />
+    <Exec Condition="'$(GccExitCode)' == '0'" Command="sh &quot;$(NativeKeccakDir)build.sh&quot; &quot;$(NativeKeccakOutput)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true" />
   </Target>
 
   <Target Name="IncludeNativeKeccak" AfterTargets="BuildNativeKeccak" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'">
