@@ -29,6 +29,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     private const int IdlePassDelayMs = 100;
     // A block is expected within the first third of its slot; past that, bet on the next one.
     private const ulong ArrivalGraceSlotFraction = 3;
+    private const ulong SessionGasBudgetBlocks = 2;
 
     private readonly Lazy<ITxSource> _txSource;
     private readonly IBlockTree _blockTree;
@@ -151,6 +152,9 @@ public sealed class MempoolStatePrewarmer : IDisposable
 
             Dictionary<AddressAsKey, int> warmedPerSender = [];
             Dictionary<AddressAsKey, SenderSelection> selectedBySender = [];
+            ulong sessionGasRemaining = next.Header.GasLimit <= ulong.MaxValue / SessionGasBudgetBlocks
+                ? next.Header.GasLimit * SessionGasBudgetBlocks
+                : ulong.MaxValue;
 
             // Not linked or disposed: it only carries this session's cancellation, and holds no registration or timer.
             CancellationTokenSource session = new();
@@ -170,7 +174,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
                 headHeader,
                 next.Spec,
                 generation,
-                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender, selectedBySender, token),
+                token => (token.IsCancellationRequested || IsStale(generation)) ? null : BuildDeltaBlock(headHeader, warmedPerSender, selectedBySender, ref sessionGasRemaining, token),
                 IdlePassDelayMs,
                 session.Token);
         }
@@ -232,11 +236,17 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// fork activating inside the gap warms under the spec the predicted block would run rather than the session's.
     /// </remarks>
     private (Block Block, IReleaseSpec Spec)? BuildDeltaBlock(BlockHeader parent, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, SenderSelection> selectedBySender, CancellationToken token)
+        Dictionary<AddressAsKey, SenderSelection> selectedBySender, ref ulong sessionGasRemaining, CancellationToken token)
     {
         NextBlockContext next = PrepareNextBlockContext(parent);
-        Transaction[]? delta = SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender, token);
-        return delta is null ? null : (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
+        Transaction[]? delta = sessionGasRemaining == 0
+            ? []
+            : SelectDelta(_txSource.Value.GetTransactions(parent, next.Header, next.Header.GasLimit), warmedPerSender, selectedBySender, token,
+                Math.Min(next.Header.GasLimit, sessionGasRemaining));
+        if (delta is null) return null;
+
+        foreach (Transaction tx in delta) sessionGasRemaining -= tx.GasLimit;
+        return (new Block(next.Header, new BlockBody(delta, uncles: [], withdrawals: null)), next.Spec);
     }
 
     /// <summary>
@@ -248,7 +258,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     /// <returns>The delta, or <see langword="null"/> when <paramref name="token"/> ends the pass before selection completes;
     /// nothing is then recorded as warmed.</returns>
     internal static Transaction[]? SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, SenderSelection>? bySender = null, CancellationToken token = default)
+        Dictionary<AddressAsKey, SenderSelection>? bySender = null, CancellationToken token = default, ulong gasBudget = ulong.MaxValue)
     {
         bySender ??= [];
         bySender.Clear();
@@ -263,6 +273,8 @@ public sealed class MempoolStatePrewarmer : IDisposable
             }
 
             if (tx.SenderAddress is not Address sender) continue;
+            if (tx.GasLimit > gasBudget) break;
+            gasBudget -= tx.GasLimit;
             ref SenderSelection group = ref CollectionsMarshal.GetValueRefOrAddDefault(bySender, sender, out bool exists);
             int index = transactions.Count;
             if (exists) transactions.GetRef(group.Last).next = index;
