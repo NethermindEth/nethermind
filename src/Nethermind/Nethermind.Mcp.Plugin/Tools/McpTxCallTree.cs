@@ -47,8 +47,9 @@ internal static class McpTxCallTree
     /// <param name="timeout">The tracer's own time limit.</param>
     /// <param name="read">Reads the tree before its pooled frames are released.</param>
     /// <param name="onlyTopCall">Whether the tracer records only the top-level frame (callTracer <c>onlyTopCall</c>), so nested frames are never built.</param>
+    /// <param name="cancellationToken">Cancels the trace.</param>
     /// <returns>The value read, or the failed JSON-RPC wrapper; the root is <see langword="null"/> for a transaction with no frames.</returns>
-    public static (T? Value, IResultWrapper? Failure) Run<T>(IDebugRpcModule debug, Hash256 txHash, TimeSpan timeout, Func<NativeCallTracerCallFrame?, T> read, bool onlyTopCall = false)
+    public static (T? Value, IResultWrapper? Failure) Run<T>(IDebugRpcModule debug, Hash256 txHash, TimeSpan timeout, Func<NativeCallTracerCallFrame?, T> read, bool onlyTopCall = false, CancellationToken cancellationToken = default)
     {
         GethTraceOptions options = new()
         {
@@ -57,7 +58,7 @@ internal static class McpTxCallTree
             Timeout = timeout,
             TracerConfig = onlyTopCall ? OnlyTopCallConfig : null
         };
-        using ResultWrapper<GethLikeTxTrace> result = debug.debug_traceTransaction(txHash, options);
+        using ResultWrapper<GethLikeTxTrace> result = debug.debug_traceTransaction(txHash, options, cancellationToken);
         if (result.Result.ResultType != ResultType.Success)
         {
             return (default, result);
