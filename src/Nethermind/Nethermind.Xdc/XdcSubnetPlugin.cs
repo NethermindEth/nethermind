@@ -9,7 +9,6 @@ namespace Nethermind.Xdc;
 
 public class XdcSubnetPlugin(ChainSpec chainSpec) : IConsensusPlugin
 {
-
     public const string XdcSubnet = "XdcSubnet";
     public string Author => "Nethermind";
     public string Name => XdcSubnet;

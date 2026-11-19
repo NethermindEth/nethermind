@@ -40,7 +40,6 @@ public class PruningTrieStateFactory(
     NodeStorageCache? nodeStorageCache = null
 )
 {
-
     public (IWorldStateManager, IPruningTrieStateAdminRpcModule) Build()
     {
         IPruningTrieStore trieStore = mainPruningTrieStoreFactory.PruningTrieStore;

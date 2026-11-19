@@ -9,15 +9,23 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class LruKeyCache<TKey>(int maxCapacity, int startCapacity, string name) where TKey : notnull
+    public sealed class LruKeyCache<TKey> where TKey : notnull
     {
-        private readonly int _maxCapacity = maxCapacity;
-        public string Name { get; } = name ?? throw new ArgumentNullException(nameof(name));
-        private readonly Dictionary<TKey, int> _cacheMap = typeof(TKey) == typeof(byte[])
+        private readonly int _maxCapacity;
+        private readonly Dictionary<TKey, int> _cacheMap;
+        private readonly McsLock _lock = new();
+        private readonly LruSlots<TKey> _slots;
+
+        public LruKeyCache(int maxCapacity, int startCapacity, string name)
+        {
+            ArgumentNullException.ThrowIfNull(name);
+
+            _maxCapacity = maxCapacity;
+            _cacheMap = typeof(TKey) == typeof(byte[])
                 ? [with((IEqualityComparer<TKey>)Bytes.EqualityComparer)]
                 : [with(startCapacity)];
-        private readonly McsLock _lock = new();
-        private readonly LruSlots<TKey> _slots = new(maxCapacity, Math.Min(startCapacity, maxCapacity));
+            _slots = new(maxCapacity, Math.Min(startCapacity, maxCapacity));
+        }
 
         public LruKeyCache(int maxCapacity, string name)
             : this(maxCapacity, 0, name)

@@ -19,6 +19,17 @@ public partial class BlockProcessor
     private static partial bool ShouldCalculateReceiptsInBackground(TxReceipt[] receipts) =>
         receipts.Length >= BackgroundReceiptCountThreshold || CountLogs(receipts) >= BackgroundLogCountThreshold;
 
+    private static int CountLogs(TxReceipt[] receipts)
+    {
+        int count = 0;
+        foreach (TxReceipt? t in receipts)
+        {
+            count += t.Logs?.Length ?? 0;
+        }
+
+        return count;
+    }
+
     /// <inheritdoc/>
     private partial void ApplyDaoTransition(Block block)
     {

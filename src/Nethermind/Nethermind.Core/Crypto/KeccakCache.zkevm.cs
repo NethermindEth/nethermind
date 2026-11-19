@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
@@ -26,6 +27,7 @@ public static partial class KeccakCache
     // Underflows and fails the build off either end of MemoSlot's precondition: at 0 the shift is by 64,
     // which C# wraps to 0, so the index is unbounded; at 32 the count folds to one slot while the index
     // reaches 2^32 and the store runs off the array.
+    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Compile-time check: the constant expression underflows and fails the build if the invariant breaks.")]
     private const nuint MemoSlotBitsInRange = ((nuint)MemoSlotBits - 1) + (31 - (nuint)MemoSlotBits);
 
     /// <summary>Knuth's multiplicative hash constant, 2^32 / phi rounded to an odd integer.</summary>
@@ -42,12 +44,14 @@ public static partial class KeccakCache
 
     // Constant arithmetic is checked, so this underflows and fails the build if the padded key, the
     // digest and the length word ever stop fitting in one slot - which would silently alias the next.
+    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Compile-time check: the constant expression underflows and fails the build if the invariant breaks.")]
     private const nuint MemoSlotHeadroom = MemoSlotWords - (MemoLengthWord + 1);
 
     // "Fits" is not the whole invariant: a MaxMemoLength that is not a whole number of words would put
     // a partial input's tail word at MemoValueWord, where the store lays the digest over it and the
     // probe then compares against that digest. This underflows if either constant moves off its
     // precondition - MinMemoLength below one word is what MemoLastKeyWord's offset needs.
+    [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Compile-time check: the constant expression underflows and fails the build if the invariant breaks.")]
     private const nuint MemoKeyAligned = (MinMemoLength - sizeof(ulong)) - MaxMemoLength % sizeof(ulong);
 
     // Allocated on first use rather than by an initializer, which would give the class a static
