@@ -3738,7 +3738,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(expected));
 #pragma warning restore NUnit2045
             Assert.That(_txPool.ForgetInvalidBlobProofs(rejected.Hash!), Is.False);
-            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(rejection is OtherRejection.NonceGap ? AcceptTxResult.NonceGap : AcceptTxResult.AlreadyKnown));
+            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
         }
 
         [Test]
@@ -3757,11 +3757,13 @@ namespace Nethermind.TxPool.Test
             IMessageHandler<PooledTransactionRequestMessage> peer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
 
             AcceptTxResult rejected = _txPool.SubmitTx(invalid, TxHandlingOptions.None);
+            bool known = _txPool.IsKnown(valid.Hash!);
             AnnounceResult announced = _txPool.NotifyAboutTx(valid.Hash!, peer);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+                Assert.That(known, Is.False);
                 Assert.That(announced, Is.EqualTo(AnnounceResult.RequestRequired));
             }
         }
@@ -3817,6 +3819,36 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        }
+
+        [Test]
+        public void should_not_request_blob_tx_with_nonce_gap_again_while_the_gap_is_open()
+        {
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gapped = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithNonce(1UL)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            IMessageHandler<PooledTransactionRequestMessage> firstPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+            IMessageHandler<PooledTransactionRequestMessage> secondPeer = Substitute.For<IMessageHandler<PooledTransactionRequestMessage>>();
+
+            AcceptTxResult rejected = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            bool known = _txPool.IsKnown(gapped.Hash!);
+            AnnounceResult first = _txPool.NotifyAboutTx(gapped.Hash!, firstPeer);
+            AnnounceResult second = _txPool.NotifyAboutTx(gapped.Hash!, secondPeer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(known, Is.True);
+                Assert.That(first, Is.Not.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(second, Is.Not.EqualTo(AnnounceResult.RequestRequired));
+            }
         }
 
         private static Transaction WithInvalidProof(Transaction valid)

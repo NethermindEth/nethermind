@@ -1835,12 +1835,17 @@ namespace Nethermind.TxPool
                 {
                     canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
+                    if (accepted && tx.SupportsBlobs) _hashCache.DeleteNonceGap(tx.SenderAddress!, tx.Nonce);
                 }
                 else
                 {
-                    if ((accepted == AcceptTxResult.IncompleteBlobData || (accepted == AcceptTxResult.NonceGap && tx.CarriesBlobs)) && tx.Hash is not null)
+                    if (accepted == AcceptTxResult.IncompleteBlobData && tx.Hash is not null)
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
+                    }
+                    else if (accepted == AcceptTxResult.NonceGap && tx.CarriesBlobs && tx.Hash is not null && tx.SenderAddress is not null)
+                    {
+                        _hashCache.SetNonceGap(tx.SenderAddress, tx.Nonce - 1, tx.Hash);
                     }
                     else if ((accepted == AcceptTxResult.InvalidBlobProofs || state.SidecarRejected) && tx.Hash is not null)
                     {
@@ -3136,9 +3141,9 @@ namespace Nethermind.TxPool
 
         public IEnumerable<Transaction> GetBestTxOfEachSender() => _transactions.GetFirsts();
 
-        public bool IsKnown(Hash256? hash) => hash is not null && _hashCache.Get(hash);
+        public bool IsKnown(Hash256? hash) => hash is not null && IsKnown(in hash.ValueHash256);
 
-        public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
+        public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash) && !_hashCache.HasInvalidBlobProofs(in hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;

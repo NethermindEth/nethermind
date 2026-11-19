@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
@@ -22,6 +23,7 @@ namespace Nethermind.TxPool
     {
         private const int SafeCapacity = 1024 * 16;
         private const int InvalidBlobProofsCapacity = 1024;
+        private const int NonceGapsCapacity = 1024;
 
         private readonly AssociativeKeyCache<ValueHash256> _longTermCache = new(
             longTermCapacity);
@@ -34,6 +36,8 @@ namespace Nethermind.TxPool
         // forgotten for another copy to be judged.
         private readonly AssociativeKeyCache<ValueHash256> _invalidBlobProofsCache = new(
             InvalidBlobProofsCapacity);
+
+        private readonly ClockCache<(AddressAsKey Sender, ulong Nonce), Hash256> _nonceGaps = new(NonceGapsCapacity);
 
         public bool Get(Hash256 hash) => Get(in hash.ValueHash256);
 
@@ -70,6 +74,13 @@ namespace Nethermind.TxPool
 
         public bool HasInvalidBlobProofs(in ValueHash256 hash) => _invalidBlobProofsCache.GetNoRefresh(in hash);
 
+        public void SetNonceGap(Address sender, ulong predecessorNonce, Hash256 hash) => _nonceGaps.Set((sender, predecessorNonce), hash);
+
+        public void DeleteNonceGap(Address sender, ulong nonce)
+        {
+            if (_nonceGaps.Delete((sender, nonce), out Hash256? hash)) DeleteFromCurrentBlock(hash);
+        }
+
         /// <summary>
         /// Deletes <paramref name="hash"/> from the current block cache only when it was rejected for its sidecar.
         /// </summary>
@@ -90,6 +101,7 @@ namespace Nethermind.TxPool
 
         public void ClearCurrentBlockCache()
         {
+            _nonceGaps.Clear();
             _invalidBlobProofsCache.Clear();
             _currentBlockCache.Clear();
         }
@@ -100,6 +112,7 @@ namespace Nethermind.TxPool
         public void ClearAll()
         {
             _longTermCache.Clear();
+            _nonceGaps.Clear();
             _invalidBlobProofsCache.Clear();
             _currentBlockCache.Clear();
         }
