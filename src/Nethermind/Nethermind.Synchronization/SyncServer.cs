@@ -470,10 +470,7 @@ namespace Nethermind.Synchronization
         public Block? Find(Hash256 hash)
         {
             Block? block = _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
-            if (block is null) return null;
-
-            block = _starkProofStore.WithProof(block);
-            return block.StarkProof is null && block.Header.RecursiveStark is not null ? null : block;
+            return block is null ? null : _starkProofStore.WithAvailableProof(block);
         }
 
         public BlockHeader? FindHeader(Hash256 hash) => _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);

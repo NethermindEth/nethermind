@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Blocks;
@@ -65,6 +66,30 @@ public class StarkProofStoreTests
             Assert.That(blockStore.Get(block.Number, block.Hash!), Is.Null);
             Assert.That(proofStore.Get(block.Number, block.Hash!), Is.Null);
             Assert.That(proofStore.Get(kept.Number, kept.Hash!), Is.EqualTo(kept.StarkProof));
+        }
+    }
+
+    // A stored block's size is that of its proofless encoding; the RPC size is that of the block with its proof.
+    [Test]
+    public async Task Joined_size_is_that_of_the_block_with_its_proof([Values(0, 1, 55, 56, 320 * 1024)] int proofBytes, [Values(0x01, 0xff)] byte fill)
+    {
+        await using DeferredBlockDataWriter writer = Writer(deferred: false);
+        using IContainer container = CreateContainer(writer);
+        IBlockStore blockStore = container.Resolve<IBlockStore>();
+        IStarkProofStore proofStore = container.Resolve<IStarkProofStore>();
+        Block block = BlockWithProof(1, proofBytes);
+        block.StarkProof.AsSpan().Fill(fill);
+        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.Header.Hash = block.Header.CalculateHash();
+        int size = Rlp.Encode(block).Bytes.Length;
+        blockStore.Insert(block);
+        Block stored = blockStore.Get(block.Number, block.Hash!, shouldCache: false)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofStore.GetEncodedLength(block.Number, block.Hash!), Is.EqualTo(Rlp.LengthOf(block.StarkProof)));
+            Assert.That(proofStore.WithProofSize(stored).EncodedSize, Is.EqualTo(size));
+            Assert.That(proofStore.WithProof(stored).EncodedSize, Is.EqualTo(size));
         }
     }
 

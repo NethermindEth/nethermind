@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -19,7 +20,8 @@ public class EraExporter(
     IReceiptStorage receiptStorage,
     ISpecProvider specProvider,
     IEraConfig eraConfig,
-    ILogManager logManager)
+    ILogManager logManager,
+    IStarkProofStore proofStore)
     : IEraExporter
 {
     private readonly string _networkName = string.IsNullOrWhiteSpace(eraConfig.NetworkName)
@@ -151,6 +153,8 @@ public class EraExporter(
                 {
                     Block? block = blockTree.FindBlock(y, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find a block with number {y}.");
+                    block = proofStore.WithAvailableProof(block)
+                        ?? throw new EraException($"Could not find the EIP-8288 proof of block {block.ToString(Block.Format.FullHashAndNumber)}.");
 
                     TxReceipt[]? receipts = receiptStorage.Get(block, true, false);
                     if (receipts is null || (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash && receipts.Length == 0))

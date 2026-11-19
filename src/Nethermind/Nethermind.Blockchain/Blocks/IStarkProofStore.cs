@@ -20,6 +20,10 @@ public interface IStarkProofStore
     void InsertDeferred(ulong blockNumber, Hash256 blockHash, byte[] proof) => Insert(blockNumber, blockHash, proof);
 
     byte[]? Get(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>The length of the stored proof's RLP encoding, read without copying the proof.</summary>
+    /// <returns><c>null</c> when no proof is stored.</returns>
+    int? GetEncodedLength(ulong blockNumber, Hash256 blockHash) => Get(blockNumber, blockHash) is { } proof ? Rlp.LengthOf(proof) : null;
     void Delete(ulong blockNumber, Hash256 blockHash);
 
     /// <summary>Drops every proof in <c>[fromInclusive, toExclusive)</c> in one operation.</summary>
@@ -33,22 +37,47 @@ public static class StarkProofStoreExtensions
     /// <paramref name="block"/> itself, which lacks a committed proof only when it is not available.</returns>
     public static Block WithProof(this IStarkProofStore proofStore, Block block)
     {
-        if (block.StarkProof is not null || block.Header.RecursiveStark is null || block.Hash is not { } blockHash
-            || proofStore.Get(block.Number, blockHash) is not { } proof)
+        if (!CommitsToMissingProof(block) || proofStore.Get(block.Number, block.Hash!) is not { } proof)
         {
             return block;
         }
 
         Block withProof = block.WithReplacedBody(new BlockBody(block.Transactions, block.Uncles, block.Withdrawals, proof));
         // A stored block's size is that of its stored encoding, and a hashes-only block cannot have it recomputed.
-        if (block.EncodedSize is { } storedSize) withProof.EncodedSize = SizeWithProof(storedSize, proof);
+        if (block.EncodedSize is { } storedSize) withProof.EncodedSize = SizeWithProof(storedSize, Rlp.LengthOf(proof));
         return withProof;
     }
 
-    private static int SizeWithProof(int storedSize, byte[] proof)
+    /// <summary><see cref="WithProof"/>, or <c>null</c> when the proof the header commits to is not available.</summary>
+    /// <remarks>A body without the proof its header commits to is not this block's body, so it must not be served as one.</remarks>
+    public static Block? WithAvailableProof(this IStarkProofStore proofStore, Block block)
+    {
+        block = proofStore.WithProof(block);
+        return CommitsToMissingProof(block) ? null : block;
+    }
+
+    /// <summary>Returns <paramref name="block"/> with the <see cref="Block.EncodedSize"/> it has with its proof, leaving the proof unread.</summary>
+    /// <remarks>For a hashes-only block, whose transactions are not there to recompute the size from.</remarks>
+    public static Block WithProofSize(this IStarkProofStore proofStore, Block block)
+    {
+        if (!CommitsToMissingProof(block) || block.EncodedSize is not { } storedSize
+            || proofStore.GetEncodedLength(block.Number, block.Hash!) is not { } proofLength)
+        {
+            return block;
+        }
+
+        Block withSize = block.WithReplacedBody(block.Body);
+        withSize.EncodedSize = SizeWithProof(storedSize, proofLength);
+        return withSize;
+    }
+
+    private static bool CommitsToMissingProof(Block block) =>
+        block.StarkProof is null && block.Header.RecursiveStark is not null && block.Hash is not null;
+
+    private static int SizeWithProof(int storedSize, int proofLength)
     {
         int contentLength = storedSize - 1;
         while (Rlp.LengthOfSequence(contentLength) > storedSize) contentLength--;
-        return Rlp.LengthOfSequence(contentLength + Rlp.LengthOf(proof));
+        return Rlp.LengthOfSequence(contentLength + proofLength);
     }
 }

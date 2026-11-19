@@ -3,6 +3,7 @@
 
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -27,6 +28,7 @@ public sealed class EraExporter(
     IEraEConfig eraConfig,
     ILogManager logManager,
     IPoSSwitcher poSSwitcher,
+    IStarkProofStore proofStore,
     IBeaconRootsProvider? beaconRootsProvider = null)
     : IEraExporter
 {
@@ -147,6 +149,8 @@ public sealed class EraExporter(
                 {
                     Block block = blockTree.FindBlock(blockNumber, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)
                         ?? throw new EraException($"Could not find block {blockNumber}. The node may not have finished syncing block bodies for this range.");
+                    block = proofStore.WithAvailableProof(block)
+                        ?? throw new EraException($"Could not find the EIP-8288 proof of block {block.ToString(Block.Format.FullHashAndNumber)}.");
 
                     block.Header.IsPostMerge = poSSwitcher.IsPostMerge(block.Header);
 

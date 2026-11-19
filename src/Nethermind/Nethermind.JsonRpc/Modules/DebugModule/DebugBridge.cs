@@ -99,7 +99,7 @@ public class DebugBridge : IDebugBridge
         // Use the shared singleton store, not a private one over the raw DB, so debug reads observe the
         // deferred-body overlay (a private store would miss a block whose body write is still queued).
         _blockStore = blockStore ?? throw new ArgumentNullException(nameof(blockStore));
-        _starkProofStore = starkProofStore;
+        _starkProofStore = starkProofStore ?? throw new ArgumentNullException(nameof(starkProofStore));
         _blockDecoder = new BlockDecoder(headerDecoder);
         _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
         dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -402,17 +402,23 @@ public class DebugBridge : IDebugBridge
         }
     }
 
-    /// <remarks>The block store keeps the EIP-8288 proof apart from the stored encoding, so a block with one is re-encoded.</remarks>
+    /// <remarks>The block store keeps the EIP-8288 proof apart from the stored encoding, so a block with one is re-encoded,
+    /// and one whose proof is not available is not found.</remarks>
     private byte[]? GetBlockRlp(ulong number, Hash256 hash)
     {
-        if (_starkProofStore.Get(number, hash) is not { } proof) return _blockStore.GetRlp(number, hash);
+        if (_starkProofStore.GetEncodedLength(number, hash) is null)
+        {
+            return _blockTree.FindHeader(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded, number)?.RecursiveStark is null
+                ? _blockStore.GetRlp(number, hash)
+                : null;
+        }
 
         Block? block = _blockStore.Get(number, hash, shouldCache: false);
-        return block is null ? null : _blockDecoder.EncodeAsBytes(block.WithReplacedBody(new BlockBody(block.Transactions, block.Uncles, block.Withdrawals, proof)));
+        return block is null || _starkProofStore.WithAvailableProof(block) is not { } withProof ? null : _blockDecoder.EncodeAsBytes(withProof);
     }
 
     public Block? GetBlock(BlockParameter param)
-        => _blockTree.FindBlock(param) is { } block ? _starkProofStore.WithProof(block) : null;
+        => _blockTree.FindBlock(param) is { } block ? _starkProofStore.WithAvailableProof(block) : null;
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 

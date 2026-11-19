@@ -6,7 +6,9 @@ using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
@@ -60,6 +62,21 @@ public class StarkProofStore : IStarkProofStore
         Span<byte> key = stackalloc byte[KeyLength];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
         return _proofDb.Get(key);
+    }
+
+    [SkipLocalsInit]
+    public int? GetEncodedLength(ulong blockNumber, Hash256 blockHash)
+    {
+        if (_pending is not null && _pending.TryGet(blockHash, out byte[] pendingProof)) return Rlp.LengthOf(pendingProof);
+
+        Span<byte> key = stackalloc byte[KeyLength];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, key);
+        Span<byte> proof = _proofDb.GetSpan(key);
+        if (proof.IsNull()) return null;
+
+        int length = Rlp.LengthOf(proof);
+        _proofDb.DangerousReleaseMemory(proof);
+        return length;
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
