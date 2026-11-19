@@ -567,7 +567,9 @@ public static class FrameTxValidation
         return null;
     }
 
-    private static int SkipDependencies(TxFrame[] frames, int next)
+    /// <summary>The first index at or after <paramref name="next"/> that is not an EIP-8288 dependency frame.</summary>
+    /// <remarks>Dependency frames carry no approval scope and may sit anywhere in the validation prefix.</remarks>
+    public static int SkipDependencies(TxFrame[] frames, int next)
     {
         while (next < frames.Length && frames[next].Mode == FrameMode.DepVerify) next++;
         return next;
