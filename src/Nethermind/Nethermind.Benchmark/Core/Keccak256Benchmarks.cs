@@ -14,7 +14,7 @@ namespace Nethermind.Benchmarks.Core
 
         private byte[] _a;
 
-        [Params(20, 32, 64, 136, 532, 4096)]
+        [Params(20, 32, 64, 135, 136, 532, 1024, 4096)]
         public int Length { get; set; }
 
         [GlobalSetup]

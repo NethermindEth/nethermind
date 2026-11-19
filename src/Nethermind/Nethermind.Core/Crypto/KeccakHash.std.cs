@@ -91,9 +91,8 @@ public sealed partial class KeccakHash
         AbsorbBlocksScalar(ref state, ref Unsafe.NullRef<byte>(), 0);
 
     /// <summary>XORs each of <paramref name="blocks"/> 136-byte rate blocks of <paramref name="input"/> into the state
-    /// and permutes after each, keeping the lanes in registers between blocks; zero blocks permutes once.</summary>
+    /// and permutes after each, keeping the lanes in locals between blocks; zero blocks permutes once.</summary>
     /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private static void AbsorbBlocksScalar(ref ulong state, ref byte input, int blocks)
     {
         Span<ulong> st = MemoryMarshal.CreateSpan(ref state, STATE_LANES);
@@ -164,12 +163,14 @@ public sealed partial class KeccakHash
 
             for (int round = 0; round < ROUNDS; round += 2)
             {
+                // prepareTheta
                 bCa = aba ^ aga ^ aka ^ ama ^ asa;
                 bCe = abe ^ age ^ ake ^ ame ^ ase;
                 bCi = abi ^ agi ^ aki ^ ami ^ asi;
                 bCo = abo ^ ago ^ ako ^ amo ^ aso;
                 bCu = abu ^ agu ^ aku ^ amu ^ asu;
 
+                // thetaRhoPiChiIotaPrepareTheta(round  , A, E)
                 da = bCu ^ RotateLeft(bCe, 1);
                 de = bCa ^ RotateLeft(bCi, 1);
                 di = bCe ^ RotateLeft(bCo, 1);
@@ -231,9 +232,11 @@ public sealed partial class KeccakHash
                 eso = bCo ^ ((~bCu) & bCa);
                 esu = bCu ^ ((~bCa) & bCe);
 
+                // prepareTheta
                 bCe = ebe ^ ege ^ eke ^ eme ^ ese;
                 bCu = ebu ^ egu ^ eku ^ emu ^ esu;
 
+                // thetaRhoPiChiIotaPrepareTheta(round+1, E, A)
                 da = bCu ^ RotateLeft(bCe, 1);
                 bCa = eba ^ ega ^ eka ^ ema ^ esa;
                 bCi = ebi ^ egi ^ eki ^ emi ^ esi;
