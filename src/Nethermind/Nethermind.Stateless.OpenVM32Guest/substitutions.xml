@@ -3,13 +3,23 @@
   SPDX-License-Identifier: LGPL-3.0-only
 
   Substitutions only this guest applies, on top of the shared
-  ../Nethermind.Stateless.Guest/substitutions.xml. OpenVmFlag stays off: the
-  division hint it switches on is the RV64 runner's.
+  ../Nethermind.Stateless.Guest/substitutions.xml.
 -->
 <linker>
   <assembly fullname="Nethermind.Core">
     <!-- ADDMOD and MULMOD over a modulus of the VM configuration run on the modular extension. -->
     <type fullname="Nethermind.Core.OpenVmModularFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+    <!-- What only OpenVM offers, as on the RV64 guest: the XORIN instruction Keccak absorbs aligned input with, and
+         memory the guest takes in place. MULMOD's division hint is the RV64 runner's, and stays off on 32 bits. -->
+    <type fullname="Nethermind.Core.OpenVmFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
+  <assembly fullname="Nethermind.Evm">
+    <!-- mul.S multiplies on the bigint extension. -->
+    <type fullname="Nethermind.Evm.GuestMulFlag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>

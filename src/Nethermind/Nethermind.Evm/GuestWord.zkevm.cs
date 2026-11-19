@@ -253,12 +253,13 @@ internal static unsafe class GuestWord
     /// <remarks>
     /// Where <see cref="StrictAlignmentFlag"/> is on and <paramref name="source"/> is on a word or a half-word boundary,
     /// the limbs are loaded in words or halves and byte-swapped: one alignment test for the word instead of a byte gather
-    /// per limb. Call data arguments follow a 4-byte selector, so words on a half-word boundary are common.
+    /// per limb. Call data arguments follow a 4-byte selector, so words on a half-word boundary are common. OpenVM's
+    /// RV32 line, which also needs aligned words, takes the same path.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadBigEndian(ref ulong slot, ref byte source)
     {
-        if (StrictAlignmentFlag.IsActive)
+        if (StrictAlignmentFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32)
         {
             nuint misalignment = Misalignment(ref source);
             if (misalignment == 0)
@@ -290,7 +291,7 @@ internal static unsafe class GuestWord
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void StoreBigEndian(ref byte destination, ref ulong end)
     {
-        if (StrictAlignmentFlag.IsActive)
+        if (StrictAlignmentFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32)
         {
             nuint misalignment = Misalignment(ref destination);
             if (misalignment == 0)
