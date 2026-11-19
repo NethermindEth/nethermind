@@ -1835,7 +1835,8 @@ namespace Nethermind.TxPool
                 {
                     canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
-                    if (accepted && tx.CarriesBlobs) _hashCache.DeleteNonceGap(tx.SenderAddress!, tx.Nonce);
+                    if (accepted && tx.CarriesBlobs && !KeyedNonceManager.UsesKeyedNonce(tx))
+                        _hashCache.DeleteNonceGap(tx.SenderAddress!, tx.Nonce);
                 }
                 else
                 {
@@ -1843,9 +1844,16 @@ namespace Nethermind.TxPool
                     {
                         _hashCache.DeleteFromCurrentBlock(tx.Hash);
                     }
-                    else if (accepted == AcceptTxResult.NonceGap && tx.CarriesBlobs && tx.Hash is not null && tx.SenderAddress is not null)
+                    else if (accepted == AcceptTxResult.NonceGap && tx.CarriesBlobs && tx.Hash is { } hash
+                        && tx.SenderAddress is { } sender)
                     {
-                        _hashCache.SetNonceGap(tx.SenderAddress, tx.Nonce - 1, tx.Hash);
+                        ulong predecessorNonce = tx.Nonce - 1;
+                        _hashCache.SetNonceGap(sender, predecessorNonce, hash);
+                        if (GapNonceFilter.IsNonceInOrder(tx.Nonce, state.SenderAccount.Nonce, _blobTransactions.GetAccountDomainBucketCount(sender)))
+                        {
+                            _hashCache.DeleteNonceGap(sender, predecessorNonce);
+                            _hashCache.DeleteFromCurrentBlock(hash);
+                        }
                     }
                     else if ((accepted == AcceptTxResult.InvalidBlobProofs || state.SidecarRejected) && tx.Hash is not null)
                     {

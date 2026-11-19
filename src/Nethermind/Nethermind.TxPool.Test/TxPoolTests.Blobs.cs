@@ -3878,6 +3878,50 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public void A_blob_nonce_gap_is_released_when_the_predecessor_arrives_during_rejection()
+        {
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsTrace.Returns(true);
+            _logManager = new OneLoggerLogManager(new ILogger(logger));
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction predecessor = OrdinaryBlobTx(TestItem.PrivateKeyA, 0);
+            Transaction gapped = OrdinaryBlobTx(TestItem.PrivateKeyA, 1);
+            List<AcceptTxResult> predecessorResults = [];
+            logger.When(l => l.Trace(Arg.Is<string>(line => line.Contains("nonce in future", StringComparison.Ordinal))))
+                .Do(_ => predecessorResults.Add(_txPool.SubmitTx(predecessor, TxHandlingOptions.None)));
+
+            AcceptTxResult early = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            bool stillKnown = _txPool.IsKnown(gapped.Hash!);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(predecessorResults, Is.EqualTo(new[] { AcceptTxResult.Accepted }));
+                Assert.That(stillKnown, Is.False);
+            }
+        }
+
+        [Test]
+        public void A_keyed_blob_frame_does_not_release_an_account_nonce_gap()
+        {
+            _txPool = CreatePool(new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory }, KeyedNonceSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction gapped = OrdinaryBlobTx(TestItem.PrivateKeyA, 1);
+            Transaction keyed = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true, nonceKeys: [0xbeef]);
+
+            AcceptTxResult early = _txPool.SubmitTx(gapped, TxHandlingOptions.None);
+            AcceptTxResult keyedResult = _txPool.SubmitTx(keyed, TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(early, Is.EqualTo(AcceptTxResult.NonceGap));
+                Assert.That(keyedResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.IsKnown(gapped.Hash!), Is.True);
+            }
+        }
+
         private static Transaction WithInvalidProof(Transaction valid)
         {
             Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
