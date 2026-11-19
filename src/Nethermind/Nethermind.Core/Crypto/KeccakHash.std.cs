@@ -19,6 +19,12 @@ public sealed partial class KeccakHash
     private const int LANE_BITS = 8 * 8;
     private const int TEMP_BUFF_SIZE = 144;
 
+    /// <summary>Whether whole 136-byte rate blocks are permuted one by one with <see cref="KeccakF1600Avx512VL"/>
+    /// rather than absorbed by <see cref="AbsorbBlocksScalar"/>: on Intel AVX-512VL cores, where the scalar absorb
+    /// is not faster on every microarchitecture.</summary>
+    private static readonly bool PermutesBlocksWithAvx512VL =
+        Avx512F.VL.IsSupported && X86Base.CpuId(0, 0) is (_, 0x756E6547, 0x6C65746E, 0x49656E69);
+
     /// <inheritdoc cref="KeccakHash.InitializeState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void InitializeState(out KeccakState state, int inputLength, int roundSize) =>
@@ -32,7 +38,7 @@ public sealed partial class KeccakHash
         // run executes, so it is the one that can catch a caller the guest arm would then hash wrongly.
         Debug.Assert(!stateBytes.ContainsAnyExcept((byte)0), "the guest arm writes the first block, not XORs it");
 
-        if (roundSize != HASH_DATA_AREA)
+        if (roundSize != HASH_DATA_AREA || PermutesBlocksWithAvx512VL)
             return AbsorbFullBlocks(state, stateBytes, input, roundSize);
 
         int blocks = input.Length / HASH_DATA_AREA;
@@ -95,6 +101,7 @@ public sealed partial class KeccakHash
     /// <param name="state">Lane 0 of a 25-lane state; all 25 lanes are read and written.</param>
     private static void AbsorbBlocksScalar(ref ulong state, ref byte input, int blocks)
     {
+        Debug.Assert(blocks >= 0);
         Span<ulong> st = MemoryMarshal.CreateSpan(ref state, STATE_LANES);
         ref ulong roundConstants = ref MemoryMarshal.GetArrayDataReference(RoundConstants);
 
