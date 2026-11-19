@@ -214,7 +214,7 @@ public static class ReplayCommand
             }
             catch (Exception e) when (e is FormatException or UriFormatException or ArgumentException)
             {
-                await Console.Error.WriteLineAsync(e.Message);
+                await Console.Error.WriteLineAsync(e.Message.AsMemory(), cancellationToken);
                 return 2;
             }
 
@@ -226,7 +226,7 @@ public static class ReplayCommand
             }
             catch (InvalidDataException e)
             {
-                await Console.Error.WriteLineAsync(e.Message);
+                await Console.Error.WriteLineAsync(e.Message.AsMemory(), cancellationToken);
                 return 2;
             }
 
@@ -240,7 +240,7 @@ public static class ReplayCommand
             string? outputFile = parseResult.GetValue(OutputFile);
             if (outputFile is null)
             {
-                await Console.Out.WriteAsync(report);
+                await Console.Out.WriteAsync(report.AsMemory(), cancellationToken);
             }
             else
             {
@@ -253,7 +253,7 @@ public static class ReplayCommand
                 // an empty trace as a passing benchmark.
                 if (result.Total == 0)
                 {
-                    await Console.Error.WriteLineAsync("No requests were replayed: the trace has no records past --skip and the warm-up window.");
+                    await Console.Error.WriteLineAsync("No requests were replayed: the trace has no records past --skip and the warm-up window.".AsMemory(), cancellationToken);
                     return 2;
                 }
             }

@@ -476,7 +476,7 @@ internal sealed partial class SequentialDriver(Func<string, string?> environment
 
     private static async Task Drain(StreamReader reader, TextWriter writer, CancellationToken cancellationToken)
     {
-        while (await reader.ReadLineAsync(cancellationToken) is { } line) await writer.WriteLineAsync(line);
+        while (await reader.ReadLineAsync(cancellationToken) is { } line) await writer.WriteLineAsync(line.AsMemory(), cancellationToken);
     }
 
     internal async Task<JsonObject> RunSample(JsonObject original, JsonObject image, int run, string root, CancellationToken cancellationToken,
