@@ -425,6 +425,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.ReportActionError(evmExceptionType);
         string? error = _codeDepositError ?? evmExceptionType.GetEvmExceptionDescription();
+        // A precompile can fail without running an opcode; its parent's last step is not its error.
+        if (_log.depth == _depth + 1) error = _codeDepositError ?? _log.error ?? error;
         // The root's error stays for ctx.error, which MarkAsFailed sets.
         if (_depth > 0)
             _codeDepositError = null;
