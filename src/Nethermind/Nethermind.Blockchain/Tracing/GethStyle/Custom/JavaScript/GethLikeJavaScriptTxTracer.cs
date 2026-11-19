@@ -50,6 +50,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private bool _pendingStep;
     private bool _pendingPostStep;
     private bool _pendingSelfDestruct;
+    private bool _rootReverted;
     private string? _codeDepositError;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
@@ -59,6 +60,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
+
+    internal bool IsFrameTransaction { get; init; }
 
     /// <summary>Creates a JavaScript tracer using the supplied execution context and engine.</summary>
     /// <remarks>SELFDESTRUCT refunds are credited at transaction finalization, avoiding a second credit at the opcode boundary.</remarks>
@@ -409,6 +412,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
+        if (_depth == 0 && !IsFrameTransaction) _rootReverted = true;
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 
@@ -495,9 +499,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output.AsSpan().ToArray();
-        // A revert reason is decoded from the output, which an exceptional halt never has.
         // A failed code deposit and the halting step carry Geth's detailed text; a precompile call has neither.
-        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _codeDepositError ?? _log.error ?? description : error;
+        _ctx.error = _rootReverted ? EvmExceptionType.Revert.GetEvmExceptionDescription()
+            : output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _codeDepositError ?? _log.error ?? description : error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)

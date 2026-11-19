@@ -1696,9 +1696,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("600056", null, "invalid jump destination")]
     [TestCase(null, 2, "out of gas")]
     [TestCase("5b5f600056", null, "stack limit reached 1024 (1023)", 100_000UL)]
-    // A revert reason that reads as an exception name is kept as is: revert(Error("OutOfGas")).
+    [TestCase("5f5ffd", null, "execution reverted", 100_000UL)]
+    [TestCase("602a5f5360015ffd", null, "execution reverted", 100_000UL)]
+    // The decoded reason must not replace the VM error, even when it names another exception.
     [TestCase("6308c379a0600052602060205260086040527f4f75744f664761730000000000000000000000000000000000000000000000006060526064601cfd",
-        null, "OutOfGas", 100_000UL)]
+        null, "execution reverted", 100_000UL)]
     public void Failed_transaction_reports_geth_error_text_in_ctx_error(string? code, int? precompile, string expected, ulong gasLimit = 21050UL)
     {
         const string errorTracer = @"{
@@ -1722,6 +1724,27 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, expected);
+    }
+
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID")]
+    [TestCase(Instruction.JUMP, "invalid jump destination")]
+    public void Child_revert_does_not_replace_the_root_halt_in_ctx_error(Instruction halt, string expected)
+    {
+        const string errorTracer = """
+            {
+                errors: [],
+                enter: function(frame) { },
+                exit: function(frame) { this.errors.push(frame.getError()); },
+                fault: function(log) { },
+                result: function(ctx) { return [ctx.error, this.errors]; }
+            }
+            """;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("5f5ffd"), Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 10000).Op(Instruction.POP).PushData(0).Op(halt).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(errorTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new object[] { expected, new[] { "execution reverted" } });
     }
 
     [Test]
