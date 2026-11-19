@@ -527,6 +527,15 @@ namespace Nethermind.Synchronization.FastSync
                         return AddNodeResult.AlreadySaved;
                     }
 
+                    if (syncItem.NodeDataType != NodeDataType.Code)
+                    {
+                        // A node is saved only once its children are, so a round that moves on to a new root in between
+                        // leaves the node of an earlier root over children it changed, which a store keyed by path keeps
+                        // at the same path. Removing it makes a later root that has it again go down through it. The read
+                        // lock keeps SaveNode out, so the node of this root cannot be saved at the path meanwhile.
+                        _store.RemoveMismatchedNode(syncItem.Address, syncItem.Path, syncItem.Hash);
+                    }
+
                     Interlocked.Increment(ref _data.StateWasNotThere);
                 }
                 finally
