@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -114,9 +115,17 @@ public class PluginLoader(string pluginPath, IFileSystem fileSystem, ILogger log
 
     public void OrderPlugins(IPluginConfig pluginConfig)
     {
-        Dictionary<string, int> pluginPriorities = pluginConfig.PluginOrder
-            .Select((name, index) => (name: name + "plugin", index))
-            .ToDictionary(x => x.name, x => x.index, StringComparer.OrdinalIgnoreCase);
+        // A null order (e.g. --Plugin.PluginOrder null) is no order.
+        string[] pluginOrder = pluginConfig.PluginOrder ?? [];
+        Dictionary<string, int> pluginPriorities = new(pluginOrder.Length, StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < pluginOrder.Length; i++)
+        {
+            // A plugin's priority is its position, so a name listed twice has no single priority.
+            if (!pluginPriorities.TryAdd(pluginOrder[i] + "plugin", i))
+                throw new InvalidConfigurationException(
+                    $"Plugin.{nameof(IPluginConfig.PluginOrder)} lists the plugin '{pluginOrder[i]}' more than once.",
+                    ExitCodes.ForbiddenOptionValue);
+        }
 
         CollectionsMarshal.AsSpan(_pluginTypes).Sort(new PluginPriorityComparer(pluginPriorities));
     }

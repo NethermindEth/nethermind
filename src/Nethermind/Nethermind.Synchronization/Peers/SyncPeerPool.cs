@@ -430,7 +430,8 @@ namespace Nethermind.Synchronization.Peers
                 ExecuteRefreshTask(refreshTask, linkedSource.Token).ContinueWith(t =>
 #pragma warning restore 4014
                 {
-                    _refreshCancelTokens.TryRemove(syncPeer.Node.Id, out _);
+                    // A newer refresh of the same peer may have replaced this entry; remove it only if it is still ours.
+                    _refreshCancelTokens.TryRemove(KeyValuePair.Create(syncPeer.Node.Id, initCancelSource));
                     if (t.IsFaulted)
                     {
                         if (t.HasTimeoutException())
@@ -714,7 +715,9 @@ namespace Nethermind.Synchronization.Peers
             if (_logger.IsTrace) _logger.Trace($"Refresh failed reported: {syncPeer.Node?.ToString("c"):hide}, {reason:hide}, {exception:hide}");
             _stats.ReportSyncEvent(syncPeer.Node, syncPeer.IsInitialized ? NodeStatsEventType.SyncFailed : NodeStatsEventType.SyncInitFailed);
 
-            if (exception is OperationCanceledException or TimeoutException)
+            // A faulted task hands over its failure wrapped in an AggregateException, so classify what it wraps.
+            Exception? cause = exception is AggregateException aggregate ? aggregate.GetBaseException() : exception;
+            if (cause is OperationCanceledException or TimeoutException)
             {
                 // We don't want to disconnect on timeout. It could be that we are downloading from the peer, or we have some connection issue.
                 if (_peers.TryGetValue(syncPeer.Node.Id, out PeerInfo? existing))

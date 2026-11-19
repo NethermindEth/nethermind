@@ -11,9 +11,10 @@ namespace Nethermind.Evm;
 /// <remarks>
 /// A contract that reduces many products, such as a SNARK verifier, takes them modulo one or two primes, and
 /// <see cref="WordDivision"/> takes thousands of cycles to divide each 512-bit product. With <c>R = 2^256</c> and an
-/// odd <c>m</c>, <c>mont(x, y) = x y / R mod m</c> is six delegations, and <c>a b mod m = mont(mont(a, b), R^2 mod m)</c>.
+/// odd <c>m</c>, <c>mont(x, y) = x y / R mod m</c> is six delegations, and <c>a b mod m = mont(mont(a, R^2 mod m), b)</c>.
+/// That order takes factors that are not reduced: each product is below <c>m R</c>, as <see cref="Multiply"/> needs.
 /// The constants of a modulus, <c>m^-1 mod R</c> and <c>R^2 mod m</c>, cost about two divisions, so a modulus gets them
-/// the second time it is seen; until then, and for an even modulus or a factor not below it, the caller divides.
+/// the second time it is seen; until then, and for an even modulus, the caller divides.
 /// </remarks>
 internal static unsafe class AirbenderMontgomery
 {
@@ -26,12 +27,12 @@ internal static unsafe class AirbenderMontgomery
     private static int s_nextKnown;
     private static int s_nextSeen;
 
-    /// <summary>Takes <c>(a * b) mod m</c> by Montgomery products, if <paramref name="m"/> is odd and known and both factors are below it.</summary>
+    /// <summary>Takes <c>(a * b) mod m</c> by Montgomery products, if <paramref name="m"/> is odd and known.</summary>
     [SkipLocalsInit]
     public static bool TryMultiply(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
     {
         UInt256* entry;
-        if ((m.u0 & 1) == 0 || a >= m || b >= m || (entry = Find(in m)) is null)
+        if ((m.u0 & 1) == 0 || (entry = Find(in m)) is null)
         {
             Unsafe.SkipInit(out result);
             return false;
@@ -41,16 +42,17 @@ internal static unsafe class AirbenderMontgomery
         UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
         words[0] = a;
         words[1] = b;
-        Multiply(words, words + 1, words + 2, entry);
         Multiply(words, entry + 2, words + 2, entry);
+        Multiply(words, words + 1, words + 2, entry);
         result = words[0];
         return true;
     }
 
-    /// <summary>Replaces <paramref name="x"/> with <c>x y / R mod m</c>, for <paramref name="x"/> and <paramref name="y"/> below m.</summary>
+    /// <summary>Replaces <paramref name="x"/> with <c>x y / R mod m</c>, for <c>x y</c> below <c>m R</c>.</summary>
     /// <remarks>
     /// With <c>q = lo(x y) m^-1 mod R</c>, <c>q m</c> has the low half of <c>x y</c>, so <c>(x y - q m) / R</c> is
-    /// <c>hi(x y) - hi(q m)</c>, which needs no carry from the low halves and lies in <c>(-m, m)</c>.
+    /// <c>hi(x y) - hi(q m)</c>, which needs no carry from the low halves and, as <c>q m</c> is below <c>m R</c>, lies in
+    /// <c>(-m, m)</c>.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void Multiply(UInt256* x, UInt256* y, UInt256* scratch, UInt256* entry)
