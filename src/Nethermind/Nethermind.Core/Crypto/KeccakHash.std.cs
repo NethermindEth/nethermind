@@ -20,15 +20,24 @@ public sealed partial class KeccakHash
     private const int TEMP_BUFF_SIZE = 144;
 
     /// <summary>Whether whole 136-byte rate blocks are permuted one by one with <see cref="KeccakF1600Avx512VL"/>
-    /// rather than absorbed by <see cref="AbsorbBlocksScalar"/>: on Intel AVX-512VL cores, where the scalar absorb
-    /// is not faster on every microarchitecture.</summary>
-    private static readonly bool PermutesBlocksWithAvx512VL = Avx512F.VL.IsSupported && IsGenuineIntel();
+    /// rather than absorbed by <see cref="AbsorbBlocksScalar"/>: on every AVX-512VL core except AMD Zen 5 and later,
+    /// the only ones where the scalar absorb was measured faster.</summary>
+    private static readonly bool PermutesBlocksWithAvx512VL = Avx512F.VL.IsSupported && !IsAmdZen5OrLater();
 
-    private static bool IsGenuineIntel()
+    /// <summary>Whether the vendor id is <c>AuthenticAMD</c> and the CPUID family is 1Ah (Zen 5) or later.</summary>
+    private static bool IsAmdZen5OrLater()
     {
+        const int Zen5Family = 0x1A;
+
         (_, int ebx, int ecx, int edx) = X86Base.CpuId(0, 0);
         ReadOnlySpan<int> vendor = [ebx, edx, ecx];
-        return MemoryMarshal.AsBytes(vendor).SequenceEqual("GenuineIntel"u8);
+        if (!MemoryMarshal.AsBytes(vendor).SequenceEqual("AuthenticAMD"u8))
+            return false;
+
+        int signature = X86Base.CpuId(1, 0).Eax;
+        int baseFamily = (signature >> 8) & 0xF;
+        int family = baseFamily == 0xF ? baseFamily + ((signature >> 20) & 0xFF) : baseFamily;
+        return family >= Zen5Family;
     }
 
     /// <inheritdoc cref="KeccakHash.InitializeState" />
