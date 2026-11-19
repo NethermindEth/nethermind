@@ -7,6 +7,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.EthStats.Clients;
+using Nethermind.EthStats.Messages;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -59,6 +60,31 @@ namespace Nethermind.EthStats.Test
             {
                 listener.Stop();
             }
+        }
+
+        [Test]
+        [CancelAfter(30_000)]
+        public async Task Ping_handler_logs_send_failure_instead_of_throwing()
+        {
+            TcpListener listener = new(IPAddress.Loopback, 0);
+            listener.Start();
+            int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+            listener.Stop();
+
+            IMessageSender sender = Substitute.For<IMessageSender>();
+            sender.SendAsync(Arg.Any<IWebsocketClient>(), Arg.Any<LatencyMessage>(), Arg.Any<string>()).Returns(Task.FromException(new InvalidOperationException()));
+            InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+            logger.IsError.Returns(true);
+            ILogger clientLogger = new(logger);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            logManager.GetClassLogger<EthStatsClient>().Returns(clientLogger);
+
+            using EthStatsClient ethClient = new($"ws://127.0.0.1:{port}/api", 100, sender, logManager);
+            await ethClient.InitAsync();
+
+            await ethClient.HandleMessageAsync(ResponseMessage.TextMessage("\"primus::ping::1690000000000\""));
+
+            logger.Received(1).Error(Arg.Any<string>(), Arg.Any<InvalidOperationException>());
         }
 
         [TestCase("primus::ping::", TestName = "Ping_with_empty_timestamp_tail_fails_to_parse")]
