@@ -110,22 +110,8 @@ public class Eip8288TransactionPickerTests
         LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
         proofs.AddVerified([first], [[1]], null);
         proofs.AddVerified([last], [[2]], null);
-        ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
-        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(call =>
-        {
-            if (lastFails && call.Arg<Transaction>() == lastTx) return TransactionResult.ErrorType.InsufficientSenderBalance;
-            call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, new GasConsumed(GasCostOf.Transaction, GasCostOf.Transaction), [], []);
-            return TransactionResult.Ok;
-        });
-        BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, Substitute.For<IWorldState>(),
-            CreatePicker(Eip8288Prototype.Instance, proofs), LimboLogs.Instance, NullBlockAccessListManager.Instance, NullTxPool.Instance);
-        BlockToProduce suggested = new(Build.A.BlockHeader.WithGasLimit(10_000_000).TestObject, [firstTx, lastTx], []);
-        BlockToProduce processed = (BlockToProduce)suggested.WithReplacedHeader(suggested.Header.Clone());
-        BlockReceiptsTracer receiptsTracer = new();
-        receiptsTracer.StartNewBlockTrace(processed);
-        executor.SetBlockExecutionContext(new BlockExecutionContext(processed.Header, Eip8288Prototype.Instance));
 
-        executor.ProcessTransactions(processed, ProcessingOptions.ProducingBlock, receiptsTracer);
+        (BlockToProduce suggested, BlockToProduce processed) = Produce(proofs, lastFails ? lastTx : null, firstTx, lastTx);
 
         using (Assert.EnterMultipleScope())
         {
@@ -138,6 +124,49 @@ public class Eip8288TransactionPickerTests
         }
     }
 
+    // Each contribution must see the one committed before it, or a shared dependency is fetched and charged twice.
+    [Test]
+    public void A_dependency_shared_by_consecutive_transactions_is_charged_once()
+    {
+        FrameDependency shared = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
+        Transaction firstTx = DependencyBearingTransaction(shared, TestItem.KeccakC);
+        Transaction secondTx = DependencyBearingTransaction(shared, TestItem.KeccakD);
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        proofs.AddVerified([shared], [[1]], null);
+
+        (_, BlockToProduce processed) = Produce(proofs, null, firstTx, secondTx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Transactions, Is.EqualTo((Transaction[])[firstTx, secondTx]));
+            Assert.That(processed.LeanProduction.ProofInputs, Has.Count.EqualTo(1));
+            Assert.That(processed.LeanProduction.ProofInputs[0].Deps, Is.EqualTo((FrameDependency[])[shared]));
+        }
+    }
+
+    /// <summary>Runs the production executor with the decorated picker over a copy of a block of <paramref name="transactions"/>,
+    /// as block processing does, failing the execution of <paramref name="failing"/>.</summary>
+    private static (BlockToProduce Suggested, BlockToProduce Processed) Produce(LeanProofStore proofs, Transaction? failing,
+        params Transaction[] transactions)
+    {
+        ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(call =>
+        {
+            if (call.Arg<Transaction>() == failing) return TransactionResult.ErrorType.InsufficientSenderBalance;
+            call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, new GasConsumed(GasCostOf.Transaction, GasCostOf.Transaction), [], []);
+            return TransactionResult.Ok;
+        });
+        BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, Substitute.For<IWorldState>(),
+            CreatePicker(Eip8288Prototype.Instance, proofs), LimboLogs.Instance, NullBlockAccessListManager.Instance, NullTxPool.Instance);
+        BlockToProduce suggested = new(Build.A.BlockHeader.WithGasLimit(10_000_000).TestObject, transactions, []);
+        BlockToProduce processed = (BlockToProduce)suggested.WithReplacedHeader(suggested.Header.Clone());
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.StartNewBlockTrace(processed);
+        executor.SetBlockExecutionContext(new BlockExecutionContext(processed.Header, Eip8288Prototype.Instance));
+        executor.ProcessTransactions(processed, ProcessingOptions.ProducingBlock, receiptsTracer);
+        return (suggested, processed);
+    }
+
     private static BlockProcessor.AddingTxEventArgs CanAdd(BlockProcessor.IBlockProductionTransactionPicker picker, Block block, Transaction candidate)
     {
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
@@ -145,11 +174,11 @@ public class Eip8288TransactionPickerTests
         return picker.CanAddTransaction(block, candidate, new HashSet<Transaction>(), state, 0, 0);
     }
 
-    private static Transaction DependencyBearingTransaction(FrameDependency? dependency = null)
+    private static Transaction DependencyBearingTransaction(FrameDependency? dependency = null, Hash256? hash = null)
     {
         FrameDependency verified = dependency ?? new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         Transaction transaction = Build.A.Transaction.WithGasLimit(5_000_000).WithSenderAddress(TestItem.AddressA)
-            .WithHash(Keccak.Compute(verified.DataHash.Bytes)).TestObject;
+            .WithHash(hash ?? Keccak.Compute(verified.DataHash.Bytes)).TestObject;
         transaction.Type = TxType.FrameTx;
         transaction.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero,
             Eip8288Dependencies.Serialize([verified]))];

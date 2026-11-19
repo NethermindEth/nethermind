@@ -75,7 +75,8 @@ public class Eip8288BlockProductionTests
         state.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue / 2);
         BlockToProduce block = new(Build.A.BlockHeader.WithGasLimit(ulong.MaxValue / 2).TestObject);
         if (carriesProof)
-            block.LeanProduction.ProofInputs.Add(new AggregationInput { Deps = [new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)], Witnesses = [new byte[1]] });
+            block.LeanProduction.Prepare(new BlockProcessor.AddingTxEventArgs(0, Build.A.Transaction.TestObject, block, []),
+                new AggregationInput { Deps = [new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)], Witnesses = [new byte[1]] }, []);
 
         List<Transaction> included = [];
         BlockProcessor.AddingTxEventArgs args;
