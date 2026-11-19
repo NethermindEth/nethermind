@@ -1392,7 +1392,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         catch (Exception ex)
         {
-            // Warming failures are already logged inside the pass; nothing actionable here.
             _logger.DebugError("Speculative pre-warming pass ended with an error", ex);
         }
         _speculativeCts.Dispose();

@@ -66,14 +66,15 @@ public sealed class EmptyCatchBlockAnalyzer : DiagnosticAnalyzer
     }
 
     /// <summary>
-    /// A lone statement guarded by <c>catch (ObjectDisposedException)</c> is a call that races a concurrent
+    /// A lone expression statement guarded by <c>catch (ObjectDisposedException)</c> is a call that races a concurrent
     /// <c>Dispose</c> of the same object (cancelling a token source, releasing a semaphore); the object being gone
     /// already means the call has nothing left to do.
     /// </summary>
     private static bool IsDisposeRaceOnSingleStatement(CatchClauseSyntax catchClause, ITypeSymbol type, INamedTypeSymbol? objectDisposed) =>
         objectDisposed is not null
         && SymbolEqualityComparer.Default.Equals(type, objectDisposed)
-        && catchClause.Parent is TryStatementSyntax { Block.Statements.Count: 1 };
+        && catchClause.Parent is TryStatementSyntax { Block.Statements: { Count: 1 } statements }
+        && statements[0] is ExpressionStatementSyntax;
 
     private static bool DerivesFrom(ITypeSymbol type, INamedTypeSymbol? baseType)
     {

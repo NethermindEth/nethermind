@@ -77,7 +77,7 @@ public class JsonConfigSource : IConfigSource
             }
             catch (Exception e)
             {
-                // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
+                // the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
                 missingConfigFileMessage.AppendLine($"Could not list config files: {e.Message}");
             }
 

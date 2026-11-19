@@ -16,6 +16,8 @@ public class EmptyCatchBlockAnalyzerTests
     [TestCase("try { Work(); } {|#0:catch|} (InvalidOperationException) { }", "InvalidOperationException")]
     [TestCase("try { Work(); Work(); } {|#0:catch|} (ObjectDisposedException) { }", "ObjectDisposedException")]
     [TestCase("try { } {|#0:catch|} (ObjectDisposedException) { }", "ObjectDisposedException")]
+    [TestCase("try { if (Flag) Work(); else Work(); } {|#0:catch|} (ObjectDisposedException) { }", "ObjectDisposedException")]
+    [TestCase("try { { Work(); Work(); } } {|#0:catch|} (ObjectDisposedException) { }", "ObjectDisposedException")]
     [TestCase("try { Work(); } {|#0:catch|} (AggregateException) { }", "AggregateException")]
     [TestCase("try { Work(); } {|#0:catch|} (Exception e) when (e is OperationCanceledException) { }", "Exception")]
     [TestCase("try { Work(); } {|#0:catch|} (InvalidOperationException) { /* ignored */ }", "InvalidOperationException")]

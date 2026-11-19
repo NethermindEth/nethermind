@@ -180,7 +180,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         // It can be missing when the warmer lags so much behind that the node is now gone.
         catch (TrieNodeException) { Metrics.RecordTrieWarmerDroppedJob(); }
         // Because it runs in parallel, it could be that the scope is disposed of early.
-        catch (ObjectDisposedException) { }
+        catch (ObjectDisposedException) { Metrics.RecordTrieWarmerDroppedJob(); }
         // Scope disposal can null pooled snapshot maps while a queued warmup is already inside trie traversal.
         catch (NullReferenceException) when (IsDisposedJobTarget(in job)) { Metrics.RecordTrieWarmerDroppedJob(); }
     }
