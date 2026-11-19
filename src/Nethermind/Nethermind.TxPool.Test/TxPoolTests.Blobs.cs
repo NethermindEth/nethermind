@@ -22,6 +22,7 @@ using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -95,7 +96,7 @@ namespace Nethermind.TxPool.Test
         {
             Transaction tx = BuildBlobTxDeclaringNoBlobs(null).TestObject;
 
-            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpException>()
+            Assert.That(() => TxDecoder.Instance.Encode(tx), Throws.TypeOf<RlpReaderException>()
                 .With.Message.Contains($"{nameof(Transaction.BlobVersionedHashes)} is required"));
         }
 
@@ -1916,7 +1917,7 @@ namespace Nethermind.TxPool.Test
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(blob, Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
-                        Assert.That(proof, Is.EqualTo(wrapper.Proofs[i]), $"blob proof {i}");
+                        Assert.That(proof, Is.EqualTo(wrapper.Proofs.AsSpan(i * Ckzg.BytesPerProof, Ckzg.BytesPerProof).ToArray()), $"blob proof {i}");
                     }
                 }
             }
@@ -1927,7 +1928,7 @@ namespace Nethermind.TxPool.Test
         private int LookUpBlobsAndCellProofs(byte[][] hashes, ShardBlobNetworkWrapper wrapper)
         {
             byte[][] blobs = new byte[hashes.Length][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[hashes.Length];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[hashes.Length];
             int served = _txPool.TryGetBlobsAndProofsV1(hashes, blobs, proofs);
             for (int i = 0; i < hashes.Length; i++)
             {
@@ -1936,7 +1937,7 @@ namespace Nethermind.TxPool.Test
                     using (Assert.EnterMultipleScope())
                     {
                         Assert.That(blobs[i], Is.EqualTo(wrapper.Blobs[i]), $"blob {i}");
-                        Assert.That(proofs[i], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(i * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob)), $"cell proofs {i}");
+                        Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(i * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof, Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof).ToArray()), $"cell proofs {i}");
                     }
                 }
             }
@@ -2055,7 +2056,7 @@ namespace Nethermind.TxPool.Test
             {
                 if (args.Transaction.Hash == tx.Hash)
                 {
-                    foundDuringRemoval = _txPool.TryGetBlobsAndProofsV1([tx.BlobVersionedHashes[0]], new byte[1][], new ReadOnlyMemory<byte[]>[1]);
+                    foundDuringRemoval = _txPool.TryGetBlobsAndProofsV1([tx.BlobVersionedHashes[0]], new byte[1][], new ReadOnlyMemory<byte>[1]);
                 }
             };
 
@@ -2072,7 +2073,7 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(_txPool.TryGetBlobsAndProofsV1([tx.BlobVersionedHashes[0]], new byte[1][], new ReadOnlyMemory<byte[]>[1]), Is.EqualTo(1), "precondition: the Engine lookup serves it");
+                Assert.That(_txPool.TryGetBlobsAndProofsV1([tx.BlobVersionedHashes[0]], new byte[1][], new ReadOnlyMemory<byte>[1]), Is.EqualTo(1), "precondition: the Engine lookup serves it");
                 Assert.That(_txPool.TryGetBlobCells(tx.Hash!, BlobCellMask.FromIndices([3]), out _, out _), Is.False);
                 Assert.That(_txPool.TryGetPendingBlobCellMask(tx.Hash!, out _), Is.False);
                 Assert.That(_txPool.TryGetPendingBlobCellMetadata(tx.Hash!, out _, out _, out _), Is.False);
@@ -2189,7 +2190,7 @@ namespace Nethermind.TxPool.Test
             storage.ProcessedRowReads = 0;
 
             byte[][] blobs = new byte[hashes.Length][];
-            int found = _txPool.TryGetBlobsAndProofsV1(hashes, blobs, new ReadOnlyMemory<byte[]>[hashes.Length]);
+            int found = _txPool.TryGetBlobsAndProofsV1(hashes, blobs, new ReadOnlyMemory<byte>[hashes.Length]);
 
             using (Assert.EnterMultipleScope())
             {
@@ -2683,7 +2684,7 @@ namespace Nethermind.TxPool.Test
                 {
                     Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
+                    Assert.That(wrapper.ProofCount, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                     Assert.That(wrapper.Version, Is.EqualTo(hasTxCellProofs ? ProofVersion.V1 : ProofVersion.V0));
 
                     Assert.That(blobTxStorage.TryGet(blobTxAdded.Hash, blobTxAdded.SenderAddress!, blobTxAdded.Timestamp, out Transaction blobTxFromDb), Is.EqualTo(isPersistentStorage)); // additional check for persistent db
@@ -2743,7 +2744,7 @@ namespace Nethermind.TxPool.Test
                 {
                     Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
+                    Assert.That(wrapper.ProofCount, Is.EqualTo(isOsakaActivated ? Ckzg.CellsPerExtBlob : 1));
                     Assert.That(wrapper.Version, Is.EqualTo(isOsakaActivated ? ProofVersion.V1 : ProofVersion.V0));
                     if (isOsakaActivated)
                     {
@@ -2803,7 +2804,7 @@ namespace Nethermind.TxPool.Test
                 {
                     Assert.That(blobTxReturned, Is.EqualTo(blobTxAdded).UsingTransactionComparer());
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTxReturned.NetworkWrapper;
-                    Assert.That(wrapper.Proofs.Length, Is.EqualTo(1));
+                    Assert.That(wrapper.ProofCount, Is.EqualTo(1));
                     Assert.That(wrapper.Version, Is.EqualTo(ProofVersion.V0));
                     Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
                     Assert.That(blobTxAdded.GetLength(), Is.EqualTo(lengthAfterTranslation));
@@ -3279,7 +3280,7 @@ namespace Nethermind.TxPool.Test
                 requestedHashes[i] = index == blobCount ? tx2.BlobVersionedHashes![0]! : tx1.BlobVersionedHashes![index]!;
             }
             byte[][] blobs = new byte[requestedHashes.Length][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[requestedHashes.Length];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[requestedHashes.Length];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
@@ -3292,7 +3293,7 @@ namespace Nethermind.TxPool.Test
                     ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)(blobIndex == blobCount ? tx2 : tx1).NetworkWrapper!;
                     int index = blobIndex == blobCount ? 0 : blobIndex;
                     Assert.That(blobs[i].AsSpan().SequenceEqual(wrapper.Blobs[index]), Is.True, $"Blob at index {i}");
-                    Assert.That(proofs[i], Is.SequenceEqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob, Ckzg.CellsPerExtBlob)));
+                    Assert.That(proofs[i].ToArray(), Is.EqualTo(wrapper.Proofs.AsSpan(index * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof, Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof).ToArray()));
                 }
                 Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(2));
             }
@@ -3324,7 +3325,7 @@ namespace Nethermind.TxPool.Test
             fakeBlobHash[0] = 0x01; // versioned hash prefix
             byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, fakeBlobHash];
             byte[][] blobs = new byte[2][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[2];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
@@ -3452,18 +3453,18 @@ namespace Nethermind.TxPool.Test
 
             byte[] requestedHash = txWithSparseCells.BlobVersionedHashes[0];
 #pragma warning disable NUnit2045 // Keep output variables in the enclosing scope for subsequent checks and actions.
-            Assert.That(_txPool.TryGetBlobAndProofV1(requestedHash, out byte[] fullBlob, out byte[][] fullProofs), Is.True);
+            Assert.That(_txPool.TryGetBlobAndProofV1(requestedHash, out byte[] fullBlob, out ReadOnlyMemory<byte> fullProofs), Is.True);
 #pragma warning restore NUnit2045
             Assert.That(fullBlob, Is.EqualTo(((ShardBlobNetworkWrapper)txWithFullBlob.NetworkWrapper!).Blobs[0]));
-            Assert.That(fullProofs, Has.Length.EqualTo(Ckzg.CellsPerExtBlob));
+            Assert.That(fullProofs.Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
 
             byte[][] batchBlobs = new byte[1][];
-            ReadOnlyMemory<byte[]>[] batchProofs = new ReadOnlyMemory<byte[]>[1];
+            ReadOnlyMemory<byte>[] batchProofs = new ReadOnlyMemory<byte>[1];
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(_txPool.TryGetBlobsAndProofsV1([requestedHash], batchBlobs, batchProofs), Is.EqualTo(1));
                 Assert.That(batchBlobs[0], Is.EqualTo(fullBlob));
-                Assert.That(batchProofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(batchProofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
             }
         }
 
@@ -3522,7 +3523,7 @@ namespace Nethermind.TxPool.Test
 
             byte[][] requestedHashes = [requestedBlobVersionedHash!];
             byte[][] blobs = new byte[1][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[1];
 
             int found = blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
@@ -3530,7 +3531,7 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(found, Is.EqualTo(1));
                 Assert.That(blobs[0], Is.Not.Null);
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
                 Assert.That(storage.LastTryGetManyCount, Is.EqualTo(1));
             }
         }
@@ -3621,8 +3622,16 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
         }
 
+        public enum SidecarCorruption
+        {
+            Proof,
+            CommitmentCount,
+            Commitment,
+            ProofVersion
+        }
+
         [Test]
-        public void should_forget_full_blob_hash_rejected_for_invalid_blob_proofs()
+        public void should_forget_full_blob_hash_rejected_for_its_sidecar([Values] SidecarCorruption corruption)
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
@@ -3635,19 +3644,20 @@ namespace Nethermind.TxPool.Test
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             Transaction invalid = CloneFullBlobTransactionWithSameSidecar(valid, 0);
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)valid.NetworkWrapper!;
-            byte[][] invalidProofs = new byte[wrapper.Proofs.Length][];
-            for (int i = 0; i < invalidProofs.Length; i++)
+            invalid.NetworkWrapper = corruption switch
             {
-                invalidProofs[i] = [.. wrapper.Proofs[i]];
-            }
-
-            invalidProofs[0][0] ^= 1;
-            invalid.NetworkWrapper = wrapper with { Proofs = invalidProofs };
+                SidecarCorruption.Proof => wrapper with { Proofs = [(byte)(wrapper.Proofs[0] ^ 1), .. wrapper.Proofs[1..]] },
+                SidecarCorruption.CommitmentCount => wrapper with { Commitments = [] },
+                SidecarCorruption.Commitment => wrapper with { Commitments = WithFirstByteFlipped(wrapper.Commitments) },
+                SidecarCorruption.ProofVersion => wrapper with { Version = ProofVersion.V0 },
+                _ => throw new ArgumentOutOfRangeException(nameof(corruption))
+            };
+            AcceptTxResult expected = corruption is SidecarCorruption.Proof ? AcceptTxResult.InvalidBlobProofs : AcceptTxResult.Invalid;
 
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
             Assert.That(invalid.Hash, Is.EqualTo(valid.Hash));
 #pragma warning restore NUnit2045
-            Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+            Assert.That(_txPool.SubmitTx(invalid, TxHandlingOptions.None), Is.EqualTo(expected));
             Assert.That(_txPool.SubmitTx(valid, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
 
             Assert.That(_txPool.ForgetInvalidBlobProofs(valid.Hash!), Is.True);
@@ -3658,25 +3668,77 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void should_not_forget_blob_hash_rejected_for_another_reason()
+        public async Task should_allow_resubmission_of_blob_tx_evicted_after_fork_for_bad_blob_hash()
+        {
+            Block head = _blockTree.Head;
+            _blockTree.BestSuggestedHeader = head.Header;
+            TestSpecProvider provider = new(Osaka.Instance)
+            {
+                NextForkSpec = Amsterdam.Instance,
+                ForkOnBlockNumber = head.Number + 1
+            };
+            // The built-in spec-change rules cannot fail blob hashes; a plugin's fork-sensitive rule can.
+            ISpecChangeTxValidator specChangeTxValidator = Substitute.For<ISpecChangeTxValidator>();
+            specChangeTxValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(new ValidationResult(TxErrorMessages.InvalidBlobHashes));
+            specChangeTxValidator.IsWellFormedAfterFullValidation(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+            _txPool = CreatePool(
+                new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
+                provider,
+                specChangeTxValidator: specChangeTxValidator);
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            Transaction transaction = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithGasLimit(1_000_000)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
+            Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+#pragma warning restore NUnit2045
+
+            await AddEmptyBlock();
+            Assert.That(() => _txPool.IsRevalidatedFor(_blockTree.BestSuggestedHeader), Is.True.After(Timeout, 10));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingBlobTransactionsCount(), Is.Zero);
+                Assert.That(_txPool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
+        }
+
+        public enum OtherRejection
+        {
+            NonceGap,
+            IntrinsicGas,
+            IntrinsicGasAndProofVersion
+        }
+
+        [Test]
+        public void should_not_forget_blob_hash_rejected_for_another_reason([Values] OtherRejection rejection)
         {
             _txPool = CreatePool(
                 new TxPoolConfig { BlobsSupport = BlobsSupportMode.InMemory, InMemoryBlobPoolSize = 4 },
                 GetOsakaSpecProvider());
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            Transaction gap = Build.A.Transaction
+            TransactionBuilder<Transaction> builder = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
-                .WithNonce(2UL)
                 .WithMaxFeePerGas(1.GWei)
-                .WithMaxPriorityFeePerGas(1.GWei)
-                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
-                .TestObject;
+                .WithMaxPriorityFeePerGas(1.GWei);
+            builder = rejection is OtherRejection.NonceGap ? builder.WithNonce(2UL) : builder.WithGasLimit(1);
+            Transaction rejected = builder.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            if (rejection is OtherRejection.IntrinsicGasAndProofVersion)
+            {
+                rejected.NetworkWrapper = (ShardBlobNetworkWrapper)rejected.NetworkWrapper! with { Version = ProofVersion.V0 };
+            }
+
+            AcceptTxResult expected = rejection is OtherRejection.NonceGap ? AcceptTxResult.NonceGap : AcceptTxResult.Invalid;
 
 #pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
-            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.NonceGap));
+            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(expected));
 #pragma warning restore NUnit2045
-            Assert.That(_txPool.ForgetInvalidBlobProofs(gap.Hash!), Is.False);
-            Assert.That(_txPool.SubmitTx(gap, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
+            Assert.That(_txPool.ForgetInvalidBlobProofs(rejected.Hash!), Is.False);
+            Assert.That(_txPool.SubmitTx(rejected, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.AlreadyKnown));
         }
 
         [Test]
@@ -3788,7 +3850,7 @@ namespace Nethermind.TxPool.Test
             requestedBlobVersionedHash[^1] ^= 1;
             tx.BlobVersionedHashes = [tx.BlobVersionedHashes[0], requestedBlobVersionedHash];
             byte[][] commitments = [wrapper.Commitments[0], wrapper.Commitments[0]];
-            byte[][] proofs = truncateProofs ? wrapper.Proofs : [.. wrapper.Proofs, .. wrapper.Proofs];
+            byte[] proofs = truncateProofs ? wrapper.Proofs : [.. wrapper.Proofs, .. wrapper.Proofs];
 
             if (fullBlobs)
             {
@@ -3966,7 +4028,7 @@ namespace Nethermind.TxPool.Test
 
             byte[][] requestedHashes = [sparseBlobTx.BlobVersionedHashes![0]!];
             byte[][] blobs = new byte[1][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[1];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
@@ -3975,6 +4037,63 @@ namespace Nethermind.TxPool.Test
                 Assert.That(found, Is.EqualTo(0));
                 Assert.That(blobs[0], Is.Null);
                 Assert.That(proofs[0].IsEmpty, Is.True);
+            }
+        }
+
+        [Test]
+        public void should_read_network_form_only_for_a_blob_tx_held_in_storage_alone()
+        {
+            TxPoolConfig txPoolConfig = new()
+            {
+                BlobsSupport = BlobsSupportMode.Storage,
+                BlobCacheSize = 1,
+                Size = 10
+            };
+            _txPool = CreatePool(txPoolConfig, GetOsakaSpecProvider());
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+            EnsureSenderBalance(TestItem.AddressB, UInt256.MaxValue);
+
+            Transaction storedTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            Transaction cachedTx = Build.A.Transaction
+                .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+                .WithMaxFeePerGas(1.GWei)
+                .WithMaxPriorityFeePerGas(1.GWei)
+                .With(tx => ReplaceBlobSidecar(tx, firstBlobByte: 2))
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+            Transaction plainTx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyC).TestObject;
+
+            AcceptTxResult storedResult = _txPool.SubmitTx(storedTx, TxHandlingOptions.None);
+            AcceptTxResult cachedResult = _txPool.SubmitTx(cachedTx, TxHandlingOptions.None);
+            bool cachedFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(cachedTx.Hash!, out BlobCellMask cachedMask, out IOwnedReadOnlyList<byte> cachedForm);
+            bool plainFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(plainTx.Hash!, out _, out IOwnedReadOnlyList<byte> plainForm);
+
+            bool storedFound = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(storedTx.Hash!, out BlobCellMask storedMask, out IOwnedReadOnlyList<byte> networkForm);
+            using (networkForm)
+            {
+                // Decoding puts the transaction in the cache, so a later read is served from memory.
+                bool decodedFound = _txPool.TryGetPendingTransaction(storedTx.Hash!, out Transaction decoded);
+                bool foundAfterDecoding = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(storedTx.Hash!, out _, out IOwnedReadOnlyList<byte> formAfterDecoding);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(storedResult, Is.EqualTo(AcceptTxResult.Accepted));
+                    Assert.That(cachedResult, Is.EqualTo(AcceptTxResult.Accepted));
+                    Assert.That(cachedFound, Is.True, "cached");
+                    Assert.That(cachedMask.IsFull, Is.True, "cached mask");
+                    Assert.That(cachedForm, Is.Null, "cached");
+                    Assert.That(plainFound, Is.False, "not in the blob pool");
+                    Assert.That(plainForm, Is.Null, "not in the blob pool");
+                    Assert.That(storedFound, Is.True, "stored");
+                    Assert.That(storedMask.IsFull, Is.True, "stored mask");
+                    Assert.That(decodedFound, Is.True);
+                    Assert.That(networkForm?.AsSpan().ToArray(),
+                        Is.EqualTo(TxDecoder.Instance.Encode(decoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+                    Assert.That(foundAfterDecoding, Is.True, "decoded");
+                    Assert.That(formAfterDecoding, Is.Null, "decoded");
+                }
             }
         }
 
@@ -4017,12 +4136,12 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.SubmitTx(tx2, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             // Access tx1 via single lookup — this re-populates tx1 in cache, evicting tx2
-            Assert.That(_txPool.TryGetBlobAndProofV1(tx1.BlobVersionedHashes![0]!, out byte[] _, out byte[][] _), Is.True);
+            Assert.That(_txPool.TryGetBlobAndProofV1(tx1.BlobVersionedHashes![0]!, out byte[] _, out ReadOnlyMemory<byte> _), Is.True);
 
             // Now batch lookup: tx1 from cache (just accessed), tx2 from DB
             byte[][] requestedHashes = [tx1.BlobVersionedHashes![0]!, tx2.BlobVersionedHashes![0]!];
             byte[][] blobs = new byte[2][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[2];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[2];
 
             int found = _txPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs);
 
@@ -4031,8 +4150,8 @@ namespace Nethermind.TxPool.Test
                 Assert.That(found, Is.EqualTo(2));
                 Assert.That(blobs[0], Is.Not.Null);
                 Assert.That(blobs[1], Is.Not.Null);
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
+                Assert.That(proofs[1].Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
                 Assert.That(blobTxStorage.LastTryGetManyCount, Is.EqualTo(1));
             }
         }
@@ -4147,13 +4266,8 @@ namespace Nethermind.TxPool.Test
                 .WithValue(2)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
             ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-            byte[][] invalidProofs = new byte[wrapper.Proofs.Length][];
-            for (int i = 0; i < invalidProofs.Length; i++)
-            {
-                invalidProofs[i] = [.. wrapper.Proofs[i]];
-            }
-
-            invalidProofs[0][0] ^= 1;
+            byte[] invalidProofs = [.. wrapper.Proofs];
+            invalidProofs[0] ^= 1;
             tx.NetworkWrapper = wrapper with { Proofs = invalidProofs };
 
             Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.InsufficientFunds));
@@ -4268,7 +4382,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(_txPool.TryGetPendingBlobTransaction(sparseBlobTx.Hash!, out Transaction reconstructedTx), Is.True);
 
             ShardBlobNetworkWrapper reconstructed = (ShardBlobNetworkWrapper)reconstructedTx.NetworkWrapper!;
-            Assert.That(_txPool.TryGetBlobAndProofV1(sparseBlobTx.BlobVersionedHashes![0], out byte[] blob, out byte[][] proofs), Is.True);
+            Assert.That(_txPool.TryGetBlobAndProofV1(sparseBlobTx.BlobVersionedHashes![0], out byte[] blob, out ReadOnlyMemory<byte> proofs), Is.True);
             IBlobProofsBuilder verifier = IBlobProofsManager.For(ProofVersion.V1);
             ShardBlobNetworkWrapper recomputed = verifier.AllocateWrapper(reconstructed.Blobs);
             verifier.ComputeProofsAndCommitments(recomputed);
@@ -4284,8 +4398,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(reconstructed.CellMask, Is.EqualTo(BlobCellMask.Empty));
                 Assert.That(reconstructed.Cells, Is.Null);
                 Assert.That(blob, Is.EqualTo(fullWrapper.Blobs[0]));
-                Assert.That(proofs, Has.Length.EqualTo(Ckzg.CellsPerExtBlob));
-                Assert.That(proofs, Is.EqualTo(recomputed.Proofs[..Ckzg.CellsPerExtBlob]));
+                Assert.That(proofs.ToArray(), Is.EqualTo(recomputed.GetProofs(0, Ckzg.CellsPerExtBlob).ToArray()));
                 Assert.That(lightBlobTransactions[0].GetLength(), Is.EqualTo(fullBlobTx.GetLength()));
             }
         }
@@ -5137,7 +5250,7 @@ namespace Nethermind.TxPool.Test
             Assert.That(blobPool.TryInsert(cacheEvictor.Hash, cacheEvictor, out _), Is.True);
             byte[][] requestedHashes = [storedTx.BlobVersionedHashes![0]];
             byte[][] blobs = new byte[1][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[1];
             int found = -1;
 
             storage.BlockNextRead();
@@ -5192,7 +5305,7 @@ namespace Nethermind.TxPool.Test
             ((Nethermind.Core.Caching.LruCache<ValueHash256, Transaction>)cacheField.GetValue(blobPool)!).Clear();
             byte[][] requestedHashes = [template.BlobVersionedHashes![0]];
             byte[][] blobs = new byte[1][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[1];
 
             storage.BlockNextRead();
             Task<int> read = RunOnDedicatedThread(() => blobPool.TryGetBlobsAndProofsV1(requestedHashes, blobs, proofs));
@@ -5210,7 +5323,7 @@ namespace Nethermind.TxPool.Test
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(blobs[0], Is.EqualTo(((ShardBlobNetworkWrapper)second.NetworkWrapper!).Blobs[0]));
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
             }
         }
 
@@ -5313,6 +5426,18 @@ namespace Nethermind.TxPool.Test
             return clone;
         }
 
+        private static byte[][] WithFirstByteFlipped(byte[][] items)
+        {
+            byte[][] copy = new byte[items.Length][];
+            for (int i = 0; i < items.Length; i++)
+            {
+                copy[i] = [.. items[i]];
+            }
+
+            copy[0][0] ^= 1;
+            return copy;
+        }
+
         private static void ReplaceBlobSidecar(Transaction tx, byte firstBlobByte)
         {
             byte[] blob = new byte[Ckzg.BytesPerBlob];
@@ -5385,7 +5510,7 @@ namespace Nethermind.TxPool.Test
             return (storage, pool, target);
         }
 
-        private sealed class CountingBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage
+        private sealed class CountingBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IBlobTxElidedReadStorage
         {
             private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
             private readonly BlobTxStorage _inner;
@@ -5417,6 +5542,12 @@ namespace Nethermind.TxPool.Test
             {
                 TryGetCount++;
                 return _inner.TryGet(hash, sender, timestamp, out transaction);
+            }
+
+            public bool TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+            {
+                TryGetCount++;
+                return ((IBlobTxElidedReadStorage)_inner).TryGetFullRecordWithoutBlobs(hash, sender, timestamp, out transaction);
             }
 
             public bool TryGetWithoutBlobs(in ValueHash256 hash, Address sender, out Transaction transaction)
@@ -5512,7 +5643,7 @@ namespace Nethermind.TxPool.Test
                     value.NetworkWrapper = wrapper with
                     {
                         Commitments = CloneByteArrays(wrapper.Commitments),
-                        Proofs = CloneByteArrays(wrapper.Proofs),
+                        Proofs = [.. wrapper.Proofs],
                     };
                     RehydrateOnSecondLookup = false;
                 }
@@ -5763,7 +5894,7 @@ namespace Nethermind.TxPool.Test
             }
         }
 
-        private sealed class BlockingReadBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IDisposable
+        private sealed class BlockingReadBlobTxStorage : IBlobTxStorage, IBlobTxMetadataStorage, IBlobTxElidedReadStorage, IDisposable
         {
             private readonly MemColumnsDb<BlobTxsColumns> _columnsDb = new();
             private readonly BlobTxStorage _inner;
@@ -5794,21 +5925,27 @@ namespace Nethermind.TxPool.Test
             public void RemoveWithoutBlobs(in ValueHash256 hash) => GetElidedDb().Remove(GetElidedKey(hash));
 
             public bool TryGet(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => ReadFullRecord(hash, sender, timestamp, withoutBlobs: false, out transaction);
+
+            public bool TryGetFullRecordWithoutBlobs(in ValueHash256 hash, Address sender, in UInt256 timestamp, out Transaction transaction)
+                => ReadFullRecord(hash, sender, timestamp, withoutBlobs: true, out transaction);
+
+            private bool ReadFullRecord(in ValueHash256 hash, Address sender, in UInt256 timestamp, bool withoutBlobs, out Transaction transaction)
             {
                 Interlocked.Increment(ref _fullReadCount);
-                if (Interlocked.Exchange(ref _blockNextRead, 0) == 0)
+                bool block = Interlocked.Exchange(ref _blockNextRead, 0) != 0;
+                bool found = withoutBlobs
+                    ? ((IBlobTxElidedReadStorage)_inner).TryGetFullRecordWithoutBlobs(hash, sender, timestamp, out transaction)
+                    : _inner.TryGet(hash, sender, timestamp, out transaction);
+                if (block)
                 {
-                    return _inner.TryGet(hash, sender, timestamp, out transaction);
+                    _readEntered.Set();
+                    if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
+                    {
+                        throw new TimeoutException("Timed out waiting to release the stale blob transaction read.");
+                    }
                 }
 
-                bool found = _inner.TryGet(hash, sender, timestamp, out Transaction snapshot);
-                _readEntered.Set();
-                if (!_releaseRead.Wait(BlockedStorageReleaseTimeout))
-                {
-                    throw new TimeoutException("Timed out waiting to release the stale blob transaction read.");
-                }
-
-                transaction = snapshot;
                 return found;
             }
 
@@ -6064,7 +6201,7 @@ namespace Nethermind.TxPool.Test
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
             Transaction frameBlobTx = BuildBlobFrameTx(nonce: 0, blobCount: 1, withSidecar: true);
-            ((ShardBlobNetworkWrapper)frameBlobTx.NetworkWrapper!).Proofs[0][0] ^= 1;
+            ((ShardBlobNetworkWrapper)frameBlobTx.NetworkWrapper!).Proofs[0] ^= 1;
 
             AcceptTxResult result = _txPool.SubmitTx(frameBlobTx, TxHandlingOptions.None);
 
@@ -6763,7 +6900,7 @@ namespace Nethermind.TxPool.Test
             using PersistentBlobTxDistinctSortedPool poolAfterRestart = new(blobTxStorage, txPoolConfig, comparer, LimboLogs.Instance);
 
             byte[][] blobs = new byte[1][];
-            ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[1];
+            ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[1];
             int found = poolAfterRestart.TryGetBlobsAndProofsV1([frameBlobTx.BlobVersionedHashes![0]!], blobs, proofs);
 
             using (Assert.EnterMultipleScope())
@@ -6773,7 +6910,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(reloaded.NetworkWrapper, Is.InstanceOf<ShardBlobNetworkWrapper>());
                 Assert.That(found, Is.EqualTo(1));
                 Assert.That(blobs[0], Is.Not.Null);
-                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob));
+                Assert.That(proofs[0].Length, Is.EqualTo(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
             }
         }
 

@@ -226,7 +226,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.BLOCKHASH).Done, 22UL, GasCostOf.BlockHash).SetArgDisplayNames("BLOCKHASH"),
         new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 715UL,
             GasCostOf.ExtCodeEip150 + GasCostOf.Memory + GasCostOf.Memory).SetArgDisplayNames("EXTCODECOPY"),
-        // Before Berlin, Geth prices SELFDESTRUCT's base cost as part of its dynamic cost.
+        // Before Berlin, Geth prices the 5000 in its gas function, with the new-account charge for an empty beneficiary.
         new TestCaseData(Prepare.EvmCode.PushData(0).Op(Instruction.SELFDESTRUCT).Done, 4000UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT"),
         new TestCaseData(Prepare.EvmCode.PushData(32).PushData(0).PushData(0).PushData(TestItem.AddressC).Op(Instruction.EXTCODECOPY).Done, 711UL, GasCostOf.ExtCodeEip150).SetArgDisplayNames("EXTCODECOPY base"),
         new TestCaseData(Prepare.EvmCode.PushData(TestItem.AddressF).Op(Instruction.SELFDESTRUCT).Done, 30002UL, GasCostOf.SelfDestructEip150 + GasCostOf.NewAccount).SetArgDisplayNames("SELFDESTRUCT new account"),
@@ -260,20 +260,36 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <remarks>As in Geth, the stack is checked before the constant gas, so the underflow outranks running out of gas.</remarks>
     [Test]
-    public void Can_trace_stack_underflow_failure()
+    public void Can_trace_stack_underflow_failure([ValueSource(nameof(StackUnderflowGasAfterIntrinsic))] ulong gasAfterIntrinsic)
     {
-        byte[] code = Prepare.EvmCode
-            .Op(Instruction.ADD)
-            .Done;
-
-        GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using GethLikeTxTrace trace = ExecuteAndTrace(GasCostOf.Transaction + gasAfterIntrinsic, Prepare.EvmCode.Op(Instruction.ADD).Done);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(trace.Failed, Is.EqualTo(true));
             Assert.That(trace.Entries[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
+            Assert.That(trace.Entries[0].GasCost, Is.EqualTo(GasCostOf.VeryLow));
         }
     }
+
+    [TestCase(Instruction.ADD, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.KECCAK256, "", "stack underflow (0 <=> 2)")]
+    [TestCase(Instruction.SELFDESTRUCT, "", "stack underflow (0 <=> 1)")]
+    [TestCase(Instruction.LOG4, "600060006000", "stack underflow (3 <=> 6)")]
+    public void Can_trace_stack_underflow_error_text(Instruction opcode, string pushes, string error)
+    {
+        byte[] code = [.. Bytes.FromHexString(pushes), (byte)opcode];
+
+        using GethLikeTxTrace trace = ExecuteAndTrace(code);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.EqualTo(true));
+            Assert.That(trace.Entries[^1].Error, Is.EqualTo(error));
+        }
+    }
+
+    internal static readonly ulong[] StackUnderflowGasAfterIntrinsic = [GasCostOf.VeryLow - 1, 100000UL];
 
     [Test]
     [Todo("Verify the exact error string in Geth")]
@@ -882,6 +898,47 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         AssertStreamingMatchesInMemory(code);
     }
 
+    /// <remarks>As in Geth, a step that halts with an error does not execute its opcode, so it records no storage.</remarks>
+    [TestCase(Instruction.CALL, 25112L, "out of gas", 2)]
+    [TestCase(Instruction.CALL, 24412L, "out of gas: not enough gas for reentrancy sentry", 2)]
+    [TestCase(Instruction.STATICCALL, 50000L, "out of gas: write protection", 1)]
+    public void Failed_SSTORE_step_has_no_storage(Instruction callOpcode, long callGas, string expectedError, int expectedSStoreSteps)
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .PersistData("0x0", "0x1")
+            .PersistData("0x1", "0x1")
+            .Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        Prepare caller = Prepare.EvmCode;
+        byte[] code = (callOpcode == Instruction.CALL ? caller.Call(TestItem.AddressC, callGas) : caller.StaticCall(TestItem.AddressC, callGas))
+            .Op(Instruction.STOP)
+            .Done;
+        ForkActivation activation = MainnetSpecProvider.CancunActivation;
+
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument inMemory = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string tracerName, JsonElement[] entries) in (ReadOnlySpan<(string, JsonElement[])>)[
+                ("in-memory", inMemory.RootElement.GetProperty("structLogs").EnumerateArray().ToArray()),
+                ("streaming", ExecuteStreamingTracerEntries(code, activation))])
+            {
+                JsonElement[] sstores = [.. entries.Where(static e => e.GetProperty("op").GetString() == "SSTORE")];
+                Assert.That(sstores, Has.Length.EqualTo(expectedSStoreSteps), $"{tracerName}: SSTORE steps");
+                Assert.That(sstores[^1].GetProperty("error").GetString(), Is.EqualTo(expectedError), $"{tracerName}: failed SSTORE error");
+                Assert.That(sstores[^1].TryGetProperty("storage", out _), Is.False, $"{tracerName}: failed SSTORE storage");
+                Assert.That(sstores[..^1].All(static e => e.TryGetProperty("storage", out _)), Is.True, $"{tracerName}: successful SSTORE storage");
+            }
+        }
+    }
+
     [Test]
     public void Streamed_deep_stack_of_mixed_width_words_matches_in_memory()
     {
@@ -920,9 +977,9 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
-    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code)
+    private JsonElement[] ExecuteStreamingTracerEntries(byte[] code, ForkActivation? activation = null)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(activation ?? Activation, 100000, code);
 
         ArrayBufferWriter<byte> buffer = new();
         using (Utf8JsonWriter writer = new(buffer))
@@ -937,6 +994,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         using JsonDocument document = JsonDocument.Parse(buffer.WrittenMemory);
         return document.RootElement.EnumerateArray().Select(e => e.Clone()).ToArray();
+    }
+
+    /// <summary>As in Geth's struct logger, an action rejected by its balance precheck leaves its opcode without an error.</summary>
+    [TestCase(Instruction.CALL)]
+    [TestCase(Instruction.CREATE)]
+    public void Rejected_action_leaves_no_error_on_its_opcode(Instruction operation)
+    {
+        Prepare code = operation == Instruction.CALL
+            ? Prepare.EvmCode.CallWithValue(TestItem.AddressC, 50_000, UInt256.MaxValue)
+            : Prepare.EvmCode.Create([(byte)Instruction.STOP], UInt256.MaxValue);
+        byte[] bytecode = code.Op(Instruction.POP).Op(Instruction.STOP).Done;
+        using GethLikeTxTrace trace = ExecuteAndTrace(bytecode);
+        JsonElement streamed = ExecuteStreamingTracerEntries(bytecode).Single(e => e.GetProperty("op").GetString() == operation.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Entries.Single(entry => entry.Opcode == operation.ToString()).Error, Is.Null, "memory tracer");
+            Assert.That(streamed.TryGetProperty("error", out _), Is.False, "streaming tracer");
+        }
     }
 
     private static void AssertEntry(GethTxTraceEntry entry, long expectedPc, string expectedOpcode, UInt256 expectedStackTop, int expectedStackCount)

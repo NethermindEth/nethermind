@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using Multiformats.Address;
 using Nethermind.Config;
 using Nethermind.Core;
 
@@ -17,7 +14,7 @@ public interface IShutterConfig : IConfig
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "The filepath of the validator info json file.",
-        DefaultValue = "null")]
+        DefaultValue = "null", IsSensitiveWhenMasked = true)]
     string? ValidatorInfoFile { get; set; }
 
     [ConfigItem(Description = "The address of the Shutter sequencer contract.",
@@ -37,7 +34,7 @@ public interface IShutterConfig : IConfig
     string? KeyperSetManagerContractAddress { get; set; }
 
     [ConfigItem(Description = "The p2p addresses of the Shutter Keyper network bootnodes.",
-        DefaultValue = "[]")]
+        DefaultValue = "[]", IsSensitiveWhenMasked = true)]
     string[]? BootnodeP2PAddresses { get; set; }
 
     [ConfigItem(Description = "Instance ID of Shutter keyper set.",
@@ -87,7 +84,7 @@ public interface IShutterConfig : IConfig
         DefaultValue = "false", HiddenFromDocs = true)]
     bool P2PLogsEnabled { get; set; }
 
-    public void Validate(out IEnumerable<Multiaddress> bootnodeP2PAddresses)
+    public void Validate()
     {
         if (Validator && ValidatorInfoFile is null)
         {
@@ -132,15 +129,6 @@ public interface IShutterConfig : IConfig
         if (BootnodeP2PAddresses is null)
         {
             throw new ArgumentNullException(nameof(BootnodeP2PAddresses));
-        }
-
-        try
-        {
-            bootnodeP2PAddresses = BootnodeP2PAddresses.Select(static addr => Multiaddress.Decode(addr));
-        }
-        catch (NotSupportedException e)
-        {
-            throw new ArgumentException($"Could not decode Shutter bootnode p2p addresses.", e);
         }
     }
 }

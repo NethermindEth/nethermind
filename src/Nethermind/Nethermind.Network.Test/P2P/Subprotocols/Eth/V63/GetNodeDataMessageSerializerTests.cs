@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             using GetNodeDataMessage message = new(keys.ToPooledList());
             GetNodeDataMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, message, expected);
+            SerializerTester.Test(serializer, message, expected);
         }
 
         [Test]
@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             GetNodeDataMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpReaderException>());
         }
     }
 }

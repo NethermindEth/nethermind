@@ -8,7 +8,6 @@ using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -108,6 +107,118 @@ namespace Nethermind.Network.Test
             {
                 await manager.StopAsync();
             }
+        }
+
+        [Test]
+        public async Task Static_only_candidates_are_ranked_by_reputation()
+        {
+            Node lowReputationNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Node highReputationNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303, isStatic: true);
+            INodeStats lowReputationStats = Substitute.For<INodeStats>();
+            lowReputationStats.CurrentNodeReputation(Arg.Any<DateTime>()).Returns(10);
+            INodeStats highReputationStats = Substitute.For<INodeStats>();
+            highReputationStats.CurrentNodeReputation(Arg.Any<DateTime>()).Returns(100);
+
+            Peer lowReputationPeer = new(lowReputationNode, lowReputationStats) { IsAwaitingConnection = true };
+            Peer highReputationPeer = new(highReputationNode, highReputationStats) { IsAwaitingConnection = true };
+
+            ConcurrentQueue<Node> dialed = new();
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(true);
+            rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
+            {
+                dialed.Enqueue(callInfo.Arg<Node>());
+                return Task.FromResult(false);
+            });
+
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 2,
+                peers: [lowReputationPeer, highReputationPeer], staticPeers: [lowReputationPeer, highReputationPeer]);
+
+            manager.Start();
+            try
+            {
+                Assert.That(() => dialed.Count, Is.GreaterThanOrEqualTo(2).After(5000, 10));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(dialed.Take(2), Is.EqualTo(new[] { highReputationNode, lowReputationNode }));
+                Assert.That(highReputationNode.CurrentReputation, Is.EqualTo(100));
+                Assert.That(lowReputationNode.CurrentReputation, Is.EqualTo(10));
+            }
+        }
+
+        [Test]
+        public async Task Idle_static_peer_is_contacted_and_dialed_once_alongside_other_candidates([Values] bool staticPeerAcceptsDial)
+        {
+            Node staticNode = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Node otherNode = new(TestItem.PublicKeyC, "52.141.78.54", 30303);
+            Peer staticPeer = new(staticNode, Substitute.For<INodeStats>());
+            Peer otherPeer = new(otherNode, Substitute.For<INodeStats>());
+
+            int staticContactChecks = 0;
+            int staticDials = 0;
+            TaskCompletionSource<(int ContactChecks, int Dials)> otherDialed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            rlpxHost.ShouldContact(Arg.Any<IPAddress>(), Arg.Any<bool>()).Returns(callInfo =>
+            {
+                if (callInfo.Arg<IPAddress>().Equals(staticNode.Address.Address)) Interlocked.Increment(ref staticContactChecks);
+                return true;
+            });
+            rlpxHost.ConnectAsync(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(callInfo =>
+            {
+                Node dialed = callInfo.Arg<Node>();
+                if (dialed == staticNode)
+                {
+                    Interlocked.Increment(ref staticDials);
+                    return Task.FromResult(staticPeerAcceptsDial);
+                }
+
+                if (dialed == otherNode) otherDialed.TrySetResult((Volatile.Read(ref staticContactChecks), Volatile.Read(ref staticDials)));
+                return Task.FromResult(true);
+            });
+
+            PeerManager manager = CreatePeerManager(rlpxHost, maxActivePeers: 4,
+                peers: [staticPeer, otherPeer], staticPeers: [staticPeer]);
+
+            manager.Start();
+            (int ContactChecks, int Dials) staticBeforeOtherDial;
+            try
+            {
+                staticBeforeOtherDial = await otherDialed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(staticBeforeOtherDial.ContactChecks, Is.EqualTo(1));
+                Assert.That(staticBeforeOtherDial.Dials, Is.EqualTo(1));
+            }
+        }
+
+        private static PeerManager CreatePeerManager(IRlpxHost rlpxHost, int maxActivePeers, Peer[] peers, Peer[] staticPeers)
+        {
+            ConcurrentDictionary<PublicKeyAsKey, Peer> pooledPeers = new();
+            foreach (Peer peer in peers)
+            {
+                pooledPeers.TryAdd(peer.Node.Id, peer);
+            }
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(pooledPeers);
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(staticPeers);
+
+            NetworkConfig config = new() { MaxActivePeers = maxActivePeers, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            return new PeerManager(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance);
         }
 
         [Test]
@@ -409,9 +520,9 @@ namespace Nethermind.Network.Test
         {
             await using Context ctx = new();
             ctx.PeerManager.Start();
-            Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            Session session2 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session2 = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
@@ -459,19 +570,14 @@ namespace Nethermind.Network.Test
 
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
         {
-            Session session = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            Session session = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.RemoteHost = "1.2.3.4";
             session.RemotePort = 12345;
             session.RemoteNodeId = remoteNodeId;
             return session;
         }
 
-        private static void InitSession(Session session)
-        {
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-
-            session.Init(5, context, Substitute.For<IPacketSender>());
-        }
+        private static void InitSession(Session session) => session.Init(5, Substitute.For<IPacketSender>());
 
         [Test]
         public void Will_return_exception_in_port() =>
@@ -529,12 +635,12 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Enode enode1 = new(enode1String);
             Node node1 = new(enode1.PublicKey, new IPEndPoint(enode1.HostIp, enode1.Port));
-            Session session1 = new(30303, node1, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, node1, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             Enode enode2 = new(enode2String);
             Node node2 = new(enode2.PublicKey, new IPEndPoint(enode2.HostIp, enode2.Port));
-            Session session2 = new(30303, node2, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session2 = new(30303, node2, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             ctx.RlpxPeer.CreateIncoming(session1, session2);
@@ -591,7 +697,7 @@ namespace Nethermind.Network.Test
 
             ctx.PeerPool.Start();
             ctx.PeerManager.Start();
-            Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+            Session session1 = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
 
             session1.RemoteHost = "1.2.3.4";
@@ -632,7 +738,7 @@ namespace Nethermind.Network.Test
         public async Task Will_agree_on_which_session_to_disconnect_when_incoming_arrives_while_dialing([Values] bool keepIn)
         {
             PublicKey remoteNodeId = keepIn ? TestItem.PublicKeyB : TestItem.PublicKeyC;
-            Session incoming = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+            Session incoming = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
             {
                 RemoteHost = "1.2.3.4",
                 RemotePort = 12345,
@@ -709,7 +815,7 @@ namespace Nethermind.Network.Test
             for (int attempt = 0; attempt < attempts; attempt++)
             {
                 PublicKey remoteNodeId = new PrivateKeyGenerator().Generate().PublicKey;
-                incoming = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+                incoming = new Session(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
                 {
                     RemoteHost = "1.2.3.4",
                     RemotePort = 12345,
@@ -744,13 +850,12 @@ namespace Nethermind.Network.Test
         private static void InitializeSessions(Peer peer)
         {
             PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
 
             void EnsureSession(ISession? session)
             {
                 if (session is null) return;
                 if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
-                if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
+                if (session.State < SessionState.Initialized) session.Init(5, packetSender);
             }
 
             EnsureSession(peer.OutSession);
@@ -1357,7 +1462,7 @@ namespace Nethermind.Network.Test
                     return Task.FromResult(false);
                 }
 
-                Session session = new(30313, node, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
+                Session session = new(30313, node, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance,
                     LimboLogs.Instance);
                 Track(session);
                 lock (_sessions)
@@ -1405,7 +1510,7 @@ namespace Nethermind.Network.Test
 
             public void CreateRandomIncoming()
             {
-                Session session = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                Session session = new(30313, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                 Track(session);
                 lock (_sessions)
                 {
@@ -1437,7 +1542,7 @@ namespace Nethermind.Network.Test
                 List<Session> incomingSessions = [];
                 foreach (Session session in sessions)
                 {
-                    Session sessionIn = new(30313, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+                    Session sessionIn = new(30313, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
                     sessionIn.RemoteHost = session.RemoteHost;
                     sessionIn.RemotePort = session.RemotePort;
                     Track(sessionIn);

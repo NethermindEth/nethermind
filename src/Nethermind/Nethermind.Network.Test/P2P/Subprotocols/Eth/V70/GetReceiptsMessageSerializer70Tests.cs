@@ -5,7 +5,7 @@ using System;
 using DotNetty.Buffers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V70;
@@ -25,7 +25,7 @@ public class GetReceiptsMessageSerializer70Tests
         {
             if (trailingData)
             {
-                Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+                Assert.Throws<RlpReaderException>(() => serializer.Deserialize(payload));
                 Assert.Throws<ObjectDisposedException>(() => { _ = serializer.Decoded!.Hashes.AsSpan(); });
             }
             else
@@ -54,6 +54,6 @@ public class GetReceiptsMessageSerializer70Tests
         GetReceiptsMessageSerializer70 serializer = new();
         using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc4, 0x01, 0x80, 0xc1, 0x80]).AsDisposable();
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpReaderException>());
     }
 }

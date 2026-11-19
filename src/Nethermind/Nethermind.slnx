@@ -7,6 +7,11 @@
     <Project Path="Nethermind.Seq/Nethermind.Seq.csproj" />
   </Folder>
   <Folder Name="/Plugins/" />
+  <Folder Name="/Plugins/BeaconChain/">
+    <Project Path="Nethermind.BeaconChain/Nethermind.BeaconChain.csproj" />
+    <Project Path="Nethermind.BeaconChain.Test/Nethermind.BeaconChain.Test.csproj" />
+    <Project Path="Nethermind.BeaconChain.Gnosis.Test/Nethermind.BeaconChain.Gnosis.Test.csproj" />
+  </Folder>
   <Folder Name="/Plugins/PortfolioViewer/">
     <Project Path="Nethermind.PortfolioViewer.Plugin.Test/Nethermind.PortfolioViewer.Plugin.Test.csproj" />
     <Project Path="Nethermind.PortfolioViewer.Plugin/Nethermind.PortfolioViewer.Plugin.csproj" />
@@ -51,6 +56,10 @@
     <Project Path="Nethermind.JsonRpc.TraceStore.Test/Nethermind.JsonRpc.TraceStore.Test.csproj" />
     <Project Path="Nethermind.JsonRpc.TraceStore/Nethermind.JsonRpc.TraceStore.csproj" />
   </Folder>
+  <Folder Name="/Plugins/TrustedInput/">
+    <Project Path="Nethermind.TrustedInput.Test/Nethermind.TrustedInput.Test.csproj" />
+    <Project Path="Nethermind.TrustedInput/Nethermind.TrustedInput.csproj" />
+  </Folder>
   <Folder Name="/Plugins/UPnP/">
     <Project Path="Nethermind.UPnP.Plugin/Nethermind.UPnP.Plugin.csproj" />
   </Folder>
@@ -65,6 +74,7 @@
     <File Path="tests.props" />
   </Folder>
   <Folder Name="/Tests/">
+    <Project Path="Ethereum.Test.Base/Ethereum.Test.Base.csproj" />
     <Project Path="Nethermind.Abi.Test/Nethermind.Abi.Test.csproj" />
     <Project Path="Nethermind.Analyzers.Test/Nethermind.Analyzers.Test.csproj" />
     <Project Path="Nethermind.Analyzers/Nethermind.Analyzers.csproj" />
@@ -124,6 +134,7 @@
   <Project Path="Nethermind.BalRecorder.Test/Nethermind.BalRecorder.Test.csproj" />
   <Project Path="Nethermind.BalRecorder/Nethermind.BalRecorder.csproj" />
   <Project Path="Nethermind.BlockProfiler/Nethermind.BlockProfiler.csproj" />
+  <Project Path="Nethermind.BeaconChain.Generators/Nethermind.BeaconChain.Generators.csproj" />
   <Project Path="Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
@@ -157,6 +168,7 @@
   <Project Path="Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
   <Project Path="Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
   <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
+  <Project Path="Nethermind.Network.Libp2p/Nethermind.Network.Libp2p.csproj" />
   <Project Path="Nethermind.Network.Stats/Nethermind.Network.Stats.csproj" />
   <Project Path="Nethermind.Network/Nethermind.Network.csproj" />
   <Project Path="Nethermind.Optimism/Nethermind.Optimism.csproj" />
@@ -164,6 +176,10 @@
   <Project Path="Nethermind.Serialization.Json/Nethermind.Serialization.Json.csproj" />
   <Project Path="Nethermind.Serialization.JsonGenerator/Nethermind.Serialization.JsonGenerator.csproj" />
   <Project Path="Nethermind.Serialization.Rlp/Nethermind.Serialization.Rlp.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Benchmark/Nethermind.Serialization.FluentRlp.Benchmark.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp/Nethermind.Serialization.FluentRlp.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Test/Nethermind.Serialization.FluentRlp.Test.csproj" />
+  <Project Path="Nethermind.Serialization.FluentRlp.Generator/Nethermind.Serialization.FluentRlp.Generator.csproj" />
   <Project Path="Nethermind.Serialization.Ssz/Nethermind.Serialization.Ssz.csproj" />
   <Project Path="Nethermind.Serialization.SszGenerator/Nethermind.Serialization.SszGenerator.csproj" />
   <Project Path="Nethermind.Shutter/Nethermind.Shutter.csproj" />
@@ -179,4 +195,5 @@
   <Project Path="Nethermind.TxPool/Nethermind.TxPool.csproj" />
   <Project Path="Nethermind.Wallet/Nethermind.Wallet.csproj" />
   <Project Path="Nethermind.Xdc/Nethermind.Xdc.csproj" />
+  <Project Path="Nethermind.Zkvm.Abstractions/Nethermind.Zkvm.Abstractions.csproj" />
 </Solution>

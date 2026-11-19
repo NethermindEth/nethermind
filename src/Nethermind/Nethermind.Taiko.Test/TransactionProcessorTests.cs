@@ -15,6 +15,7 @@ using Nethermind.Evm.State;
 using NUnit.Framework;
 using System.Collections;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core.Test;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
@@ -262,6 +263,60 @@ public class TransactionProcessorTests
 
             Assert.That(_stateProvider.AccountExists(SelfDestructAddress), Is.False, "SelfDestructAddress should be destroyed");
             Assert.That(_stateProvider.GetBalance(SelfDestructAddress), Is.EqualTo(UInt256.Zero), "SelfDestructAddress balance should be 0");
+        }
+    }
+
+    [Test]
+    public void Destroyed_gas_beneficiary_of_failed_transaction_is_paid_taiko()
+    {
+        _spec.FeeCollector = TestItem.AddressC;
+        _spec.IsOntakeEnabled = true;
+        byte baseFeeSharingPct = 25;
+
+        Address creator = ContractAddress.From(TestItem.AddressA, 0);
+        Address beneficiary = ContractAddress.From(creator, 1);
+
+        byte[] selfDestructInitCode = Prepare.EvmCode
+            .PushData(beneficiary)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+        byte[] initCode = Prepare.EvmCode
+            .Create(selfDestructInitCode, UInt256.Zero)
+            .Op(Instruction.POP)
+            .Revert(0, 0)
+            .Done;
+
+        Transaction tx = Build.A.Transaction
+            .WithGasPrice(10)
+            .WithMaxFeePerGas(10)
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(5_000_000)
+            .WithCode(initCode)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+        byte[] extraData = new byte[32];
+        extraData[31] = baseFeeSharingPct;
+
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(beneficiary)
+            .WithBaseFeePerGas(1)
+            .WithTransactions(tx)
+            .WithGasLimit(30_000_000)
+            .WithExtraData(extraData)
+            .TestObject;
+
+        FeesTracer feesTracer = new();
+        CallOutputTracer callOutputTracer = new();
+        _transactionProcessor!.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        _transactionProcessor!.Execute(tx, new CompositeTxTracer(feesTracer, callOutputTracer));
+
+        UInt256 expectedBeneficiaryBalance = feesTracer.Fees + feesTracer.BurntFees * baseFeeSharingPct / 100;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(callOutputTracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
+            Assert.That(feesTracer.BurntFees * baseFeeSharingPct / 100, Is.GreaterThan(UInt256.Zero));
+            Assert.That(_stateProvider!.GetBalance(beneficiary), Is.EqualTo(expectedBeneficiaryBalance));
         }
     }
 }

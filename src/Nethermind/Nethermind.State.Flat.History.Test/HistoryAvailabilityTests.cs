@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
 using Testably.Abstractions;
 
@@ -60,9 +61,10 @@ public class HistoryAvailabilityTests
         bool matched = true;
         for (int i = 0; i < 10; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() =>
+        {
+            for (int i = 0; i < Reads; i++) matched &= _availability.RootMatches(MarkedBlock, TestItem.KeccakA);
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -136,9 +138,10 @@ public class HistoryAvailabilityTests
         availability.PublishGlobalFloor(MarkedBlock - 2);
         bool matched = availability.Matches(MarkedBlock, TestItem.KeccakA);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Reads; i++) matched &= availability.Matches(MarkedBlock, TestItem.KeccakA);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() =>
+        {
+            for (int i = 0; i < Reads; i++) matched &= availability.Matches(MarkedBlock, TestItem.KeccakA);
+        });
 
         using (Assert.EnterMultipleScope())
         {

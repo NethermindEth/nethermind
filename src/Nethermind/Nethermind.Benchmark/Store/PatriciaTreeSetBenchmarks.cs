@@ -86,7 +86,7 @@ namespace Nethermind.Benchmarks.Store
                 nodeList.Sort((a, b) => a.Path.CompareTo(b.Path));
             }
 
-            Dictionary<TreePath, int> pathIndex = new(nodeList.Count);
+            Dictionary<TreePath, int> pathIndex = [with(nodeList.Count)];
             for (int i = 0; i < nodeList.Count; i++)
                 pathIndex[nodeList[i].Path] = i;
 

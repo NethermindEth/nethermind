@@ -370,6 +370,127 @@ public class McpLimitsTests
     }
 
     [Test]
+    public async Task Cancelled_call_waiting_for_an_eth_call_slot_releases_its_tool_slot()
+    {
+        await using McpTestNode node = await CreateWithEthCallLimit(static c => c.MaxConcurrentToolCalls = 1);
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        IRpcModuleProvider provider = node.Chain.Container.Resolve<IRpcModuleProvider>();
+        IRpcModule held = await provider.Rent(nameof(IEthRpcModule.eth_call), true);
+        try
+        {
+            using CancellationTokenSource cancellation = new();
+            Task<CallToolResult> waiting = executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call),
+                (_, _) => Task.FromResult(executor.Success(1)), cancellation.Token);
+            Assert.That(waiting.IsCompleted, Is.False);
+
+            await cancellation.CancelAsync();
+
+            await Assert.CatchAsync<OperationCanceledException>(async () => await waiting.WaitAsync(WaitLimit));
+            McpAssert.Success(await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_chainId),
+                (module, _) => Task.FromResult(executor.Success(module.eth_chainId().Data)), CancellationToken.None));
+        }
+        finally
+        {
+            provider.Return(nameof(IEthRpcModule.eth_call), held);
+        }
+    }
+
+    [Test]
+    public async Task Nested_eth_call_rental_does_not_wait_for_the_eth_call_limit()
+    {
+        await using McpTestNode node = await CreateWithEthCallLimit();
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+
+        CallToolResult result = await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call), async (outerModule, token) =>
+        {
+            using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token).WaitAsync(WaitLimit);
+            return executor.Success(ReferenceEquals(lease.Module, outerModule));
+        }, CancellationToken.None);
+
+        Assert.That(McpAssert.Success(result).GetBoolean(), Is.True);
+    }
+
+    [Test]
+    public async Task Rental_from_a_body_without_an_eth_call_slot_waits_for_the_eth_call_limit()
+    {
+        await using McpTestNode node = await CreateWithEthCallLimit();
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        IRpcModuleProvider provider = node.Chain.Container.Resolve<IRpcModuleProvider>();
+        IRpcModule held = await provider.Rent(nameof(IEthRpcModule.eth_call), true);
+
+        CallToolResult result = await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_chainId), async (_, token) =>
+        {
+            Task<ModuleLease<IEthRpcModule>> rental = executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token);
+            bool waited = !rental.IsCompleted;
+            provider.Return(nameof(IEthRpcModule.eth_call), held);
+            using ModuleLease<IEthRpcModule> lease = await rental.WaitAsync(WaitLimit);
+            return executor.Success(waited && lease.Module is not null);
+        }, CancellationToken.None);
+
+        Assert.That(McpAssert.Success(result).GetBoolean(), Is.True);
+    }
+
+    [Test]
+    public async Task Worker_renting_after_its_eth_call_body_returned_waits_for_the_eth_call_limit()
+    {
+        await using McpTestNode node = await CreateWithEthCallLimit();
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        IRpcModuleProvider provider = node.Chain.Container.Resolve<IRpcModuleProvider>();
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<Task<ModuleLease<IEthRpcModule>>>? worker = null;
+
+        McpAssert.Success(await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call), (_, _) =>
+        {
+            worker = Task.Run(async () =>
+            {
+                await gate.Task;
+                return executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), CancellationToken.None);
+            });
+            return Task.FromResult(executor.Success(1));
+        }, CancellationToken.None));
+
+        IRpcModule held = await provider.Rent(nameof(IEthRpcModule.eth_call), true).AsTask().WaitAsync(WaitLimit);
+        gate.SetResult();
+        Task<ModuleLease<IEthRpcModule>> rental = await worker!.WaitAsync(WaitLimit);
+        bool waited = !rental.IsCompleted;
+        provider.Return(nameof(IEthRpcModule.eth_call), held);
+        using ModuleLease<IEthRpcModule> lease = await rental.WaitAsync(WaitLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waited, Is.True);
+            Assert.That(lease.Module, Is.Not.Null);
+        }
+    }
+
+    [Test]
+    public async Task Nested_lease_keeps_the_eth_call_slot_until_it_is_disposed()
+    {
+        await using McpTestNode node = await CreateWithEthCallLimit();
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        IRpcModuleProvider provider = node.Chain.Container.Resolve<IRpcModuleProvider>();
+        ModuleLease<IEthRpcModule> nested = default;
+
+        McpAssert.Success(await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call), async (_, token) =>
+        {
+            nested = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token).WaitAsync(WaitLimit);
+            return executor.Success(1);
+        }, CancellationToken.None));
+
+        ValueTask<IRpcModule> next = provider.Rent(nameof(IEthRpcModule.eth_call), true);
+        bool waited = !next.IsCompleted;
+        nested.Dispose();
+        IRpcModule module = await next.AsTask().WaitAsync(WaitLimit);
+        provider.Return(nameof(IEthRpcModule.eth_call), module);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(nested.Module, Is.Not.Null);
+            Assert.That(waited, Is.True);
+        }
+    }
+
+    [Test]
     public async Task Detached_work_keeps_the_concurrency_slot_until_it_finishes()
     {
         await using McpTestNode node = await McpTestNode.Create(c => c.MaxConcurrentToolCalls = 1, start: false);
@@ -493,11 +614,10 @@ public class McpLimitsTests
         await Assert.CatchAsync<OperationCanceledException>(async () =>
             await tools.ResolveEns(name, cancellationToken: cancellation.Token));
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(calls, Is.EqualTo(1), "no registry or ancestor lookup may start after cancellation");
-            Assert.That(provider.Returned, Is.EqualTo(1), "the cancelled ENS lookup must return its module");
-        }
+        // The call stops waiting as soon as the token fires, while the body may still be inside the cancelling eth_call;
+        // once the module is back the body has unwound, so the call count is final.
+        await WaitUntil(() => provider.Returned == 1, "the cancelled ENS lookup must return its module");
+        Assert.That(calls, Is.EqualTo(1), "no registry or ancestor lookup may start after cancellation");
     }
 
     [Test]
@@ -558,6 +678,15 @@ public class McpLimitsTests
     private static Task<McpTestNode> CreateWithFaults(Action<McpConfig>? configure = null) =>
         McpTestNode.Create(configure, static builder => builder
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
+
+    private static Task<McpTestNode> CreateWithEthCallLimit(Action<McpConfig>? configure = null) =>
+        McpTestNode.Create(configure, static builder => builder
+            .AddDecorator<IJsonRpcConfig>(static (_, rpc) =>
+            {
+                rpc.EthCallMaxConcurrentRequests = 1;
+                rpc.Timeout = 30_000;
+                return rpc;
+            }), start: false);
 
     private static FaultInjectingRpcModuleProvider Faults(McpTestNode node) =>
         (FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();

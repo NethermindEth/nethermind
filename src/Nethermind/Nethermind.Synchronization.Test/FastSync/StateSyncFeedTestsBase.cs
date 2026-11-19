@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -185,7 +186,12 @@ public abstract class StateSyncFeedTestsBase(
             feedTask,
             Task.Delay(timeout));
 
-        if (completed == feedTask) return;
+        if (completed == feedTask)
+        {
+            // Observe the round: a fault, or a cancellation this helper did not ask for, must fail the test here.
+            await feedTask;
+            return;
+        }
 
         // TreeSync may only be reset outside dispatcher.Run, so a timed-out round has to drain before the caller
         // resets the feed or starts another round on it. Drain before failing too: disposing the linked source
@@ -295,7 +301,7 @@ public abstract class StateSyncFeedTestsBase(
             _snapServer = new SnapServer(
                 new SnapStateServer(trieStore.AsReadOnly(), LimboLogs.Instance),
                 codeDb,
-                Substitute.For<IBlockTree>(),
+                Substitute.For<IHeaderStore>(),
                 Substitute.For<IBlockAccessListStore>());
         }
 

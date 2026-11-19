@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv5.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv5.Packets;
@@ -258,7 +259,7 @@ public sealed class PacketCodec(
     {
         if (packet.AuthData.Length != WhoAreYouAuthDataSize)
         {
-            throw new RlpException("Invalid WHOAREYOU authdata length.");
+            throw new RlpReaderException("Invalid WHOAREYOU authdata length.");
         }
 
         ulong enrSequence = BinaryPrimitives.ReadUInt64BigEndian(packet.AuthData.Span[IdNonceSize..]);

@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
@@ -59,7 +60,7 @@ public partial class Bls12381G2MsmPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        Accelerators.Status status = Accelerators.Bls12381G2Msm(decoded, (nuint)pairCount, output);
+        Accelerators.Status status = CurveAccelerators.Bls12381G2Msm(decoded, (nuint)pairCount, output);
 
         return HandleResult(output, status);
     }
@@ -75,7 +76,7 @@ public partial class Bls12381G2MsmPrecompile
 
         Span<byte> output = stackalloc byte[Eip2537.LenG2Trimmed];
 
-        Accelerators.Status status = Accelerators.Bls12381G2Msm(decoded, 1, output);
+        Accelerators.Status status = CurveAccelerators.Bls12381G2Msm(decoded, 1, output);
 
         return HandleResult(output, status);
     }

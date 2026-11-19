@@ -4,11 +4,14 @@
 using System.Net;
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.EraE.Proofs;
+using Nethermind.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Proofs;
 
+[NonParallelizable]
 public class BeaconApiRootsProviderTests
 {
     // Production code calls FetchBlockRootAsync first (headers endpoint), then FetchStateRootAsync.
@@ -112,6 +115,47 @@ public class BeaconApiRootsProviderTests
         (ValueHash256 BeaconBlockRoot, ValueHash256 StateRoot)? result = await sut.GetBeaconRoots(1);
 
         Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task Http_failure_diagnostics_omit_credentials(
+        [Values(HttpStatusCode.Unauthorized, HttpStatusCode.InternalServerError)] HttpStatusCode status,
+        [Values] bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        SensitiveLogMasking.Enabled = maskSensitiveData;
+        try
+        {
+            SequentialHttpMessageHandler handler = new();
+            handler.Enqueue(status, "{}");
+            using HttpClient httpClient = new(handler);
+            TestLogger logger = new();
+            using BeaconApiHttpClient client = new(httpClient, TimeSpan.FromSeconds(5), new ILogger(logger));
+            Uri uri = new("https://user:private-key@beacon.example/eth/v1/beacon/headers/123?token=private");
+
+            string diagnostic;
+            if (status == HttpStatusCode.InternalServerError)
+            {
+                HttpRequestException exception = (await Assert.ThrowsAsync<HttpRequestException>(
+                    async () => await client.GetAsync(uri, CancellationToken.None)))!;
+                diagnostic = exception.Message;
+            }
+            else
+            {
+                await client.GetAsync(uri, CancellationToken.None);
+                diagnostic = logger.LogList.Single();
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(diagnostic, Does.Contain(maskSensitiveData ? "[redacted]" : "https://beacon.example"));
+                Assert.That(diagnostic, Does.Not.Contain("user").And.Not.Contain("private").And.Not.Contain("/eth/"));
+            }
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
     }
 
     private static BeaconApiRootsProvider Build(params (HttpStatusCode StatusCode, string Body)[] responses)

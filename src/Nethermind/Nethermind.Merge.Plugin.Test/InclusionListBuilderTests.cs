@@ -16,6 +16,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Handlers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;

@@ -189,11 +189,11 @@ public class InitializeNetwork : IStep
         ProductInfo.VersionPostfix = GetDbLayoutPostfix(_flatStateActivationPolicy, _flatDbConfig, _initConfig, _pruningConfig, _nodeStorageFactory);
         ProductInfo.InitializePublicClientId(_networkConfig.PublicClientIdFormat);
 
-        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ");
+        ThisNodeInfo.AddInfo("Ethereum     :", $"tcp://{_enode.HostIp}:{_enode.Port} ", sensitive: true);
         ThisNodeInfo.AddInfo("Client id    :", ProductInfo.ClientId);
         ThisNodeInfo.AddInfo("Public id    :", ProductInfo.PublicClientId);
-        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ");
-        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)");
+        ThisNodeInfo.AddInfo("This node    :", $"{_enode.Info} ", sensitive: true);
+        ThisNodeInfo.AddInfo("Node address :", $"{_enode.Address} (do not use as an account)", sensitive: true);
     }
 
     private static string GetDbLayoutPostfix(FlatStateActivationPolicy flatStateActivationPolicy, IFlatDbConfig flatDbConfig, IInitConfig initConfig, IPruningConfig pruningConfig, INodeStorageFactory nodeStorageFactory)

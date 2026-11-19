@@ -108,11 +108,11 @@ namespace Nethermind.AuRa.Test.Validators
                 yield return new TestCaseData(new MemDb(), validators, true, validators);
 
                 MemDb db = new();
-                db.Set(ValidatorStore.PendingValidatorsKey, Rlp.Encode(validators).Bytes);
+                db.Set(ValidatorStore.PendingValidatorsKey, Rlp.Encode(validators));
                 yield return new TestCaseData(db, null, false, validators);
                 yield return new TestCaseData(db, null, true, null);
 
-                db.Set(ValidatorStore.PendingValidatorsKey, Rlp.Encode(validators).Bytes);
+                db.Set(ValidatorStore.PendingValidatorsKey, Rlp.Encode(validators));
                 validators = new PendingValidators(10, Keccak.Zero, []);
                 yield return new TestCaseData(db, validators, true, validators);
             }
@@ -161,7 +161,7 @@ namespace Nethermind.AuRa.Test.Validators
                     memDb.Set(ValidatorStore.LatestFinalizedValidatorsBlockNumberKey, current.FinalizingBlock.ToBigEndianByteArrayWithoutLeadingZeros());
                 }
 
-                memDb.Set(GetKey(current.FinalizingBlock), Rlp.Encode(validatorInfo).Bytes);
+                memDb.Set(GetKey(current.FinalizingBlock), Rlp.Encode(validatorInfo));
             }
 
             return memDb;

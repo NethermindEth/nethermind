@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.Types;
 using System;
@@ -14,14 +15,13 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
     private readonly XdcBlockInfoDecoder _blockInfoDecoder = new();
     protected override QuorumCertificate DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int sequenceLength = decoderContext.ReadSequenceLength();
-        if (sequenceLength == 0)
+        if (decoderContext.TryReadEmptySequence())
             return null;
-        int endPosition = decoderContext.Position + sequenceLength;
+        RlpReader fields = decoderContext.EnterSequence(out int itemLength);
 
-        BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref decoderContext, rlpBehaviors);
+        BlockRoundInfo? blockInfo = _blockInfoDecoder.Decode(ref fields, rlpBehaviors);
 
-        byte[][]? signatureBytes = decoderContext.DecodeByteArrays(innerSize: Signature.Size);
+        byte[][]? signatureBytes = fields.DecodeByteArrays(innerSize: Signature.Size);
         Signature[]? signatures = null;
         if (signatureBytes is not null)
         {
@@ -32,34 +32,19 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
             }
         }
 
-        ulong gap = decoderContext.DecodeULong();
-        if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-        {
-            decoderContext.Check(endPosition);
-        }
+        ulong gap = fields.DecodeULong();
+        decoderContext.ExitSequence(in fields, itemLength, rlpBehaviors);
         return new QuorumCertificate(blockInfo, signatures, gap);
     }
 
-    public override Rlp Encode(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        if (item is null)
-            return Rlp.OfEmptyList;
-
-        byte[] bytes = new byte[GetLength(item, rlpBehaviors)];
-        RlpWriter writer = new(bytes);
-        Encode(ref writer, item, rlpBehaviors);
-
-        return new Rlp(bytes);
-    }
-
-    public override void Encode<TWriter>(ref TWriter writer, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Encode(ref RlpWriter writer, QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (item is null)
         {
             writer.EncodeNullObject();
             return;
         }
-        writer.StartSequence(GetContentLength(item, rlpBehaviors));
+        RlpSequence sequence = writer.StartSequence(GetContentLength(item, rlpBehaviors));
         _blockInfoDecoder.Encode(ref writer, item.ProposedBlockInfo, rlpBehaviors);
 
         // When encoding for sealing, we do not include the signatures
@@ -70,17 +55,20 @@ internal sealed class QuorumCertificateDecoder : RlpDecoder<QuorumCertificate>
             else
             {
                 int signatureContentLength = SignaturesLength(item);
-                writer.StartSequence(signatureContentLength);
+                RlpSequence signatures = writer.StartSequence(signatureContentLength);
                 Span<byte> sigBuffer = stackalloc byte[Signature.Size];
                 foreach (Signature sig in item.Signatures)
                 {
                     sig.WriteBytesWithRecoveryTo(sigBuffer);
                     writer.Encode(sigBuffer);
                 }
+
+                writer.EndSequence(signatures);
             }
         }
 
         writer.Encode(item.GapNumber);
+        writer.EndSequence(sequence);
     }
 
     public override int GetLength(QuorumCertificate item, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));

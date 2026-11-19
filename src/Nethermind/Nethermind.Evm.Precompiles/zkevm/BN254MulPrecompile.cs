@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm.Precompiles;
@@ -14,7 +15,7 @@ public partial class BN254MulPrecompile
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string? Mul(ReadOnlySpan<byte> input, byte[] output) =>
-        Accelerators.BN254G1Mul(
+        CurveAccelerators.BN254G1Mul(
             input[..(InputLength - 32)],
             input[(InputLength - 32)..],
             output

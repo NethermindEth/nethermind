@@ -1,4 +1,5 @@
 using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Text;
 using Nethermind.Serialization.Ssz;
@@ -17,6 +18,8 @@ public class SszGenerator : IIncrementalGenerator
     {
         public required string TypeName { get; init; }
         public SszType? Type { get; init; }
+        public SszType? AlternateType { get; init; }
+        public string? PresetSelector { get; init; }
         public Location? Location { get; init; }
         public bool IsNested { get; init; }
         public string? ErrorMessage { get; init; }
@@ -79,9 +82,62 @@ public class SszGenerator : IIncrementalGenerator
             string? generatedCode = GenerateClassCode(spc, decl.Type, decl.Location);
             if (generatedCode is not null)
             {
+                if (decl.AlternateType is not null && GenerateClassCode(spc, decl.AlternateType, decl.Location) is { } alternateCode)
+                {
+                    try
+                    {
+                        generatedCode = SelectPresetBodies(generatedCode, alternateCode, decl.PresetSelector!);
+                    }
+                    catch (InvalidOperationException exception)
+                    {
+                        spc.ReportDiagnostic(Diagnostic.Create(GenerationFailureRule, decl.Location ?? Location.None, decl.TypeName, exception.Message));
+                        return;
+                    }
+                }
                 spc.AddSource($"Serialization.SszCodec.{decl.Type.HintName}.cs", SourceText.From(generatedCode, Encoding.UTF8));
             }
         });
+    }
+
+    private static string SelectPresetBodies(string defaultCode, string alternateCode, string selector)
+    {
+        if (defaultCode == alternateCode) return defaultCode;
+        CompilationUnitSyntax root = SyntaxFactory.ParseCompilationUnit(defaultCode);
+        MethodDeclarationSyntax[] methods = root.DescendantNodes().OfType<MethodDeclarationSyntax>().ToArray();
+        MethodDeclarationSyntax[] alternateMethods = SyntaxFactory.ParseCompilationUnit(alternateCode)
+            .DescendantNodes().OfType<MethodDeclarationSyntax>().ToArray();
+        if (methods.Length != alternateMethods.Length) throw new InvalidOperationException("SSZ preset method signatures differ.");
+        Dictionary<MethodDeclarationSyntax, MethodDeclarationSyntax> replacements = [];
+        for (int i = 0; i < methods.Length; i++)
+        {
+            MethodDeclarationSyntax method = methods[i];
+            MethodDeclarationSyntax alternate = alternateMethods[i];
+            if (!Signature(method).IsEquivalentTo(Signature(alternate)))
+                throw new InvalidOperationException($"SSZ preset method signatures differ for '{method.Identifier}'.");
+            if (method.IsEquivalentTo(alternate)) continue;
+            BlockSyntax body = Body(method);
+            BlockSyntax alternateBody = Body(alternate);
+            replacements.Add(method, method.WithBody(SyntaxFactory.Block(
+                SyntaxFactory.IfStatement(SyntaxFactory.ParseExpression(selector), alternateBody,
+                    SyntaxFactory.ElseClause(body)))).WithExpressionBody(null).WithSemicolonToken(default));
+        }
+        return root.ReplaceNodes(replacements.Keys, (original, _) => replacements[original]).NormalizeWhitespace().ToFullString();
+
+        static MethodDeclarationSyntax Signature(MethodDeclarationSyntax method) =>
+            method.WithBody(null).WithExpressionBody(null).WithSemicolonToken(default);
+
+        static BlockSyntax Body(MethodDeclarationSyntax method)
+        {
+            if (method.Body is { } body) return body;
+            if (method.ExpressionBody is not { Expression: { } expression })
+                throw new InvalidOperationException($"SSZ preset method '{method.Identifier}' has no body.");
+            StatementSyntax statement = expression is ThrowExpressionSyntax thrown
+                ? SyntaxFactory.ThrowStatement(thrown.Expression)
+                : method.ReturnType is PredefinedTypeSyntax type && type.Keyword.IsKind(SyntaxKind.VoidKeyword)
+                    ? SyntaxFactory.ExpressionStatement(expression)
+                    : SyntaxFactory.ReturnStatement(expression);
+            return SyntaxFactory.Block(statement);
+        }
     }
 
     private static string PartialTypeDeclaration(SszType decl) =>
@@ -111,6 +167,10 @@ public class SszGenerator : IIncrementalGenerator
                     {
                         List<SszType> foundTypes = SszType.CreateKnownTypes(FindConverters(context.SemanticModel.Compilation));
                         SszType sszType = SszType.From(context.SemanticModel, foundTypes, typeSymbol);
+                        AttributeData? preset = context.SemanticModel.Compilation.Assembly.GetAttributes()
+                            .FirstOrDefault(a => a.AttributeClass?.ToDisplayString() == "Nethermind.Serialization.Ssz.SszPresetAttribute");
+                        SszType? alternateType = preset is null ? null : SszType.From(context.SemanticModel,
+                            SszType.CreateKnownTypes(FindConverters(context.SemanticModel.Compilation)), typeSymbol, alternatePreset: true);
                         // Carry the `where T : ...` clauses verbatim from syntax — the symbol-side API
                         // would require us to reassemble each constraint, and the textual form already matches.
                         sszType.TypeParameterConstraints = string.Join(" ", classDeclaration.ConstraintClauses.Select(c => c.ToString()));
@@ -124,10 +184,18 @@ public class SszGenerator : IIncrementalGenerator
                             }
                         }
 
+                        if (alternateType is not null)
+                        {
+                            alternateType.TypeParameterConstraints = sszType.TypeParameterConstraints;
+                            alternateType.TypeParameterConstraintNamespaces.AddRange(sszType.TypeParameterConstraintNamespaces);
+                        }
+
                         return new()
                         {
                             TypeName = sszType.Name,
                             Type = sszType,
+                            AlternateType = alternateType,
+                            PresetSelector = preset is null ? null : $"{((ITypeSymbol)preset.ConstructorArguments[0].Value!).ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)}.{preset.ConstructorArguments[1].Value}",
                             Location = location,
                             IsNested = typeSymbol.ContainingType is not null,
                         };
@@ -350,11 +418,11 @@ internal static partial class SszCodecHelpers
     }
 
     // Inlined into every byte-list element's decode, where the message's string handler would be zeroed per element.
-    internal static void ValidateSszListLimit<T>(ReadOnlySpan<T> items, ulong limit, string typeName, string fieldName)
+    internal static void ValidateSszListLimit(int count, ulong limit, string typeName, string fieldName)
     {
-        if ((ulong)items.Length > limit)
+        if ((ulong)count > limit)
         {
-            ThrowSszListLimitExceeded(items.Length, limit, typeName, fieldName);
+            ThrowSszListLimitExceeded(count, limit, typeName, fieldName);
         }
     }
 
@@ -364,7 +432,7 @@ internal static partial class SszCodecHelpers
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static byte[] DecodeSszByteList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
     {
-        ValidateSszListLimit(data, limit, typeName, fieldName);
+        ValidateSszListLimit(data.Length, limit, typeName, fieldName);
         byte[] result = global::System.GC.AllocateUninitializedArray<byte>(data.Length);
         CopyBytes(data, result);
         return result;
@@ -674,7 +742,7 @@ internal static partial class SszCodecHelpers
         {
             Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.List => $"ValidateSszListLimit({(property.IsMemoryLikeProperty ? expression : SpanExpression(property, expression))}.Length, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             _ => string.Empty,
@@ -821,7 +889,7 @@ internal static partial class SszCodecHelpers
         if (IsConstructedByteList(property))
         {
             // Built from the slice itself: the collection takes its own copy, so an intermediate array would copy twice.
-            return $"ValidateSszListLimit({sliceExpression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = new {property.CollectionTypeReferenceName}({sliceExpression});";
+            return $"ValidateSszListLimit({sliceExpression}.Length, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name})); container.{property.Name} = new {property.CollectionTypeReferenceName}({sliceExpression});";
         }
 
         if (IsByteVector(property))
@@ -1038,7 +1106,7 @@ internal static partial class SszCodecHelpers
         {
             string length = m.Kind is Kind.BitList or Kind.ProgressiveBitList
                 ? $"(container.{m.Name} is not null ? container.{m.Name}.Length / 8 + 1 : 1)"
-                : $"({m.Type.StaticLength} * {SpanExpression(m, $"container.{m.Name}")}.Length)";
+                : $"({m.Type.StaticLength} * {(m.IsMemoryLikeProperty ? $"container.{m.Name}" : SpanExpression(m, $"container.{m.Name}"))}.Length)";
             return m.IsNullable && (m.Kind is Kind.List or Kind.ProgressiveList) && CanEncodeNullAsDefault(m)
                 ? $"(container.{m.Name} is null ? 0 : {length})"
                 : length;
@@ -1115,7 +1183,7 @@ internal static partial class SszCodecHelpers
             return false;
         }
 
-        return (property.IsNullable && CanEncodeNullAsDefault(property)) || !property.Type.IsStruct;
+        return (property.IsNullable && CanEncodeNullAsDefault(property)) || (!property.Type.IsStruct && property.IsReferenceType);
     }
 
     private static string UsingsBlock(SszType decl) =>
@@ -1245,12 +1313,17 @@ internal static partial class SszCodecHelpers
                     "merkleizer.CalculateRoot(out root);",
                 ]);
             }
-            bool isByteListItself = decl.IsSszListItself && decl.IsStruct && IsByteList(variables[0]);
-            string byteListVariableName = isByteListItself ? VarName(variables[0].Name) : string.Empty;
-            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], byteListVariableName, sourceIsArray: true) : string.Empty;
+            // The item is built in a local before its slot is addressed, so the slot address is not held across the build.
+            // Skipping `new()` is only safe when it runs no user constructor. The locals have fixed names that cannot clash with the decoder's own locals.
+            bool decodesItemDirectly = decl.IsSszListItself && decl.IsStruct && !decl.HasExplicitParameterlessConstructor;
+            bool isByteListItself = decodesItemDirectly && IsByteList(variables[0]);
+            bool isConstructedByteListItself = decodesItemDirectly && IsConstructedByteList(variables[0]);
+            string byteListAssignment = isByteListItself ? DecodeAssignmentExpression(variables[0], "__value", sourceIsArray: true) : string.Empty;
             string DecodeCollectionItem(string sliceExpression, string destination) => isByteListItself
-                ? $"{{ byte[] {byteListVariableName} = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
-                : $"Decode({sliceExpression}, out {destination});";
+                ? $"{{ byte[] __value = DecodeSszByteList({sliceExpression}, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {destination}.{variables[0].Name} = {byteListAssignment}; }}"
+                : isConstructedByteListItself
+                    ? $"{{ ReadOnlySpan<byte> __item = {sliceExpression}; ValidateSszListLimit(__item.Length, {variables[0].Limit}UL, nameof({decl.TypeReferenceName}), nameof({variables[0].Name})); {variables[0].CollectionTypeReferenceName} __value = new {variables[0].CollectionTypeReferenceName}(__item); {destination}.{variables[0].Name} = __value; }}"
+                    : $"Decode({sliceExpression}, out {destination});";
             string result = FixWhitespace(decl.IsSszListItself ?
 $@"using Nethermind.Serialization.Ssz.Merkleization;
 using Nethermind.Serialization.Ssz;
@@ -1451,6 +1524,7 @@ using static Nethermind.Serialization.SszCodecHelpers;
 {Whitespace}
 {PartialTypeDeclaration(decl)}
 {{
+{(decl.FixedSectionLengthDeclaration is { } lengthDeclaration ? $"    {lengthDeclaration} => {decl.StaticLength};" : "")}
     public static int GetLength({decl.TypeReferenceName}{(decl.IsStruct ? "" : "?")} container)
     {{
         {(decl.IsStruct ? "" : @"if(container is null)

@@ -39,15 +39,13 @@ internal sealed class FlakySnapshotServer : IDisposable
 
     public int? DropFirstAttemptPerRangeAfterBytes { get; set; }
 
-    public int? FailWithNotFoundAfterRequests { get; set; }
+    public (int RequestNumber, int StatusCode)? FailRequestWithStatus { get; set; }
 
     public bool OmitContentLength { get; set; }
 
     public bool RotateETagEveryRequest { get; set; }
 
     public int? HangOnceAfterBytes { get; set; }
-
-    public int? ServerErrorFirstRequests { get; set; }
 
     public bool IgnoreRangeOnce { get; set; }
 
@@ -102,9 +100,11 @@ internal sealed class FlakySnapshotServer : IDisposable
                 return;
             }
 
-            Task handler = Task.Run(() => HandleAsync(context));
+            // Track the handler before it starts, so Dispose always waits for a handler that has already run.
+            Task<Task> handler = new(() => HandleAsync(context));
             lock (_handlers)
-                _handlers.Add(handler);
+                _handlers.Add(handler.Unwrap());
+            handler.Start(TaskScheduler.Default);
         }
     }
 
@@ -132,16 +132,9 @@ internal sealed class FlakySnapshotServer : IDisposable
                 return;
             }
 
-            if (FailWithNotFoundAfterRequests is int failAfter && requestNumber > failAfter)
+            if (FailRequestWithStatus is (int failedRequest, int failureStatus) && requestNumber == failedRequest)
             {
-                response.StatusCode = 404;
-                response.Close();
-                return;
-            }
-
-            if (ServerErrorFirstRequests is int errorCount && requestNumber <= errorCount)
-            {
-                response.StatusCode = 500;
+                response.StatusCode = failureStatus;
                 response.Close();
                 return;
             }

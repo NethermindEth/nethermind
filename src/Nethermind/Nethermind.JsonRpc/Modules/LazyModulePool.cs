@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc.Modules;
@@ -11,6 +12,8 @@ public class LazyModulePool<T>(Lazy<IRpcModulePool<T>> lazyBasePool) : IRpcModul
     private IRpcModulePool<T> BasePool => lazyBasePool.Value;
 
     public Task<T> GetModule(bool canBeShared) => BasePool.GetModule(canBeShared);
+
+    public Task<T> GetModule(bool canBeShared, CancellationToken cancellationToken) => BasePool.GetModule(canBeShared, cancellationToken);
 
     public void ReturnModule(T module) => BasePool.ReturnModule(module);
 

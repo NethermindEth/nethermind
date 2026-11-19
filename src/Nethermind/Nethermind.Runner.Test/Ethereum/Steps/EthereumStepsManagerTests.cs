@@ -87,19 +87,21 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        public async Task Failed_optional_step_does_not_log_errors_for_its_dependents()
+        [CancelAfter(5000)]
+        public async Task Failed_optional_step_does_not_log_errors_for_its_dependents(CancellationToken cancellationToken)
         {
             TestErrorLogManager logs = new();
-            using IContainer container = CreateNethermindEnvironment(typeof(FailingOptionalStep), typeof(RequiredDependentStep));
+            using IContainer container = CreateNethermindEnvironment(typeof(FailingOptionalStep), typeof(RequiredDependentStep), typeof(RequiredGrandDependentStep));
             using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
                 .AddSingleton<ILogManager>(logs)
                 .AddSingleton<EthereumStepsManager>());
 
-            await scope.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None);
+            await scope.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(container.Resolve<RequiredDependentStep>().WasExecuted, Is.False);
+                Assert.That(container.Resolve<RequiredGrandDependentStep>().WasExecuted, Is.False);
                 Assert.That(logs.Errors, Is.Empty);
             }
         }
@@ -364,15 +366,18 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
         [Test]
         [CancelAfter(5000)]
-        public async Task Target_that_does_not_complete_fails_the_run(CancellationToken cancellationToken)
+        public async Task Step_cancelled_without_shutdown_fails_the_run([Values] bool selected, [Values] bool withDependents, CancellationToken cancellationToken)
         {
-            // A TaskCanceledException raised inside a step leaves its task Canceled rather than Faulted, and
-            // nothing requested cancellation, so without the outcome check the run would report success.
+            // A TaskCanceledException raised inside a step is not a shutdown, so it must fail the run rather than
+            // read as a clean cancellation, and the dependents waiting on the step must finish rather than hang.
+            StepInfo[] steps = withDependents
+                ? [typeof(SelfCancellingStep), typeof(SelfCancellingStepDependent), typeof(SelfCancellingStepGrandDependent)]
+                : [typeof(SelfCancellingStep)];
             await using IContainer container = CreateNethermindEnvironment(
-                typeof(SelfCancellingStep), command: null, [typeof(SelfCancellingStep)]);
+                selected ? steps[^1].StepBaseType : null, command: null, steps);
 
             Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
-                Throws.TypeOf<StepDependencyException>());
+                Throws.TypeOf<StepDependencyException>().With.InnerException.TypeOf<TaskCanceledException>());
         }
 
         [Test]
@@ -387,10 +392,23 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         }
 
         [Test]
-        public async Task Target_run_interrupted_by_shutdown_does_not_report_success()
+        [CancelAfter(5000)]
+        public async Task Optional_step_cancelled_without_shutdown_fails_the_run_only_when_selected([Values] bool selected, CancellationToken cancellationToken)
         {
             await using IContainer container = CreateNethermindEnvironment(
-                typeof(StepForever), command: null, [typeof(StepForever)]);
+                selected ? typeof(SelfCancellingOptionalStep) : null, command: null, [typeof(SelfCancellingOptionalStep)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                selected
+                    ? Throws.TypeOf<StepDependencyException>().With.InnerException.TypeOf<OperationCanceledException>()
+                    : Throws.Nothing);
+        }
+
+        [Test]
+        public async Task Run_interrupted_by_shutdown_does_not_report_success([Values] bool hasTarget)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                hasTarget ? typeof(StepForever) : null, command: null, [typeof(StepForever)]);
             using CancellationTokenSource cancellation = new(TimeSpan.FromMilliseconds(200));
 
             Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellation.Token),
@@ -562,8 +580,28 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public Task Execute(CancellationToken cancellationToken) => throw new TestException();
     }
 
+    /// <summary>An optional step that ends Canceled without anyone requesting cancellation, e.g. its own timeout.</summary>
+    public class SelfCancellingOptionalStep : IStep
+    {
+        public bool MustInitialize => false;
+
+        public Task Execute(CancellationToken cancellationToken) => throw new OperationCanceledException();
+    }
+
     [RunnerStepDependencies(typeof(FailingOptionalStep))]
     public class RequiredDependentStep : IStep, IRecordingStep
+    {
+        public bool WasExecuted { get; private set; }
+
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
+        }
+    }
+
+    [RunnerStepDependencies(typeof(RequiredDependentStep))]
+    public class RequiredGrandDependentStep : IStep, IRecordingStep
     {
         public bool WasExecuted { get; private set; }
 
@@ -625,6 +663,18 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class SelfCancellingStep : IStep
     {
         public Task Execute(CancellationToken cancellationToken) => throw new TaskCanceledException();
+    }
+
+    [RunnerStepDependencies(typeof(SelfCancellingStep))]
+    public class SelfCancellingStepDependent : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(SelfCancellingStepDependent))]
+    public class SelfCancellingStepGrandDependent : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     public class StepForever : IStep

@@ -7,11 +7,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <GuestInput Condition="'$(GuestInput)' == ''">Ssz</GuestInput>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Nethermind.Zkvm.Abstractions" />
-  </ItemGroup>
 
   <ItemGroup>
     <!-- Main, the ZkvmThrow export and the failure protocol are identical in
@@ -20,10 +17,13 @@
          referenced: ZkvmThrow is an UnmanagedCallersOnly export the runtime
          looks up in the guest assembly itself. -->
     <Compile Include="$(MSBuildThisFileDirectory)Program.cs" Link="Guest\Program.cs" />
+    <!-- The input the guest takes: Ssz, the spec StatelessInput, or Trusted, the trusted-input format. -->
+    <Compile Include="$(MSBuildThisFileDirectory)Input.$(GuestInput).cs" Link="Guest\Input.$(GuestInput).cs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\Nethermind.Stateless.Executor\Nethermind.Stateless.Executor.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\Nethermind.Zkvm.Abstractions\Nethermind.Zkvm.Abstractions.csproj" />
   </ItemGroup>
 
 </Project>

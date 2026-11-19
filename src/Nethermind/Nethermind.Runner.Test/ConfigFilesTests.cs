@@ -568,7 +568,7 @@ public class ConfigFilesTests : ConfigFileTestsBase
             .TestObject;
 
         AcceptTxResult result = new MinGasPriceTxFilter(GetConfigFromFile<IBlocksConfig>(configFile))
-            .IsAllowed(tx, parent, spec);
+            .IsAllowed(tx, new TxFilterContext(parent, spec));
 
         using (Assert.EnterMultipleScope())
         {

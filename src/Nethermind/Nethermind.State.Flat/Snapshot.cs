@@ -132,6 +132,16 @@ public class Snapshot : RefCountingDisposable
     public int StoragesCount => _isSorted ? _sorted!.StoragesCount : Counts.Storages;
 
     internal ulong StateRootPointer => _isSorted ? _sorted!.StateRootPointer : _mutable!.StateRootPointer;
+
+    /// <inheritdoc cref="SnapshotContent.MaxPointer"/>
+    internal ulong MaxPointer => _isSorted ? _sorted!.MaxPointer : _mutable!.MaxPointer;
+
+    /// <summary>Finds a root of this snapshot's state by hash in its buffer's root index, as block processing does, below <see cref="MaxPointer"/>.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <returns>The root record's pointer in <see cref="BufferPin"/>'s buffer; zero when it is not indexed.</returns>
+    internal ulong ResolveRoot(Hash256? address, in ValueHash256 rootHash) =>
+        BufferPin is null ? 0 : BufferPin.Buffer.ResolveRoot(address, rootHash, MaxPointer).Pointer;
+
     internal IEnumerable<KeyValuePair<Hash256, ulong>> StorageRoots => _isSorted ? _sorted!.StorageRoots : _mutable!.StorageRoots;
 
     internal bool TryGetStorageRoot(Hash256 address, out ulong pointer) => _isSorted
@@ -223,8 +233,14 @@ public class Snapshot : RefCountingDisposable
     public bool TryGetStorageNode(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         node = null;
-        return BufferPin is not null && TryGetStorageRoot(key.Key.Item1, out ulong root)
-            && BufferPin.Buffer.TryGetNode(root, key.Key.Item2, out node);
+        return TryGetStorageRoot(key.Key.Item1, out ulong root) && TryGetStorageNode(root, key.Key.Item2, out node);
+    }
+
+    /// <summary>The storage trie node at <paramref name="path"/> below the storage root record at <paramref name="root"/>.</summary>
+    internal bool TryGetStorageNode(ulong root, in TreePath path, [NotNullWhen(true)] out TrieNode? node)
+    {
+        node = null;
+        return BufferPin is not null && BufferPin.Buffer.TryGetNode(root, path, out node);
     }
 
     /// <summary>The record a node pointer refers to, borrowed for as long as the snapshot holds its pin.</summary>
@@ -281,6 +297,9 @@ public sealed class SnapshotContent : IDisposable, IResettable
 
     /// <summary>The final published state-root pointer, zero only for the empty root.</summary>
     public ulong StateRootPointer;
+    /// <summary>The buffer's write boundary once this content's roots were indexed; lookups of its state's roots skip roots indexed at or past it.</summary>
+    /// <remarks><see cref="ulong.MaxValue"/> when not committed through a scope, which bounds nothing.</remarks>
+    public ulong MaxPointer = ulong.MaxValue;
     /// <summary>Final roots of changed storage tries. Missing addresses are unchanged; zero marks an empty trie.</summary>
     public readonly ConcurrentDictionary<Hash256, ulong> StorageRoots = new();
 
@@ -323,6 +342,7 @@ public sealed class SnapshotContent : IDisposable, IResettable
         Storages.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
         StateRootPointer = 0;
+        MaxPointer = ulong.MaxValue;
         StorageRoots.NoLockClear();
         _publishedFilters = null;
         _filterBuildStarted = 0;

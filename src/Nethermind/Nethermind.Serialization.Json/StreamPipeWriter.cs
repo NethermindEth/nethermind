@@ -51,8 +51,11 @@ public sealed class CountingPipeWriter : CountingWriter
     public override void Complete(Exception? exception = null)
         => _writer.Complete(exception);
 
+    public long FlushedCount { get; private set; }
+
     public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
     {
+        FlushedCount = WrittenCount;
         ValueTask<FlushResult> flushTask = _writer.FlushAsync(cancellationToken);
         return flushTask.IsCompletedSuccessfully
             ? new ValueTask<FlushResult>(flushTask.GetAwaiter().GetResult())
@@ -85,6 +88,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
     private BufferSegmentStack _bufferSegmentPool;
     private readonly bool _leaveOpen;
+    private readonly bool _flushOnThreshold;
 
     private CancellationTokenSource InternalTokenSource
     {
@@ -97,7 +101,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         }
     }
 
-    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null, long initialWrittenCount = 0)
+    public CountingStreamPipeWriter(Stream writingStream, StreamPipeWriterOptions? options = null, long initialWrittenCount = 0, bool flushOnThreshold = true)
     {
         if (writingStream is null)
         {
@@ -109,6 +113,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
         _maxPooledBufferSize = _pool?.MaxBufferSize ?? -1;
         _bufferSegmentPool = new BufferSegmentStack(InitialSegmentPoolSize);
         _leaveOpen = options?.LeaveOpen ?? true;
+        _flushOnThreshold = flushOnThreshold;
         WrittenCount = initialWrittenCount;
     }
 
@@ -245,7 +250,7 @@ public sealed class CountingStreamPipeWriter : CountingWriter
 
                 // Threshold flush happens here, never in Advance: a consumer may still hold a buffer
                 // obtained earlier and Advance into it across the flush.
-                if (_bytesBuffered > _minimumBufferSize)
+                if (_flushOnThreshold && _bytesBuffered > _minimumBufferSize)
                 {
                     FlushInternal(writeToStream: true);
                 }

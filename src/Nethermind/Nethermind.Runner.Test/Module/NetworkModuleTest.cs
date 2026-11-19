@@ -18,6 +18,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.Rlpx;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
 using NSubstitute;
@@ -68,7 +69,7 @@ public class NetworkModuleTest
     private static WeakReference CreateDisposeAndTrack(IProtocolHandlerFactory handlerFactory)
     {
         ISession session = new Session(0, new Node(TestItem.PublicKeyA, "127.0.0.1", 30303),
-            Substitute.For<DotNetty.Transport.Channels.IChannel>(),
+            Substitute.For<IRlpxConnection>(),
             Substitute.For<IDisconnectsAnalyzer>(),
             LimboLogs.Instance);
 
@@ -157,7 +158,7 @@ public class NetworkModuleTest
 
                 Type interfaceGenericDefinition = implementedInterface.GetGenericTypeDefinition();
 
-                if (interfaceGenericDefinition == typeof(IZeroMessageSerializer<>) || interfaceGenericDefinition == typeof(IMessageSerializer<>))
+                if (interfaceGenericDefinition == typeof(IMessageSerializer<>))
                 {
                     yield return (implementedInterface.GenericTypeArguments[0], type);
                 }

@@ -22,6 +22,39 @@ namespace Nethermind.Serialization.SszGenerator.Test;
 
 public class EncodingTest
 {
+    [Test, NonParallelizable]
+    public void Preset_dimensions_apply_to_nested_offsets_limits_and_roots([Values] bool alternate)
+    {
+        TestPreset.Alternate = alternate;
+        try
+        {
+            int count = alternate ? 2 : 4;
+            PresetContainer value = new() { Head = new() { Values = new ulong[count] }, Tail = [1, 2, 3, 4] };
+            byte[] encoded = PresetContainer.Encode(value);
+            Assert.That(BinaryPrimitives.ReadUInt32LittleEndian(encoded.AsSpan(count * 8)), Is.EqualTo(count * 8 + 4));
+            PresetContainer.Decode(encoded, out PresetContainer decoded);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Head.Values, Has.Length.EqualTo(count));
+                Assert.That(decoded.Tail, Is.EqualTo(value.Tail));
+            }
+            UInt256 tail = new(1, 2, 3, 4);
+            if (!alternate) tail = HashConcat(tail, UInt256.Zero);
+            UInt256 expected = HashConcat(UInt256.Zero, HashConcat(tail, (UInt256)4));
+            PresetContainer.Merkleize(value, out UInt256 root);
+            Assert.That(root, Is.EqualTo(expected));
+            value.Head.Values = new ulong[alternate ? 4 : 2];
+            Assert.Throws<InvalidDataException>(() => PresetContainer.Encode(value));
+            value.Head.Values = new ulong[count];
+            value.Tail = new ulong[(alternate ? 4 : 8) + 1];
+            Assert.Throws<InvalidDataException>(() => PresetContainer.Encode(value));
+        }
+        finally
+        {
+            TestPreset.Alternate = false;
+        }
+    }
+
     [Test]
     public void Container_merkleization_does_not_allocate_scratch_arrays([Values] bool progressive)
     {
@@ -125,21 +158,40 @@ public class EncodingTest
     [Test]
     public void Span_built_byte_lists_match_byte_array_lists()
     {
-        ByteListItself[] arrays = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+        ByteListItself[] arrays = [new() { Bytes = [4, 5] }, new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
         byte[] encoded = ByteListItself.Encode(arrays);
 
         SpanBuiltByteListItself.Decode(encoded, out SpanBuiltByteListItself[] decoded);
-        ByteListItself.Merkleize(arrays[1], out UInt256 expectedRoot);
-        SpanBuiltByteListItself.Merkleize(decoded[1], out UInt256 root);
+        SpanBuiltByteStructListItself.Decode(encoded, out SpanBuiltByteStructListItself[] decodedStructs);
+        SpanBuiltByteListItselfNamedIndex.Decode(encoded, out SpanBuiltByteListItselfNamedIndex[] decodedNamedIndex);
+        ByteListItself.Merkleize(arrays[2], out UInt256 expectedRoot);
+        SpanBuiltByteListItself.Merkleize(decoded[2], out UInt256 root);
+        SpanBuiltByteStructListItself.Merkleize(decodedStructs[2], out UInt256 structRoot);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded, Has.Length.EqualTo(2));
-            Assert.That(decoded[0].Bytes!.AsSpan().ToArray(), Is.Empty);
-            Assert.That(decoded[1].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(decoded, Has.Length.EqualTo(3));
+            Assert.That(decoded[0].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 4, 5 }));
+            Assert.That(decoded[1].Bytes!.AsSpan().ToArray(), Is.Empty);
+            Assert.That(decoded[2].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
             Assert.That(SpanBuiltByteListItself.Encode(decoded), Is.EqualTo(encoded));
             Assert.That(root, Is.EqualTo(expectedRoot));
+            Assert.That(decodedStructs[0].Bytes.AsSpan().ToArray(), Is.EqualTo(new byte[] { 4, 5 }));
+            Assert.That(decodedStructs[2].Bytes.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(SpanBuiltByteStructListItself.Encode(decodedStructs), Is.EqualTo(encoded));
+            Assert.That(structRoot, Is.EqualTo(expectedRoot));
+            Assert.That(SpanBuiltByteListItselfNamedIndex.Encode(decodedNamedIndex), Is.EqualTo(encoded));
         }
+    }
+
+    [Test]
+    public void Decode_collection_itself_runs_the_item_parameterless_constructor()
+    {
+        byte[] encoded = ByteListItself.Encode([new() { Bytes = [4, 5] }, new() { Bytes = [1, 2, 3] }]);
+
+        SpanBuiltByteStructListItselfWithConstructor.Decode(encoded, out SpanBuiltByteStructListItselfWithConstructor[] decoded);
+
+        Assert.That(decoded.Select(static item => item.Marker), Is.EqualTo(new[] { 7, 7 }));
     }
 
     [Test]

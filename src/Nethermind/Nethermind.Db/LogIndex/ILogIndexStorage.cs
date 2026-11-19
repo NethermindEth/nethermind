@@ -15,7 +15,7 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     bool Enabled { get; }
 
     /// <summary>
-    /// Max block number added to the index.
+    /// Max block number added to the index, or null if none was added or the index stopped at a reorg it could not revert.
     /// </summary>
     int? MaxBlockNumber { get; }
 
@@ -50,6 +50,13 @@ public interface ILogIndexStorage : IAsyncDisposable, IStoppableService
     /// Removes reorged <paramref name="block"/> from the index.
     /// This must be called for each reorged block in a sequential ascending order.
     /// </summary>
+    /// <remarks>
+    /// A block deeper than the max reorg depth below the highest max block reached may already be compressed and cannot be reverted:
+    /// the index is then capped below it, <see cref="MaxBlockNumber"/> becomes null so queries stop using the index,
+    /// further forward writes throw until the index is reset, and this call throws.
+    /// The depth is the smallest max reorg depth the index has run with; every block indexed before that depth was recorded may be compressed.
+    /// Only blocks added in forward sync are removed: blocks added in backward sync are kept.
+    /// </remarks>
     Task RemoveReorgedAsync(BlockReceipts block);
 
     string GetDbSize();

@@ -29,6 +29,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -103,7 +104,7 @@ public class SnapProviderTests
 
         StorageRange storage = new()
         {
-            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, AccountStruct.TotallyEmpty) }.ToPooledList(),
         };
         List<PathWithStorageSlot> slots =
         [
@@ -134,7 +135,7 @@ public class SnapProviderTests
 
         StorageRange storage = new()
         {
-            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, Account.TotallyEmpty) }.ToPooledList(),
+            Accounts = new PathWithAccount[] { new(TestItem.KeccakA, AccountStruct.TotallyEmpty) }.ToPooledList(),
         };
 
         // Test with empty slots list
@@ -266,7 +267,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(account);
 
         DrainAccountRangePartition(progressTracker);
@@ -297,8 +298,8 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount covered = new(TestItem.ValueKeccaks[0], Account.TotallyEmpty);
-        PathWithAccount uncovered = new(TestItem.ValueKeccaks[1], Account.TotallyEmpty);
+        PathWithAccount covered = new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty);
+        PathWithAccount uncovered = new(TestItem.ValueKeccaks[1], AccountStruct.TotallyEmpty);
         progressTracker.EnqueueAccountStorage(covered);
         progressTracker.EnqueueAccountStorage(uncovered);
         DrainAccountRangePartition(progressTracker);
@@ -349,7 +350,7 @@ public class SnapProviderTests
         PathWithAccount[] accounts = new PathWithAccount[accountCount];
         for (int i = 0; i < accountCount; i++)
         {
-            accounts[i] = new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+            accounts[i] = new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
             progressTracker.EnqueueAccountStorage(accounts[i]);
         }
 
@@ -401,7 +402,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountStorage(account);
         DrainAccountRangePartition(progressTracker);
 
@@ -448,7 +449,7 @@ public class SnapProviderTests
 
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
 
         for (int attempt = 0; attempt < SnapProvider.MaxConsecutiveEmptyStorageResponses; attempt++)
         {
@@ -561,7 +562,7 @@ public class SnapProviderTests
 
         for (int i = 0; i < accountCount; i++)
         {
-            progressTracker.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject));
+            progressTracker.EnqueueAccountStorage(new PathWithAccount(TestItem.ValueKeccaks[i], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct()));
         }
 
         DrainAccountRangePartition(progressTracker);
@@ -642,7 +643,7 @@ public class SnapProviderTests
         DrainAccountRangePartition(progressTracker);
 
         // Discovered at an older pivot with storage; the storage has since been emptied.
-        PathWithAccount stale = new(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount stale = new(TestItem.KeccakA, Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountRefresh(stale, ValueKeccak.Zero, Keccak.MaxValue);
 
         progressTracker.IsFinished(out SnapSyncBatch? refresh);
@@ -663,7 +664,7 @@ public class SnapProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stale.Account!.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash), "the proven (empty) storage root is adopted");
             Assert.That(progressTracker.IsFinished(out SnapSyncBatch? next), Is.True, "an account without storage leaves nothing to fetch");
             Assert.That(next, Is.Null);
         }
@@ -698,7 +699,7 @@ public class SnapProviderTests
         // A path immediately before an existing account: absent from the state, and its neighbour is what proves
         // the absence. A gap with no successor would come back as an empty range, i.e. Expired rather than NotFound.
         ValueHash256 missing = ((ValueHash256)TestItem.KeccakB).DecrementPath();
-        PathWithAccount gone = new(missing, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject);
+        PathWithAccount gone = new(missing, Build.An.Account.WithStorageRoot(TestItem.KeccakG).TestObject.ToStruct());
 
         RegisterLargeStorage(progressTracker, gone, partitionCount);
 
@@ -718,7 +719,7 @@ public class SnapProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(gone.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
+            Assert.That(gone.Account.StorageRoot, Is.EqualTo(TestItem.KeccakG), "an absent account adopts nothing; guards that this was NotFound and not Verified");
             Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero, "a deleted account must not keep counting as large storage left");
         }
     }
@@ -750,7 +751,7 @@ public class SnapProviderTests
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
         DrainAccountRangePartition(progressTracker);
 
-        PathWithAccount account = new(TestItem.KeccakA, withStorage);
+        PathWithAccount account = new(TestItem.KeccakA, withStorage.ToStruct());
 
         RegisterLargeStorage(progressTracker, account, partitionCount);
 
@@ -771,7 +772,7 @@ public class SnapProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(account.Account!.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
+            Assert.That(account.Account.StorageRoot, Is.EqualTo(TestItem.KeccakF), "guards that this was Verified with storage, not NotFound or emptied");
             Assert.That(progressTracker.LargeStorageProgressCount, Is.Zero,
                 "an account restarted at origin 0 must not keep its stale large-storage entry");
         }
@@ -796,7 +797,7 @@ public class SnapProviderTests
         SnapProvider snapProvider = container.Resolve<SnapProvider>();
         ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
 
-        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject);
+        PathWithAccount account = new(TestItem.ValueKeccaks[0], Build.An.Account.WithStorageRoot(TestItem.KeccakF).TestObject.ToStruct());
         progressTracker.EnqueueAccountStorage(account);
         DrainAccountRangePartition(progressTracker);
 
@@ -839,7 +840,7 @@ public class SnapProviderTests
         switch (requestKind)
         {
             case nameof(SnapSyncBatch.StorageRangeRequest):
-                progressTracker.EnqueueAccountStorage(new(work, Account.TotallyEmpty));
+                progressTracker.EnqueueAccountStorage(new(work, AccountStruct.TotallyEmpty));
                 DrainAccountRangePartition(progressTracker);
                 break;
             case nameof(SnapSyncBatch.CodesRequest):
@@ -887,7 +888,7 @@ public class SnapProviderTests
         {
             batch.AccountRangeResponse = new AccountsAndProofs
             {
-                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], Account.TotallyEmpty) },
+                PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.ValueKeccaks[0], AccountStruct.TotallyEmpty) },
                 Proofs = EmptyByteArrayList.Instance
             };
         }
@@ -925,6 +926,65 @@ public class SnapProviderTests
         Assert.That(snapProvider.AddStorageRangeForAccount(
             storageRange, 0, slots,
             new ByteArrayListAdapter(ProveStorage(stateTree, account.Path, Keccak.Zero, slots[^1].Path).ToPooledList())), Is.EqualTo(AddRangeResult.OK));
+    }
+
+    // A, B, A again and M are requested; U never is, and no response serves M. Each letter of a response is one item.
+    // Only requested, distinct codes are stored and counted, and every requested hash left unserved is queued again.
+    [TestCase("", "", TestName = "{m} (empty)")]
+    [TestCase("UU", "", TestName = "{m} (padding only)")]
+    [TestCase("UAA", "A", TestName = "{m} (partial, padded, duplicate)")]
+    [TestCase("UBABA", "AB", TestName = "{m} (two distinct codes)")]
+    [NonParallelizable]
+    public void AddCodes_ShouldPersistOnlyRequestedCodes(string response, string expectedStored)
+    {
+        const long codesBaseline = 17, bytesBaseline = 29;
+        Dictionary<char, byte[]> code = new()
+        {
+            ['A'] = [0x60, 0x01, 0x60, 0x02],
+            ['B'] = [0x60, 0x03, 0x60, 0x04, 0x01, 0x00, 0x00],
+            ['M'] = [0x60, 0x05, 0x00],
+            ['U'] = [0x60, 0x06],
+        };
+        ValueHash256 Hash(char c) => ValueKeccak.Compute(code[c]);
+
+        long savedCodes = Metrics.SnapSyncedCodes, savedBytes = Metrics.SnapStateSynced;
+        Metrics.SnapSyncedCodes = codesBaseline;
+        Metrics.SnapStateSynced = bytesBaseline;
+        try
+        {
+            using IContainer container = CreateContainerBuilder(new TestSyncConfig { SnapSyncAccountRangePartitionCount = 1 })
+                .WithSuggestedHeaderOfStateRoot(Keccak.EmptyTreeHash)
+                .Build();
+            SnapProvider snapProvider = container.Resolve<SnapProvider>();
+            ProgressTracker progressTracker = container.Resolve<ProgressTracker>();
+            IDb codeDb = container.ResolveNamed<IDb>(DbNames.Code);
+            DrainAccountRangePartition(progressTracker);
+
+            ArrayPoolList<byte[]> items = [with(response.Length)];
+            using IByteArrayList codes = new ByteArrayListAdapter(items);
+            foreach (char c in response) items.Add(code[c]);
+
+            snapProvider.AddCodes([Hash('A'), Hash('B'), Hash('A'), Hash('M')], codes);
+
+            progressTracker.IsFinished(out SnapSyncBatch? retry);
+            using (retry)
+            using (Assert.EnterMultipleScope())
+            {
+                foreach (char c in "ABMU")
+                {
+                    Assert.That(codeDb.Get(Hash(c).Bytes), expectedStored.Contains(c) ? Is.EqualTo(code[c]) : Is.Null, $"code {c} in the DB");
+                }
+
+                Assert.That(Metrics.SnapSyncedCodes - codesBaseline, Is.EqualTo(expectedStored.Length), "SnapSyncedCodes delta");
+                Assert.That(Metrics.SnapStateSynced - bytesBaseline, Is.EqualTo(expectedStored.Sum(c => code[c].Length)), "SnapStateSynced delta");
+                Assert.That(retry?.CodesRequest?.ToArray() ?? [], Is.EquivalentTo("ABM".Where(c => !expectedStored.Contains(c)).Select(Hash)), "codes queued again");
+            }
+        }
+        finally
+        {
+            Metrics.SnapSyncedCodes = savedCodes;
+            Metrics.SnapStateSynced = savedBytes;
+        }
     }
 
     [Test]
@@ -1036,7 +1096,7 @@ public class SnapProviderTests
         }
 
         ValueHash256[] paths = asReq.Paths.Select((bt) => new ValueHash256(Bytes.FromHexString(bt))).ToArray();
-        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc)).ToList();
+        List<PathWithAccount> pathWithAccounts = accounts.Select((acc, idx) => new PathWithAccount(paths[idx], acc.ToStruct())).ToList();
         List<byte[]> proofs = asReq.Proofs.Select((str) => Bytes.FromHexString(str)).ToList();
 
         TestMemDb db = new();
@@ -1428,7 +1488,7 @@ public class SnapProviderTests
     }
 
     private static SortedDictionary<string, string> ReadColumn(IColumnsDb<FlatDbColumns> db, FlatDbColumns column) =>
-        new(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)));
+        [with(db.GetColumnDb(column).GetAll().ToDictionary(static kv => Convert.ToHexString(kv.Key), static kv => Convert.ToHexString(kv.Value)))];
 
     /// <summary>A pivot at <see cref="Header"/>, which each healing round moves to the next of <paramref name="rounds"/>, staying at the last.</summary>
     private sealed class HealingPivot(BlockHeader header, params BlockHeader[] rounds) : IStateSyncPivot
@@ -1607,10 +1667,10 @@ public class SnapProviderTests
 
     private static StorageRange CreateStorageRange(int accountCount)
     {
-        ArrayPoolList<PathWithAccount> accounts = new(accountCount);
+        ArrayPoolList<PathWithAccount> accounts = [with(accountCount)];
         for (int i = 0; i < accountCount; i++)
         {
-            accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], Account.TotallyEmpty));
+            accounts.Add(new PathWithAccount(TestItem.ValueKeccaks[i], AccountStruct.TotallyEmpty));
         }
 
         return new StorageRange { Accounts = accounts, StartingHash = Keccak.Zero };
@@ -1618,7 +1678,7 @@ public class SnapProviderTests
 
     private static SlotsAndProofs CreateEmptySlotsResponse(int slotListCount)
     {
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = new(slotListCount);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> pathsAndSlots = [with(slotListCount)];
         for (int i = 0; i < slotListCount; i++)
         {
             pathsAndSlots.Add(new ArrayPoolList<PathWithStorageSlot>(0));
@@ -1644,7 +1704,7 @@ public class SnapProviderTests
         {
             ValueHash256 slotKey = Keccak.Compute(i.ToBigEndianByteArray());
             byte[] value = (i + 1).ToBigEndianByteArray();
-            byte[] rlpValue = Rlp.Encode(value).Bytes;
+            byte[] rlpValue = Rlp.Encode(value);
             storageTree.Set(slotKey, rlpValue, false);
             slots[i] = new PathWithStorageSlot(slotKey, rlpValue);
         }
@@ -1655,7 +1715,7 @@ public class SnapProviderTests
         stateTree.Set(accountHash, Build.An.Account.WithBalance(1).WithStorageRoot(storageTree.RootHash).TestObject);
         stateTree.Commit();
 
-        return (new PathWithAccount(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash)), slots, stateTree);
+        return (new PathWithAccount(accountHash, new Account(0, 1).WithChangedStorageRoot(storageTree.RootHash).ToStruct()), slots, stateTree);
     }
 
     private static byte[][] ProveStorage(StateTree stateTree, in ValueHash256 accountPath, params ValueHash256[] slotPaths)

@@ -11,6 +11,7 @@ using DotNetty.Codecs;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx
@@ -19,7 +20,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly ILogger _logger = logManager?.GetClassLogger<ZeroFrameMerger>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        private ZeroPacket? _zeroPacket;
+        private NettyBufferPacket? _zeroPacket;
         private int? _currentContextId;
         private readonly FrameHeaderReader _headerReader = new();
 
@@ -87,9 +88,9 @@ namespace Nethermind.Network.Rlpx
 
             input.SkipBytes(frame.Padding);
 
-            if (_zeroPacket.Content.MaxWritableBytes == 0)
+            if (_zeroPacket.Buffer.MaxWritableBytes == 0)
             {
-                ZeroPacket completedPacket = _zeroPacket!;
+                NettyBufferPacket completedPacket = _zeroPacket!;
                 if (input.IsReadable())
                 {
                     throw new CorruptedFrameException($"{nameof(ZeroFrameMerger)} received a corrupted frame - {input.ReadableBytes} longer than expected");
@@ -103,15 +104,15 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ReadChunk(IByteBuffer input, in FrameHeaderReader.FrameInfo frame)
         {
-            if (frame.Size > _zeroPacket.Content.MaxWritableBytes)
+            if (frame.Size > _zeroPacket.Buffer.MaxWritableBytes)
             {
-                int remainingPacketSize = _zeroPacket.Content.MaxWritableBytes;
+                int remainingPacketSize = _zeroPacket.Buffer.MaxWritableBytes;
                 ReleaseInProgressPacket();
                 ThrowFrameSizeExceedsRemaining(frame.Size, remainingPacketSize);
             }
 
-            _zeroPacket.Content.EnsureWritable(frame.Size);
-            input.ReadBytes(_zeroPacket.Content, frame.Size);
+            _zeroPacket.Buffer.EnsureWritable(frame.Size);
+            input.ReadBytes(_zeroPacket.Buffer, frame.Size);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -144,14 +145,14 @@ namespace Nethermind.Network.Rlpx
                 content = (IByteBuffer)input.Retain();
             }
 
-            _zeroPacket = new ZeroPacket(content)
+            _zeroPacket = new NettyBufferPacket(content)
             {
                 PacketType = (byte)rlpPacketType
             };
 
             if (frame.TotalPacketSize.HasValue)
             {
-                input.ReadBytes(_zeroPacket.Content, frame.Size - read);
+                input.ReadBytes(_zeroPacket.Buffer, frame.Size - read);
             }
         }
 
@@ -177,10 +178,10 @@ namespace Nethermind.Network.Rlpx
             {
                 RlpReader reader = new(input.AsSpan());
                 ulong packetType = reader.DecodeULong();
-                read = reader.Position;
+                read = reader.BytesRead;
                 return packetType;
             }
-            catch (Exception exception) when (exception is RlpException or ArgumentOutOfRangeException or IndexOutOfRangeException)
+            catch (Exception exception) when (exception is RlpReaderException or ArgumentOutOfRangeException or IndexOutOfRangeException)
             {
                 throw new CorruptedFrameException(exception);
             }

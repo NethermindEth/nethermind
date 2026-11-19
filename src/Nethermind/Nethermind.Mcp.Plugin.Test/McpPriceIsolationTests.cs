@@ -171,10 +171,13 @@ public class McpPriceIsolationTests
             await cancellation.CancelAsync();
             await Assert.CatchAsync<OperationCanceledException>(async () => await work);
             Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 1, TimeSpan.FromSeconds(1)), Is.True,
-                "the body releases its module while the detached worker retains its own");
+                "the detached worker reuses the body's eth_call rental, which stays taken");
             CallToolResult blocked = await executor.ExecuteAsync("blocked", nameof(IEthRpcModule.eth_call),
                 (_, _) => Task.FromResult(executor.Success(new { ok = true })), CancellationToken.None);
             McpAssert.Error(blocked, "resource_exhausted");
+            release.Set();
+            Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 0, TimeSpan.FromSeconds(8)), Is.True,
+                "the rental is returned once the detached worker finishes");
         }
         finally
         {
@@ -379,15 +382,17 @@ public class McpPriceIsolationTests
         public void Register<T>(IRpcModulePool<T> pool) where T : IRpcModule => inner.Register(pool);
         public ModuleResolution Check(string methodName, JsonRpcContext context, out string? module, out ResolvedMethodInfo? method) => inner.Check(methodName, context, out module, out method);
         public ResolvedMethodInfo? Resolve(string methodName) => inner.Resolve(methodName);
-        public async ValueTask<IRpcModule> Rent(string methodName, bool canBeShared)
+        public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared) => Rent(methodName, canBeShared, default);
+        public async ValueTask<IRpcModule> Rent(string methodName, bool canBeShared, CancellationToken cancellationToken)
         {
             BeforeRent?.Invoke(methodName);
-            return Wrap(await inner.Rent(methodName, canBeShared));
+            return Wrap(await inner.Rent(methodName, canBeShared, cancellationToken));
         }
-        public async ValueTask<IRpcModule> Rent(ResolvedMethodInfo method)
+        public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => Rent(method, default);
+        public async ValueTask<IRpcModule> Rent(ResolvedMethodInfo method, CancellationToken cancellationToken)
         {
             BeforeRent?.Invoke(method.MethodInfo.Name);
-            return Wrap(await inner.Rent(method));
+            return Wrap(await inner.Rent(method, cancellationToken));
         }
         private IRpcModule Wrap(IRpcModule module)
         {

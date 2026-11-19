@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -91,7 +92,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .AddSingleton<IEthereumEcdsa>(ecdsa)
             .Build();
         RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
-        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        // A fresh signer, so the process-wide sender cache cannot answer before the gated ecdsa.
+        Transaction tx = Build.A.Transaction.SignedAndResolved(Build.A.PrivateKey.TestObject).WithSenderAddress(null).TestObject;
         Block block = Build.A.Block.WithParentHash(TestItem.KeccakC).WithNumber(1)
             .WithDifficulty(0).WithNonce(0).WithTransactions(tx).TestObject;
         block.Header.IsPostMerge = true;
@@ -213,6 +215,35 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             Assert.That(logger.ReceivedCount, Is.EqualTo(1));
         }
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
+    }
+
+    /// <summary>
+    /// A block that cannot be executed yet, because its parent has no state, and that the block validator turns down
+    /// is INVALID whether or not the validator gave a reason; the reason is optional in the Engine API.
+    /// </summary>
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("invalid")]
+    public async Task Unexecutable_block_turned_down_by_the_validator_is_invalid_with_or_without_a_reason(string? error)
+    {
+        Block block = PostMergeBlock();
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: false,
+            configure: (_, stateReader) => stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h != null && h.Hash == block.ParentHash)).Returns(false),
+            suggestedBlockError: error);
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(result.Data.LatestValidHash, Is.Null);
+            Assert.That(result.Data.ValidationError, Is.EqualTo(error));
+        }
     }
 
     /// <summary>
@@ -900,7 +931,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
-        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
         // Awaited first, so the assertion below means the request is on the wait, not at an earlier await.
         await waitRequested.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -957,9 +988,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: 20_000);
 
         ExecutionPayloadV3 firstPayload = ExecutionPayloadV3.Create(block);
-        firstPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        firstPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
-        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         Task<ResultWrapper<PayloadStatusV1>> first = handler.HandleAsync(firstPayload);
         await firstEnqueueEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -1011,14 +1042,14 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: LongRequestBudgetMs);
 
         ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
-        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
 
         Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
         await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         await request.WaitAsync(AnswerWait);
 
-        object copy = ((Array)QueuedCopiesField!.GetValue(handler)!).GetValue(0)!;
+        object copy = ((IList)QueuedCopiesField!.GetValue(handler)!)[0]!;
         await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(10));
         ValueHash256 sameList = (ValueHash256)copy.GetType().GetProperty("InclusionListDigest")!.GetValue(copy)!;
         processingQueue.ClearReceivedCalls();
@@ -1081,11 +1112,11 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timeoutMs: TimedOutRequestBudgetMs);
 
         ExecutionPayloadV3 heldPayload = ExecutionPayloadV3.Create(block);
-        heldPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        heldPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 retryPayload = ExecutionPayloadV3.Create(block);
         retryPayload.InclusionListTransactions = heldPayload.InclusionListTransactions;
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
-        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         Task<ResultWrapper<PayloadStatusV1>> resent;
         try
@@ -1161,9 +1192,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 .Returns(_ => new ValueTask<AddBlockResult>((Interlocked.Increment(ref suggests) == 1 ? timedOutSuggest : resentSuggest).Task)));
 
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
-        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(AnswerWait);
         Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its suggest is still pending");
@@ -1235,9 +1266,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 }));
 
         ExecutionPayloadV3 queuedPayload = ExecutionPayloadV3.Create(block);
-        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
         resentPayload.InclusionListTransactions = timedOutPayload.InclusionListTransactions;
 
@@ -1313,7 +1344,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                     : ValueTask.FromResult(AddBlockResult.AlreadyKnown)));
 
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
         resentPayload.InclusionListTransactions = timedOutPayload.InclusionListTransactions;
 
@@ -1374,9 +1405,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                     : new ValueTask<AddBlockResult>(timedOutSuggest.Task)));
 
         ExecutionPayloadV3 queuedPayload = ExecutionPayloadV3.Create(block);
-        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject)];
         ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
-        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject)];
 
         try
         {
@@ -1574,6 +1605,43 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await processingQueue.DidNotReceive().Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>());
     }
 
+    /// <summary>
+    /// Tracking a copy drops the copies that have left the queue and keeps the others in the order they were queued,
+    /// with the new copy last.
+    /// </summary>
+    [Test]
+    public void TrackQueuedCopy_drops_copies_that_left_and_keeps_order()
+    {
+        MethodInfo? trackMethod = typeof(NewPayloadHandler).GetMethod("TrackQueuedCopy", BindingFlags.Instance | BindingFlags.NonPublic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trackMethod, Is.Not.Null, "TrackQueuedCopy method not found - was it renamed?");
+            Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
+        }
+
+        using NewPayloadHandler handler = CreateHandler(PostMergeBlock(), AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true);
+        Action<Hash256, ValueHash256?, Task> track = trackMethod!.CreateDelegate<Action<Hash256, ValueHash256?, Task>>(handler);
+        IList queuedCopies = (IList)QueuedCopiesField!.GetValue(handler)!;
+        PropertyInfo blockHashProperty = QueuedCopiesField.FieldType.GetGenericArguments()[0].GetProperty("BlockHash")!;
+
+        TaskCompletionSource first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        track(TestItem.KeccakA, null, first.Task);
+        track(TestItem.KeccakB, null, Task.CompletedTask);
+        track(TestItem.KeccakC, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        track(TestItem.KeccakD, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        Hash256[] afterD = [.. queuedCopies.Cast<object>().Select(copy => (Hash256)blockHashProperty.GetValue(copy)!)];
+
+        first.SetResult();
+        track(TestItem.KeccakE, null, new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously).Task);
+        Hash256[] afterE = [.. queuedCopies.Cast<object>().Select(copy => (Hash256)blockHashProperty.GetValue(copy)!)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterD, Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakC, TestItem.KeccakD }), "the completed copy is dropped, the rest keep their order");
+            Assert.That(afterE, Is.EqualTo(new[] { TestItem.KeccakC, TestItem.KeccakD, TestItem.KeccakE }), "a copy that left since the last call is dropped");
+        }
+    }
+
     private static int GetPendingValidationTaskCount(NewPayloadHandler handler)
     {
         Assert.That(BlockValidationTasksField, Is.Not.Null, "_blockValidationTasks field not found - was it renamed?");
@@ -1587,7 +1655,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     {
         Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
 
-        return [.. ((Array)QueuedCopiesField!.GetValue(handler)!).Cast<object>().Where(copy =>
+        return [.. ((IList)QueuedCopiesField!.GetValue(handler)!).Cast<object>().Where(copy =>
             (Hash256)copy.GetType().GetProperty("BlockHash")!.GetValue(copy)! == blockHash
             && !((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).IsCompleted)];
     }
@@ -1626,7 +1694,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         RecoverSignatures? senderRecovery = null,
         ISpecProvider? specProvider = null,
         ILogManager? logManager = null,
-        IInvalidChainTracker? invalidChainTracker = null)
+        IInvalidChainTracker? invalidChainTracker = null,
+        string? suggestedBlockError = "invalid")
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1668,7 +1737,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), false)
             .Returns(callInfo =>
             {
-                callInfo[2] = validateSuggestedBlock ? null : "invalid";
+                callInfo[2] = validateSuggestedBlock ? null : suggestedBlockError;
                 return validateSuggestedBlock;
             });
 

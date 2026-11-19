@@ -26,13 +26,15 @@ internal sealed class GethLikeTraceStream : IParallelTraceStream<GethLikeTxTrace
     [ThreadStatic] private static GethLikeTraceStream? _idle;
 
     private TraceStreamOutput _output;
+    private bool _includeErrorResult;
 
     /// <summary>A stream into <paramref name="writer"/>; give it back with <see cref="Return"/>.</summary>
-    public static GethLikeTraceStream Rent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken)
+    public static GethLikeTraceStream Rent(Utf8JsonWriter writer, PipeWriter? pipeWriter, CancellationToken cancellationToken, bool includeErrorResult = false)
     {
         GethLikeTraceStream stream = _idle ?? new GethLikeTraceStream();
         _idle = null;
         stream._output = new TraceStreamOutput(writer, pipeWriter, cancellationToken, FlushThresholdBytes);
+        stream._includeErrorResult = includeErrorResult;
         return stream;
     }
 
@@ -40,6 +42,7 @@ internal sealed class GethLikeTraceStream : IParallelTraceStream<GethLikeTxTrace
     public void Return()
     {
         _output = default;
+        _includeErrorResult = false;
         _idle = this;
     }
 
@@ -104,13 +107,13 @@ internal sealed class GethLikeTraceStream : IParallelTraceStream<GethLikeTxTrace
     }
 
     private void WriteInTurn(GethLikeTxTrace trace) =>
-        GethLikeBlockNativeStreamingTracer.Write(_output.Writer, _output.Output, trace, _output.CancellationToken);
+        GethLikeBlockNativeStreamingTracer.Write(_output.Writer, _output.Output, trace, _output.CancellationToken, _includeErrorResult);
 
-    private static void WriteEntry(Utf8JsonWriter output, GethLikeTxTrace trace)
+    private void WriteEntry(Utf8JsonWriter output, GethLikeTxTrace trace)
     {
         using (trace)
         {
-            GethLikeTxTraceCollectionConverter.WriteEntry(output, trace, EthereumJsonSerializer.JsonOptions);
+            GethLikeTxTraceCollectionConverter.WriteEntry(output, trace, EthereumJsonSerializer.JsonOptions, _includeErrorResult);
         }
     }
 

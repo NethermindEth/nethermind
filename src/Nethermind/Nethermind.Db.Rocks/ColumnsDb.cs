@@ -168,6 +168,7 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         private readonly ReadOptions _sharedCacheMissReadOptions;
         private ReadOptions? _readAheadReadOptions;
         private int _disposed;
+        private readonly InFlightOperations _reads = new();
 
         // Use a flat array indexed by enum ordinal instead of Dictionary<T, IReadOnlyKeyValueStore>.
         // This eliminates the dictionary + backing array allocation per snapshot.
@@ -250,7 +251,10 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
                         _sharedCacheMissReadOptions,
                         readOptionsFactory,
                         iteratorManager,
-                        columnFamily);
+                        columnFamily)
+                    {
+                        Reads = _reads
+                    };
                 }
 
                 return readers;
@@ -271,6 +275,8 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         /// <remarks>
         /// These iterators must not be tailing: tailing iterators
         /// ignore the snapshot and would observe writes made after it.
+        /// They serve one-off sequential scans, so the blocks they read are kept out of the block cache,
+        /// where they would only evict the working set of other readers.
         /// </remarks>
         private ReadOptions GetOrCreateReadAheadReadOptions()
         {
@@ -279,6 +285,7 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
 
             ReadOptions created = CreateReadOptions(_columnsDb, _snapshot);
             created.SetReadaheadSize(_columnsDb.ReadAheadSize);
+            created.SetFillCache(false);
 
             options = Interlocked.CompareExchange(ref _readAheadReadOptions, created, null);
             if (options is not null)
@@ -307,6 +314,18 @@ public class ColumnsDb<T>(RocksDbInstance instance, IRocksDbConfig tableConfig, 
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
+            if (RocksDbReader.DrainReads(_reads, _columnsDb._anyColumn.PinnedSliceDrainTimeout))
+            {
+                Release();
+            }
+            else
+            {
+                _columnsDb._anyColumn.ReleaseSnapshotAfterReads(_reads, Release);
+            }
+        }
+
+        private void Release()
+        {
             // Iterators pin the snapshot's resources — tear the managers down before releasing anything they read through.
             foreach (RocksDbReader? reader in _readers)
             {

@@ -867,6 +867,7 @@ public static partial class EvmInstructions
 
         // Pop the block number from the stack.
         if (!stack.PopUInt256(out UInt256 a)) goto StackUnderflow;
+        if (TTracingInst.IsActive) vm.TraceOperationReady(GasCostOf.BlockHash);
 
         // Current block, future block, or unrepresentable block number all resolve to no hash.
         BlockHeader header = vm.BlockExecutionContext.Header;
@@ -923,6 +924,7 @@ public static partial class EvmInstructions
         ulong currentNumber = vm.BlockExecutionContext.Header.Number;
         if (!a.IsUint64 || a.u0 >= currentNumber || currentNumber - a.u0 > Eip2935Constants.BlockHashServeWindow)
         {
+            if (TTracingInst.IsActive) vm.TraceOperationReady(GasCostOf.BlockHash);
             return stack.PushZero<TTracingInst, OnFlag>();
         }
 
@@ -931,9 +933,12 @@ public static partial class EvmInstructions
             spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
             new UInt256(a.u0 % spec.Eip2935RingBufferSize));
 
-        if (!TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)
-            || !TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec)
-            || !vm.TryMeterBalStorageKey(in storageCell))
+        ulong traceGasCost = TTracingInst.IsActive && vm.IsTracingOperationStart ? GasCostOf.BlockHash + vm.GetStorageLoadTraceGasCost(in storageCell) : 0;
+        bool gasAvailable = TGasPolicy.UpdateGas<SLoadGasCost>(ref gas, spec)
+            && TGasPolicy.TryConsumeStorageAccessGas(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec);
+        if (TTracingInst.IsActive)
+            vm.TraceOperationReady(traceGasCost, gasAvailable ? null : "out of gas");
+        if (!gasAvailable || !vm.TryMeterBalStorageKey(in storageCell))
         {
             return EvmExceptionType.OutOfGas;
         }
@@ -953,29 +958,24 @@ public static partial class EvmInstructions
     /// Implements the SLOTNUM opcode.
     /// Returns the slot number from the block header.
     /// </summary>
+    /// <remarks>
+    /// A header without a slot number reads 0. Header validation requires the field once the opcode is active, so only
+    /// a synthetic header lacks it: an RPC block override or a simulated child that moves a pre-fork block past the fork.
+    /// </remarks>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The execution stack.</param>
-    /// <param name="gasAvailable">The available gas which is reduced by the operation's cost.</param>
+    /// <param name="gas">The available gas which is reduced by the operation's cost.</param>
     /// <returns>
-    /// <see cref="EvmExceptionType.None"/>, or <see cref="EvmExceptionType.BadInstruction"/> if slot number not set.
+    /// <see cref="EvmExceptionType.None"/> if successful; otherwise, an EVM exception type if an error occurs.
     /// </returns>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionSlotNum<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
-        ref readonly BlockExecutionContext context = ref vm.BlockExecutionContext;
-
-        ulong? slotNumber = context.Header.SlotNumber;
-        // If the slot number is missing this opcode is invalid.
-        if (!slotNumber.HasValue) goto BadInstruction;
-
         // Charge the base gas cost for this opcode.
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        return stack.PushUInt64<TTracingInst, OnFlag>(slotNumber.Value);
-        // Jump forward to be unpredicted by the branch predictor.
-    BadInstruction:
-        return EvmExceptionType.BadInstruction;
+        return stack.PushUInt64<TTracingInst, OnFlag>(vm.BlockExecutionContext.Header.SlotNumber.GetValueOrDefault());
     }
 
 }

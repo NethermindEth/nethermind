@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -55,6 +56,14 @@ public partial class EthRpcModuleTests
     [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an authorization list")]
     [TestCase("eth_createAccessList", """{"gasPrice":"0x1","authorizationList":[]}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an empty authorization list")]
     [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Create access list, set-code type with a zero gas price")]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerGas":"0x1","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerGas":"0x1","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_signTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerBlobGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
+    [TestCase("eth_sendTransaction", """{"blobVersionedHashes":[],"gasPrice":"0x1","maxFeePerBlobGas":"0x0","input":"0x01","data":"0x2a"}""", RpcTransactionErrors.DataAndInputDiffer)]
     public async Task Fee_default_rules_reject_the_request(string method, string feeFields, string expected) =>
         Assert.That(await FeeDefaultsError(method, feeFields.Replace("AUTH", SetCodeAuthorization), london: true), Is.EqualTo(expected));
 
@@ -63,6 +72,43 @@ public partial class EthRpcModuleTests
     public async Task Fee_fields_before_london_are_rejected(string method) =>
         Assert.That(await FeeDefaultsError(method, """{"type":"0x2","maxPriorityFeePerGas":"0x3b9aca00"}""", london: false),
             Is.EqualTo("maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"));
+
+    [Test]
+    public async Task Empty_creation_submission_checks_fees_before_data_and_data_before_estimation(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values] bool suppliedGas,
+        [Values("valid", "zero-price", "fee-order")] string feeKind)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        JsonObject request = new()
+        {
+            ["from"] = HeldAccount,
+            ["nonce"] = "0x0",
+        };
+        if (suppliedGas) request["gas"] = "0x186a0";
+        if (feeKind == "fee-order")
+        {
+            request["maxFeePerGas"] = "0x1";
+            request["maxPriorityFeePerGas"] = "0x2";
+        }
+        else
+        {
+            request["gasPrice"] = feeKind == "zero-price" ? "0x0" : "0x3b9aca00";
+        }
+        string expected = method == "eth_signTransaction" && !suppliedGas ? "gas not specified"
+            : feeKind == "zero-price" ? "gasPrice must be non-zero after london fork"
+            : feeKind == "fee-order" ? "maxFeePerGas (0x1) < maxPriorityFeePerGas (0x2)"
+            : "contract creation without any data provided";
+        string serialized = await ctx.Test.TestEthRpc(method, JsonSerializer.Deserialize<object>(request.ToJsonString()));
+        JToken json = JToken.Parse(serialized);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), serialized);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), serialized);
+            Assert.That(json["result"], Is.Null, serialized);
+        }
+    }
 
     [Test]
     public async Task Fill_fee_cap_below_the_suggested_priority_fee_is_reported_in_hexadecimal()
@@ -205,18 +251,182 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Send_does_not_fill_a_blob_transaction()
+    public async Task Send_does_not_fill_a_blob_transaction([Values] bool suppliedBlobs)
     {
         IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
         using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithGasPriceOracle(oracle).Build(new TestSpecProvider(Cancun.Instance));
 
-        await test.TestEthRpc("eth_sendTransaction", FeeDefaultsRequest(
-            """{"type":"0x3","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"]}""",
-            HeldAccount));
+        JsonObject request = JsonNode.Parse("""{"type":"0x3","maxFeePerBlobGas":"0x1","blobVersionedHashes":["0x0100000000000000000000000000000000000000000000000000000000000000"]}""")!.AsObject();
+        if (suppliedBlobs) request["blobs"] = new JsonArray();
+        await test.TestEthRpc("eth_sendTransaction", FeeDefaultsRequest(request.ToJsonString(), HeldAccount));
 
         _ = oracle.DidNotReceive().GetGasPriceEstimate();
         oracle.DidNotReceive().GetMaxPriorityGasFeeEstimate();
+    }
+
+    [Test]
+    public async Task Submission_calldata_conflicts_precede_signing_and_fee_checks(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values] bool suppliedGas, [Values] bool invalidFee, [Values] bool creation)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        string gas = suppliedGas ? "\"gas\":\"0x76c0\"," : "";
+        string recipient = creation ? "null" : $"\"{FeeRecipient}\"";
+        using JsonDocument request = JsonDocument.Parse($$"""
+            {"from":"{{HeldAccount}}","to":{{recipient}},"nonce":"0x0",{{gas}}
+             "gasPrice":"{{(invalidFee ? "0x0" : "0x1")}}","input":"{{(creation ? "0x" : "0x01")}}","data":"0x2a"}
+            """);
+        string response = await ctx.Test.TestEthRpc(method, request.RootElement);
+        string expected = RpcTransactionErrors.DataAndInputDiffer;
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Fill_chain_id_precedes_creation_validation_and_estimation(
+        [Values("0x", "0xfe")] string input, [Values] bool wrongChain)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        await ctx.Test.AddFundsAfterLondon((new Address(HeldAccount), 1.Ether));
+        ulong chainId = ctx.Test.Bridge.GetChainId();
+        JsonObject request = new()
+        {
+            ["from"] = HeldAccount,
+            ["nonce"] = "0x0",
+            ["gasPrice"] = "0x3b9aca00",
+            ["input"] = input,
+            ["chainId"] = wrongChain ? "0xffff" : $"0x{chainId:x}"
+        };
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", JsonSerializer.Deserialize<object>(request.ToJsonString()));
+        string expected = wrongChain ? RpcTransactionErrors.InvalidChainId(chainId, 0xffff)
+            : input == "0x" ? RpcTransactionErrors.ContractCreationWithoutData : "invalid opcode: INVALID";
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That(json["result"], Is.Null, response);
+            if (wrongChain) Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+        }
+    }
+
+    [Test]
+    public async Task Fill_calldata_conflicts_precede_fees_and_chain_id(
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidFee)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        JsonObject request = JsonNode.Parse("""{"chainId":"0xffff","input":"0x01"}""")!.AsObject();
+        request["data"] = data;
+        request["gasPrice"] = invalidFee ? "0x0" : "0x1";
+
+        string response = await ctx.Test.TestEthRpc("eth_fillTransaction", FeeDefaultsRequest(request.ToJsonString(), HeldAccount));
+        string expected = data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
+            : invalidFee ? "gasPrice must be non-zero after london fork"
+            : RpcTransactionErrors.InvalidChainId(ctx.Test.Bridge.GetChainId(), 0xffff);
+
+        Assert.That((string?)JToken.Parse(response)["error"]?["message"], Is.EqualTo(expected), response);
+    }
+
+    [Test]
+    public async Task Blob_submission_calldata_conflicts_precede_empty_hashes_and_missing_to(
+        [Values("eth_sendTransaction", "eth_signTransaction")] string method,
+        [Values("0x2a", "0x01", null)] string? data, [Values("0x01", "0x")] string input, [Values] bool emptyHashes)
+    {
+        using Context ctx = await Context.CreateWithCancunEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        JsonObject request = JsonNode.Parse("""{"gasPrice":"0x1","maxFeePerBlobGas":"0x1","input":"0x01"}""")!.AsObject();
+        request["data"] = data;
+        request["input"] = input;
+        JsonArray blobHashes = emptyHashes ? [] : ["0x0100000000000000000000000000000000000000000000000000000000000000"];
+        request["blobVersionedHashes"] = blobHashes;
+        request["from"] = HeldAccount;
+        request["gas"] = "0x76c0";
+        request["nonce"] = "0x0";
+        if (emptyHashes) request["to"] = FeeRecipient;
+
+        string response = await ctx.Test.TestEthRpc(method, JsonSerializer.Deserialize<object>(request.ToJsonString()));
+        string expected = data is not null && data != input ? RpcTransactionErrors.DataAndInputDiffer
+            : emptyHashes ? RpcTransactionErrors.AtLeastOneBlobInBlobTransaction : RpcTransactionErrors.MissingToInBlobTx;
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Blob_submission_calldata_conflicts_precede_zero_execution_fee_cap(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool emptyHashes)
+    {
+        JsonObject request = JsonNode.Parse("""{"maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x0","input":"0x01"}""")!.AsObject();
+        request["data"] = data;
+        JsonArray hashes = emptyHashes ? [] : ["0x0100000000000000000000000000000000000000000000000000000000000000"];
+        request["blobVersionedHashes"] = hashes;
+
+        Assert.That(await FeeDefaultsError(method, request.ToJsonString(), london: true), Is.EqualTo(data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer : "maxFeePerGas must be non-zero"));
+    }
+
+    [Test]
+    public async Task Blob_submission_calldata_conflicts_precede_blob_semantic_errors(
+        [Values("eth_sendTransaction", "eth_signTransaction", "eth_fillTransaction")] string method,
+        [Values("0x2a", "0x01", null)] string? data, [Values] bool invalidFee,
+        [Values("missing", "version", "zero-cap")] string blobErrorKind, [Values] bool suppliedBlobs)
+    {
+        using Context ctx = blobErrorKind == "missing" ? await Context.CreateWithLondonEnabled() : await Context.CreateWithCancunEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+        JsonObject request = JsonNode.Parse("""{"gasPrice":"0x1","maxFeePerBlobGas":"0x1","input":"0x01"}""")!.AsObject();
+        request["data"] = data;
+        if (blobErrorKind != "missing")
+            request["blobVersionedHashes"] = new JsonArray(blobErrorKind == "version"
+                ? "0x0200000000000000000000000000000000000000000000000000000000000000"
+                : "0x0100000000000000000000000000000000000000000000000000000000000000");
+        if (blobErrorKind == "zero-cap") request["maxFeePerBlobGas"] = "0x0";
+        if (suppliedBlobs) request["blobs"] = new JsonArray();
+        request["gasPrice"] = invalidFee ? "0x0" : "0x1";
+
+        string response = await ctx.Test.TestEthRpc(method, FeeDefaultsRequest(request.ToJsonString(), HeldAccount));
+        string blobError = blobErrorKind switch
+        {
+            "version" => RpcTransactionErrors.InvalidBlobVersionedHashVersion,
+            "zero-cap" => RpcTransactionErrors.ZeroMaxFeePerBlobGas,
+            _ => RpcTransactionErrors.BlobFeeCapWithoutBlobHashes
+        };
+        string expected = data == "0x2a" ? RpcTransactionErrors.DataAndInputDiffer
+            : invalidFee && !suppliedBlobs && blobErrorKind != "zero-cap" ? "gasPrice must be non-zero after london fork"
+            : blobError;
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [TestCase("eth_sendTransaction", "unknown account", ErrorCodes.InvalidInput)]
+    [TestCase("eth_signTransaction", "eth_signTransaction is disabled", ErrorCodes.MethodNotFound)]
+    public async Task Submission_alias_guard_preserves_wallet_and_method_enable_errors(string method, string expectedError, int expectedCode)
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        ctx.Test.RpcConfig.EnableEthSignTransaction = false;
+        string response = await ctx.Test.TestEthRpc(method, FeeDefaultsRequest(
+            """{"gasPrice":"0x0","input":"0x01","data":"0x2a"}""", ForeignAccount));
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
     }
 
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)

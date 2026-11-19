@@ -7,6 +7,8 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.StateDiff.Core.Data;
 using Nethermind.StateDiffsWriter.Data;
@@ -21,7 +23,7 @@ public class BlockDiffRecordDecoderTests
     {
         int length = BlockDiffRecordDecoder.Instance.GetLength(record);
         byte[] buffer = new byte[length];
-        RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         BlockDiffRecordDecoder.Instance.Encode(ref writer, record);
         return buffer;
     }
@@ -146,6 +148,21 @@ public class BlockDiffRecordDecoderTests
             Assert.That(roundTripped.CodeHashChanges, Is.EqualTo(codeChanges));
             Assert.That(roundTripped.SlotCountChanges, Is.EqualTo(slotChanges));
         }
+    }
+
+    [TestCase(new int[0], TestName = "Outer")]
+    [TestCase(new[] { 2, 0 }, TestName = "CodeHashEntry")]
+    [TestCase(new[] { 3, 0 }, TestName = "SlotCountEntry")]
+    public void Decodes_with_a_trailing_item(int[] path)
+    {
+        BlockDiffRecord original = new(
+            BlockNumber: 987_654_321,
+            StateRoot: TestItem.KeccakE,
+            CodeHashChanges: [new(TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, 999)],
+            SlotCountChanges: [new(TestItem.KeccakC.ValueHash256, 3, 7)]);
+        byte[] canonical = Encode(original);
+
+        Assert.That(Encode(Decode(RlpTestHelper.WithTrailingItem(canonical, path))), Is.EqualTo(canonical));
     }
 
     [Test]
@@ -294,7 +311,7 @@ public class BlockDiffRecordDecoderTests
 
         int totalLength = Rlp.LengthOfSequence(outerContent);
         byte[] payload = new byte[totalLength];
-        RlpWriter stream = new(payload);
+        RlpWriter stream = RlpWriter.ContentWriter(payload);
         stream.StartSequence(outerContent);
         stream.Encode(blockNumber);
         stream.Encode(stateRoot);
@@ -327,38 +344,40 @@ public class BlockDiffRecordDecoderTests
     /// <summary>Legacy-shape decoder reading only the first four positional fields, as the pre-extension code did.</summary>
     private static (long, Hash256, List<CodeHashEntry>, List<SlotCountEntry>) DecodeLegacyPrefix(byte[] bytes)
     {
-        RlpReader ctx = new(bytes);
-        ctx.ReadSequenceLength();
+        RlpReader ctx = new RlpReader(bytes).EnterSequence(out _);
 
         long blockNumber = ctx.DecodeLong();
         Hash256 stateRoot = ctx.DecodeKeccak()
-            ?? throw new RlpException("StateRoot must not be null");
+            ?? throw new RlpReaderException("StateRoot must not be null");
 
-        int codeSeqLen = ctx.ReadSequenceLength();
-        int codeSeqEnd = ctx.Position + codeSeqLen;
+        RlpReader codeReader = ctx.EnterSequence(out int codeLength);
         List<CodeHashEntry> codeChanges = [];
-        while (ctx.Position < codeSeqEnd)
+        while (codeReader.HasNext)
         {
-            ctx.ReadSequenceLength();
-            ValueHash256 oldHash = ctx.DecodeValueKeccak() ?? CodeHashChange.NoCode;
-            ValueHash256 newHash = ctx.DecodeValueKeccak() ?? CodeHashChange.NoCode;
-            uint newCodeSize = ctx.DecodeUInt();
+            RlpReader entry = codeReader.EnterSequence(out int entryLength);
+            ValueHash256 oldHash = entry.DecodeValueKeccak() ?? CodeHashChange.NoCode;
+            ValueHash256 newHash = entry.DecodeValueKeccak() ?? CodeHashChange.NoCode;
+            uint newCodeSize = entry.DecodeUInt();
+            codeReader.ExitSequence(entry, entryLength);
             codeChanges.Add(new CodeHashEntry(oldHash, newHash, newCodeSize));
         }
 
-        int slotSeqLen = ctx.ReadSequenceLength();
-        int slotSeqEnd = ctx.Position + slotSeqLen;
+        ctx.ExitSequence(codeReader, codeLength);
+
+        RlpReader slotReader = ctx.EnterSequence(out int slotLength);
         List<SlotCountEntry> slotChanges = [];
-        while (ctx.Position < slotSeqEnd)
+        while (slotReader.HasNext)
         {
-            ctx.ReadSequenceLength();
-            ValueHash256 addressHash = ctx.DecodeValueKeccak()
-                ?? throw new RlpException("AddressHash must not be empty");
-            ulong oldCount = ctx.DecodeULong();
-            ulong newCount = ctx.DecodeULong();
+            RlpReader entry = slotReader.EnterSequence(out int entryLength);
+            ValueHash256 addressHash = entry.DecodeValueKeccak()
+                ?? throw new RlpReaderException("AddressHash must not be empty");
+            ulong oldCount = entry.DecodeULong();
+            ulong newCount = entry.DecodeULong();
+            slotReader.ExitSequence(entry, entryLength);
             slotChanges.Add(new SlotCountEntry(addressHash, oldCount, newCount));
         }
 
+        ctx.ExitSequence(slotReader, slotLength);
         return (blockNumber, stateRoot, codeChanges, slotChanges);
     }
 

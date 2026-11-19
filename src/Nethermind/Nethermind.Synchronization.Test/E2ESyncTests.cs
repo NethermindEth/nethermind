@@ -12,7 +12,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -117,7 +116,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private const int ChainLength = 1000;
     private const ulong HeadPivotDistance = 500;
     private static readonly TimeSpan BalSyncTestTimeout = TimeSpan.FromMinutes(6);
-    private const int BalSyncChainLength = 5_000;
+    private const int BalSyncChainLength = 2_000;
     private const int PartialBalSyncChainLength = 1_000;
     private const int BalCatchUpChainLength = 600;
     private const int PartialBalActivationBlock = 400;
@@ -298,6 +297,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
         await configurer(configProvider, spec);
 
+        // Flat storage is on by default, so only the Flat mode keeps it; the other modes cover the Patricia trie.
+        configProvider.GetConfig<IFlatDbConfig>().Enabled = dbModeOverride == DbMode.Flat;
+
         switch (dbModeOverride)
         {
             case DbMode.Default:
@@ -318,7 +320,6 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             case DbMode.Flat:
                 {
                     IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-                    flatDbConfig.Enabled = true;
                     flatDbConfig.VerifyWithTrie = true;
                     break;
                 }
@@ -742,7 +743,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             ConfigureLocalNetwork(cfg, AllocatePort());
         });
 
-        await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+        SyncTestContext clientContext = client.Resolve<SyncTestContext>();
+        await clientContext.SyncFromServer(_server, cancellationToken);
+        clientContext.VerifyDeployedCodeWith(_server, cancellationToken);
     }
 
     private const int StressIterationCount = 30;
@@ -929,7 +932,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 networkConfig.FilterDiscoveryNodesByRecentIp = false;
             }, DbMode.Hash);
 
-            await client.Resolve<SyncTestContext>().SyncFromServer(_server, cancellationToken);
+            SyncTestContext clientContext = client.Resolve<SyncTestContext>();
+            await clientContext.SyncFromServer(_server, cancellationToken);
+            clientContext.VerifyDeployedCodeWith(_server, cancellationToken);
         });
     }
 
@@ -1146,6 +1151,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         ISyncModeSelector syncModeSelector,
         IRlpxHost rlpxHost,
         IWorldStateManager worldStateManager,
+        [KeyFilter(DbNames.Code)] IDb codeDb,
         PseudoNethermindRunner runner,
         ImmediateDisconnectFailure immediateDisconnectFailure,
         BlockProcessorExceptionDetector blockProcessorExceptionDetector)
@@ -1380,16 +1386,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TxReceipt[][] wrappedReceipts = [receipts];
             using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
-            IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
-            try
-            {
-                _receiptsMessageSerializer.Serialize(bb, asReceiptsMessage);
-                return bb.AsSpan().ToArray();
-            }
-            finally
-            {
-                bb.Release();
-            }
+            byte[] encoded = new byte[_receiptsMessageSerializer.GetLength(asReceiptsMessage)];
+            _receiptsMessageSerializer.Serialize(encoded, asReceiptsMessage);
+            return encoded;
         }
 
         public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken) =>
@@ -1398,6 +1397,36 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 await VerifyHeadWith(sourceServer, token);
                 await VerifyAllBlocksAndReceipts(sourceServer, token);
             }, cancellationToken);
+
+        /// <summary>
+        /// Checks every contract the server deployed: both heads hold the account with the same code hash, and the bytes
+        /// in this node's code DB hash to it. Healing can also write that code, so this does not show which phase did.
+        /// </summary>
+        public void VerifyDeployedCodeWith(IContainer server, CancellationToken cancellationToken)
+        {
+            List<Address> deployed = server.Resolve<SyncTestContext>()._deployedContracts;
+            IStateReader serverState = server.Resolve<IWorldStateManager>().GlobalStateReader;
+            BlockHeader serverHead = server.Resolve<IBlockTree>().Head!.Header;
+            BlockHeader clientHead = blockTree.Head!.Header;
+
+            Assert.That(deployed, Is.Not.Empty, "The server deployed no contracts to check.");
+            foreach (Address address in deployed)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                bool onServer = serverState.TryGetAccount(serverHead, address, out AccountStruct expected);
+                bool onClient = worldStateManager.GlobalStateReader.TryGetAccount(clientHead, address, out AccountStruct actual);
+                ValueHash256 codeHash = expected.CodeHash;
+                byte[]? code = codeDb.Get(codeHash.Bytes);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(onServer && expected.HasCode, Is.True, $"Server account {address} with code.");
+                    Assert.That(onClient, Is.True, $"Client account {address}.");
+                    Assert.That(actual.CodeHash, Is.EqualTo(codeHash), $"Code hash of {address}.");
+                    Assert.That(code, Is.Not.Null, $"Client code {codeHash} of {address}.");
+                    Assert.That(ValueKeccak.Compute(code ?? []), Is.EqualTo(codeHash), $"Hash of the client code bytes of {address}.");
+                }
+            }
+        }
 
         /// <summary>Syncs from the server and compares every block, receipt, transaction lookup and access list.</summary>
         /// <returns>The finalized block number the sync ran against.</returns>

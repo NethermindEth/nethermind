@@ -45,7 +45,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
     [Test]
     public async Task Test_eth_simulate_erc()
     {
-        TestRpcBlockchain chain = await CreateChain();
+        using TestRpcBlockchain chain = await CreateChain();
 
         //Impose Opcode instead of ECRecoverPrecompile, it returns const TestItem.AddressE address
         byte[] code = Prepare.EvmCode
@@ -119,7 +119,7 @@ public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
     [Test]
     public async Task Test_eth_simulate_two_precompiles_moved_to_same_address_does_not_change_state_root()
     {
-        TestRpcBlockchain chain = await CreateChain();
+        using TestRpcBlockchain chain = await CreateChain();
 
         Hash256 parentStateRoot = chain.BlockFinder.Head!.StateRoot!;
 

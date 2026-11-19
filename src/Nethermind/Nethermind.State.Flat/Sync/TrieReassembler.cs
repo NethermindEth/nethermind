@@ -96,9 +96,10 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
     {
         token.ThrowIfCancellationRequested();
 
-        byte[]? rlp = address is null
-            ? reader.TryLoadStateRlp(path, ReadFlags.None)
-            : reader.TryLoadStorageRlp(address, path, ReadFlags.None);
+        byte[]? rlp = null;
+        _ = address is null
+            ? reader.TryLoadStateRlp(path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp))
+            : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref rlp));
 
         if (rlp is not null)
         {
@@ -126,7 +127,7 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
             {
                 UInt256 value = default;
                 if (reader.TryGetStorageRaw(address, path.Path, ref value))
-                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value).Bytes);
+                    return TrieNodeFactory.CreateLeaf(ReadOnlySpan<byte>.Empty, Rlp.Encode(value));
             }
 
             return null;
@@ -206,7 +207,8 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         TrieNode node,
         ReadOnlySpan<StorageRootRewrite> storageRootRewrites)
     {
-        Account oldAccount = _accountDecoder.Decode(node.Value.AsSpan()) ?? throw new InvalidOperationException($"Invalid account leaf at {path}");
+        if (!_accountDecoder.TryDecodeStruct(node.Value.AsSpan(), out AccountStruct oldAccount))
+            throw new InvalidOperationException($"Invalid account leaf at {path}");
 
         TreePath fullPath = path.Append(node.Key);
 
@@ -224,10 +226,10 @@ public sealed class TrieReassembler(IPersistence persistence, ILogManager logMan
         if (newStorageRoot is null)
             return node;
 
-        Account newAccount = oldAccount.WithChangedStorageRoot(newStorageRoot);
+        AccountStruct newAccount = new(oldAccount.Nonce, oldAccount.Balance, newStorageRoot, oldAccount.CodeHash);
         batch.SetAccountRaw(fullPath.Path, newAccount);
 
-        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.EncodeAsBytes(newAccount));
+        return TrieNodeFactory.CreateLeaf(node.Key!, _accountDecoder.Encode(newAccount));
     }
 
     private TrieNode Persist(IPersistence.IWriteBatch batch, Hash256? address, ref TreePath path, TrieNode node)
