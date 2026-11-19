@@ -62,6 +62,12 @@ case "$wire" in
     *) echo "unsupported streaming protocol" >&2; exit 1 ;;
 esac
 if [[ "$profile" == rollupx && "$wire" != prove.v2 ]]; then echo "unsupported native streaming protocol" >&2; exit 1; fi
+frontend_bind="${EEZ_CI_H2C_BIND:-:50061}"
+if [[ "$frontend_bind" != :50061 ]] &&
+    [[ ! "$frontend_bind" =~ ^127\.0\.0\.1:([1-9][0-9]{0,4})$ || "${BASH_REMATCH[1]}" -gt 65535 ]]; then
+    echo "expected a loopback CI streaming endpoint" >&2
+    exit 1
+fi
 cat > "$stream/haproxy.cfg" <<EOF
 global
     maxconn 8
@@ -74,7 +80,7 @@ defaults
     timeout client 120s
     timeout server 120s
 frontend composer
-    bind :50061 proto h2
+    bind $frontend_bind proto h2
     http-request deny unless { path $allowed_paths }
     default_backend prover
 backend prover
