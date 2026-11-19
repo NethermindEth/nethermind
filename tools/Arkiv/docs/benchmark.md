@@ -5,7 +5,7 @@
 - **Reference**: `arkiv-reth` built from [Arkiv-Network/arkiv](https://github.com/Arkiv-Network/arkiv) tag `v1.0.0`
   (827a83b; reth fork a91d851, golemdb aa20dbe) — the source of `ghcr.io/arkiv-network/arkiv-reth:v1.0.0`, the image
   Rabdi runs (`rabdi/images.env`). Release build, `--locked`, default settings (GolemDB head-only history).
-- **Nethermind**: `master` (dad2028c, .NET 11) with this plugin, `configs/rabdi.json` (archive: `Pruning.Mode=None`,
+- **Nethermind**: `master` (dad2028c, .NET 11) with this plugin, `configs/rabdi_archive.json` (`Pruning.Mode=None`,
   entity history on).
 
 `arkiv-op-reth` / `arkiv-op-geth` are not compared: they are the earlier OP Stack design (entities in the

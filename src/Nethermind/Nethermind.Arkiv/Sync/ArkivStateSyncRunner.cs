@@ -69,7 +69,10 @@ public sealed class ArkivStateSyncRunner(
             {
                 if (DateTime.UtcNow - lastWaitLog > TimeSpan.FromSeconds(30) && _logger.IsInfo)
                 {
-                    _logger.Info($"Arkiv state sync: waiting for a peer serving a store copy past block {blockTree.SyncPivot.BlockNumber} ({ArkivPeers().Count} arkiv/1 peers)");
+                    int peers = ArkivPeers().Count;
+                    _logger.Info(peers == 0
+                        ? "Arkiv state sync: no peer serves Arkiv state (arkiv/1): add a Nethermind node running the Arkiv plugin with --Network.StaticPeers, or sync from genesis with --config rabdi_archive"
+                        : $"Arkiv state sync: waiting for a peer serving a store copy past block {blockTree.SyncPivot.BlockNumber} ({peers} arkiv/1 peers)");
                     lastWaitLog = DateTime.UtcNow;
                 }
                 await Task.Delay(Retry, token);

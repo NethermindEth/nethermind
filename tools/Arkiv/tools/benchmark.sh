@@ -20,7 +20,7 @@ head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > "$out/jwt.hex"
 case "$client" in
   nethermind)
     engine=38551
-    setsid "${pin_client[@]}" dotnet "$NETHERMIND/nethermind.dll" -c rabdi -dd "$out/data" \
+    setsid "${pin_client[@]}" dotnet "$NETHERMIND/nethermind.dll" -c rabdi_archive -dd "$out/data" \
       --Network.StaticPeers "" --Network.MaxActivePeers 0 --Init.PeerManagerEnabled false \
       --JsonRpc.JwtSecretFile "$out/jwt.hex" --JsonRpc.Port 38545 --JsonRpc.EnginePort $engine \
       --Network.P2PPort 30414 --Network.DiscoveryPort 30414 > "$out/client.log" 2>&1 &

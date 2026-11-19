@@ -19,7 +19,7 @@ el_peers=$(grep -oE 'enode://[^ ]+' "$NETWORK_DIR/p2p.yaml" | paste -sd, -)
 cl_enrs=$(grep -oE 'enr:[A-Za-z0-9_-]+' "$NETWORK_DIR/p2p.yaml" | paste -sd, -)
 
 setsid dotnet "$NETHERMIND/nethermind.dll" \
-  -c rabdi -dd "$data/el" \
+  -c rabdi_archive -dd "$data/el" \
   --Network.StaticPeers "$el_peers" \
   --JsonRpc.JwtSecretFile "$data/jwt.hex" --JsonRpc.Port "$EL_RPC" --JsonRpc.EnginePort "$EL_ENGINE" \
   --Network.P2PPort "$EL_P2P" --Network.DiscoveryPort "$EL_P2P" ${EL_EXTRA_ARGS:-} \

@@ -17,7 +17,7 @@ The plugin is self-contained: it changes nothing in the rest of Nethermind, and 
 | --- | --- |
 | Plugin and its tests | `src/Nethermind/Nethermind.Arkiv`, `src/Nethermind/Nethermind.Arkiv.Test` |
 | Native shim (Rust, Arkiv's executor and GolemDB) | `src/native/arkiv-ffi` |
-| Network files | `src/Nethermind/Chains/rabdi.json`, `rabdi-genesis.json`; `src/Nethermind/Nethermind.Runner/configs/rabdi.json` |
+| Network files | `src/Nethermind/Chains/rabdi.json` (Rabdi's published genesis, also the chain spec); `src/Nethermind/Nethermind.Runner/configs/rabdi.json` (state sync), `rabdi_archive.json` (archive, from genesis) |
 | Runnable setup | `tools/Arkiv/scripts/run-rabdi.sh` (Nethermind + Lighthouse, no Docker), `run-devnet.sh` |
 | Compatibility report | [docs/compatibility.md](docs/compatibility.md) |
 | Sync and validation report | [docs/sync-report.md](docs/sync-report.md) |
@@ -82,26 +82,35 @@ peers, and syncs from genesis: every block is executed, nothing is restored from
 | Key | Default | |
 | --- | --- | --- |
 | `Enabled` | `false` | Turns the plugin on. |
-| `GenesisFile` | — | The network's execution genesis (with `config.arkiv.golemdb`). Block 0 is built from it. |
+| `GenesisFile` | `Init.ChainSpecPath` | The network's execution genesis (with `config.arkiv.golemdb`). Block 0 is built from it. Nethermind reads the same file as its chain spec; the plugin adds Arkiv's base-fee floor (the genesis base fee) to it. |
 | `StoreDirectory` | `<db>/arkiv_golemdb` | The GolemDB store (its copies go to `<store>.checkpoints`). |
 | `NativeLibrary` | beside the plugin | Path of `libarkiv_ffi.so`. |
 | `EntityHistory` | `true` | Keep every entity after every block, so `arkiv_getEntity` answers at past blocks. |
-| `CheckpointInterval` | `0` | Copy the GolemDB store every N blocks; a reorg below the store's head replays from the newest copy on the new branch. `configs/rabdi.json` sets 50 000. |
+| `CheckpointInterval` | `0` | Copy the GolemDB store every N blocks; a reorg below the store's head replays from the newest copy on the new branch. Both Rabdi configs set 50 000. |
 | `ServeState` | `true` | Serve a copy of the GolemDB store to peers that state-sync (`arkiv/1`). |
 | `ServedCopyAge` | `64` | The fewest blocks between two served copies; a new one is made, at the head, when a peer needs a newer copy than the last. |
 
-`configs/rabdi.json` is the archive configuration: `Pruning.Mode=None`, `FlatDb.Enabled=false` (the plugin needs the
-patricia backend), full sync, discovery off with the watchers as static peers.
+Two Rabdi configurations, both with `FlatDb.Enabled=false` (the plugin needs the patricia backend) and the watchers as
+static peers:
+
+| `--config` | Sync | History |
+| --- | --- | --- |
+| `rabdi` | state sync (`arkiv/1`, below), then follows the head; Nethermind's default pruning | from the sync point on |
+| `rabdi_archive` | every block from genesis | everything: accounts at every block (`Pruning.Mode=None`), every entity after every block (`EntityHistory`), the full transaction index |
 
 ### Joining by state sync
 
-Set `Sync.FastSync=true` and `Sync.SnapSync=true` (and drop `Pruning.Mode=None` unless the node should keep history from
-the sync point on). The node then fetches headers, and in place of snap's state phase fetches a GolemDB store copy from
-a peer running this plugin, over the `arkiv/1` devp2p capability. It checks the copy's head against the header of its
+`--config rabdi` (`Sync.FastSync` and `Sync.SnapSync` on) fetches headers, and in place of snap's state phase fetches a
+GolemDB store copy from a peer running this plugin, over the `arkiv/1` devp2p capability. It checks the copy's head against the header of its
 block (block hash and GolemDB root) and builds its local account trie from the store's accounts. Then it executes blocks
 from there on, as after any state sync. History before the sync point is not available on such a node. arkiv-reth
 watchers do not speak `arkiv/1`, so at least one peer must run Nethermind with this plugin; any synced node serves
-(`ServeState`).
+(`ServeState`), and the node uses whichever of its peers does.
+
+Finding such a peer: Rabdi's own nodes run with discovery off and are reached through the enodes the network publishes
+(the configs' static peers), so there is no discovery network to find a Nethermind node through yet. Until Nethermind
+nodes for Rabdi are published (as bootnodes or static peers), add one with `--Network.StaticPeers`; without one the node
+waits and says so, and `--config rabdi_archive` syncs from genesis instead.
 
 ## Tests
 
