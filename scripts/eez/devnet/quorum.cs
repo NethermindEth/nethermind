@@ -35,8 +35,9 @@ if (rollupx)
     using var inventoryFile = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(inputs, "test-binaries.json"), cancellationToken));
     var relative = inventoryFile.RootElement.GetProperty("node_e2e").GetString()!;
     binary = Path.GetFullPath(relative, upstream);
-    if (!binary.StartsWith(Path.Combine(upstream, "target", "debug", "deps") + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-        throw new InvalidOperationException("Unexpected prepared RollupX test executable path.");
+    var target = Path.Combine(upstream, "target") + Path.DirectorySeparatorChar;
+    if (Path.IsPathRooted(relative) || !binary.StartsWith(target, StringComparison.Ordinal) || !File.Exists(binary))
+        throw new InvalidOperationException($"Missing or invalid prepared RollupX test executable: {relative}");
     runtime = Path.Combine(inputs, "runtime");
     Environment.SetEnvironmentVariable("EEZ_TEST_PREBUILT", "true");
     Environment.SetEnvironmentVariable("EEZ_TEST_RUNTIME_BIN_DIR", runtime);
