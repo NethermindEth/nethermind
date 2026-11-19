@@ -551,7 +551,13 @@ public class TraceStoreRpcModuleTests
     {
         const int windowSize = 64;
         using CancellationTokenSource timeout = new();
-        CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance), timeout.Cancel);
+        // A second Cancel returns while the first still runs the callbacks that stop Parallel.For, so a concurrent
+        // reader could finish the window before the loop sees the cancellation. The lock holds it until they are done.
+        Lock cancelGate = new();
+        CountingTraceSerializer serializer = new(new ParityLikeTraceSerializer(LimboLogs.Instance), () =>
+        {
+            lock (cancelGate) timeout.Cancel();
+        });
         using TestContext test = new(parallelization, streaming, chainLength: windowSize + 1, serializer: serializer);
         StoreCallOnEveryBlock(test, serializer);
 
