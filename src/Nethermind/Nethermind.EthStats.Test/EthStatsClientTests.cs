@@ -62,9 +62,10 @@ namespace Nethermind.EthStats.Test
             }
         }
 
-        [Test]
+        [TestCase("\"primus::ping::1690000000000\"", 1, TestName = "Ping_handler_logs_send_failure_instead_of_throwing")]
+        [TestCase("\"primus::pong::1690000000000\"", 0, TestName = "Ping_handler_ignores_non_ping_message")]
         [CancelAfter(30_000)]
-        public async Task Ping_handler_logs_send_failure_instead_of_throwing()
+        public async Task Ping_handler_answers_only_pings_and_logs_send_failure(string message, int expectedSends)
         {
             TcpListener listener = new(IPAddress.Loopback, 0);
             listener.Start();
@@ -80,11 +81,12 @@ namespace Nethermind.EthStats.Test
             logManager.GetClassLogger<EthStatsClient>().Returns(clientLogger);
 
             using EthStatsClient ethClient = new($"ws://127.0.0.1:{port}/api", 100, sender, logManager);
-            await ethClient.InitAsync();
+            IWebsocketClient client = await ethClient.InitAsync();
 
-            await ethClient.HandleMessageAsync(ResponseMessage.TextMessage("\"primus::ping::1690000000000\""));
+            client.StreamFakeMessage(ResponseMessage.TextMessage(message));
 
-            logger.Received(1).Error(Arg.Any<string>(), Arg.Any<InvalidOperationException>());
+            await sender.Received(expectedSends).SendAsync(Arg.Any<IWebsocketClient>(), Arg.Any<LatencyMessage>(), Arg.Any<string>());
+            logger.Received(expectedSends).Error(Arg.Any<string>(), Arg.Any<InvalidOperationException>());
         }
 
         [TestCase("primus::ping::", TestName = "Ping_with_empty_timestamp_tail_fails_to_parse")]

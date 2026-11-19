@@ -117,7 +117,7 @@ namespace Nethermind.EthStats.Clients
         /// Runs detached from the <see cref="IWebsocketClient.MessageReceived"/> subscription, where an escaping
         /// exception would go unobserved, so failures are logged here instead.
         /// </remarks>
-        internal async Task HandleMessageAsync(ResponseMessage message)
+        private async Task HandleMessageAsync(ResponseMessage message)
         {
             if (_logger.IsDebug) _logger.Debug($"Received ETH stats message '{message}'");
             if (string.IsNullOrWhiteSpace(message.Text) || !message.Text.Contains(ServerPingMessage))
