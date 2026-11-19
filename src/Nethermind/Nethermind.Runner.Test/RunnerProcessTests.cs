@@ -20,44 +20,25 @@ namespace Nethermind.Runner.Test;
 /// <summary>Runs the runner binary built next to the tests and checks how its process ends.</summary>
 public partial class RunnerProcessTests
 {
-    [Test]
-    public async Task Version_exits_with_ok()
+    [TestCase(new[] { "--version" }, ExitCodes.Ok)]
+    [TestCase(new[] { "--config", "no-such-configuration" }, ExitCodes.GeneralError)]
+    public async Task Exits_with(string[] args, int expectedExitCode)
     {
-        using RunnerProcess runner = new("--version");
+        using RunnerProcess runner = new(args);
 
-        Assert.That(await runner.WaitForExitAsync(), Is.EqualTo(ExitCodes.Ok), runner.Output);
+        Assert.That(await runner.WaitForExitAsync(), Is.EqualTo(expectedExitCode), runner.Output);
     }
 
-    [Test]
-    public async Task Missing_configuration_exits_with_general_error()
-    {
-        using RunnerProcess runner = new("--config", "no-such-configuration");
-
-        Assert.That(await runner.WaitForExitAsync(), Is.EqualTo(ExitCodes.GeneralError), runner.Output);
-    }
-
-    [Test]
+    [TestCase("Initialization Completed")]
+    // Logged in the synchronous part of the start, before System.CommandLine holds the action's task.
+    [TestCase("Generating private key for the node")]
     [Platform(Exclude = "Win")]
-    public async Task Sigterm_during_the_start_waits_for_the_node_to_stop()
+    public async Task Sigterm_stops_the_node_with_its_exit_code(string logLine)
     {
         using TempPath dataDirectory = TempPath.GetTempDirectory();
         using RunnerProcess runner = StartIsolatedNode(dataDirectory.Path);
 
-        // Logged in the synchronous part of the start, before System.CommandLine holds the action's task.
-        await runner.WaitForOutputAsync("Generating private key for the node");
-        runner.Terminate();
-
-        await AssertStoppedWith(runner, ExitCodes.SigTerm);
-    }
-
-    [Test]
-    [Platform(Exclude = "Win")]
-    public async Task Sigterm_stops_the_node_with_its_exit_code()
-    {
-        using TempPath dataDirectory = TempPath.GetTempDirectory();
-        using RunnerProcess runner = StartIsolatedNode(dataDirectory.Path);
-
-        await runner.WaitForOutputAsync("Initialization Completed");
+        await runner.WaitForOutputAsync(logLine);
         runner.Terminate();
 
         await AssertStoppedWith(runner, ExitCodes.SigTerm);
