@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -878,13 +879,9 @@ public partial class VirtualMachine<TGasPolicy>(
             {
                 // The deposit failure consumed the gas the frame returned, so it ends with none left.
                 _txTracer.ReportActionRemainingGas(0);
-                if (spec.LimitCodeSize && code.Length > spec.MaxCodeSize)
+                if (!invalidCode)
                 {
-                    TraceCodeDepositError("max code size exceeded");
-                }
-                else if (!hasEnoughGas && !invalidCode && executionDepositCost != ulong.MaxValue)
-                {
-                    TraceCodeDepositError("contract creation code storage out of gas");
+                    TraceCodeDepositError(spec, code.Length, gasAvailableForCodeDeposit, hasEnoughGas);
                 }
                 _txTracer.ReportActionError(invalidCode ? EvmExceptionType.InvalidCode : EvmExceptionType.OutOfGas);
             }
@@ -1435,8 +1432,8 @@ public partial class VirtualMachine<TGasPolicy>(
         else if (currentState.ExecutionType.IsAnyCreate())
         {
             ulong gasAvailable = TGasPolicy.GetRemainingGas(currentState.Gas);
-            // EIP-3541 prefix validation precedes deposit gas, but not the EIP-170 size limit.
-            if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes) && codeDepositGasCost != ulong.MaxValue)
+            // EIP-3541 prefix validation precedes the EIP-170 size limit and deposit gas.
+            if (CodeDepositHandler.CodeIsInvalid(spec, outputBytes))
             {
                 _txTracer.ReportActionRemainingGas(0);
                 _txTracer.ReportActionError(EvmExceptionType.InvalidCode);
@@ -1449,14 +1446,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 if (spec.ChargeForTopLevelCreate)
                 {
                     _txTracer.ReportActionRemainingGas(0);
-                    if (spec.LimitCodeSize && outputBytes.Length > spec.MaxCodeSize)
-                    {
-                        TraceCodeDepositError("max code size exceeded");
-                    }
-                    else if (codeDepositGasCost != ulong.MaxValue)
-                    {
-                        TraceCodeDepositError("contract creation code storage out of gas");
-                    }
+                    TraceCodeDepositError(spec, outputBytes.Length, gasAvailable, hasEnoughGas: false);
                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
                 }
                 // Otherwise, report a successful action end with the remaining gas.
@@ -1478,8 +1468,26 @@ public partial class VirtualMachine<TGasPolicy>(
         }
     }
 
+    /// <summary>Reports Geth's error for a code deposit that fails its size limit or its deposit gas.</summary>
+    /// <remarks>
+    /// Before EIP-8037, Geth charges the deposit before it checks the EIP-170 size (go-ethereum #33601), so oversized
+    /// code the frame cannot pay for runs out of code storage gas; from EIP-8037 the size is checked first. Every order
+    /// fails the frame alike, so it changes only the reported error.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TraceCodeDepositError(string error) => _txTracer.ReportCodeDepositError(error);
+    private void TraceCodeDepositError(IReleaseSpec spec, int codeLength, ulong gasAvailable, bool hasEnoughGas)
+    {
+        if (spec.LimitCodeSize && codeLength > spec.MaxCodeSize
+            && (spec.IsEip8037Enabled || gasAvailable >= GasCostOf.CodeDeposit * (ulong)codeLength))
+        {
+            _txTracer.ReportCodeDepositError(string.Create(CultureInfo.InvariantCulture,
+                $"max code size exceeded: code size {codeLength} limit {spec.MaxCodeSize}"));
+        }
+        else if (!hasEnoughGas)
+        {
+            _txTracer.ReportCodeDepositError("contract creation code storage out of gas");
+        }
+    }
 
     private unsafe CallResult RunPrecompile(VmState<TGasPolicy> state) =>
         GetExecutionHandlers().RunPrecompile(this, state);
