@@ -447,7 +447,6 @@ namespace Nethermind.Init.Steps
                 deduplicatedDependency[node] = depsMap[node].Where(d => !childOnlyAllCombinedDeps.Contains(d)).ToList();
             }
 
-            // A name shared by two steps is written in full.
             HashSet<string> sharedNames = [.. stepInfoMap.Keys.GroupBy(static t => t.Name).Where(static g => g.Count() > 1).Select(static g => g.Key)];
             string Display(Type step) => sharedNames.Contains(step.Name) ? step.FullName ?? step.Name : step.Name;
 
