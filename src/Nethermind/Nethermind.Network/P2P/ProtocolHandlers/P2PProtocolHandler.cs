@@ -279,9 +279,9 @@ public class P2PProtocolHandler(
 
         if (Logger.IsTrace) TraceReceivedHello();
 
-        // Snappy applies to every message after a p2p v5 Hello, so it must be on before
-        // any check below, or later admission, can send a Disconnect.
-        if (hello.P2PVersion >= 5)
+        // Snappy applies to every message once both sides have sent a v5+ Hello, so it must be on before
+        // any check below, or later admission, can send a Disconnect. ProtocolVersion is still ours here.
+        if (ProtocolVersion >= 5 && hello.P2PVersion >= 5)
         {
             Session.EnableSnappy();
         }

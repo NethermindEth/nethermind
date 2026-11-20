@@ -133,21 +133,30 @@ namespace Nethermind.Network.Test.P2P
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
         }
 
-        [TestCase((byte)5, true)]
-        [TestCase((byte)4, false)]
-        public void Enables_snappy_for_v5_hello_before_rejecting_it(byte p2pVersion, bool snappy)
+        [TestCase(DisconnectReason.IdentitySameAsSelf, (byte)5, true)]
+        [TestCase(DisconnectReason.IdentitySameAsSelf, (byte)4, false)]
+        [TestCase(DisconnectReason.UnexpectedIdentity, (byte)5, true)]
+        [TestCase(DisconnectReason.UnexpectedIdentity, (byte)4, false)]
+        [TestCase(DisconnectReason.NoCapabilityMatched, (byte)5, true)]
+        [TestCase(DisconnectReason.NoCapabilityMatched, (byte)4, false)]
+        public void Enables_snappy_for_v5_hello_before_rejecting_it(DisconnectReason reason, byte p2pVersion, bool snappy)
         {
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             bool snappyEnabled = false;
-            bool? snappyEnabledAtDisconnect = null;
+            List<(DisconnectReason Reason, bool SnappyEnabled)> disconnects = [];
             _session.When(static session => session.EnableSnappy()).Do(_ => snappyEnabled = true);
-            _session.When(static session => session.InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>()))
-                .Do(_ => snappyEnabledAtDisconnect = snappyEnabled);
+            _session.When(static session => session.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
+                .Do(call => disconnects.Add((call.Arg<DisconnectReason>(), snappyEnabled)));
 
             using HelloMessage message = new()
             {
                 Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
-                NodeId = TestItem.PublicKeyB,
+                NodeId = reason switch
+                {
+                    DisconnectReason.IdentitySameAsSelf => TestItem.PublicKeyA,
+                    DisconnectReason.UnexpectedIdentity => TestItem.PublicKeyC,
+                    _ => TestItem.PublicKeyB,
+                },
                 ClientId = "Nethermind/v1.0",
                 ListenPort = 30303,
                 P2PVersion = p2pVersion,
@@ -162,7 +171,7 @@ namespace Nethermind.Network.Test.P2P
                 PacketType = (byte)message.PacketType,
             });
 
-            Assert.That(snappyEnabledAtDisconnect, Is.EqualTo(snappy));
+            Assert.That(disconnects, Is.EqualTo(new[] { (reason, snappy) }));
         }
 
         [Test]
