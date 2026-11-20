@@ -93,8 +93,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
     /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
     /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
-    /// Under EIP-7928 all the credit leaves in the block access list is the account's entry, which the call that resolved the
-    /// frame's code, or the transaction that targets it, has already made.
+    /// Under EIP-7928 all the credit leaves in the block access list is the account's entry, which is already there: the
+    /// call or transaction that targets the account made it while resolving the account's code, and under DELEGATECALL
+    /// and CALLCODE the account is the caller's, whose entry was made the same way or by its creation.
     /// </remarks>
     private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
     {

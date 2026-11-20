@@ -1054,6 +1054,14 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Eip7928_value_less_tx_records_recipient()
+    {
+        InitWorldState(TestState, [(byte)Instruction.STOP]);
+        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
+        AssertPureAccountRead(bal.GetAccountChanges(_callTargetAddress));
+    }
+
     [TestCase(Instruction.CREATE, Instruction.SLOAD, TestName = "EIP7928_create_sload_selfdestruct_records_storage_read")]
     [TestCase(Instruction.CREATE, Instruction.SSTORE, TestName = "EIP7928_create_sstore_selfdestruct_records_storage_read")]
     [TestCase(Instruction.CREATE2, Instruction.SLOAD, TestName = "EIP7928_create2_sload_selfdestruct_records_storage_read")]
