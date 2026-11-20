@@ -630,6 +630,7 @@ public class AdminModuleTests
         TimeSpan timeout = TimeSpan.FromSeconds(30);
         ConcurrentQueue<string> sent = new();
         ConcurrentQueue<string> traces = new();
+        int tracedWhilePending = 0;
         TaskCompletionSource firstSendStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<int> firstSendGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource allTraced = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -646,6 +647,7 @@ public class AdminModuleTests
         // Recorded from here on, past the constructor's own trace line.
         logger.When(l => l.Trace(Arg.Any<string>())).Do(call =>
         {
+            if (!firstSendGate.Task.IsCompleted) Interlocked.Increment(ref tracedWhilePending);
             traces.Enqueue(call.Arg<string>());
             if (traces.Count == 4) allTraced.TrySetResult();
         });
@@ -658,7 +660,6 @@ public class AdminModuleTests
             _existingSession1.MsgDelivered += Raise.EventWith(new object(), messageEventArgs);
             _peerPool.PeerRemoved += Raise.EventWith(new object(), peerEventArgs);
             int sentWhileHeld = sent.Count;
-            int tracedWhileHeld = traces.Count;
             firstSendGate.TrySetResult(0);
             await allTraced.Task.WaitAsync(timeout);
 
@@ -667,7 +668,7 @@ public class AdminModuleTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(sentWhileHeld, Is.EqualTo(1), "the events raised during a pending send wait in the queue behind it");
-                Assert.That(tracedWhileHeld, Is.Zero, "a send is traced only after it completes");
+                Assert.That(tracedWhilePending, Is.Zero, "a send is traced only after it completes");
                 Assert.That(sent, Is.EqualTo(new[]
                 {
                     BuildExpectedPeerLifecycleNotification(id, "add", peerHash),
