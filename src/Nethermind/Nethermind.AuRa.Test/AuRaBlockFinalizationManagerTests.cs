@@ -62,6 +62,57 @@ namespace Nethermind.AuRa.Test
             Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(1));
         }
 
+        [Test]
+        public void Initial_scan_reads_every_level_down_to_genesis_when_no_level_is_finalized()
+        {
+            // Only this manager writes AuRa finalization flags, so a chain synced after the merge has none
+            // and the eager startup scan walks from the head all the way down to genesis.
+            const ulong headNumber = 200_000;
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.Head.Returns(Build.A.Block.WithNumber(headNumber).TestObject);
+            CountingChainLevelInfoRepository chainLevelInfoRepository = new();
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTree, chainLevelInfoRepository, _validatorStore, _logManager);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chainLevelInfoRepository.LoadLevelCalls, Is.EqualTo(headNumber + 1));
+                Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(0UL));
+            }
+        }
+
+        [Test]
+        public void Initial_scan_stops_at_the_last_finalized_level()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.Head.Returns(Build.A.Block.WithNumber(2_000).TestObject);
+            CountingChainLevelInfoRepository chainLevelInfoRepository = new(finalizedLevel: 1_301);
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTree, chainLevelInfoRepository, _validatorStore, _logManager);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chainLevelInfoRepository.LoadLevelCalls, Is.EqualTo(2_000UL - 1_301UL + 1UL));
+                Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(1_301UL));
+            }
+        }
+
+        [Test]
+        public void Skips_initial_scan_when_last_finalized_level_is_not_loaded()
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.Head.Returns(Build.A.Block.WithNumber(200_000).TestObject);
+            CountingChainLevelInfoRepository chainLevelInfoRepository = new();
+
+            AuRaBlockFinalizationManager finalizationManager = new(blockTree, chainLevelInfoRepository, _validatorStore, _logManager, loadLastFinalizedBlockLevel: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(chainLevelInfoRepository.LoadLevelCalls, Is.EqualTo(0UL));
+                Assert.That(finalizationManager.LastFinalizedBlockLevel, Is.EqualTo(0UL));
+            }
+        }
+
         private void FinalizeToLevel(ulong upperLevel, IChainLevelInfoRepository chainLevelInfoRepository)
         {
             for (ulong i = 0; i <= upperLevel; i++)

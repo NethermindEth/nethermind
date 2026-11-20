@@ -6,6 +6,8 @@ using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Processing;
@@ -26,6 +28,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -77,6 +80,16 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealer, MergeSealer>()
 
                 .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
+                // Overrides AuRaModule's registration: on a post-merge head, AuRa finality is never consulted
+                // again (post-merge blocks bypass the AuRa validator, the branch processor is not wired and the
+                // manager is disposed at startup), so skip the backward ChainLevelInfo scan that would otherwise
+                // read every level back to the merge transition, or down to genesis on post-merge synced nodes.
+                // Pre-merge heads (archive sync from genesis) keep the eager load MultiValidator depends on.
+                .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters, IPoSSwitcher>(
+                    static (blockTree, chainLevelInfoRepository, validatorStore, logManager, param, poSSwitcher) =>
+                        new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition,
+                            loadLastFinalizedBlockLevel: !poSSwitcher.IsHeadPostMerge(blockTree)))
 
                 // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
                 // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.
