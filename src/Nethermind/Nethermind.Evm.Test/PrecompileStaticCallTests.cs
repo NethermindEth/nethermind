@@ -183,6 +183,7 @@ public class PrecompileStaticCallTests : VirtualMachineTestsBase
         byte[] directOutput = directTracer.ReturnValue;
 
         Assert.That(directOutput, Is.EqualTo(input), "precondition: ID returns its input as the transaction output");
+        Assert.That(directOutput, Is.SameAs(input), "a top-level ID call returns the transaction's calldata without copying it");
 
         byte[] later = BuildIdentityChain([32, 32], out _, Instruction.CALL);
         (Block laterBlock, Transaction laterTx) = PrepareTx(Activation, 100_000UL, later);
