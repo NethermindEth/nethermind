@@ -12,9 +12,8 @@ namespace Nethermind.Blockchain.Blocks;
 public static class DependencyProofFinality
 {
     /// <summary>Whether <paramref name="header"/> is the finalized block or one of its ancestors, so its proof is not needed.</summary>
-    /// <remarks>Below the finalized height a block is an ancestor when it is the main-chain block of its level, or, while beacon
-    /// sync has not yet made that chain canonical, the beacon main-chain block, which leads to the head the finalized block
-    /// precedes.</remarks>
+    /// <remarks>Below the finalized height a block is an ancestor when it is the beacon main-chain block of its level, which leads
+    /// to the head the finalized block precedes, or, where beacon sync marks none, the main-chain block.</remarks>
     public static bool IsTrusted(IBlockTree blockTree, BlockHeader header)
     {
         if (header.Hash is not { } hash || blockTree.FindFinalizedHeader() is not { } finalized || header.Number > finalized.Number)
@@ -25,12 +24,17 @@ public static class DependencyProofFinality
 
         ChainLevelInfo? level = blockTree.FindLevel(header.Number);
         if (level is null) return false;
-        if (level.MainChainBlock?.BlockHash == hash) return true;
+
+        // While beacon sync marks a chain at this height, it is the one leading to the finalized block, not the old main chain.
+        bool beaconChainMarked = false;
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            if (blockInfo.IsBeaconMainChain && blockInfo.BlockHash == hash) return true;
+            if (!blockInfo.IsBeaconMainChain) continue;
+            if (blockInfo.BlockHash == hash) return true;
+            beaconChainMarked = true;
         }
 
+        if (!beaconChainMarked && level.MainChainBlock?.BlockHash == hash) return true;
         return false;
     }
 }

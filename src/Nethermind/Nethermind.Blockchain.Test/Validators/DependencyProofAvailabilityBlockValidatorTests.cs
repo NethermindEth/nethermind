@@ -47,6 +47,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     [TestCase("beacon-ancestor", BlockErrorMessages.MissingDependencyProof, true)]
     [TestCase("side-chain", BlockErrorMessages.MissingDependencyProof, false)]
     [TestCase("unmarked", BlockErrorMessages.MissingDependencyProof, false)]
+    [TestCase("canonical-off-beacon", BlockErrorMessages.MissingDependencyProof, false)]
     [TestCase("canonical-ancestor", BlockErrorMessages.InvalidRecursiveStark, false)]
     public void Trusts_finality_only_for_a_missing_proof_of_a_finalized_ancestor(string relation, string innerError, bool expected)
     {
@@ -63,7 +64,11 @@ public class DependencyProofAvailabilityBlockValidatorTests
         blockTree.FindFinalizedHeader().Returns(finalized);
         BlockInfo levelBlock = new(relation == "side-chain" ? TestItem.KeccakH : block.Hash!, 0,
             relation == "beacon-ancestor" ? BlockMetadata.BeaconMainChain : BlockMetadata.None);
-        blockTree.FindLevel(block.Number).Returns(new ChainLevelInfo(relation is "canonical-ancestor" or "side-chain", levelBlock));
+        // canonical-off-beacon: the block is still canonical, but beacon sync marks another chain at its height.
+        BlockInfo[] levelBlocks = relation == "canonical-off-beacon"
+            ? [levelBlock, new BlockInfo(TestItem.KeccakG, 0, BlockMetadata.BeaconMainChain)]
+            : [levelBlock];
+        blockTree.FindLevel(block.Number).Returns(new ChainLevelInfo(relation is "canonical-ancestor" or "side-chain" or "canonical-off-beacon", levelBlocks));
 
         bool valid = new DependencyProofAvailabilityBlockValidator(inner, store, blockTree)
             .ValidateSuggestedBlock(block, Build.A.BlockHeader.TestObject, out string? error);

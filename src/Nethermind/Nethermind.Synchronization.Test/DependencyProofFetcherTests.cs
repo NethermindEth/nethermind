@@ -174,6 +174,31 @@ public class DependencyProofFetcherTests
         }
     }
 
+    [Test]
+    public async Task Skips_a_canonical_ancestor_of_the_finalized_block()
+    {
+        BlockHeader ancestor = Committed(5, Proof);
+        PeerInfo source = Peer(12, [Proof]);
+        (DependencyProofFetcher fetcher, IBlockTree blockTree) = FetcherWithTree(Committed(8, [9]));
+        blockTree.FindLevel(5).Returns(new ChainLevelInfo(true, new BlockInfo(ancestor.Hash!, 0)));
+
+        (byte[]?[] proofs, bool[] unavailable) = await fetcher.FetchAsync(source, [ancestor], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofs, Is.EqualTo(new byte[]?[] { null }));
+            Assert.That(unavailable, Is.EqualTo(new[] { false }));
+            await source.SyncPeer.DidNotReceiveWithAnyArgs().GetDependencyProofs(default!, default);
+        }
+    }
+
+    private static (DependencyProofFetcher Fetcher, IBlockTree BlockTree) FetcherWithTree(BlockHeader finalized)
+    {
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        blockTree.FindFinalizedHeader().Returns(finalized);
+        return (new DependencyProofFetcher(Substitute.For<ISyncPeerPool>(), blockTree, LimboLogs.Instance), blockTree);
+    }
+
     private static (DependencyProofFetcher Fetcher, ISyncPeerPool Pool) Fetcher(IEnumerable<PeerInfo> peers, BlockHeader? finalized = null)
     {
         ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
