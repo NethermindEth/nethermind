@@ -155,10 +155,10 @@ class Guard(unittest.TestCase):
     def test_patch_changes(self):
         patch = "\n".join([
             "diff --git a/src/Nethermind/Nethermind.Core/A.cs b/src/Nethermind/Nethermind.Core/A.cs",
-            "index 1111111..2222222 100644", "--- a/x", "+++ b/x", "@@ -1 +1 @@", "-a", "+b",
+            "index 1111111..2222222 100644", f"--- a/{self.hit}", f"+++ b/{self.hit}", "@@ -1 +1 @@", "--- a", "+++ b",
             "diff --git a/src/Nethermind/Nethermind.Analyzers/R.cs b/src/Nethermind/Nethermind.Analyzers/R.cs",
-            "new file mode 100644", "index 0000000..3333333", "--- /dev/null", "+++ b/x", "@@ -0,0 +1 @@", "+class R { }",
-            f"diff --git a/{UNSHIPPED} b/{UNSHIPPED}", "index 4444444..5555555 100644", "--- a/x", "+++ b/x", "@@ -3,0 +4 @@",
+            "new file mode 100644", "index 0000000..3333333", "--- /dev/null", "+++ b/src/Nethermind/Nethermind.Analyzers/R.cs", "@@ -0,0 +1 @@", "+class R { }",
+            f"diff --git a/{UNSHIPPED} b/{UNSHIPPED}", "index 4444444..5555555 100644", f"--- a/{UNSHIPPED}", f"+++ b/{UNSHIPPED}", "@@ -3,0 +4 @@",
             self.row[0],
             "diff --git a/scripts/rule-bot/run b/scripts/rule-bot/run", "new file mode 100755", "index 0000000..6666666",
             "diff --git a/src/a.cs b/src/b.cs", "similarity index 100%", "rename from src/a.cs", "rename to src/b.cs",
@@ -168,11 +168,35 @@ class Guard(unittest.TestCase):
                                    ("X", "scripts/rule-bot/run"), ("X", "src/b.cs")])
         self.assertEqual(udiff, self.row)
 
+    def test_patch_changes_sees_files_without_git_header(self):
+        patch = "\n".join(["--- /dev/null", "+++ b/.github/workflows/evil.yml", "@@ -0,0 +1 @@", "+on: push"])
+        changes, _ = rb.patch_changes(patch)
+        self.assertEqual(changes, [("X", ".github/workflows/evil.yml")])
+        self.assertTrue(rb.check_paths(changes, [], None, set()))
+
+    def test_patch_changes_sees_second_file_inside_git_block(self):
+        patch = "\n".join([
+            f"diff --git a/{self.hit} b/{self.hit}", "index 1111111..2222222 100644", f"--- a/{self.hit}", f"+++ b/{self.hit}",
+            "@@ -1 +1 @@", "-a", "+b", "--- /dev/null", "+++ b/src/Nethermind/Directory.Build.props", "@@ -0,0 +1 @@", "+<Project />"])
+        changes, _ = rb.patch_changes(patch)
+        self.assertIn(("X", "src/Nethermind/Directory.Build.props"), changes)
+
     def test_test_class_is_validated(self):
         self.assertEqual(rb.test_argv("FooAnalyzerTests")[-1], "FullyQualifiedName~FooAnalyzerTests")
         for bad in ("Foo; rm -rf /", "Foo'", "", None):
             with self.assertRaises(SystemExit):
                 rb.test_argv(bad)
+
+
+class Baseline(unittest.TestCase):
+    def test_route_b_clusters_have_trusted_samples(self):
+        baseline = rb.load(os.path.join(os.path.dirname(rb.__file__), "baseline.json"))
+        routes = rb.load(os.path.join(os.path.dirname(rb.__file__), "routes.json"))
+        for k, r in routes.items():
+            if r["route"] == "B":
+                samples = baseline["clusters"][k].get("samples", [])
+                self.assertTrue(samples, k)
+                self.assertTrue(all(s["body"] and not rb.is_bot(s["author"]) for s in samples), k)
 
 
 class RouteB(unittest.TestCase):

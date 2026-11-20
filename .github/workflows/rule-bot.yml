@@ -166,6 +166,8 @@ jobs:
             python3 scripts/rule-bot/rule_bot.py guard --patch "$DATA/analyzer.patch" --new-id "$ROUTE_B_ID"
             cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
             git apply "$DATA/analyzer.patch"
+            git add -N .
+            python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --new-id "$ROUTE_B_ID"
             extra=(--extra "$ROUTE_B_ID")
           fi
           [ -d "$RUNNER_TEMP/rule-bot" ] || cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
@@ -315,6 +317,8 @@ jobs:
           if [ "$ROUTE" = B ]; then
             python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --patch "$DATA/analyzer.patch" --new-id "$IDS"
             git apply "$DATA/analyzer.patch"
+            git add -N .
+            python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --new-id "$IDS"
           fi
           python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" overlay --ids "$DATA/package-ids.txt" --exclude-tests
 
@@ -354,11 +358,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: rule-bot-fix
-          path: |
-            rule-bot/data/fix.patch
-            rule-bot/data/body.md
-            rule-bot/data/candidates.json
-            rule-bot/data/fix-hits.txt
+          path: rule-bot/data/fix.patch
 
   open-pr:
     name: Open the pull request
@@ -387,6 +387,12 @@ jobs:
           name: rule-bot-fix
           path: rule-bot/data
 
+      - name: Download the package chosen before the fix
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-result
+          path: ${{ runner.temp }}/rule-bot-result
+
       - name: Open the pull request
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
@@ -403,10 +409,10 @@ jobs:
           cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
           new_id=()
           [ "$ROUTE" = B ] && new_id=(--new-id "$IDS")
-          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --patch "$DATA/fix.patch" --files "$DATA/fix-hits.txt" "${new_id[@]}"
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --patch "$DATA/fix.patch" --files "$RUNNER_TEMP/rule-bot-result/fix-hits.txt" "${new_id[@]}"
           git apply "$DATA/fix.patch"
           git add -N .
-          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --files "$DATA/fix-hits.txt" "${new_id[@]}"
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --files "$RUNNER_TEMP/rule-bot-result/fix-hits.txt" "${new_id[@]}"
           branch="rule-bot/$SLUG-$GITHUB_RUN_ID"
           title="Enable ${IDS//,/, } for production code"
           [ "$ROUTE" = B ] && title="Add analyzer $IDS"
@@ -417,7 +423,7 @@ jobs:
           git -c core.hooksPath=/dev/null commit -m "$title"
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
           gh label create rule-bot --color 5319E7 --description "Opened by the review rule bot" 2>/dev/null || true
-          gh pr create -B master -H "$branch" -t "$title" -F "$DATA/body.md" -l rule-bot
+          gh pr create -B master -H "$branch" -t "$title" -F "$RUNNER_TEMP/rule-bot-result/body.md" -l rule-bot
 
   save-state:
     name: Save collection state

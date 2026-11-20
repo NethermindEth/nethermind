@@ -500,18 +500,33 @@ def check_paths(changes, unshipped_diff, new_id, fix_files=()):
 
 
 def patch_changes(text):
-    changes, udiff, path, status, in_unshipped = [], [], None, None, False
+    changes, udiff, path, status, in_unshipped, old_left, new_left = [], [], None, None, False, 0, 0
 
     def flush():
         if path:
             changes.append((status, path))
 
     for line in text.splitlines():
+        if old_left > 0 or new_left > 0:
+            tag = line[:1]
+            old_left -= tag in " -"
+            new_left -= tag in " +"
+            if in_unshipped and tag in "+-":
+                udiff.append(line)
+            continue
+        m = re.match(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", line)
+        if m:
+            old_left, new_left = int(m[1] or 1), int(m[2] or 1)
+            continue
         m = re.match(r"^diff --git a/(\S+) b/(\S+)$", line)
         if m:
             flush()
             path, status = m[2], "M" if m[1] == m[2] else "R"
             in_unshipped = path == UNSHIPPED
+            continue
+        m = re.match(r"^(?:---|\+\+\+) (?:[ab]/)?(\S+)", line)
+        if m and m[1] != "/dev/null" and m[1] != path:
+            changes.append(("X", m[1]))
             continue
         if path is None:
             continue
@@ -523,8 +538,6 @@ def patch_changes(text):
             status = "X"
         elif re.match(r"^index [0-9a-f]+\.\.[0-9a-f]+ (?!100644)", line):
             status = "X"
-        elif in_unshipped and not line.startswith(("--- ", "+++ ", "index ", "@@")) and line[:1] in "+-":
-            udiff.append(line)
     flush()
     return changes, udiff
 
@@ -543,7 +556,7 @@ def guard(args):
         out = subprocess.run(["git", "diff", "--summary", args.base], capture_output=True, text=True, check=True).stdout
         changes += [("X", l.split()[-1]) for l in out.splitlines() if re.search(r"mode (120000|100755)|mode change", l)]
     bad = check_paths(changes, udiff, args.new_id, fix_files_of(args.files))
-    bad += [f"{p}: symlink, executable or mode change" for st, p in changes if st == "X"]
+    bad += [f"{p}: symlink, mode, rename, binary or unlisted header change" for st, p in changes if st == "X"]
     for b in bad:
         print(f"guard: FAIL {b}")
     print(f"guard: {'PASS' if not bad else 'FAIL'} ({len(changes)} files)")
