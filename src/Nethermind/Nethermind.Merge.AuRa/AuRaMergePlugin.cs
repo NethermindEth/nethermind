@@ -6,6 +6,8 @@ using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Api.Extensions;
 using Nethermind.Api.Steps;
 using Nethermind.Consensus.Processing;
@@ -26,6 +28,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Network;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -77,6 +80,19 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<ISealer, MergeSealer>()
 
                 .AddDecorator<IGossipPolicy, MergeGossipPolicy>()
+
+                // Overrides AuRaModule's registration. This relies on the plugin order (Aura before AuRaMerge in the
+                // default Plugin.PluginOrder), so that this registration is the last one and wins.
+                // On a post-merge head, skip only the startup backward ChainLevelInfo scan for the last AuRa-finalized
+                // level: it would read every level back to the merge transition, or down to genesis on post-merge
+                // synced nodes, and its result no longer selects the active validator (post-merge blocks bypass the
+                // AuRa validator, the branch processor is not wired and the manager is disposed at startup). Later
+                // queries such as GetFinalizationLevel, used when re-executing historical blocks, still work.
+                // Pre-merge heads (archive sync from genesis) keep the eager load MultiValidator depends on.
+                .AddSingleton<IAuRaBlockFinalizationManager, IBlockTree, IChainLevelInfoRepository, IValidatorStore, ILogManager, AuRaChainSpecEngineParameters, IPoSSwitcher>(
+                    static (blockTree, chainLevelInfoRepository, validatorStore, logManager, param, poSSwitcher) =>
+                        new AuRaBlockFinalizationManager(blockTree, chainLevelInfoRepository, validatorStore, logManager, param.TwoThirdsMajorityTransition,
+                            loadLastFinalizedBlockLevel: !poSSwitcher.IsHeadPostMerge(blockTree)))
 
                 // Disposes the AuRa finalization manager at the merge transition. Resolved eagerly in
                 // InitializeBlockchainAuRaMerge for its constructor side-effect; Autofac owns disposal.
