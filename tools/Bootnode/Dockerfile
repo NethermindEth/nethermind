@@ -58,7 +58,8 @@ EXPOSE 30303/udp 8546 6060
 
 COPY --from=build /publish .
 
-# The chiseled base runs as a non-root user, which cannot read the root-owned data of existing volumes
+# Run as root: the base's non-root user can neither create the key in a new data volume, whose root is
+# root-owned, nor read the root-owned 0600 key of volumes written by earlier images
 USER root
 
 ENTRYPOINT ["./Nethermind.Bootnode"]
