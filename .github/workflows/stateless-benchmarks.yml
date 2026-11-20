@@ -290,7 +290,7 @@ jobs:
               || { echo "::error::Checksum failed for ${input}"; exit 1; }
           done
           dotnet run --project tools/StatelessInputGen/StatelessInputGen.csproj -c release -- \
-            convert --source "$bin" --output "$bin" | grep -E '^[^ ]+\.nti [0-9a-f]+ [0-9a-f]{64}$' > "$RUNNER_TEMP/trusted-inputs.txt"
+            convert --no-hints --source "$bin" --output "$bin" | grep -E '^[^ ]+\.nti [0-9a-f]+ [0-9a-f]{64}$' > "$RUNNER_TEMP/trusted-inputs.txt"
 
       - name: Measure
         working-directory: ${{ env.GUEST_DIR }}

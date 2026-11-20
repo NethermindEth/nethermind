@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Db.Test;
@@ -35,6 +37,9 @@ public class SimpleFilePublicKeyDbTests
             dict[key] = value;
         }
 
+        // The writer stores an empty value as "key," and a line end
+        dict[[0xee, 0xee]] = [];
+
         using (filePublicKeyDb.StartWriteBatch())
         {
             foreach (KeyValuePair<byte[], byte[]> kv in dict)
@@ -47,8 +52,44 @@ public class SimpleFilePublicKeyDbTests
         Assert.That(copy.Keys.Count, Is.EqualTo(dict.Count));
         foreach (KeyValuePair<byte[], byte[]> kv in dict)
         {
-            Assert.That(filePublicKeyDb[kv.Key], Is.EqualTo(kv.Value));
+            Assert.That(copy[kv.Key], Is.EqualTo(kv.Value));
         }
+    }
+
+    [TestCase("\n")]
+    [TestCase("\r\n")]
+    public void Load_skips_malformed_lines_and_keeps_the_valid_ones(string newLine)
+    {
+        string[] lines =
+        [
+            "aa,",      // empty value, as the writer emits it
+            "zz",       // no comma, followed by a valid line
+            "bb,01",
+            "",         // blank
+            "zz,01",    // non-hex key
+            "bb,zz",    // non-hex value, does not overwrite bb
+            "aa,bb,cc", // extra comma
+            "dd,01",
+            "dd,02",    // duplicate key, the last one wins
+            "abc,d",    // odd-length hex
+        ];
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string filePath = Path.Combine(directory.Path, SimpleFilePublicKeyDb.DbFileName);
+        File.WriteAllText(filePath, string.Join(newLine, lines) + newLine + "ee,03"); // the unterminated tail is ignored
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsWarn.Returns(true);
+
+        SimpleFilePublicKeyDb db = new("Test", directory.Path, new OneLoggerLogManager(new ILogger(logger)));
+
+        Assert.That(db.GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value.ToHexString()),
+            Is.EquivalentTo(new Dictionary<string, string> { ["aa"] = "", ["bb"] = "01", ["dd"] = "02", ["0abc"] = "0d" }));
+        string[] warnings = [.. logger.ReceivedCalls()
+            .Where(static call => call.GetMethodInfo().Name == nameof(InterfaceLogger.Warn))
+            .Select(static call => (string)call.GetArguments()[0]!)];
+        Assert.That(warnings, Is.EqualTo(new[] { 2, 4, 5, 6, 7 }
+            .Select(line => $"Skipping malformed line {line} in {filePath}, expected a hex key and a hex value separated by a comma.")
+            .Append("Malformed Test. Ignoring...")));
     }
 
     [Test]

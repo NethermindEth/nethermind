@@ -216,6 +216,27 @@ namespace Nethermind.TxPool.Test.Collections
             Assert.That(pool.Count, Is.EqualTo(expectedCapacity));
         }
 
+        /// <summary>Shrinking below zero drains the pool and then finds no worst value to evict, where the repair has
+        /// to give up. The items start at 1: an int key's default is a real key.</summary>
+        [Test]
+        public void Shrink_gives_up_once_no_worst_value_is_left()
+        {
+            ShrinkableDistinctPool pool = new(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            for (int i = 1; i <= 3; i++)
+            {
+                pool.TryInsert(i, new WithFinalizer(i));
+            }
+
+            // A spinning eviction holds the pool lock for good, so it runs on its own thread behind a bounded wait.
+            Task shrink = Task.Factory.StartNew(() => pool.Shrink(-1), TaskCreationOptions.LongRunning);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(shrink.Wait(TimeSpan.FromSeconds(10)), Is.True, "the repair must give up when no worst value is left");
+                Assert.That(pool.Count, Is.Zero);
+            }
+        }
+
         [Test]
         public void Capacity_is_never_exceeded_when_there_are_duplicates()
         {

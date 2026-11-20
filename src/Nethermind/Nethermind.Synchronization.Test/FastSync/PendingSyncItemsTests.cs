@@ -204,6 +204,59 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
         }
 
+        // This trie type is four levels deep so far, the other one has seen a leaf: the deepest item is P0, the two
+        // shallower ones P1. Measured against the other maximum, all three would be P1 and come out in reverse push
+        // order.
+        [TestCase(NodeDataType.Storage, 64, 0)]
+        [TestCase(NodeDataType.State, 0, 64)]
+        public void Depth_is_measured_against_the_maximum_of_its_own_trie(NodeDataType nodeDataType, byte maxStateLevel, byte maxStorageLevel)
+        {
+            IPendingSyncItems items = Init(isSnapSync: true); // no batch limit before the first state leaf
+            items.MaxStateLevel = maxStateLevel;
+            items.MaxStorageLevel = maxStorageLevel;
+
+            StateSyncItem deep = PushItem(items, nodeDataType, 4, 0);
+            StateSyncItem middle = PushItem(items, nodeDataType, 1, 0);
+            StateSyncItem shallow = PushItem(items, nodeDataType, 0, 0);
+            Assert.That(items.TakeBatch(256), Is.EqualTo(new[] { deep, shallow, middle }));
+        }
+
+        // A drained item of the other type leaves its rightness maximum at 10. Against this type's own maximum of 1000
+        // the middle item is P1 and taken first; against 10, all three would be P2 and the last one taken first.
+        [TestCase(NodeDataType.Storage, NodeDataType.State)]
+        [TestCase(NodeDataType.State, NodeDataType.Storage)]
+        public void Rightness_is_measured_against_the_maximum_of_its_own_trie(NodeDataType nodeDataType, NodeDataType otherType)
+        {
+            IPendingSyncItems items = Init(isSnapSync: true);
+            items.MaxStateLevel = 64;
+            items.MaxStorageLevel = 64;
+            PushItem(items, otherType, 1, 10);
+            items.TakeBatch(1);
+
+            PushItem(items, nodeDataType, 1, 1000);
+            StateSyncItem left = PushItem(items, nodeDataType, 1, 400);
+            PushItem(items, nodeDataType, 1, 1000);
+            Assert.That(items.TakeBatch(256)[0], Is.SameAs(left));
+        }
+
+        // The first seven rows fit in 32 bits and are unchanged; the last four wrapped before (old value in the comment).
+        [TestCase(NodeType.Branch, 0, 0u, 15, 0xF000_0000u)]
+        [TestCase(NodeType.Branch, 3, 0x1230_0000u, 2, 0x1232_0000u)]
+        [TestCase(NodeType.Branch, 7, 0xFFFF_FFF0u, 15, 0xFFFF_FFFFu)]
+        [TestCase(NodeType.Branch, 9, 100u, 3, 103u)]
+        [TestCase(NodeType.Extension, 0, 0u, 0, 0xFFFF_FFFFu)]
+        [TestCase(NodeType.Extension, 1, 0u, 0, 0x0FFF_FFFFu)]
+        [TestCase(NodeType.Extension, 9, 100u, 0, 115u)]
+        [TestCase(NodeType.Extension, 0, 5u, 0, uint.MaxValue)] // 4
+        [TestCase(NodeType.Extension, 3, 0xFFFF_0000u, 0, uint.MaxValue)] // 0x000E_FFFF
+        [TestCase(NodeType.Branch, 0, 0x9000_0000u, 8, uint.MaxValue)] // 0x1000_0000
+        [TestCase(NodeType.Branch, 8, uint.MaxValue, 1, uint.MaxValue)] // 0
+        public void Child_rightness_saturates(NodeType nodeType, int parentLevel, uint parentRightness, int childIndex, uint expected)
+        {
+            StateSyncItem parent = new(Keccak.Zero, null, TreePath.Empty, NodeDataType.Storage, parentLevel, parentRightness);
+            Assert.That(TreeSync.CalculateRightness(nodeType, parent, childIndex), Is.EqualTo(expected));
+        }
+
         private static StateSyncItem PushCode(IPendingSyncItems items, int progress = 0) =>
             PushItem(items, NodeDataType.Code, 0, 0, progress);
 

@@ -168,6 +168,21 @@ public class TestFixtureDownloaderTests
     private string Download(FakeHandler handler) =>
         TestFixtureDownloader.EnsureDownloaded(_cacheRoot, _suiteName, UrlTemplate, Version, ArchiveName, handler, TimeSpan.Zero);
 
+    [Test]
+    public void Retried_download_preserves_filter_and_hash_validation()
+    {
+        byte[] archive = CreateArchive();
+        string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(archive));
+        using FakeHandler handler = new(BadGateway, () => new(HttpStatusCode.OK) { Content = new ByteArrayContent(archive) });
+        string target = TestFixtureDownloader.EnsureDownloaded(_cacheRoot, _suiteName, UrlTemplate, Version, ArchiveName, handler,
+            TimeSpan.Zero, path => path == EntryName, "filtered", hash);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(File.ReadAllText(Path.Combine(target, EntryName)), Is.EqualTo(EntryContent));
+        Assert.That(handler.Requests, Is.EqualTo(2));
+        Assert.That(File.ReadAllLines(Path.Combine(target, TestFixtureDownloader.MarkerFileName))[0], Is.EqualTo($"filtered;sha256={hash}"));
+        AssertNoTempDirectories();
+    }
+
     private string TargetDir() => Path.Combine(_cacheRoot, _suiteName, Version, "general");
 
     private void AssertNoTempDirectories()

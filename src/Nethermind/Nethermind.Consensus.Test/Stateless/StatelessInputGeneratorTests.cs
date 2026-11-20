@@ -28,6 +28,7 @@ using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Init;
 using Nethermind.Logging;
@@ -302,7 +303,34 @@ public class StatelessInputGeneratorTests
         Assert.That(BinaryPrimitives.ReadUInt16BigEndian(encoded), Is.EqualTo(ProtocolFork.Current.ToRevision1SchemaId()));
         StatelessInput<SszExecutionPayload>.Decode(encoded.AsSpan(sizeof(ushort)), out StatelessInput<SszExecutionPayload> input);
 
-        Assert.That(input.NewPayloadRequest.ToBlock(requestsEnabled)!.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
+        Block restored = input.NewPayloadRequest.ToBlock(requestsEnabled)!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
+            Assert.That(input.NewPayloadRequest.ExecutionPayload.AsExecutionPayload().ExecutionRequests, requestsEnabled ? Is.Empty : Is.Null);
+        }
+    }
+
+    [Test]
+    public void Single_request_group_keeps_its_requests_hash([Values] ExecutionRequestType type)
+    {
+        byte[] requests = new byte[1 + type switch
+        {
+            ExecutionRequestType.Deposit => ExecutionRequestExtensions.DepositRequestsBytesSize,
+            ExecutionRequestType.WithdrawalRequest => ExecutionRequestExtensions.WithdrawalRequestsBytesSize,
+            ExecutionRequestType.ConsolidationRequest => ExecutionRequestExtensions.ConsolidationRequestsBytesSize,
+            ExecutionRequestType.BuilderDepositRequest => ExecutionRequestExtensions.BuilderDepositRequestsBytesSize,
+            _ => ExecutionRequestExtensions.BuilderExitRequestsBytesSize
+        }];
+        requests[0] = (byte)type;
+        Block block = Build.A.Block.WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).TestObject;
+        block.ExecutionRequests = [requests];
+        block.Header.RequestsHash = ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
+
+        byte[] encoded = NewPayloadRequest<SszExecutionPayload>.Encode(NewPayloadRequest<SszExecutionPayload>.From(block, SszExecutionPayload.From(block)));
+        NewPayloadRequest<SszExecutionPayload>.Decode(encoded, out NewPayloadRequest<SszExecutionPayload> decoded);
+
+        Assert.That(decoded.ToBlock(requestsEnabled: true)!.Header.RequestsHash, Is.EqualTo(block.Header.RequestsHash));
     }
 
     [Test]
@@ -354,7 +382,7 @@ public class StatelessInputGeneratorTests
             new TestSpecProvider(Osaka.Instance), new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
     }
 
-    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true)
+    internal static (Block Block, Witness Witness, ISpecProvider SpecProvider) CreateBlock(bool amsterdam, bool currentChainActivation = false, bool requests = true, byte[]? recoveryCall = null)
     {
         IReleaseSpec spec = amsterdam ? Amsterdam.Instance : Osaka.Instance;
         ISpecProvider specProvider = new TestSpecProvider(spec);
@@ -406,10 +434,16 @@ public class StatelessInputGeneratorTests
         {
             Transaction tx = Build.A.Transaction.WithTo(requests ? spec.DepositContractAddress! : TestItem.AddressB).WithGasLimit(1_000_000)
                 .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject;
+            Transaction[] transactions = recoveryCall is null ? [tx] :
+            [
+                tx,
+                Build.A.Transaction.WithTo(ECRecoverPrecompile.Address).WithData(recoveryCall).WithNonce(1).WithGasLimit(1_000_000)
+                    .WithGasPrice(1).SignedAndResolved(new EthereumEcdsa(specProvider.ChainId), TestItem.PrivateKeyA).TestObject
+            ];
             Block suggested = Build.A.Block.WithParent(parent).WithPostMergeRules()
                 .WithTimestamp(parent.Timestamp + 12).WithBaseFeePerGas(0).WithBlobGasUsed(0).WithExcessBlobGas(0)
                 .WithSlotNumber(amsterdam ? 1UL : null)
-                .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(tx).TestObject;
+                .WithParentBeaconBlockRoot(TestItem.KeccakA).WithWithdrawals([]).WithTransactions(transactions).TestObject;
             StatelessBlockProcessingEnv env = new(witness, specProvider, Always.Valid, NullLogManager.Instance);
             using IDisposable scope = env.WorldState.BeginScope(parent);
             (Block block, _) = env.BlockProcessor.ProcessOne(suggested, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, spec);

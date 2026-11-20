@@ -1,0 +1,23 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Microsoft.Extensions.Logging;
+using Nethermind.BeaconChain.P2P;
+
+namespace Nethermind.BeaconChain.Test.P2P;
+
+public class Libp2pLoggingTests
+{
+    private const string UpgradeFailure = "Upgrade task failed with System.AggregateException: One or more errors occurred.\n ---> System.NullReferenceException\n   at Nethermind.Libp2p.Protocols.NoiseProtocol.DialAsync";
+
+    [Test]
+    public void Nothing_the_library_logs_reaches_a_level_above_trace([Values] LogLevel level)
+    {
+        TestLogRecorder logs = new();
+        Microsoft.Extensions.Logging.ILogger libp2p = BeaconP2P.CreateLibp2pLoggerFactory(logs).CreateLogger("Nethermind.Libp2p.Core.LocalPeer");
+
+        libp2p.Log(level, UpgradeFailure);
+
+        Assert.That(logs.Lines.Select(static l => l.Level).Distinct(), Is.SubsetOf(new[] { "Trace" }));
+    }
+}

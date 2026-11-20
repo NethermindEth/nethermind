@@ -16,6 +16,15 @@ namespace Nethermind.Config
 {
     public static class ConfigSourceHelper
     {
+        /// <summary>Parses the text of a configuration value into <paramref name="valueType"/>.</summary>
+        /// <remarks>
+        /// The text <c>null</c>, in any letter case, is reserved for "no value": a reference or nullable type, an array
+        /// and an item of a reference or nullable type all parse it to <see langword="null"/>. A JSON <c>null</c> and the
+        /// JSON string <c>"null"</c> reach this method as the same text, so a literal string "null" cannot be configured.
+        /// An array is read from a JSON array, where <c>[]</c> is empty, or else from comma-separated text, which keeps
+        /// empty items: empty text is one empty item and a trailing comma adds one.
+        /// </remarks>
+        /// <exception cref="System.Configuration.ConfigurationErrorsException">The text is not a valid <paramref name="valueType"/>.</exception>
         public static object? ParseValue(Type valueType, string valueString, string? category, string name)
         {
             try
@@ -98,7 +107,7 @@ namespace Nethermind.Config
             return valueString.RemoveStart('[').RemoveEnd(']').Split(',').Select(static s =>
             {
                 string item = s.Trim();
-                return item.StartsWith('"') && item.EndsWith('"') ? item[1..^1] : item;
+                return item.Length >= 2 && item.StartsWith('"') && item.EndsWith('"') ? item[1..^1] : item;
             }).ToArray();
         }
 

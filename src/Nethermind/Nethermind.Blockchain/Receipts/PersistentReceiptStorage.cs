@@ -728,6 +728,14 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <inheritdoc/>
+        /// <remarks>Also prefetches the block bodies, which the compact receipts encoding needs. Receipts stored under hash keys are not prefetched.</remarks>
+        public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks)
+        {
+            if (!_legacyHashKey) KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_receiptsDb, blocks);
+            _blockStore.Prefetch(blocks);
+        }
+
+        /// <inheritdoc/>
         /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
         public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination)
         {
@@ -812,16 +820,25 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             Span<byte> receiptsData = GetOwnedReceiptData(blockNumber, blockHash);
-            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
-            if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+            try
             {
-                IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
-                    new RecoveryBlockSource(this, blockNumber, blockHash));
-                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+                if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+                {
+                    IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
+                        new RecoveryBlockSource(this, blockNumber, blockHash));
+                    iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                    return true;
+                }
+                iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
                 return true;
             }
-            iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
-            return true;
+            catch
+            {
+                // No iterator took the value, so nothing else will release it; a malformed one throws here.
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                throw;
+            }
         }
 
         private ReceiptsIterator CreateRecoveryIterator(Span<byte> receiptsData, ulong blockNumber, Hash256 blockHash, IReceiptRefDecoder refDecoder)
