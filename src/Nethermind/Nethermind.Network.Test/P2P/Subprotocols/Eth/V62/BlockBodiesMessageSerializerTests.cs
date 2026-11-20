@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -90,23 +89,6 @@ public class BlockBodiesMessageSerializerTests
             },
             "f843f841e5e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102c0d9d8010294b7705ae4c6f81b66cdb323c65f4e8133690fc09903")
             .SetName(nameof(Should_encode_to_expected_wire_bytes) + "_body_with_withdrawal");
-    }
-
-    [TestCaseSource(nameof(GetBlockBodyValues))]
-    public void Should_not_contain_network_form_tx_wrapper(BlockBody[] bodies)
-    {
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
-        BlockBodiesMessageSerializer serializer = new();
-        serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
-        using BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
-        {
-            if (body is null) continue;
-            foreach (Transaction tx in body.Transactions.Where(static t => t.SupportsBlobs))
-            {
-                Assert.That(tx.NetworkWrapper, Is.Null);
-            }
-        }
     }
 
     private static IEnumerable<BlockBody[]> GetBlockBodyValues()

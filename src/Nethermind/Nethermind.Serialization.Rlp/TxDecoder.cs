@@ -209,7 +209,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     }
 
     /// <param name="reader">The reader at the payload, after the type byte of a typed transaction.</param>
-    private void DecodeTransaction(TxType txType, ReadOnlySpan<byte> transactionSequence, ref RlpReader reader, ref T? transaction, RlpBehaviors rlpBehaviors, Memory<byte> source)
+    internal void DecodeTransaction(TxType txType, ReadOnlySpan<byte> transactionSequence, ref RlpReader reader, ref T? transaction, RlpBehaviors rlpBehaviors, Memory<byte> source)
     {
         Transaction? decodedTransaction = transaction;
         if (decodedTransaction is null && (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) != 0)

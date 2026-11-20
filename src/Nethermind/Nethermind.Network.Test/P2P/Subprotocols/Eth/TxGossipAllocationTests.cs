@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -106,7 +107,7 @@ public class TxGossipAllocationTests
 
         IBlockTree blockTree = Build.A.BlockTree(_specProvider).OfChainLength(1).TestObject;
         ChainHeadSpecProvider headSpec = new(_specProvider, blockTree);
-        IComparer<Transaction> comparer = new TransactionComparerProvider(_specProvider, blockTree).GetDefaultComparer();
+        IComparer<MempoolTransaction> comparer = new TransactionComparerProvider(_specProvider, blockTree).GetDefaultComparer();
         TxPoolConfig txPoolConfig = new() { Size = 4 * TxsPerBatch * 4, GasLimit = 1_000_000 };
 
         _txPool = new TxPool.TxPool(
@@ -187,7 +188,8 @@ public class TxGossipAllocationTests
         double perPeerPerTick = double.MaxValue;
         for (int i = 0; i < MeasuredRuns; i++) perPeerPerTick = Math.Min(perPeerPerTick, RunBroadcastTick(CreateBatch()));
 
-        Assert.That(perPeerPerTick, Is.LessThanOrEqualTo(170), "bytes per peer per tick");
+        // Full-tx gossip wraps every transaction in a MempoolTransaction for the outgoing message.
+        Assert.That(perPeerPerTick, Is.LessThanOrEqualTo(170 + TxsPerBatch * 128), "bytes per peer per tick");
     }
 
     private RoundTripAllocations RunRoundTrip(Transaction[] txs)
@@ -206,10 +208,10 @@ public class TxGossipAllocationTests
             LoopbackSession session = _sessions[i];
             if (session.RequestCount == 0) continue;
             Assert.That(session.RequestCount, Is.EqualTo(1), "harness expects one pooled-transactions request per peer");
-            Transaction[] requested = Requested(txs, session.RequestedHashes);
+            MempoolTransaction[] requested = Requested(txs, session.RequestedHashes);
             requestedTxs += requested.Length;
             responses[i] = Packet(
-                new PooledTransactionsMessage(session.LastRequestId, new V65PooledTransactionsMessage(new ArrayPoolList<Transaction>(requested.Length, requested))),
+                new PooledTransactionsMessage(session.LastRequestId, new V65PooledTransactionsMessage(new ArrayPoolList<MempoolTransaction>(requested.Length, requested))),
                 Eth66MessageCode.PooledTransactions);
         }
         Assert.That(requestedTxs, Is.EqualTo(txs.Length), "every announced tx is requested exactly once");
@@ -221,7 +223,7 @@ public class TxGossipAllocationTests
         for (int i = 0; i < Peers; i++)
         {
             if (responses[i] is not null) continue;
-            duplicates[i] = Packet(new TransactionsMessage(new ArrayPoolList<Transaction>(txs.Length, txs)), Eth62MessageCode.Transactions);
+            duplicates[i] = Packet(new TransactionsMessage(new ArrayPoolList<MempoolTransaction>(txs.Length, txs.Select(static tx => (MempoolTransaction)tx))), Eth62MessageCode.Transactions);
         }
         int duplicatePeers = Peers - 1;
         long duplicate = MeasureHandling(duplicates);
@@ -318,16 +320,16 @@ public class TxGossipAllocationTests
         return new NewPooledTransactionHashesMessage68(types, sizes, hashes);
     }
 
-    private static Transaction[] Requested(Transaction[] txs, ReadOnlySpan<ValueHash256> hashes)
+    private static MempoolTransaction[] Requested(Transaction[] txs, ReadOnlySpan<ValueHash256> hashes)
     {
-        Transaction[] requested = new Transaction[hashes.Length];
+        MempoolTransaction[] requested = new MempoolTransaction[hashes.Length];
         for (int i = 0; i < hashes.Length; i++)
         {
             foreach (Transaction tx in txs)
             {
                 if (tx.Hash!.ValueHash256 == hashes[i]) requested[i] = tx;
             }
-            Assert.That(requested[i], Is.Not.Null, "requested hash was never announced");
+            Assert.That(requested[i].Transaction, Is.Not.Null, "requested hash was never announced");
         }
         return requested;
     }

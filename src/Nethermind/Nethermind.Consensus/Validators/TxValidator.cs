@@ -24,8 +24,7 @@ public sealed class TxValidator : ITxValidator
     public TxValidator(ulong chainId)
     {
         // Sender-independent failures must precede intrinsic gas so malformed transactions cannot
-        // trigger EIP-2780 sender recovery. Blob sidecar checks are the exception: they run after the gas gate
-        // (see the blob list), so a bad proof version can cost one sender recovery.
+        // trigger EIP-2780 sender recovery.
         RegisterValidator(TxType.Legacy, new CompositeTxValidator([
             NonceCapTxValidator.Instance,
             new LegacySignatureTxValidator(chainId),
@@ -70,10 +69,7 @@ public sealed class TxValidator : ITxValidator
             BlobFieldsTxValidator.Instance,
             NonSetCodeFieldsTxValidator.Instance,
             GasLimitCapTxValidator.Instance,
-            IntrinsicGasTxValidator.Instance,
-            // Sidecar checks run last: the pool forgets a sidecar-only rejection, so hash-covered defects must be reported first.
-            MempoolBlobTxProofVersionValidator.Instance,
-            MempoolBlobTxValidator.Instance
+            IntrinsicGasTxValidator.Instance
         ]));
         RegisterValidator(TxType.SetCode, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip7702Enabled),
@@ -89,7 +85,7 @@ public sealed class TxValidator : ITxValidator
             IntrinsicGasTxValidator.Instance
         ]));
         // EIP-8141: no envelope signature and no envelope gas limit, so signature and intrinsic-gas validators
-        // do not apply; the EIP-7594 wrapper is shared with type-3, so its validators do and no-op without one.
+        // do not apply.
         RegisterValidator(TxType.FrameTx, new CompositeTxValidator([
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
@@ -98,9 +94,7 @@ public sealed class TxValidator : ITxValidator
             // The frame-tx decoder always populates blob_versioned_hashes, so the presence-based
             // NonBlobFieldsTxValidator would reject every frame tx; this one checks it by value.
             FrameTxFieldsTxValidator.Instance,
-            FrameTxNonceKeysTxValidator.Instance,
-            MempoolBlobTxProofVersionValidator.Instance,
-            MempoolBlobTxValidator.Instance
+            FrameTxNonceKeysTxValidator.Instance
         ]));
     }
 
@@ -411,7 +405,6 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
         // Execution-payload version verification
         { MaxFeePerBlobGas: not null } => TxErrorMessages.NotAllowedMaxFeePerBlobGas,
         { BlobVersionedHashes: not null } => TxErrorMessages.NotAllowedBlobVersionedHashes,
-        { NetworkWrapper: ShardBlobNetworkWrapper } => TxErrorMessages.InvalidTransactionForm,
         _ => ValidationResult.Success
     };
 }
@@ -517,77 +510,6 @@ public sealed class MaxBlobCountBlobTxValidator : ITxValidator
 
     private static ValidationResult ValidateBlobFields(Transaction transaction, IReleaseSpec spec) =>
         BlobFieldsTxValidator.ValidateBlobGasLimits(transaction.BlobVersionedHashes?.Length ?? 0, spec);
-}
-
-/// <summary>
-/// Validate Blob transactions in mempool version.
-/// </summary>
-public sealed class MempoolBlobTxValidator : ITxValidator
-{
-    public static readonly MempoolBlobTxValidator Instance = new();
-    private MempoolBlobTxValidator() { }
-
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
-        => IsWellFormed(transaction, releaseSpec, blockGasLimit: 0, TxValidationOptions.None);
-
-    public ValidationResult IsWellFormed(
-        Transaction transaction,
-        IReleaseSpec releaseSpec,
-        ulong blockGasLimit,
-        TxValidationOptions options)
-    {
-        return transaction switch
-        {
-            { NetworkWrapper: null } => ValidationResult.Success,
-            // EIP-8141: a blob-carrying frame tx (type 6) shares the EIP-7594 wrapper with type-3.
-            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } when transaction.SupportsBlobs || transaction.CarriesBlobs => ValidateBlobs(transaction, wrapper, options),
-            _ => TxErrorMessages.InvalidTransactionForm,
-        };
-
-        static ValidationResult ValidateBlobs(Transaction transaction, ShardBlobNetworkWrapper wrapper, TxValidationOptions options)
-        {
-            if (wrapper.Version is not (ProofVersion.V0 or ProofVersion.V1))
-            {
-                return TxErrorMessages.InvalidProofVersion;
-            }
-
-            IBlobProofsVerifier proofsManager = IBlobProofsManager.For(wrapper.Version);
-            bool hasProofMaterial = wrapper.HasFullBlobs() || (wrapper.Cells is { Length: > 0 } && !wrapper.CellMask.IsEmpty);
-            int blobCount = transaction.BlobVersionedHashes?.Length ?? 0;
-
-            return blobCount != wrapper.Commitments.Length || !proofsManager.ValidateLengths(wrapper) ? TxErrorMessages.InvalidBlobDataSize :
-                transaction.BlobVersionedHashes is null || !proofsManager.ValidateHashes(wrapper, transaction.BlobVersionedHashes) ? TxErrorMessages.InvalidBlobHashes :
-                (options & TxValidationOptions.SkipBlobProofs) != 0 ? ValidationResult.Success :
-                !hasProofMaterial ? TxErrorMessages.InvalidTransactionForm :
-                !proofsManager.ValidateProofs(wrapper) ? TxErrorMessages.InvalidBlobProofs :
-                ValidationResult.Success;
-        }
-    }
-}
-
-/// <summary>
-/// Validate tx proof version in mempool version.
-/// </summary>
-public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
-{
-    public static readonly MempoolBlobTxProofVersionValidator Instance = new();
-    private MempoolBlobTxProofVersionValidator() { }
-
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
-        IsWellFormed(transaction, releaseSpec);
-
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
-    {
-        if (!transaction.SupportsBlobs && !transaction.CarriesBlobs) return ValidationResult.Success;
-
-        ProofVersion? version = transaction.GetProofVersion();
-        return version is null
-            ? transaction.NetworkWrapper is not null ? TxErrorMessages.InvalidTransactionForm : ValidationResult.Success
-            : ValidateProofVersion(version.Value, releaseSpec);
-
-        static ValidationResult ValidateProofVersion(ProofVersion txProofVersion, IReleaseSpec spec) =>
-            txProofVersion != spec.BlobProofVersion ? TxErrorMessages.InvalidProofVersion : ValidationResult.Success;
-    }
 }
 
 public abstract class BaseSignatureTxValidator : ITxValidator

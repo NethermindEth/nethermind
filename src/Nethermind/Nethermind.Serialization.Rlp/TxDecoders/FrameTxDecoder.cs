@@ -15,8 +15,7 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
 /// blob_versioned_hashes]</c>, where <c>fees = [max_fee, max_priority_fee_per_gas]</c>,
 /// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c>.</summary>
-/// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
-/// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
+/// <remarks>The sender is explicit, so there is no envelope signature or recovery.</remarks>
 public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     : BaseTxDecoder(TxType.FrameTx, transactionFactory)
 {
@@ -41,7 +40,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     {
         try
         {
-            DecodeFrameTransaction(ref transaction, transactionSequence, ref reader, source, rlpBehaviors);
+            DecodeTransaction<Payload>(ref transaction, transactionSequence, ref reader, source, rlpBehaviors);
         }
         catch (RlpReaderException e) when (e.Message == RlpReader.TruncatedMessage)
         {
@@ -49,55 +48,9 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         }
     }
 
-    private void DecodeFrameTransaction(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
-        ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors)
-    {
-        if ((rlpBehaviors & RlpBehaviors.InMempoolForm) != 0)
-        {
-            bool isWrapper = rlpBehaviors.IsTrustedInput()
-                ? DecodeIfNetworkWrapper<OffFlag>(ref transaction, ref reader, source, rlpBehaviors)
-                : DecodeIfNetworkWrapper<OnFlag>(ref transaction, ref reader, source, rlpBehaviors);
-            if (isWrapper) return;
-
-            DecodeTransaction<Payload>(ref transaction, transactionSequence, ref reader, source, rlpBehaviors);
-            // EIP-7594: as for type-3, a blob-carrying transaction's mempool form is the sidecar wrapper.
-            if (transaction is { CarriesBlobs: true }) ThrowMissingSidecar();
-            return;
-        }
-
-        DecodeTransaction<Payload>(ref transaction, transactionSequence, ref reader, source, rlpBehaviors);
-    }
-
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowShortFeeList() =>
         throw new RlpReaderException($"{nameof(TxType.FrameTx)} fees must hold two items");
-
-    [DoesNotReturn, StackTraceHidden]
-    private static void ThrowMissingSidecar() =>
-        throw new RlpReaderException($"Blob-carrying {nameof(TxType.FrameTx)} in mempool form must carry a {nameof(ShardBlobNetworkWrapper)}");
-
-    private bool DecodeIfNetworkWrapper<TCanonicalChecks>(ref Transaction? transaction, ref RlpReader reader, Memory<byte> source, RlpBehaviors rlpBehaviors)
-        where TCanonicalChecks : struct, IFlag
-    {
-        RlpReader wrapper = reader.EnterSequence<TCanonicalChecks>(out int wrapperLength);
-        if (!wrapper.HasNext || !wrapper.IsNextSequence) return false;
-
-        RlpReader peek = wrapper;
-        ReadOnlySpan<byte> transactionSequence = peek.ReadEncodedItem<TCanonicalChecks>();
-
-        DecodeTransaction<Payload>(ref transaction, transactionSequence, ref wrapper, source,
-            (rlpBehaviors | RlpBehaviors.ExcludeHashes) & ~RlpBehaviors.InMempoolForm);
-
-        transaction!.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode<TCanonicalChecks>(ref wrapper, rlpBehaviors);
-        reader.ExitSequence(in wrapper, wrapperLength, rlpBehaviors);
-
-        if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-        {
-            transaction.Hash = NetworkPayloadFormHash.Calculate(TxType.FrameTx, transactionSequence);
-        }
-
-        return true;
-    }
 
     private static void DecodePayload<TCanonicalChecks>(Transaction transaction, ref RlpReader reader, Memory<byte> source,
         RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
@@ -176,53 +129,17 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     internal static void EncodeTransaction(Transaction transaction, ref RlpWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
     {
         int payloadContentLength = GetContentLength(transaction, forSigning);
-        int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
-
-        // A sidecar-less blob carrier still serialises to the plain form that Decode refuses; see GetLength.
-        ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
-            ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
-            : null;
-
-        int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);
-        int bodyLength = wrapper is null ? payloadSequenceLength : Rlp.LengthOfSequence(wrapperContentLength);
-
-        StartTypedTransaction(ref writer, TxType.FrameTx, bodyLength, rlpBehaviors);
-
-        if (wrapper is null)
-        {
-            RlpSequence sequence = writer.StartSequence(payloadContentLength);
-            EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
-            writer.EndSequence(sequence);
-        }
-        else
-        {
-            RlpSequence wrapperSequence = writer.StartSequence(wrapperContentLength);
-            RlpSequence sequence = writer.StartSequence(payloadContentLength);
-            // Elide on forSigning like payloadContentLength, or the declared length and the bytes drift.
-            EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
-            writer.EndSequence(sequence);
-            ShardBlobNetworkWrapperRlp.Encode(ref writer, wrapper, rlpBehaviors);
-            writer.EndSequence(wrapperSequence);
-        }
+        StartTypedTransaction(ref writer, TxType.FrameTx, Rlp.LengthOfSequence(payloadContentLength), rlpBehaviors);
+        RlpSequence sequence = writer.StartSequence(payloadContentLength);
+        EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: forSigning);
+        writer.EndSequence(sequence);
     }
 
-    internal static int GetTransactionLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning)
-    {
-        int payloadSequenceLength = Rlp.LengthOfSequence(GetContentLength(transaction, forSigning));
+    internal static int GetTransactionLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning) =>
+        GetTypedTransactionLength(Rlp.LengthOfSequence(GetContentLength(transaction, forSigning)), rlpBehaviors);
 
-        // GetLength is the pool's sizing call, so it must stay total and Encode must agree with it.
-        ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
-            ? transaction.NetworkWrapper as ShardBlobNetworkWrapper
-            : null;
-
-        int bodyLength = wrapper is null
-            ? payloadSequenceLength
-            : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors));
-
-        return GetTypedTransactionLength(bodyLength, rlpBehaviors);
-    }
-
-    private static void EncodePayload(Transaction transaction, ref RlpWriter writer, bool elideCanonicalSignatureBytes)
+    /// <summary>Writes the payload fields, without their sequence prefix.</summary>
+    internal static void EncodePayload(Transaction transaction, ref RlpWriter writer, bool elideCanonicalSignatureBytes)
     {
         writer.Encode(transaction.ChainId ?? 0);
         FrameTxNonceCalldata.Encode(transaction, ref writer);
@@ -272,7 +189,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
     private static int GetFeesContentLength(Transaction transaction) =>
         Rlp.LengthOf(transaction.MaxFee) + Rlp.LengthOf(transaction.GasPrice);
 
-    private static int GetContentLength(Transaction transaction, bool forSigning) =>
+    internal static int GetContentLength(Transaction transaction, bool forSigning) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)
         + FrameTxNonceCalldata.Length(transaction)
         + Rlp.LengthOf(transaction.SenderAddress)

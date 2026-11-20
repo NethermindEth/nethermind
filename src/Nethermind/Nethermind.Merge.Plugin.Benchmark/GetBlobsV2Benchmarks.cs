@@ -30,7 +30,7 @@ public class GetBlobsV2Benchmarks
     private IContainer _container = null!;
     private IBlobTxStorage _storage = null!;
     private TxLookupKey[] _keys = null!;
-    private readonly Transaction?[] _read = new Transaction?[1];
+    private readonly MempoolTransaction?[] _read = new MempoolTransaction?[1];
     private readonly byte[]?[] _blobs = new byte[BlobCount][];
     private readonly ReadOnlyMemory<byte>[] _proofs = new ReadOnlyMemory<byte>[BlobCount];
     private readonly PipeWriter _output = PipeWriter.Create(Stream.Null);
@@ -38,10 +38,10 @@ public class GetBlobsV2Benchmarks
     [GlobalSetup]
     public void Setup()
     {
-        Transaction tx = Build.A.Transaction
+        MempoolTransaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(BlobCount, spec: Osaka.Instance)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyA)
-            .TestObject;
+            .MempoolTestObject;
         _container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
         _storage = _container.Resolve<IBlobTxStorage>();
         _storage.Add(tx);
@@ -55,7 +55,7 @@ public class GetBlobsV2Benchmarks
     public async Task ReadAndWriteResponse()
     {
         _storage.TryGetMany(_keys, 1, _read);
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)_read[0]!.NetworkWrapper!;
+        ShardBlobNetworkWrapper wrapper = _read[0]!.NetworkWrapper!;
         for (int i = 0; i < BlobCount; i++)
         {
             _blobs[i] = wrapper.Blobs[i];

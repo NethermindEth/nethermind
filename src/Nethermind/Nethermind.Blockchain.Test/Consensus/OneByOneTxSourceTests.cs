@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Consensus
             ITxSource source = Substitute.For<ITxSource>();
             BlockHeader parent = new();
             BlockHeader targetBlock = new();
-            source.GetTransactions(parent, targetBlock, 0).Returns(new Transaction[5]);
+            source.GetTransactions(parent, targetBlock, 0).Returns(new MempoolTransaction[5]);
 
             ITxSource oneByOne = source.ServeTxsOneByOne();
             Assert.That(oneByOne.GetTransactions(parent, targetBlock, 0).Count(), Is.EqualTo(1));

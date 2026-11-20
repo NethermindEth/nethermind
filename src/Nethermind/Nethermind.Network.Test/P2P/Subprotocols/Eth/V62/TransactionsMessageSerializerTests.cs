@@ -28,7 +28,7 @@ public class TransactionsMessageSerializerTests
     {
         TransactionsMessageSerializer serializer = new();
         Transaction transaction = Build.A.Transaction.WithType(type).WithAuthorizationCodeIfAuthorizationListTx().SignedAndResolved().TestObject;
-        using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
+        using TransactionsMessage message = new(new ArrayPoolList<MempoolTransaction>(2) { transaction, transaction });
 
         int length = serializer.GetLength(message);
         IByteBuffer buffer = Unpooled.Buffer();
@@ -36,7 +36,7 @@ public class TransactionsMessageSerializerTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(length, Is.EqualTo(Rlp.LengthOfSequence(2 * TxDecoder.Instance.GetLength(transaction, RlpBehaviors.InMempoolForm))));
+            Assert.That(length, Is.EqualTo(Rlp.LengthOfSequence(2 * MempoolTxDecoder.Instance.GetLength(transaction))));
             Assert.That(buffer.ReadableBytes, Is.EqualTo(length));
         }
     }
@@ -58,7 +58,7 @@ public class TransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
+        using TransactionsMessage message = new(new ArrayPoolList<MempoolTransaction>(2) { transaction, transaction });
         SerializerTester.Test(serializer, message, "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
     }
 
@@ -79,7 +79,7 @@ public class TransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        using TransactionsMessage message = new(new ArrayPoolList<Transaction>(2) { transaction, transaction });
+        using TransactionsMessage message = new(new ArrayPoolList<MempoolTransaction>(2) { transaction, transaction });
         SerializerTester.Test(serializer, message, "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
     }
 
@@ -87,7 +87,7 @@ public class TransactionsMessageSerializerTests
     public void Can_handle_empty()
     {
         TransactionsMessageSerializer serializer = new();
-        using TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
+        using TransactionsMessage message = new(ArrayPoolList<MempoolTransaction>.Empty());
 
         SerializerTester.Test(serializer, message, EthSerializerGoldens.EmptyListRlp);
     }
@@ -95,7 +95,7 @@ public class TransactionsMessageSerializerTests
     [Test]
     public void To_string_empty()
     {
-        using TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
+        using TransactionsMessage message = new(ArrayPoolList<MempoolTransaction>.Empty());
         using TransactionsMessage message2 = new(null);
 
         using (Assert.EnterMultipleScope())
@@ -122,14 +122,9 @@ public class TransactionsMessageSerializerTests
         serializer.Serialize(buffer, transactionsMessage);
         transactionsMessage.Dispose();
         using TransactionsMessage deserializedMessage = serializer.Deserialize(buffer);
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.SupportsBlobs))
+        foreach (MempoolTransaction tx in deserializedMessage.Transactions)
         {
-            Assert.That(tx.NetworkWrapper, Is.Not.Null);
-        }
-
-        foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => !tx.SupportsBlobs))
-        {
-            Assert.That(tx.NetworkWrapper, Is.Null);
+            Assert.That(tx.NetworkWrapper, tx.SupportsBlobs ? Is.Not.Null : Is.Null);
         }
     }
 
@@ -138,8 +133,8 @@ public class TransactionsMessageSerializerTests
     {
         Transaction validTxBefore = SimpleSignedTx();
         Transaction validTxAfter = SimpleSignedTx(1);
-        byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm);
-        byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm);
+        byte[] validTxBeforeBytes = MempoolTxDecoder.Instance.Encode(validTxBefore);
+        byte[] validTxAfterBytes = MempoolTxDecoder.Instance.Encode(validTxAfter);
         using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes)).AsDisposable();
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
@@ -162,10 +157,10 @@ public class TransactionsMessageSerializerTests
             .WithTo(TestItem.AddressA)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
             .TestObject;
-        (int _, int contentLength) = RlpTestHelper.PrefixAndContentLength(TxDecoder.Instance.Encode(typedTx, RlpBehaviors.InMempoolForm));
+        (int _, int contentLength) = RlpTestHelper.PrefixAndContentLength(MempoolTxDecoder.Instance.Encode(typedTx));
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = contentLength });
-        using TransactionsMessage message = new(new[] { typedTx }.ToPooledList());
+        using TransactionsMessage message = new(new MempoolTransaction[] { typedTx }.ToPooledList());
         using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024).AsDisposable();
         serializer.Serialize(buffer, message);
         using TransactionsMessage deserialized = serializer.Deserialize(buffer);
@@ -178,11 +173,11 @@ public class TransactionsMessageSerializerTests
     {
         // A blob tx's mempool-form sidecar is far above this cap, but eth/68 forbids broadcasting one and a
         // pooled one is already policed by announced size and ValidateSizeAndType, so this guard must not skip it.
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithTo(TestItem.AddressA)
             .WithShardBlobTxTypeAndFields(1)
             .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-            .TestObject;
+            .MempoolTestObject;
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 500 });
 
         using TransactionsMessage message = new(new[] { blobTx }.ToPooledList());
@@ -214,7 +209,7 @@ public class TransactionsMessageSerializerTests
     [Test]
     public void Null_config_keeps_every_transaction_regardless_of_size()
     {
-        List<Transaction> transactions = GetTransactions().ElementAt(1).ToList();
+        List<MempoolTransaction> transactions = GetTransactions().ElementAt(1).ToList();
         using TransactionsMessage message = new(transactions.ToPooledList());
         TransactionsMessageSerializer serializer = new();
 
@@ -232,7 +227,7 @@ public class TransactionsMessageSerializerTests
     [Test]
     public void Skips_the_transactions_a_known_filter_settles_and_never_offers_it_a_blob_transaction()
     {
-        List<Transaction> sent =
+        List<MempoolTransaction> sent =
         [
             .. GetTransactions().ElementAt(1),
             Build.A.Transaction
@@ -240,15 +235,15 @@ public class TransactionsMessageSerializerTests
                 .WithAuthorizationCodeIfAuthorizationListTx()
                 .WithTo(TestItem.AddressA)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             // Above the decoder's 32 KB threshold for deferring the hash.
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithData(new byte[40_000])
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
         ];
-        Transaction[] hashable = sent.Where(static tx => !tx.SupportsBlobs).ToArray();
+        Transaction[] hashable = sent.Select(static tx => tx.Transaction).Where(static tx => !tx.SupportsBlobs).ToArray();
         RecordingKnownFilter filter = new([hashable[0].Hash!, hashable[2].Hash!]);
         using TransactionsMessage message = new(sent.ToPooledList());
         TransactionsMessageSerializer serializer = new();
@@ -375,68 +370,68 @@ public class TransactionsMessageSerializerTests
     private static IEnumerable<TransactionsMessage> GetTransactionMessages() =>
         GetTransactions().Select(static txs => new TransactionsMessage(txs.ToPooledList(3)));
 
-    public static IEnumerable<IEnumerable<Transaction>> GetTransactions()
+    public static IEnumerable<IEnumerable<MempoolTransaction>> GetTransactions()
     {
         // simple transaction
-        yield return new List<Transaction>
+        yield return new List<MempoolTransaction>
         {
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject
+                .MempoolTestObject
         };
 
-        yield return new List<Transaction>
+        yield return new List<MempoolTransaction>
         {
             Build.A.Transaction
                 .WithType(TxType.Legacy)
                 .WithTo(TestItem.AddressA)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             Build.A.Transaction
                 .WithType(TxType.AccessList)
                 .WithTo(TestItem.AddressA)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .WithTo(TestItem.AddressA)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(3)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             Build.A.Transaction
                 .WithType(TxType.EIP1559)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
         };
 
         // several shard blob transactions
-        yield return new List<Transaction>
+        yield return new List<MempoolTransaction>
         {
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(1)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject,
+                .MempoolTestObject,
             Build.A.Transaction
                 .WithTo(TestItem.AddressA)
                 .WithShardBlobTxTypeAndFields(2)
                 .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Sepolia), TestItem.PrivateKeyA)
-                .TestObject
+                .MempoolTestObject
         };
     }
 }
@@ -457,22 +452,22 @@ public class TransactionsMessageSerializerProcessWidePoolTests
         TransactionsMessageSerializer serializer = new();
         byte[] blob = new byte[blobSize];
         Array.Fill(blob, (byte)0x11);
-        Transaction source = Build.A.Transaction.WithType(TxType.Blob)
+        Transaction sourceTx = Build.A.Transaction.WithType(TxType.Blob)
             .WithMaxFeePerBlobGas(1).WithBlobVersionedHashes(1).TestObject;
-        source.Signature = new Signature(1, 2, 27);
-        source.NetworkWrapper = new ShardBlobNetworkWrapper([blob], [], [], ProofVersion.V0);
-        using TransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { source });
+        sourceTx.Signature = new Signature(1, 2, 27);
+        MempoolTransaction source = new(sourceTx, new ShardBlobNetworkWrapper([blob], [], [], ProofVersion.V0));
+        using TransactionsMessage message = new(new ArrayPoolList<MempoolTransaction>(1) { source });
         using DisposableByteBuffer buffer = Unpooled.Buffer().AsDisposable();
         serializer.Serialize(buffer, message);
         using TransactionsMessage first = serializer.Deserialize(buffer);
-        Transaction tx = first.Transactions[0];
-        byte[] original = ((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0];
+        MempoolTransaction tx = first.Transactions[0];
+        byte[] original = tx.NetworkWrapper!.Blobs[0];
         first.Dispose();
-        if (returnMode != BlobReturnMode.Retained) TxDecoder.TxObjectPool.Return(tx);
+        if (returnMode != BlobReturnMode.Retained) ReturnToPools(tx);
         if (returnMode == BlobReturnMode.MalformedList)
         {
             buffer.Clear();
-            buffer.WriteBytes(RlpTestHelper.EncodeSequence(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm), RlpTestHelper.OfEmptyList));
+            buffer.WriteBytes(RlpTestHelper.EncodeSequence(MempoolTxDecoder.Instance.Encode(source), RlpTestHelper.OfEmptyList));
             Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpReaderException>());
         }
         if (returnMode == BlobReturnMode.MalformedWrapper)
@@ -488,7 +483,7 @@ public class TransactionsMessageSerializerProcessWidePoolTests
         buffer.Clear();
         serializer.Serialize(buffer, message);
         using TransactionsMessage second = serializer.Deserialize(buffer);
-        byte[] next = ((ShardBlobNetworkWrapper)second.Transactions[0].NetworkWrapper).Blobs[0];
+        byte[] next = second.Transactions[0].NetworkWrapper!.Blobs[0];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(next.Length, Is.EqualTo(blobSize));
@@ -496,8 +491,14 @@ public class TransactionsMessageSerializerProcessWidePoolTests
             Assert.That(ReferenceEquals(next, original), Is.EqualTo(returnMode != BlobReturnMode.Retained && blobSize == 131072));
             if (returnMode == BlobReturnMode.Retained) Assert.That(original, Is.All.EqualTo(0x11));
         }
-        if (returnMode == BlobReturnMode.Retained) TxDecoder.TxObjectPool.Return(tx);
-        TxDecoder.TxObjectPool.Return(second.Transactions[0]);
+        if (returnMode == BlobReturnMode.Retained) ReturnToPools(tx);
+        ReturnToPools(second.Transactions[0]);
+    }
+
+    private static void ReturnToPools(MempoolTransaction tx)
+    {
+        tx.NetworkWrapper?.ReturnPooledBuffers();
+        TxDecoder.TxObjectPool.Return(tx.Transaction);
     }
 
     // A valid signed legacy transaction followed by a null transaction.

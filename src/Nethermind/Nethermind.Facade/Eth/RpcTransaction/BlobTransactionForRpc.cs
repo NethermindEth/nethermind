@@ -50,8 +50,11 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         base.Populate(transaction, extraData);
         MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
+    }
 
-        ShardBlobNetworkWrapper? wrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
+    /// <summary>Fills the sidecar fields from the blob sidecar the transaction travels with in the mempool.</summary>
+    public void PopulateSidecar(ShardBlobNetworkWrapper? wrapper)
+    {
         Blobs = wrapper?.Blobs;
         Commitments = wrapper?.Commitments;
         Proofs = wrapper?.SplitProofs();
@@ -202,12 +205,13 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
     }
 
     /// <summary>
-    /// Validates the blob sidecar fields and attaches a <see cref="ShardBlobNetworkWrapper"/>
-    /// to the given <see cref="Transaction"/>. Returns an error string on failure, or
+    /// Validates the blob sidecar fields against the given <see cref="Transaction"/> and builds its
+    /// <see cref="ShardBlobNetworkWrapper"/>. Returns an error string on failure, or
     /// <c>null</c> on success.
     /// </summary>
-    public string? TryAttachSidecar(Transaction tx, ProofVersion version)
+    public string? TryAttachSidecar(Transaction tx, ProofVersion version, out ShardBlobNetworkWrapper? sidecar)
     {
+        sidecar = null;
         string? fieldError = this switch
         {
             { Blobs: null or { Length: 0 } } => "blob transaction requires non-empty blobs",
@@ -225,7 +229,7 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         if (tx.BlobVersionedHashes is not null && !manager.ValidateHashes(wrapper, tx.BlobVersionedHashes))
             return "blob commitments do not match the supplied blobVersionedHashes";
 
-        tx.NetworkWrapper = wrapper;
+        sidecar = wrapper;
         return null;
     }
 }

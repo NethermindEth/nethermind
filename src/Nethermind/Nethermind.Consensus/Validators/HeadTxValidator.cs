@@ -12,7 +12,6 @@ public sealed class HeadTxValidator() :
         ReleaseSpecTxValidator.Instance,
         MaxBlobCountBlobTxValidator.Instance,
         new NonFrameTxValidator(GasLimitCapTxValidator.Instance),
-        MempoolBlobTxProofVersionValidator.Instance,
         FrameTxNonceKeysTxValidator.Instance,
         FrameTxHeadFieldsTxValidator.Instance
     ];

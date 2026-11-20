@@ -266,7 +266,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
        ulong maxBytesPerTxList, Address[]? localAccounts, int maxTransactionsLists, ulong minTip)
     {
         // Fetch all the pending transactions except transactions from the GoldenTouchAccount
-        IEnumerable<KeyValuePair<AddressAsKey, Transaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender()
+        IEnumerable<KeyValuePair<AddressAsKey, MempoolTransaction[]>> pendingTxs = txPool.GetPendingTransactionsBySender()
             .Where(txs => !txs.Key.Value.Equals(TaikoBlockValidator.GoldenTouchAccount));
 
         if (localAccounts is not null)
@@ -274,7 +274,7 @@ public class TaikoEngineRpcModule(IAsyncHandler<byte[], ExecutionPayload?> getPa
             pendingTxs = pendingTxs.OrderBy(txs => !localAccounts.Contains(txs.Key.Value));
         }
 
-        IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
+        IEnumerable<Transaction> allTxs = pendingTxs.SelectMany(txs => txs.Value).Select(static tx => tx.Transaction).Where(tx => !tx.SupportsBlobs && tx.CanPayBaseFee(baseFee));
 
         if (minTip is not 0)
         {

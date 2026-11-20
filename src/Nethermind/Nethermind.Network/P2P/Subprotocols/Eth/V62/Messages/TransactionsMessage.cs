@@ -7,7 +7,7 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class TransactionsMessage(IOwnedReadOnlyList<Transaction> transactions) : P2PMessage
+    public class TransactionsMessage(IOwnedReadOnlyList<MempoolTransaction> transactions) : P2PMessage
     {
         // This is the target size for the packs of transactions. A pack can get larger than this if a single
         // transaction exceeds this size. This solution is similar to Geth one.
@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public override int PacketType => Eth62MessageCode.Transactions;
         public override string Protocol => "eth";
-        public IOwnedReadOnlyList<Transaction> Transactions { get; internal set; } = transactions;
+        public IOwnedReadOnlyList<MempoolTransaction> Transactions { get; internal set; } = transactions;
 
         /// <summary>Items the pre-decode size guard skipped without decoding; not reflected in <see cref="Transactions"/>.</summary>
         internal int SkippedCount { get; init; }

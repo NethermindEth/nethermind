@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Producers
         private readonly ITxValidator _specChangeTxValidator = specChangeTxValidator ?? throw new ArgumentNullException(nameof(specChangeTxValidator));
         protected readonly ILogger _logger = logManager?.GetClassLogger<TxPoolTxSource>() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public IEnumerable<Transaction> GetTransactions(
+        public IEnumerable<MempoolTransaction> GetTransactions(
             BlockHeader parent,
             BlockHeader targetBlock,
             ulong gasLimit,
@@ -57,10 +57,10 @@ namespace Nethermind.Consensus.Producers
             UInt256 baseFee = BaseFeeCalculator.Calculate(parent, spec);
             PendingTransactionsView pending = _transactionPool.GetPendingForProduction(targetBlock, filterSource, baseFee);
             bool isRevalidatedForTarget = pending.IsRevalidated;
-            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions = pending.Transactions;
-            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
-            IComparer<Transaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
-                .ThenBy(ByHashTxComparer.Instance); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
+            IReadOnlyDictionary<AddressAsKey, MempoolTransaction[]> pendingTransactions = pending.Transactions;
+            IReadOnlyDictionary<AddressAsKey, MempoolTransaction[]> pendingBlobTransactionsEquivalences = pending.BlobTransactions;
+            IComparer<MempoolTransaction> comparer = GetComparer(parent, new BlockPreparationContext(baseFee, targetBlock.Number))
+                .ThenBy(ByHashTxComparer.Instance.ForMempool()); // in order to sort properly and not lose transactions we need to differentiate on their identity which provided comparer might not be doing
 
             TxFilterContext filterContext = new(parent, spec, baseFee);
             // EIP-8141: the pool ranks a max_fee by a per-gas view that leaves out intrinsic gas, so the budget the
@@ -74,7 +74,7 @@ namespace Nethermind.Consensus.Producers
                 : tx => filter(tx) && IsForkSensitiveStateValid(tx, spec);
 
             ulong maxBlobCount = spec.MaxProductionBlobCount(blocksConfig.BlockProductionBlobLimit);
-            IEnumerable<Transaction> transactions = GetOrderedTransactions(
+            IEnumerable<MempoolTransaction> transactions = GetOrderedTransactions(
                 pendingTransactions,
                 comparer,
                 pendingTxFilter,
@@ -85,12 +85,12 @@ namespace Nethermind.Consensus.Producers
             int checkedTransactions = 0;
             int selectedTransactions = 0;
 
-            using ArrayPoolList<Transaction> selectedBlobTxs = new((int)maxBlobCount);
+            using ArrayPoolList<MempoolTransaction> selectedBlobTxs = new((int)maxBlobCount);
 
-            Dictionary<Hash256, Transaction>? fullBlobTxs = null;
+            Dictionary<Hash256, MempoolTransaction>? fullBlobTxs = null;
             if (pendingBlobTransactionsEquivalences.Count > 0)
             {
-                IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
+                IEnumerable<(MempoolTransaction tx, ulong blobChain)> blobTransactions = GetOrderedBlobTransactions(
                     pendingBlobTransactionsEquivalences,
                     comparer,
                     BlobFilter,
@@ -100,7 +100,7 @@ namespace Nethermind.Consensus.Producers
             }
 
             int selectedBlobIndex = 0;
-            foreach (Transaction tx in transactions)
+            foreach (MempoolTransaction tx in transactions)
             {
                 checkedTransactions++;
 
@@ -113,8 +113,8 @@ namespace Nethermind.Consensus.Producers
 
                 while (selectedBlobIndex < selectedBlobTxs.Count && comparer.Compare(selectedBlobTxs[selectedBlobIndex], tx) < Equal)
                 {
-                    Transaction blobTx = selectedBlobTxs[selectedBlobIndex++];
-                    if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
+                    Transaction blobTx = selectedBlobTxs[selectedBlobIndex++].Transaction;
+                    if (TryResolveSelectedBlob(blobTx, out MempoolTransaction? fullBlobTx))
                     {
                         yield return fullBlobTx;
                     }
@@ -128,8 +128,8 @@ namespace Nethermind.Consensus.Producers
 
             while (selectedBlobIndex < selectedBlobTxs.Count)
             {
-                Transaction blobTx = selectedBlobTxs[selectedBlobIndex++];
-                if (TryResolveSelectedBlob(blobTx, out Transaction? fullBlobTx))
+                Transaction blobTx = selectedBlobTxs[selectedBlobIndex++].Transaction;
+                if (TryResolveSelectedBlob(blobTx, out MempoolTransaction? fullBlobTx))
                 {
                     yield return fullBlobTx;
                 }
@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Producers
 
             if (_logger.IsTrace) _logger.Trace($"Potentially selected {selectedTransactions} out of {checkedTransactions} pending transactions checked.");
 
-            bool TryResolveSelectedBlob(Transaction blobTx, [NotNullWhen(true)] out Transaction? fullBlobTx)
+            bool TryResolveSelectedBlob(Transaction blobTx, [NotNullWhen(true)] out MempoolTransaction? fullBlobTx)
             {
                 if (fullBlobTxs is not null
                     && blobTx.Hash is Hash256 hash
@@ -150,19 +150,14 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        private static bool HasFullBlobData(Transaction tx) => tx switch
-        {
-            LightTransaction lightTx => lightTx.BlobCellMask.IsFull,
-            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.HasFullBlobs(),
-            _ => false
-        };
+        private static bool HasFullBlobData(Transaction tx) => tx is LightTransaction { BlobCellMask.IsFull: true };
 
-        private Dictionary<Hash256, Transaction>? SelectBlobTransactions(
-            IEnumerable<(Transaction tx, ulong blobChain)> blobTransactions,
+        private Dictionary<Hash256, MempoolTransaction>? SelectBlobTransactions(
+            IEnumerable<(MempoolTransaction tx, ulong blobChain)> blobTransactions,
             BlockHeader parent,
             IReleaseSpec spec,
             in UInt256 baseFee,
-            ArrayPoolList<Transaction> selectedBlobTxs,
+            ArrayPoolList<MempoolTransaction> selectedBlobTxs,
             ulong maxBlobs,
             bool validateForkSensitiveState)
         {
@@ -173,7 +168,7 @@ namespace Nethermind.Consensus.Producers
             ulong countOfRemainingBlobs = 0UL;
             ulong consideredBlobCount = 0UL;
             ulong rejectedBlobCount = 0UL;
-            Dictionary<Hash256, Transaction>? fullBlobTxs = null;
+            Dictionary<Hash256, MempoolTransaction>? fullBlobTxs = null;
             ILightTxValidator? lightTxValidator = _specChangeTxValidator as ILightTxValidator;
 
             if (!TryUpdateFeePerBlobGas(parent, spec, out UInt256 feePerBlobGas))
@@ -182,11 +177,12 @@ namespace Nethermind.Consensus.Producers
                 return null;
             }
 
-            ArrayPoolList<(Transaction tx, ulong blobChain)>? candidates = null;
+            ArrayPoolList<(MempoolTransaction tx, ulong blobChain)>? candidates = null;
             try
             {
-                foreach ((Transaction blobTx, ulong blobChain) in blobTransactions)
+                foreach ((MempoolTransaction lightBlobTx, ulong blobChain) in blobTransactions)
                 {
+                    Transaction blobTx = lightBlobTx.Transaction;
                     ulong txBlobCount = (ulong)blobTx.GetBlobCount();
                     if (txBlobCount > maxBlobs)
                     {
@@ -217,9 +213,9 @@ namespace Nethermind.Consensus.Producers
                             continue;
                         }
 
-                        if (!TryResolveBlob(blobTx, spec, out Transaction? fullBlobTx)
-                            || (validateForkSensitiveState && !IsForkSensitiveStateValid(fullBlobTx, spec))
-                            || !FrameTxValidation.CoversRequiredMaxFee(fullBlobTx, spec, baseFee, feePerBlobGas))
+                        if (!TryResolveBlob(blobTx, spec, out MempoolTransaction? fullBlobTx)
+                            || (validateForkSensitiveState && !IsForkSensitiveStateValid(fullBlobTx.Transaction, spec))
+                            || !FrameTxValidation.CoversRequiredMaxFee(fullBlobTx.Transaction, spec, baseFee, feePerBlobGas))
                         {
                             rejectedBlobCount += txBlobCount;
                             if (rejectedBlobCount > maxRejectedBlobsToConsider)
@@ -241,7 +237,7 @@ namespace Nethermind.Consensus.Producers
 
                     if (txBlobCount == 1UL && candidates is null)
                     {
-                        selectedBlobTxs.Add(blobTx);
+                        selectedBlobTxs.Add(lightBlobTx);
                         if ((ulong)selectedBlobTxs.Count == maxBlobs)
                         {
                             // Early exit, have complete set of 1 blob txs with maximal priority fees
@@ -253,7 +249,7 @@ namespace Nethermind.Consensus.Producers
                     {
                         candidates ??= [with(16)];
 
-                        candidates.Add((blobTx, blobChain));
+                        candidates.Add((lightBlobTx, blobChain));
                         countOfRemainingBlobs += txBlobCount;
                     }
 
@@ -279,7 +275,7 @@ namespace Nethermind.Consensus.Producers
                 ulong leftoverCapacity = maxBlobs - (ulong)selectedBlobTxs.Count;
                 if (countOfRemainingBlobs <= leftoverCapacity)
                 {
-                    foreach ((Transaction tx, ulong blobChain) tx in candidates.AsSpan())
+                    foreach ((MempoolTransaction tx, ulong blobChain) tx in candidates.AsSpan())
                     {
                         selectedBlobTxs.Add(tx.tx);
                     }
@@ -292,18 +288,18 @@ namespace Nethermind.Consensus.Producers
 
             return GetSelectedFullBlobTransactions();
 
-            Dictionary<Hash256, Transaction>? GetSelectedFullBlobTransactions()
+            Dictionary<Hash256, MempoolTransaction>? GetSelectedFullBlobTransactions()
             {
                 if (fullBlobTxs is null || fullBlobTxs.Count == selectedBlobTxs.Count)
                 {
                     return fullBlobTxs;
                 }
 
-                Dictionary<Hash256, Transaction> selectedFullBlobTxs = [with(selectedBlobTxs.Count)];
-                foreach (Transaction selectedBlobTx in selectedBlobTxs)
+                Dictionary<Hash256, MempoolTransaction> selectedFullBlobTxs = [with(selectedBlobTxs.Count)];
+                foreach (MempoolTransaction selectedBlobTx in selectedBlobTxs)
                 {
                     if (selectedBlobTx.Hash is Hash256 hash
-                        && fullBlobTxs.TryGetValue(hash, out Transaction? fullBlobTx))
+                        && fullBlobTxs.TryGetValue(hash, out MempoolTransaction? fullBlobTx))
                     {
                         selectedFullBlobTxs[hash] = fullBlobTx;
                     }
@@ -327,10 +323,10 @@ namespace Nethermind.Consensus.Producers
         /// Existing entries remain untouched; chosen ones are appended at the end.
         /// </param>
         private static void ChooseBestBlobTransactions(
-            ArrayPoolList<(Transaction tx, ulong blobChain)> candidateTxs,
+            ArrayPoolList<(MempoolTransaction tx, ulong blobChain)> candidateTxs,
             int leftoverCapacity,
             in UInt256 baseFee,
-            ArrayPoolList<Transaction> selectedBlobTxs)
+            ArrayPoolList<MempoolTransaction> selectedBlobTxs)
         {
             int maxCapacity = leftoverCapacity + 1;
             // The maximum total fee achievable with capacity
@@ -344,7 +340,8 @@ namespace Nethermind.Consensus.Producers
             // Inner loop: iterate capacity in descending order to avoid overwriting data needed for the calculation.
             for (int i = 0; i < candidateTxs.Count; i++)
             {
-                (Transaction tx, ulong blobChain) = candidateTxs[i];
+                (MempoolTransaction candidate, ulong blobChain) = candidateTxs[i];
+                Transaction tx = candidate.Transaction;
 
                 if (!tx.TryCalculatePremiumPerGas(baseFee, out UInt256 premiumPerGas))
                 {
@@ -373,7 +370,7 @@ namespace Nethermind.Consensus.Producers
                     // this ensures we only link to the immediate prior-nonce.
                     for (int j = i - 1; j >= 0; j--)
                     {
-                        Transaction required = candidateTxs[j].tx;
+                        Transaction required = candidateTxs[j].tx.Transaction;
                         if (required.SenderAddress == tx.SenderAddress)
                         {
                             if (required.Nonce + 1 == tx.Nonce)
@@ -424,8 +421,8 @@ namespace Nethermind.Consensus.Producers
             {
                 if (isChosen[i * maxCapacity + remainingCapacity])
                 {
-                    Transaction tx = candidateTxs[i].tx;
-                    int blobCount = tx.GetBlobCount();
+                    MempoolTransaction tx = candidateTxs[i].tx;
+                    int blobCount = tx.Transaction.GetBlobCount();
                     selectedBlobTxs.Add(tx);
                     remainingCapacity -= blobCount;
                 }
@@ -436,17 +433,16 @@ namespace Nethermind.Consensus.Producers
             selectedBlobTxs.AsSpan()[start..].Reverse();
         }
 
-        private bool TryResolveBlob(Transaction blobTx, IReleaseSpec spec, [NotNullWhen(true)] out Transaction? fullBlobTx)
+        private bool TryResolveBlob(Transaction blobTx, IReleaseSpec spec, [NotNullWhen(true)] out MempoolTransaction? fullBlobTx)
         {
-            fullBlobTx = blobTx;
-            if (blobTx.NetworkWrapper is null
-                && (blobTx.Hash is null || !_transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out fullBlobTx)))
+            fullBlobTx = null;
+            if (blobTx.Hash is null || !_transactionPool.TryGetPendingBlobTransaction(blobTx.Hash, out MempoolTransaction? mempoolBlobTx))
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, failed to get full version of this blob tx from TxPool.");
                 return false;
             }
 
-            if (fullBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
+            if (mempoolBlobTx.NetworkWrapper is not ShardBlobNetworkWrapper wrapper)
             {
                 if (_logger.IsTrace) _logger.Trace($"Declining {blobTx.ToShortString()}, missing blob data.");
                 return false;
@@ -470,6 +466,7 @@ namespace Nethermind.Consensus.Producers
                 return false;
             }
 
+            fullBlobTx = mempoolBlobTx;
             return true;
         }
 
@@ -496,30 +493,30 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec) =>
+        protected virtual IEnumerable<MempoolTransaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, MempoolTransaction[]> pendingTransactions, IComparer<MempoolTransaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec) =>
             Order(pendingTransactions, comparer, filter, gasLimit, spec);
 
-        private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs, IReleaseSpec spec) =>
-            OrderCore<(Transaction tx, ulong resource), BlobOrdering>(pendingTransactions, comparer, filter, maxBlobs, spec);
+        private static IEnumerable<(MempoolTransaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, MempoolTransaction[]> pendingTransactions, IComparer<MempoolTransaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs, IReleaseSpec spec) =>
+            OrderCore<(MempoolTransaction tx, ulong resource), BlobOrdering>(pendingTransactions, comparer, filter, maxBlobs, spec);
 
-        protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
+        protected virtual IComparer<MempoolTransaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec) =>
-            OrderCore<Transaction, TransactionOrdering>(pendingTransactions, comparer, filter, gasLimit, spec);
+        internal static IEnumerable<MempoolTransaction> Order(IReadOnlyDictionary<AddressAsKey, MempoolTransaction[]> pendingTransactions, IComparer<MempoolTransaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec) =>
+            OrderCore<MempoolTransaction, TransactionOrdering>(pendingTransactions, comparer, filter, gasLimit, spec);
 
         private interface IOrdering<TResult>
         {
-            static abstract TResult Select(Transaction transaction, ulong resource);
+            static abstract TResult Select(MempoolTransaction transaction, ulong resource);
             static abstract ulong GetResource(Transaction transaction, IReleaseSpec spec);
             /// <summary>The part of a candidate's <paramref name="resource"/> that counts against its sender's later transactions.</summary>
             static abstract ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec);
             static abstract bool EnforceSequentialNonces { get; }
         }
 
-        private readonly struct TransactionOrdering : IOrdering<Transaction>
+        private readonly struct TransactionOrdering : IOrdering<MempoolTransaction>
         {
-            public static Transaction Select(Transaction transaction, ulong resource) => transaction;
+            public static MempoolTransaction Select(MempoolTransaction transaction, ulong resource) => transaction;
             /// <remarks>
             /// Under EIP-8037 a transaction's gas limit also covers state gas, which has its own block budget,
             /// so only the execution reservation counts against the gas limit here.
@@ -543,24 +540,24 @@ namespace Nethermind.Consensus.Producers
                 : GasCostOf.Transaction;
         }
 
-        private readonly struct BlobOrdering : IOrdering<(Transaction, ulong)>
+        private readonly struct BlobOrdering : IOrdering<(MempoolTransaction, ulong)>
         {
-            public static (Transaction, ulong) Select(Transaction transaction, ulong resource) => (transaction, resource);
+            public static (MempoolTransaction, ulong) Select(MempoolTransaction transaction, ulong resource) => (transaction, resource);
             public static ulong GetResource(Transaction transaction, IReleaseSpec spec) => (ulong)transaction.GetBlobCount();
             public static ulong GetChainResource(Transaction transaction, ulong resource, IReleaseSpec spec) => resource;
             public static bool EnforceSequentialNonces => true;
         }
 
         private static IEnumerable<TResult> OrderCore<TResult, TOrdering>(
-            IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions,
-            IComparer<Transaction> comparer,
+            IReadOnlyDictionary<AddressAsKey, MempoolTransaction[]> pendingTransactions,
+            IComparer<MempoolTransaction> comparer,
             Func<Transaction, bool> filter,
             ulong resourceLimit,
             IReleaseSpec spec)
             where TOrdering : struct, IOrdering<TResult>
         {
-            using ArrayPoolList<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries = new(pendingTransactions.Count);
-            foreach (Transaction[] bucket in pendingTransactions.Values)
+            using ArrayPoolList<(MempoolTransaction[] bucket, int index, int heapIndex, ulong resource)> entries = new(pendingTransactions.Count);
+            foreach (MempoolTransaction[] bucket in pendingTransactions.Values)
             {
                 if (bucket.Length > 0) entries.Add((bucket, 0, entries.Count, 0));
             }
@@ -571,8 +568,9 @@ namespace Nethermind.Consensus.Producers
             while (count > 0)
             {
                 int entryIndex = entries[0].heapIndex;
-                (Transaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
-                Transaction candidateTx = bucket[index];
+                (MempoolTransaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
+                MempoolTransaction candidate = bucket[index];
+                Transaction candidateTx = candidate.Transaction;
                 ulong candidateResource = TOrdering.GetResource(candidateTx, spec);
                 bool accepted = resource + candidateResource <= resourceLimit && filter(candidateTx);
                 int nextIndex = index + 1;
@@ -592,18 +590,18 @@ namespace Nethermind.Consensus.Producers
                     entries.AsSpan()[entryIndex].bucket = null!;
                 }
 
-                if (accepted) yield return TOrdering.Select(candidateTx, resource);
+                if (accepted) yield return TOrdering.Select(candidate, resource);
             }
         }
 
         private static void SiftDown(
-            Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries,
+            Span<(MempoolTransaction[] bucket, int index, int heapIndex, ulong resource)> entries,
             int count,
             int item,
             int index,
-            IComparer<Transaction> comparer)
+            IComparer<MempoolTransaction> comparer)
         {
-            Transaction tx = entries[item].bucket[entries[item].index];
+            MempoolTransaction tx = entries[item].bucket[entries[item].index];
             while (index < count / 2)
             {
                 int child = index * 2 + 1;
@@ -616,12 +614,12 @@ namespace Nethermind.Consensus.Producers
         }
 
         private static void SiftAfterRemoval(
-            Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries,
+            Span<(MempoolTransaction[] bucket, int index, int heapIndex, ulong resource)> entries,
             int count,
             int item,
-            IComparer<Transaction> comparer)
+            IComparer<MempoolTransaction> comparer)
         {
-            Transaction tx = entries[item].bucket[entries[item].index];
+            MempoolTransaction tx = entries[item].bucket[entries[item].index];
             int index = 0;
             // The last heap item usually belongs near the bottom; compare it only on the ascent.
             while (index < count / 2)
@@ -642,9 +640,9 @@ namespace Nethermind.Consensus.Producers
             entries[index].heapIndex = item;
         }
 
-        private static Transaction GetHeapTransaction(Span<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries, int index)
+        private static MempoolTransaction GetHeapTransaction(Span<(MempoolTransaction[] bucket, int index, int heapIndex, ulong resource)> entries, int index)
         {
-            ref (Transaction[] bucket, int index, int heapIndex, ulong resource) entry = ref entries[entries[index].heapIndex];
+            ref (MempoolTransaction[] bucket, int index, int heapIndex, ulong resource) entry = ref entries[entries[index].heapIndex];
             return entry.bucket[entry.index];
         }
 

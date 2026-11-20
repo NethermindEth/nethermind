@@ -13,20 +13,20 @@ namespace Nethermind.Consensus.Comparers
         : ITransactionComparerProvider
     {
         // we're caching default comparer
-        private IComparer<Transaction>? _defaultComparer = null;
+        private IComparer<MempoolTransaction>? _defaultComparer = null;
 
-        public IComparer<Transaction> GetDefaultComparer() =>
+        public IComparer<MempoolTransaction> GetDefaultComparer() =>
             _defaultComparer ??= new GasPriceTxComparer(blockFinder, specProvider)
-                .ThenBy(CompareTxByTimestamp.Instance)
+                .ThenBy(CompareTxByTimestamp.Instance.ForMempool())
                 .ThenBy(CompareTxByPoolIndex.Instance)
-                .ThenBy(CompareTxByGasLimit.Instance);
+                .ThenBy(CompareTxByGasLimit.Instance.ForMempool());
 
-        public IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext) =>
-            new CompositeComparer<Transaction>(
-                new GasPriceTxComparerForProducer(blockPreparationContext, specProvider),
-                BlobTxPriorityComparer.Instance,
-                CompareTxByTimestamp.Instance,
+        public IComparer<MempoolTransaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext) =>
+            new CompositeComparer<MempoolTransaction>(
+                new GasPriceTxComparerForProducer(blockPreparationContext, specProvider).ForMempool(),
+                BlobTxPriorityComparer.Instance.ForMempool(),
+                CompareTxByTimestamp.Instance.ForMempool(),
                 CompareTxByPoolIndex.Instance,
-                CompareTxByGasLimit.Instance);
+                CompareTxByGasLimit.Instance.ForMempool());
     }
 }

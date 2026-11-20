@@ -11,9 +11,9 @@ public class FutureNonceFilter(ITxPoolConfig txPoolConfig) : IIncomingTxFilter
 {
     private readonly ITxPoolConfig _txPoolConfig = txPoolConfig;
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (KeyedNonceManager.UsesKeyedNonce(tx))
+        if (KeyedNonceManager.UsesKeyedNonce(tx.Transaction))
         {
             // A nonce-distance bound is meaningless across independent domains; KeyedNonceFilter applies
             // the same configured limit as a pending count.

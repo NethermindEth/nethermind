@@ -30,7 +30,7 @@ public class BlobTxStorageReadBenchmarks
     private TempPath _directory = null!;
     private IContainer _container = null!;
     private BlobTxStorage _storage = null!;
-    private Transaction[] _transactions = null!;
+    private MempoolTransaction[] _transactions = null!;
     private byte[][] _networkForms = null!;
 
     [Params(1, 6)]
@@ -47,23 +47,22 @@ public class BlobTxStorageReadBenchmarks
             .Build();
         _storage = (BlobTxStorage)_container.Resolve<IBlobTxStorage>();
 
-        Transaction template = Build.A.Transaction.WithShardBlobTxTypeAndFields(BlobsPerTransaction, spec: Osaka.Instance).TestObject;
+        MempoolTransaction template = Build.A.Transaction.WithShardBlobTxTypeAndFields(BlobsPerTransaction, spec: Osaka.Instance).MempoolTestObject;
         EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
-        _transactions = new Transaction[TransactionCount];
+        _transactions = new MempoolTransaction[TransactionCount];
         for (int i = 0; i < TransactionCount; i++)
         {
-            Transaction tx = Build.A.Transaction
+            MempoolTransaction tx = new(Build.A.Transaction
                 .With(t =>
                 {
                     t.Type = TxType.Blob;
                     t.MaxFeePerBlobGas = 1;
                     t.BlobVersionedHashes = template.BlobVersionedHashes;
-                    t.NetworkWrapper = template.NetworkWrapper;
                     t.Timestamp = (UInt256)i;
                 })
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
-                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject, template.NetworkWrapper);
             _storage.Add(tx);
             _transactions[i] = tx;
         }
@@ -71,7 +70,7 @@ public class BlobTxStorageReadBenchmarks
         _networkForms = new byte[TransactionCount][];
         for (int i = 0; i < TransactionCount; i++)
         {
-            _networkForms[i] = TxDecoder.Instance.Encode(_transactions[i], RlpBehaviors.InMempoolForm);
+            _networkForms[i] = MempoolTxDecoder.Instance.Encode(_transactions[i]);
         }
 
         if (Full() != TransactionCount || WithoutBlobs() != TransactionCount)
@@ -89,7 +88,7 @@ public class BlobTxStorageReadBenchmarks
     public int Full()
     {
         int found = 0;
-        foreach (Transaction tx in _transactions)
+        foreach (MempoolTransaction tx in _transactions)
         {
             if (_storage.TryGet(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp, out _)) found++;
         }
@@ -101,7 +100,7 @@ public class BlobTxStorageReadBenchmarks
     public int WithoutBlobs()
     {
         int found = 0;
-        foreach (Transaction tx in _transactions)
+        foreach (MempoolTransaction tx in _transactions)
         {
             if (_storage.TryGetWithoutBlobs(tx.Hash!.ValueHash256, tx.SenderAddress!, out _)) found++;
         }
@@ -114,9 +113,9 @@ public class BlobTxStorageReadBenchmarks
     public int FullRecordWithoutBlobs()
     {
         int found = 0;
-        foreach (Transaction tx in _transactions)
+        foreach (MempoolTransaction tx in _transactions)
         {
-            if (((IBlobTxElidedReadStorage)_storage).TryGetFullRecordWithoutBlobs(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp, out Transaction read))
+            if (((IBlobTxElidedReadStorage)_storage).TryGetFullRecordWithoutBlobs(tx.Hash!.ValueHash256, tx.SenderAddress!, tx.Timestamp, out MempoolTransaction read))
             {
                 _ = BlobTransactionPayload.Elide(read);
                 found++;
@@ -134,7 +133,7 @@ public class BlobTxStorageReadBenchmarks
         foreach (byte[] networkForm in _networkForms)
         {
             RlpReader reader = new(networkForm);
-            if (TxDecoder.Instance.Decode(ref reader, RlpBehaviors.InMempoolForm) is not null) decoded++;
+            if (MempoolTxDecoder.Instance.Decode(ref reader) is not null) decoded++;
         }
 
         return decoded;

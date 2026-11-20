@@ -27,7 +27,7 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
         : Math.Max(txPoolConfig.FrameTxMaxVerifyGas, Eip8141Constants.MaxVerifyGas);
     private readonly ulong _maxVerifyStateGas = txPoolConfig.FrameTxMaxVerifyStateGas;
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (!tx.SupportsFrames)
         {
@@ -36,7 +36,7 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
 
         if (_maxVerifyGas != 0)
         {
-            ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx);
+            ulong verifyGas = FrameTxValidation.ValidationWorkGas(tx.Transaction);
             if (verifyGas > _maxVerifyGas)
             {
                 Metrics.PendingTransactionsFrameTxVerifyGasTooHigh++;
@@ -46,7 +46,7 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
         }
         else
         {
-            ulong signatureGas = FrameTxValidation.SignatureVerificationWorkGas(tx);
+            ulong signatureGas = FrameTxValidation.SignatureVerificationWorkGas(tx.Transaction);
             if (signatureGas > TxPoolConfig.DefaultFrameTxMaxVerifyGas)
             {
                 Metrics.PendingTransactionsFrameTxVerifyGasTooHigh++;
@@ -57,7 +57,7 @@ internal sealed class FrameTxVerifyGasFilter(ITxPoolConfig txPoolConfig, ILogger
 
         if (_maxVerifyStateGas != 0)
         {
-            ulong verifyStateGas = FrameTxValidation.ValidationWorkStateGas(tx);
+            ulong verifyStateGas = FrameTxValidation.ValidationWorkStateGas(tx.Transaction);
             if (verifyStateGas > _maxVerifyStateGas)
             {
                 Metrics.PendingTransactionsFrameTxVerifyStateGasTooHigh++;

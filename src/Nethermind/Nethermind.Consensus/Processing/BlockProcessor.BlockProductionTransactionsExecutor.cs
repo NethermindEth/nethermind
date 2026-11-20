@@ -77,17 +77,19 @@ namespace Nethermind.Consensus.Processing
 
                 // Don't use blockToProduce.Transactions.Count() as that would fully enumerate which is expensive
                 int txCount = blockToProduce is not null ? defaultTxCount : block.Transactions.Length;
-                IEnumerable<Transaction> transactions = blockToProduce?.Transactions ?? block.Transactions;
+                IEnumerable<MempoolTransaction> transactions = block.GetMempoolTransactions();
 
                 using ArrayPoolListRef<Transaction> includedTx = new(txCount);
+                using ArrayPoolListRef<MempoolTransaction> includedMempoolTx = new(blockToProduce is not null ? txCount : 0);
 
                 HashSet<Transaction> consideredTx = [with(ByHashTxComparer.Instance)];
                 BlockAccessListItemBudget itemBudget = CreateItemBudget(block);
-                foreach (Transaction currentTx in transactions)
+                foreach (MempoolTransaction mempoolTx in transactions)
                 {
                     // Check if we have gone over time or the payload has been requested
                     if (token.IsCancellationRequested) break;
 
+                    Transaction currentTx = mempoolTx.Transaction;
                     TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget);
                     if (action == TxAction.Stop) break;
 
@@ -97,7 +99,8 @@ namespace Nethermind.Consensus.Processing
                         includedTx.Add(currentTx);
                         if (blockToProduce is not null)
                         {
-                            blockToProduce.TxByteLength += currentTx.GetLength(false);
+                            includedMempoolTx.Add(mempoolTx);
+                            blockToProduce.TxByteLength += currentTx.GetLength();
                         }
                     }
                 }
@@ -105,7 +108,7 @@ namespace Nethermind.Consensus.Processing
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());
                 if (blockToProduce is not null)
                 {
-                    blockToProduce.Transactions = includedTx.ToArray();
+                    blockToProduce.Transactions = includedMempoolTx.ToArray();
                 }
                 return receiptsTracer.TxReceipts.ToArray();
             }

@@ -155,7 +155,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             DisconnectIfRequested(disconnectRequest);
         }
 
-        public void ReportPooledTransactionsReturned(ReadOnlySpan<Transaction> transactions)
+        public void ReportPooledTransactionsReturned(ReadOnlySpan<MempoolTransaction> transactions)
         {
             int transactionCount = Math.Min(
                 transactions.Length,

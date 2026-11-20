@@ -17,18 +17,18 @@ internal static class PendingReplacement
     /// the pending set instead.</summary>
     /// <remarks>Matched on the pool's own competing key, so an EIP-8250 same-nonce transaction in another
     /// nonce-key domain is not a replacement.</remarks>
-    public static Transaction? Find(Transaction tx, TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool)
+    public static MempoolTransaction? Find(Transaction tx, TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool)
     {
         ReplacementSearch search = new(tx);
         TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
-        pool.VisitBucket(tx.SenderAddress!, ref search, static (Transaction pending, ref ReplacementSearch state) =>
+        pool.VisitBucket(tx.SenderAddress!, ref search, static (MempoolTransaction pending, ref ReplacementSearch state) =>
         {
             // Buckets are visited in ascending nonce order, so skip below and stop past the replaced nonce.
             if (pending.Nonce < state.Nonce) return true;
             if (pending.Nonce > state.Nonce) return false;
 
             // Same nonce, another domain: only one entry can compete, so keep looking for it.
-            if (!CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending)) return true;
+            if (!CompetingTransactionEqualityComparer.Instance.Equals(state.Tx, pending.Transaction)) return true;
 
             state.Replaced = pending;
             return false;
@@ -41,6 +41,6 @@ internal static class PendingReplacement
     {
         public readonly Transaction Tx = tx;
         public readonly ulong Nonce = tx.Nonce;
-        public Transaction? Replaced;
+        public MempoolTransaction? Replaced;
     }
 }

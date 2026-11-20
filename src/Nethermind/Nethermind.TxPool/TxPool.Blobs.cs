@@ -20,13 +20,13 @@ namespace Nethermind.TxPool
 {
     public partial class TxPool
     {
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+        public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
-        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
+        public IDictionary<AddressAsKey, MempoolTransaction[]> GetPendingLightBlobTransactionsBySender(bool filterToReadyTx, UInt256 baseFee = default) =>
             DropUnreadySenders(_blobTransactions.GetBucketSnapshot(), filterToReadyTx, baseFee);
 
-        public Transaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
+        public MempoolTransaction[] GetPendingLightBlobTransactionsBySender(Address address) =>
             _blobTransactions.GetBucketSnapshot(address);
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
@@ -119,7 +119,7 @@ namespace Nethermind.TxPool
                 return result;
             }
 
-            if (_blobTransactions.TryGetValue(hash, out Transaction? transaction))
+            if (_blobTransactions.TryGetValue(hash, out MempoolTransaction? transaction))
             {
                 _broadcaster.Broadcast(transaction, isPersistent: false);
             }
@@ -127,10 +127,10 @@ namespace Nethermind.TxPool
             return BlobCellMergeResult.Accepted;
         }
 
-        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
-            _blobTransactions.TryGetValue(hash, out blobTransaction);
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out MempoolTransaction? blobTransaction) =>
+            _blobTransactions.TryGetMempoolTransaction(hash, out blobTransaction);
 
-        public AcceptTxResult ValidateTxForBlobSampling(Transaction tx)
+        public AcceptTxResult ValidateTxForBlobSampling(MempoolTransaction tx)
         {
             if (!tx.SupportsBlobs)
             {
@@ -141,7 +141,7 @@ namespace Nethermind.TxPool
             _newHeadLock.EnterReadLock();
             try
             {
-                state = new(tx, _accounts, _specProvider.GetCurrentHeadSpec());
+                state = new(tx.Transaction, _accounts, _specProvider.GetCurrentHeadSpec()) { NetworkWrapper = tx.NetworkWrapper };
                 bool canRecycle = false;
                 return FilterTransactions(tx, TxHandlingOptions.None, ref state, ref canRecycle, skipSamplingDeferredFilters: true);
             }
@@ -153,7 +153,7 @@ namespace Nethermind.TxPool
         }
 
         // only for tests - to test sorting
-        internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
+        internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out MempoolTransaction? transaction)
             => _blobTransactions.TryGetBlobTxSortingEquivalent(hash, out transaction);
 
         public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
@@ -185,7 +185,7 @@ namespace Nethermind.TxPool
             blobIndex = -1;
             if (_includedBlobLocations is null
                 || !_includedBlobLocations.TryGetLocation(blobVersionedHash, out IncludedBlobLocation location)
-                || !_processedBlobTxStorage!.TryGetProcessedTransaction(location.BlockNumber, location.Position, out Transaction? row))
+                || !_processedBlobTxStorage!.TryGetProcessedTransaction(location.BlockNumber, location.Position, out MempoolTransaction? row))
             {
                 return false;
             }
@@ -201,7 +201,7 @@ namespace Nethermind.TxPool
             Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs)
         {
             using ArrayPoolListRef<IncludedBlobRead> reads = new(requestedBlobVersionedHashes.Length, requestedBlobVersionedHashes.Length);
-            using ArrayPoolListRef<Transaction?> rows = ReadIncludedBlobRows(requestedBlobVersionedHashes, blobs, reads.AsSpan(), out int readCount);
+            using ArrayPoolListRef<MempoolTransaction?> rows = ReadIncludedBlobRows(requestedBlobVersionedHashes, blobs, reads.AsSpan(), out int readCount);
 
             int filled = 0;
             foreach (IncludedBlobRead read in reads.AsSpan()[..readCount])
@@ -224,7 +224,7 @@ namespace Nethermind.TxPool
         /// <param name="reads">Receives one read per indexed blob, pointing into the returned rows.</param>
         /// <param name="readCount">The number of reads written to <paramref name="reads"/>.</param>
         /// <returns>The rows, <see langword="null"/> where a row is missing.</returns>
-        private ArrayPoolListRef<Transaction?> ReadIncludedBlobRows<T>(byte[][] requestedBlobVersionedHashes, Span<T?> served,
+        private ArrayPoolListRef<MempoolTransaction?> ReadIncludedBlobRows<T>(byte[][] requestedBlobVersionedHashes, Span<T?> served,
             Span<IncludedBlobRead> reads, out int readCount) where T : class
         {
             using ArrayPoolListRef<ProcessedBlobTxKey> rowKeys = new(requestedBlobVersionedHashes.Length);
@@ -248,7 +248,7 @@ namespace Nethermind.TxPool
                 reads[readCount++] = new IncludedBlobRead(i, rowIndex, location.BlobIndex);
             }
 
-            ArrayPoolListRef<Transaction?> rows = new(rowKeys.Count, rowKeys.Count);
+            ArrayPoolListRef<MempoolTransaction?> rows = new(rowKeys.Count, rowKeys.Count);
             if (rowKeys.Count > 0)
             {
                 try
@@ -271,7 +271,7 @@ namespace Nethermind.TxPool
         /// is served only when it holds the requested versioned hash at the indexed blob index, with full blobs and proofs
         /// of <paramref name="requiredVersion"/>, as the blob pool requires of its own transactions.
         /// </remarks>
-        private static bool TryGetServableIncludedBlob(Transaction? row, byte[] blobVersionedHash, int blobIndex,
+        private static bool TryGetServableIncludedBlob(MempoolTransaction? row, byte[] blobVersionedHash, int blobIndex,
             ProofVersion requiredVersion, [NotNullWhen(true)] out ShardBlobNetworkWrapper? wrapper)
         {
             int proofsPerBlob = requiredVersion == ProofVersion.V1 ? Ckzg.CellsPerExtBlob : 1;
@@ -301,7 +301,7 @@ namespace Nethermind.TxPool
             Span<BlobCellMask> availableMasks, Span<byte[][]?> cells, Span<byte[][]?> proofs)
         {
             using ArrayPoolListRef<IncludedBlobRead> reads = new(requestedBlobVersionedHashes.Length, requestedBlobVersionedHashes.Length);
-            using ArrayPoolListRef<Transaction?> rows = ReadIncludedBlobRows(requestedBlobVersionedHashes, cells, reads.AsSpan(), out int readCount);
+            using ArrayPoolListRef<MempoolTransaction?> rows = ReadIncludedBlobRows(requestedBlobVersionedHashes, cells, reads.AsSpan(), out int readCount);
 
             int filled = 0;
             foreach (IncludedBlobRead read in reads.AsSpan()[..readCount])
@@ -388,7 +388,7 @@ namespace Nethermind.TxPool
             }
 
             Transaction[] blockTransactions = block.Transactions;
-            using ArrayPoolListRef<Transaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
+            using ArrayPoolListRef<MempoolTransaction> blobTxsToSave = new((int)_specProvider.GetSpec(block.Header).MaxBlobCount);
             try
             {
                 for (int i = 0; i < blockTransactions.Length; i++)
@@ -399,7 +399,7 @@ namespace Nethermind.TxPool
                         continue;
                     }
 
-                    if (_blobTransactions.TryGetValue(blockTx.Hash, out Transaction? fullBlobTx)
+                    if (_blobTransactions.TryGetMempoolTransaction(blockTx.Hash, out MempoolTransaction? fullBlobTx)
                         || (_reorganisedBlobTxs.TryGetValue(blockTx.Hash!.ValueHash256, out fullBlobTx) && fullBlobTx is not null))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Saved processed blob tx {blockTx.Hash} from block {block.Number} to ProcessedTxs db");

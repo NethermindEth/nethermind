@@ -25,13 +25,13 @@ public class InclusionListTxSource(
 
     // Keyed by the build's PayloadAttributes array so a concurrent FCU can't leak another build's IL;
     // weak keys collect with the build.
-    private readonly ConditionalWeakTable<byte[][], Lazy<Transaction[]>> _decodedByAttributes = [];
+    private readonly ConditionalWeakTable<byte[][], Lazy<MempoolTransaction[]>> _decodedByAttributes = [];
 
     // gasLimit is ignored: the downstream tx selection pipeline enforces it.
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+    public IEnumerable<MempoolTransaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (payloadAttributes?.InclusionListTransactions is not { Length: > 0 } il) return [];
-        if (!_decodedByAttributes.TryGetValue(il, out Lazy<Transaction[]>? decoded))
+        if (!_decodedByAttributes.TryGetValue(il, out Lazy<MempoolTransaction[]>? decoded))
         {
             // A miss means Set was never called for these attributes, e.g. an oversized IL that
             // engine_forkchoiceUpdatedV5 already warned about; debug-level as this runs once per improvement.
@@ -56,7 +56,9 @@ public class InclusionListTxSource(
     /// a forkchoice update that never starts a build pays nothing.</remarks>
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
         => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
-            new Lazy<Transaction[]>(() => OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)))));
+            new Lazy<MempoolTransaction[]>(() => Array.ConvertAll(
+                OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec))),
+                static tx => (MempoolTransaction)tx)));
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
     // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.

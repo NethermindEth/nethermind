@@ -15,9 +15,9 @@ namespace Nethermind.TxPool.Filters
     {
         private readonly ILogger _logger = logger;
 
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
-            if (KeyedNonceManager.UsesKeyedNonce(tx))
+            if (KeyedNonceManager.UsesKeyedNonce(tx.Transaction))
             {
                 return AcceptTxResult.Accepted;
             }

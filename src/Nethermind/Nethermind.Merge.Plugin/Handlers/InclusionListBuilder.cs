@@ -45,11 +45,11 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
 
         // Reservoir over senders rather than over their runs, so the pool's size costs no allocation and no
         // state read: only the drawn senders below pay for one.
-        using ArrayPoolListRef<Transaction[]> drawn = new(capacity);
+        using ArrayPoolListRef<MempoolTransaction[]> drawn = new(capacity);
         int seen = 0;
         // The pool routes blob txs to separate storage this snapshot never reads. Frame txs can remain in
         // mixed sender buckets and are removed below.
-        foreach (Transaction[] pending in txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(baseFee).Values)
+        foreach (MempoolTransaction[] pending in txPool.GetPendingTransactionsBySenderWithReadyNonFrameTx(baseFee).Values)
         {
             if (drawn.Count < capacity)
             {
@@ -76,9 +76,9 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
         try
         {
             using ArrayPoolListRef<Run> runs = new(capacity);
-            foreach (Transaction[] pending in drawn)
+            foreach (MempoolTransaction[] pending in drawn)
             {
-                Run run = AppendableRun(pending, in baseFee, ref filtered);
+                Run run = AppendableRun(Array.ConvertAll(pending, static tx => tx.Transaction), in baseFee, ref filtered);
                 if (run.Length > 0) runs.Add(run);
             }
 

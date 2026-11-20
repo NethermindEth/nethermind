@@ -178,7 +178,7 @@ public partial class EthRpcModuleTests
 
         Transaction decoded = TxRlpDecoder.DecodeCompleteNotNull(
             result.Raw,
-            RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+            RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping);
 
         using (Assert.EnterMultipleScope())
         {

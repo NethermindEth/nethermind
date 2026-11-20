@@ -75,16 +75,16 @@ internal sealed class InboundTransactionBudget(IBackgroundTaskScheduler schedule
         public int Used;
     }
 
-    internal sealed class Reservation(InboundTransactionBudget owner, int charge) : IOwnedReadOnlyList<Transaction>
+    internal sealed class Reservation(InboundTransactionBudget owner, int charge) : IOwnedReadOnlyList<MempoolTransaction>
     {
         private InboundTransactionBudget? _owner = owner;
-        private IOwnedReadOnlyList<Transaction> _transactions = IOwnedReadOnlyList<Transaction>.Empty;
+        private IOwnedReadOnlyList<MempoolTransaction> _transactions = IOwnedReadOnlyList<MempoolTransaction>.Empty;
 
-        internal void Attach(IOwnedReadOnlyList<Transaction> transactions) => _transactions = transactions;
+        internal void Attach(IOwnedReadOnlyList<MempoolTransaction> transactions) => _transactions = transactions;
         public int Count => _transactions.Count;
-        public Transaction this[int index] => _transactions[index];
-        public ReadOnlySpan<Transaction> AsSpan() => _transactions.AsSpan();
-        public IEnumerator<Transaction> GetEnumerator() => _transactions.GetEnumerator();
+        public MempoolTransaction this[int index] => _transactions[index];
+        public ReadOnlySpan<MempoolTransaction> AsSpan() => _transactions.AsSpan();
+        public IEnumerator<MempoolTransaction> GetEnumerator() => _transactions.GetEnumerator();
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
         public void Dispose()
@@ -97,7 +97,7 @@ internal sealed class InboundTransactionBudget(IBackgroundTaskScheduler schedule
             }
             finally
             {
-                _transactions = IOwnedReadOnlyList<Transaction>.Empty;
+                _transactions = IOwnedReadOnlyList<MempoolTransaction>.Empty;
                 budget.Release(charge);
             }
         }

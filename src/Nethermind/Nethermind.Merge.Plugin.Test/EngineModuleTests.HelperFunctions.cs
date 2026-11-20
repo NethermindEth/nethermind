@@ -144,17 +144,17 @@ namespace Nethermind.Merge.Plugin.Test
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
             Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader,
             int blobCountPerTx = 0, IReleaseSpec? spec = null) =>
-            BuildTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
-                count, value, out accountFrom, out parentHeader, blobCountPerTx, spec);
+            BuildMempoolTransactions(chain.BlockTree, chain.SpecProvider, chain.StateReader, Timestamper, parentHash, from, to,
+                count, value, out accountFrom, out parentHeader, blobCountPerTx, spec).Select(static tx => tx.Transaction).ToArray();
 
-        private static Transaction[] BuildTransactions(
+        private static MempoolTransaction[] BuildMempoolTransactions(
             IBlockTree blockTree,
             ISpecProvider specProvider,
             IStateReader stateReader,
             ITimestamper timestamper,
             Hash256 parentHash, PrivateKey from, Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0, IReleaseSpec? spec = null)
         {
-            Transaction BuildTransaction(uint index, AccountStruct senderAccount)
+            MempoolTransaction BuildTransaction(uint index, AccountStruct senderAccount)
             {
                 TransactionBuilder<Transaction> builder = Build.A.Transaction
                     .WithNonce(senderAccount.Nonce + index)
@@ -176,7 +176,7 @@ namespace Nethermind.Merge.Plugin.Test
 
                 return builder
                     .WithMaxFeePerGasIfSupports1559(1.GWei)
-                    .SignedAndResolved(from).TestObject;
+                    .SignedAndResolved(from).MempoolTestObject;
             }
 
             parentHeader = blockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;

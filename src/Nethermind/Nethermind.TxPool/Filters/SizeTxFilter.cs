@@ -14,11 +14,11 @@ internal sealed class SizeTxFilter(ITxPoolConfig txPoolConfig, ILogger logger) :
     private readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
     private readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize ?? long.MaxValue;
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         long maxSize = tx.CarriesBlobs ? _configuredMaxBlobTxSize : _configuredMaxTxSize;
 
-        if (tx.GetLength(shouldCountBlobs: false) > maxSize)
+        if (tx.Transaction.GetLength() > maxSize)
         {
             Metrics.PendingTransactionsSizeTooLarge++;
             if (logger.IsTrace) logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, max tx size exceeded.");

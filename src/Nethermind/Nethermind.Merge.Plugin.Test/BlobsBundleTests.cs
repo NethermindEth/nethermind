@@ -3,6 +3,7 @@
 
 using System.Linq;
 using CkzgLib;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -20,11 +21,10 @@ public class BlobsBundleTests
     [Test]
     public void BlobsBundleV1_includes_blob_carrying_frame_tx()
     {
-        Transaction frameBlobTx = BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V0);
-        Transaction type3Tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(blobCount: 1).SignedAndResolved().TestObject;
-        Block block = Build.A.Block.WithTransactions(type3Tx, frameBlobTx).TestObject;
+        MempoolTransaction frameBlobTx = BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V0);
+        MempoolTransaction type3Tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(blobCount: 1).SignedAndResolved().MempoolTestObject;
 
-        BlobsBundleV1 bundle = new(block);
+        BlobsBundleV1 bundle = new(ProducedBlock(type3Tx, frameBlobTx));
 
         // Arrays are sized from the type-agnostic blob count, so only non-null entries prove the frame tx was copied in.
         using (Assert.EnterMultipleScope())
@@ -38,10 +38,9 @@ public class BlobsBundleTests
     [Test]
     public void BlobsBundleV2_includes_blob_carrying_frame_tx()
     {
-        Transaction frameBlobTx = BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1);
-        Block block = Build.A.Block.WithTransactions(frameBlobTx).TestObject;
+        MempoolTransaction frameBlobTx = BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1);
 
-        BlobsBundleV2 bundle = new(block);
+        BlobsBundleV2 bundle = new(ProducedBlock(frameBlobTx));
 
         using (Assert.EnterMultipleScope())
         {
@@ -55,14 +54,16 @@ public class BlobsBundleTests
     [Test]
     public void BlobsBundleV2_throws_for_blob_tx_without_cell_proofs([Values] bool hasBlobProofs)
     {
-        Transaction type3Tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(blobCount: 1).SignedAndResolved().TestObject;
-        if (!hasBlobProofs) type3Tx.NetworkWrapper = null;
-        Block block = Build.A.Block.WithTransactions(type3Tx).TestObject;
+        MempoolTransaction type3Tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(blobCount: 1).SignedAndResolved().MempoolTestObject;
+        Block block = ProducedBlock(hasBlobProofs ? type3Tx : type3Tx with { NetworkWrapper = null });
 
         Assert.That(() => new BlobsBundleV2(block), Throws.ArgumentException);
     }
 
-    private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
+    private static BlockToProduce ProducedBlock(params MempoolTransaction[] transactions) =>
+        new(Build.A.BlockHeader.TestObject, transactions, []);
+
+    private static MempoolTransaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
     {
         if (!KzgPolynomialCommitments.IsInitialized)
         {
@@ -78,7 +79,7 @@ public class BlobsBundleTests
         })]);
         proofsManager.ComputeProofsAndCommitments(wrapper);
 
-        return new Transaction
+        return new MempoolTransaction(new Transaction
         {
             Type = TxType.FrameTx,
             ChainId = TestBlockchainIds.ChainId,
@@ -94,7 +95,6 @@ public class BlobsBundleTests
             ],
             FrameSignatures = [],
             BlobVersionedHashes = proofsManager.ComputeHashes(wrapper),
-            NetworkWrapper = wrapper,
-        };
+        }, wrapper);
     }
 }

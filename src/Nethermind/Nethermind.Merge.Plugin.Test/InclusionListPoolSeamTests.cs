@@ -154,7 +154,7 @@ public class InclusionListPoolSeamTests
     }
 
     /// <summary>A pool that vouches for every bucket, to show what the builder would have drawn from one.</summary>
-    private static ITxPool VouchingFor(IDictionary<AddressAsKey, Transaction[]> buckets)
+    private static ITxPool VouchingFor(IDictionary<AddressAsKey, MempoolTransaction[]> buckets)
     {
         ITxPool pool = Substitute.For<ITxPool>();
         pool.GetPendingTransactionsBySenderWithReadyNonFrameTx(Arg.Any<UInt256>()).Returns(buckets);

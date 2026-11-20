@@ -26,7 +26,7 @@ internal sealed class BlackListedAddressFilter(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlackListedAddressFilter>();
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(chainHeadInfoProvider.HeadNumber + 1);
 
@@ -34,10 +34,10 @@ internal sealed class BlackListedAddressFilter(
             return AcceptTxResult.Accepted;
 
         if (IsBlackListed(spec, tx.SenderAddress))
-            return Reject(tx, XdcAcceptTxResult.BlackListedSender);
+            return Reject(tx.Transaction, XdcAcceptTxResult.BlackListedSender);
 
         if (IsBlackListed(spec, tx.To))
-            return Reject(tx, XdcAcceptTxResult.BlackListedRecipient);
+            return Reject(tx.Transaction, XdcAcceptTxResult.BlackListedRecipient);
 
         return AcceptTxResult.Accepted;
     }

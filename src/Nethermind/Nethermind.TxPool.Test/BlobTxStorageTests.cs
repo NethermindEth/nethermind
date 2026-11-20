@@ -42,13 +42,13 @@ public class BlobTxStorageTests
         const ulong blockNumber = 42;
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction[] transactions = CreateBlobTransactions(txCount);
+        MempoolTransaction[] transactions = CreateBlobTransactions(txCount);
 
-        byte[] legacyEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm);
+        byte[] legacyEntry = MempoolTxDecoder.Instance.Encode(transactions);
         columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
             .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), legacyEntry);
 
-        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] decoded), Is.True);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out MempoolTransaction[] decoded), Is.True);
         AssertNetworkWrappersEqual(transactions, decoded!);
     }
 
@@ -59,13 +59,13 @@ public class BlobTxStorageTests
         const ulong blockNumber = 42;
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction[] transactions = CreateV1BlobTransactions(txCount);
+        MempoolTransaction[] transactions = CreateV1BlobTransactions(txCount);
 
-        byte[] storageEntry = TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+        byte[] storageEntry = MempoolTxDecoder.Instance.Encode(transactions, RlpBehaviors.Storage);
         columnsDb.GetColumnDb(BlobTxsColumns.ProcessedTxs)
             .Set(blockNumber.ToBigEndianSpanWithoutLeadingZeros(out _), storageEntry);
 
-        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] decoded), Is.True);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out MempoolTransaction[] decoded), Is.True);
         AssertNetworkWrappersEqual(transactions, decoded!);
     }
 
@@ -74,14 +74,14 @@ public class BlobTxStorageTests
     {
         const ulong blockNumber = 42;
         BlobTxStorage blobTxStorage = new();
-        Transaction[] transactions = CreateV1BlobTransactions(txCount);
+        MempoolTransaction[] transactions = CreateV1BlobTransactions(txCount);
 
-        using (ArrayPoolListRef<Transaction> pooledTransactions = new(transactions.AsSpan()))
+        using (ArrayPoolListRef<MempoolTransaction> pooledTransactions = new(transactions.AsSpan()))
         {
             blobTxStorage.AddBlobTransactionsFromBlock(blockNumber, pooledTransactions);
         }
 
-        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out Transaction[] decoded), Is.True);
+        Assert.That(blobTxStorage.TryGetBlobTransactionsFromBlock(blockNumber, out MempoolTransaction[] decoded), Is.True);
         AssertNetworkWrappersEqual(transactions, decoded!);
     }
 
@@ -90,7 +90,7 @@ public class BlobTxStorageTests
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        using ArrayPoolListRef<Transaction> transactions = new(2);
+        using ArrayPoolListRef<MempoolTransaction> transactions = new(2);
         transactions.Add(CreateBlobTransaction(TestItem.PrivateKeyA, 0));
         transactions.Add(CreateBlobTransaction(TestItem.PrivateKeyA, 1));
         storage.AddBlobTransactionsFromBlock(358, transactions);
@@ -100,7 +100,7 @@ public class BlobTxStorageTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.False);
+            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.False);
             Assert.That(restored, Is.Null);
         }
     }
@@ -121,14 +121,14 @@ public class BlobTxStorageTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.False);
+            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.False);
             Assert.That(restored, Is.Null);
         }
         if (replace)
         {
-            using ArrayPoolListRef<Transaction> transactions = new(1, CreateBlobTransaction());
+            using ArrayPoolListRef<MempoolTransaction> transactions = new(1, CreateBlobTransaction());
             storage.AddBlobTransactionsFromBlock(358, transactions);
-            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+            Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.True);
             AssertProcessedTransactions(transactions, restored);
         }
 
@@ -143,19 +143,19 @@ public class BlobTxStorageTests
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        using ArrayPoolListRef<Transaction> transactions = new(count);
+        using ArrayPoolListRef<MempoolTransaction> transactions = new(count);
         for (int i = 0; i < count; i++)
         {
-            Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, i, blobCount: i % 4 == 1 ? 3 : 1);
+            MempoolTransaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, i, blobCount: i % 4 == 1 ? 3 : 1);
             transactions.Add(tx);
             if (stored) storage.Add(tx);
         }
 
         storage.AddBlobTransactionsFromBlock(358, transactions);
-        foreach (Transaction tx in transactions) storage.Delete(tx.Hash, tx.Timestamp);
+        foreach (MempoolTransaction tx in transactions) storage.Delete(tx.Hash, tx.Transaction.Timestamp);
         storage = new BlobTxStorage(db);
 
-        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.True);
         AssertProcessedTransactions(transactions, restored);
         storage.DeleteBlobTransactionsFromBlock(358);
         Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys(), Is.Empty);
@@ -166,15 +166,15 @@ public class BlobTxStorageTests
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        Transaction tx = CreateBlobTransaction();
+        MempoolTransaction tx = CreateBlobTransaction();
         storage.Add(tx);
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper;
+        ShardBlobNetworkWrapper wrapper = tx.NetworkWrapper!;
         wrapper.Proofs[0] ^= 1;
-        using ArrayPoolListRef<Transaction> transactions = new(1, tx);
+        using ArrayPoolListRef<MempoolTransaction> transactions = new(1, tx);
 
         storage.AddBlobTransactionsFromBlock(358, transactions);
 
-        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.True);
         AssertProcessedTransactions(transactions, restored);
     }
 
@@ -183,13 +183,13 @@ public class BlobTxStorageTests
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        using ArrayPoolListRef<Transaction> transactions = new(1, CreateBlobTransaction());
-        using ArrayPoolSpan<byte> legacy = TxDecoder.Instance.EncodeToArrayPoolSpan(transactions.AsSpan(), RlpBehaviors.InMempoolForm | RlpBehaviors.Storage);
+        using ArrayPoolListRef<MempoolTransaction> transactions = new(1, CreateBlobTransaction());
+        using ArrayPoolSpan<byte> legacy = MempoolTxDecoder.Instance.EncodeToArrayPoolSpan(transactions.AsSpan(), RlpBehaviors.Storage);
         db.GetColumnDb(BlobTxsColumns.ProcessedTxs).PutSpan(358UL.ToBigEndianSpanWithoutLeadingZeros(out _), legacy);
 
         if (replace) storage.AddBlobTransactionsFromBlock(358, transactions);
 
-        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.True);
         AssertProcessedTransactions(transactions, restored);
         storage.DeleteBlobTransactionsFromBlock(358);
         Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys(), Is.Empty);
@@ -200,14 +200,14 @@ public class BlobTxStorageTests
     {
         using MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        using ArrayPoolListRef<Transaction> original = new(2, CreateBlobTransaction(), CreateBlobTransaction(TestItem.PrivateKeyB));
-        using ArrayPoolListRef<Transaction> replacement = new(1, CreateBlobTransaction(TestItem.PrivateKeyC));
+        using ArrayPoolListRef<MempoolTransaction> original = new(2, CreateBlobTransaction(), CreateBlobTransaction(TestItem.PrivateKeyB));
+        using ArrayPoolListRef<MempoolTransaction> replacement = new(1, CreateBlobTransaction(TestItem.PrivateKeyC));
         storage.AddBlobTransactionsFromBlock(358, original);
         storage.AddBlobTransactionsFromBlock(359, original);
 
         storage.AddBlobTransactionsFromBlock(358, replacement);
 
-        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.True);
         AssertProcessedTransactions(replacement, restored);
         Assert.That(db.GetColumnDb(BlobTxsColumns.ProcessedTxs).GetAllKeys().Count(), Is.EqualTo(5));
         storage.DeleteBlobTransactionsFromBlock(358);
@@ -224,10 +224,10 @@ public class BlobTxStorageTests
     public void TryGetProcessedTransaction_should_read_the_row_at_the_stored_position(int position, bool expectedHit)
     {
         BlobTxStorage storage = new();
-        Transaction[] transactions = CreateV1BlobTransactions(3);
+        MempoolTransaction[] transactions = CreateV1BlobTransactions(3);
         SaveProcessed(storage, 358, transactions);
 
-        bool hit = ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, position, out Transaction transaction);
+        bool hit = ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, position, out MempoolTransaction transaction);
 
         Assert.That(hit, Is.EqualTo(expectedHit));
         if (expectedHit) AssertNetworkWrappersEqual([transactions[position]], [transaction!]);
@@ -240,7 +240,7 @@ public class BlobTxStorageTests
         BlobTxStorage storage = new();
         SaveProcessed(storage, 358, CreateV1BlobTransactions(1));
 
-        bool hit = ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(blockNumber, 0, out Transaction transaction);
+        bool hit = ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(blockNumber, 0, out MempoolTransaction transaction);
 
         using (Assert.EnterMultipleScope())
         {
@@ -254,10 +254,10 @@ public class BlobTxStorageTests
     {
         MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        Transaction[] transactions = CreateBlobTransactions(2);
+        MempoolTransaction[] transactions = CreateBlobTransactions(2);
         db.GetColumnDb(BlobTxsColumns.ProcessedTxs).Set(
             358UL.ToBigEndianSpanWithoutLeadingZeros(out _),
-            TxDecoder.Instance.Encode(transactions, RlpBehaviors.InMempoolForm));
+            MempoolTxDecoder.Instance.Encode(transactions));
 
         Assert.That(((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _), Is.False);
     }
@@ -279,15 +279,15 @@ public class BlobTxStorageTests
     public void TryGetProcessedTransactions_should_return_hits_and_misses_in_key_order()
     {
         BlobTxStorage storage = new();
-        Transaction[] first = CreateV1BlobTransactions(2);
-        Transaction[] second = CreateV1BlobTransactions(1);
+        MempoolTransaction[] first = CreateV1BlobTransactions(2);
+        MempoolTransaction[] second = CreateV1BlobTransactions(1);
         SaveProcessed(storage, 358, first);
         SaveProcessed(storage, 359, second);
         ProcessedBlobTxKey[] keys =
         [
             new(359, 0), new(358, 5), new(358, 1), new(360, 0), new(358, 0)
         ];
-        Transaction[] results = new Transaction[keys.Length];
+        MempoolTransaction[] results = new MempoolTransaction[keys.Length];
         results[1] = first[0];
 
         int found = ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions(keys, results);
@@ -312,7 +312,7 @@ public class BlobTxStorageTests
     public void TryGetProcessedTransactions_should_reject_a_results_span_shorter_than_keys()
     {
         BlobTxStorage storage = new();
-        Transaction[] results = new Transaction[1];
+        MempoolTransaction[] results = new MempoolTransaction[1];
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(1, 0), new(1, 1)], results));
@@ -328,7 +328,7 @@ public class BlobTxStorageTests
 
         storage.DeleteBlobTransactionsFromBlock(358);
 
-        Transaction[] results = new Transaction[2];
+        MempoolTransaction[] results = new MempoolTransaction[2];
         int found = batched
             ? reader.TryGetProcessedTransactions([new(358, 0), new(358, 1)], results)
             : reader.TryGetProcessedTransaction(358, 1, out _) ? 1 : 0;
@@ -340,12 +340,12 @@ public class BlobTxStorageTests
     {
         MemColumnsDb<BlobTxsColumns> db = new();
         BlobTxStorage storage = new(db);
-        Transaction[] transactions = CreateV1BlobTransactions(2);
+        MempoolTransaction[] transactions = CreateV1BlobTransactions(2);
         SaveProcessed(storage, 358, transactions);
         byte[] key = new byte[12];
         BinaryPrimitives.WriteUInt64BigEndian(key, 358);
         db.GetColumnDb(BlobTxsColumns.ProcessedTxs).Remove(key);
-        Transaction[] results = new Transaction[2];
+        MempoolTransaction[] results = new MempoolTransaction[2];
 
         int found = ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0), new(358, 1)], results);
 
@@ -359,7 +359,7 @@ public class BlobTxStorageTests
     {
         using TrackingColumnsDb db = new();
         BlobTxStorage storage = new(db);
-        Transaction[] stored = CreateV1BlobTransactions(1);
+        MempoolTransaction[] stored = CreateV1BlobTransactions(1);
         SaveProcessed(storage, 358, stored);
         using ManualResetEventSlim writeStarted = new();
         using ManualResetEventSlim releaseWrite = new();
@@ -384,7 +384,7 @@ public class BlobTxStorageTests
             Assert.That(lockedRead.Wait(TimeSpan.FromMilliseconds(200)), Is.False, "the whole-block read waits for the lock");
 #pragma warning restore NUnit2045
 
-            Transaction[] results = new Transaction[1];
+            MempoolTransaction[] results = new MempoolTransaction[1];
             read = Task.Factory.StartNew(() => batched
                 ? ((IProcessedBlobTxStorage)storage).TryGetProcessedTransactions([new(358, 0)], results) == 1
                 : ((IProcessedBlobTxStorage)storage).TryGetProcessedTransaction(358, 0, out _),
@@ -404,9 +404,9 @@ public class BlobTxStorageTests
         }
     }
 
-    private static void SaveProcessed(BlobTxStorage storage, ulong blockNumber, Transaction[] transactions)
+    private static void SaveProcessed(BlobTxStorage storage, ulong blockNumber, MempoolTransaction[] transactions)
     {
-        using ArrayPoolListRef<Transaction> batch = new(transactions.Length);
+        using ArrayPoolListRef<MempoolTransaction> batch = new(transactions.Length);
         batch.AddRange(transactions);
         storage.AddBlobTransactionsFromBlock(blockNumber, batch);
     }
@@ -416,19 +416,19 @@ public class BlobTxStorageTests
     {
         using TrackingColumnsDb db = new();
         BlobTxStorage storage = new(db);
-        using ArrayPoolListRef<Transaction> original = new(1, CreateBlobTransaction());
-        using ArrayPoolListRef<Transaction> replacement = new(2, CreateBlobTransaction(TestItem.PrivateKeyB), CreateBlobTransaction(TestItem.PrivateKeyC));
+        using ArrayPoolListRef<MempoolTransaction> original = new(1, CreateBlobTransaction());
+        using ArrayPoolListRef<MempoolTransaction> replacement = new(2, CreateBlobTransaction(TestItem.PrivateKeyB), CreateBlobTransaction(TestItem.PrivateKeyC));
         if (stored)
         {
-            foreach (Transaction tx in replacement) storage.Add(tx);
+            foreach (MempoolTransaction tx in replacement) storage.Add(tx);
         }
         storage.AddBlobTransactionsFromBlock(358, original);
         db.FailProcessedWriteAfter = 1;
-        Transaction[] replacementTransactions = replacement.AsSpan().ToArray();
+        MempoolTransaction[] replacementTransactions = replacement.AsSpan().ToArray();
 
         Assert.Throws<InvalidOperationException>(() => SaveProcessed(storage, replacementTransactions));
 
-        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out Transaction[] restored), Is.True);
+        Assert.That(storage.TryGetBlobTransactionsFromBlock(358, out MempoolTransaction[] restored), Is.True);
         AssertProcessedTransactions(original, restored);
         using (Assert.EnterMultipleScope())
         {
@@ -436,26 +436,25 @@ public class BlobTxStorageTests
             Assert.That(db.ActiveSpans, Is.Zero);
         }
 
-        static void SaveProcessed(BlobTxStorage storage, Transaction[] transactions)
+        static void SaveProcessed(BlobTxStorage storage, MempoolTransaction[] transactions)
         {
-            using ArrayPoolListRef<Transaction> batch = new(transactions.Length);
+            using ArrayPoolListRef<MempoolTransaction> batch = new(transactions.Length);
             batch.AddRange(transactions);
             storage.AddBlobTransactionsFromBlock(358, batch);
         }
     }
 
-    private static void AssertProcessedTransactions(in ArrayPoolListRef<Transaction> expected, Transaction[] actual)
+    private static void AssertProcessedTransactions(in ArrayPoolListRef<MempoolTransaction> expected, MempoolTransaction[] actual)
     {
         Assert.That(actual.Length, Is.EqualTo(expected.Count));
         for (int i = 0; i < actual.Length; i++)
         {
-            ShardBlobNetworkWrapper expectedWrapper = (ShardBlobNetworkWrapper)expected[i].NetworkWrapper;
-            ShardBlobNetworkWrapper actualWrapper = (ShardBlobNetworkWrapper)actual[i].NetworkWrapper;
+            ShardBlobNetworkWrapper expectedWrapper = expected[i].NetworkWrapper!;
+            ShardBlobNetworkWrapper actualWrapper = actual[i].NetworkWrapper!;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(actual[i], Is.EqualTo(expected[i]).UsingTransactionComparer(
-                    nameof(Transaction.SenderAddress), nameof(Transaction.Timestamp),
-                    nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)), $"Transaction {i}");
+                Assert.That(actual[i].Transaction, Is.EqualTo(expected[i].Transaction).UsingTransactionComparer(
+                    nameof(Transaction.SenderAddress), nameof(Transaction.Timestamp)), $"Transaction {i}");
                 Assert.That(actualWrapper.CellMask, Is.EqualTo(expectedWrapper.CellMask), $"Cell mask {i}");
                 Assert.That(actualWrapper.Cells, Is.EqualTo(expectedWrapper.Cells), $"Cells {i}");
             }
@@ -490,31 +489,34 @@ public class BlobTxStorageTests
     {
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: version is ProofVersion.V0 ? Cancun.Instance : Osaka.Instance);
+        MempoolTransaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: version is ProofVersion.V0 ? Cancun.Instance : Osaka.Instance);
         // Every version, so a new one fails here until the transcoder serves it.
-        tx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with { Version = version };
+        tx = tx with { NetworkWrapper = tx.NetworkWrapper! with { Version = version } };
         if (trailer is StoredCellTrailer.Cells)
         {
-            tx.NetworkWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper! with
+            tx = tx with
             {
-                CellMask = BlobCellMask.FromIndices([1, 3]),
-                Cells = [[1], [2]]
+                NetworkWrapper = tx.NetworkWrapper! with
+                {
+                    CellMask = BlobCellMask.FromIndices([1, 3]),
+                    Cells = [[1], [2]]
+                }
             };
         }
 
         blobTxStorage.Add(tx);
         if (trailer is StoredCellTrailer.None)
         {
-            StoreFullRecord(columnsDb, tx, TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm));
+            StoreFullRecord(columnsDb, tx, MempoolTxDecoder.Instance.Encode(tx));
         }
 
-        Assert.That(blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out Transaction decoded), Is.True);
+        Assert.That(blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out MempoolTransaction decoded), Is.True);
         bool found = ((IBlobTxNetworkFormStorage)blobTxStorage).TryGetNetworkForm(tx.Hash!, tx.Timestamp, out IOwnedReadOnlyList<byte> networkForm);
         using (networkForm)
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.True);
-            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(decoded, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(MempoolTxDecoder.Instance.Encode(decoded, RlpBehaviors.SkipTypedWrapping)));
             Assert.That(networkForm.Count, Is.EqualTo(decoded.GetLength()));
         }
     }
@@ -530,7 +532,7 @@ public class BlobTxStorageTests
         Assert.That(db.GetColumnDb(BlobTxsColumns.FullBlobTxs), Is.InstanceOf<IReadOnlyNativeKeyValueStore>());
 
         BlobTxStorage blobTxStorage = new(db);
-        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        MempoolTransaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
         blobTxStorage.Add(tx);
         db.Flush();
 
@@ -540,7 +542,7 @@ public class BlobTxStorageTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(found, Is.True);
-            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+            Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(MempoolTxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping)));
             Assert.That(storage.TryGetNetworkForm(TestItem.KeccakC, tx.Timestamp, out _), Is.False);
         }
     }
@@ -551,7 +553,7 @@ public class BlobTxStorageTests
         PinnedColumnsDb db = new();
         BlobTxStorage blobTxStorage = new(db);
         IBlobTxNetworkFormStorage storage = blobTxStorage;
-        Transaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        MempoolTransaction tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
         if (malformed)
         {
             StoreFullRecord(db, tx, [0xc1, 0x80]);
@@ -564,7 +566,7 @@ public class BlobTxStorageTests
             using (networkForm)
             {
                 // The released slice is overwritten, so equal bytes show that the copy ran before the release.
-                Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping)));
+                Assert.That(networkForm.AsSpan().ToArray(), Is.EqualTo(MempoolTxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping)));
             }
         }
 
@@ -625,7 +627,7 @@ public class BlobTxStorageTests
     /// When set, stores a hand-built record made of the network items of <paramref name="tx"/> that it returns.
     /// </param>
     [TestCaseSource(nameof(RecordsNotServedAsNetworkForm))]
-    public void TryGetNetworkForm_should_miss_for_a_record_it_does_not_serve(Transaction tx, bool stored, Func<byte[][], byte[][]> editNetworkItems)
+    public void TryGetNetworkForm_should_miss_for_a_record_it_does_not_serve(MempoolTransaction tx, bool stored, Func<byte[][], byte[][]> editNetworkItems)
     {
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
@@ -651,12 +653,12 @@ public class BlobTxStorageTests
         yield return new TestCaseData(CreateV1BlobTransactions(1)[0], true, null).SetArgDisplayNames("sparse blobs");
         yield return new TestCaseData(BuildBlobCarryingFrameTx(blobCount: 2, ProofVersion.V1), true, null).SetArgDisplayNames("frame transaction");
 
-        Transaction v0Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Cancun.Instance);
+        MempoolTransaction v0Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Cancun.Instance);
         yield return new TestCaseData(v0Tx, true, (Func<byte[][], byte[][]>)(static items => [items[0], [0x00], .. items[1..]]))
             .SetArgDisplayNames("explicit 0x00 V0 version byte");
 
         // The items of a V1 record are the transaction fields, the version byte, blobs, commitments and proofs.
-        Transaction v1Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
+        MempoolTransaction v1Tx = CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: Osaka.Instance);
         yield return new TestCaseData(v1Tx, true, WithBlobsItem([0x80])).SetArgDisplayNames("blobs as an empty byte array");
         yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc0])).SetArgDisplayNames("empty blob list");
         yield return new TestCaseData(v1Tx, true, WithBlobsItem([0xc1, 0x80])).SetArgDisplayNames("empty blob entry");
@@ -666,9 +668,9 @@ public class BlobTxStorageTests
         static Func<byte[][], byte[][]> WithBlobsItem(byte[] blobs) => items => [items[0], items[1], blobs, .. items[3..]];
     }
 
-    private static byte[][] ReadNetworkItems(Transaction tx)
+    private static byte[][] ReadNetworkItems(MempoolTransaction tx)
     {
-        byte[] typedTx = TxDecoder.Instance.Encode(tx, RlpBehaviors.InMempoolForm | RlpBehaviors.SkipTypedWrapping);
+        byte[] typedTx = MempoolTxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
         RlpReader reader = new RlpReader(typedTx.AsSpan(1)).EnterSequence(out _);
         List<byte[]> items = [];
         while (reader.HasNext) items.Add(reader.ReadEncodedItem().ToArray());
@@ -687,7 +689,7 @@ public class BlobTxStorageTests
         return Rlp.Encode(typedTx);
     }
 
-    private static void StoreFullRecord(IColumnsDb<BlobTxsColumns> columnsDb, Transaction tx, byte[] record)
+    private static void StoreFullRecord(IColumnsDb<BlobTxsColumns> columnsDb, MempoolTransaction tx, byte[] record)
     {
         byte[] key = new byte[64];
         tx.Timestamp.WriteBigEndian(key);
@@ -695,18 +697,18 @@ public class BlobTxStorageTests
         columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs).Set(key, record);
     }
 
-    // Persisted through the same InMempoolForm as a type-3, so the type and sidecar both have to survive.
+    // Persisted in the same mempool form as a type-3, so the type and sidecar both have to survive.
     [Test]
     public void should_roundtrip_blob_carrying_frame_tx_with_sidecar()
     {
         const ProofVersion version = ProofVersion.V1;
         BlobTxStorage blobTxStorage = new();
-        Transaction tx = BuildBlobCarryingFrameTx(blobCount: 2, version);
+        MempoolTransaction tx = BuildBlobCarryingFrameTx(blobCount: 2, version);
         blobTxStorage.Add(tx);
 
-        Assert.That(blobTxStorage.TryGet(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction full), Is.True);
-        ShardBlobNetworkWrapper expected = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        ShardBlobNetworkWrapper actual = (ShardBlobNetworkWrapper)full!.NetworkWrapper!;
+        Assert.That(blobTxStorage.TryGet(tx.Hash, tx.Transaction.SenderAddress!, tx.Transaction.Timestamp, out MempoolTransaction full), Is.True);
+        ShardBlobNetworkWrapper expected = tx.NetworkWrapper!;
+        ShardBlobNetworkWrapper actual = full.NetworkWrapper!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(full.Type, Is.EqualTo(TxType.FrameTx));
@@ -715,14 +717,14 @@ public class BlobTxStorageTests
             Assert.That(actual.Commitments, Is.EqualTo(expected.Commitments));
             Assert.That(actual.Proofs, Is.EqualTo(expected.Proofs));
 
-            LightTransaction light = blobTxStorage.GetAll().Single();
+            LightTransaction light = (LightTransaction)blobTxStorage.GetAll().Single().Transaction;
             Assert.That(light.Type, Is.EqualTo(TxType.FrameTx));
-            Assert.That(light.GetProofVersion(), Is.EqualTo(version));
+            Assert.That(light.ProofVersion, Is.EqualTo(version));
             Assert.That(light.BlobVersionedHashes, Is.EqualTo(tx.BlobVersionedHashes));
         }
     }
 
-    private static Transaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
+    private static MempoolTransaction BuildBlobCarryingFrameTx(int blobCount, ProofVersion version)
     {
         // The count only has to satisfy the RLP round-trip; nothing here verifies KZG.
         int proofsCount = version is ProofVersion.V1 ? blobCount * Ckzg.CellsPerExtBlob : blobCount;
@@ -760,10 +762,9 @@ public class BlobTxStorageTests
             ],
             FrameSignatures = [],
             BlobVersionedHashes = versionedHashes,
-            NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs, version),
         };
         tx.Hash = tx.CalculateHash();
-        return tx;
+        return new MempoolTransaction(tx, new ShardBlobNetworkWrapper(blobs, commitments, proofs, version));
     }
 
     [Test]
@@ -771,13 +772,13 @@ public class BlobTxStorageTests
         [Values(1, 2, 4)] int count, [Values("present", "deleted", "flushed-delete")] string state)
     {
         using TempPath directory = TempPath.GetTempDirectory();
-        Transaction[] stored = CreateBlobTransactions(2);
+        MempoolTransaction[] stored = CreateBlobTransactions(2);
         for (int i = 0; i < stored.Length; i++)
         {
             stored[i].Timestamp = (ulong)(i + 17);
         }
-        Transaction[] results = Enumerable.Repeat<Transaction>(stored[0], count + 1).ToArray();
-        Transaction[] expected = new Transaction[count + 1];
+        MempoolTransaction[] results = Enumerable.Repeat<MempoolTransaction>(stored[0], count + 1).ToArray();
+        MempoolTransaction[] expected = new MempoolTransaction[count + 1];
         expected[^1] = stored[0];
         using IContainer configs = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
         using (IColumnsDb<BlobTxsColumns> db = new RocksDbFactory(configs.Resolve<IRocksDbConfigFactory>(), configs.Resolve<IDbConfig>(),
@@ -789,7 +790,7 @@ public class BlobTxStorageTests
                 .AddSingleton<IColumnsDb<BlobTxsColumns>>(db)
                 .Build();
             IBlobTxStorage storage = container.Resolve<IBlobTxStorage>();
-            foreach (Transaction tx in stored) storage.Add(tx);
+            foreach (MempoolTransaction tx in stored) storage.Add(tx);
             db.Flush();
             TxLookupKey[] keys = new TxLookupKey[count];
             for (int i = 0; i < count; i++)
@@ -799,7 +800,7 @@ public class BlobTxStorageTests
                     keys[i] = new TxLookupKey(TestItem.KeccakC, TestItem.AddressC, 99);
                     continue;
                 }
-                Transaction tx = stored[i == 2 ? 1 : 0];
+                MempoolTransaction tx = stored[i == 2 ? 1 : 0];
                 expected[i] = tx;
                 keys[i] = new TxLookupKey(tx.Hash!, tx.SenderAddress!, tx.Timestamp);
             }
@@ -812,7 +813,7 @@ public class BlobTxStorageTests
                 if (state == "flushed-delete") db.Flush();
                 for (int i = 0; i < count; i++)
                 {
-                    if (ReferenceEquals(expected[i], stored[0])) expected[i] = null;
+                    if (ReferenceEquals(expected[i]?.Transaction, stored[0].Transaction)) expected[i] = default;
                 }
 
                 expectedCount = expected.Take(count).Count(static tx => tx is not null);
@@ -824,8 +825,7 @@ public class BlobTxStorageTests
         {
             for (int i = 0; i < results.Length; i++)
             {
-                Assert.That(results[i], Is.EqualTo(expected[i])
-                    .UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+                Assert.That(results[i], Is.EqualTo(expected[i]).UsingMempoolTransactionComparer());
             }
         }
     }
@@ -834,7 +834,7 @@ public class BlobTxStorageTests
     public void TryGetMany_should_return_zero_for_empty_batch()
     {
         BlobTxStorage blobTxStorage = new();
-        Transaction[] results = Array.Empty<Transaction>();
+        MempoolTransaction[] results = Array.Empty<MempoolTransaction>();
 
         int found = blobTxStorage.TryGetMany([], 0, results);
         Assert.That(found, Is.EqualTo(0));
@@ -846,7 +846,7 @@ public class BlobTxStorageTests
         BlobTxStorage blobTxStorage = new();
         EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
 
-        Transaction[] txs = new Transaction[3];
+        MempoolTransaction[] txs = new MempoolTransaction[3];
         TxLookupKey[] keys = new TxLookupKey[3];
 
         for (int i = 0; i < 3; i++)
@@ -856,19 +856,19 @@ public class BlobTxStorageTests
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce((ulong)i)
-                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).MempoolTestObject;
 
             blobTxStorage.Add(txs[i]);
             keys[i] = new TxLookupKey(txs[i].Hash, txs[i].SenderAddress!, txs[i].Timestamp);
         }
 
-        Transaction[] results = new Transaction[3];
+        MempoolTransaction[] results = new MempoolTransaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
         Assert.That(found, Is.EqualTo(3));
         for (int i = 0; i < 3; i++)
         {
-            Assert.That(results[i], Is.EqualTo(txs[i]).UsingTransactionComparer(nameof(Transaction.GasBottleneck), nameof(Transaction.PoolIndex)));
+            Assert.That(results[i], Is.EqualTo(txs[i]).UsingMempoolTransactionComparer());
         }
     }
 
@@ -878,7 +878,7 @@ public class BlobTxStorageTests
         BlobTxStorage blobTxStorage = new();
         EthereumEcdsa ecdsa = new(BlockchainIds.Mainnet);
 
-        Transaction[] txs = new Transaction[2];
+        MempoolTransaction[] txs = new MempoolTransaction[2];
         for (int i = 0; i < 2; i++)
         {
             txs[i] = Build.A.Transaction
@@ -886,7 +886,7 @@ public class BlobTxStorageTests
                 .WithMaxFeePerGas(1.GWei)
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce((ulong)i)
-                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).TestObject;
+                .SignedAndResolved(ecdsa, TestItem.PrivateKeys[i]).MempoolTestObject;
 
             blobTxStorage.Add(txs[i]);
         }
@@ -896,7 +896,7 @@ public class BlobTxStorageTests
         keys[1] = new TxLookupKey(txs[1].Hash, txs[1].SenderAddress!, txs[1].Timestamp);
         keys[2] = new TxLookupKey(TestItem.KeccakA, TestItem.AddressC, UInt256.One);
 
-        Transaction[] results = new Transaction[3];
+        MempoolTransaction[] results = new MempoolTransaction[3];
         int found = blobTxStorage.TryGetMany(keys, 3, results);
 
         using (Assert.EnterMultipleScope())
@@ -912,14 +912,14 @@ public class BlobTxStorageTests
     public void TryGetWithoutBlobs_should_return_tx_with_elided_blob_payloads()
     {
         BlobTxStorage blobTxStorage = new();
-        Transaction tx = CreateBlobTransaction();
+        MempoolTransaction tx = CreateBlobTransaction();
 
         blobTxStorage.Add(tx);
 
-        Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.SenderAddress!, out Transaction elidedTx), Is.True);
+        Assert.That(blobTxStorage.TryGetWithoutBlobs(tx.Hash, tx.Transaction.SenderAddress!, out MempoolTransaction elidedTx), Is.True);
 
-        ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        ShardBlobNetworkWrapper elidedWrapper = (ShardBlobNetworkWrapper)elidedTx.NetworkWrapper!;
+        ShardBlobNetworkWrapper originalWrapper = tx.NetworkWrapper!;
+        ShardBlobNetworkWrapper elidedWrapper = elidedTx.NetworkWrapper!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(elidedTx.Hash, Is.EqualTo(tx.Hash));
@@ -941,7 +941,7 @@ public class BlobTxStorageTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out Transaction tx), Is.False);
+            Assert.That(blobTxStorage.TryGetWithoutBlobs(TestItem.KeccakA, TestItem.AddressA, out MempoolTransaction tx), Is.False);
             Assert.That(tx, Is.Null);
         }
     }
@@ -951,17 +951,17 @@ public class BlobTxStorageTests
     [TestCase(true, true)]
     public void TryGetFullRecordWithoutBlobs_should_match_the_elided_full_read(bool cellProofs, bool partial)
     {
-        Transaction tx = partial
+        MempoolTransaction tx = partial
             ? CreateV1BlobTransactions(1)[0]
             : CreateBlobTransaction(TestItem.PrivateKeyA, blobCount: 2, spec: cellProofs ? Osaka.Instance : Cancun.Instance);
 
         byte[] expectedRecord = PersistMetadataRecord(tx, storage =>
-            storage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out Transaction read) ? BlobTransactionPayload.Elide(read) : null);
-        Transaction elided = null;
+            storage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out MempoolTransaction read) ? BlobTransactionPayload.Elide(read) : null);
+        MempoolTransaction elided = null;
         byte[] actualRecord = PersistMetadataRecord(tx, storage =>
             ((IBlobTxElidedReadStorage)storage).TryGetFullRecordWithoutBlobs(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out elided) ? elided : null);
 
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)elided!.NetworkWrapper!;
+        ShardBlobNetworkWrapper wrapper = elided!.NetworkWrapper!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actualRecord, Is.EqualTo(expectedRecord));
@@ -970,13 +970,13 @@ public class BlobTxStorageTests
             Assert.That(elided.SenderAddress, Is.EqualTo(tx.SenderAddress));
             Assert.That(elided.Timestamp, Is.EqualTo(tx.Timestamp));
             Assert.That(wrapper.Blobs, Is.Empty);
-            Assert.That(wrapper.Commitments, Is.EqualTo(((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Commitments));
-            Assert.That(wrapper.Proofs, Is.EqualTo(((ShardBlobNetworkWrapper)tx.NetworkWrapper!).Proofs));
+            Assert.That(wrapper.Commitments, Is.EqualTo(tx.NetworkWrapper!.Commitments));
+            Assert.That(wrapper.Proofs, Is.EqualTo(tx.NetworkWrapper!.Proofs));
             Assert.That(wrapper.CellMask, Is.EqualTo(BlobCellMask.Empty));
             Assert.That(wrapper.Cells, Is.Null);
         }
 
-        static byte[] PersistMetadataRecord(Transaction tx, Func<IBlobTxStorage, Transaction> read)
+        static byte[] PersistMetadataRecord(MempoolTransaction tx, Func<IBlobTxStorage, MempoolTransaction> read)
         {
             MemColumnsDb<BlobTxsColumns> columnsDb = new();
             IDb fullBlobTxsDb = columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
@@ -998,14 +998,14 @@ public class BlobTxStorageTests
         using IContainer container = CreateStorageContainer(db);
         IBlobTxStorage blobTxStorage = container.Resolve<IBlobTxStorage>();
         IBlobTxMetadataStorage metadataStorage = (IBlobTxMetadataStorage)blobTxStorage;
-        Transaction tx = CreateBlobTransaction();
+        MempoolTransaction tx = CreateBlobTransaction();
         blobTxStorage.Add(tx);
 
         bool found = withoutBlobs
-            ? metadataStorage.TryGetWithoutBlobs(tx.Hash!, tx.SenderAddress!, out Transaction read)
+            ? metadataStorage.TryGetWithoutBlobs(tx.Hash!, tx.SenderAddress!, out MempoolTransaction read)
             : blobTxStorage.TryGet(tx.Hash!, tx.SenderAddress!, tx.Timestamp, out read);
         bool missingFound = withoutBlobs
-            ? metadataStorage.TryGetWithoutBlobs(TestItem.KeccakC, tx.SenderAddress!, out Transaction missing)
+            ? metadataStorage.TryGetWithoutBlobs(TestItem.KeccakC, tx.SenderAddress!, out MempoolTransaction missing)
             : blobTxStorage.TryGet(TestItem.KeccakC, tx.SenderAddress!, tx.Timestamp, out missing);
 
         using (Assert.EnterMultipleScope())
@@ -1025,7 +1025,7 @@ public class BlobTxStorageTests
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
         MemDb fullBlobTxsDb = (MemDb)columnsDb.GetColumnDb(BlobTxsColumns.FullBlobTxs);
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction tx = CreateBlobTransaction();
+        MempoolTransaction tx = CreateBlobTransaction();
 
         blobTxStorage.Add(tx);
         long writesAfterInsert = fullBlobTxsDb.WritesCount;
@@ -1038,9 +1038,9 @@ public class BlobTxStorageTests
     public void AddWithoutBlobs_should_not_restore_deleted_transaction()
     {
         BlobTxStorage blobTxStorage = new();
-        Transaction tx = CreateBlobTransaction();
+        MempoolTransaction tx = CreateBlobTransaction();
         blobTxStorage.Add(tx);
-        Assert.That(blobTxStorage.TryGet(tx.Hash, tx.SenderAddress!, tx.Timestamp, out Transaction storedTx), Is.True);
+        Assert.That(blobTxStorage.TryGet(tx.Hash, tx.Transaction.SenderAddress!, tx.Transaction.Timestamp, out MempoolTransaction storedTx), Is.True);
 
         blobTxStorage.Delete(tx.Hash, tx.Timestamp);
         blobTxStorage.AddWithoutBlobs(storedTx);
@@ -1053,7 +1053,7 @@ public class BlobTxStorageTests
     {
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction tx = CreateBlobTransaction();
+        MempoolTransaction tx = CreateBlobTransaction();
 
         blobTxStorage.Add(tx);
         columnsDb.ResetWriteBatchTracking();
@@ -1071,7 +1071,7 @@ public class BlobTxStorageTests
     {
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction transaction = CreateBlobTransaction();
+        MempoolTransaction transaction = CreateBlobTransaction();
         blobTxStorage.Add(transaction);
         columnsDb.FailNextLightColumnWrite = true;
 
@@ -1099,13 +1099,13 @@ public class BlobTxStorageTests
     {
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction first = CreateBlobTransaction();
-        Transaction second = Build.A.Transaction
+        MempoolTransaction first = CreateBlobTransaction();
+        MempoolTransaction second = Build.A.Transaction
             .WithShardBlobTxTypeAndFields()
             .WithNonce(1)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
-            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyB).TestObject;
+            .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), TestItem.PrivateKeyB).MempoolTestObject;
         blobTxStorage.Add(first);
         blobTxStorage.Add(second);
         BlobTxDeleteKey[] keys =
@@ -1133,7 +1133,7 @@ public class BlobTxStorageTests
     {
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction transaction = CreateBlobTransaction();
+        MempoolTransaction transaction = CreateBlobTransaction();
 
         blobTxStorage.Add(transaction);
 
@@ -1158,7 +1158,7 @@ public class BlobTxStorageTests
     {
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction transaction = CreateBlobTransaction();
+        MempoolTransaction transaction = CreateBlobTransaction();
         blobTxStorage.Add(transaction);
         UInt256 obsoleteTimestamp = transaction.Timestamp;
         transaction.Timestamp += UInt256.One;
@@ -1188,7 +1188,7 @@ public class BlobTxStorageTests
     {
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction transaction = CreateBlobTransaction();
+        MempoolTransaction transaction = CreateBlobTransaction();
         blobTxStorage.Add(transaction);
         UInt256 originalTimestamp = transaction.Timestamp;
         transaction.Timestamp += UInt256.One;
@@ -1223,7 +1223,7 @@ public class BlobTxStorageTests
     {
         TrackingColumnsDb columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb);
-        Transaction transaction = CreateBlobTransaction();
+        MempoolTransaction transaction = CreateBlobTransaction();
         blobTxStorage.Add(transaction);
         columnsDb.FailNextLightColumnWrite = true;
 
@@ -1250,7 +1250,7 @@ public class BlobTxStorageTests
     private static int CountLightTransactions(BlobTxStorage storage)
     {
         int count = 0;
-        foreach (LightTransaction _ in storage.GetAll())
+        foreach (MempoolTransaction _ in storage.GetAll())
         {
             count++;
         }
@@ -1269,7 +1269,7 @@ public class BlobTxStorageTests
             new TxLookupKey(TestItem.KeccakB, TestItem.AddressB, UInt256.One),
         ];
 
-        Transaction[] results = new Transaction[2];
+        MempoolTransaction[] results = new MempoolTransaction[2];
         int found = blobTxStorage.TryGetMany(keys, 2, results);
 
         using (Assert.EnterMultipleScope())
@@ -1306,7 +1306,7 @@ public class BlobTxStorageTests
 
         MemColumnsDb<BlobTxsColumns> columnsDb = new();
         BlobTxStorage blobTxStorage = new(columnsDb, new OneLoggerLogManager(new ILogger(iLogger)));
-        Transaction[] txs = [CreateBlobTransaction(TestItem.PrivateKeyA), CreateBlobTransaction(TestItem.PrivateKeyB)];
+        MempoolTransaction[] txs = [CreateBlobTransaction(TestItem.PrivateKeyA), CreateBlobTransaction(TestItem.PrivateKeyB)];
 
         byte[] corruptRecord = corrupt(LightTxDecoder.Encode(txs[0]));
         Exception decodeFailure = Assert.Catch(expectedDecodeException, () => LightTxDecoder.Decode(corruptRecord),
@@ -1316,7 +1316,7 @@ public class BlobTxStorageTests
         columnsDb.GetColumnDb(BlobTxsColumns.LightBlobTxs).Set(TestItem.KeccakA, corruptRecord);
         blobTxStorage.Add(txs[1]);
 
-        LightTransaction[] restored = blobTxStorage.GetAll().ToArray();
+        MempoolTransaction[] restored = blobTxStorage.GetAll().ToArray();
 
         using (Assert.EnterMultipleScope())
         {
@@ -1326,11 +1326,11 @@ public class BlobTxStorageTests
         }
     }
 
-    private static Transaction CreateBlobTransaction() => CreateBlobTransaction(TestItem.PrivateKeyA);
+    private static MempoolTransaction CreateBlobTransaction() => CreateBlobTransaction(TestItem.PrivateKeyA);
 
-    private static Transaction[] CreateBlobTransactions(int count)
+    private static MempoolTransaction[] CreateBlobTransactions(int count)
     {
-        Transaction[] transactions = new Transaction[count];
+        MempoolTransaction[] transactions = new MempoolTransaction[count];
         for (int i = 0; i < count; i++)
         {
             transactions[i] = CreateBlobTransaction(TestItem.PrivateKeys[i], i);
@@ -1339,33 +1339,34 @@ public class BlobTxStorageTests
         return transactions;
     }
 
-    private static Transaction[] CreateV1BlobTransactions(int count)
+    private static MempoolTransaction[] CreateV1BlobTransactions(int count)
     {
-        Transaction[] transactions = CreateBlobTransactions(count);
+        MempoolTransaction[] transactions = CreateBlobTransactions(count);
         BlobCellMask cellMask = BlobCellMask.FromIndices([1, 3]);
         for (int i = 0; i < transactions.Length; i++)
         {
-            ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)transactions[i].NetworkWrapper!;
-            transactions[i].NetworkWrapper = wrapper with
+            transactions[i] = transactions[i] with
             {
-                Blobs = [],
-                Version = ProofVersion.V1,
-                CellMask = cellMask,
-                Cells = [[(byte)(i + 1)], [(byte)(i + 2)]]
+                NetworkWrapper = transactions[i].NetworkWrapper! with
+                {
+                    Blobs = [],
+                    Version = ProofVersion.V1,
+                    CellMask = cellMask,
+                    Cells = [[(byte)(i + 1)], [(byte)(i + 2)]]
+                }
             };
-            transactions[i].ClearLengthCache();
         }
 
         return transactions;
     }
 
-    private static void AssertNetworkWrappersEqual(Transaction[] expected, Transaction[] actual)
+    private static void AssertNetworkWrappersEqual(MempoolTransaction[] expected, MempoolTransaction[] actual)
     {
         Assert.That(actual, Has.Length.EqualTo(expected.Length));
         for (int i = 0; i < expected.Length; i++)
         {
-            ShardBlobNetworkWrapper expectedWrapper = (ShardBlobNetworkWrapper)expected[i].NetworkWrapper!;
-            ShardBlobNetworkWrapper actualWrapper = (ShardBlobNetworkWrapper)actual[i].NetworkWrapper!;
+            ShardBlobNetworkWrapper expectedWrapper = expected[i].NetworkWrapper!;
+            ShardBlobNetworkWrapper actualWrapper = actual[i].NetworkWrapper!;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(actualWrapper.Blobs, Is.EqualTo(expectedWrapper.Blobs));
@@ -1378,12 +1379,12 @@ public class BlobTxStorageTests
         }
     }
 
-    private static Transaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1, IReleaseSpec spec = null) => Build.A.Transaction
+    private static MempoolTransaction CreateBlobTransaction(PrivateKey signer, int nonce = 0, int blobCount = 1, IReleaseSpec spec = null) => Build.A.Transaction
         .WithShardBlobTxTypeAndFields(blobCount, spec: spec)
         .WithNonce(nonce)
         .WithMaxFeePerGas(1.GWei)
         .WithMaxPriorityFeePerGas(1.GWei)
-        .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), signer).TestObject;
+        .SignedAndResolved(new EthereumEcdsa(BlockchainIds.Mainnet), signer).MempoolTestObject;
 
     private static IContainer CreateStorageContainer(IColumnsDb<BlobTxsColumns> db) =>
         new ContainerBuilder()

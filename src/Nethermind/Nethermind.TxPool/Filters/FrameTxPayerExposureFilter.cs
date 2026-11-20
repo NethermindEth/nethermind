@@ -28,7 +28,7 @@ internal sealed class FrameTxPayerExposureFilter(
     PayerExposureCache exposure,
     ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (!tx.SupportsFrames)
         {
@@ -39,7 +39,7 @@ internal sealed class FrameTxPayerExposureFilter(
         // and the payer-solvency gate cannot drift. The spec pinned for the submission, not the head's:
         // a head that moves mid-pipeline would price this against rules AddCore never validated the pool for.
         IReleaseSpec spec = state.HeadSpec;
-        if (!FrameTxValidation.TryCalculateMaxCost(tx, spec, out UInt256 maxCost))
+        if (!FrameTxValidation.TryCalculateMaxCost(tx.Transaction, spec, out UInt256 maxCost))
         {
             // Unincludable rather than malformed: Invalid is the one result that disconnects the relaying peer.
             return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction maximum cost cannot be priced");
@@ -52,7 +52,7 @@ internal sealed class FrameTxPayerExposureFilter(
         {
             // max_fee bounds fees alone, so wherever the sender is also what pays, the wei its own frames
             // move is added to the bound. Only the part no earlier frame could have funded: see the helper.
-            if (UInt256.AddOverflow(maxCost, LeadingSenderFrameValue(tx), out cost))
+            if (UInt256.AddOverflow(maxCost, LeadingSenderFrameValue(tx.Transaction), out cost))
             {
                 return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction maximum cost cannot be priced");
             }
@@ -61,19 +61,19 @@ internal sealed class FrameTxPayerExposureFilter(
             // The sender-balance filters defer to this one, so their cumulative bound is taken here. Only what
             // the payer ledger does not already sum is counted, or a self-paid reservation would count twice.
             TxDistinctSortedPool pool = tx.CarriesBlobs ? blobPool : standardPool;
-            if (tx.IsOverflowWhenSummingSenderBucket(pool, sender.Nonce, unreservedOnly: true, spec.IsEip8250Enabled, out UInt256 pending)
+            if (tx.Transaction.IsOverflowWhenSummingSenderBucket(pool, sender.Nonce, unreservedOnly: true, spec.IsEip8250Enabled, out UInt256 pending)
                 // Reserving nothing, a payer-less transaction is the only one that has to read the other
                 // half of that split itself; TryReserve sums it for the rest.
-                || (payer is null && UInt256.AddOverflow(pending, SenderReservedAsPayer(tx), out pending)))
+                || (payer is null && UInt256.AddOverflow(pending, SenderReservedAsPayer(tx.Transaction), out pending)))
             {
                 return AcceptTxResult.Int256Overflow.WithMessage("Frame transaction cumulative cost cannot be priced");
             }
 
             // The zero-balance leg is the BalanceZeroFilter backstop a frame transaction now skips: it has to
             // hold even at zero cost, or a zero-fee prefix buys a pool slot no account could have paid for.
-            if (pending > sender.Balance || (sender.Balance.IsZero && !tx.IsFree()))
+            if (pending > sender.Balance || (sender.Balance.IsZero && !tx.Transaction.IsFree()))
             {
-                return RejectUnderfundedSender(tx, pending, cost, sender.Balance, txHandlingOptions);
+                return RejectUnderfundedSender(tx.Transaction, pending, cost, sender.Balance, txHandlingOptions);
             }
 
             balance = sender.Balance - pending;
@@ -81,7 +81,7 @@ internal sealed class FrameTxPayerExposureFilter(
             {
                 // Nothing to reserve against, so the sender bound is the whole gate. The price is still recorded:
                 // it is what the bound above sums this transaction at once it is one of the pending ones.
-                if (cost > balance) return RejectUnderfundedSender(tx, pending, cost, sender.Balance, txHandlingOptions);
+                if (cost > balance) return RejectUnderfundedSender(tx.Transaction, pending, cost, sender.Balance, txHandlingOptions);
 
                 tx.PayerExposure = cost;
                 return AcceptTxResult.Accepted;
@@ -94,21 +94,21 @@ internal sealed class FrameTxPayerExposureFilter(
 
             // A sponsor's reservation covers the fee alone, leaving the leading frame's wei owed by the sender
             // whoever pays: bounded against the sender here, as the branch above bounds it there.
-            UInt256 senderValue = LeadingSenderFrameValue(tx);
+            UInt256 senderValue = LeadingSenderFrameValue(tx.Transaction);
             UInt256 senderBalance = state.SenderAccount.Balance;
             if (senderValue > senderBalance)
             {
-                return RejectUnderfundedSender(tx, UInt256.Zero, senderValue, senderBalance, txHandlingOptions);
+                return RejectUnderfundedSender(tx.Transaction, UInt256.Zero, senderValue, senderBalance, txHandlingOptions);
             }
         }
 
         // AddCore settles the replacement later. The discount is ignored with no reservation held, so skip the walk.
-        Hash256? replaced = exposure.GetReserved(payer).IsZero ? null : PendingReplacement.Find(tx, standardPool, blobPool)?.Hash;
+        Hash256? replaced = exposure.GetReserved(payer).IsZero ? null : PendingReplacement.Find(tx.Transaction, standardPool, blobPool)?.Transaction.Hash;
         if (!exposure.TryReserve(payer, tx.Hash!, cost, balance, out UInt256 reserved, replaced))
         {
             return payer == tx.SenderAddress
-                ? RejectUnderfundedSender(tx, reserved, cost, balance, txHandlingOptions)
-                : RejectOverExposed(tx, payer, reserved, cost, balance);
+                ? RejectUnderfundedSender(tx.Transaction, reserved, cost, balance, txHandlingOptions)
+                : RejectOverExposed(tx.Transaction, payer, reserved, cost, balance);
         }
 
         // Recorded for the restart-time restore; the ledger owns what a removal releases.

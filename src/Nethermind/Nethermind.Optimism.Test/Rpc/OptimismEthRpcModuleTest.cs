@@ -129,7 +129,7 @@ public class OptimismEthRpcModuleTest
     {
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
         ITxSender txSender = Substitute.For<ITxSender>();
-        txSender.SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast)
+        txSender.SendTransaction(tx: Arg.Any<MempoolTransaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast)
             .Returns(returnThis: (TestItem.KeccakA, AcceptTxResult.Accepted));
 
         EthereumEcdsa ethereumEcdsa = new(chainId: TestBlockchainIds.ChainId);
@@ -150,7 +150,7 @@ public class OptimismEthRpcModuleTest
             .TestObject;
         string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).ToHexString());
 
-        await txSender.Received().SendTransaction(tx: Arg.Any<Transaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast);
+        await txSender.Received().SendTransaction(tx: Arg.Any<MempoolTransaction>(), txHandlingOptions: TxHandlingOptions.PersistentBroadcast);
         Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{TestItem.KeccakA.Bytes.ToHexString(withZeroX: true)}}","id":67}"""));
     }
 
@@ -310,7 +310,7 @@ public class OptimismEthRpcModuleTest
             sent = TxDecoder.Instance.DecodeCompleteNotNull((byte[])parameters[0]!, RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping)))
             .Returns($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""");
         ITxSender txSender = Substitute.For<ITxSender>();
-        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+        txSender.SendTransaction(Arg.Do<MempoolTransaction>(tx => sent = tx.Transaction), Arg.Any<TxHandlingOptions>())
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
         TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
             .ForTest(sealEngineType: SealEngineType.Optimism)
@@ -621,7 +621,7 @@ public class OptimismEthRpcModuleTest
         RecordingSequencer sequencer = new();
         Transaction? sentToPool = null;
         ITxSender txSender = Substitute.For<ITxSender>();
-        txSender.SendTransaction(Arg.Do<Transaction>(tx => sentToPool = tx), Arg.Any<TxHandlingOptions>())
+        txSender.SendTransaction(Arg.Do<MempoolTransaction>(tx => sentToPool = tx.Transaction), Arg.Any<TxHandlingOptions>())
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
         TestRpcBlockchain rpcBlockchain = await BuildSendRpc(forwardToSequencer ? sequencer : null, txSender);
         await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
@@ -734,7 +734,7 @@ public class OptimismEthRpcModuleTest
     {
         Transaction? sent = null;
         ITxSender txSender = Substitute.For<ITxSender>();
-        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+        txSender.SendTransaction(Arg.Do<MempoolTransaction>(tx => sent = tx.Transaction), Arg.Any<TxHandlingOptions>())
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
         TestRpcBlockchain rpcBlockchain = await BuildSendRpc(sequencer: null, txSender);
         Assert.That(rpcBlockchain.TxPool.SubmitTx(SignedByC(rpcBlockchain, 0), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted),
@@ -788,8 +788,8 @@ public class OptimismEthRpcModuleTest
             return AcceptedByTheSequencer;
         });
         ITxSender txSender = Substitute.For<ITxSender>();
-        txSender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
-            new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(AddToPool(call.Arg<Transaction>())));
+        txSender.SendTransaction(Arg.Any<MempoolTransaction>(), Arg.Any<TxHandlingOptions>()).Returns(call =>
+            new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(AddToPool(call.Arg<MempoolTransaction>().Transaction)));
 
         rpcBlockchain = await BuildSendRpc(forwardToSequencer ? sequencer : null, txSender);
         await rpcBlockchain.AddBlock(SignedByC(rpcBlockchain, 0));
@@ -1185,7 +1185,8 @@ public class OptimismEthRpcModuleTest
                 blockTimestamp: 0,
                 baseFee: 0,
                 spec: Cancun.Instance,
-                receipt: receipt));
+                receipt: receipt),
+            networkWrapper: null);
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>
             {
@@ -1260,7 +1261,8 @@ public class OptimismEthRpcModuleTest
                 blockTimestamp: 0,
                 baseFee: 0,
                 spec: Cancun.Instance,
-                receipt: receipt));
+                receipt: receipt),
+            networkWrapper: null);
         bridge.TryGetTransaction(TestItem.KeccakA, out Arg.Any<TransactionLookupResult?>(), checkTxnPool: true)
             .Returns(callInfo =>
             {

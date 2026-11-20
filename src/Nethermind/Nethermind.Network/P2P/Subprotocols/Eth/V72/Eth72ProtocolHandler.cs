@@ -534,7 +534,7 @@ public class Eth72ProtocolHandler(
             _sentPooledTransactionRequests.Add(request.RequestId, request.EthMessage.Hashes.AsSpan());
     }
 
-    private static bool MatchesPooledTransactionRequest(ReadOnlySpan<Transaction> transactions, ReadOnlySpan<ValueHash256> requestedHashes)
+    private static bool MatchesPooledTransactionRequest(ReadOnlySpan<MempoolTransaction> transactions, ReadOnlySpan<ValueHash256> requestedHashes)
     {
         int requestedIndex = 0;
         for (int i = 0; i < transactions.Length; i++)
@@ -562,7 +562,7 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
-    protected override bool CanServePooledTransaction(Transaction tx) => true;
+    protected override bool CanServePooledTransaction(MempoolTransaction tx) => true;
 
     /// <remarks>Always misses: the stored encoding carries the type-3 blobs that eth/72 strips.</remarks>
     private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
@@ -579,7 +579,7 @@ public class Eth72ProtocolHandler(
 
     // eth/72 strips type-3 blob payloads from pooled transaction responses, so those are served from
     // the sidecar-free record; a blob-carrying type-6 is served whole, as below.
-    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? tx)
     {
         if (!_txPool.TryGetPendingTransactionWithoutBlobs(hash, out tx))
         {
@@ -588,7 +588,7 @@ public class Eth72ProtocolHandler(
 
         // A type-6 is announced at its full network size and never joins the type-3 cell protocol, so the
         // requester can neither size-match nor refill the elided record: its sidecar must travel with it.
-        if (!IsBlobCarryingFrameTransaction(tx))
+        if (!IsBlobCarryingFrameTransaction(tx.Transaction))
         {
             return true;
         }
@@ -900,8 +900,8 @@ public class Eth72ProtocolHandler(
 
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
     {
-        IOwnedReadOnlyList<Transaction> transactions = request.Transactions;
-        ReadOnlySpan<Transaction> transactionsSpan = transactions.AsSpan();
+        IOwnedReadOnlyList<MempoolTransaction> transactions = request.Transactions;
+        ReadOnlySpan<MempoolTransaction> transactionsSpan = transactions.AsSpan();
         int currentIdx = request.StartIndex;
         bool isTransferred = false;
         try
@@ -936,7 +936,7 @@ public class Eth72ProtocolHandler(
                     return ValueTask.CompletedTask;
                 }
 
-                Transaction tx = transactionsSpan[currentIdx];
+                MempoolTransaction tx = transactionsSpan[currentIdx];
                 if (!ValidateAnnouncedPooledTransaction(tx, ref frameTxsEnabled))
                 {
                     throw new SubprotocolException("invalid pooled tx type or size");
@@ -1753,9 +1753,9 @@ public class Eth72ProtocolHandler(
         return cellMask;
     }
 
-    private void PrepareAndMaybeSubmitSparseBlobTransaction(Transaction tx, bool isTrace)
+    private void PrepareAndMaybeSubmitSparseBlobTransaction(MempoolTransaction tx, bool isTrace)
     {
-        PooledBlobBuffers.Disown(tx);
+        PooledBlobBuffers.Disown(tx.NetworkWrapper);
         if (tx.Hash is not null)
         {
             NotifiedTransactions.Set(tx.Hash.ValueHash256);
@@ -1777,7 +1777,7 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private bool ValidateAnnouncedPooledTransaction(Transaction tx, ref bool? frameTxsEnabled)
+    private bool ValidateAnnouncedPooledTransaction(MempoolTransaction tx, ref bool? frameTxsEnabled)
     {
         if (!CanRequestPooledTransaction(tx.Type, ref frameTxsEnabled))
         {
@@ -1794,13 +1794,13 @@ public class Eth72ProtocolHandler(
         {
             // A type-6 sidecar is verified here because it arrives whole; the sparse cell protocol that
             // defers type-3 verification to a later Cells response does not cover it.
-            return !IsBlobCarryingFrameTransaction(tx) || ValidateFullPooledBlobSidecar(tx);
+            return !IsBlobCarryingFrameTransaction(tx.Transaction) || ValidateFullPooledBlobSidecar(tx);
         }
 
         return tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
             && wrapper.Version switch
             {
-                ProofVersion.V0 => ValidatePooledBlobTransactionV0(tx, wrapper),
+                ProofVersion.V0 => ValidatePooledBlobTransactionV0(tx.Transaction, wrapper),
                 ProofVersion.V1 => ValidateSparsePooledBlobTransaction(tx),
                 _ => false
             };
@@ -1809,7 +1809,7 @@ public class Eth72ProtocolHandler(
     /// <summary>Verifies a sidecar that arrived complete, as a blob-carrying type-6 always must.</summary>
     /// <remarks>Unlike the type-3 validators this is version-generic, because the proof count per blob
     /// differs between wrapper versions and only the wrapper's own proofs manager knows it.</remarks>
-    private static bool ValidateFullPooledBlobSidecar(Transaction tx)
+    private static bool ValidateFullPooledBlobSidecar(MempoolTransaction tx)
     {
         if (tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V0 or ProofVersion.V1 } wrapper
             || !wrapper.HasFullBlobs()
@@ -1868,7 +1868,7 @@ public class Eth72ProtocolHandler(
         return true;
     }
 
-    private static bool ValidateSparsePooledBlobTransaction(Transaction tx)
+    private static bool ValidateSparsePooledBlobTransaction(MempoolTransaction tx)
     {
         if (tx.NetworkWrapper is not ShardBlobNetworkWrapper { Version: ProofVersion.V1, Blobs.Length: 0, Commitments.Length: > 0, Proofs.Length: > 0 } wrapper
             || tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
@@ -1933,11 +1933,6 @@ public class Eth72ProtocolHandler(
 
     private BlobCellMask GetAnnouncementMask(Transaction tx)
     {
-        if (tx.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
-        {
-            return wrapper.Version == ProofVersion.V1 ? wrapper.GetAvailableCellMask() : BlobCellMask.Full;
-        }
-
         if (tx is LightTransaction lightTx)
         {
             BlobCellMask availableMask = lightTx.BlobCellMask;
@@ -1985,21 +1980,21 @@ public class Eth72ProtocolHandler(
     {
         if (!tx.SupportsBlobs)
         {
-            return tx.GetLength();
+            return tx.GetNetworkLength();
         }
 
         // eth/72 peers size-check the blob-elided bytes served in PooledTransactions and geth disconnects for
         // larger mismatches. The current devp2p text still says consensus encoding; its correction is tracked at
         // https://github.com/ethereum/devp2p/pull/281
-        return tx.GetElidedNetworkEncodingSize();
+        return tx is LightTransaction lightTx ? lightTx.GetElidedNetworkEncodingSize() : 0;
     }
 
     // Stay lenient on receive: peers still announcing the bare consensus size (or the geth wrapper estimate)
     // are accepted rather than disconnected, so a mixed-version network keeps propagating blob txs.
     // https://github.com/healthykim/go-ethereum/blob/fdce1ff22f2c2bde0e6a8d1921168f4b7036781f/eth/protocols/eth/broadcast.go#L140-L143
-    protected override bool MatchesAnnouncedTransactionSize(Transaction tx, int announcedSize)
+    protected override bool MatchesAnnouncedTransactionSize(MempoolTransaction tx, int announcedSize)
         => MatchesAnnouncedSize(tx, announcedSize)
-        || tx.SupportsBlobs && tx.GetLength(shouldCountBlobs: false) == announcedSize;
+        || tx.SupportsBlobs && tx.Transaction.GetLength() == announcedSize;
 
     private readonly record struct SentCellRequest(
         ValueHash256 Hash,

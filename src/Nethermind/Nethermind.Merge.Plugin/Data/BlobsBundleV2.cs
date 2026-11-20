@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using CkzgLib;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Serialization.Json;
 using System;
@@ -29,7 +30,7 @@ public class BlobsBundleV2
         Proofs = new byte[blobsCount * Ckzg.CellsPerExtBlob][];
         int blockIndex = 0;
 
-        foreach (Transaction? tx in block.Transactions)
+        foreach (MempoolTransaction tx in block.GetMempoolTransactions())
         {
             // Must match the type-agnostic GetBlobCount sizing above, or the bundle silently keeps nulls.
             if (!tx.CarriesBlobs)

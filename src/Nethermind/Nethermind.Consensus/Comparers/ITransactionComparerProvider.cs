@@ -8,8 +8,8 @@ namespace Nethermind.Consensus.Comparers
 {
     public interface ITransactionComparerProvider
     {
-        IComparer<Transaction> GetDefaultComparer();
+        IComparer<MempoolTransaction> GetDefaultComparer();
 
-        IComparer<Transaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext);
+        IComparer<MempoolTransaction> GetDefaultProducerComparer(BlockPreparationContext blockPreparationContext);
     }
 }

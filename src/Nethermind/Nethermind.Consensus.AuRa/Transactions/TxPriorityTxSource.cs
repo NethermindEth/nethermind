@@ -14,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
+using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.Consensus.AuRa.Transactions
 {
@@ -34,20 +35,20 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly IDictionaryContractDataStore<TxPriorityContract.Destination> _priorities = priorities ?? throw new ArgumentNullException(nameof(priorities));
         private CompareTxByPriorityOnSpecifiedBlock _comparer = null!;
 
-        protected override IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
+        protected override IComparer<MempoolTransaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
         {
             _comparer = new CompareTxByPriorityOnSpecifiedBlock(_sendersWhitelist, _priorities, parent);
-            return _comparer.ThenBy(base.GetComparer(parent, blockPreparationContext));
+            return _comparer.ForMempool().ThenBy(base.GetComparer(parent, blockPreparationContext));
         }
 
         public override string ToString() => $"{nameof(TxPriorityTxSource)}";
 
-        protected override IEnumerable<Transaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec)
+        protected override IEnumerable<MempoolTransaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, MempoolTransaction[]> pendingTransactions, IComparer<MempoolTransaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec)
         {
             if (_logger.IsTrace)
             {
-                Transaction[] transactions = base.GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit, spec).ToArray();
-                string txString = string.Join(Environment.NewLine, transactions.Select(t => $"{t.ToShortString()}, PoolIndex {t.PoolIndex}, Whitelisted: {_comparer.IsWhiteListed(t)}, Priority: {_comparer.GetPriority(t)}"));
+                MempoolTransaction[] transactions = base.GetOrderedTransactions(pendingTransactions, comparer, filter, gasLimit, spec).ToArray();
+                string txString = string.Join(Environment.NewLine, transactions.Select(t => $"{t.Transaction.ToShortString()}, PoolIndex {t.PoolIndex}, Whitelisted: {_comparer.IsWhiteListed(t.Transaction)}, Priority: {_comparer.GetPriority(t.Transaction)}"));
                 _logger.Trace($"Ordered transactions with comparer {comparer} : {Environment.NewLine}{txString}");
                 return transactions;
             }

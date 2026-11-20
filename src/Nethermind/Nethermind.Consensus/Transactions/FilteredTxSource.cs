@@ -17,15 +17,15 @@ public class FilteredTxSource<T>(ITxSource innerSource, ITxFilter txFilter, ILog
 
     public bool SupportsBlobs => innerSource.SupportsBlobs;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parentHeader, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
+    public IEnumerable<MempoolTransaction> GetTransactions(BlockHeader parentHeader, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes, bool filterSource)
     {
         TxFilterContext context = new(parentHeader, specProvider.GetSpec(targetBlock));
 
-        foreach (Transaction tx in innerSource.GetTransactions(parentHeader, targetBlock, gasLimit, payloadAttributes, filterSource))
+        foreach (MempoolTransaction tx in innerSource.GetTransactions(parentHeader, targetBlock, gasLimit, payloadAttributes, filterSource))
         {
-            if (tx is T)
+            if (tx.Transaction is T)
             {
-                AcceptTxResult acceptTxResult = txFilter.IsAllowed(tx, in context);
+                AcceptTxResult acceptTxResult = txFilter.IsAllowed(tx.Transaction, in context);
                 if (acceptTxResult)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Selected {tx.ToShortString()} to be included in block.");

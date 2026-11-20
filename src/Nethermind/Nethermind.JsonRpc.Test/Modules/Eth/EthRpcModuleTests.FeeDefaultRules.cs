@@ -225,7 +225,7 @@ public partial class EthRpcModuleTests
         oracle.GetMaxPriorityGasFeeEstimate().Returns(suggestedFee);
         ITxSender txSender = Substitute.For<ITxSender>();
         Transaction? sent = null;
-        txSender.SendTransaction(Arg.Do<Transaction>(tx => sent = tx), Arg.Any<TxHandlingOptions>())
+        txSender.SendTransaction(Arg.Do<MempoolTransaction>(tx => sent = tx.Transaction), Arg.Any<TxHandlingOptions>())
             .Returns((TestItem.KeccakA, AcceptTxResult.Accepted));
         using TestRpcBlockchain test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithGasPriceOracle(oracle).WithTxSender(txSender).Build(new TestSpecProvider(London.Instance));

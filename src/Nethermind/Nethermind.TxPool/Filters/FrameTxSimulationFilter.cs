@@ -35,7 +35,7 @@ internal sealed class FrameTxSimulationFilter(
     private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
     private readonly IReadOnlyStateProvider? _headState = headInfo?.ReadOnlyStateProvider;
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         // Fast path: legible prefixes resolved natively (payer already set) never reach the EVM.
         if (!tx.SupportsFrames || tx.PayerAddress is not null || simulator is null)
@@ -44,14 +44,14 @@ internal sealed class FrameTxSimulationFilter(
         }
 
         // An unresolved payer is either provably invalid (NoPayer) or opaque; only the latter is simulated.
-        if (FrameTxPayerResolver.Resolve(tx, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
+        if (FrameTxPayerResolver.Resolve(tx.Transaction, state.SenderAccount).Outcome != FrameTxPayerOutcome.RequiresSimulation)
         {
             return AcceptTxResult.Accepted;
         }
 
         bool local = (txHandlingOptions & TxHandlingOptions.PersistentBroadcast) != 0;
         FrameTxSimulationResult result = simulator.Simulate(
-            tx,
+            tx.Transaction,
             signaturesPreValidated: state.FrameSignaturesVerified,
             local: local,
             preempt: local || state.ReAddedFromReorg ? null : _blockWorkInProgress);
@@ -84,8 +84,8 @@ internal sealed class FrameTxSimulationFilter(
                 state.FrameValidationRan = true;
                 if (result.CodeDependencies.Count > 0 && codeDependencies is not null)
                 {
-                    Address? paymaster = _headState is null ? null : PendingCodeDependencyCache.SlotPaymaster(tx, _headState);
-                    Transaction? replaced = standardPool is null || blobPool is null ? null : PendingReplacement.Find(tx, standardPool, blobPool);
+                    Address? paymaster = _headState is null ? null : PendingCodeDependencyCache.SlotPaymaster(tx.Transaction, _headState);
+                    MempoolTransaction? replaced = standardPool is null || blobPool is null ? null : PendingReplacement.Find(tx.Transaction, standardPool, blobPool);
                     if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, paymaster, replaced?.Hash?.ValueHash256, maxPendingPerCode, out bool recorded))
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxCodeDependencyLimitReached);

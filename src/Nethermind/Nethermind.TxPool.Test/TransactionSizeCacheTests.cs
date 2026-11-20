@@ -10,25 +10,24 @@ namespace Nethermind.TxPool.Test;
 [TestFixture]
 public class TransactionSizeCacheTests
 {
-    // Proof-version translation swaps the sidecar for one of a different length. The announced size is
-    // already cached by then, so a stale value would advertise a length the encoded transaction no longer has.
+    // Proof-version translation swaps the sidecar for one of a different length, so the announced size
+    // must follow the sidecar rather than a value cached for the original one.
     [Test]
-    public void Replacing_the_network_wrapper_invalidates_the_cached_size()
+    public void Replacing_the_network_wrapper_changes_the_network_length()
     {
-        Transaction tx = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).SignedAndResolved().TestObject;
-        ShardBlobNetworkWrapper original = (ShardBlobNetworkWrapper)tx.NetworkWrapper!;
-        int sizeBeforeTranslation = tx.GetLength();
+        MempoolTransaction mempoolTx = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).SignedAndResolved().MempoolTestObject;
+        ShardBlobNetworkWrapper original = mempoolTx.NetworkWrapper!;
+        int sizeBeforeTranslation = mempoolTx.GetLength();
 
         byte[] moreProofs = new byte[original.Proofs.Length + 4 * ShardBlobNetworkWrapper.BytesPerProof];
-        tx.NetworkWrapper = new ShardBlobNetworkWrapper(original.Blobs, original.Commitments, moreProofs, ProofVersion.V1);
+        MempoolTransaction translated = mempoolTx with { NetworkWrapper = new ShardBlobNetworkWrapper(original.Blobs, original.Commitments, moreProofs, ProofVersion.V1) };
 
-        Assert.That(tx.GetLength(), Is.Not.EqualTo(sizeBeforeTranslation));
+        Assert.That(translated.GetLength(), Is.Not.EqualTo(sizeBeforeTranslation));
     }
 
-    // Assigning NetworkWrapper clears the size, so CopyTo has to copy it after the wrapper. Priming the
-    // cache and then growing a field that does not clear it makes a recomputed value differ from a copied one.
+    // Priming the cache and then growing a field that does not clear it makes a recomputed value differ from a copied one.
     [Test]
-    public void CopyTo_preserves_the_cached_size_despite_the_wrapper_clearing_it()
+    public void CopyTo_preserves_the_cached_size()
     {
         Transaction source = Build.A.Transaction.WithShardBlobTxTypeAndFields(1).SignedAndResolved().TestObject;
         int cached = source.GetLength();

@@ -252,7 +252,7 @@ public class FrameTxBlockProductionTests
     {
         using Chain chain = new(contracts);
 
-        BlockToProduce blockToProduce = new(ProductionHeader(), candidates, []);
+        BlockToProduce blockToProduce = new(ProductionHeader(), Array.ConvertAll(candidates, static tx => (MempoolTransaction)tx), []);
 
         BlockProcessor.BlockProductionTransactionsExecutor executor = new(
             new BuildUpTransactionProcessorAdapter(chain.Processor),
@@ -270,7 +270,7 @@ public class FrameTxBlockProductionTests
         ulong stateGas = receiptsTracer.BlockStateGasUsed;
         receiptsTracer.EndBlockTrace();
 
-        Block producedBlock = new(blockToProduce.Header, blockToProduce.Transactions.ToArray(), []);
+        Block producedBlock = new(blockToProduce.Header, blockToProduce.Transactions.Select(static tx => tx.Transaction).ToArray(), []);
         return new Produced(producedBlock, receipts, executionGas, stateGas, contracts);
     }
 

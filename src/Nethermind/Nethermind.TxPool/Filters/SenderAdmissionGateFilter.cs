@@ -17,9 +17,9 @@ namespace Nethermind.TxPool.Filters;
 /// </remarks>
 internal sealed class SenderAdmissionGateFilter(SenderAdmissionGates gates) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
-        if (tx.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(tx) && state.SenderAdmissionGate is null)
+        if (tx.Transaction.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(tx.Transaction) && state.SenderAdmissionGate is null)
         {
             Lock gate = gates.For(tx.SenderAddress!);
             gate.Enter();

@@ -11,12 +11,12 @@ namespace Nethermind.TxPool.Filters
         IReadOnlyStateProvider worldState,
         DelegationCache pendingDelegations) : IIncomingTxFilter
     {
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             if (!state.HeadSpec.IsEip7702Enabled)
                 return AcceptTxResult.Accepted;
 
-            if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx))
+            if (tx.HasAuthorizationList && AuthorityHasPendingTx(tx.Transaction))
                 return AcceptTxResult.DelegatorHasPendingTx;
 
             if (!state.SenderHasDelegatedCode(worldState)
@@ -24,9 +24,9 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
             // Every fresh EIP-8250 key is current at sequence 0, so the count bound the account-nonce gate gave
             // this sender is taken directly: one authorization must not invalidate a bucketful at once.
-            if (KeyedNonceManager.UsesKeyedNonce(tx))
+            if (KeyedNonceManager.UsesKeyedNonce(tx.Transaction))
             {
-                return SenderHasOtherPendingTx(tx)
+                return SenderHasOtherPendingTx(tx.Transaction)
                     ? AcceptTxResult.NotCurrentNonceForDelegation.WithMessage("delegated sender already has a pending transaction")
                     : AcceptTxResult.Accepted;
             }

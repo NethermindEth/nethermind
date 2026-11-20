@@ -330,12 +330,12 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, configurer: builder => builder.AddSingleton(syncingInfo));
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(1, spec: Osaka.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
         byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
@@ -346,7 +346,7 @@ public partial class EngineModuleTests
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> empty = await GetBlobs([]);
         ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> tooLarge = await GetBlobs(Enumerable.Repeat(blobVersionedHashes[0], 129).ToArray());
 
-        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        ShardBlobNetworkWrapper wrapper = blobTx.NetworkWrapper!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Result, Is.EqualTo(Result.Success));
@@ -363,12 +363,12 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -388,10 +388,10 @@ public partial class EngineModuleTests
     [Test]
     public async Task GetBlobsV2_should_return_blobs_of_a_transaction_included_in_the_head([Values(1, 3)] int numberOfBlobs)
     {
-        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] txs, MergeTestBlockchain chain) =
+        (IEngineRpcModule rpcModule, string? payloadId, MempoolTransaction[] txs, MergeTestBlockchain chain) =
             await BuildAndGetPayloadV3Result(Osaka.Instance, numberOfBlobs, oneBlobPerTx: false);
         using MergeTestBlockchain disposeChain = chain;
-        Transaction blobTx = txs.Single();
+        MempoolTransaction blobTx = txs.Single();
         byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
         GetPayloadV5Result payload = (await rpcModule.engine_getPayloadV5(Bytes.FromHexString(payloadId!))).Data!;
         ExecutionPayloadV3 executionPayload = payload.ExecutionPayload;
@@ -447,12 +447,12 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -496,12 +496,12 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        Transaction blobTx = Build.A.Transaction
+        MempoolTransaction blobTx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(numberOfBlobs, spec: Osaka.Instance)
             .WithMaxFeePerGas(1.GWei)
             .WithMaxPriorityFeePerGas(1.GWei)
             .WithMaxFeePerBlobGas(1000.Wei)
-            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).MempoolTestObject;
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 

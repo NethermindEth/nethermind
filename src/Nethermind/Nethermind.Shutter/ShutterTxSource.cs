@@ -30,7 +30,7 @@ public class ShutterTxSource(
 
     public bool SupportsBlobs => false;
 
-    public IEnumerable<Transaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
+    public IEnumerable<MempoolTransaction> GetTransactions(BlockHeader parent, BlockHeader targetBlock, ulong gasLimit, PayloadAttributes? payloadAttributes = null, bool filterSource = false)
     {
         if (!shutterConfig.Validator)
         {
@@ -58,7 +58,7 @@ public class ShutterTxSource(
 
         int txCount = shutterTransactions.Value.Transactions.Length;
         if (_logger.IsInfo) _logger.Info($"Preparing Shutterized block {parent.Number + 1} for slot {buildingSlot} with {txCount} decrypted transactions.");
-        return shutterTransactions.Value.Transactions;
+        return Array.ConvertAll(shutterTransactions.Value.Transactions, static tx => (MempoolTransaction)tx);
     }
 
     public Task WaitForTransactions(ulong slot, CancellationToken cancellationToken)

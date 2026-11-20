@@ -43,7 +43,6 @@ using Nethermind.Core.Messages;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Config;
-using Nethermind.TxPool;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
@@ -1004,15 +1003,17 @@ public class DebugRpcModule(
 
     public ResultWrapper<ArrayPoolList<byte>> debug_getRawTransaction(Hash256 transactionHash)
     {
-        Transaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
+        MempoolTransaction? transaction = debugBridge.GetTransactionFromHash(transactionHash);
         if (transaction is null)
         {
             // execution-apis types the result as bytes with no not-found null, so an unknown transaction is empty bytes.
             return ResultWrapper<ArrayPoolList<byte>>.Success(ArrayPoolList<byte>.Empty());
         }
 
-        RlpBehaviors encodingSettings = RlpBehaviors.SkipTypedWrapping | (transaction.IsInMempoolForm() ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
-        return ResultWrapper<ArrayPoolList<byte>>.Success(TxRlpDecoder.EncodeToArrayPoolList(transaction, encodingSettings));
+        // A mined transaction is served in its canonical form, a pending one that carries a sidecar in its mempool form.
+        return ResultWrapper<ArrayPoolList<byte>>.Success(transaction.NetworkWrapper is null
+            ? TxRlpDecoder.EncodeToArrayPoolList(transaction.Transaction, RlpBehaviors.SkipTypedWrapping)
+            : MempoolTxDecoder.Instance.EncodeToArrayPoolList(transaction, RlpBehaviors.SkipTypedWrapping));
     }
 
     public ResultWrapper<RawReceiptsResult> debug_getRawReceipts(BlockParameter blockParameter)

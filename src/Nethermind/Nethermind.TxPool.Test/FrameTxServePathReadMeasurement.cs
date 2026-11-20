@@ -29,7 +29,7 @@ namespace Nethermind.TxPool.Test;
 [TestFixture]
 public class FrameTxServePathReadMeasurement
 {
-    private readonly List<Transaction> _samples = [];
+    private readonly List<MempoolTransaction> _samples = [];
     private readonly StringBuilder _report = new();
 
     /// <summary>Transactions the last timed pass actually answered.</summary>
@@ -49,7 +49,7 @@ public class FrameTxServePathReadMeasurement
         ServeReadCountingBlobTxStorage storage = BuildSamples(blobsPerTx: 1);
         using PersistentBlobTxDistinctSortedPool pool = InsertAll(storage);
 
-        Transaction sample = _samples[0];
+        Transaction sample = _samples[0].Transaction;
         Assert.That(storage.TryGetWithoutBlobs(sample.Hash!.ValueHash256, sample.SenderAddress!, out _), Is.True,
             "admission writes the sidecar-free record, so the sidecar-free read never falls back to the full row");
 
@@ -126,20 +126,20 @@ public class FrameTxServePathReadMeasurement
     /// sample rather than one, since a partial answer is the shape a regression would take.</remarks>
     private void AssertEverySampleIsServedWhole(BlobTxDistinctSortedPool pool)
     {
-        foreach (Transaction sample in _samples)
+        foreach ((Transaction sample, _) in _samples)
         {
             ValueHash256 hash = sample.Hash!.ValueHash256;
 
 #pragma warning disable NUnit2045 // Pool reads must succeed before their returned transactions are dereferenced.
-            Assert.That(pool.TryGetValueWithoutBlobs(hash, out Transaction? elided), Is.True);
+            Assert.That(pool.TryGetValueWithoutBlobs(hash, out MempoolTransaction? elided), Is.True);
 #pragma warning restore NUnit2045
             Assert.That(elided!.Hash, Is.EqualTo(sample.Hash), "the sidecar-free read must answer with the sample itself");
             Assert.That(elided.Frames, Is.Not.Null.And.Length.EqualTo(sample.Frames!.Length), "it must keep the prefix");
-            Assert.That(((ShardBlobNetworkWrapper)elided.NetworkWrapper!).Blobs, Is.Empty, "and drop the sidecar");
+            Assert.That(elided.NetworkWrapper!.Blobs, Is.Empty, "and drop the sidecar");
 
-            Assert.That(pool.TryGetValue(hash, out Transaction? full), Is.True);
+            Assert.That(pool.TryGetMempoolTransaction(hash, out MempoolTransaction? full), Is.True);
             Assert.That(full!.Hash, Is.EqualTo(sample.Hash), "the full read must answer with the sample itself");
-            Assert.That(((ShardBlobNetworkWrapper)full.NetworkWrapper!).Blobs, Has.Length.EqualTo(sample.BlobVersionedHashes!.Length),
+            Assert.That(full.NetworkWrapper!.Blobs, Has.Length.EqualTo(sample.BlobVersionedHashes!.Length),
                 "the type-6 serve is only correct if the sidecar travels with it");
         }
     }
@@ -153,9 +153,9 @@ public class FrameTxServePathReadMeasurement
     private PersistentBlobTxDistinctSortedPool InsertAll(ServeReadCountingBlobTxStorage storage)
     {
         PersistentBlobTxDistinctSortedPool pool = NewPool(storage);
-        foreach (Transaction tx in _samples)
+        foreach (MempoolTransaction tx in _samples)
         {
-            Assert.That(pool.TryInsert(tx.Hash!.ValueHash256, tx), Is.True);
+            Assert.That(pool.TryInsert(tx.Hash!.ValueHash256, new LightTransaction(tx) { PendingInsert = tx }), Is.True);
         }
 
         return pool;
@@ -166,7 +166,7 @@ public class FrameTxServePathReadMeasurement
         // "Warm" means every sample is still cached, so the premise is set here rather than inherited from a
         // default that could change underneath it. This is the shipped default today.
         TxPoolConfig config = new() { BlobCacheSize = FrameTxBlobMeasurementHarness.SampleTxs };
-        IComparer<Transaction> comparer = new TransactionComparerProvider(MainnetSpecProvider.Instance, Substitute.For<IBlockTree>()).GetDefaultComparer();
+        IComparer<MempoolTransaction> comparer = new TransactionComparerProvider(MainnetSpecProvider.Instance, Substitute.For<IBlockTree>()).GetDefaultComparer();
         return new PersistentBlobTxDistinctSortedPool(storage, config, comparer, LimboLogs.Instance);
     }
 
@@ -183,18 +183,18 @@ public class FrameTxServePathReadMeasurement
         int answered = 0;
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        foreach (Transaction tx in _samples)
+        foreach ((Transaction tx, _) in _samples)
         {
             ValueHash256 hash = tx.Hash!.ValueHash256;
             bool servedSidecarFree = false;
-            if (pool.TryGetValueWithoutBlobs(hash, out Transaction? elided))
+            if (pool.TryGetValueWithoutBlobs(hash, out MempoolTransaction? elided))
             {
                 _ = BlobTransactionPayload.Elide(elided);
                 servedSidecarFree = true;
             }
 
             // Both, because the discarded read is the one being priced: pair - single is entirely its cost.
-            if (servedSidecarFree && pool.TryGetValue(hash, out _)) answered++;
+            if (servedSidecarFree && pool.TryGetMempoolTransaction(hash, out _)) answered++;
         }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);
@@ -208,9 +208,9 @@ public class FrameTxServePathReadMeasurement
         int answered = 0;
         long before = GC.GetAllocatedBytesForCurrentThread();
         long start = Stopwatch.GetTimestamp();
-        foreach (Transaction tx in _samples)
+        foreach ((Transaction tx, _) in _samples)
         {
-            if (pool.TryGetValue(tx.Hash!.ValueHash256, out _)) answered++;
+            if (pool.TryGetMempoolTransaction(tx.Hash!.ValueHash256, out _)) answered++;
         }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(start);

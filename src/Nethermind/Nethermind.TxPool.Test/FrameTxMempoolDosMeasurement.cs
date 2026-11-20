@@ -479,7 +479,7 @@ public class FrameTxMempoolDosMeasurement
         Emit($"case=signature_reject scheme=secp256k1 ceiling={ceiling} signatures={count} "
              + $"declared_gas={declaredGas} samples={Samples} submit_p50_us={p50:F1} "
              + $"submit_p99_us={Percentile(submitMicros, 0.99):F1} admission_us_per_signature={admissionPerSignature:F2} "
-             + $"submit_max_us={submitMicros[^1]:F1} tx_bytes={FrameTx(0).GetLength(shouldCountBlobs: false)} "
+             + $"submit_max_us={submitMicros[^1]:F1} tx_bytes={FrameTx(0).GetLength()} "
              + $"submit_us_per_Mgas={p50 / declaredGas * 1_000_000:F1} basis=declared_prefix_gas evm_ran=no");
     }
 

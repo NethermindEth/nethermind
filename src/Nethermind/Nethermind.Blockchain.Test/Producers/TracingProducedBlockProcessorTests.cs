@@ -178,7 +178,7 @@ public class TracingProducedBlockProcessorTests
     public async Task Producer_environment_dumps_only_included_transactions_tagged_with_produced_block()
     {
         using TempDirectory dumpDirectory = new();
-        Transaction[] candidates = [];
+        MempoolTransaction[] candidates = [];
         ITxSource txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes?>(), Arg.Any<bool>())
             .Returns(_ => candidates);

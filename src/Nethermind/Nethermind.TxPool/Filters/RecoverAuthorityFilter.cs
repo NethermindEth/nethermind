@@ -11,7 +11,7 @@ namespace Nethermind.TxPool.Filters
     /// /// </summary>
     internal sealed class RecoverAuthorityFilter(IEthereumEcdsa ecdsa) : IIncomingTxFilter
     {
-        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             if (tx.HasAuthorizationList)
             {

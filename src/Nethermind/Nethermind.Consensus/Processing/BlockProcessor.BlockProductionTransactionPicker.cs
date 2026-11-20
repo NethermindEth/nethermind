@@ -54,7 +54,7 @@ namespace Nethermind.Consensus.Processing
                     return NewArgs(block, currentTx, transactionsInBlock).Set(TxAction.Stop, "Block full");
                 }
 
-                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength(false) > _maxTxLengthBytes)
+                if (block is BlockToProduce blockToProduce && blockToProduce.TxByteLength + currentTx.GetLength() > _maxTxLengthBytes)
                 {
                     return NewArgs(block, currentTx, transactionsInBlock).Set(
                         // If smallest tx is too large, stop picking

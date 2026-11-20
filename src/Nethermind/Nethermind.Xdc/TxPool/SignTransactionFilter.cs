@@ -37,7 +37,7 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         return AcceptTxResult.Accepted;
     }
 
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (blockTree.Head is null)
             return AcceptTxResult.Syncing;
@@ -46,13 +46,13 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
         ulong headerNumber = header.Number + 1;
         IXdcReleaseSpec spec = specProvider.GetXdcSpec(headerNumber);
 
-        if (!tx.IsSpecialTransaction(spec))
+        if (!tx.Transaction.IsSpecialTransaction(spec))
         {
             return AcceptTxResult.Accepted;
         }
-        if (tx.IsSignTransaction(spec))
+        if (tx.Transaction.IsSignTransaction(spec))
         {
-            AcceptTxResult result = ValidateSignTransaction(tx, headerNumber, spec);
+            AcceptTxResult result = ValidateSignTransaction(tx.Transaction, headerNumber, spec);
             if (result != AcceptTxResult.Accepted)
             {
                 return result;
@@ -66,7 +66,7 @@ internal sealed class SignTransactionFilter(ISnapshotManager snapshotManager, IB
             return AcceptTxResult.Invalid.WithMessage("Special transaction sender is not an epoch candidate");
         }
 
-        tx.IsServiceTransaction = true;
+        tx.Transaction.IsServiceTransaction = true;
 
         return AcceptTxResult.Accepted;
     }

@@ -104,7 +104,7 @@ public class XdcPooledTransactionMessagesTests
             Throws.InstanceOf<RlpReaderException>().With.Message.Contains(nameof(XdcGetPooledTransactionsMessage)));
     }
 
-    private static ArrayPoolList<Transaction> Transactions() =>
+    private static ArrayPoolList<MempoolTransaction> Transactions() =>
         new(1) { Build.A.Transaction.SignedAndResolved().TestObject };
 
     private static string Hex(Action<IByteBuffer> serialize)

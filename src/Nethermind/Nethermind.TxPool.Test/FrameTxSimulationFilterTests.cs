@@ -24,7 +24,7 @@ public class FrameTxSimulationFilterTests
     {
         TestReadOnlyStateProvider state = new();
         state.CreateAccount(TestItem.AddressA, 1 * Unit.Ether); // default-code sender ⇒ legible
-        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        MempoolTransaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
 
         // The payer filter resolves the legible prefix natively, then the simulation filter runs.
@@ -61,9 +61,9 @@ public class FrameTxSimulationFilterTests
     public void Accept_OpaquePrefix_SimulatesAndRecordsResolvedPayer(bool signaturesVerified)
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
-        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        MempoolTransaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+        simulator.Simulate(tx.Transaction, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
 
         AcceptTxResult result = Accept(state, simulator, tx, signaturesVerified);
 
@@ -71,7 +71,7 @@ public class FrameTxSimulationFilterTests
         {
             Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(tx.PayerAddress, Is.EqualTo(TestItem.AddressB));
-            simulator.Received(1).Simulate(tx, signaturesPreValidated: signaturesVerified);
+            simulator.Received(1).Simulate(tx.Transaction, signaturesPreValidated: signaturesVerified);
         }
     }
 
@@ -79,9 +79,9 @@ public class FrameTxSimulationFilterTests
     public void Accept_OpaquePrefixFailsSimulation_Rejected()
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
-        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        MempoolTransaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("banned opcode"));
+        simulator.Simulate(tx.Transaction, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Reject("banned opcode"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -98,9 +98,9 @@ public class FrameTxSimulationFilterTests
         // A node-side fault must not produce a non-accepting result, which the peer's flood counter
         // would charge and eventually disconnect over.
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
-        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        MempoolTransaction tx = SelfVerifyTx(TestItem.AddressA);
         IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
-        simulator.Simulate(tx, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
+        simulator.Simulate(tx.Transaction, Arg.Any<bool>()).Returns(FrameTxSimulationResult.Undecided("simulation unavailable"));
 
         AcceptTxResult result = Accept(state, simulator, tx);
 
@@ -115,7 +115,7 @@ public class FrameTxSimulationFilterTests
     public void Accept_OpaquePrefixWithoutSimulator_DefersLikePhase1()
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
-        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        MempoolTransaction tx = SelfVerifyTx(TestItem.AddressA);
 
         AcceptTxResult result = Accept(state, simulator: null, tx);
 
@@ -142,10 +142,10 @@ public class FrameTxSimulationFilterTests
     private static Transaction SelfVerifyTx(Address sender) =>
         FrameTx(sender, [Secp256k1Signature(sender)], SelfVerify(PrefixFrameGas));
 
-    private static void RunPayerFilter(TestReadOnlyStateProvider state, Transaction tx)
+    private static void RunPayerFilter(TestReadOnlyStateProvider state, MempoolTransaction tx)
     {
         FrameTxPayerFilter filter = new(LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>());
-        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance);
+        TxFilteringState filteringState = new(tx.Transaction, state, Eip8141Prototype.Instance);
         filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
 
@@ -264,13 +264,13 @@ public class FrameTxSimulationFilterTests
     private static AcceptTxResult Accept(
         TestReadOnlyStateProvider state,
         IFrameTxPrefixSimulator? simulator,
-        Transaction tx,
+        MempoolTransaction tx,
         bool signaturesVerified = false,
         TxHandlingOptions options = TxHandlingOptions.None,
         IChainHeadInfoProvider? headInfo = null)
     {
         FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
-        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { FrameSignaturesVerified = signaturesVerified };
+        TxFilteringState filteringState = new(tx.Transaction, state, Eip8141Prototype.Instance) { FrameSignaturesVerified = signaturesVerified };
         return filter.Accept(tx, ref filteringState, options);
     }
 }

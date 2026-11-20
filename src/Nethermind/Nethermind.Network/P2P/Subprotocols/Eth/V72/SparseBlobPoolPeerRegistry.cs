@@ -961,7 +961,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
     }
 
     /// <inheritdoc/>
-    public AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, Transaction transaction)
+    public AcceptTxResult? RecordTransaction(ISparseBlobPoolPeer peer, MempoolTransaction transaction)
     {
         Hash256? hash = transaction.Hash;
         if (hash is null || !transaction.SupportsBlobs)
@@ -1524,7 +1524,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return null;
         }
 
-        Transaction? transaction;
+        MempoolTransaction? transaction;
         ISparseBlobPoolPeer? transactionPeer;
         PendingCellsBuffer? cells;
         DateTimeOffset notBefore;
@@ -1574,13 +1574,12 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             return null;
         }
 
-        ShardBlobNetworkWrapper originalWrapper = (ShardBlobNetworkWrapper)transaction.NetworkWrapper!;
-        if (!TryAttachCells(hash, transaction, cells.Value, out string? error, out SparseBlobAttachFailureSource failureSource))
+        if (!TryAttachCells(hash, transaction, cells.Value, out MempoolTransaction attached, out string? error, out SparseBlobAttachFailureSource failureSource))
         {
             return HandleAttachFailure(hash, state, transactionPeer, cells.Value, error, failureSource);
         }
 
-        if (CancelSubmissionIfRequested(hash, state, transaction, originalWrapper))
+        if (CancelSubmissionIfRequested(hash, state))
         {
             return null;
         }
@@ -1588,23 +1587,21 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         AcceptTxResult result;
         try
         {
-            result = SubmitTransaction(transactionPeer, transaction);
+            result = SubmitTransaction(transactionPeer, attached);
             if (result == AcceptTxResult.AlreadyKnown
                 && !_txPool.TryGetPendingBlobTransaction(hash, out _))
             {
-                if (CancelSubmissionIfRequested(hash, state, transaction, originalWrapper))
+                if (CancelSubmissionIfRequested(hash, state))
                 {
                     return null;
                 }
 
                 _txPool.ForgetRejectedBlobTransaction(hash);
-                result = SubmitTransaction(transactionPeer, transaction);
+                result = SubmitTransaction(transactionPeer, attached);
             }
         }
         catch
         {
-            transaction.NetworkWrapper = originalWrapper;
-            transaction.ClearLengthCache();
             bool remove;
             lock (state.Lock)
             {
@@ -1624,8 +1621,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             && !_txPool.TryGetPendingBlobTransaction(hash, out _))
         {
             _txPool.ForgetRejectedBlobTransaction(hash);
-            transaction.NetworkWrapper = originalWrapper;
-            transaction.ClearLengthCache();
             bool remove;
             lock (state.Lock)
             {
@@ -1647,8 +1642,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
         if (result == AcceptTxResult.InvalidBlobProofs)
         {
-            transaction.NetworkWrapper = originalWrapper;
-            transaction.ClearLengthCache();
             return HandleAttachFailure(
                 hash,
                 state,
@@ -1717,11 +1710,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return result;
     }
 
-    private bool CancelSubmissionIfRequested(
-        Hash256 hash,
-        TrackedSparseBlobTx state,
-        Transaction transaction,
-        ShardBlobNetworkWrapper originalWrapper)
+    private bool CancelSubmissionIfRequested(Hash256 hash, TrackedSparseBlobTx state)
     {
         lock (state.Lock)
         {
@@ -1733,8 +1722,6 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
             state.Submitting = false;
         }
 
-        transaction.NetworkWrapper = originalWrapper;
-        transaction.ClearLengthCache();
         TryRemoveState(hash, state);
         return true;
     }
@@ -1858,7 +1845,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         return null;
     }
 
-    private AcceptTxResult SubmitTransaction(ISparseBlobPoolPeer? peer, Transaction transaction)
+    private AcceptTxResult SubmitTransaction(ISparseBlobPoolPeer? peer, MempoolTransaction transaction)
     {
         transaction.Timestamp = Timestamper.Default.UnixTime.Seconds;
         AcceptTxResult result = _txPool.SubmitTx(transaction, TxHandlingOptions.None);
@@ -2110,11 +2097,13 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
 
     private static bool TryAttachCells(
         Hash256 hash,
-        Transaction tx,
+        MempoolTransaction tx,
         PendingCellsBuffer pending,
+        out MempoolTransaction attached,
         out string? error,
         out SparseBlobAttachFailureSource failureSource)
     {
+        attached = null;
         error = null;
         failureSource = SparseBlobAttachFailureSource.Cells;
         if (tx.BlobVersionedHashes is not { Length: > 0 } blobVersionedHashes
@@ -2142,8 +2131,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         byte[][] flattenedCells = availableMask == pending.CellMask
             ? pending.Cells
             : BlobCellsHelper.SelectFlattenedCells(pending.Cells, pending.CellMask, availableMask, blobCount);
-        tx.NetworkWrapper = wrapper with { CellMask = availableMask, Cells = flattenedCells };
-        tx.ClearLengthCache();
+        attached = tx with { NetworkWrapper = wrapper with { CellMask = availableMask, Cells = flattenedCells } };
         return true;
     }
 
@@ -2682,7 +2670,7 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         public HashSet<PublicKey> AmbiguousFailureSources { get; } = [];
         public Dictionary<PublicKey, BlobCellMask> InFlightByPeer { get; } = [];
         public Dictionary<PublicKey, long> InFlightRevisionByPeer { get; } = [];
-        public Transaction? Transaction { get; set; }
+        public MempoolTransaction? Transaction { get; set; }
         public ISparseBlobPoolPeer? TransactionPeer { get; set; }
         public int TransactionBytes { get; set; }
         public PendingCellsBuffer? Cells { get; set; }

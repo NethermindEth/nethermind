@@ -12,11 +12,14 @@ namespace Nethermind.TxPool.Filters;
 /// otherwise pay for. Other transactions face no such work and are left to the insert, sparing them the bucket lookup.</remarks>
 internal sealed class UnderpricedReplacementFilter(TxDistinctSortedPool standardPool, TxDistinctSortedPool blobPool) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
         if ((!tx.HasAuthorizationList && !tx.CarriesBlobs && !tx.SupportsFrames)
-            || PendingReplacement.Find(tx, standardPool, blobPool) is not { } replaced
-            || (tx.CarriesBlobs ? blobPool : standardPool).CanReplace(tx, replaced))
+            || PendingReplacement.Find(tx.Transaction, standardPool, blobPool) is not { } replaced
+            // The blob pool holds light records, which carry the proof version the replacement rule compares.
+            || (tx.Transaction.CarriesBlobs
+                ? blobPool.CanReplace(tx with { Transaction = new LightTransaction(tx with { NetworkWrapper = state.NetworkWrapper }), NetworkWrapper = null }, replaced)
+                : standardPool.CanReplace(tx, replaced)))
         {
             return AcceptTxResult.Accepted;
         }

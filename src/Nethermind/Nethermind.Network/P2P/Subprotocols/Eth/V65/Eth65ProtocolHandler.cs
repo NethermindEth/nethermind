@@ -139,7 +139,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         internal ValueTask<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             int maxResponseCount = Math.Min(msg.Hashes.Count, MaxNumberOfTxsInOneMsg);
-            ArrayPoolList<Transaction> txsToSend = [with(maxResponseCount)];
+            ArrayPoolList<MempoolTransaction> txsToSend = [with(maxResponseCount)];
             ArrayPoolList<PooledTransactionsMessage.EncodedTransaction>? encodedTxsToSend = null;
 
             // Once a response is non-empty, enforce the eth spec's 256-hash soft limit. If the
@@ -167,12 +167,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     }
 
                     int txSize;
-                    Transaction? responseTx = null;
+                    MempoolTransaction? responseTx = null;
                     if (TryGetEncodedPooledTransactionToServe(hash, out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable))
                     {
                         txSize = encodedTx.Count;
                     }
-                    else if (!unservable && TryGetPooledTransactionToServe(hash, out Transaction tx) && CanServePooledTransaction(tx))
+                    else if (!unservable && TryGetPooledTransactionToServe(hash, out MempoolTransaction tx) && CanServePooledTransaction(tx))
                     {
                         responseTx = PreparePooledTransactionForResponse(tx);
                         txSize = responseTx.GetLength();
@@ -223,12 +223,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// Not called for a transaction that <see cref="TryGetEncodedPooledTransactionToServe"/> serves. An override that
         /// rejects such a transaction must also override that method.
         /// </remarks>
-        protected virtual bool CanServePooledTransaction(Transaction tx) => true;
+        protected virtual bool CanServePooledTransaction(MempoolTransaction tx) => true;
 
         /// <summary>
         /// Gets the representation of a pooled transaction that this protocol version can serve.
         /// </summary>
-        protected virtual bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
+        protected virtual bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out MempoolTransaction? tx)
             => _txPool.TryGetPendingTransaction(hash, out tx);
 
         /// <summary>Gets the network encoding of a pooled transaction that is served without decoding it.</summary>
@@ -252,11 +252,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         /// Not called for a transaction that <see cref="TryGetEncodedPooledTransactionToServe"/> serves. An override that
         /// changes such a transaction must also override that method.
         /// </remarks>
-        protected virtual Transaction PreparePooledTransactionForResponse(Transaction tx) => tx;
+        protected virtual MempoolTransaction PreparePooledTransactionForResponse(MempoolTransaction tx) => tx;
 
         /// <summary>Builds the response to a <see cref="GetPooledTransactionsMessage"/>.</summary>
         /// <remarks>Overridden by protocol versions that carry the response on a different message code.</remarks>
-        protected virtual PooledTransactionsMessage CreatePooledTransactionsMessage(IOwnedReadOnlyList<Transaction> transactions) => new(transactions);
+        protected virtual PooledTransactionsMessage CreatePooledTransactionsMessage(IOwnedReadOnlyList<MempoolTransaction> transactions) => new(transactions);
 
         /// <summary>Builds a transaction hash announcement.</summary>
         /// <inheritdoc cref="CreatePooledTransactionsMessage" path="/remarks"/>

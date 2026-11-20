@@ -285,9 +285,9 @@ namespace Nethermind.Blockchain.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
 
             TransactionComparerProvider transactionComparerProvider = new(specProvider, blockTree);
-            IComparer<Transaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
-            IComparer<Transaction> comparer = CompareTxByNonce.Instance.ThenBy(defaultComparer);
-            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress is not null).OrderBy(t => t, comparer).ToArray();
+            IComparer<MempoolTransaction> defaultComparer = transactionComparerProvider.GetDefaultComparer();
+            IComparer<MempoolTransaction> comparer = CompareTxByNonce.Instance.ForMempool().ThenBy(defaultComparer);
+            Transaction[] txArray = testCase.Transactions.Where(t => t?.SenderAddress is not null).OrderBy(t => (MempoolTransaction)t, comparer).ToArray();
 
             Block block = Build.A.Block
                 .WithNumber(0)
@@ -295,7 +295,7 @@ namespace Nethermind.Blockchain.Test
                 .WithGasLimit(testCase.GasLimit)
                 .WithTransactions(txArray)
                 .TestObject;
-            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+            BlockToProduce blockToProduce = new(block.Header, Array.ConvertAll(block.Transactions, static tx => (MempoolTransaction)tx), block.Uncles);
             blockTree.Head.Returns(blockToProduce);
 
             void SetAccountStates(IEnumerable<Address> missingAddresses)
@@ -332,21 +332,21 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void BlockProductionTransactionsExecutor_calculates_block_size_using_proper_tx_form()
         {
-            Transaction transactionInMempoolForm = Build.A.Transaction
+            MempoolTransaction transactionInMempoolForm = Build.A.Transaction
                 .WithShardBlobTxTypeAndFields(1, true, Osaka.Instance)
                 .SignedAndResolved()
-                .TestObject;
+                .MempoolTestObject;
 
-            int payloadLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, false);
-            int mempoolLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm, true);
+            int payloadLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm.Transaction);
+            int mempoolLength = TxPool.TransactionExtensions.GetLength(transactionInMempoolForm);
 
             Block block = Build.A.Block
                 .WithExcessBlobGas(0)
                 .WithGasLimit(GasCostOf.Transaction)
-                .WithTransactions([transactionInMempoolForm])
+                .WithTransactions([transactionInMempoolForm.Transaction])
                 .TestObject;
 
-            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+            BlockToProduce blockToProduce = new(block.Header, new[] { transactionInMempoolForm }, block.Uncles);
 
             ITransactionProcessorAdapter transactionProcessor = Substitute.For<ITransactionProcessorAdapter>();
 
@@ -362,7 +362,11 @@ namespace Nethermind.Blockchain.Test
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, new());
 
-            Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(blockToProduce.TxByteLength, Is.EqualTo(payloadLength));
+                Assert.That(blockToProduce.Transactions, Is.EqualTo(new[] { transactionInMempoolForm }));
+            }
         }
 
         [Test]
@@ -446,7 +450,7 @@ namespace Nethermind.Blockchain.Test
                 .WithGasLimit(30_000_000)
                 .WithTransactions(first, discarded, last)
                 .TestObject;
-            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+            BlockToProduce blockToProduce = new(block.Header, Array.ConvertAll(block.Transactions, static tx => (MempoolTransaction)tx), block.Uncles);
 
             EthereumVirtualMachine virtualMachine = new(new TestBlockhashProvider(specProvider), specProvider, LimboLogs.Instance);
             ITransactionProcessorAdapter adapter = new BuildUpTransactionProcessorAdapter(new EthereumTransactionProcessor(
@@ -469,7 +473,7 @@ namespace Nethermind.Blockchain.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(blockToProduce.Transactions, Is.EqualTo(new[] { first, last }));
+                Assert.That(blockToProduce.Transactions.Select(static tx => tx.Transaction), Is.EqualTo(new[] { first, last }));
                 Assert.That(receipts.Select(static r => r.TxHash), Is.EqualTo(new[] { first.Hash, last.Hash }));
                 Assert.That(receipts.Select(static r => r.Index), Is.EqualTo(new[] { 0, 1 }));
                 Assert.That(blockToProduce.Header.GasUsed, Is.EqualTo(2 * GasCostOf.Transaction));
@@ -760,7 +764,7 @@ namespace Nethermind.Blockchain.Test
             txExecutor.SetBlockExecutionContext(new BlockExecutionContext(blockToProduce.Header, spec));
             txExecutor.ProcessTransactions(blockToProduce, ProcessingOptions.ProducingBlock, receiptsTracer);
 
-            return blockToProduce.Transactions.ToArray();
+            return blockToProduce.Transactions.Select(static tx => tx.Transaction).ToArray();
         }
 
         private static Transaction[] RunBlockProduction(
@@ -769,7 +773,7 @@ namespace Nethermind.Blockchain.Test
             Block block,
             IReleaseSpec spec)
         {
-            BlockToProduce blockToProduce = new(block.Header, block.Transactions, block.Uncles);
+            BlockToProduce blockToProduce = new(block.Header, Array.ConvertAll(block.Transactions, static tx => (MempoolTransaction)tx), block.Uncles);
             return RunBlockProduction(transactionProcessor, stateProvider, new TestSingleReleaseSpecProvider(spec), blockToProduce, spec);
         }
     }

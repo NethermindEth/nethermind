@@ -26,6 +26,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -286,10 +287,9 @@ public class DebugModuleTests
         Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new BlockDecoder().Encode(block)));
     }
 
-    [Test]
-    public async Task DebugGetRawTransaction_WhenTransactionExists_ReturnsTransactionRlp()
+    [TestCaseSource(nameof(MinedTransactionCases))]
+    public async Task DebugGetRawTransaction_WhenTransactionExists_ReturnsTransactionRlp(Transaction transaction)
     {
-        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
         string expected = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
         _debugBridge.GetTransactionFromHash(transaction.Hash!).Returns(transaction);
 
@@ -297,10 +297,24 @@ public class DebugModuleTests
         Assert.That(serialized, Is.EqualTo($"{{\"jsonrpc\":\"2.0\",\"result\":\"{expected}\",\"id\":67}}"));
     }
 
+    /// <summary>Mined transactions, which hold no sidecar, so they are served in their canonical form.</summary>
+    internal static IEnumerable<TestCaseData> MinedTransactionCases()
+    {
+        yield return new TestCaseData(Build.A.Transaction.SignedAndResolved().TestObject).SetName("{m}(Legacy)");
+        yield return new TestCaseData(Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject).SetName("{m}(Blob)");
+
+        Transaction frameTx = Build.A.Transaction.WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+        frameTx.Type = TxType.FrameTx;
+        frameTx.Frames = [];
+        frameTx.FrameSignatures = [];
+        frameTx.Hash = frameTx.CalculateHash();
+        yield return new TestCaseData(frameTx).SetName("{m}(Blob-carrying frame)");
+    }
+
     [Test]
     public async Task DebugGetRawTransaction_WhenTransactionNotFound_ReturnsEmptyBytes()
     {
-        _debugBridge.GetTransactionFromHash(Keccak.Zero).ReturnsNull();
+        _debugBridge.GetTransactionFromHash(Keccak.Zero).Returns(default(MempoolTransaction));
 
         string serialized = await SerializedRequest("debug_getRawTransaction", Keccak.Zero);
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x\",\"id\":67}"));

@@ -62,10 +62,10 @@ public class DebugBridgeTests
         receiptFinder.Get(Arg.Any<Block>()).Returns(_ => throw new InvalidOperationException("Receipt bodies must not be read"));
         Transaction pending = Build.A.Transaction.WithNonce(3).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         ITxPool txPool = Substitute.For<ITxPool>();
-        txPool.TryGetPendingTransaction(pending.Hash!, out Arg.Any<Transaction?>())
+        txPool.TryGetPendingTransaction(pending.Hash!, out Arg.Any<MempoolTransaction?>())
             .Returns(call =>
             {
-                call[1] = pending;
+                call[1] = new MempoolTransaction(pending, null);
                 return true;
             });
         await using IContainer container = new ContainerBuilder()
@@ -111,7 +111,7 @@ public class DebugBridgeTests
             Assert.That(storage.FindBlockHash(hash), Is.EqualTo(genesis.Hash), "the stale locator must point to a block without the requested transaction");
         }
 
-        Transaction? actual = container.Resolve<IDebugBridge>().GetTransactionFromHash(hash);
+        MempoolTransaction? actual = container.Resolve<IDebugBridge>().GetTransactionFromHash(hash);
         Assert.That(actual?.Hash, Is.EqualTo(lookup is RawTransactionLookup.Present or RawTransactionLookup.ReceiptsRemoved or RawTransactionLookup.Pending ? hash : null));
         receiptFinder.DidNotReceiveWithAnyArgs().Get(default(Block)!);
     }

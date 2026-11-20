@@ -10,18 +10,18 @@ namespace Nethermind.TxPool.Filters;
 /// <remarks>The verdict needs no signatures, so it runs ahead of <see cref="FrameTxSignatureFilter"/> and its per-signature recovery.</remarks>
 internal sealed class FrameTxPayerlessFilter(ILogger logger) : IIncomingTxFilter
 {
-    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
+    public AcceptTxResult Accept(MempoolTransaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
         if (!tx.SupportsFrames) return AcceptTxResult.Accepted;
 
-        if (FrameTxPayerResolver.IsStructurallyPayerless(tx))
+        if (FrameTxPayerResolver.IsStructurallyPayerless(tx.Transaction))
         {
             Metrics.PendingTransactionsFrameTxNoPayer++;
             if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, its validation prefix never approves a payer.");
             return AcceptTxResult.FrameTxNoPayer;
         }
 
-        if (FrameTxValidation.HasRecognizedValidationPrefix(tx)) return AcceptTxResult.Accepted;
+        if (FrameTxValidation.HasRecognizedValidationPrefix(tx.Transaction)) return AcceptTxResult.Accepted;
 
         Metrics.PendingTransactionsFrameTxUnrecognizedPrefix++;
         if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, its validation prefix is unrecognized.");
