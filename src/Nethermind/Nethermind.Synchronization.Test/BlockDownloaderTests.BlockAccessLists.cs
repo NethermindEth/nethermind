@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -413,9 +414,10 @@ public partial class BlockDownloaderTests
         IBlockProcessingQueue processingQueue,
         ISyncConfig syncConfig,
         BlockAccessListServingWindow balServingWindow,
+        IStarkProofStore proofStore,
         ILogManager logManager)
         : BlockDownloader(blockTree, blockValidator, syncReport, receiptStorage, specProvider, betterPeerStrategy, fullStateFinder,
-            forwardHeaderProvider, syncPeerPool, receiptsRecovery, processingQueue, syncConfig, balServingWindow, logManager)
+            forwardHeaderProvider, syncPeerPool, receiptsRecovery, processingQueue, syncConfig, balServingWindow, proofStore, logManager)
     {
         protected override bool ShouldDownloadAccessList(BlockHeader header, bool shouldProcess) => true;
     }

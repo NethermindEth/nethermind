@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Extensions;
@@ -141,6 +142,33 @@ public class Eth74ProtocolHandlerTests
         Handle(request, Eth74MessageCode.GetDependencyProofs);
 
         Assert.That(Delivered<DependencyProofsMessage>().Single().Proofs, Has.Count.EqualTo(2));
+    }
+
+    // EIP-8498 asks responders to rate limit: a burst beyond the per-peer backlog is answered with no proofs.
+    [Test]
+    public async Task Rate_limits_serving_per_peer()
+    {
+        const int requests = 20;
+        BlockHeader stored = Committed(1, [7, 8, 9]);
+        _proofStore.Insert(stored.Number, stored.Hash!, [7, 8, 9]);
+
+        for (int i = 0; i < requests; i++)
+        {
+            using GetDependencyProofsMessage request = new(i, new[] { stored.Hash! }.ToPooledList(1));
+            Handle(request, Eth74MessageCode.GetDependencyProofs);
+        }
+
+        TimeSpan deadline = Eth74Protocol.MaxServeBacklog * 3;
+        for (TimeSpan waited = TimeSpan.Zero; Delivered<DependencyProofsMessage>().Length < requests && waited < deadline; waited += TimeSpan.FromMilliseconds(50))
+            await Task.Delay(50);
+
+        DependencyProofsMessage[] responses = Delivered<DependencyProofsMessage>();
+        int maxServed = 1 + (int)(Eth74Protocol.MaxServeBacklog.TotalSeconds * Eth74Protocol.MaxServedRequestsPerSecond) + 1;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responses, Has.Length.EqualTo(requests), "every request is answered");
+            Assert.That(responses.Count(static r => r.Proofs.Count > 0), Is.InRange(1, maxServed));
+        }
     }
 
     [Test]

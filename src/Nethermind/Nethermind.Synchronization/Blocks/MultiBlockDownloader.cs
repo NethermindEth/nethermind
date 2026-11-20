@@ -12,7 +12,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks;
 
-public class MultiBlockDownloader(DependencyProofFetcher dependencyProofFetcher) : ISyncDownloader<BlocksRequest>
+public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
 {
     public async Task Dispatch(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
@@ -27,14 +27,18 @@ public class MultiBlockDownloader(DependencyProofFetcher dependencyProofFetcher)
         await request.DownloadTask;
     }
 
-    private async Task DownloadAsync(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
+    private static async Task DownloadAsync(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
         if (request.BodiesRequests.Count > 0)
         {
             using ArrayPoolList<Hash256> bodiesHash = BuildHashList(request.BodiesRequests);
             request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
-            (request.DependencyProofs, request.UnavailableDependencyProofs) =
-                await dependencyProofFetcher.FetchAsync(peerInfo, request.BodiesRequests, cancellationToken);
+        }
+
+        if (request.DependencyProofsRequests.Count > 0 && peerInfo.SyncPeer.SupportsDependencyProofs())
+        {
+            using ArrayPoolList<Hash256> dependencyProofsHash = BuildHashList(request.DependencyProofsRequests);
+            request.DependencyProofs = await peerInfo.SyncPeer.GetDependencyProofs(dependencyProofsHash, cancellationToken);
         }
 
         if (request.BlockAccessListsRequests.Count > 0 && peerInfo.SyncPeer.SupportsBlockAccessLists())

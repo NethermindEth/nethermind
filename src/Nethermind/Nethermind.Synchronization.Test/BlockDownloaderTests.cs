@@ -855,41 +855,6 @@ public partial class BlockDownloaderTests
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
     }
 
-    // EIP-8288: a block whose dependency proof no peer served is downloaded again rather than validated without it.
-    [Test]
-    public async Task Block_without_its_served_dependency_proof_is_requested_again()
-    {
-        await using IContainer node = CreateNode();
-        Context ctx = node.Resolve<Context>();
-
-        Response options = Response.AllCorrect | Response.Consistent;
-        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
-        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
-        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
-        syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-            .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), options));
-
-        PeerInfo peerInfo = new(syncPeer);
-        syncPeer.HeadNumber.Returns(1000UL);
-        ctx.ConfigureBestPeer(peerInfo);
-
-        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
-        Hash256 first = blockRequest.BodiesRequests[0].Hash!;
-        await ctx.FullSyncFeedComponent.Downloader.Dispatch(peerInfo, blockRequest, default);
-        blockRequest.UnavailableDependencyProofs = new bool[blockRequest.BodiesRequests.Count];
-        blockRequest.UnavailableDependencyProofs[0] = true;
-        ctx.Feed.HandleResponse(blockRequest, peerInfo);
-
-        using BlocksRequest? next = await ctx.Feed.PrepareRequest(default);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(next?.BodiesRequests.Select(static h => h.Hash), Does.Contain(first));
-            ctx.PeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
-        }
-    }
-
     [Test]
     public async Task Prune_download_requests_map()
     {
