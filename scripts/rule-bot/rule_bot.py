@@ -178,9 +178,9 @@ def cluster_stats(rows):
 
 def gate_cluster(base, new_rows):
     d = cluster_stats(new_rows)
-    new_prs = {r["pr"] for r in new_rows} - set(base.get("pr_set", []))
-    new_authors = {r["author"] for r in new_rows} - set(base.get("author_set", []))
-    st = dict(n=base["n"] + d["n"], prs=base["prs"] + len(new_prs), commenters=base["authors"] + len(new_authors),
+    prs = set(base.get("pr_set", [])) | {r["pr"] for r in new_rows}
+    authors = set(base.get("author_set", [])) | {r["author"] for r in new_rows}
+    st = dict(n=base["n"] + d["n"], prs=len(prs), commenters=len(authors),
               human=base["human"] + d["human"], valid=base["valid"] + d["valid"], new=d)
     st["validity"] = round(st["valid"] / st["n"], 2) if st["n"] else 0.0
     st["fails"] = [g for g, t in GATES.items() if st[g] < t]
@@ -196,7 +196,7 @@ def gates(args):
     out = {}
     for k, rx in patterns.items():
         mine = [r for r in rows if rx.search(r["body"][:400])]
-        base = baseline["clusters"].get(k, dict(n=0, prs=0, valid=0, human=0, authors=0))
+        base = baseline["clusters"].get(k, dict(n=0, valid=0, human=0))
         out[k] = gate_cluster(base, mine)
         out[k]["new_examples"] = [dict(url=r["url"], author=r["author"], path=r["path"], line=r["line"], body=r["body"][:500])
                                   for r in mine if counted_valid(r) and not r["bot"] and r.get("association") in TRUSTED_ASSOCIATIONS][:5]

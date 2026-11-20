@@ -34,7 +34,7 @@ class Classify(unittest.TestCase):
 
 
 class Gates(unittest.TestCase):
-    base = dict(n=20, prs=8, valid=14, human=4, authors=2)
+    base = dict(n=20, valid=14, human=4, pr_set=list(range(8)), author_set=["x", "y"])
 
     def row(self, pr, author, bot=False, valid="valid"):
         return dict(pr=pr, author=author, bot=bot, valid=valid)
@@ -44,16 +44,21 @@ class Gates(unittest.TestCase):
         self.assertTrue(st["pass"], st["fails"])
 
     def test_bot_resolved_only_is_not_valid(self):
-        st = rb.gate_cluster(dict(n=0, prs=0, valid=0, human=0, authors=0), [self.row(1, "claude[bot]", bot=True, valid="likely")])
+        st = rb.gate_cluster(dict(n=0, valid=0, human=0), [self.row(1, "claude[bot]", bot=True, valid="likely")])
         self.assertEqual(st["valid"], 0)
 
     def test_baseline_prs_and_commenters_are_not_counted_twice(self):
-        base = dict(self.base, pr_set=[100], author_set=["a"])
+        base = dict(self.base, pr_set=list(range(7)) + [100], author_set=["a", "x"])
         st = rb.gate_cluster(base, [self.row(100, "a"), self.row(101, "a"), self.row(102, "b")])
         self.assertEqual((st["prs"], st["commenters"], st["n"]), (10, 3, 23))
 
+    def test_two_people_in_both_periods_fail_the_commenter_gate(self):
+        base = dict(self.base, author_set=["a", "b"])
+        st = rb.gate_cluster(base, [self.row(100, "a"), self.row(101, "b")])
+        self.assertIn("commenters", st["fails"])
+
     def test_missing_humans_fails(self):
-        st = rb.gate_cluster(dict(self.base, prs=20, authors=5, human=1), [])
+        st = rb.gate_cluster(dict(self.base, pr_set=list(range(20)), author_set=list("abcde"), human=1), [])
         self.assertIn("human", st["fails"])
 
 
