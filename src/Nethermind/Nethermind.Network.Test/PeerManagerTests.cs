@@ -653,6 +653,70 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task Hello_after_disconnect_does_not_create_a_peer()
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+            Session session = ctx.Sessions.Single();
+            session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "closed");
+
+            ctx.PeerManager.OnP2PProtocolInitialized(session);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.PeerManager.ActivePeers, Is.Empty);
+                Assert.That(ctx.PeerPool.TryGet(TestItem.PublicKeyB, out _), Is.False);
+            }
+        }
+
+        [Test]
+        public async Task Hello_over_the_hard_limit_does_not_activate_the_peer()
+        {
+            await using Context ctx = new(maxActivePeers: 1);
+            ctx.PeerManager.Start();
+            PrivateKeyGenerator keyGenerator = new();
+            for (int i = 0; i < 11; i++)
+            {
+                PublicKey key = keyGenerator.Generate().PublicKey;
+                ctx.PeerPool.ActivePeers[key] = new Peer(new Node(key, "203.0.113.2", 30303));
+            }
+
+            ctx.RlpxPeer.CreateIncoming(CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+            Session session = ctx.Sessions.Single();
+            InitSession(session);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.IsClosing, Is.True);
+                Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(TestItem.PublicKeyB), Is.False);
+            }
+        }
+
+        [Test]
+        public async Task Pending_inbound_limit_admits_one_session_of_a_privileged_peer([Values] bool isStatic)
+        {
+            await using Context ctx = new(maxActivePeers: 0);
+            ctx.PeerManager.Start();
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyC, "1.2.3.5", 12345) { IsStatic = isStatic, IsTrusted = !isStatic });
+            for (int i = 0; i < 10; i++) ctx.RlpxPeer.CreateIncoming(receiveHello: false, CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+
+            Session template = CreateIncomingSessionTemplate(TestItem.PublicKeyC);
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, template);
+            Session privileged = ctx.Sessions.Last();
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, template);
+            Session secondClaim = ctx.Sessions.Last();
+            InitSession(privileged);
+            InitSession(secondClaim);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(privileged.IsClosing, Is.False);
+                Assert.That(secondClaim.IsClosing, Is.True);
+            }
+        }
+
+        [Test]
         public async Task Pending_inbound_limit_releases_capacity_on_hello_or_disconnect([Values] bool receiveHello)
         {
             await using Context ctx = new(maxActivePeers: 1);

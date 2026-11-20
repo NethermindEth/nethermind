@@ -1334,7 +1334,13 @@ namespace Nethermind.Network
                 if (session.Direction == ConnectionDirection.In)
                 {
                     if (state != AdmissionState.AwaitingHandshake) return;
-                    if (_incomingSessionsAwaitingHello >= (long)MaxActivePeers + MaxActivePeerMargin)
+                    Node? poolNode = _peerPool.TryGet(session.Node.Id, out Peer existingPeer) ? existingPeer.Node : null;
+                    bool isPrivileged = poolNode is { IsStatic: true } or { IsTrusted: true };
+
+                    // A privileged id may exceed the cap with one pending session, so false claims of it stay bounded.
+                    // The flags are copied only after this check, as privileged nodes are exempt from this disconnect.
+                    if (_incomingSessionsAwaitingHello >= (long)MaxActivePeers + MaxActivePeerMargin
+                        && (!isPrivileged || IsAwaitingHello(session.Node.Id)))
                     {
                         session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, "pending inbound handshakes");
                         return;
@@ -1344,10 +1350,10 @@ namespace Nethermind.Network
                     _sessions[session] = AdmissionState.AwaitingHello;
 
                     // Set before the Hello, so the disconnect exemptions of privileged peers apply to its validation.
-                    if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
+                    if (poolNode is not null)
                     {
-                        session.Node.IsStatic = existingPeer.Node.IsStatic;
-                        session.Node.IsTrusted = existingPeer.Node.IsTrusted;
+                        session.Node.IsStatic = poolNode.IsStatic;
+                        session.Node.IsTrusted = poolNode.IsTrusted;
                     }
                 }
                 else
@@ -1369,6 +1375,16 @@ namespace Nethermind.Network
                 void TraceHandshakeWithoutActivePeer()
                     => _logger.Trace($"Initiated handshake (OUT) with a peer without adding it to the Active collection : {session:hide}");
             }
+        }
+
+        private bool IsAwaitingHello(PublicKey nodeId)
+        {
+            foreach ((ISession session, AdmissionState state) in _sessions)
+            {
+                if (state == AdmissionState.AwaitingHello && session.Node.Id == nodeId) return true;
+            }
+
+            return false;
         }
 
         private void ManageNewRemoteNodeId(ISession session)

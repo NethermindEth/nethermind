@@ -71,7 +71,7 @@ namespace Nethermind.TxPool
         void RemovePeer(PublicKey nodeId);
 
         /// <summary>Removes the gossip registration owned by this peer connection.</summary>
-        void RemovePeer(ITxPoolPeer peer) => RemovePeer(peer.Id);
+        void RemovePeer(ITxPoolPeer peer);
 
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
