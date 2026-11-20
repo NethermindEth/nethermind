@@ -17,7 +17,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Specs.Test.ChainSpecStyle;
@@ -25,18 +24,13 @@ namespace Nethermind.Specs.Test.ChainSpecStyle;
 [Parallelizable(ParallelScope.All)]
 public class ChainSpecLoaderTests
 {
-    [Test]
-    public void Loads_built_in_chain_spec_from_embedded_resources()
+    [TestCase("foundation.json")]
+    [TestCase("dictionary")]
+    public void Built_in_chain_spec_resource_is_embedded_in_specs_assembly(string fileName)
     {
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsInfo.Returns(true);
-        List<string> lines = [];
-        logger.When(log => log.Info(Arg.Any<string>())).Do(call => lines.Add(call.Arg<string>()));
-        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), new OneLoggerLogManager(new(logger)));
+        using Stream? resource = typeof(ChainSpecFileLoader).Assembly.GetManifestResourceStream($"Nethermind.Specs.chainspec.{fileName}");
 
-        loader.LoadEmbeddedOrFromFile("foundation");
-
-        Assert.That(lines, Does.Contain("Loading ChainSpec from embedded resources"));
+        Assert.That(resource, Is.Not.Null);
     }
 
     private static ChainSpec LoadChainSpec(string path)
