@@ -126,6 +126,11 @@ class Guard(unittest.TestCase):
         self.assertTrue(rb.check_paths([("M", "src/Nethermind/Nethermind.Core/B.cs")], [], None, {self.hit}))
         self.assertTrue(rb.check_paths([("A", self.hit)], [], None, {self.hit}))
 
+    def test_route_b_cannot_change_existing_analyzers(self):
+        existing = "src/Nethermind/Nethermind.Analyzers/EmptyCatchBlockAnalyzer.cs"
+        for st in ("M", "D"):
+            self.assertTrue(rb.check_paths([(st, existing)], [], "NETH012"), st)
+
     def test_build_files_fail(self):
         for p in ("src/Nethermind/Directory.Build.props", "src/Nethermind/Nethermind.Core/Nethermind.Core.csproj", "x.globalconfig"):
             self.assertTrue(rb.check_paths([("A", p)], [], "NETH012", {p}), p)

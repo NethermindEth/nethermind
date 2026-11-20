@@ -494,8 +494,8 @@ def check_paths(changes, unshipped_diff, new_id, fix_files=()):
                 bad.append(f"{path}: may only be modified")
         elif not path.endswith(".cs") or path.startswith(GUARDED_PREFIXES):
             bad.append(f"{path}: outside the paths the bot may change")
-        elif not (new_id and path.startswith(ANALYZER_DIRS)) and not (status == "M" and path in fix_files):
-            bad.append(f"{path}: not a file with a listed hit{' or under the analyzer projects' if new_id else ''}")
+        elif not (new_id and status == "A" and path.startswith(ANALYZER_DIRS)) and not (status == "M" and path in fix_files):
+            bad.append(f"{path}: not a file with a listed hit{' or a new file under the analyzer projects' if new_id else ''}")
     return bad
 
 
