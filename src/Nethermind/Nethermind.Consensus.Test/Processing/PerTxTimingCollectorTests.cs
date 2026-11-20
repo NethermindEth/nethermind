@@ -20,11 +20,48 @@ namespace Nethermind.Consensus.Test.Processing;
 [TestFixture]
 public class PerTxTimingCollectorTests
 {
+    private bool _previousProcessingThread;
+
     [SetUp]
-    public void Setup() => PerTxTimingCollector.SetEnabled(true);
+    public void Setup()
+    {
+        _previousProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        PerTxTimingCollector.SetEnabled(true);
+    }
 
     [TearDown]
-    public void TearDown() => PerTxTimingCollector.SetEnabled(false);
+    public void TearDown()
+    {
+        PerTxTimingCollector.SetEnabled(false);
+        ProcessingThread.IsBlockProcessingThread = _previousProcessingThread;
+    }
+
+    [Test]
+    public void Non_processing_context_cannot_replace_or_take_main_timings()
+    {
+        PerTxTimingCollector.Prepare(2);
+        PerTxTimingCollector.Record(0, 42);
+
+        ProcessingThread.IsBlockProcessingThread = false;
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(PerTxTimingCollector.IsEnabled, Is.False);
+                PerTxTimingCollector.Prepare(1);
+                using ArrayPoolList<long>? otherSnapshot = PerTxTimingCollector.Snapshot();
+                Assert.That(otherSnapshot, Is.Null);
+            }
+        }
+        finally
+        {
+            ProcessingThread.IsBlockProcessingThread = true;
+        }
+
+        using ArrayPoolList<long>? snapshot = PerTxTimingCollector.Snapshot();
+        Assert.That(snapshot, Is.EqualTo(new long[] { 42, 0 }));
+    }
 
     [Test]
     public void Parallel_workers_recording_concurrently_are_all_visible_in_snapshot()
