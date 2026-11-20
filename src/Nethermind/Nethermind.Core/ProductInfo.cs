@@ -29,15 +29,7 @@ public static class ProductInfo
         OS = Platform.GetPlatformName();
         OSArchitecture = RuntimeInformation.OSArchitecture.ToString().ToLowerInvariant();
         Runtime = RuntimeInformation.FrameworkDescription;
-        Version = versionAttr.InformationalVersion;
-
-        int index = Version.IndexOf('+', StringComparison.Ordinal);
-
-        if (index != -1)
-        {
-            Commit = Version[(index + 1)..];
-            Version = Version[..Math.Min(index + 9, Version.Length - 1)];
-        }
+        (Version, Commit) = SplitInformationalVersion(versionAttr.InformationalVersion);
 
         ClientIdParts = new()
         {
@@ -53,6 +45,19 @@ public static class ProductInfo
     }
 
     public static DateTimeOffset SourceDate { get; }
+
+    private const int ShortCommitLength = 8;
+
+    /// <summary>Splits an informational version <c>V+S</c> into the version, with at most the first 8 characters of <c>S</c>, and the whole <c>S</c> as the commit.</summary>
+    internal static (string Version, string Commit) SplitInformationalVersion(string informationalVersion)
+    {
+        int index = informationalVersion.IndexOf('+', StringComparison.Ordinal);
+        if (index == -1) return (informationalVersion, string.Empty);
+
+        string commit = informationalVersion[(index + 1)..];
+        int end = commit.Length == 0 ? index : index + 1 + Math.Min(ShortCommitLength, commit.Length);
+        return (informationalVersion[..end], commit);
+    }
 
     private static string FormatClientId(string formatString)
     {

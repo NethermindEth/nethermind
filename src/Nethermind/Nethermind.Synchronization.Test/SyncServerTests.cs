@@ -221,6 +221,31 @@ public class SyncServerTests
         Assert.That(found?.Memory.ToArray(), Is.EqualTo(headerKnown ? blockRlp : null));
     }
 
+    [Test]
+    public void Prefetches_the_known_hashes_in_the_window([Values] bool receipts)
+    {
+        Context ctx = new();
+        using PrefetchingTestDb blockDb = new();
+        using PrefetchingTestDb headerDb = new();
+        HeaderStore headerStore = new(headerDb, new MemDb());
+        Block known = Build.A.Block.WithNumber(5).TestObject;
+        Block outside = Build.A.Block.WithNumber(9).TestObject;
+        headerStore.InsertBlockNumber(known.Hash!, known.Number);
+        headerStore.InsertBlockNumber(outside.Hash!, outside.Number);
+        SyncServer server = ctx.CreateSyncServer(ctx.BlockTree, headerStore: headerStore, blockStore: new BlockStore(blockDb));
+
+        Action<IReadOnlyList<Hash256>, int, int> prefetch = receipts ? server.PrefetchReceipts : server.PrefetchBlocks;
+
+        prefetch([outside.Hash!, known.Hash!, TestItem.KeccakA, outside.Hash!], 1, 2);
+
+        byte[] knownKey = Bytes.Concat(known.Number.ToBigEndianByteArray(), known.Hash!.BytesToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((receipts ? headerDb : blockDb).Prefetches, OperatingSystem.IsLinux() ? Is.EqualTo(new[] { new[] { knownKey } }) : Is.Empty);
+            Assert.That((receipts ? blockDb : headerDb).Prefetches, Is.Empty);
+        }
+    }
+
     [TestCase(true, true, true)]
     [TestCase(false, true, false)]
     [TestCase(true, false, false)]
@@ -1480,12 +1505,14 @@ public class SyncServerTests
             ISpecProvider? specProvider = null,
             IReceiptFinder? receiptFinder = null,
             IHeaderStore? headerStore = null,
-            IChainLevelInfoRepository? chainLevelInfoRepository = null) =>
+            IChainLevelInfoRepository? chainLevelInfoRepository = null,
+            IBlockStore? blockStore = null) =>
+
             new(
                 WorldStateManager,
                 new MemDb(),
                 localBlockTree,
-                Substitute.For<IBlockStore>(),
+                blockStore ?? Substitute.For<IBlockStore>(),
                 headerStore ?? Substitute.For<IHeaderStore>(),
                 new HeaderDecoder(),
                 receiptFinder ?? NullReceiptStorage.Instance,

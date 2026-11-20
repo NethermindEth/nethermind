@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -28,11 +29,36 @@ public static class EthereumEcdsaExtensions
     /// the signature was checked against, so a legacy transaction recovered on ingress is not recovered again.
     /// The zkEVM guest has no ingress and keeps legacy transactions uncached.
     /// </remarks>
-    private const int SenderCacheCapacity = 1 << 15;
-    private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
+    private const int DefaultSenderCacheCapacity = 1 << 15;
+    // Bounds what a misconfigured pool size can make the cache allocate.
+    private const int MaxSenderCacheCapacity = 1 << 23;
+    private static AssociativeCache<ValueHash256, Address> _senderCache = new(DefaultSenderCacheCapacity);
+    private static int _senderCacheCapacity = DefaultSenderCacheCapacity;
+    private static readonly Lock _senderCacheResizeLock = new();
 
     /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
     internal static void ClearSenderCache() => _senderCache.Clear();
+
+    /// <summary>The number of senders the process-wide cache is sized for.</summary>
+    public static int SenderCacheCapacity => Volatile.Read(ref _senderCacheCapacity);
+
+    /// <summary>Grows the process-wide sender cache to hold at least <paramref name="minEntries"/> senders; never shrinks it.</summary>
+    /// <remarks>
+    /// The cache only pays off for transactions recovered on ingress and read again when their block arrives, so a pool
+    /// holding more transactions than the cache thrashes it: with blocks of that size every sender is recovered twice.
+    /// Called with the pool size; swapping caches drops the cached senders, which a reader that still sees the old one
+    /// tolerates, since every entry is derived from the signature alone.
+    /// </remarks>
+    public static void EnsureSenderCacheCapacity(int minEntries)
+    {
+        minEntries = Math.Min(minEntries, MaxSenderCacheCapacity);
+        lock (_senderCacheResizeLock)
+        {
+            if (minEntries <= _senderCacheCapacity) return;
+            Volatile.Write(ref _senderCache, new AssociativeCache<ValueHash256, Address>(minEntries));
+            Volatile.Write(ref _senderCacheCapacity, minEntries);
+        }
+    }
 
     public static AuthorizationTuple Sign(this IEthereumEcdsa ecdsa, PrivateKey signer, ulong chainId, Address codeAddress, ulong nonce)
     {

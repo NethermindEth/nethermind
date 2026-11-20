@@ -1511,11 +1511,17 @@ public class StartupTests
 
         if (!batchLimitRaised)
         {
-            AssertJsonResponse(ReadUnreadBody(batch), static root =>
+            AssertJsonResponse(ReadUnreadBody(batch), root =>
             {
                 Assert.That(root.GetArrayLength(), Is.EqualTo(batchSize));
                 AssertArrayResult(root[0], 1);
-                Assert.That(root[batchSize - 1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+                JsonElement limitExceeded = root[batchSize - 1];
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(limitExceeded.GetProperty("id").GetInt64(), Is.EqualTo(batchSize));
+                    Assert.That(limitExceeded.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+                    Assert.That(limitExceeded.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo($"MaxBatchResponseBodySize of {share / 1000}KB exceeded"));
+                }
             });
         }
     }

@@ -121,8 +121,12 @@ try
         var actual = await Node(authorization, new JsonArray(text, type, permission, JsonValue.Create(apiError)));
         Check(JsonNode.DeepEquals(actual, new JsonObject { ["called"] = called, ["allowed"] = allowed, ["error"] = JsonValue.Create(error) }), $"authorization {text}/{type}/{permission}/{apiError}");
     }
-    foreach (var workflow in new[] { command, Read(".github/workflows/ai-review.yml") })
-        Check(workflow.Contains("uses: ./.github/workflows/ai-review-instructions.yml", StringComparison.Ordinal) && workflow.Contains("extra_instructions: ${{ needs.instructions.outputs.instructions }}", StringComparison.Ordinal) && !ModelOverrideRegex().IsMatch(workflow), "trusted prepared instructions without model override");
+    var automatic = Read(".github/workflows/ai-review.yml");
+    foreach (var workflow in new[] { command, automatic })
+        Check(workflow.Contains("uses: ./.github/workflows/ai-review-instructions.yml", StringComparison.Ordinal) && workflow.Contains("extra_instructions: ${{ needs.instructions.outputs.instructions }}", StringComparison.Ordinal), "trusted prepared instructions");
+    Check(!ModelOverrideRegex().IsMatch(command), "command uses shared model selection");
+    Check(ModelOverrideRegex().Matches(automatic).Select(match => match.Value.Trim()).SequenceEqual(
+        ["model: ${{ github.event.pull_request.changed_files > 300 && 'openai/gemini/gemini-pro-latest' || '' }}"]), "automatic review selects the large-diff model only above the GitHub file limit");
     Check(new[] { "ref: ${{ steps.target.outputs.base_sha }}", "persist-credentials: false", "ALL_SCOPES: ${{ steps.target.outputs.all_scopes }}" }.All(text => instructions.Contains(text, StringComparison.Ordinal)) && !instructions.Contains("secrets:", StringComparison.Ordinal) && !instructions.Split("jobs:")[0].Contains("write", StringComparison.Ordinal), "read-only trusted rules checkout");
     var renamed = new JsonArray(new JsonObject { ["filename"] = "renamed.txt", ["previous_filename"] = "old/Test/File.cs" });
     var resolved = await Node(targetScript, Fixture(1, renamed));
@@ -229,7 +233,7 @@ partial class Program
     [GeneratedRegex(@"          script: \|\n(.*?)\n\n  instructions:", RegexOptions.Singleline)]
     private static partial Regex AuthorizationScriptRegex();
 
-    [GeneratedRegex(@"(?m)^      model:")]
+    [GeneratedRegex(@"(?m)^      model:.*$")]
     private static partial Regex ModelOverrideRegex();
     [GeneratedRegex(@"(?m)^  command:\n(?:    (?!concurrency:).*\n)*    concurrency:\n      group: ai-pr-review-command-\$\{\{ github\.event\.issue\.number \}\}\n      cancel-in-progress: false$")]
     private static partial Regex CommandConcurrencyRegex();

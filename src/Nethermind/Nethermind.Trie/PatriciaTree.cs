@@ -600,7 +600,7 @@ namespace Nethermind.Trie
                             // Deletion
                             node = null;
                         }
-                        else if (node.Value.AsSpan().SequenceEqual(value.AsSpan()))
+                        else if (Bytes.SequenceEqualAtAnyAlignment(node.Value.AsSpan(), value.AsSpan()))
                         {
                             // SHORTCUT!
                             path.TruncateMut(originalPathLength);

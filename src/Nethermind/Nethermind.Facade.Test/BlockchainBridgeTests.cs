@@ -876,6 +876,63 @@ public class BlockchainBridgeTests
         }
     }
 
+    private static IEnumerable<TestCaseData> PrevRandaoOverrideCases()
+    {
+        static BlockOverride X(ulong? number = null) => new() { PrevRandao = TestItem.KeccakA, Number = number };
+        // call, source number, source flagged (difficulty 0, else 5), override, whether PREVRANDAO is the override
+        yield return new TestCaseData("Call", 30UL, false, X(), true).SetArgDisplayNames("Call", "London");
+        yield return new TestCaseData("EstimateGas", 30UL, false, X(), true).SetArgDisplayNames("EstimateGas", "London");
+        yield return new TestCaseData("EstimateFrameGas", 30UL, false, X(), true).SetArgDisplayNames("EstimateFrameGas", "frame spec");
+        yield return new TestCaseData("Call", 10UL, false, X(30), true).SetArgDisplayNames("Call", "Berlin source, number override to London");
+        yield return new TestCaseData("Call", 0UL, false, X(), true).SetArgDisplayNames("Call", "block 0, London at 0");
+        yield return new TestCaseData("Call", 30UL, false, new BlockOverride { PrevRandao = Hash256.Zero }, true).SetArgDisplayNames("Call", "London, zero override");
+        yield return new TestCaseData("Call", 10UL, false, X(), false).SetArgDisplayNames("Call", "Berlin");
+        yield return new TestCaseData("Call", 30UL, false, X(10), false).SetArgDisplayNames("Call", "London source, number override to Berlin");
+        yield return new TestCaseData("Call", 30UL, false, new BlockOverride { Number = 31 }, false).SetArgDisplayNames("Call", "London, number override only");
+        yield return new TestCaseData("Call", 30UL, true, X(10), true).SetArgDisplayNames("Call", "flagged source, number override to Berlin");
+    }
+
+    /// <summary>
+    /// A <c>prevRandao</c> override decides PREVRANDAO on a block from before the merge when London is active after the
+    /// overrides, as in geth's <c>eth_call</c>; before London the call keeps its block's value. Every frame-gas probe sees it.
+    /// </summary>
+    [TestCaseSource(nameof(PrevRandaoOverrideCases))]
+    public void Calls_take_a_prevRandao_override_from_London_on(string call, ulong number, bool flagged, BlockOverride blockOverride, bool expectOverride)
+    {
+        // Block 0 is the genesis of a chain that starts at London; the other blocks cross London at block 20.
+        ISpecProvider specProvider = (call, number) switch
+        {
+            ("EstimateFrameGas", _) => new TestSpecProvider(Eip8141Prototype.Instance),
+            (_, 0) => new TestSpecProvider(London.Instance),
+            _ => new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)20, London.Instance)),
+        };
+        using IContainer container = CreateContainerBuilder().AddSingleton<IPoSSwitcher>(NoPoS.Instance).AddSingleton(specProvider).Build();
+        IBlockchainBridge bridge = container.Resolve<IBlockchainBridge>();
+        UInt256 difficulty = flagged ? UInt256.Zero : (UInt256)5;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(number).WithDifficulty(difficulty).WithMixHash(TestItem.KeccakH).TestObject;
+        header.IsPostMerge = flagged;
+        Transaction tx = new() { GasLimit = Transaction.BaseTxGasCost };
+
+        _ = call switch
+        {
+            "EstimateGas" => bridge.EstimateGas(header, tx, 1, blockOverride: blockOverride).Error,
+            "EstimateFrameGas" => bridge.EstimateFrameGas(header, FrameTxTestFrames.FrameTx(FrameTxTestFrames.SelfVerify(100_000)), [false], [false],
+                1_000_000, 1, null, null, blockOverride, CancellationToken.None, out _).Error,
+            _ => bridge.Call(header, tx, blockOverride: blockOverride).Error,
+        };
+
+        ValueHash256 expected = expectOverride ? blockOverride.PrevRandao!.ValueHash256 : difficulty.ToValueHash();
+        _transactionProcessor.Received().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(ctx => ctx.PrevRandao == expected));
+        _transactionProcessor.DidNotReceive().SetBlockExecutionContext(Arg.Is<BlockExecutionContext>(ctx => ctx.PrevRandao != expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.IsPostMerge, Is.EqualTo(flagged), "the caller's header keeps its flag");
+            Assert.That(header.MixHash, Is.EqualTo(TestItem.KeccakH));
+            Assert.That(header.Difficulty, Is.EqualTo(difficulty));
+            Assert.That(header.Number, Is.EqualTo(number));
+        }
+    }
+
     [Test]
     public void CreateAccessList_filters_precompile_addresses_with_empty_storage_keys()
     {

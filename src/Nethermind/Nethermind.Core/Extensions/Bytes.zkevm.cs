@@ -147,6 +147,105 @@ public static unsafe partial class Bytes
         words[4] = (words[4] & ~outside) | (w3 >> high);
     }
 
+    /// <summary>Reads the 32 bytes at <paramref name="source"/>, which is misaligned, into the four words at <paramref name="destination"/>, which is aligned.</summary>
+    /// <remarks>
+    /// The read counterpart of <see cref="WriteMisalignedWords"/>: it merges the five aligned words that hold the source.
+    /// The last of them can reach past the source's end, but no further than the word that holds its last byte, so the
+    /// read stays in the source's allocation. The source must be misaligned, for the reason given there.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ReadMisalignedWords(byte* source, ulong* destination)
+    {
+        int skew = (int)((nuint)source & (sizeof(ulong) - 1));
+        Debug.Assert(skew != 0);
+        ulong* words = (ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1));
+        destination = (ulong*)((nuint)destination & ~(nuint)(sizeof(ulong) - 1));
+        int low = skew * 8;
+        int high = 64 - low;
+        ulong w1 = words[1], w2 = words[2], w3 = words[3];
+        destination[0] = (words[0] >> low) | (w1 << high);
+        destination[1] = (w1 >> low) | (w2 << high);
+        destination[2] = (w2 >> low) | (w3 << high);
+        destination[3] = (w3 >> low) | (words[4] << high);
+    }
+
+    /// <summary>Whether <paramref name="first"/> and <paramref name="second"/> hold the same bytes.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, corelib compares misaligned spans by gathering every word from eight
+    /// byte loads. This compares eight bytes at a time, each merged from the two aligned words that hold them, and ends
+    /// with the eight bytes that end the spans. Every read stays in a word that holds a byte of its span. Spans shorter
+    /// than a word are compared a byte at a time.
+    /// </remarks>
+    internal static bool SequenceEqualByWords(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
+    {
+        int length = first.Length;
+        if (length != second.Length) return false;
+        if (length < sizeof(ulong)) return first.SequenceEqual(second);
+
+        byte* a = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(first));
+        byte* b = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(second));
+        ulong* wordsA = (ulong*)((nuint)a & ~(nuint)(sizeof(ulong) - 1));
+        ulong* wordsB = (ulong*)((nuint)b & ~(nuint)(sizeof(ulong) - 1));
+        int lowA = (int)((nuint)a & (sizeof(ulong) - 1)) * 8;
+        int lowB = (int)((nuint)b & (sizeof(ulong) - 1)) * 8;
+        int leading = (length - 1) / sizeof(ulong);
+        for (int k = 0; k < leading; k++)
+        {
+            if (MergeWord(wordsA, k, lowA) != MergeWord(wordsB, k, lowB)) return false;
+        }
+
+        int last = length - sizeof(ulong);
+        return ReadWord(a + last) == ReadWord(b + last);
+    }
+
+    /// <inheritdoc cref="SequenceEqualByWords"/>
+    /// <remarks>By words where <see cref="StrictAlignmentFlag"/> is on, see <see cref="SequenceEqualByWords"/>; corelib's
+    /// comparison elsewhere. See <c>Bytes.std.cs</c> for the host form.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool SequenceEqualAtAnyAlignment(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second) =>
+        StrictAlignmentFlag.IsActive ? SequenceEqualByWords(first, second) : first.SequenceEqual(second);
+
+    /// <summary>The length of the common prefix of <paramref name="first"/> and <paramref name="second"/>.</summary>
+    /// <remarks>The prefix counterpart of <see cref="SequenceEqualByWords"/>, with the same reads.</remarks>
+    internal static int CommonPrefixLengthByWords(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
+    {
+        int length = Math.Min(first.Length, second.Length);
+        byte* a = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(first));
+        byte* b = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(second));
+        if (length < sizeof(ulong))
+        {
+            int i = 0;
+            while (i < length && a[i] == b[i]) i++;
+            return i;
+        }
+
+        ulong* wordsA = (ulong*)((nuint)a & ~(nuint)(sizeof(ulong) - 1));
+        ulong* wordsB = (ulong*)((nuint)b & ~(nuint)(sizeof(ulong) - 1));
+        int lowA = (int)((nuint)a & (sizeof(ulong) - 1)) * 8;
+        int lowB = (int)((nuint)b & (sizeof(ulong) - 1)) * 8;
+        int leading = (length - 1) / sizeof(ulong);
+        for (int k = 0; k < leading; k++)
+        {
+            ulong diff = MergeWord(wordsA, k, lowA) ^ MergeWord(wordsB, k, lowB);
+            if (diff != 0) return k * sizeof(ulong) + (BitOperations.TrailingZeroCount(diff) >> 3);
+        }
+
+        int last = length - sizeof(ulong);
+        ulong tail = ReadWord(a + last) ^ ReadWord(b + last);
+        return tail == 0 ? length : last + (BitOperations.TrailingZeroCount(tail) >> 3);
+    }
+
+    /// <summary>The eight bytes at <paramref name="source"/>, read from the aligned words that hold them.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReadWord(byte* source) =>
+        MergeWord((ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1)), 0, (int)((nuint)source & (sizeof(ulong) - 1)) * 8);
+
+    /// <summary>The eight bytes that start <paramref name="low"/> bits into aligned word <paramref name="index"/> of <paramref name="words"/>.</summary>
+    /// <remarks>An aligned start reads one word: a shift by 64 would wrap to 0 and merge the next word in whole.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MergeWord(ulong* words, int index, int low) =>
+        low == 0 ? words[index] : (words[index] >> low) | (words[index + 1] << (64 - low));
+
     /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>
     /// <remarks>Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
     /// into a DMA precompile for a zero fill; elsewhere it is corelib's fill.</remarks>
