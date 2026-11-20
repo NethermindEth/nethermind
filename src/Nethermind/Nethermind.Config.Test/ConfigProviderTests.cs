@@ -319,6 +319,16 @@ namespace Nethermind.Config.Test
             }
         }
 
+        [TestCase("AliasCollision", null)]
+        [TestCase("AliasCollisionConfig", 5)]
+        public void Raw_value_is_not_taken_from_short_alias_when_exact_category_lacks_the_item(string category, object? expected)
+        {
+            ConfigProvider provider = new();
+            provider.Initialize();
+
+            Assert.That(provider.GetRawValue(category, nameof(IAliasCollisionConfig.Other)), Is.EqualTo(expected));
+        }
+
         public static IEnumerable<TestCaseData> ReportedKeyCases()
         {
             yield return new TestCaseData(
@@ -449,10 +459,14 @@ namespace Nethermind.Config.Test
     {
         [ConfigItem(Description = "Test item of a category whose short alias is another category's name.", DefaultValue = "4")]
         int Value { get; set; }
+
+        [ConfigItem(Description = "Test item only the suffixed category declares.", DefaultValue = "5")]
+        int Other { get; set; }
     }
 
     public class AliasCollisionConfig : IAliasCollisionConfig
     {
         public int Value { get; set; } = 4;
+        public int Other { get; set; } = 5;
     }
 }
