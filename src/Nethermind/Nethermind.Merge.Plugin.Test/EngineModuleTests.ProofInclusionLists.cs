@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -342,7 +343,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(including.Transactions, Is.EqualTo(list.Transactions));
-            Assert.That(including.StarkProof, Is.EqualTo(depsHash.ToByteArray()), "the block's proof covers the listed transaction's dependency");
+            Assert.That(including.DependencyProof, Is.EqualTo(depsHash.ToByteArray()), "the block's proof covers the listed transaction's dependency");
             Assert.That(includingStatus.Data.Status, Is.EqualTo(PayloadStatus.Valid), includingStatus.Result.Error);
             Assert.That(includingStatus.Data.InclusionListSatisfied, Is.True);
             Assert.That(omitting.Transactions, Is.Empty);
@@ -378,6 +379,35 @@ public partial class EngineModuleTests
             Assert.That(listed.Data.Transactions, Is.Empty);
             Assert.That(listed.Data.RecursiveStark.StarkProof, Is.Empty);
             Assert.That(listed.Data.RecursiveStark.ProofDeps, Is.Empty);
+        }
+    }
+
+    // EIPs#12549: newPayload derives dependency_proof_hash from the payload's dependencyProof before checking the block hash,
+    // so a proof that is not the committed one, or none at all, fails the hash check; the committed one is kept with the block.
+    [TestCase("matching")]
+    [TestCase("mismatched")]
+    [TestCase("missing")]
+    public async Task NewPayload_binds_the_dependency_proof_to_the_block_hash(string scenario)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(InclusionProofEngineSpec(), new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddSingleton<ILeanProofVerifier>(new EngineListProofVerifier()));
+        Hash256 parent = chain.BlockTree.HeadHash!;
+        ExecutionPayloadV3 payload = await BuildPayload(chain, parent, []);
+        Assert.That(payload.DependencyProof, Is.Empty, "a block without dependencies carries the empty proof");
+        payload.DependencyProof = scenario switch
+        {
+            "mismatched" => [1],
+            "missing" => null,
+            _ => payload.DependencyProof
+        };
+
+        ResultWrapper<PayloadStatusV2> status = await chain.EngineRpcModule.engine_newPayloadV7((ExecutionPayloadV4)payload, [], Keccak.Zero, [], []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status.Data.Status, Is.EqualTo(scenario == "matching" ? PayloadStatus.Valid : PayloadStatus.Invalid), status.Result.Error);
+            Assert.That(chain.Container.Resolve<IStarkProofStore>().Get(payload.BlockNumber, payload.BlockHash),
+                scenario == "matching" ? Is.Empty : Is.Null);
         }
     }
 

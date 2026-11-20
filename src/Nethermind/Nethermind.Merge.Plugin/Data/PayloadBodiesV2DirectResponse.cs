@@ -61,11 +61,11 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         Transaction[] transactions,
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList,
-        byte[]? starkProof = null)
+        byte[]? dependencyProof = null)
     {
         try
         {
-            return new PayloadBody(transactions, withdrawals, blockAccessList, starkProof);
+            return new PayloadBody(transactions, withdrawals, blockAccessList, dependencyProof);
         }
         catch
         {
@@ -76,11 +76,12 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
     internal static PayloadBody CreatePayloadBody(
         byte[] blockRlp,
-        MemoryManager<byte>? blockAccessList)
+        MemoryManager<byte>? blockAccessList,
+        byte[]? dependencyProof = null)
     {
         try
         {
-            return new PayloadBody(blockRlp, blockAccessList);
+            return new PayloadBody(blockRlp, blockAccessList, dependencyProof);
         }
         catch
         {
@@ -114,24 +115,24 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
 
     internal readonly struct PayloadBody : IDisposable
     {
-        private readonly byte[]? _starkProof;
+        private readonly byte[]? _dependencyProof;
         private readonly Transaction[]? _transactions;
         private readonly byte[]? _blockRlp;
         private readonly Withdrawal[]? _withdrawals;
         private readonly MemoryManager<byte>? _blockAccessList;
 
-        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList, byte[]? starkProof = null)
+        public PayloadBody(Transaction[] transactions, Withdrawal[]? withdrawals, MemoryManager<byte>? blockAccessList, byte[]? dependencyProof = null)
         {
-            _starkProof = starkProof;
+            _dependencyProof = dependencyProof;
             _transactions = transactions;
             _blockRlp = null;
             _withdrawals = withdrawals;
             _blockAccessList = blockAccessList;
         }
 
-        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList)
+        public PayloadBody(byte[] blockRlp, MemoryManager<byte>? blockAccessList, byte[]? dependencyProof = null)
         {
-            _starkProof = null;
+            _dependencyProof = dependencyProof;
             _transactions = null;
             _blockRlp = blockRlp;
             _withdrawals = null;
@@ -142,11 +143,11 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         {
             if (_blockRlp is { } blockRlp)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList, includeBlockAccessList: true);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, _blockAccessList, includeBlockAccessList: true, _dependencyProof);
             }
             else
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList, includeBlockAccessList: true, starkProof: _starkProof);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, _transactions!, _withdrawals, _blockAccessList, includeBlockAccessList: true, dependencyProof: _dependencyProof);
             }
         }
 
@@ -154,15 +155,15 @@ public sealed class PayloadBodiesV2DirectResponse : IStreamableResult, IReadOnly
         {
             if (_blockRlp is { } blockRlp)
             {
-                (byte[][] transactions, Withdrawal[]? withdrawals, byte[]? proof) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
-                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray(), proof)
+                (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
+                ExecutionPayloadBodyV2Result result = new([], withdrawals, _blockAccessList?.Memory.ToArray(), _dependencyProof)
                 {
                     Transactions = transactions
                 };
                 return result;
             }
 
-            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray(), _starkProof);
+            return new ExecutionPayloadBodyV2Result(_transactions!, _withdrawals, _blockAccessList?.Memory.ToArray(), _dependencyProof);
         }
 
         public void Dispose() => _blockAccessList?.TryDispose();

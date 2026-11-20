@@ -51,6 +51,9 @@ public interface IDbConfig : IConfig
     string BlockAccessListsDbRocksDbOptions { get; set; }
     string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
 
+    string StarkProofsDbRocksDbOptions { get; set; }
+    string? StarkProofsDbAdditionalRocksDbOptions { get; set; }
+
     string BlobTransactionsDbRocksDbOptions { get; set; }
     string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }
 

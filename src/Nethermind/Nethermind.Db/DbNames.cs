@@ -14,6 +14,7 @@ namespace Nethermind.Db
         public const string Headers = "headers";
         public const string BlockNumbers = "blockNumbers";
         public const string BlockAccessLists = "blockAccessLists";
+        public const string StarkProofs = "starkProofs";
         public const string Receipts = "receipts";
         public const string BlockInfos = "blockInfos";
         public const string BadBlocks = "badBlocks";

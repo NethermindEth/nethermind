@@ -97,6 +97,12 @@ public class DbConfig : IDbConfig
     public string BlockAccessListsDbRocksDbOptions { get; set; } = "";
     public string? BlockAccessListsDbAdditionalRocksDbOptions { get; set; }
 
+    // Proofs are large and incompressible, so they go to blob files instead of being rewritten by compaction.
+    public string StarkProofsDbRocksDbOptions { get; set; } =
+        "enable_blob_files=true;" +
+        "min_blob_size=4096;";
+    public string? StarkProofsDbAdditionalRocksDbOptions { get; set; }
+
     public string BlobTransactionsDbRocksDbOptions { get; set; } =
         "block_based_table_factory.block_cache=32000000;";
     public string? BlobTransactionsDbAdditionalRocksDbOptions { get; set; }

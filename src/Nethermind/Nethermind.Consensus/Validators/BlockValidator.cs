@@ -105,10 +105,16 @@ public class BlockValidator(
     }
 
     /// <summary>
-    /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
-    /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
-    /// STARK must verify against the block fork's <c>AGGREGATED_VK</c>, or be empty when there are none.
+    /// EIP-8288 block validity: the header must commit to the <c>dependency_proof</c> and the block's dependencies, its
+    /// <c>block_deps_hash</c> must match the block's transaction dependencies, and a <c>dependency_proof</c> received with
+    /// the block must hash to <c>dependency_proof_hash</c> and verify against the block fork's <c>AGGREGATED_VK</c>, or be
+    /// empty when there are no dependencies.
     /// </summary>
+    /// <remarks>
+    /// The proof is in neither header nor body; only the execution payload carries it. A block committing to the empty proof
+    /// needs none to be validated. One committing to a nonempty proof it does not carry fails with
+    /// <see cref="BlockErrorMessages.MissingDependencyProof"/> once every other check passed, which is not invalidity.
+    /// </remarks>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
         RecursiveStarkCommitment? recursiveStark = block.Header.RecursiveStark;
@@ -119,17 +125,16 @@ public class BlockValidator(
             return false;
         }
 
-        if (recursiveStark is null || block.StarkProof is null)
+        if (recursiveStark is null)
         {
             error = BlockErrorMessages.MissingRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Missing recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }
 
-        // A mismatched proof means a wrong body, which body download already rejects against the header. Should one reach here,
-        // the invalid-chain trackers skip it (StarkProofMatchesCommitment), so the block hash is not marked invalid.
-        if (block.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes
-            || !StarkProofMatchesCommitment(block.Header, block.Body))
+        if (block.StarkProof is not null
+            && (block.StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes
+                || Keccak.Compute(block.StarkProof) != recursiveStark.DependencyProofHash))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             return false;
@@ -144,8 +149,15 @@ public class BlockValidator(
             return false;
         }
 
+        byte[]? proof = block.StarkProof ?? (recursiveStark.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null);
+        if (proof is null)
+        {
+            error = BlockErrorMessages.MissingDependencyProof;
+            return false;
+        }
+
         if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
-                block.StarkProof))
+                proof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
@@ -540,26 +552,9 @@ public class BlockValidator(
             return false;
         }
 
-        if (!StarkProofMatchesCommitment(header, toBeValidated))
-        {
-            error = toBeValidated.StarkProof is null
-                ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark;
-            return false;
-        }
-
         error = null;
         return true;
     }
-
-    /// <summary>Whether <paramref name="body"/> carries the <c>stark_proof</c> its header commits to.</summary>
-    /// <remarks>EIP-8288: a body whose <c>stark_proof</c> does not hash to <c>stark_proof_hash</c> is not the body of this block. It is
-    /// discarded and requested again, and the block is not marked invalid.
-    /// A header committing an empty statement to a nonempty proof is invalid whatever body is served (EIPs#12479), so no body
-    /// is blamed for it.</remarks>
-    public static bool StarkProofMatchesCommitment(BlockHeader header, BlockBody body) =>
-        header.RecursiveStark is { } commitment
-            ? !commitment.HasValidShape || body.StarkProof is { } proof && Keccak.Compute(proof) == commitment.StarkProofHash
-            : body.StarkProof is null;
 
     public bool ValidateBlockLevelAccessList(Block block, IReleaseSpec spec, ref string? error)
     {

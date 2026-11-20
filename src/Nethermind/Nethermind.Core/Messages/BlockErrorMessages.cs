@@ -150,7 +150,12 @@ public static class BlockErrorMessages
         "RecursiveStarkNotEnabled: Block cannot have a recursive STARK commitment or proof before EIP-8288.";
 
     public const string MissingRecursiveStark =
-        "MissingRecursiveStark: EIP-8288 recursive STARK commitment or body proof is missing.";
+        "MissingRecursiveStark: EIP-8288 dependency proof commitment is missing.";
+
+    /// <summary>The block commits to a nonempty EIP-8288 dependency proof it was not received with.</summary>
+    /// <remarks>The proof is not available yet, which does not make the block invalid.</remarks>
+    public const string MissingDependencyProof =
+        "MissingDependencyProof: EIP-8288 dependency proof is not available.";
 
     public static string InvalidBlockDepsHash(Hash256? expected, Hash256? actual) =>
         $"InvalidBlockDepsHash: block deps hash mismatch: expected {expected}, got {actual}";

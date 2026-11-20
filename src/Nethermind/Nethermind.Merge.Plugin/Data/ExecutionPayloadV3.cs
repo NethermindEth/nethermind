@@ -36,7 +36,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
         if (block.Header.RecursiveStark is not null)
         {
-            executionPayload.StarkProof = block.StarkProof ?? throw new System.InvalidOperationException("Missing block proof body");
+            executionPayload.DependencyProof = block.StarkProof ?? throw new System.InvalidOperationException("Missing block dependency proof");
         }
 
         return executionPayload;
@@ -69,15 +69,15 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         {
             block.InclusionListTransactions = InclusionListTransactions is not null ? TxsDecoder.DecodeTxsBorrowingBuffers(InclusionListTransactions, skipErrors: true).Transactions : null;
         }
-        if (StarkProof is not null)
+        if (DependencyProof is not null)
         {
-            if (StarkProof.Length > Eip8288Constants.MaxAggregateProofBytes)
+            if (DependencyProof.Length > Eip8288Constants.MaxAggregateProofBytes)
             {
-                return Result<Block>.Fail($"{nameof(StarkProof)} exceeds the proof size limit");
+                return Result<Block>.Fail($"{nameof(DependencyProof)} exceeds the proof size limit");
             }
 
-            block.StarkProof = StarkProof;
-            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+            block.StarkProof = DependencyProof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         }
 
         return baseResult;
@@ -105,8 +105,11 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     public sealed override ulong? ExcessBlobGas { get; set => field = Bind(value, PayloadFields.ExcessBlobGas); }
 
     /// <summary>
-    /// The EIP-8288 block proof. Its dependency commitment is derived from the payload transactions.
+    /// The EIP-8288 <c>dependencyProof</c>, which only the execution payload carries.
     /// </summary>
+    /// <remarks>The header's <c>dependency_proof_hash</c> is its Keccak-256 and its <c>block_deps_hash</c> is derived from
+    /// the payload transactions, both before the block hash is checked. A payload without it builds a header without
+    /// either field.</remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public byte[]? StarkProof { get; set; }
+    public byte[]? DependencyProof { get; set; }
 }

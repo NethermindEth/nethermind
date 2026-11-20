@@ -279,7 +279,7 @@ public class ChainSpecLoaderTests
         bool activeAtGenesis = transitionTimestamp == 0;
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(chainSpec.Genesis!.Header.RecursiveStark?.StarkProofHash, Is.EqualTo(activeAtGenesis ? Keccak.OfAnEmptyString : null));
+            Assert.That(chainSpec.Genesis!.Header.RecursiveStark?.DependencyProofHash, Is.EqualTo(activeAtGenesis ? Keccak.OfAnEmptyString : null));
             Assert.That(chainSpec.Genesis.Header.RecursiveStark?.BlockDepsHash, Is.EqualTo(activeAtGenesis ? new Hash256(Eip8288Dependencies.ComputeDepsHash([])) : null));
             Assert.That(chainSpec.Genesis.StarkProof, Is.EqualTo(activeAtGenesis ? Array.Empty<byte>() : null));
         }

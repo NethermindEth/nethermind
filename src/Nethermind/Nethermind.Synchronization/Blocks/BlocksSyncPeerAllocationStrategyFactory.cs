@@ -18,9 +18,11 @@ namespace Nethermind.Synchronization.Blocks
         public static IPeerAllocationStrategy BlockAccessListsAllocationStrategy { get; } =
             new BlockAccessListsPeerAllocationStrategy(BlockAccessListsBySpeed, highestBlockNumber: 0);
         public static IPeerAllocationStrategy ReceiptsAllocationStrategy { get; } = new BySpeedStrategy(TransferSpeedType.Receipts, true);
+        private static readonly IPeerAllocationStrategy DependencyProofsBySpeed = new BySpeedStrategy(TransferSpeedType.DependencyProofs, true);
 
         public IPeerAllocationStrategy Create(BlocksRequest? request) =>
             request?.BlockAccessListsRequests.Count > 0 ? new BlockAccessListsPeerAllocationStrategy(BlockAccessListsBySpeed, request.BlockAccessListsRequests[^1].Number)
+            : request?.DependencyProofsRequests.Count > 0 ? new DependencyProofsPeerAllocationStrategy(DependencyProofsBySpeed, request.DependencyProofsRequests[^1].Number)
             : request?.ReceiptsRequests.Count > 0 ? ReceiptsAllocationStrategy
             : AllocationStrategy;
 
@@ -31,6 +33,12 @@ namespace Nethermind.Synchronization.Blocks
         private sealed class BlockAccessListsPeerAllocationStrategy(IPeerAllocationStrategy strategy, ulong highestBlockNumber) : FilterPeerAllocationStrategy(strategy)
         {
             protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.SupportsBlockAccessLists() && peerInfo.HeadNumber >= highestBlockNumber;
+        }
+
+        /// <summary>EIP-8498: only an <c>eth/74</c> peer whose head is at or above the requested blocks can serve their proofs.</summary>
+        private sealed class DependencyProofsPeerAllocationStrategy(IPeerAllocationStrategy strategy, ulong highestBlockNumber) : FilterPeerAllocationStrategy(strategy)
+        {
+            protected override bool Filter(PeerInfo peerInfo) => peerInfo.SyncPeer.SupportsDependencyProofs() && peerInfo.HeadNumber >= highestBlockNumber;
         }
     }
 }
