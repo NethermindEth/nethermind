@@ -2442,6 +2442,33 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
     }
 
+    [TestCase("eth_sendRawTransaction", true)]
+    [TestCase("eth_sendRawTransaction", false)]
+    [TestCase("eth_sendRawTransactionSync", true)]
+    [TestCase("eth_sendRawTransactionSync", false)]
+    public async Task Send_raw_transaction_rejection_does_not_warn(string method, bool invalidRlp)
+    {
+        ITxSender sender = Substitute.For<ITxSender>();
+        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>((TestItem.KeccakA, AcceptTxResult.AlreadyKnown)));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new JsonRpcConfig()))
+            .AddSingleton(sender)
+            .Build();
+        IJsonRpcService service = container.Resolve<IJsonRpcService>();
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        string raw = invalidRlp ? "0xc0" : TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
+
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest(method, raw), new JsonRpcContext(RpcEndpoint.Http));
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
+            Assert.That(error.SuppressWarning, Is.True);
+        }
+    }
+
     [Test]
     public async Task Send_raw_transaction_returns_failed_to_recover_sender_when_sender_recovery_fails()
     {
