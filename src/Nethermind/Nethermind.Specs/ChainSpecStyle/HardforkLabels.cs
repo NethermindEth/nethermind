@@ -44,7 +44,7 @@ public static partial class HardforkLabels
     /// depending on each label's <see cref="IHardforkLabel.Kind"/> — into the constituent per-EIP
     /// transition fields on <paramref name="target"/>. Throws
     /// <see cref="InvalidConfigurationException"/> when a label disagrees with an explicit per-EIP
-    /// value already on the target.
+    /// value already on the target, or when EIP-8272 would activate before EIP-7843.
     /// </summary>
     /// <remarks>
     /// Parity-style chainspecs pass the same instance for both parameters (it implements both

@@ -67,7 +67,6 @@ public class ChainParametersTests
         }
     }
 
-    // EIP-8272's recent root contract reads SLOTNUM, so it activates at or after EIP-7843.
     [TestCase(null, true)]
     [TestCase(5UL, false)]
     [TestCase(10UL, false)]
