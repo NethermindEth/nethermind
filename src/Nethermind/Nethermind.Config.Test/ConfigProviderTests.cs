@@ -259,6 +259,7 @@ namespace Nethermind.Config.Test
         public void Raw_value_is_returned_for_short_and_full_category_names(string category)
         {
             IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable(Arg.Any<string>()).Returns((string?)null);
             environment.GetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_HOST").Returns("10.0.0.1");
 
             ConfigProvider provider = new();
@@ -284,6 +285,7 @@ namespace Nethermind.Config.Test
         public void Raw_value_is_returned_for_category_without_config_suffix(string category, string source, object expected)
         {
             IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable(Arg.Any<string>()).Returns((string?)null);
             ConfigProvider provider = new();
             if (source == "env") environment.GetEnvironmentVariable("NETHERMIND_UNSUFFIXEDCATEGORY_VALUE").Returns("71");
             if (source == "args") provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["UnsuffixedCategory.Value"] = "72" }));
