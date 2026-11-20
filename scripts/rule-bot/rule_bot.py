@@ -26,6 +26,8 @@ COOLDOWN_DAYS = 56
 ROUTE_B_TRIES = 3
 UNSHIPPED = "src/Nethermind/Nethermind.Analyzers/AnalyzerReleases.Unshipped.md"
 GUARDED_PREFIXES = (".github/", ".agents/", "scripts/")
+ANALYZER_DIRS = ("src/Nethermind/Nethermind.Analyzers/", "src/Nethermind/Nethermind.Analyzers.Test/")
+TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 BOTS = {"claude", "copilot-pull-request-reviewer", "github-actions", "coderabbitai", "gemini-code-assist", "cursor",
         "chatgpt-codex-connector", "dependabot", "codecov"}
 AGREE = re.compile(r"\b(fixed|done|addressed|good catch|nice catch|agreed|agree|updated|changed|resolved|thanks|applied|removed|reverted|will fix|yep|yes)\b", re.I)
@@ -44,7 +46,7 @@ query($q:String!, $after:String) {
       author { login }
       reviewThreads(first:100) { nodes {
         isResolved isOutdated path line originalLine
-        comments(first:15) { nodes { author { login } body url createdAt } }
+        comments(first:15) { nodes { author { login } authorAssociation body url createdAt } }
       } }
     } }
   }
@@ -148,7 +150,7 @@ def findings_from(prs, after):
             first = cs[0]
             yield dict(pr=pr["number"], author=login(first), bot=is_bot(login(first)), path=t["path"],
                        line=t["line"] or t["originalLine"], created=first["createdAt"], body=first["body"],
-                       url=first["url"], valid=classify(t, author))
+                       url=first["url"], association=first.get("authorAssociation"), valid=classify(t, author))
 
 
 def findings(args):
@@ -176,7 +178,9 @@ def cluster_stats(rows):
 
 def gate_cluster(base, new_rows):
     d = cluster_stats(new_rows)
-    st = dict(n=base["n"] + d["n"], prs=base["prs"] + d["prs"], commenters=base["authors"] + d["commenters"],
+    new_prs = {r["pr"] for r in new_rows} - set(base.get("pr_set", []))
+    new_authors = {r["author"] for r in new_rows} - set(base.get("author_set", []))
+    st = dict(n=base["n"] + d["n"], prs=base["prs"] + len(new_prs), commenters=base["authors"] + len(new_authors),
               human=base["human"] + d["human"], valid=base["valid"] + d["valid"], new=d)
     st["validity"] = round(st["valid"] / st["n"], 2) if st["n"] else 0.0
     st["fails"] = [g for g, t in GATES.items() if st[g] < t]
@@ -195,7 +199,7 @@ def gates(args):
         base = baseline["clusters"].get(k, dict(n=0, prs=0, valid=0, human=0, authors=0))
         out[k] = gate_cluster(base, mine)
         out[k]["new_examples"] = [dict(url=r["url"], author=r["author"], path=r["path"], line=r["line"], body=r["body"][:500])
-                                  for r in mine if counted_valid(r) and not r["bot"]][:5]
+                                  for r in mine if counted_valid(r) and not r["bot"] and r.get("association") in TRUSTED_ASSOCIATIONS][:5]
     save(os.path.join(args.data, "gates.json"), out)
     for k, s in sorted(out.items(), key=lambda x: -x[1]["prs"]):
         print(f"gates: {k:11s} PRs {s['prs']:4d} commenters {s['commenters']:3d} human {s['human']:4d} "
@@ -305,8 +309,8 @@ def scope(rel):
     parts = rel.split("/")
     if "obj" in parts or "artifacts" in parts:
         return "generated"
-    dirs = parts[2:-1] if parts[0] in ("src", "tools") else parts[:-1]
-    if any(fnmatch.fnmatch(d, "*Test*") or fnmatch.fnmatch(d, "*Benchmark*") for d in dirs):
+    project = parts[2] if parts[0] in ("src", "tools") and len(parts) > 3 else ""
+    if fnmatch.fnmatch(project, "*Test*") or fnmatch.fnmatch(project, "*Benchmark*"):
         return "test"
     return "prod"
 
@@ -477,28 +481,69 @@ def propose(args):
             f.write(f"slug={chosen['slug'] if chosen else ''}\nroute={chosen['route'] if chosen else ''}\n")
 
 
-def check_paths(changes, unshipped_diff, new_id):
+def check_paths(changes, unshipped_diff, new_id, fix_files=()):
     bad = []
     for status, path in changes:
         if path == UNSHIPPED:
             removed = [l for l in unshipped_diff if l.startswith("-") and not l.startswith("---")]
             added = [l for l in unshipped_diff if l.startswith("+") and not l.startswith("+++")]
-            if status != "M" or removed or not new_id or any(not l[1:].startswith(f"{new_id} |") for l in added):
+            if status != "M" or removed or not new_id or len(added) != 1 or not added[0][1:].startswith(f"{new_id} |"):
                 bad.append(f"{path}: only one appended row for {new_id or 'the new rule'} is allowed")
-        elif path.startswith(GUARDED_PREFIXES) or path.endswith(".md"):
+        elif path == ".editorconfig":
+            if status != "M":
+                bad.append(f"{path}: may only be modified")
+        elif not path.endswith(".cs") or path.startswith(GUARDED_PREFIXES):
             bad.append(f"{path}: outside the paths the bot may change")
-        elif not (path == ".editorconfig" or path.endswith((".cs", ".props", ".globalconfig"))):
-            bad.append(f"{path}: unexpected file type")
+        elif not (new_id and path.startswith(ANALYZER_DIRS)) and not (status == "M" and path in fix_files):
+            bad.append(f"{path}: not a file with a listed hit{' or under the analyzer projects' if new_id else ''}")
     return bad
 
 
+def patch_changes(text):
+    changes, udiff, path, status, in_unshipped = [], [], None, None, False
+
+    def flush():
+        if path:
+            changes.append((status, path))
+
+    for line in text.splitlines():
+        m = re.match(r"^diff --git a/(\S+) b/(\S+)$", line)
+        if m:
+            flush()
+            path, status = m[2], "M" if m[1] == m[2] else "R"
+            in_unshipped = path == UNSHIPPED
+            continue
+        if path is None:
+            continue
+        if line.startswith("new file mode"):
+            status = "A" if line.split()[-1] == "100644" else "X"
+        elif line.startswith("deleted file mode"):
+            status = "D"
+        elif line.startswith(("old mode", "new mode", "rename ", "copy ", "similarity index", "GIT binary patch", "Binary files")):
+            status = "X"
+        elif re.match(r"^index [0-9a-f]+\.\.[0-9a-f]+ (?!100644)", line):
+            status = "X"
+        elif in_unshipped and not line.startswith(("--- ", "+++ ", "index ", "@@")) and line[:1] in "+-":
+            udiff.append(line)
+    flush()
+    return changes, udiff
+
+
+def fix_files_of(path):
+    return {l.split("\t")[1].rsplit(":", 2)[0] for l in open(path) if l.count("\t") >= 2} if path else set()
+
+
 def guard(args):
-    out = subprocess.run(["git", "diff", "--name-status", "--no-renames", f"{args.base}...HEAD"] if args.committed
-                         else ["git", "diff", "--name-status", "--no-renames", args.base], capture_output=True, text=True, check=True).stdout
-    changes = [tuple(l.split("\t", 1)) for l in out.splitlines() if l]
-    ref = [f"{args.base}...HEAD"] if args.committed else [args.base]
-    udiff = subprocess.run(["git", "diff", "-U0", *ref, "--", UNSHIPPED], capture_output=True, text=True).stdout.splitlines()
-    bad = check_paths(changes, udiff, args.new_id)
+    if args.patch:
+        changes, udiff = patch_changes(open(args.patch, errors="replace").read())
+    else:
+        out = subprocess.run(["git", "diff", "--name-status", "--no-renames", args.base], capture_output=True, text=True, check=True).stdout
+        changes = [tuple(l.split("\t", 1)) for l in out.splitlines() if l]
+        udiff = subprocess.run(["git", "diff", "-U0", args.base, "--", UNSHIPPED], capture_output=True, text=True).stdout.splitlines()
+        out = subprocess.run(["git", "diff", "--summary", args.base], capture_output=True, text=True, check=True).stdout
+        changes += [("X", l.split()[-1]) for l in out.splitlines() if re.search(r"mode (120000|100755)|mode change", l)]
+    bad = check_paths(changes, udiff, args.new_id, fix_files_of(args.files))
+    bad += [f"{p}: symlink, executable or mode change" for st, p in changes if st == "X"]
     for b in bad:
         print(f"guard: FAIL {b}")
     print(f"guard: {'PASS' if not bad else 'FAIL'} ({len(changes)} files)")
@@ -550,6 +595,19 @@ def strip_initialize(source):
     return source[:m.end() - 1] + stub + source[i:]
 
 
+def test_argv(test_class, warnings_as_errors=True):
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", test_class or ""):
+        raise SystemExit(f"invalid test class name: {test_class!r}")
+    argv = ["dotnet", "test", "--project", "src/Nethermind/Nethermind.Analyzers.Test/Nethermind.Analyzers.Test.csproj", "-c", "Release"]
+    if not warnings_as_errors:
+        argv.append("-p:TreatWarningsAsErrors=false")
+    return argv + ["--", "--filter", f"FullyQualifiedName~{test_class}"]
+
+
+def run_tests(args):
+    sys.exit(subprocess.run(test_argv(args.test_class)).returncode)
+
+
 def red(args):
     src = open(args.analyzer).read()
     stub = strip_initialize(src)
@@ -557,7 +615,7 @@ def red(args):
         raise SystemExit("red: Initialize(AnalysisContext) not found")
     open(args.analyzer, "w").write(stub)
     try:
-        p = subprocess.run(args.test_cmd, shell=True, capture_output=True, text=True)
+        p = subprocess.run(test_argv(args.test_class, warnings_as_errors=False), capture_output=True, text=True)
     finally:
         open(args.analyzer, "w").write(src)
     out = p.stdout + p.stderr
@@ -648,12 +706,14 @@ def main(argv=None):
     s = sub.add_parser("hits"); s.add_argument("--logs", required=True); s.add_argument("--root", required=True); s.add_argument("--ids", required=True)
     s.add_argument("--out", required=True); s.set_defaults(fn=hits)
     s = sub.add_parser("propose"); s.add_argument("--data", required=True); s.add_argument("--offline", action="store_true"); s.add_argument("--github-output"); s.set_defaults(fn=propose)
-    s = sub.add_parser("guard"); s.add_argument("--base", required=True); s.add_argument("--new-id"); s.add_argument("--committed", action="store_true"); s.set_defaults(fn=guard)
+    s = sub.add_parser("guard"); s.add_argument("--base", default="HEAD"); s.add_argument("--patch"); s.add_argument("--new-id"); s.add_argument("--files")
+    s.set_defaults(fn=guard)
     s = sub.add_parser("sample"); s.add_argument("--hits", required=True); s.add_argument("--id", required=True); s.add_argument("--repo", default=".")
     s.add_argument("--seed", type=int, default=0); s.add_argument("--out", required=True); s.set_defaults(fn=sample)
     s = sub.add_parser("precision"); s.add_argument("--labels", required=True); s.add_argument("--hits", required=True); s.add_argument("--id", required=True)
     s.add_argument("--route-b", required=True); s.set_defaults(fn=precision_cmd)
-    s = sub.add_parser("red"); s.add_argument("--analyzer", required=True); s.add_argument("--test-cmd", required=True); s.set_defaults(fn=red)
+    s = sub.add_parser("red"); s.add_argument("--analyzer", required=True); s.add_argument("--test-class", required=True); s.set_defaults(fn=red)
+    s = sub.add_parser("test"); s.add_argument("--test-class", required=True); s.set_defaults(fn=run_tests)
     s = sub.add_parser("body"); s.add_argument("--data", required=True); s.add_argument("--head"); s.add_argument("--out", required=True); s.set_defaults(fn=body)
     s = sub.add_parser("solutions"); s.add_argument("--workflows", default=".github/workflows"); s.add_argument("--github-output"); s.set_defaults(fn=solutions_cmd)
     s = sub.add_parser("package"); s.add_argument("--data", required=True); s.add_argument("--github-output"); s.set_defaults(fn=package_cmd)

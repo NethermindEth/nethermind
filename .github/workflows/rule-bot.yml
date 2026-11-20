@@ -94,6 +94,9 @@ jobs:
       - name: Keep bot files out of git
         run: echo /rule-bot/ >> .git/info/exclude
 
+      - name: Copy the bot scripts before any generated change
+        run: cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
+
       - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
@@ -109,7 +112,7 @@ jobs:
       - name: Generate and check the analyzer
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: bash scripts/rule-bot/route-b.sh "$DATA"
+        run: bash "$RUNNER_TEMP/rule-bot/route-b.sh" "$DATA"
 
       - name: Upload analyzer
         uses: actions/upload-artifact@v7
@@ -160,15 +163,18 @@ jobs:
         run: |
           extra=()
           if [ -n "$ROUTE_B_ID" ] && [ -s "$DATA/analyzer.patch" ] && jq -e '.tests_ok and .red_ok and .guard_ok' "$DATA/route_b.json" > /dev/null; then
+            python3 scripts/rule-bot/rule_bot.py guard --patch "$DATA/analyzer.patch" --new-id "$ROUTE_B_ID"
+            cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
             git apply "$DATA/analyzer.patch"
             extra=(--extra "$ROUTE_B_ID")
           fi
-          python3 scripts/rule-bot/rule_bot.py overlay --ids "$DATA/measure_ids.txt" "${extra[@]}"
+          [ -d "$RUNNER_TEMP/rule-bot" ] || cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" overlay --ids "$DATA/measure_ids.txt" "${extra[@]}"
 
       - name: Build
         env:
           SOLUTION: ${{ matrix.solution }}
-        run: bash scripts/rule-bot/build.sh "$SOLUTION" "$LOGS"
+        run: bash "$RUNNER_TEMP/rule-bot/build.sh" "$SOLUTION" "$LOGS"
 
       - name: Upload build log
         uses: actions/upload-artifact@v7
@@ -303,9 +309,14 @@ jobs:
       - name: Turn the rules on for production code
         env:
           ROUTE: ${{ needs.propose.outputs.route }}
+          IDS: ${{ needs.propose.outputs.ids }}
         run: |
-          [ "$ROUTE" = B ] && git apply "$DATA/analyzer.patch"
-          python3 scripts/rule-bot/rule_bot.py overlay --ids "$DATA/package-ids.txt" --exclude-tests
+          cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
+          if [ "$ROUTE" = B ]; then
+            python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --patch "$DATA/analyzer.patch" --new-id "$IDS"
+            git apply "$DATA/analyzer.patch"
+          fi
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" overlay --ids "$DATA/package-ids.txt" --exclude-tests
 
       - name: Fix the hits
         env:
@@ -313,7 +324,7 @@ jobs:
           IDS: ${{ needs.propose.outputs.ids }}
           SOLUTIONS: ${{ needs.propose.outputs.rebuild }}
         run: |
-          bash scripts/rule-bot/llm.sh scripts/rule-bot/prompts/fix.txt "Read,Glob,Grep,Edit,Bash(dotnet build:*)" \
+          bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/fix.txt" "Read,Glob,Grep,Edit(src/**/*.cs),Edit(tools/**/*.cs),Bash(dotnet build:*)" \
             "IDS=$IDS" "HITS=$DATA/fix-hits.txt" "SOLUTIONS=$SOLUTIONS" "RESULT=$DATA/fix-result.json" > "$DATA/fix-llm.log" 2>&1 || true
           git diff --stat
 
@@ -323,8 +334,8 @@ jobs:
           SOLUTIONS: ${{ needs.propose.outputs.rebuild }}
         run: |
           rm -rf "$LOGS"
-          for s in $SOLUTIONS; do bash scripts/rule-bot/build.sh "$s" "$LOGS"; done
-          python3 scripts/rule-bot/rule_bot.py hits --logs "$LOGS" --root "$GITHUB_WORKSPACE" --ids "$IDS" --out "$DATA/after.json"
+          for s in $SOLUTIONS; do bash "$RUNNER_TEMP/rule-bot/build.sh" "$s" "$LOGS"; done
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" hits --logs "$LOGS" --root "$GITHUB_WORKSPACE" --ids "$IDS" --out "$DATA/after.json"
           left=$(jq '[.counts[].prod] | add' "$DATA/after.json")
           [ "$left" = 0 ] || { echo "fix: $left production hits left"; exit 1; }
 
@@ -336,8 +347,8 @@ jobs:
           git add -N .
           new_id=()
           [ "$ROUTE" = B ] && new_id=(--new-id "$IDS")
-          python3 scripts/rule-bot/rule_bot.py guard --base HEAD "${new_id[@]}"
-          git diff HEAD --binary > "$DATA/fix.patch"
+          git diff HEAD > "$DATA/fix.patch"
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --patch "$DATA/fix.patch" --files "$DATA/fix-hits.txt" "${new_id[@]}"
 
       - name: Upload fix
         uses: actions/upload-artifact@v7
@@ -347,6 +358,7 @@ jobs:
             rule-bot/data/fix.patch
             rule-bot/data/body.md
             rule-bot/data/candidates.json
+            rule-bot/data/fix-hits.txt
 
   open-pr:
     name: Open the pull request
@@ -364,7 +376,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
         with:
-          token: ${{ steps.gh-app.outputs.token }}
+          persist-credentials: false
 
       - name: Keep bot files out of git
         run: echo /rule-bot/ >> .git/info/exclude
@@ -388,12 +400,14 @@ jobs:
             echo "A rule bot pull request is already open"
             exit 0
           fi
-          git apply "$DATA/fix.patch"
+          cp -r scripts/rule-bot "$RUNNER_TEMP/rule-bot"
           new_id=()
           [ "$ROUTE" = B ] && new_id=(--new-id "$IDS")
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --patch "$DATA/fix.patch" --files "$DATA/fix-hits.txt" "${new_id[@]}"
+          git apply "$DATA/fix.patch"
           git add -N .
-          python3 scripts/rule-bot/rule_bot.py guard --base HEAD "${new_id[@]}"
-          branch="rule-bot/$SLUG"
+          python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" guard --files "$DATA/fix-hits.txt" "${new_id[@]}"
+          branch="rule-bot/$SLUG-$GITHUB_RUN_ID"
           title="Enable ${IDS//,/, } for production code"
           [ "$ROUTE" = B ] && title="Add analyzer $IDS"
           git config user.name "$APP_USER"
@@ -401,7 +415,7 @@ jobs:
           git checkout -b "$branch"
           git add -A
           git -c core.hooksPath=/dev/null commit -m "$title"
-          git push origin "$branch"
+          git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
           gh label create rule-bot --color 5319E7 --description "Opened by the review rule bot" 2>/dev/null || true
           gh pr create -B master -H "$branch" -t "$title" -F "$DATA/body.md" -l rule-bot
 

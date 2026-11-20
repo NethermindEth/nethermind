@@ -12,25 +12,24 @@ attempt() {
   jq --arg c "$cluster" '.[$c].new_examples // []' "$data/gates.json" > "$data/route-b-new-examples.json"
   jq -s 'add' "$data/route-b-examples.json" "$data/route-b-new-examples.json" > "$data/route-b-all-examples.json"
   rm -f "$data/analyzer-result.json"
-  "$here/llm.sh" "$here/prompts/analyzer.txt" "Read,Glob,Grep,Edit,Write,Bash(dotnet build:*),Bash(dotnet test:*)" \
+  "$here/llm.sh" "$here/prompts/analyzer.txt" "Read,Glob,Grep,Edit(src/Nethermind/Nethermind.Analyzers/**),Write(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Write(src/Nethermind/Nethermind.Analyzers.Test/**),Write($data/analyzer-result.json),Bash(dotnet build:*),Bash(dotnet test:*)" \
     "ID=$id" "CLUSTER=$cluster" "WHY=$why" "EXAMPLES=$data/route-b-all-examples.json" "RESULT=$data/analyzer-result.json" > "$data/analyzer-llm-$cluster.log" 2>&1
   echo "route-b: $cluster generation exit $?"
   local test_class analyzer skip
   test_class=$(jq -r '.test_class // empty' "$data/analyzer-result.json" 2>/dev/null)
   analyzer=$(jq -r '.analyzer // empty' "$data/analyzer-result.json" 2>/dev/null)
-  if [ -z "$test_class" ] || [ ! -f "$analyzer" ]; then
+  if ! [[ $test_class =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || [[ $analyzer != src/Nethermind/Nethermind.Analyzers/*.cs ]] || [ ! -f "$analyzer" ]; then
     skip=$(jq -r '.skip // "no analyzer produced"' "$data/analyzer-result.json" 2>/dev/null || echo "no analyzer produced")
     echo "route-b: $cluster skipped: $skip"
     jq --arg c "$cluster" --arg s "$skip" '.attempts += [{cluster:$c, result:("skipped by the generator: " + $s)}]' "$out" > "$out.tmp" && mv "$out.tmp" "$out"
     return 1
   fi
   git add -N .
-  local guard_ok tests_ok red_ok summary red_summary test_cmd
-  python3 "$here/rule_bot.py" guard --base HEAD --new-id "$id" && guard_ok=true || guard_ok=false
-  test_cmd="dotnet test --project src/Nethermind/Nethermind.Analyzers.Test/Nethermind.Analyzers.Test.csproj -c Release -- --filter 'FullyQualifiedName~$test_class'"
-  eval "$test_cmd" > "$data/analyzer-tests.log" 2>&1 && tests_ok=true || tests_ok=false
+  local guard_ok tests_ok red_ok summary red_summary
+  python3 "$here/rule_bot.py" guard --new-id "$id" && guard_ok=true || guard_ok=false
+  env -u CLAUDE_CODE_OAUTH_TOKEN python3 "$here/rule_bot.py" test --test-class "$test_class" > "$data/analyzer-tests.log" 2>&1 && tests_ok=true || tests_ok=false
   summary=$(grep -E 'total: [0-9]+|Passed!|Failed!' "$data/analyzer-tests.log" | tail -1)
-  python3 "$here/rule_bot.py" red --analyzer "$analyzer" --test-cmd "${test_cmd/ -c Release / -c Release -p:TreatWarningsAsErrors=false }" > "$data/analyzer-red.log" 2>&1 && red_ok=true || red_ok=false
+  env -u CLAUDE_CODE_OAUTH_TOKEN python3 "$here/rule_bot.py" red --analyzer "$analyzer" --test-class "$test_class" > "$data/analyzer-red.log" 2>&1 && red_ok=true || red_ok=false
   red_summary=$(grep '^red:' "$data/analyzer-red.log" | tail -1)
   echo "route-b: $id ($cluster) guard=$guard_ok tests=$tests_ok red=$red_ok :: $summary"
   jq --arg c "$cluster" --arg w "$why" --arg a "$analyzer" --argjson g $guard_ok --argjson t $tests_ok --argjson r $red_ok \

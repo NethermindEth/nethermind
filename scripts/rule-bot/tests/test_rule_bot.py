@@ -47,6 +47,11 @@ class Gates(unittest.TestCase):
         st = rb.gate_cluster(dict(n=0, prs=0, valid=0, human=0, authors=0), [self.row(1, "claude[bot]", bot=True, valid="likely")])
         self.assertEqual(st["valid"], 0)
 
+    def test_baseline_prs_and_commenters_are_not_counted_twice(self):
+        base = dict(self.base, pr_set=[100], author_set=["a"])
+        st = rb.gate_cluster(base, [self.row(100, "a"), self.row(101, "a"), self.row(102, "b")])
+        self.assertEqual((st["prs"], st["commenters"], st["n"]), (10, 3, 23))
+
     def test_missing_humans_fails(self):
         st = rb.gate_cluster(dict(self.base, prs=20, authors=5, human=1), [])
         self.assertIn("human", st["fails"])
@@ -89,6 +94,10 @@ class Hits(unittest.TestCase):
         self.assertEqual(rb.scope("tools/Kute/Kute.Test/X.cs"), "test")
         self.assertEqual(rb.scope("tools/Kute/Kute/X.cs"), "prod")
 
+    def test_scope_matches_the_editorconfig_exclusion(self):
+        self.assertEqual(rb.scope("src/Nethermind/Nethermind.Core/Tests/X.cs"), "prod")
+        self.assertIn("src/Nethermind/{*Test*,*Benchmark*}/**.cs", rb.overlay(["IDE0051"], exclude_tests=True))
+
 
 class Propose(unittest.TestCase):
     def test_verdicts(self):
@@ -103,25 +112,62 @@ class Propose(unittest.TestCase):
 
 class Guard(unittest.TestCase):
     row = ["+NETH012 | Reliability | Warning | Rent without Return."]
+    hit = "src/Nethermind/Nethermind.Core/A.cs"
 
-    def test_route_a_files_pass(self):
-        self.assertEqual(rb.check_paths([("M", ".editorconfig"), ("M", "src/Nethermind/Nethermind.Core/A.cs")], [], None), [])
+    def test_route_a_files_with_hits_pass(self):
+        self.assertEqual(rb.check_paths([("M", ".editorconfig"), ("M", self.hit)], [], None, {self.hit}), [])
+
+    def test_route_a_file_without_hit_fails(self):
+        self.assertTrue(rb.check_paths([("M", "src/Nethermind/Nethermind.Core/B.cs")], [], None, {self.hit}))
+        self.assertTrue(rb.check_paths([("A", self.hit)], [], None, {self.hit}))
+
+    def test_build_files_fail(self):
+        for p in ("src/Nethermind/Directory.Build.props", "src/Nethermind/Nethermind.Core/Nethermind.Core.csproj", "x.globalconfig"):
+            self.assertTrue(rb.check_paths([("A", p)], [], "NETH012", {p}), p)
 
     def test_appended_unshipped_row_passes(self):
         changes = [("A", "src/Nethermind/Nethermind.Analyzers/RentAnalyzer.cs"), ("M", UNSHIPPED)]
         self.assertEqual(rb.check_paths(changes, self.row, "NETH012"), [])
 
+    def test_analyzer_dirs_need_route_b(self):
+        self.assertTrue(rb.check_paths([("A", "src/Nethermind/Nethermind.Analyzers/RentAnalyzer.cs")], [], None))
+
     def test_edited_unshipped_row_fails(self):
         diff = ["-NETH011 | Maintainability | Warning | old", "+NETH011 | Maintainability | Warning | new"] + self.row
         self.assertTrue(rb.check_paths([("M", UNSHIPPED)], diff, "NETH012"))
+
+    def test_two_rows_fail(self):
+        self.assertTrue(rb.check_paths([("M", UNSHIPPED)], self.row * 2, "NETH012"))
 
     def test_row_for_other_id_fails(self):
         self.assertTrue(rb.check_paths([("M", UNSHIPPED)], self.row, "NETH013"))
 
     def test_guarded_paths_and_other_markdown_fail(self):
         for p in (".github/workflows/x.yml", ".agents/rules/robustness.md", "scripts/rule-bot/rule_bot.py", "README.md",
-                  "src/Nethermind/Nethermind.Analyzers/AnalyzerReleases.Shipped.md"):
-            self.assertTrue(rb.check_paths([("M", p)], [], "NETH012"), p)
+                  "src/Nethermind/Nethermind.Analyzers/AnalyzerReleases.Shipped.md", "scripts/rule-bot/x.cs"):
+            self.assertTrue(rb.check_paths([("M", p)], [], "NETH012", {p}), p)
+
+    def test_patch_changes(self):
+        patch = "\n".join([
+            "diff --git a/src/Nethermind/Nethermind.Core/A.cs b/src/Nethermind/Nethermind.Core/A.cs",
+            "index 1111111..2222222 100644", "--- a/x", "+++ b/x", "@@ -1 +1 @@", "-a", "+b",
+            "diff --git a/src/Nethermind/Nethermind.Analyzers/R.cs b/src/Nethermind/Nethermind.Analyzers/R.cs",
+            "new file mode 100644", "index 0000000..3333333", "--- /dev/null", "+++ b/x", "@@ -0,0 +1 @@", "+class R { }",
+            f"diff --git a/{UNSHIPPED} b/{UNSHIPPED}", "index 4444444..5555555 100644", "--- a/x", "+++ b/x", "@@ -3,0 +4 @@",
+            self.row[0],
+            "diff --git a/scripts/rule-bot/run b/scripts/rule-bot/run", "new file mode 100755", "index 0000000..6666666",
+            "diff --git a/src/a.cs b/src/b.cs", "similarity index 100%", "rename from src/a.cs", "rename to src/b.cs",
+        ])
+        changes, udiff = rb.patch_changes(patch)
+        self.assertEqual(changes, [("M", self.hit), ("A", "src/Nethermind/Nethermind.Analyzers/R.cs"), ("M", UNSHIPPED),
+                                   ("X", "scripts/rule-bot/run"), ("X", "src/b.cs")])
+        self.assertEqual(udiff, self.row)
+
+    def test_test_class_is_validated(self):
+        self.assertEqual(rb.test_argv("FooAnalyzerTests")[-1], "FullyQualifiedName~FooAnalyzerTests")
+        for bad in ("Foo; rm -rf /", "Foo'", "", None):
+            with self.assertRaises(SystemExit):
+                rb.test_argv(bad)
 
 
 class RouteB(unittest.TestCase):
