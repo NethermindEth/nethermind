@@ -14,23 +14,27 @@ internal static class TestArchive
         using (TarWriter writer = new(tarBuffer, leaveOpen: true))
         {
             writer.WriteEntry(new PaxGlobalExtendedAttributesTarEntry(new Dictionary<string, string> { ["comment"] = "test" }));
-            writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "db"));
-            HashSet<string> directories = [];
-            foreach (string name in files.Keys)
-            {
-                string? parent = Path.GetDirectoryName(name);
-                if (!string.IsNullOrEmpty(parent) && directories.Add(parent))
-                    writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, $"db/{parent}"));
-            }
-
-            foreach ((string name, byte[] data) in files)
-            {
-                PaxTarEntry entry = new(TarEntryType.RegularFile, $"db/{name}") { DataStream = new MemoryStream(data) };
-                writer.WriteEntry(entry);
-            }
+            WriteFiles(writer, files);
         }
 
         return Compress(tarBuffer);
+    }
+
+    /// <summary>
+    /// An uncompressed tar of <paramref name="files"/> under <c>db/</c>. With <paramref name="endWithLink"/> a link entry
+    /// follows the files, so an extraction writes them all and then fails.
+    /// </summary>
+    public static byte[] BuildTar(IReadOnlyDictionary<string, byte[]> files, bool endWithLink = false)
+    {
+        using MemoryStream tarBuffer = new();
+        using (TarWriter writer = new(tarBuffer, leaveOpen: true))
+        {
+            WriteFiles(writer, files);
+            if (endWithLink)
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.SymbolicLink, "db/escape") { LinkName = "/tmp" });
+        }
+
+        return tarBuffer.ToArray();
     }
 
     public static byte[] BuildTar(int payloadSize = 1000)
@@ -112,6 +116,24 @@ internal static class TestArchive
             [$"state/a{seed}.sst"] = state,
             [$"headers/b{seed}.sst"] = headers,
         };
+    }
+
+    private static void WriteFiles(TarWriter writer, IReadOnlyDictionary<string, byte[]> files)
+    {
+        writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, "db"));
+        HashSet<string> directories = [];
+        foreach (string name in files.Keys)
+        {
+            string? parent = Path.GetDirectoryName(name);
+            if (!string.IsNullOrEmpty(parent) && directories.Add(parent))
+                writer.WriteEntry(new PaxTarEntry(TarEntryType.Directory, $"db/{parent}"));
+        }
+
+        foreach ((string name, byte[] data) in files)
+        {
+            PaxTarEntry entry = new(TarEntryType.RegularFile, $"db/{name}") { DataStream = new MemoryStream(data) };
+            writer.WriteEntry(entry);
+        }
     }
 
     private static byte[] Compress(MemoryStream tarBuffer)

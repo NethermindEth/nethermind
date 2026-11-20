@@ -273,6 +273,29 @@ public class StreamingSnapshotInitializerTests
     }
 
     [Test]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task InitializeAsync_CleanupMeetsLinkWithMissingTarget_StopsWithTheLinkError()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
+        // The disk behind db/state is gone, so the extraction fails on it and the cleanup that follows meets the link.
+        string link = Path.Combine(_dbPath, "state");
+        string target = Path.Combine(_tempDir.Path, "unmounted", "state");
+        Directory.CreateDirectory(_dbPath);
+        Directory.CreateSymbolicLink(link, target);
+
+        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
+            Throws.InstanceOf<IOException>().With.Message.Contains("missing or cannot be read"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new DirectoryInfo(link).LinkTarget, Is.EqualTo(target), "the cleanup must keep the link");
+            Assert.That(File.Exists(Path.Combine(_dbPath, ".nethermind-snapshot-extracting")), Is.True,
+                "a cleanup that stopped must keep the marker, so the next start cleans up again");
+        }
+    }
+
+    [Test]
     public async Task InitializeAsync_InsufficientDiskSpace_Throws()
     {
         _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
@@ -288,6 +311,42 @@ public class StreamingSnapshotInitializerTests
         {
             Assert.That(exception.Message, Does.Contain("Insufficient disk space"), "the failure must be the disk space guard, not a download error");
             Assert.That(Directory.Exists(_dbPath), Is.False, "nothing must be extracted when free space is insufficient");
+        }
+    }
+
+    [Test]
+    public async Task InitializeAsync_MarkerCannotBeWritten_ThrowsWithoutDeletingAnything()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
+        string existing = Path.Combine(_dbPath, "state", "000001.sst");
+        Directory.CreateDirectory(Path.GetDirectoryName(existing)!);
+        File.WriteAllBytes(existing, [1, 2, 3]);
+        // A directory in the marker's place makes the marker write fail.
+        Directory.CreateDirectory(Path.Combine(_dbPath, ".nethermind-snapshot-extracting"));
+
+        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
+            Throws.InstanceOf<IOException>().Or.InstanceOf<UnauthorizedAccessException>());
+
+        Assert.That(File.Exists(existing), Is.True, "a marker that cannot be written must stop the start before anything is deleted");
+    }
+
+    [Test]
+    [Platform(Include = "Linux")] // creating links needs a privilege on Windows
+    public async Task InitializeAsync_DatabaseLinkWithMissingTarget_ThrowsWithoutReplacingIt()
+    {
+        _server.Content = TestArchive.BuildTarZst(TestArchive.BuildFiles());
+        _config.Checksum = Convert.ToHexString(SHA256.HashData(_server.Content));
+        string target = Path.Combine(_tempDir.Path, "unmounted");
+        Directory.CreateSymbolicLink(_dbPath, target);
+
+        await Assert.ThatAsync(() => CreateInitializer().InitializeAsync(CreateCheckpoint(), CancellationToken.None),
+            Throws.InstanceOf<IOException>().With.Message.Contains("missing or cannot be read"));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new DirectoryInfo(_dbPath).LinkTarget, Is.EqualTo(target), "the extraction must not replace the link with a plain directory");
+            Assert.That(Directory.Exists(target), Is.False, "nothing may be extracted behind a link whose disk is missing");
         }
     }
 

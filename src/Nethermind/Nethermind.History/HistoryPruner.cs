@@ -1313,6 +1313,9 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
     {
         if (!_hasLoadedDeletePointers)
         {
+            // Do not persist the first discovered block boundary here: loading a stored one skips rediscovery and can
+            // hide backfill after a lowered barrier. Without pruning, rediscovering it normally costs one binary search
+            // per start.
             if (_hasLoadedBalsDeletePointer && _balsDeletePointer != _lastSavedBalsDeletePointer)
             {
                 _metadataDb.PutSpan(MetadataDbKeys.BlockAccessListPruningDeletePointer, Rlp.Encode(_balsDeletePointer, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));

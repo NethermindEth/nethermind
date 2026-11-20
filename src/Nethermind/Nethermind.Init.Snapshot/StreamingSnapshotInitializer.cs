@@ -32,6 +32,9 @@ internal sealed class StreamingSnapshotInitializer(
             LogMode(remoteInfo);
             CheckDiskSpace(remoteInfo.Length);
 
+            // Before the first byte lands, and outside the try: a marker that cannot be written must not lead to a delete.
+            SnapshotDatabase.BeginExtraction(dbPath);
+
             bool verified;
             try
             {
@@ -60,7 +63,11 @@ internal sealed class StreamingSnapshotInitializer(
                 throw;
             }
 
-            if (!verified)
+            if (verified)
+            {
+                SnapshotDatabase.CompleteExtraction(dbPath);
+            }
+            else
             {
                 DeleteDatabase();
                 LogContinuingWithoutSnapshot();
@@ -201,7 +208,8 @@ internal sealed class StreamingSnapshotInitializer(
         {
             SnapshotDatabase.Delete(dbPath);
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        // A link the cleanup stopped at keeps its own error: deleting the database by hand would remove the link too.
+        catch (Exception e) when (e is (IOException or UnauthorizedAccessException) and not SnapshotLinkException)
         {
             throw new IOException(
                 $"Could not clean up the database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)}, so the node must not start on top of it. Delete it manually before restarting.", SensitiveLogMasking.Enabled ? null : e);
