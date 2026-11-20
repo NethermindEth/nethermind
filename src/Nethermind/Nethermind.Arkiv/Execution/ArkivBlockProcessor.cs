@@ -94,6 +94,8 @@ public class ArkivBlockProcessor(
     private (Block Block, TxReceipt[] Receipts) Produce(BlockToProduce block, ProcessingOptions options, IBlockTracer blockTracer, IReleaseSpec spec, CancellationToken token)
     {
         ulong number = block.Number;
+        // The parent may still be held (IArkivConfig.HoldHeadBlock): a block is built over committed state.
+        chain.PrepareBuild(block.Header);
         Transaction purge = ArkivPurge.Create(_specProvider.ChainId, number, chain.PurgeKeys(number));
         block.Transactions = Prepend(purge, block.Transactions);
         context.BeginBuild(chain.BeginBuild(block.Header));

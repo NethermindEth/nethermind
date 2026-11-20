@@ -87,6 +87,7 @@ peers, and syncs from genesis: every block is executed, nothing is restored from
 | `NativeLibrary` | beside the plugin | Path of `libarkiv_ffi.so`. |
 | `EntityHistory` | `true` | Keep every entity after every block, so `arkiv_getEntity` answers at past blocks. |
 | `CheckpointInterval` | `0` | Copy the GolemDB store every N blocks; a reorg below the store's head replays from the newest copy on the new branch. Both Rabdi configs set 50 000. |
+| `HoldHeadBlock` | `true` | Commit a block only once a block builds on it, so a competing block at the tip (a late block replaced, a producer restart) executes over the same parent with no store copy ([arkiv#287](https://github.com/Arkiv-Network/arkiv/issues/287) stalls arkiv-reth there). `arkiv_*` reads and `eth_call` see the block before the head until the next block arrives. |
 | `ServeState` | `true` | Serve a copy of the GolemDB store to peers that state-sync (`arkiv/1`). |
 | `ServedCopyAge` | `64` | The fewest blocks between two served copies; a new one is made, at the head, when a peer needs a newer copy than the last. |
 

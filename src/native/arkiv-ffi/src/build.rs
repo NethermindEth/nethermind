@@ -5,14 +5,15 @@
 //! The session lives on its own thread: reth's block executor borrows its state for the whole block, and the host
 //! applies transactions across separate calls.
 
-use std::collections::BinaryHeap;
 use std::sync::{Arc, mpsc};
 use std::thread;
 
 use alloy_primitives::{Address, B256};
 use arkiv_bindings::{MAX_PURGE_KEYS, PURGE_GAS_LIMIT};
 use arkiv_interfaces::gas::{OpCost, purge_cost};
-use arkiv_interfaces::query::{AnnotKey, AnnotVal, BuiltIn, Query};
+use arkiv_interfaces::entity::AttributeType;
+use arkiv_interfaces::query::{AnnotKey, AnnotVal, BuiltIn, Direction, OrderBy, Query};
+use arkiv_interfaces::store::Sort;
 use arkiv_reth_executor::ArkivEvmFactory;
 use arkiv_reth_statemanager::{BlockSeals, ExecutionKey};
 use reth_ethereum::evm::EthEvmConfig;
@@ -36,28 +37,33 @@ impl Node {
     pub fn purge_keys(&self, block: u64) -> Result<Vec<B256>, (Status, String)> {
         let at = self.store_head();
         let expired = Query::Lte { key: AnnotKey::BuiltIn(BuiltIn::ExpiresAt), value: AnnotVal::U64(block) };
-        // The query answers in no particular order, so every expired entity is read, keeping the first
-        // `MAX_PURGE_KEYS` by (expiry, key) in a max-heap: whatever the backlog, these are the ones arkiv-reth names.
-        let mut best: BinaryHeap<(u64, B256, usize)> = BinaryHeap::with_capacity(MAX_PURGE_KEYS + 1);
+        // Read in ascending expiry, as arkiv-reth's index (`ORDER BY expires_at, entity_id`) is. The store breaks
+        // expiry ties in creation order, not by key, so once `MAX_PURGE_KEYS` are in hand the rest of the last
+        // expiry is read too, then all of it is put in (expiry, key) order: the cost is the purge's size plus one
+        // expiry's ties, not the backlog.
+        let order = Sort::from(&OrderBy { key: AnnotKey::BuiltIn(BuiltIn::ExpiresAt), attr_type: AttributeType::U64, direction: Direction::Ascending });
+        let mut candidates: Vec<(u64, B256, usize)> = Vec::new();
         let mut offset = 0;
-        loop {
-            let page = arkiv_reth_rpc::store_reads::query(&*self.store, at, &expired, None, offset, PAGE, false)
+        'pages: loop {
+            let page = arkiv_reth_rpc::store_reads::query(&*self.store, at, &expired, Some(&order), offset, PAGE, false)
                 .map_err(|e| (Status::Internal, format!("expired entities: {e}")))?;
             let read = page.entities.len() as u64;
             for entity in page.entities {
-                best.push((entity.expires_at, B256::from(entity.key), entity.indexed_attribute_count()));
-                if best.len() > MAX_PURGE_KEYS {
-                    best.pop();
+                if candidates.len() >= MAX_PURGE_KEYS && entity.expires_at > candidates[MAX_PURGE_KEYS - 1].0 {
+                    break 'pages;
                 }
+                candidates.push((entity.expires_at, B256::from(entity.key), entity.indexed_attribute_count()));
             }
             offset += read;
             if read < PAGE {
                 break;
             }
         }
+        candidates.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
+        candidates.truncate(MAX_PURGE_KEYS);
         let mut keys = Vec::new();
         let mut gas = 0u64;
-        for (_, key, indexed) in best.into_sorted_vec() {
+        for (_, key, indexed) in candidates {
             let next = gas.saturating_add(purge_cost(indexed));
             if next > PURGE_GAS_LIMIT {
                 break;
@@ -72,7 +78,7 @@ impl Node {
     /// ignored; its number, time, beneficiary, base fee, gas limit, randomness and beacon root set the block's
     /// environment.
     pub fn build_begin(&self, header: alloy_consensus::Header) -> Result<BuildSession, (Status, String)> {
-        let (_, head_tag, _) = self.head().map_err(crate::internal)?;
+        let (_, head_tag, head_root) = self.head().map_err(crate::internal)?;
         if head_tag != header.parent_hash {
             return Err((Status::NotOnHead, format!("block {} builds on {}, the store's head is {head_tag}", header.number, header.parent_hash)));
         }
@@ -123,9 +129,10 @@ impl Node {
                                     // Seals the block's branch; nothing is committed.
                                     let _ = reth_ethereum::evm::primitives::Evm::finish(evm);
                                     let key = ExecutionKey::new(height, taken.iter().map(|(s, n)| (s.into_array(), *n)).collect());
-                                    match seals.root_of(&key) {
+                                    // Nothing charged leaves no seal and the parent's state as it was.
+                                    match seals.root_of(&key).map(B256::from).or(taken.is_empty().then_some(head_root)) {
                                         Some(root) => Ok(wire::BlockResult {
-                                            state_root: B256::from(root),
+                                            state_root: root,
                                             gas_used: result.gas_used,
                                             receipts: result.receipts.iter().map(wire::Receipt::from).collect(),
                                             requests_empty: result.requests.is_empty(),

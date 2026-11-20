@@ -22,6 +22,15 @@ public enum ArkivStatus
     Internal = 5,
 }
 
+/// <summary>What <see cref="ArkivNative.ExecuteBlock"/> does with a block that executes to its header's root; mirrors <c>arkiv_ffi::Apply</c>.</summary>
+public enum ArkivApply
+{
+    DryRun = 0,
+    Commit = 1,
+    /// <summary>Sealed but not committed, until <see cref="ArkivNative.Adopt"/>: a sibling executes over the same head meanwhile.</summary>
+    Hold = 2,
+}
+
 /// <summary>A native call that did not succeed, with the native side's message.</summary>
 public sealed class ArkivNativeException(ArkivStatus status, string message) : Exception($"{status}: {message}")
 {
@@ -65,7 +74,10 @@ internal static unsafe partial class ArkivNative
     private static partial int arkiv_head(ulong handle, out byte* outPtr, out nuint outLen);
 
     [LibraryImport(Library)]
-    private static partial int arkiv_execute_block(ulong handle, byte* block, nuint blockLen, byte* senders, nuint sendersLen, int commit, out byte* outPtr, out nuint outLen);
+    private static partial int arkiv_execute_block(ulong handle, byte* block, nuint blockLen, byte* senders, nuint sendersLen, int apply, out byte* outPtr, out nuint outLen);
+
+    [LibraryImport(Library)]
+    private static partial int arkiv_adopt(ulong handle, byte* hash, out byte* outPtr, out nuint outLen);
 
     [LibraryImport(Library)]
     private static partial int arkiv_account(ulong handle, byte* address, out byte* outPtr, out nuint outLen);
@@ -120,13 +132,23 @@ internal static unsafe partial class ArkivNative
         return Take(status, ptr, len);
     }
 
-    public static byte[] ExecuteBlock(ulong handle, ReadOnlySpan<byte> blockRlp, ReadOnlySpan<byte> senders, bool commit)
+    public static byte[] ExecuteBlock(ulong handle, ReadOnlySpan<byte> blockRlp, ReadOnlySpan<byte> senders, ArkivApply apply)
     {
         fixed (byte* b = blockRlp)
         fixed (byte* s = senders)
         {
-            int status = arkiv_execute_block(handle, b, (nuint)blockRlp.Length, s, (nuint)senders.Length, commit ? 1 : 0, out byte* ptr, out nuint len);
+            int status = arkiv_execute_block(handle, b, (nuint)blockRlp.Length, s, (nuint)senders.Length, (int)apply, out byte* ptr, out nuint len);
             return Take(status, ptr, len);
+        }
+    }
+
+    /// <summary>Commits a block held by <see cref="ExecuteBlock"/>; <see cref="ArkivStatus.NotOnHead"/> when it is not held over the head.</summary>
+    public static void Adopt(ulong handle, ReadOnlySpan<byte> blockHash)
+    {
+        fixed (byte* h = blockHash)
+        {
+            int status = arkiv_adopt(handle, h, out byte* ptr, out nuint len);
+            Take(status, ptr, len);
         }
     }
 

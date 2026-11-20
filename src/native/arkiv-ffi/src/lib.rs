@@ -11,8 +11,10 @@
 //! Every buffer handed out is allocated here and must be returned through [`arkiv_free`]. Every function returns
 //! an [`Status`]; on failure the output buffer carries a UTF-8 message instead of a result.
 
+use std::collections::HashMap;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock, Mutex};
 
 use alloy_consensus::{BlockHeader as _, TxReceipt as _};
 use alloy_primitives::{Address, B256, Bytes, TxKind, U256};
@@ -38,6 +40,7 @@ use reth_evm::ConfigureEvm;
 use reth_evm::execute::BlockExecutor;
 
 pub mod build;
+mod sealed;
 pub mod store;
 mod rpc;
 pub mod wire;
@@ -63,6 +66,30 @@ pub enum Status {
     Internal = 5,
 }
 
+/// What [`Node::execute_block`] does with a block that executes to its header's root.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Apply {
+    /// Nothing: the store does not change.
+    DryRun,
+    /// Commit it: the block becomes the store's head.
+    Commit,
+    /// Hold it, sealed and uncommitted, until [`Node::adopt`] commits it. A block held at the tip can lose to a
+    /// sibling at no cost: the sibling executes over the same head, and whichever block is adopted commits while the
+    /// other leaves no trace. Committing first would leave a reorg nothing to do but restore the store from a copy,
+    /// since GolemDB has no rewind.
+    Hold,
+}
+
+/// A block executed with [`Apply::Hold`] and not yet adopted.
+struct Held {
+    height: u64,
+    hash: B256,
+    parent: B256,
+    root: B256,
+    /// Whether its execution sealed a branch; one that changed nothing has none to commit.
+    sealed: bool,
+}
+
 /// One opened chain: its spec, its store and the executor configuration over them.
 pub struct Node {
     spec: Arc<ArkivChainSpec>,
@@ -74,6 +101,13 @@ pub struct Node {
     genesis_db: CacheDB<EmptyDB>,
     genesis_hash: B256,
     genesis_root: B256,
+    /// Blocks applied since the store's head commit that changed nothing (no transaction Arkiv charged for), in
+    /// order. arkiv-reth commits nothing for them, and neither may this (any commit moves GolemDB's root), so they
+    /// are held here: the latest is the head the next block builds on. Cleared by the next commit; not persisted, so
+    /// after a restart the host re-applies them from the store's head block, which costs nothing.
+    unchanged_blocks: Mutex<Vec<B256>>,
+    /// Blocks executed over the head and held for [`Node::adopt`]; their sealed branches sit in `seals`.
+    held: Mutex<Vec<Held>>,
 }
 
 impl Node {
@@ -94,7 +128,7 @@ impl Node {
         let spec = Arc::new(Arc::unwrap_or_clone(file_spec.clone()).with_genesis_state_root(genesis_root));
         let genesis_hash = spec.genesis_hash();
 
-        let store: HostStore = match directory {
+        let opened: HostStore = match directory {
             // Archive history cannot come from GolemDB v1.0.0, which reads at its head only; the host keeps it.
             Some(directory) => Arc::new(
                 arkiv_golemdb::GolemDbStore::open(directory, &config, Some(arkiv_golemdb::PruningConfig::new(0)))
@@ -102,6 +136,8 @@ impl Node {
             ),
             None => Arc::new(arkiv_golemdb::GolemDbStore::open_memory(&config)?),
         };
+        // Seen through `SealWatch`, so a held block's sealed branch can be read before it commits.
+        let store: HostStore = Arc::new(sealed::SealWatch(opened));
         if store.head() == CommitId::GENESIS {
             seed_genesis(&store, genesis_hash.0, accounts()).map_err(|e| eyre::eyre!("seed genesis: {e:?}"))?;
         }
@@ -116,20 +152,31 @@ impl Node {
         let evm_config =
             EthEvmConfig::new_with_evm_factory(spec.clone(), ArkivEvmFactory::new(store.clone(), seals.clone(), OpCost::FromStore));
         let genesis_db = genesis_database(&spec);
-        Ok(Self { spec, store, seals, evm_config, genesis_db, genesis_hash, genesis_root })
+        Ok(Self { spec, store, seals, evm_config, genesis_db, genesis_hash, genesis_root, unchanged_blocks: Mutex::default(), held: Mutex::default() })
     }
 
-    /// The store's head: its commit number, the block hash it is tagged with and its root.
+    /// The head: the store's head commit number, the latest block applied (the block that commit is tagged with,
+    /// or an unchanged block applied since) and the state root.
     pub fn head(&self) -> eyre::Result<(u64, B256, B256)> {
         let head = self.store.head();
         let tag = self.store.tag_of(head).map_err(|e| eyre::eyre!("tag_of: {e:?}"))?.unwrap_or_default();
         let root = self.store.commit_hash(head).map_err(|e| eyre::eyre!("commit_hash: {e:?}"))?;
-        Ok((head.0, B256::from(tag), B256::from(root)))
+        let latest = self.unchanged_blocks.lock().expect("unchanged blocks poisoned").last().copied().unwrap_or(B256::from(tag));
+        Ok((head.0, latest, B256::from(root)))
     }
 
-    /// Execute `block` on the store's head and, when `commit` is set and the root it reaches is the header's,
-    /// commit it tagged with the block hash.
-    pub fn execute_block(&self, block: Block, senders: Vec<Address>, commit: bool) -> Result<wire::BlockResult, (Status, String)> {
+    /// Execute `block` on the store's head and, when the root it reaches is the header's, apply it as `apply` says.
+    ///
+    /// A block Arkiv charges nothing for (no transaction; Arkiv's own blocks always carry the protocol purge) leaves
+    /// no sealed state. arkiv-reth then takes the header's root as it is and commits nothing; so does this, and the
+    /// block becomes the head the next one builds on (see `unchanged_blocks`).
+    ///
+    /// The result reports the accounts and entities the block wrote as the block's own state holds them: its sealed
+    /// branch, which is what commits, so a held block reports the same as a committed one.
+    ///
+    /// A commit or an adoption must not run concurrently with any other call on the chain. A dry run seals into a
+    /// registry of its own, so several may run at once.
+    pub fn execute_block(&self, block: Block, senders: Vec<Address>, apply: Apply) -> Result<wire::BlockResult, (Status, String)> {
         let header = &block.header;
         let (_, head_tag, _) = self.head().map_err(internal)?;
         if head_tag != header.parent_hash {
@@ -147,9 +194,18 @@ impl Node {
         let recovered: Vec<Recovered<TransactionSigned>> =
             sealed.body().transactions.iter().zip(&senders).map(|(tx, sender)| Recovered::new_unchecked(tx.clone(), *sender)).collect();
 
+        // A dry run seals into a registry of its own: its branch goes with it, and no other execution's seal does.
+        let (seals, evm_config) = if apply == Apply::DryRun {
+            let seals = Arc::new(BlockSeals::new());
+            let config = EthEvmConfig::new_with_evm_factory(self.spec.clone(), ArkivEvmFactory::new(self.store.clone(), seals.clone(), OpCost::FromStore));
+            (seals, config)
+        } else {
+            (self.seals.clone(), self.evm_config.clone())
+        };
+        sealed::clear_last_sealed();
         let mut state = State::builder().with_database(self.genesis_db.clone()).with_bundle_update().build();
         let execution = {
-            let mut executor = self.evm_config.executor_for_block(&mut state, &sealed).map_err(|e| (Status::InvalidBlock, format!("{e}")))?;
+            let mut executor = evm_config.executor_for_block(&mut state, &sealed).map_err(|e| (Status::InvalidBlock, format!("{e}")))?;
             let run = (|| {
                 executor.apply_pre_execution_changes()?;
                 for tx in &recovered {
@@ -168,9 +224,9 @@ impl Node {
         };
 
         let key = ExecutionKey::new(height, recovered.iter().map(|tx| (tx.signer().into_array(), alloy_consensus::Transaction::nonce(tx.inner()))).collect());
-        let root = self.seals.root_of(&key).map(B256::from).ok_or_else(|| {
-            (Status::Internal, format!("block {height} executed but its Arkiv state was not sealed"))
-        })?;
+        // No seal: nothing was charged, so the state is unchanged. arkiv-reth takes the header's root as it is.
+        let sealed_root = seals.root_of(&key).map(B256::from);
+        let root = sealed_root.unwrap_or(expected_root);
         let mut result = wire::BlockResult {
             state_root: root,
             gas_used: execution.gas_used,
@@ -179,26 +235,25 @@ impl Node {
             accounts: Vec::new(),
             entities: Vec::new(),
         };
+        // A branch sealed to another root is never adopted: the next adoption at this height or above drops it.
         if root != expected_root {
-            self.discard_pending(height);
             return Err((Status::StateRootMismatch, wire::encode_mismatch(root)));
         }
-        if !commit {
-            self.discard_pending(height);
+        if apply == Apply::DryRun {
             return Ok(result);
         }
 
-        let committed = self
-            .seals
-            .adopt(&self.store, height, sealed.hash().0, root.0, &[])
-            .map_err(|e| (Status::Internal, format!("commit block {height}: {e:?}")))?;
-        self.seals.finish_adoption(sealed.hash().0);
-        let commit = committed.ok_or_else(|| (Status::Internal, format!("no sealed candidate for block {height}")))?;
-
+        // Where the block's state is read: its sealed branch, or the head it left unchanged.
+        let target = match sealed_root {
+            Some(root) => match sealed::last_sealed() {
+                Some((branch, branch_root)) if branch_root == root.0 => ReadTarget::Branch(branch),
+                _ => return Err((Status::Internal, format!("block {height} sealed, but not on this thread"))),
+            },
+            None => ReadTarget::Commit(self.store.head()),
+        };
         // Every account the block wrote to: the executor mirrors each GolemDB balance and nonce write into reth's
-        // account diff, so the bundle names them. The values are read back from the committed store, which is the
-        // only authority on them.
-        let accounts = GolemAccounts::new(self.store.clone(), commit);
+        // account diff, so the bundle names them. The values are read from the block's state, which is the only
+        // authority on them.
         // Executed transactions sit in the state's transitions until merged; without this the bundle is empty
         // and no account would be reported (reth merges the same way after executing a block).
         state.merge_transitions(BundleRetention::PlainState);
@@ -206,29 +261,83 @@ impl Node {
         let mut touched: Vec<Address> = bundle.state.keys().copied().collect();
         touched.sort();
         for address in touched {
-            let account = accounts.account(address).map_err(|e| (Status::Internal, format!("read {address}: {e}")))?;
-            if let Some(account) = account {
-                result.accounts.push(wire::Account { address, balance: account.balance, nonce: account.nonce });
+            let account = self.read_account(target, address).map_err(|e| (Status::Internal, format!("reading account {address} failed: {e}")))?;
+            if let Some((balance, nonce)) = account {
+                result.accounts.push(wire::Account { address, balance, nonce });
             }
         }
         for entity_key in touched_entities(&sealed, &execution.receipts) {
-            let snapshot = arkiv_reth_rpc::store_reads::entity(&*self.store, commit, entity_key.0)
-                .map_err(|e| (Status::Internal, format!("read entity {entity_key}: {e}")))?
+            let snapshot = arkiv_interfaces::entity_records::read::<_, arkiv_reth_rpc::store_reads::ReadError>(&*self.store, target, entity_key.0)
+                .map_err(|e| (Status::Internal, format!("reading entity {entity_key} failed: {e}")))?
                 .map(|entity| serde_json::to_vec(&entity_data_from(entity, &Projection::all())).expect("entity data serialises"));
             result.entities.push((entity_key, snapshot));
         }
+
+        self.held.lock().expect("held blocks poisoned").push(Held {
+            height,
+            hash: sealed.hash(),
+            parent: sealed.header().parent_hash,
+            root,
+            sealed: sealed_root.is_some(),
+        });
+        if apply == Apply::Commit {
+            self.adopt(sealed.hash())?;
+        }
         Ok(result)
+    }
+
+    /// Commit held block `hash`: it becomes the store's head, and every other block held at its height or below is
+    /// dropped. [`Status::NotOnHead`] when the block is not held over the current head (never executed with
+    /// [`Apply::Hold`], dropped by an earlier adoption, or held before a restart); the host then executes it again.
+    pub fn adopt(&self, hash: B256) -> Result<(), (Status, String)> {
+        let (_, head_tag, _) = self.head().map_err(internal)?;
+        let mut held = self.held.lock().expect("held blocks poisoned");
+        let Some(block) = held.iter().find(|b| b.hash == hash) else {
+            return Err((Status::NotOnHead, format!("block {hash} is not held")));
+        };
+        if block.parent != head_tag {
+            return Err((Status::NotOnHead, format!("block {hash} is held over {}, the store's head is {head_tag}", block.parent)));
+        }
+        let (height, root) = (block.height, block.root);
+        if block.sealed {
+            let committed = self
+                .seals
+                .adopt(&self.store, height, hash.0, root.0, &[])
+                .map_err(|e| (Status::Internal, format!("commit block {height}: {e:?}")))?;
+            self.seals.finish_adoption(hash.0);
+            if committed.is_none() {
+                held.retain(|b| b.height > height);
+                return Err((Status::NotOnHead, format!("block {hash}'s sealed state was dropped")));
+            }
+            self.unchanged_blocks.lock().expect("unchanged blocks poisoned").clear();
+        } else {
+            // Nothing to commit; still, the losers at this height go, as an adoption drops them. An adoption against a
+            // root no candidate has drops every candidate at or below `height` and commits nothing.
+            let _ = self.seals.adopt(&self.store, height, [0xff; 32], [0xff; 32], &[]);
+            self.seals.finish_adoption(hash.0);
+            self.unchanged_blocks.lock().expect("unchanged blocks poisoned").push(hash);
+        }
+        held.retain(|b| b.height > height);
+        Ok(())
+    }
+
+    /// An account in `target`'s state: its balance and nonce, or `None` when there is no such Ethereum account.
+    fn read_account(&self, target: ReadTarget, address: Address) -> eyre::Result<Option<(U256, u64)>> {
+        let record = self.store.get(target, record_key(address.into_array()), None, None).map_err(|e| eyre::eyre!("{e:?}"))?.into_value();
+        let Some(record) = record else { return Ok(None) };
+        // As `GolemAccounts::account`: an account is a record with a balance or a nonce, either absent reading zero.
+        let balance = record.cell(CELL_BALANCE).map(|c| <[u8; 32]>::try_from(c.value.as_slice())).transpose();
+        let nonce = record.cell(CELL_NONCE).map(|c| <[u8; 8]>::try_from(c.value.as_slice())).transpose();
+        let (Ok(balance), Ok(nonce)) = (balance, nonce) else { eyre::bail!("malformed account record") };
+        if balance.is_none() && nonce.is_none() {
+            return Ok(None);
+        }
+        Ok(Some((balance.map_or(U256::ZERO, U256::from_be_bytes), nonce.map_or(0, u64::from_be_bytes))))
     }
 
     /// The store's head commit.
     pub(crate) fn store_head(&self) -> CommitId {
         self.store.head()
-    }
-
-    /// Drop the sealed candidates at `height` and below that will never be adopted.
-    fn discard_pending(&self, height: u64) {
-        // `adopt` against a root no candidate has drops every candidate at or below `height` and commits nothing.
-        let _ = self.seals.adopt(&self.store, height, [0xff; 32], [0xff; 32], &[]);
     }
 
     /// An account at the head, as `eth_getBalance` / `eth_getTransactionCount` answer it.
@@ -260,7 +369,7 @@ impl Node {
         header.gas_limit = request.block_gas_limit;
         header.beneficiary = request.beneficiary;
         let mut env = self.evm_config.evm_env(&header).map_err(|e| (Status::Internal, format!("{e}")))?;
-        // What reth sets for eth_call and eth_estimateGas: no base-fee check and no fee charging.
+        // What reth sets for eth_call and eth_estimateGas: no base-fee check, no fee charging and no nonce check.
         env.cfg_env.disable_base_fee = true;
         env.cfg_env.disable_fee_charge = true;
         env.cfg_env.disable_nonce_check = true;
@@ -279,7 +388,8 @@ impl Node {
         let outcome = evm.transact_raw(tx);
         match outcome {
             Ok(result) => Ok(wire::CallResult::from_execution(result.result)),
-            Err(e) => Err((Status::InvalidBlock, format!("{e}"))),
+            // The executor refused the call itself (as arkiv-reth's eth_call answers with an error): bad input.
+            Err(e) => Err((Status::BadInput, format!("{e}"))),
         }
     }
 }
@@ -389,6 +499,27 @@ unsafe fn slice<'a>(ptr: *const u8, len: usize) -> &'a [u8] {
     if len == 0 { &[] } else { unsafe { std::slice::from_raw_parts(ptr, len) } }
 }
 
+/// Open chains and builds, by the handle the host holds. A handle is a number, not a pointer: one that is unknown,
+/// closed or closed twice is refused with [`Status::BadInput`] instead of being dereferenced, and a call in progress
+/// keeps its chain alive through a concurrent close.
+static NODES: LazyLock<Mutex<HashMap<u64, Arc<Node>>>> = LazyLock::new(Default::default);
+static SESSIONS: LazyLock<Mutex<HashMap<u64, Arc<build::BuildSession>>>> = LazyLock::new(Default::default);
+static NEXT_HANDLE: AtomicU64 = AtomicU64::new(1);
+
+fn register<T>(registry: &Mutex<HashMap<u64, Arc<T>>>, value: T) -> u64 {
+    let handle = NEXT_HANDLE.fetch_add(1, Ordering::Relaxed);
+    registry.lock().expect("handle registry poisoned").insert(handle, Arc::new(value));
+    handle
+}
+
+fn lookup<T>(registry: &Mutex<HashMap<u64, Arc<T>>>, handle: u64) -> Result<Arc<T>, (Status, String)> {
+    registry.lock().expect("handle registry poisoned").get(&handle).cloned().ok_or_else(|| (Status::BadInput, format!("unknown or closed handle {handle}")))
+}
+
+fn remove<T>(registry: &Mutex<HashMap<u64, Arc<T>>>, handle: u64) -> Option<Arc<T>> {
+    registry.lock().expect("handle registry poisoned").remove(&handle)
+}
+
 fn guarded(out_ptr: *mut *mut u8, out_len: *mut usize, f: impl FnOnce() -> Result<Vec<u8>, (Status, String)>) -> i32 {
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
         Ok(Ok(bytes)) => {
@@ -436,19 +567,16 @@ pub unsafe extern "C" fn arkiv_open(
         out.extend_from_slice(&0u64.to_le_bytes());
         out.extend_from_slice(node.genesis_root.as_slice());
         out.extend_from_slice(node.genesis_hash.as_slice());
-        let handle = Box::into_raw(Box::new(node)) as u64;
+        let handle = register(&NODES, node);
         out[..8].copy_from_slice(&handle.to_le_bytes());
         Ok(out)
     })
 }
 
-/// # Safety
-/// `handle` must come from [`arkiv_open`] and not be used again.
+/// Close a chain. An unknown or already closed handle is ignored; a call still running on it finishes first.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn arkiv_close(handle: u64) {
-    if handle != 0 {
-        drop(unsafe { Box::from_raw(handle as *mut Node) });
-    }
+pub extern "C" fn arkiv_close(handle: u64) {
+    drop(remove(&NODES, handle));
 }
 
 /// # Safety
@@ -463,11 +591,11 @@ pub unsafe extern "C" fn arkiv_free(ptr: *mut u8, len: usize) {
 /// The store's head: `commit (8 LE) ‖ block hash tag (32) ‖ root (32)`.
 ///
 /// # Safety
-/// `handle` must be live; out pointers valid.
+/// Out pointers valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_head(handle: u64, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
-    let node = unsafe { &*(handle as *const Node) };
     guarded(out_ptr, out_len, || {
+        let node = lookup(&NODES, handle)?;
         let (commit, tag, root) = node.head().map_err(internal)?;
         let mut out = commit.to_le_bytes().to_vec();
         out.extend_from_slice(tag.as_slice());
@@ -476,12 +604,12 @@ pub unsafe extern "C" fn arkiv_head(handle: u64, out_ptr: *mut *mut u8, out_len:
     })
 }
 
-/// Execute an RLP block whose transactions were sent by `senders` (20 bytes each), and commit it when `commit` is
-/// non-zero and its state root matches. The output is [`wire::BlockResult`]'s encoding, or for
-/// [`Status::StateRootMismatch`] the root reached.
+/// Execute an RLP block whose transactions were sent by `senders` (20 bytes each) and, when its state root matches,
+/// apply it as `apply` says: 0 a dry run, 1 commit, 2 hold for [`arkiv_adopt`] ([`Apply`]). The output is
+/// [`wire::BlockResult`]'s encoding, or for [`Status::StateRootMismatch`] the root reached.
 ///
 /// # Safety
-/// `handle` must be live; pointers valid for their lengths.
+/// Pointers valid for their lengths.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_execute_block(
     handle: u64,
@@ -489,32 +617,55 @@ pub unsafe extern "C" fn arkiv_execute_block(
     block_len: usize,
     senders: *const u8,
     senders_len: usize,
-    commit: i32,
+    apply: i32,
     out_ptr: *mut *mut u8,
     out_len: *mut usize,
 ) -> i32 {
-    let node = unsafe { &*(handle as *const Node) };
     let block_rlp = unsafe { slice(block_rlp, block_len) };
     let senders = unsafe { slice(senders, senders_len) };
     guarded(out_ptr, out_len, || {
+        let node = lookup(&NODES, handle)?;
         let block = Block::decode(&mut &block_rlp[..]).map_err(|e| (Status::BadInput, format!("block rlp: {e}")))?;
         if senders.len() % 20 != 0 {
             return Err((Status::BadInput, "senders are 20 bytes each".into()));
         }
         let senders = senders.chunks_exact(20).map(Address::from_slice).collect();
-        node.execute_block(block, senders, commit != 0).map(|result| result.encode())
+        let apply = match apply {
+            0 => Apply::DryRun,
+            1 => Apply::Commit,
+            2 => Apply::Hold,
+            other => return Err((Status::BadInput, format!("apply {other}: 0, 1 or 2"))),
+        };
+        node.execute_block(block, senders, apply).map(|result| result.encode())
+    })
+}
+
+/// Commit block `hash` (32 bytes), held by [`arkiv_execute_block`]: it becomes the store's head, and every other block
+/// held at its height or below is dropped. [`Status::NotOnHead`] when it is not held over the store's head; the host
+/// then executes it again. The output is empty.
+///
+/// # Safety
+/// `hash` must be 32 readable bytes, or null.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn arkiv_adopt(handle: u64, hash: *const u8, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
+    let hash = (!hash.is_null()).then(|| B256::from_slice(unsafe { slice(hash, 32) }));
+    guarded(out_ptr, out_len, || {
+        let node = lookup(&NODES, handle)?;
+        let hash = hash.ok_or_else(|| (Status::BadInput, "null hash".into()))?;
+        node.adopt(hash).map(|()| Vec::new())
     })
 }
 
 /// An account at the head: `exists (1) ‖ balance (32 BE) ‖ nonce (8 LE)`.
 ///
 /// # Safety
-/// `handle` must be live; `address` 20 readable bytes.
+/// `address` must be 20 readable bytes, or null.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_account(handle: u64, address: *const u8, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
-    let node = unsafe { &*(handle as *const Node) };
-    let address = Address::from_slice(unsafe { slice(address, 20) });
+    let address = (!address.is_null()).then(|| Address::from_slice(unsafe { slice(address, 20) }));
     guarded(out_ptr, out_len, || {
+        let node = lookup(&NODES, handle)?;
+        let address = address.ok_or_else(|| (Status::BadInput, "no address".to_owned()))?;
         let account = node.account(address).map_err(internal)?;
         let mut out = vec![u8::from(account.is_some())];
         let (balance, nonce) = account.unwrap_or_default();
@@ -527,12 +678,12 @@ pub unsafe extern "C" fn arkiv_account(handle: u64, address: *const u8, out_ptr:
 /// A non-committing call at the head; request and response are JSON (see [`wire::CallRequest`]).
 ///
 /// # Safety
-/// `handle` must be live; pointers valid for their lengths.
+/// Pointers valid for their lengths.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_call(handle: u64, request: *const u8, request_len: usize, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
-    let node = unsafe { &*(handle as *const Node) };
     let request = unsafe { slice(request, request_len) };
     guarded(out_ptr, out_len, || {
+        let node = lookup(&NODES, handle)?;
         let request: wire::CallRequest = serde_json::from_slice(request).map_err(|e| (Status::BadInput, format!("{e}")))?;
         node.call(&request).map(|r| serde_json::to_vec(&r).expect("call result serialises"))
     })
@@ -542,7 +693,7 @@ pub unsafe extern "C" fn arkiv_call(handle: u64, request: *const u8, request_len
 /// the store's head. The output is a JSON object with either `result` or `error`.
 ///
 /// # Safety
-/// `handle` must be live; pointers valid for their lengths.
+/// Pointers valid for their lengths.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_rpc(
     handle: u64,
@@ -554,10 +705,10 @@ pub unsafe extern "C" fn arkiv_rpc(
     out_ptr: *mut *mut u8,
     out_len: *mut usize,
 ) -> i32 {
-    let node = unsafe { &*(handle as *const Node) };
     let method = unsafe { slice(method, method_len) };
     let params = unsafe { slice(params, params_len) };
     guarded(out_ptr, out_len, || {
+        let node = lookup(&NODES, handle)?;
         let method = std::str::from_utf8(method).map_err(|e| (Status::BadInput, format!("{e}")))?;
         let params: serde_json::Value =
             if params.is_empty() { serde_json::Value::Array(vec![]) } else { serde_json::from_slice(params).map_err(|e| (Status::BadInput, format!("{e}")))? };
@@ -568,25 +719,24 @@ pub unsafe extern "C" fn arkiv_rpc(
 /// The purge keys for block `block` (see [`Node::purge_keys`]): 32 bytes each.
 ///
 /// # Safety
-/// `handle` must be live; out pointers valid.
+/// Out pointers valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_purge_keys(handle: u64, block: u64, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
-    let node = unsafe { &*(handle as *const Node) };
-    guarded(out_ptr, out_len, || Ok(node.purge_keys(block)?.into_iter().flat_map(|k| k.0).collect()))
+    guarded(out_ptr, out_len, || Ok(lookup(&NODES, handle)?.purge_keys(block)?.into_iter().flat_map(|k| k.0).collect()))
 }
 
 /// Open a block build over the RLP header of the block to build (see [`Node::build_begin`]). Output: the session
 /// handle (8 bytes LE), for [`arkiv_build_apply`], then [`arkiv_build_finish`] or [`arkiv_build_abort`].
 ///
 /// # Safety
-/// `handle` must be live; pointers valid for their lengths.
+/// Pointers valid for their lengths.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_build_begin(handle: u64, header_rlp: *const u8, header_len: usize, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
-    let node = unsafe { &*(handle as *const Node) };
     let header_rlp = unsafe { slice(header_rlp, header_len) };
     guarded(out_ptr, out_len, || {
+        let node = lookup(&NODES, handle)?;
         let header = alloy_consensus::Header::decode(&mut &header_rlp[..]).map_err(|e| (Status::BadInput, format!("header rlp: {e}")))?;
-        let session = Box::into_raw(Box::new(node.build_begin(header)?)) as u64;
+        let session = register(&SESSIONS, node.build_begin(header)?);
         Ok(session.to_le_bytes().to_vec())
     })
 }
@@ -596,13 +746,14 @@ pub unsafe extern "C" fn arkiv_build_begin(handle: u64, header_rlp: *const u8, h
 /// build goes on without it.
 ///
 /// # Safety
-/// `session` must be live; pointers valid for their lengths.
+/// Pointers valid for their lengths.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_build_apply(session: u64, tx: *const u8, tx_len: usize, sender: *const u8, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
-    let session = unsafe { &*(session as *const build::BuildSession) };
     let tx = unsafe { slice(tx, tx_len) };
-    let sender = Address::from_slice(unsafe { slice(sender, 20) });
+    let sender = (!sender.is_null()).then(|| Address::from_slice(unsafe { slice(sender, 20) }));
     guarded(out_ptr, out_len, || {
+        let session = lookup(&SESSIONS, session)?;
+        let sender = sender.ok_or_else(|| (Status::BadInput, "no sender".to_owned()))?;
         use alloy_eips::eip2718::Decodable2718;
         let tx = TransactionSigned::decode_2718(&mut &tx[..]).map_err(|e| (Status::BadInput, format!("transaction: {e}")))?;
         let receipt = session.apply(tx, sender).map_err(|e| (Status::InvalidBlock, e))?;
@@ -615,22 +766,22 @@ pub unsafe extern "C" fn arkiv_build_apply(session: u64, tx: *const u8, tx_len: 
 /// Finish and free a build. Output: [`wire::BlockResult`]'s encoding, whose root the block's header must carry.
 ///
 /// # Safety
-/// `session` must come from [`arkiv_build_begin`] and not be used again.
+/// Out pointers valid.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn arkiv_build_finish(session: u64, out_ptr: *mut *mut u8, out_len: *mut usize) -> i32 {
-    let session = unsafe { Box::from_raw(session as *mut build::BuildSession) };
-    guarded(out_ptr, out_len, move || session.finish().map(|r| r.encode()).map_err(|e| (Status::InvalidBlock, e)))
+    guarded(out_ptr, out_len, move || {
+        let session = remove(&SESSIONS, session).ok_or_else(|| (Status::BadInput, format!("unknown or finished build {session}")))?;
+        let session = Arc::try_unwrap(session).map_err(|_| (Status::BadInput, "the build is still applying a transaction".to_owned()))?;
+        session.finish().map(|r| r.encode()).map_err(|e| (Status::InvalidBlock, e))
+    })
 }
 
 /// Abandon and free a build; nothing it applied is kept.
 ///
-/// # Safety
-/// `session` must come from [`arkiv_build_begin`] and not be used again.
+/// Abandon a build; nothing it applied is kept. An unknown or finished build is ignored.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn arkiv_build_abort(session: u64) {
-    if session != 0 {
-        drop(unsafe { Box::from_raw(session as *mut build::BuildSession) });
-    }
+pub extern "C" fn arkiv_build_abort(session: u64) {
+    drop(remove(&SESSIONS, session));
 }
 
 /// Every account of the GolemDB store in `dir`, which this process must not have open (see

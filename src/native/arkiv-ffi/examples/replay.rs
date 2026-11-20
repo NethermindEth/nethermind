@@ -6,7 +6,7 @@ use std::io::BufRead;
 use std::time::Instant;
 
 use alloy_primitives::Address;
-use arkiv_ffi::Node;
+use arkiv_ffi::{Apply, Node};
 
 fn main() -> eyre::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -25,7 +25,7 @@ fn main() -> eyre::Result<()> {
             eyre::bail!("block {number}: the decoded header does not hash to {hash}");
         }
         txs += block.body.transactions.len() as u64;
-        match node.execute_block(block, senders, true) {
+        match node.execute_block(block, senders, Apply::Commit) {
             Ok(_) => blocks += 1,
             Err((status, message)) => eyre::bail!("block {number}: {status:?}: {message}"),
         }

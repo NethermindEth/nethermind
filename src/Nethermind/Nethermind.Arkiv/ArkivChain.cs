@@ -36,8 +36,10 @@ namespace Nethermind.Arkiv;
 /// <item>Each committed block's native result is kept under its hash. A block Nethermind processes again — after a
 /// restart that lost its last blocks, or when a multi-block branch is retried — is answered from it, not executed
 /// twice.</item>
-/// <item>A store behind Nethermind's chain is brought forward by executing the missing blocks from Nethermind's own
-/// block tree.</item>
+/// <item>A block is held, executed but not committed, until a block builds on it (<see cref="IArkivConfig.HoldHeadBlock"/>):
+/// a competing block at the tip executes over the same parent, and whichever one the chain goes on from commits.</item>
+/// <item>A store behind Nethermind's chain is brought forward by committing the held block and executing any other
+/// missing blocks from Nethermind's own block tree.</item>
 /// <item>A reorg below the store's head restores the newest store copy (<see cref="IArkivConfig.CheckpointInterval"/>)
 /// on the new branch's ancestry and replays forward from it.</item>
 /// </list>
@@ -129,7 +131,8 @@ public sealed class ArkivChain : IDisposable
 
     /// <summary>
     /// Executes <paramref name="block"/> on the store's head and, when <paramref name="commit"/> is set and its state
-    /// root is the header's, commits it. Throws <see cref="InvalidBlockException"/> for a block Arkiv refuses.
+    /// root is the header's, applies it: committed, or held until a block builds on it (<see cref="IArkivConfig.HoldHeadBlock"/>).
+    /// Throws <see cref="InvalidBlockException"/> for a block Arkiv refuses.
     /// </summary>
     public ArkivBlockResult Execute(Block block, bool commit)
     {
@@ -141,22 +144,35 @@ public sealed class ArkivChain : IDisposable
         {
             throw new InvalidBlockException(block, $"Arkiv does not support consensus-layer withdrawals; the block carries {withdrawals.Length}");
         }
+        ArkivApply apply = !commit ? ArkivApply.DryRun : _config.HoldHeadBlock ? ArkivApply.Hold : ArkivApply.Commit;
         lock (_lock)
         {
             if (TryGetResult(block.Hash!, out ArkivBlockResult? replayed)) return replayed;
             try
             {
-                return ExecuteOnHead(block, commit);
+                return ExecuteOnHead(block, apply);
             }
             catch (ArkivNativeException e) when (e.Status == ArkivStatus.NotOnHead)
             {
                 BringHeadTo(block.Header);
-                return ExecuteOnHead(block, commit);
+                return ExecuteOnHead(block, apply);
             }
         }
     }
 
-    private ArkivBlockResult ExecuteOnHead(Block block, bool commit)
+    /// <summary>
+    /// Makes the store's head the parent of the block <paramref name="header"/> describes, committing it if it is held:
+    /// a block is built over committed state.
+    /// </summary>
+    public void PrepareBuild(BlockHeader header)
+    {
+        lock (_lock)
+        {
+            if (Head.Hash != header.ParentHash) BringHeadTo(header);
+        }
+    }
+
+    private ArkivBlockResult ExecuteOnHead(Block block, ArkivApply apply)
     {
         byte[] senders = new byte[block.Transactions.Length * Address.Size];
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -170,7 +186,7 @@ public sealed class ArkivChain : IDisposable
         byte[] encoded;
         try
         {
-            encoded = ArkivNative.ExecuteBlock(_handle, Rlp.Encode(block), senders, commit);
+            encoded = ArkivNative.ExecuteBlock(_handle, Rlp.Encode(block), senders, apply);
         }
         catch (ArkivNativeException e) when (e.Status is ArkivStatus.StateRootMismatch)
         {
@@ -182,23 +198,58 @@ public sealed class ArkivChain : IDisposable
         }
 
         ArkivBlockResult result = ArkivBlockResult.Decode(encoded);
-        if (commit)
+        if (apply != ArkivApply.DryRun)
         {
-            using (IWriteBatch batch = _db.StartWriteBatch())
-            {
-                batch.Set(Key(ResultPrefix, block.Hash!.Bytes), encoded);
-                // The native side reports each touched entity once per block, so no key repeats within a batch.
-                if (_config.EntityHistory) RecordEntities(batch, block.Number, result.Entities);
-                batch.Set(HeadKey, HeadValue(block.Number, block.Hash!));
-            }
-            MaybeCheckpoint(block.Header);
+            // Kept for a held block too: Nethermind processing it again is answered from it, and its adoption reads it.
+            _db.PutSpan(Key(ResultPrefix, block.Hash!.Bytes), encoded);
+            if (apply == ArkivApply.Commit) Committed(block.Header, result);
         }
         return result;
+    }
+
+    /// <summary>Records what the store's head moving to <paramref name="header"/>'s block entails beside it.</summary>
+    private void Committed(BlockHeader header, ArkivBlockResult result)
+    {
+        using (IWriteBatch batch = _db.StartWriteBatch())
+        {
+            // The native side reports each touched entity once per block, so no key repeats within a batch.
+            if (_config.EntityHistory) RecordEntities(batch, header.Number, result.Entities);
+            batch.Set(HeadKey, HeadValue(header.Number, header.Hash!));
+        }
+        MaybeCheckpoint(header);
+    }
+
+    /// <summary>Commits <paramref name="header"/>'s block if the store holds it over its head; false when it does not.</summary>
+    private bool TryAdopt(BlockHeader header)
+    {
+        if (!TryGetResult(header.Hash!, out ArkivBlockResult? result)) return false;
+        try
+        {
+            ArkivNative.Adopt(_handle, header.Hash!.Bytes);
+        }
+        catch (ArkivNativeException e) when (e.Status == ArkivStatus.NotOnHead)
+        {
+            return false;
+        }
+        Committed(header, result);
+        return true;
+    }
+
+    /// <summary>
+    /// The block the store's head commit holds, from the store itself: after a restart it can be behind the recorded
+    /// head, which counts blocks that changed nothing and are known to the store only in memory.
+    /// </summary>
+    private void ReadHeadFromStore()
+    {
+        Hash256 tag = new(ArkivNative.Head(_handle).AsSpan(8, 32));
+        if (tag == Head.Hash) return;
+        if (_blockTree.Value.FindHeader(tag, BlockTreeLookupOptions.None) is { } header) WriteHead(header.Number, tag);
     }
 
     /// <summary>Makes the store's head <paramref name="target"/>'s parent: forward along its ancestry, or back through a copy.</summary>
     private void BringHeadTo(BlockHeader target)
     {
+        ReadHeadFromStore();
         IBlockTree tree = _blockTree.Value;
         (ulong headNumber, Hash256 headHash) = Head;
         List<BlockHeader> ancestry = [];
@@ -224,16 +275,20 @@ public sealed class ArkivChain : IDisposable
                 cursor = tree.FindHeader(cursor.ParentHash!, BlockTreeLookupOptions.None)!;
             }
         }
-        else if (ancestry.Count > 0 && _logger.IsWarn)
-        {
-            _logger.Warn($"Arkiv: the store's head {headNumber} is {ancestry.Count} blocks behind block {target.ToString(BlockHeader.Format.Short)}'s parent; executing them from the block tree");
-        }
 
+        // The block right above the head is usually held: then it only commits. Anything else executes from the tree.
+        int executed = 0;
         for (int i = ancestry.Count - 1; i >= 0; i--)
         {
+            if (TryAdopt(ancestry[i])) continue;
             Block block = tree.FindBlock(ancestry[i].Hash!, BlockTreeLookupOptions.None)
                 ?? throw new InvalidOperationException($"Arkiv: block {ancestry[i].ToString(BlockHeader.Format.Short)} has no body to replay");
-            ExecuteOnHead(block, commit: true);
+            ExecuteOnHead(block, ArkivApply.Commit);
+            executed++;
+        }
+        if (executed > 0 && _logger.IsWarn)
+        {
+            _logger.Warn($"Arkiv: the store's head {headNumber} was {ancestry.Count} blocks behind block {target.ToString(BlockHeader.Format.Short)}'s parent; executed {executed} of them from the block tree");
         }
     }
 

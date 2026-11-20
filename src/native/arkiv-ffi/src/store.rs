@@ -9,9 +9,9 @@ use golemdb_merkle::Keccak256Hasher;
 use golemdb_storage::Store as _;
 use golemdb_storage_mdbx::MdbxStore;
 
-/// The record id of `#recordKeys`, GolemDB's system record binding every record key to its record id
-/// (`golemdb_cells::system::RECORD_KEYS`): one cell per record, named by the raw 32-byte key.
-const RECORD_KEYS: u64 = 3;
+/// `#recordKeys`, GolemDB's system record binding every record key to its record id: one cell per record, named by
+/// the raw 32-byte key.
+const RECORD_KEYS: u64 = golemdb_cells::system::RECORD_KEYS.id;
 
 /// Every account the store at `directory` holds. Arkiv keys an account's record by its address left-padded with twelve
 /// zero bytes (`arkiv_golemdb_state::accounts::record_key`), a range no entity key can fall in; the binding cells of

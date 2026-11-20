@@ -25,6 +25,9 @@ public interface IArkivConfig : IConfig
     [ConfigItem(Description = "Copy the GolemDB store every this many committed blocks, so a reorg below the store's head can be replayed from a copy. 0 disables copies.", DefaultValue = "0")]
     ulong CheckpointInterval { get; set; }
 
+    [ConfigItem(Description = "Commit a block to the GolemDB store only once a block builds on it (or this node builds on it). A competing block at the same height then executes over the same parent, so a one-block reorg at the tip costs nothing; committed first, the block could only be replaced by restoring a store copy, as GolemDB has no rewind. Until then `arkiv_*` reads and `eth_call` see the block before the head.", DefaultValue = "true")]
+    bool HoldHeadBlock { get; set; }
+
     [ConfigItem(Description = "Serve a copy of the GolemDB store to peers that state-sync (`arkiv/1`). The copy is made at the head when a peer asks and the last one is stale.", DefaultValue = "true")]
     bool ServeState { get; set; }
 
@@ -40,6 +43,7 @@ public class ArkivConfig : IArkivConfig
     public string? NativeLibrary { get; set; }
     public bool EntityHistory { get; set; } = true;
     public ulong CheckpointInterval { get; set; }
+    public bool HoldHeadBlock { get; set; } = true;
     public bool ServeState { get; set; } = true;
     public ulong ServedCopyAge { get; set; } = 64;
 }
