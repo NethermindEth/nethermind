@@ -156,7 +156,9 @@ public class PersistenceManager(
             {
                 (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
                     new StateId(nextBoundary, canonicalRoot), currentPersistedState, _compactSize);
-                if (persisted is not null || inMemory is not null)
+                if (IsDeferrablePartialChunk(persisted, nextBoundary, latestSnapshot))
+                    persisted!.Dispose();
+                else if (persisted is not null || inMemory is not null)
                     return (persisted, inMemory, null);
             }
         }
@@ -206,6 +208,21 @@ public class PersistenceManager(
 
         return (null, null, conversion);
     }
+
+    /// <summary>
+    /// Whether a finalized-driven persisted-tier candidate stops short of the next compaction boundary and
+    /// can wait one more compaction window for the full chunk.
+    /// </summary>
+    /// <remarks>
+    /// When persistence outruns the persisted-snapshot compactor, the walk only finds the oldest small piece
+    /// of the range, and draining it piece by piece (1, 2, 4, 8, 16 blocks) costs one RocksDB batch each
+    /// instead of one per range. Deferring is bounded: once the head is a full window past the
+    /// <c>MinReorgDepth</c> gate, the partial chunk is persisted as before.
+    /// </remarks>
+    private bool IsDeferrablePartialChunk(PersistedSnapshot? persisted, ulong nextBoundary, in StateId latestSnapshot) =>
+        persisted is not null
+        && persisted.To.BlockNumber != nextBoundary
+        && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) < _minReorgDepth + _compactSize;
 
     private StateId ForcedPersistSeed(in StateId latestSnapshot) =>
         snapshotRepository.GetLastCommittedStateId() ?? snapshotRepository.GetLastSnapshotId() ?? latestSnapshot;
