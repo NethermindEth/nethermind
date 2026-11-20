@@ -526,7 +526,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
             Assert.That(hasStorage, Is.EqualTo(expectedError is null));
             if (hasStorage)
                 Assert.That(storage.GetProperty("0x" + new string('0', 64)).GetString(), Is.EqualTo("0x" + expectedValue.ToString("x64")));
-            Assert.That(lastStorage.Refund, Is.EqualTo(expectedValue == 0 ? (long?)spec.GasCosts.SClearRefund : null));
+            Assert.That(lastStorage.Refund, Is.Null, "the counter before the SSTORE");
         }
 
         using JsonDocument streamed = ExecuteStreamingTrace(block, tx, GethTraceOptions.Default with { DisableStack = disableStack });
