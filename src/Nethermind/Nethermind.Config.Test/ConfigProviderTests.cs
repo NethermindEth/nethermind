@@ -329,15 +329,40 @@ namespace Nethermind.Config.Test
             Assert.That(provider.GetRawValue(category, nameof(IAliasCollisionConfig.Other)), Is.EqualTo(expected));
         }
 
+        // Built from private types, as a discovered INoCategoryConfig would change how the global options resolve
         [TestCase("UncategorizedAlias")]
         [TestCase("uncategorizedalias")]
         [TestCase("UncategorizedAliasConfig")]
-        public void Raw_value_short_alias_is_not_shadowed_by_uncategorized_config(string category)
+        public void Short_alias_is_not_shadowed_by_uncategorized_config(string category)
         {
-            ConfigProvider provider = new();
-            provider.Initialize();
+            (Type, Type)[] configTypes =
+            [
+                (typeof(IUncategorizedAlias), typeof(UncategorizedAlias)),
+                (typeof(IUncategorizedAliasConfig), typeof(UncategorizedAliasConfig))
+            ];
 
-            Assert.That(provider.GetRawValue(category, nameof(IUncategorizedAliasConfig.Value)), Is.EqualTo(6));
+            Assert.That(ConfigProvider.FindConfigTypes(configTypes, category, nameof(IUncategorizedAliasConfig.Value)),
+                Is.EqualTo(new[] { (typeof(IUncategorizedAliasConfig), typeof(UncategorizedAliasConfig)) }));
+        }
+
+        private interface IUncategorizedAlias : INoCategoryConfig
+        {
+        }
+
+        private class UncategorizedAlias : IUncategorizedAlias
+        {
+            public string? Config { get; set; }
+            public string? CliSwitchLocal { get; set; }
+        }
+
+        private interface IUncategorizedAliasConfig : IConfig
+        {
+            int Value { get; set; }
+        }
+
+        private class UncategorizedAliasConfig : IUncategorizedAliasConfig
+        {
+            public int Value { get; set; }
         }
 
         public static IEnumerable<TestCaseData> ReportedKeyCases()
@@ -479,26 +504,5 @@ namespace Nethermind.Config.Test
     {
         public int Value { get; set; } = 4;
         public int Other { get; set; } = 5;
-    }
-
-    public interface IUncategorizedAlias : INoCategoryConfig
-    {
-    }
-
-    public class UncategorizedAlias : IUncategorizedAlias
-    {
-        public string? Config { get; set; }
-        public string? CliSwitchLocal { get; set; }
-    }
-
-    public interface IUncategorizedAliasConfig : IConfig
-    {
-        [ConfigItem(Description = "Test item of a category whose short alias is the name of a config without a category.", DefaultValue = "6")]
-        int Value { get; set; }
-    }
-
-    public class UncategorizedAliasConfig : IUncategorizedAliasConfig
-    {
-        public int Value { get; set; } = 6;
     }
 }

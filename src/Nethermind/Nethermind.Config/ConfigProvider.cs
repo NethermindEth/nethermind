@@ -99,7 +99,7 @@ public class ConfigProvider : IConfigProvider
         }
 
         // Query sources and defaults under the names Initialize uses, whichever form (Sync or SyncConfig) was requested
-        foreach ((Type configType, Type directImplementation) in FindConfigTypes(category, name))
+        foreach ((Type configType, Type directImplementation) in FindConfigTypes(ConfigTypesFromAssembly, category, name))
         {
             string? sourceCategory = ConfigExtensions.GetCategoryName(configType) is null ? null : directImplementation.Name;
             for (int i = 0; i < _configSource.Count; i++)
@@ -112,7 +112,7 @@ public class ConfigProvider : IConfigProvider
             }
         }
 
-        foreach ((Type configType, _) in FindConfigTypes(category, name))
+        foreach ((Type configType, _) in FindConfigTypes(ConfigTypesFromAssembly, category, name))
         {
             if (Categories.TryGetValue(configType.Name[1..], out object? value))
             {
@@ -126,12 +126,13 @@ public class ConfigProvider : IConfigProvider
         return null;
     }
 
-    private static IEnumerable<(Type ConfigType, Type DirectImplementation)> FindConfigTypes(string? category, string name)
+    internal static IEnumerable<(Type ConfigType, Type DirectImplementation)> FindConfigTypes(
+        IEnumerable<(Type ConfigType, Type DirectImplementation)> configTypes, string? category, string name)
     {
         // An exact category name (Foo for IFoo) wins over the short alias of another one (Foo for IFooConfig),
         // whether or not it declares the requested item
         bool hasExactMatch = false;
-        foreach ((Type configType, _) in ConfigTypesFromAssembly)
+        foreach ((Type configType, _) in configTypes)
         {
             if (IsExactCategory(configType, category))
             {
@@ -140,7 +141,7 @@ public class ConfigProvider : IConfigProvider
             }
         }
 
-        foreach ((Type configType, Type directImplementation) in ConfigTypesFromAssembly)
+        foreach ((Type configType, Type directImplementation) in configTypes)
         {
             if (HasProperty(configType, category, name) && (!hasExactMatch || IsExactCategory(configType, category)))
             {
