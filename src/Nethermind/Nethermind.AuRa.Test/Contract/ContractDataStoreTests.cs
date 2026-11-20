@@ -5,14 +5,17 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
+using Nethermind.State;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -238,6 +241,78 @@ public abstract class ContractDataStoreTests
             new TxPriorityContract.Destination(TestItem.AddressB, new byte[] {0, 1, 2, 5}, 4),
             new TxPriorityContract.Destination(TestItem.AddressA, new byte[] {0, 1, 2, 3}, 1)
         }).UsingPropertiesComparer());
+    }
+
+    [Test]
+    public async Task does_not_refresh_from_superseded_head()
+    {
+        Block staleHead = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
+        Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
+        (ContractDataStore<Address> store, IDataContract<Address> dataContract, IBlockTree blockTree, TestLogger logger) = BuildStoreWithLogger();
+        blockTree.Head.Returns(head);
+        dataContract.GetAllItemsFromBlock(staleHead.Header).Throws(new StateNotRetainedException("State is unavailable"));
+        Address[] expected = [TestItem.AddressB];
+        dataContract.GetAllItemsFromBlock(head.Header).Returns(expected);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(staleHead));
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
+        await store.LatestRefreshTask;
+
+        dataContract.DidNotReceive().GetAllItemsFromBlock(staleHead.Header);
+        Assert.That(store.GetItemsFromContractAtBlock(head.Header), Is.EquivalentTo(expected));
+        Assert.That(logger.LogList, Has.None.StartsWith("Couldn't load contract data"));
+    }
+
+    [Test]
+    public async Task skips_head_whose_state_is_pruned_after_it_was_superseded()
+    {
+        Block staleHead = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
+        Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakA).TestObject).TestObject;
+        (ContractDataStore<Address> store, IDataContract<Address> dataContract, IBlockTree blockTree, TestLogger logger) = BuildStoreWithLogger();
+        Block currentHead = staleHead;
+        blockTree.Head.Returns(_ => currentHead);
+        dataContract.GetAllItemsFromBlock(staleHead.Header).Returns(_ =>
+        {
+            // the head moves on and the state of the previous one is pruned while it is being read
+            currentHead = head;
+            throw new StateNotRetainedException("State is unavailable");
+        });
+        Address[] expected = [TestItem.AddressB];
+        dataContract.GetAllItemsFromBlock(head.Header).Returns(expected);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(staleHead));
+        await store.LatestRefreshTask;
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
+        await store.LatestRefreshTask;
+
+        Assert.That(store.GetItemsFromContractAtBlock(head.Header), Is.EquivalentTo(expected));
+        Assert.That(logger.LogList, Has.None.StartsWith("Couldn't load contract data"));
+    }
+
+    [Test]
+    public async Task logs_error_when_state_of_current_head_is_unavailable()
+    {
+        Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
+        (ContractDataStore<Address> store, IDataContract<Address> dataContract, IBlockTree blockTree, TestLogger logger) = BuildStoreWithLogger();
+        blockTree.Head.Returns(head);
+        dataContract.GetAllItemsFromBlock(head.Header).Throws(new StateNotRetainedException("State is unavailable"));
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
+        await store.LatestRefreshTask;
+
+        Assert.That(logger.LogList, Has.One.StartsWith("Couldn't load contract data"));
+    }
+
+    private static (ContractDataStore<Address> Store, IDataContract<Address> DataContract, IBlockTree BlockTree, TestLogger Logger) BuildStoreWithLogger()
+    {
+        IDataContract<Address> dataContract = Substitute.For<IDataContract<Address>>();
+        dataContract.IncrementalChanges.Returns(true);
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
+        receiptFinder.Get(Arg.Any<Block>()).Returns([]);
+        TestLogger logger = new() { IsTrace = false };
+        ContractDataStore<Address> store = new(new HashSetContractDataStoreCollection<Address>(), dataContract, blockTree, receiptFinder, new OneLoggerLogManager(new(logger)));
+        return (store, dataContract, blockTree, logger);
     }
 
     protected virtual TestCase<T> BuildTestCase<T>(IComparer<T> keyComparer = null, IComparer<T> valueComparer = null)

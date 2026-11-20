@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 {
@@ -24,6 +25,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private Hash256 _lastHash;
         private Task _latestRefresh = Task.CompletedTask;
         private readonly Lock _lock = new();
+        private readonly Lock _refreshLock = new();
         private readonly ILogger _logger;
 
         public Task LatestRefreshTask => Volatile.Read(ref _latestRefresh);
@@ -46,19 +48,40 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
 
         private void OnNewHead(object sender, BlockEventArgs e)
         {
-            // we don't want this to be on main processing thread
-            Task refresh = Task.Run(() => Refresh(e.Block))
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
+            // we don't want this to be on main processing thread, and refreshes must run one at a time in head order
+            // so that a refresh of an older head never overwrites the data of a newer one
+            lock (_refreshLock)
+            {
+                Task refresh = _latestRefresh
+                    .ContinueWith(_ => Refresh(e.Block), TaskScheduler.Default)
+                    .ContinueWith(t =>
                     {
-                        if (_logger.IsError) _logger.Error($"Couldn't load contract data from block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
-                    }
-                });
-            Volatile.Write(ref _latestRefresh, refresh);
+                        if (t.IsFaulted)
+                        {
+                            if (_logger.IsError) _logger.Error($"Couldn't load contract data from block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
+                        }
+                    }, TaskScheduler.Default);
+                Volatile.Write(ref _latestRefresh, refresh);
+            }
         }
 
-        private void Refresh(Block block) => GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
+        private void Refresh(Block block)
+        {
+            // Heads can move faster than the refreshes run, e.g. when blocks are processed in batches while syncing.
+            // A superseded head's state may already be pruned, and the newer head's refresh reloads the data anyway.
+            if (IsSupersededHead(block)) return;
+
+            try
+            {
+                GetItemsFromContractAtBlock(block.Header, block.Header.ParentHash == _lastHash, _receiptFinder.Get(block));
+            }
+            catch (StateUnavailableException e) when (IsSupersededHead(block))
+            {
+                if (_logger.IsDebug) _logger.Debug($"Skipped loading contract data from superseded head {block.ToString(Block.Format.FullHashAndNumber)}: {e.Message}");
+            }
+        }
+
+        private bool IsSupersededHead(Block block) => _blockTree.Head is { } head && head.Hash != block.Hash;
 
         private void GetItemsFromContractAtBlock(BlockHeader blockHeader, bool isConsecutiveBlock, TxReceipt[] receipts = null)
         {
