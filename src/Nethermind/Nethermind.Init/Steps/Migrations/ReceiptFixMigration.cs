@@ -128,7 +128,7 @@ namespace Nethermind.Init.Steps.Migrations
                         TxReceipt[]? txReceipts = receipts.FirstOrDefault();
                         if (txReceipts is null)
                         {
-                            if (_logger.IsInfo) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
+                            if (_logger.IsError) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.");
                         }
                         else if (!HasExpectedRoot(block, txReceipts))
                         {
@@ -145,12 +145,12 @@ namespace Nethermind.Init.Steps.Migrations
                     }
                     catch (Exception e)
                     {
-                        if (_logger.IsInfo) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.", e);
+                        if (_logger.IsError) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}.", e);
                     }
                 }
                 else
                 {
-                    if (_logger.IsInfo) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}. No peer available.");
+                    if (_logger.IsError) _logger.Error($"Fail to download missing receipts for block {block.ToString(Block.Format.FullHashAndNumber)}. No peer available.");
                 }
 
                 return false;

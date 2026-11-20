@@ -148,6 +148,25 @@ public class OverlayRpcModuleTests
     }
 
     [Test]
+    public async Task CallConstructor_stops_on_the_cancelled_dispatcher_token()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        Deployment deployment = await Deploy(chain);
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        await timeout.CancelAsync();
+
+        try
+        {
+            using JsonDocument response = await Request(chain, "overlay_callConstructor", deployment.Contract, ContextConstructor);
+            Assert.That(response.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.Timeout));
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
     public async Task CallConstructor_fails_without_contract()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
