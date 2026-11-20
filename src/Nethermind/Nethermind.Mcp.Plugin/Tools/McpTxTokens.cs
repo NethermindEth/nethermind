@@ -354,7 +354,7 @@ internal static class McpTxTokens
                     token = pending[_next];
                 }
 
-                if (Spent() || !metadata.TryGet(eth, token, block, Spent, out McpTokenInfo? info))
+                if (Spent() || !metadata.TryGet(eth, token, block, Spent, out McpTokenInfo? info, cancellationToken))
                 {
                     return;
                 }

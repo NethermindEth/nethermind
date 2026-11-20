@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie;
 
@@ -115,7 +116,8 @@ public sealed partial class LeafData
         // A suffix of whole bytes, the odd key's first nibble sitting in the low half of the byte before them.
         int tailLength = compact.Length - 1;
         if (isOdd && ((flags ^ key[key.Length - compact.Length]) & 0xF) != 0) return false;
-        return compact[1..].SequenceEqual(key[(key.Length - tailLength)..]);
+        ReadOnlySpan<byte> keyTail = key[(key.Length - tailLength)..];
+        return Bytes.SequenceEqualAtAnyAlignment(compact[1..], keyTail);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

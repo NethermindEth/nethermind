@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
@@ -22,10 +24,13 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
@@ -530,6 +535,95 @@ public class BeaconHeadersSyncTests
         Assert.That(ctx.BeaconSync.IsBeaconSyncHeadersFinished(), Is.True);
         request = await ctx.Feed.PrepareRequest();
         Assert.That(request, Is.Null);
+    }
+
+    [Test]
+    public async Task Resumes_below_the_lowest_inserted_header_after_reinitialization()
+    {
+        Context ctx = CreateContextWithStoredSyncPivot(syncPivotNumber: 500, beaconPivotNumber: 700);
+        // The first request covers only its top header, so it is the only header inserted before the feed is initialized again.
+        ctx.PeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(1), Task.FromResult<int?>(null));
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ctx.Feed.InitializeFeed();
+        using (HeadersSyncBatch first = (await ctx.Feed.PrepareRequest())!)
+        {
+            BuildHeadersSyncBatchResponse(first, ctx.RemoteBlockTree);
+            first.ResponseSourcePeer = peer;
+            ctx.Feed.HandleResponse(first);
+        }
+        Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(ctx.BeaconPivot.PivotNumber - 1));
+
+        ctx.Feed.InitializeFeed();
+        for (int i = 0; i < 16 && !ctx.Feed.IsFinished; i++)
+        {
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+            using HeadersSyncBatch? batch = await Task.Run(() => ctx.Feed.PrepareRequest(cts.Token)).WaitAsync(cts.Token);
+            if (batch is null) continue;
+            BuildHeadersSyncBatchResponse(batch, ctx.RemoteBlockTree);
+            batch.ResponseSourcePeer = peer;
+            ctx.Feed.HandleResponse(batch);
+        }
+
+        Assert.That(ctx.Feed.IsFinished, Is.True, "beacon header sync completes");
+        ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Rejects_a_first_header_with_an_unexpected_hash_at_the_lowest_inserted_number()
+    {
+        Context ctx = CreateContextWithStoredSyncPivot(syncPivotNumber: 500, beaconPivotNumber: 700);
+        ctx.Feed.InitializeFeed();
+        using HeadersSyncBatch upper = (await ctx.Feed.PrepareRequest())!;
+        using HeadersSyncBatch last = (await ctx.Feed.PrepareRequest())!;
+        Assert.That(last.StartNumber, Is.EqualTo(ctx.BlockTree.SyncPivot.BlockNumber + 1));
+        BuildHeadersSyncBatchResponse(upper, ctx.RemoteBlockTree);
+        ctx.Feed.HandleResponse(upper);
+
+        // While the last request is in flight, its first block is inserted the way a new payload with a known but
+        // unprocessed parent is, which makes it the lowest inserted beacon header.
+        Block block = ctx.RemoteBlockTree.FindBlock(last.StartNumber, BlockTreeLookupOptions.None)!;
+        ctx.BlockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks,
+            BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(block.Hash));
+
+        BlockHeader otherHeader = Build.A.BlockHeader.WithParent(ctx.RemoteBlockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!)
+            .WithExtraData([1]).TestObject;
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        last.MarkSent();
+        last.Response = new ArrayPoolList<BlockHeader?>(1) { otherHeader };
+        last.ResponseSourcePeer = peer;
+        ctx.Feed.HandleResponse(last);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.FindHeader(otherHeader.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Null, "header is not stored");
+            Assert.That(ctx.ChainLevelInfoRepository.LoadLevel(block.Number)?.BeaconMainChainBlock?.BlockHash, Is.Not.EqualTo(otherHeader.Hash));
+        }
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peer, DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// Creates a context whose local tree holds the sync pivot header, as stored by the fast headers sync, and whose
+    /// beacon headers sync runs from <paramref name="beaconPivotNumber"/> down to the sync pivot.
+    /// </summary>
+    private static Context CreateContextWithStoredSyncPivot(ulong syncPivotNumber, ulong beaconPivotNumber)
+    {
+        Context ctx = new();
+        ctx.SetupRemoteBlockTreeOfLength(1000);
+        BlockHeader syncPivot = ctx.RemoteBlockTree.FindHeader(syncPivotNumber, BlockTreeLookupOptions.None)!;
+        ctx.SyncConfig = new SyncConfig
+        {
+            FastSync = true,
+            PivotNumber = syncPivot.Number,
+            PivotHash = syncPivot.Hash!.ToString(),
+            PivotTotalDifficulty = syncPivot.TotalDifficulty.ToString()!
+        };
+        ctx.BlockTree.SyncPivot = (syncPivot.Number, syncPivot.Hash!);
+        Assert.That(ctx.BlockTree.Insert(syncPivot), Is.EqualTo(AddBlockResult.Added));
+        ctx.BeaconPivot = PreparePivot(beaconPivotNumber, ctx.SyncConfig, ctx.BlockTree,
+            ctx.RemoteBlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None));
+        return ctx;
     }
 
     private async Task BuildAndProcessHeaderSyncBatches(

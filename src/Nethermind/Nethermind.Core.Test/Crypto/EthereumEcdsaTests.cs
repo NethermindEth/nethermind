@@ -28,6 +28,19 @@ namespace Nethermind.Core.Test.Crypto
             random.NextBytes(keys);
             VerifiedRecoveries recoveries = new(messages, signatures, ids, keys);
             Span<byte> actual = stackalloc byte[64];
+            for (int i = 0; i < count; i++)
+            {
+                byte[] signature = signatures.AsSpan(i * 64, 64).ToArray();
+                signature[63] ^= 1;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(recoveries.TryGetKey(signature, ids[i], messages.AsSpan(i * 32, 32), actual), Is.False);
+                    Assert.That(recoveries.TryGetKey(signatures.AsSpan(i * 64, 64), (byte)(ids[i] ^ 1), messages.AsSpan(i * 32, 32), actual), Is.False);
+                    Assert.That(recoveries.TryGetKey(signatures.AsSpan(i * 64, 64), ids[i], messages.AsSpan(i * 32, 32), actual), Is.True);
+                    Assert.That(actual.ToArray(), Is.EqualTo(keys.AsSpan(i * 64, 64).ToArray()));
+                }
+            }
+
             for (int i = count - 1; i >= 0; i--)
             {
                 byte[] message = messages.AsSpan(i * 32, 32).ToArray();
@@ -227,6 +240,30 @@ namespace Nethermind.Core.Test.Crypto
             Transaction tx = builder.TestObject;
             new EthereumEcdsa(TestBlockchainIds.ChainId).Sign(key, tx, isEip155Enabled: eip155);
             return tx;
+        }
+
+        [Test]
+        public void EnsureSenderCacheCapacity_only_grows_and_the_grown_cache_serves_ingress_recoveries()
+        {
+            int before = EthereumEcdsaExtensions.SenderCacheCapacity;
+            EthereumEcdsaExtensions.EnsureSenderCacheCapacity(before / 2);
+            int afterShrinkRequest = EthereumEcdsaExtensions.SenderCacheCapacity;
+            EthereumEcdsaExtensions.EnsureSenderCacheCapacity(before * 2);
+
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction tx = Build.A.Transaction.WithNonce(0xCAC4E00UL).TestObject;
+            ecdsa.Sign(TestItem.PrivateKeyA, tx, true);
+            Address? recovered = ecdsa.RecoverAddress(tx);
+            // Recovers nothing itself: only a hit in the grown cache returns the sender.
+            Address? cached = NonRecoveringEcdsa(ecdsa.ChainId).RecoverAddress(tx);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterShrinkRequest, Is.EqualTo(before));
+                Assert.That(EthereumEcdsaExtensions.SenderCacheCapacity, Is.EqualTo(before * 2));
+                Assert.That(recovered, Is.EqualTo(TestItem.PrivateKeyA.Address));
+                Assert.That(cached, Is.EqualTo(TestItem.PrivateKeyA.Address));
+            }
         }
 
         [Test]

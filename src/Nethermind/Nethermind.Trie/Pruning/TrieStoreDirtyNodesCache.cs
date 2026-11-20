@@ -187,11 +187,14 @@ internal class TrieStoreDirtyNodesCache
             return new NodeRecord(trieNode, NoCommitSentinel);
         }, cache);
 
-    public NodeRecord GetOrAdd(in Key key, NodeRecord record) => _storeByHash
-            ? GetOrAdd(ByHashObjectCache, key.Keccak, record)
-            : GetOrAdd(ByKeyObjectCache, key, record);
+    public NodeRecord GetOrAdd(in Key key, NodeRecord record) => GetOrAdd(in key, record, out _);
 
-    private static NodeRecord GetOrAdd<TKey>(ConcurrentDictionary<TKey, NodeRecord> dictionary, TKey key, NodeRecord record)
+    /// <param name="replaced">The persisted node that the node of <paramref name="record"/> took the place of, or null.</param>
+    public NodeRecord GetOrAdd(in Key key, NodeRecord record, out TrieNode? replaced) => _storeByHash
+            ? GetOrAdd(ByHashObjectCache, key.Keccak, record, out replaced)
+            : GetOrAdd(ByKeyObjectCache, key, record, out replaced);
+
+    private static NodeRecord GetOrAdd<TKey>(ConcurrentDictionary<TKey, NodeRecord> dictionary, TKey key, NodeRecord record, out TrieNode? replaced)
         where TKey : notnull
     {
         // Avoid AddOrUpdate here: an existing key often merges to the same logical NodeRecord,
@@ -203,6 +206,8 @@ internal class TrieStoreDirtyNodesCache
                 NodeRecord merged = MergeRecords(current, record);
                 if (merged.Equals(current) || dictionary.TryUpdate(key, merged, current))
                 {
+                    // Only the operation that succeeded reports the node it swapped out; a failed update retries.
+                    replaced = ReferenceEquals(merged.Node, current.Node) ? null : current.Node;
                     return merged;
                 }
 
@@ -211,6 +216,7 @@ internal class TrieStoreDirtyNodesCache
 
             if (dictionary.TryAdd(key, record))
             {
+                replaced = null;
                 return record;
             }
         }
@@ -260,7 +266,7 @@ internal class TrieStoreDirtyNodesCache
         _trieStore.IncrementMemoryUsedByDirtyCache(memoryUsage, node.IsPersisted);
     }
 
-    private void DecrementMemory(TrieNode node)
+    internal void DecrementMemory(TrieNode node)
     {
         long memoryUsage = node.GetMemorySize(false) + KeyMemoryUsage;
         Interlocked.Decrement(ref _count);

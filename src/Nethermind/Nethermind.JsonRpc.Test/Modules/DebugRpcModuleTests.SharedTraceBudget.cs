@@ -610,7 +610,7 @@ public partial class DebugRpcModuleTests
         }
 
         Task<string[]> RunBoth() => Task.WhenAll(
-            Task.Run(() => RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash, new { tracer = "callTracer" })),
+            Task.Run(() => RpcTest.TestSerializedRequest(chain.DebugRpcModule, rpc.Timeout, "debug_traceBlockByHash", block.Hash, new { tracer = "callTracer" })),
             Task.Run(() => RpcTest.TestSerializedRequest(chain.TraceRpcModule, "trace_block", block.Hash)));
     }
 

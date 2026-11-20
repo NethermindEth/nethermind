@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
@@ -23,7 +24,7 @@ public class OptimismOptimismRpcModule(
     ChainSpec chainSpec
 ) : IOptimismOptimismRpcModule
 {
-    public async Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber)
+    public async Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber, CancellationToken cancellationToken = default)
     {
         ResultWrapper<OptimismSyncStatus> statusResult = await optimism_syncStatus();
         if (statusResult.Result.ResultType != ResultType.Success)
@@ -39,7 +40,7 @@ public class OptimismOptimismRpcModule(
 
         L2Block block = await l2Api.GetBlockByNumber(blockNumber);
 
-        AccountProof? proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], block.Number);
+        AccountProof? proof = await l2Api.GetProof(PreDeploys.L2ToL1MessagePasser, [], block.Number, cancellationToken);
         if (proof == null)
         {
             return ResultWrapper<OptimismOutputAtBlock>.Fail("Failed to get proof");

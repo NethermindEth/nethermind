@@ -56,7 +56,10 @@ namespace Nethermind.Config.Test
             }
         }
 
-        private static void CheckDescribedOrHidden(PropertyInfo property, object? instance)
+        /// <summary>
+        /// Verifies that a property has a description or is hidden from the docs, by itself or by its category.
+        /// </summary>
+        public static void CheckDescribedOrHidden(PropertyInfo property, object? instance)
         {
             ConfigItemAttribute? attribute = property.GetCustomAttribute<ConfigItemAttribute>();
             if (string.IsNullOrWhiteSpace(attribute?.Description) && !(attribute?.HiddenFromDocs ?? false))
