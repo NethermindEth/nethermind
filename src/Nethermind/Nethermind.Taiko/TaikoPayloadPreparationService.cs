@@ -104,7 +104,7 @@ public class TaikoPayloadPreparationService(
 
     private Block ProcessBlock(Block block, CancellationToken token = default)
     {
-        if (_worldStateLock.Wait(_emptyBlockProcessingTimeout))
+        if (_worldStateLock.Wait(_emptyBlockProcessingTimeout, token))
         {
             try
             {

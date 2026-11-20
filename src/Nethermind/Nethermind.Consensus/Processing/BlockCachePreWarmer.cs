@@ -1241,7 +1241,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             _nodeStorageCache.ClearCaches();
             _nodeStorageCache.Enabled = true;
 
-            return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token));
+            return _speculativeTask = Task.Run(() => RunSpeculativeLoop(headHash, head, spec, nextDelta, idlePassDelayMs, token), CancellationToken.None);
         }
     }
 

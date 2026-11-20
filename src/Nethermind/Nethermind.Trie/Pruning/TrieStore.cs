@@ -1366,10 +1366,10 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             {
                 int persistedCount = dirtyNode.PersistAll(_nodeStorage, cancellationToken);
                 Interlocked.Add(ref totalPersistedCount, persistedCount);
-            });
+            }, CancellationToken.None);
         }
 
-        Task.WaitAll(_dirtyNodesTasks);
+        Task.WaitAll(_dirtyNodesTasks, CancellationToken.None);
 
         if (cancellationToken.IsCancellationRequested) return;
 
