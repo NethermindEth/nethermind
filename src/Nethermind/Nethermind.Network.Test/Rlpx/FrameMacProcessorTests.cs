@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Common.Utilities;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
@@ -19,8 +20,9 @@ namespace Nethermind.Network.Test.Rlpx
 
             FrameMacProcessor macProcessorA = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().A);
             FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().B);
-            macProcessorA.AddMac(data, 0, dataLength, isHeader);
-            macProcessorB.CheckMac(data, 0, dataLength, isHeader);
+            macProcessorA.AddMac(data.AsSpan(0, dataLength), data.AsSpan(dataLength, Frame.MacSize), isHeader);
+            macProcessorB.UpdateIngressMac(data.AsSpan(0, dataLength), isHeader);
+            Assert.That(macProcessorB.CheckMac(data.AsSpan(dataLength, Frame.MacSize), isHeader), Is.True);
         }
 
         [Test]
@@ -30,10 +32,12 @@ namespace Nethermind.Network.Test.Rlpx
 
             FrameMacProcessor macProcessorA = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().A);
             FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, NetTestVectors.GetSecretsPair().B);
-            macProcessorA.AddMac(full, 0, 16, true);
-            macProcessorA.AddMac(full, 32, 112, false);
-            macProcessorB.CheckMac(full, 0, 16, true);
-            macProcessorB.CheckMac(full, 32, 112, false);
+            macProcessorA.AddMac(full.AsSpan(0, 16), full.AsSpan(16, Frame.MacSize), true);
+            macProcessorA.AddMac(full.AsSpan(32, 112), full.AsSpan(144, Frame.MacSize), false);
+            macProcessorB.UpdateIngressMac(full.AsSpan(0, 16), true);
+            Assert.That(macProcessorB.CheckMac(full.AsSpan(16, Frame.MacSize), true), Is.True, "header");
+            macProcessorB.UpdateIngressMac(full.AsSpan(32, 112), false);
+            Assert.That(macProcessorB.CheckMac(full.AsSpan(144, Frame.MacSize), false), Is.True, "frame");
         }
 
         [Test]
@@ -52,12 +56,12 @@ namespace Nethermind.Network.Test.Rlpx
             secretsA.EgressMac.Update(egressUpdate.Slice(0, 16));
             secretsA.EgressMac.Update(egressUpdate.Slice(16, 16));
             FrameMacProcessor macProcessorA = new(TestItem.PublicKeyA, secretsA);
-            macProcessorA.AddMac(a1, 0, 16, false);
+            macProcessorA.AddMac(a1.AsSpan(0, 16), a1.AsSpan(16, Frame.MacSize), false);
 
             EncryptionSecrets secretsB = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
             secretsB.EgressMac.Update(egressUpdate);
             FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, secretsB);
-            macProcessorB.AddMac(b1, 0, 16, false);
+            macProcessorB.AddMac(b1.AsSpan(0, 16), b1.AsSpan(16, Frame.MacSize), false);
 
             Assert.That(b1.Slice(16, 16), Is.EqualTo(a1.Slice(16, 16)));
         }

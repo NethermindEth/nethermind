@@ -158,8 +158,8 @@ public class ZeroNettyFrameDecoderTests
         header[2] = (byte)length;
         header[3] = 0xc2;
         header[4] = header[5] = 0x80;
-        new FrameCipher(a.AesSecret).Encrypt(header, 0, Frame.HeaderSize, header, 0);
-        outboundMac.AddMac(header, 0, Frame.HeaderSize, header, Frame.HeaderSize, true);
+        new FrameCipher(a.AesSecret).Encrypt(header.AsSpan(0, Frame.HeaderSize), header.AsSpan(0, Frame.HeaderSize));
+        outboundMac.AddMac(header.AsSpan(0, Frame.HeaderSize), header.AsSpan(Frame.HeaderSize, Frame.MacSize), true);
         EmbeddedChannel channel = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac));
         channel.Configuration.Allocator = detector.Allocator;
         try

@@ -121,13 +121,13 @@ namespace Nethermind.Network.Rlpx
             {
                 byte[] array = input.Array;
                 int arrayIndex = input.ArrayOffset + payloadIndex;
-                _authenticator.UpdateIngressMac(array.AsSpan(arrayIndex, _frameSize));
+                _authenticator.UpdateIngressMac(array.AsSpan(arrayIndex, _frameSize), false);
                 input.GetBytes(payloadIndex + _frameSize, _macBytes);
                 if (!_authenticator.CheckMac(_macBytes, false)) ThrowInvalidMac("payload");
 
                 // The authenticated header MAC is no longer needed; use its space for the plaintext header.
                 input.SetBytes(headerIndex, _decryptedBytes);
-                _cipher.Decrypt(array, arrayIndex, _frameSize, array, arrayIndex);
+                _cipher.Decrypt(array.AsSpan(arrayIndex, _frameSize), array.AsSpan(arrayIndex, _frameSize));
                 input.SkipBytes(_frameSize + Frame.MacSize);
                 output.Add(frame);
                 return true;
@@ -179,7 +179,7 @@ namespace Nethermind.Network.Rlpx
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void DecryptHeader() => _cipher.Decrypt(_headerBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
+        private void DecryptHeader() => _cipher.Decrypt(_headerBytes, _decryptedBytes);
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void AuthenticateHeader(IByteBuffer input)
@@ -216,8 +216,8 @@ namespace Nethermind.Network.Rlpx
             byte[] array = input.Array;
             int arrayIndex = input.ArrayOffset + input.ReaderIndex;
             int writerIndex = _innerBuffer.WriterIndex;
-            _authenticator.UpdateIngressMac(array.AsSpan(arrayIndex, length));
-            _cipher.Decrypt(array, arrayIndex, length, _innerBuffer.Array, _innerBuffer.ArrayOffset + writerIndex);
+            _authenticator.UpdateIngressMac(array.AsSpan(arrayIndex, length), false);
+            _cipher.Decrypt(array.AsSpan(arrayIndex, length), _innerBuffer.Array.AsSpan(_innerBuffer.ArrayOffset + writerIndex, length));
             _innerBuffer.SetWriterIndex(writerIndex + length);
             input.SkipBytes(length);
             _remainingPayloadBlocks -= blocks;
@@ -228,7 +228,7 @@ namespace Nethermind.Network.Rlpx
         {
             input.ReadBytes(_frameBlockBytes);
             _authenticator.UpdateIngressMac(_frameBlockBytes, false);
-            _cipher.Decrypt(_frameBlockBytes, 0, Frame.BlockSize, _decryptedBytes, 0);
+            _cipher.Decrypt(_frameBlockBytes, _decryptedBytes);
             _innerBuffer.WriteBytes(_decryptedBytes);
             _remainingPayloadBlocks--;
         }

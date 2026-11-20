@@ -30,15 +30,9 @@ public class ZeroNettyFrameEncodeDecodeTests
         (EncryptionSecrets actualSecrets, _) = NetTestVectors.GetSecretsPair();
         using FrameMacProcessor expectedMac = new(TestItem.IgnoredPublicKey, expectedSecrets);
         using FrameMacProcessor actualMac = new(TestItem.IgnoredPublicKey, actualSecrets);
-        FrameCipher actualCipher = new(actualSecrets.AesSecret);
-        IFrameCipher switchingCipher = Substitute.For<IFrameCipher>();
-        ZeroPacketSplitter splitter = new(switchingCipher, actualMac);
-        switchingCipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
-            .Do(call =>
-            {
-                actualCipher.Encrypt(call.ArgAt<byte[]>(0), call.ArgAt<int>(1), call.ArgAt<int>(2), call.ArgAt<byte[]>(3), call.ArgAt<int>(4));
-                splitter.EnableSnappy(LimboLogs.Instance);
-            });
+        ZeroPacketSplitter? splitter = null;
+        CallbackCipher switchingCipher = new(new FrameCipher(actualSecrets.AesSecret), () => splitter!.EnableSnappy(LimboLogs.Instance));
+        splitter = new(switchingCipher, actualMac);
         EmbeddedChannel expectedChannel = new(new ZeroPacketSplitter(new FrameCipher(expectedSecrets.AesSecret), expectedMac));
         EmbeddedChannel actualChannel = new(splitter);
         try
@@ -61,14 +55,14 @@ public class ZeroNettyFrameEncodeDecodeTests
     public async Task Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();
-        IFrameCipher cipher = Substitute.For<IFrameCipher>();
         int calls = 0;
-        cipher.When(x => x.Encrypt(Arg.Any<byte[]>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<byte[]>(), Arg.Any<int>()))
-            .Do(_ =>
-            {
-                if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
-            });
-        ZeroPacketSplitter splitter = new(cipher, Substitute.For<IFrameMacProcessor>());
+        CallbackCipher cipher = new(new FrameCipher(NetTestVectors.AesSecret), () =>
+        {
+            if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
+        });
+        (EncryptionSecrets secrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor mac = new(TestItem.IgnoredPublicKey, secrets);
+        ZeroPacketSplitter splitter = new(cipher, mac);
         if (snappy) splitter.EnableSnappy(LimboLogs.Instance);
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
@@ -173,6 +167,19 @@ public class ZeroNettyFrameEncodeDecodeTests
         {
             reference.FinishAndReleaseAll();
         }
+    }
+
+    /// <summary>Encrypts with <paramref name="cipher"/>, then runs <paramref name="afterEncrypt"/>.</summary>
+    /// <remarks>Stands in for a substitute, which cannot intercept calls with span arguments.</remarks>
+    private sealed class CallbackCipher(IFrameCipher cipher, Action afterEncrypt) : IFrameCipher
+    {
+        public void Encrypt(ReadOnlySpan<byte> input, Span<byte> output)
+        {
+            cipher.Encrypt(input, output);
+            afterEncrypt();
+        }
+
+        public void Decrypt(ReadOnlySpan<byte> input, Span<byte> output) => cipher.Decrypt(input, output);
     }
 
     private sealed class CombinedEncoder(IFrameCipher cipher, IFrameMacProcessor mac)

@@ -195,15 +195,15 @@ namespace Nethermind.Network.Rlpx
         {
             // Reserve MAC slots while framing so encryption can use the final wire buffer in place.
             output.GetBytes(frameStart, _headerBuffer);
-            _cipher!.Encrypt(_headerBuffer!, 0, Frame.HeaderSize, _headerBuffer!, 0);
+            _cipher!.Encrypt(_headerBuffer!, _headerBuffer!);
             output.SetBytes(frameStart, _headerBuffer);
 
             byte[] bytes = output.Array;
             int headerOffset = output.ArrayOffset + frameStart;
-            _macProcessor!.AddMac(_headerBuffer!, 0, Frame.HeaderSize, bytes, headerOffset + Frame.HeaderSize, true);
+            _macProcessor!.AddMac(_headerBuffer!, bytes.AsSpan(headerOffset + Frame.HeaderSize, Frame.MacSize), true);
             int payloadOffset = headerOffset + Frame.HeaderSize + Frame.MacSize;
-            _cipher.Encrypt(bytes, payloadOffset, payloadSize, bytes, payloadOffset);
-            _macProcessor.AddMac(bytes, payloadOffset, payloadSize, bytes, payloadOffset + payloadSize, false);
+            _cipher.Encrypt(bytes.AsSpan(payloadOffset, payloadSize), bytes.AsSpan(payloadOffset, payloadSize));
+            _macProcessor.AddMac(bytes.AsSpan(payloadOffset, payloadSize), bytes.AsSpan(payloadOffset + payloadSize, Frame.MacSize), false);
         }
     }
 }

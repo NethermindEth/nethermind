@@ -52,14 +52,14 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteHeader(IByteBuffer output)
         {
-            _frameCipher.Encrypt(_headerReader.HeaderBytes, 0, 16, _encryptBuffer, 0);
+            _frameCipher.Encrypt(_headerReader.HeaderBytes, _encryptBuffer);
             output.WriteBytes(_encryptBuffer);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteHeaderMac(IByteBuffer output)
         {
-            _frameMacProcessor.AddMac(_encryptBuffer, 0, 16, _macBuffer, 0, true);
+            _frameMacProcessor.AddMac(_encryptBuffer, _macBuffer, true);
             output.WriteBytes(_macBuffer);
         }
 
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Rlpx
         private void WritePayloadBlock(IByteBuffer input, IByteBuffer output)
         {
             input.ReadBytes(_encryptBuffer);
-            _frameCipher.Encrypt(_encryptBuffer, 0, 16, _encryptBuffer, 0);
+            _frameCipher.Encrypt(_encryptBuffer, _encryptBuffer);
             _frameMacProcessor.UpdateEgressMac(_encryptBuffer);
             output.WriteBytes(_encryptBuffer);
         }
