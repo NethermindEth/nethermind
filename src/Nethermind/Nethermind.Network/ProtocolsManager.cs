@@ -30,7 +30,8 @@ namespace Nethermind.Network
     public class ProtocolsManager : IProtocolsManager, IProtocolRegistrar
     {
         private readonly ConcurrentDictionary<Guid, SyncPeerProtocolHandlerBase> _syncPeers = new();
-        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<Guid, ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
+        // Keyed by session and protocol: a session can park several satellites (e.g. snap and another) before its eth starts.
+        private readonly ConcurrentDictionary<Node, ConcurrentDictionary<(Guid SessionId, string Protocol), ProtocolHandlerBase>> _hangingSatelliteProtocols = new();
         private readonly ISyncPeerPool _syncPool;
         private readonly ITxPool _txPool;
         private readonly INodeStatsManager _stats;
@@ -101,10 +102,13 @@ namespace Nethermind.Network
             }
 
             if (session.Node is not null
-                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase>? registrations)
+                && _hangingSatelliteProtocols.TryGetValue(session.Node, out ConcurrentDictionary<(Guid SessionId, string Protocol), ProtocolHandlerBase>? registrations)
                 && registrations is not null)
             {
-                registrations.TryRemove(session.SessionId, out _);
+                foreach (KeyValuePair<(Guid SessionId, string Protocol), ProtocolHandlerBase> registration in registrations)
+                {
+                    if (registration.Key.SessionId == session.SessionId) registrations.TryRemove(registration.Key, out _);
+                }
             }
 
             PublicKey? handlerKey = null;
@@ -225,10 +229,10 @@ namespace Nethermind.Network
                 else
                 {
                     _hangingSatelliteProtocols.AddOrUpdate(session.Node,
-                        _ => new ConcurrentDictionary<Guid, ProtocolHandlerBase> { [session.SessionId] = handler },
+                        _ => new ConcurrentDictionary<(Guid SessionId, string Protocol), ProtocolHandlerBase> { [(session.SessionId, handler.ProtocolCode)] = handler },
                         (_, dict) =>
                         {
-                            dict[session.SessionId] = handler;
+                            dict[(session.SessionId, handler.ProtocolCode)] = handler;
                             return dict;
                         });
 
@@ -293,9 +297,9 @@ namespace Nethermind.Network
             {
                 if (_syncPeers.TryAdd(session.SessionId, handler))
                 {
-                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<Guid, ProtocolHandlerBase> handlerDictionary))
+                    if (_hangingSatelliteProtocols.TryGetValue(handler.Node, out ConcurrentDictionary<(Guid SessionId, string Protocol), ProtocolHandlerBase> handlerDictionary))
                     {
-                        foreach (KeyValuePair<Guid, ProtocolHandlerBase> registration in handlerDictionary)
+                        foreach (KeyValuePair<(Guid SessionId, string Protocol), ProtocolHandlerBase> registration in handlerDictionary)
                         {
                             handler.RegisterSatelliteProtocol(registration.Value);
                             if (registration.Value.IsPriority) handler.IsPriority = true;

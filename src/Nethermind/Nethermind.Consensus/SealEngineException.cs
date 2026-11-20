@@ -5,7 +5,10 @@ using System;
 
 namespace Nethermind.Consensus
 {
-    public class SealEngineException(string message) : Exception(message)
+    public class SealEngineException : Exception
     {
+        public SealEngineException(string message) : base(message) { }
+
+        public SealEngineException(string message, Exception innerException) : base(message, innerException) { }
     }
 }

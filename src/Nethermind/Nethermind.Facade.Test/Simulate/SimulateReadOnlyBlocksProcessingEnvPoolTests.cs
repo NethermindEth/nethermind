@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Exceptions;
@@ -132,7 +133,7 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
     }
 
     [Test]
-    public void Release_ClearsRequestStoresAndCalls()
+    public void Release_ClearsRequestStoresBlockHashesAndCalls()
     {
         FakeEnvFactory factory = new();
         using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 1);
@@ -144,6 +145,7 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         using (Assert.EnterMultipleScope())
         {
             factory.Envs[0].RequestStore.Received(1).ClearCache();
+            factory.Envs[0].BlockhashCache.Received(1).Clear();
             Assert.That(factory.Envs[0].RequestState.Calls, Is.Empty);
         }
     }
@@ -182,6 +184,7 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         public bool IsDisposed { get; private set; }
         public int BeginCount { get; private set; }
         public IClearableCache RequestStore { get; } = Substitute.For<IClearableCache>();
+        public IBlockhashCache BlockhashCache { get; } = Substitute.For<IBlockhashCache>();
         public SimulateRequestState RequestState { get; } = new();
 
         public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
@@ -191,6 +194,7 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
             return new SimulateReadOnlyBlocksProcessingScope(
                 null!, null!, null!, null!, RequestState, null!,
                 Substitute.For<IReadOnlyDbProvider>(),
+                BlockhashCache,
                 new NoopDisposable(),
                 [RequestStore]);
         }

@@ -140,6 +140,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             catch (ObjectDisposedException)
             {
                 // Dispose ran after the read, so the build starts cancelled like any build after shutdown.
+                if (_logger.IsTrace) _logger.Trace("Shutdown source disposed while linking a payload build; starting it cancelled");
             }
         }
 

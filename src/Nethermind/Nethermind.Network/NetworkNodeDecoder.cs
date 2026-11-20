@@ -84,7 +84,7 @@ namespace Nethermind.Network
             string ip = decoderContext.DecodeString(RlpLimit);
             int port = (int)decoderContext.DecodeByteArraySpan(RlpLimit.L8).ReadEthUInt64();
             decoderContext.SkipItem();
-            long reputation = 0L;
+            long reputation;
             try
             {
                 reputation = decoderContext.DecodeLong();
@@ -92,6 +92,7 @@ namespace Nethermind.Network
             catch (RlpReaderException)
             {
                 // regression - old format
+                reputation = 0L;
             }
 
             NetworkNode networkNode = new(publicKey, ip != string.Empty ? ip : null, port, reputation);
