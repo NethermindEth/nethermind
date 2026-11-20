@@ -58,3 +58,6 @@ Blob Transaction Ordering, Multiple Accounts (Cancun) (nethermind)
 Blob Transaction Ordering, Multiple Clients (Cancun) (nethermind)
 
 #devp2p
+
+# Expects the peer that served invalid cells to be disconnected at once; Nethermind treats a cell proof failure as ambiguous when the body and the cells came from different peers (ethereum/go-ethereum#36185).
+BlobTxWithInvalidCells (nethermind)
