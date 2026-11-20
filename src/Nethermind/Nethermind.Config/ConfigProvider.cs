@@ -98,25 +98,44 @@ public class ConfigProvider : IConfigProvider
             return null;
         }
 
-        // Sources and categories are keyed by the full name (e.g. SyncConfig); accept the short form (Sync) too
-        if (!string.IsNullOrEmpty(category) && !category.EndsWith("Config", StringComparison.OrdinalIgnoreCase))
+        // Query sources and defaults under the names Initialize uses, whichever form (Sync or SyncConfig) was requested
+        foreach ((Type configType, Type directImplementation) in FindConfigTypes(category, name))
         {
-            category += "Config";
-        }
-
-        for (int i = 0; i < _configSource.Count; i++)
-        {
-            (bool isSet, string? str) = _configSource[i].GetRawValue(category, name);
-            if (isSet)
+            string? sourceCategory = ConfigExtensions.GetCategoryName(configType) is null ? null : directImplementation.Name;
+            for (int i = 0; i < _configSource.Count; i++)
             {
-                return str;
+                (bool isSet, string? str) = _configSource[i].GetRawValue(sourceCategory!, name);
+                if (isSet)
+                {
+                    return str;
+                }
             }
         }
 
-        return Categories.TryGetValue(category, out object? value) ? value.GetType()
-            .GetProperties(BindingFlags.Instance | BindingFlags.Public)
-            .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
-            ?.GetValue(value) : null;
+        foreach ((Type configType, _) in FindConfigTypes(category, name))
+        {
+            if (Categories.TryGetValue(configType.Name[1..], out object? value))
+            {
+                return value.GetType()
+                    .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                    .SingleOrDefault(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                    ?.GetValue(value);
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<(Type ConfigType, Type DirectImplementation)> FindConfigTypes(string? category, string name)
+    {
+        foreach ((Type configType, Type directImplementation) in ConfigTypesFromAssembly)
+        {
+            if (IsCategory(configType, category)
+                && configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase) is not null)
+            {
+                yield return (configType, directImplementation);
+            }
+        }
     }
 
     /// <summary>

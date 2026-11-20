@@ -274,6 +274,29 @@ namespace Nethermind.Config.Test
             }
         }
 
+        [TestCase("UnsuffixedCategory", "default", 1)]
+        [TestCase("UnsuffixedCategoryConfig", "default", 1)]
+        [TestCase("unsuffixedcategory", "default", 1)]
+        [TestCase("UnsuffixedCategory", "env", "71")]
+        [TestCase("UnsuffixedCategoryConfig", "env", "71")]
+        [TestCase("UnsuffixedCategory", "args", "72")]
+        [TestCase("UnsuffixedCategoryConfig", "args", "72")]
+        public void Raw_value_is_returned_for_category_without_config_suffix(string category, string source, object expected)
+        {
+            IEnvironment environment = Substitute.For<IEnvironment>();
+            ConfigProvider provider = new();
+            if (source == "env") environment.GetEnvironmentVariable("NETHERMIND_UNSUFFIXEDCATEGORY_VALUE").Returns("71");
+            if (source == "args") provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["UnsuffixedCategory.Value"] = "72" }));
+            provider.AddSource(new EnvConfigSource(environment));
+            provider.Initialize();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetConfig<IUnsuffixedCategory>().Value.ToString(), Is.EqualTo(expected.ToString()));
+                Assert.That(provider.GetRawValue(category, nameof(IUnsuffixedCategory.Value)), Is.EqualTo(expected));
+            }
+        }
+
         public static IEnumerable<TestCaseData> ReportedKeyCases()
         {
             yield return new TestCaseData(
@@ -376,5 +399,16 @@ namespace Nethermind.Config.Test
 
             public object? GetRawValue(string category, string name) => inner.GetRawValue(category, name);
         }
+    }
+
+    public interface IUnsuffixedCategory : IConfig
+    {
+        [ConfigItem(Description = "Test item of a category whose name has no Config suffix.", DefaultValue = "1")]
+        int Value { get; set; }
+    }
+
+    public class UnsuffixedCategory : IUnsuffixedCategory
+    {
+        public int Value { get; set; } = 1;
     }
 }
