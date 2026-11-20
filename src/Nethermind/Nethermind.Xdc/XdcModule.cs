@@ -60,6 +60,7 @@ public class XdcModule : Module
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
+            .AddSingleton<IBlockValidationModule, XdcBlockValidationModule>()
 
             .Add<StartXdcBlockProducer>()
             .AddSingleton<XdcBlockProducerFactory>()
@@ -207,4 +208,14 @@ public class XdcModule : Module
         IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
         return new MasternodeVotingContract(spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
     }
+
+    /// <summary>
+    /// Keeps <see cref="XdcBlockProcessor"/> in the validation and RPC tracing environments.
+    /// </summary>
+    /// <remarks>
+    /// It does not support the transaction trace prefix, so the tracing environments do not swap the processor for
+    /// the generic one, which would replay XDC blocks with a plain <see cref="BlockHeader"/> and without the XDC block
+    /// execution context.
+    /// </remarks>
+    private sealed class XdcBlockValidationModule : Module, IBlockValidationModule;
 }
