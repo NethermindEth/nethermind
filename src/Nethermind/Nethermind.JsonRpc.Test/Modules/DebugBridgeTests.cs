@@ -1187,8 +1187,6 @@ public class DebugBridgeTests
             Substitute.For<ISyncModeSelector>(),
             Substitute.For<IBadBlockStore>(),
             Substitute.For<IBlockStore>(),
-            Substitute.For<IStarkProofStore>(),
-            new HeaderDecoder(),
             worldStateManager,
             logManager, new BlockTreeMutationLock(), pauseControl, processingQueue,
             Substitute.For<ISyncProgressResolver>(), Substitute.For<ISyncPointers>(), Substitute.For<ITxPool>());

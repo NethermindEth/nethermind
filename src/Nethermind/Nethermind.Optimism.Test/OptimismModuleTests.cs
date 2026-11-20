@@ -7,6 +7,7 @@ using System.Threading;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -270,7 +271,7 @@ public class OptimismModuleTests
         builder.RegisterInstance(specProvider).As<ISpecProvider>();
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(Always.Valid).As<IHeaderValidator>();
-        builder.RegisterInstance(Substitute.For<IBlockFinder>()).As<IBlockFinder>();
+        builder.RegisterInstance(Substitute.For<IBlockTree>()).As<IBlockTree>().As<IBlockFinder>();
         builder.RegisterInstance(Substitute.For<IStarkProofStore>()).As<IStarkProofStore>();
         builder.RegisterInstance(Substitute.For<IPoSSwitcher>()).As<IPoSSwitcher>();
         builder.RegisterInstance(Substitute.For<ILeanProofVerifier>()).As<ILeanProofVerifier>();

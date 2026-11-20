@@ -12,7 +12,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.Blocks;
 
-public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
+public class MultiBlockDownloader(DependencyProofFetcher dependencyProofFetcher) : ISyncDownloader<BlocksRequest>
 {
     public async Task Dispatch(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
@@ -27,12 +27,14 @@ public class MultiBlockDownloader : ISyncDownloader<BlocksRequest>
         await request.DownloadTask;
     }
 
-    private static async Task DownloadAsync(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
+    private async Task DownloadAsync(PeerInfo peerInfo, BlocksRequest request, CancellationToken cancellationToken)
     {
         if (request.BodiesRequests.Count > 0)
         {
             using ArrayPoolList<Hash256> bodiesHash = BuildHashList(request.BodiesRequests);
             request.OwnedBodies = await peerInfo.SyncPeer.GetBlockBodies(bodiesHash, cancellationToken);
+            (request.DependencyProofs, request.UnavailableDependencyProofs) =
+                await dependencyProofFetcher.FetchAsync(peerInfo, request.BodiesRequests, cancellationToken);
         }
 
         if (request.BlockAccessListsRequests.Count > 0 && peerInfo.SyncPeer.SupportsBlockAccessLists())

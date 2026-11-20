@@ -10,7 +10,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Blocks;
 
-/// <summary>Keeps EIP-8288 <c>stark_proof</c>s out of the block store, writing them to <see cref="IStarkProofStore"/> instead.</summary>
+/// <summary>Writes the EIP-8288 <c>dependency_proof</c> a block arrives with to <see cref="IStarkProofStore"/>, keeping it out of the block cache.</summary>
 /// <remarks>
 /// Blocks read back carry no proof; the readers that need one join it from <see cref="IStarkProofStore"/>. Holding up to
 /// <see cref="Eip8288Constants.MaxAggregateProofBytes"/> per block in the block cache would bound its memory by the proof size.

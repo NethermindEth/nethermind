@@ -101,7 +101,11 @@ public class MergeP2PCapabilityResolverTests
         HashSet<Capability> capabilities = [];
         resolver.Resolve(capabilities);
 
-        Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(scheduled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(scheduled));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(scheduled), "EIP-8498 eth/74 activates with EIP-8288");
+        }
     }
 
     [TestCase(BlobsSupportMode.Disabled, false, true, true, TestName = "No blob support, EIP-8288 scheduled, no PeerDAS: eth72 and eth73")]
@@ -129,6 +133,7 @@ public class MergeP2PCapabilityResolverTests
         {
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 72)), Is.EqualTo(advertised));
             Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 73)), Is.EqualTo(advertised));
+            Assert.That(capabilities.Contains(new Capability(Protocol.Eth, 74)), Is.EqualTo(advertised));
         }
     }
 

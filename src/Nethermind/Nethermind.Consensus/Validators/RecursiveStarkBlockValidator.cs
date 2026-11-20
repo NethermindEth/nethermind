@@ -15,10 +15,12 @@ namespace Nethermind.Consensus.Validators;
 
 /// <summary>Adds EIP-8288 recursive STARK verification to suggested and orphaned block validation.</summary>
 /// <remarks>
-/// Runs after the inner validator accepts the block, so a block it rejects keeps its error. The inner validator checks that
-/// the body carries the <c>stark_proof</c> its header commits to; this one checks that <c>block_deps_hash</c> commits to the
-/// block's transaction dependencies and that the proof verifies against the block fork's <c>AGGREGATED_VK</c>, or is empty
-/// when there are none. Validators built without the container must wrap themselves in it, or the check does not run.
+/// Runs after the inner validator accepts the block, so a block it rejects keeps its error. The inner validator checks the
+/// header commitment against the block: <c>block_deps_hash</c>, <c>dependency_proof_hash</c>, and that a block committing to a
+/// nonempty proof carries it. This one checks that the proof verifies against the block's dependencies and the block fork's
+/// <c>AGGREGATED_VK</c>, or is empty when there are none. It must run on the block carrying its stored proof, so it sits inside
+/// <see cref="DependencyProofAvailabilityBlockValidator"/>. Validators built without the container must wrap themselves in it,
+/// or the check does not run.
 /// </remarks>
 public sealed class RecursiveStarkBlockValidator(
     IBlockValidator inner,
@@ -55,26 +57,22 @@ public sealed class RecursiveStarkBlockValidator(
     private bool ValidateRecursiveStark(Block block, [NotNullWhen(false)] out string? error)
     {
         error = null;
+        // A block without the commitment needs no spec lookup: the inner validator has already required it from EIP-8288 on.
+        if (block.Header.RecursiveStark is not { } recursiveStark) return true;
+
         IReleaseSpec spec = specProvider.GetSpec(block.Header);
         if (!spec.IsEip8288Enabled) return true;
 
-        // Fails closed should the inner validator not have required the commitment and its proof.
-        if (block.Header.RecursiveStark is not { } recursiveStark || block.StarkProof is not { } proof)
+        byte[]? proof = block.StarkProof ?? (recursiveStark.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null);
+        if (proof is null)
         {
-            error = BlockErrorMessages.MissingRecursiveStark;
+            error = BlockErrorMessages.MissingDependencyProof;
             return false;
         }
 
         List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
-        Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
-        if (recursiveStark.BlockDepsHash != computed)
-        {
-            error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);
-            if (_logger.IsWarn) _logger.Warn($"Block deps hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {recursiveStark.BlockDepsHash}, got {computed}");
-            return false;
-        }
-
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256, proof))
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(dependencies);
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in depsHash, proof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Messages;
 using Nethermind.Logging;
 using System.Diagnostics.CodeAnalysis;
 
@@ -12,7 +12,6 @@ namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 public class InvalidBlockInterceptor(
     IBlockValidator blockValidator,
     IInvalidChainTracker invalidChainTracker,
-    IStarkProofStore proofStore,
     ILogManager logManager)
     : IBlockValidator
 {
@@ -51,7 +50,8 @@ public class InvalidBlockInterceptor(
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");
-            if (ShouldNotTrackInvalidation(block))
+            // A dependency proof that is not available yet does not make the block invalid (EIP-8288).
+            if (error == BlockErrorMessages.MissingDependencyProof || ShouldNotTrackInvalidation(block))
             {
                 if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
                 return result;
@@ -70,8 +70,7 @@ public class InvalidBlockInterceptor(
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {processedBlock}");
-            // A block processed from the block store lacks the EIP-8288 proof kept apart from it; join it on a copy.
-            if (ShouldNotTrackInvalidation(proofStore.WithProof(processedBlock)))
+            if (ShouldNotTrackInvalidation(processedBlock))
             {
                 if (_logger.IsDebug) _logger.Debug($"Block invalidation should not be tracked");
                 return result;

@@ -19,4 +19,7 @@ public static class EthVersions
 
     /// <summary>EIP-8437 proof wrapper propagation; a provisional version that activates with EIP-8288.</summary>
     public const byte Eth73 = 73;
+
+    /// <summary>EIP-8498 dependency proof exchange for EIP-8288; extends <see cref="Eth73"/> and activates with EIP-8288.</summary>
+    public const byte Eth74 = 74;
 }

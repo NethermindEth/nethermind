@@ -27,6 +27,7 @@ using Eth65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Eth66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Eth68 = Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Eth72 = Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
+using Eth74 = Nethermind.Network.P2P.Subprotocols.Eth.V74.Messages;
 using Snap1 = Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using Snap2 = Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 
@@ -98,6 +99,8 @@ public class MessageDecodingCompatibilityTests
         yield return Sample.Of(static () => new Eth72.NewPooledTransactionHashesMessage72([(byte)TxType.Blob], [1024], [TestItem.KeccakA.ValueHash256], CellMask()));
         yield return Sample.Of(static () => new Eth72.GetCellsMessage72(1, [TestItem.KeccakA.ValueHash256], CellMask()));
         yield return Sample.Of(static () => new Eth72.CellsMessage72(1, [TestItem.KeccakA.ValueHash256], [[new byte[Ckzg.BytesPerCell], new byte[Ckzg.BytesPerCell]]], CellMask()));
+        yield return Sample.Of(static () => new Eth74.GetDependencyProofsMessage(1, Hashes()));
+        yield return Sample.Of(static () => new Eth74.DependencyProofsMessage(1, new ArrayPoolList<byte[]>(2) { Array.Empty<byte>(), new byte[] { 0x01, 0x02 } }));
         yield return Sample.Of(static () => new Snap1.GetAccountRangeMessage { RequestId = 1, AccountRange = new(TestItem.KeccakA, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256), ResponseBytes = 1000 });
         yield return Sample.Of(static () => new Snap1.AccountRangeMessage
         {

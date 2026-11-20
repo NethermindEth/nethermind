@@ -48,11 +48,11 @@ public class Block
     )
     { }
 
-    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
+    public virtual Block WithReplacedHeader(BlockHeader newHeader) => new(newHeader, Body, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, StarkProof = StarkProof };
 
-    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
+    public Block WithReplacedBody(BlockBody newBody) => new(Header, newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, StarkProof = StarkProof };
 
-    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists };
+    public Block WithReplacedBodyCloned(BlockBody newBody) => new(Header.Clone(), newBody, BlockAccessList) { InclusionListTransactions = InclusionListTransactions, InclusionLists = InclusionLists, StarkProof = StarkProof };
 
     public BlockHeader Header { get; }
 
@@ -70,8 +70,9 @@ public class Block
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals; // do not add setter here
 
-    /// <summary>The recursive proof carried in the EIP-8288 block body.</summary>
-    public byte[]? StarkProof { get => Body.StarkProof; set => Body.StarkProof = value; }
+    /// <summary>The EIP-8288 <c>dependency_proof</c>: null when not available, empty for a block without dependencies.</summary>
+    /// <remarks>Neither header nor body: the header commits to it by hash, and it travels in the Engine API execution payload.</remarks>
+    public byte[]? StarkProof { get; set; }
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 

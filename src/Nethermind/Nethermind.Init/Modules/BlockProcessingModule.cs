@@ -58,7 +58,9 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
                 static ctx => new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
             .AddSingleton<IBlockValidator, BlockValidator>()
+            // Decorators nest in registration order, the last outermost: the stored EIP-8288 proof is joined before the STARK is verified.
             .AddDecorator<IBlockValidator, RecursiveStarkBlockValidator>()
+            .AddDecorator<IBlockValidator, DependencyProofAvailabilityBlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
 
