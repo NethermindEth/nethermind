@@ -16,6 +16,7 @@ public class AsyncVoidAnalyzerTests
     [TestCase("async void {|#0:M|}(object sender, string e) => await Task.Yield();")]
     [TestCase("async void {|#0:M|}(string sender, EventArgs e) => await Task.Yield();")]
     [TestCase("async void {|#0:M|}<T>(object sender, T e) => await Task.Yield();")]
+    [TestCase("async void {|#0:M|}(object sender, EventArgs e, int x) => await Task.Yield();")]
     public Task Async_void_method_reports_diagnostic(string member) =>
         Verify(WrapMember(member), Diagnostic().WithLocation(0).WithArguments("M"));
 
