@@ -164,12 +164,12 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
     /// <remarks>
     /// The SSTORE that restores the slot gives back the state gas that the first SSTORE took from the gas left, so
-    /// the gas left grows across it.
+    /// the gas left can grow across it.
     /// </remarks>
     [Test]
-    public void Sstore_that_refills_state_gas_reports_its_execution_cost_on_Amsterdam()
+    public void Sstore_that_refills_state_gas_reports_its_execution_cost_on_Amsterdam([Values] bool reservoirFunded)
     {
-        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 500_000, SetClearSetSlotCode());
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
         GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
 
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);

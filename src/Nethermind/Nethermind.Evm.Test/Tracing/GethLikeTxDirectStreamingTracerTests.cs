@@ -19,7 +19,6 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -69,9 +68,9 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
-    public void Streams_execution_cost_of_an_sstore_that_refills_state_gas_on_Amsterdam()
+    public void Streams_execution_cost_of_an_sstore_that_refills_state_gas_on_Amsterdam([Values] bool reservoirFunded)
     {
-        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 500_000, SetClearSetSlotCode());
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
 
         List<StructLog> logs = StreamLogs(GethTraceOptions.Default,
             tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),

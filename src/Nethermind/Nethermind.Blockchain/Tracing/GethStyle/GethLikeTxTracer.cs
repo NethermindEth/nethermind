@@ -94,10 +94,14 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     /// <param name="executionCost">The execution gas cost that the VM reported for the opcode, if any.</param>
     /// <remarks>
     /// EIP-8037: an SSTORE that restores a slot gives back to the gas left the state gas that an earlier SSTORE took
-    /// from it, so the gas left can grow. The step then reports its execution gas cost.
+    /// from it, so the gas left can drop by less than the execution gas cost, or grow. The step then reports its
+    /// execution gas cost. Execution gas always comes from the gas left, so no other step drops by less.
     /// </remarks>
-    protected static ulong GetGasCost(ulong gasBefore, ulong gasAfter, ulong? executionCost) =>
-        gasAfter > gasBefore ? executionCost ?? 0 : gasBefore - gasAfter;
+    protected static ulong GetGasCost(ulong gasBefore, ulong gasAfter, ulong? executionCost)
+    {
+        ulong executionGas = executionCost ?? 0;
+        return gasAfter <= gasBefore && gasBefore - gasAfter >= executionGas ? gasBefore - gasAfter : executionGas;
+    }
 
     public override void ReportRefund(long refund) => _refundTracker?.Add(refund);
 
