@@ -15,7 +15,9 @@ using Nethermind.Init.Modules;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum.Steps;
+using Nethermind.Runner.Ethereum.WebTransport;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -90,6 +92,8 @@ public class NethermindRunnerModule(
 
         if (command is not null)
             builder.AddSingleton(new StepCommandSelection(command));
+        else if (configProvider.GetConfig<INetworkConfig>().WebTransportPort != 0)
+            builder.AddStep(typeof(BrowserWebTransport));
 
         foreach (INethermindPlugin plugin in plugins)
         {

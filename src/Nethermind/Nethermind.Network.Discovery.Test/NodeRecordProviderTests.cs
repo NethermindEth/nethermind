@@ -150,6 +150,57 @@ public class NodeRecordProviderTests
     }
 
     [Test]
+    public async Task WebTransport_bind_rotation_and_close_refresh_the_signed_record()
+    {
+        IPAddress externalIpV4 = IPAddress.Parse("192.0.2.1");
+        IPAddress externalIpV6 = IPAddress.Parse("2001:db8::1");
+        IIPResolver.NethermindIp addresses = new(IPAddress.IPv6Any, externalIpV4, externalIpV4, externalIpV6);
+        IIPResolver ipResolver = Substitute.For<IIPResolver>();
+        ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(addresses));
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new NetworkConfig { LocalIp = "::" }))
+            .AddSingleton(ipResolver)
+            .Build();
+        container.Resolve<IBlockTree>().SuggestBlock(Build.A.Block.Genesis.TestObject);
+        NetworkListenerState listeners = container.Resolve<NetworkListenerState>();
+        listeners.SetRlpxAddress(IPAddress.IPv6Any);
+        listeners.SetDiscoveryAddress(IPAddress.IPv6Any);
+        INodeRecordProvider provider = container.Resolve<INodeRecordProvider>();
+        NodeRecord original = NodeRecord.FromEnrString((await provider.GetCurrentAsync()).ToString());
+        byte[] initialHashes = new byte[64];
+        initialHashes[0] = 1;
+        byte[] rotatedHashes = new byte[64];
+        rotatedHashes[^1] = 2;
+
+        listeners.SetWebTransport(new(IPAddress.Any, 30304, initialHashes));
+        NodeRecord enabled = NodeRecord.FromEnrString((await provider.GetCurrentAsync()).ToString());
+        listeners.SetWebTransport(new(IPAddress.IPv6Any, 30304, rotatedHashes));
+        NodeRecord rotated = NodeRecord.FromEnrString((await provider.GetCurrentAsync()).ToString());
+        listeners.SetWebTransport(null);
+        NodeRecord stopped = NodeRecord.FromEnrString((await provider.GetCurrentAsync()).ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(original.HasEntry(EnrContentKey.QuicCertificateHashes), Is.False);
+            Assert.That(enabled.GetValue<ReadOnlyMemory<byte>>(EnrContentKey.QuicCertificateHashes)!.Value.ToArray(), Is.EqualTo(initialHashes));
+            Assert.That(enabled.TryGetQuicEndpoint(AddressFamily.InterNetwork, out IPEndPoint? v4), Is.True);
+            Assert.That(v4, Is.EqualTo(new IPEndPoint(externalIpV4, 30304)));
+            Assert.That(enabled.TryGetQuicEndpoint(AddressFamily.InterNetworkV6, out _), Is.False);
+            Assert.That(enabled.TcpPort, Is.EqualTo(original.TcpPort));
+            Assert.That(enabled.DiscoveryPort, Is.EqualTo(original.DiscoveryPort));
+            Assert.That(enabled.Snap, Is.EqualTo(original.Snap));
+            Assert.That(rotated.EnrSequence, Is.GreaterThan(enabled.EnrSequence));
+            Assert.That(rotated.GetValue<ReadOnlyMemory<byte>>(EnrContentKey.QuicCertificateHashes)!.Value.ToArray(), Is.EqualTo(rotatedHashes));
+            Assert.That(rotated.TryGetQuicEndpoint(AddressFamily.InterNetworkV6, out IPEndPoint? v6), Is.True);
+            Assert.That(v6, Is.EqualTo(new IPEndPoint(externalIpV6, 30304)));
+            Assert.That(stopped.EnrSequence, Is.GreaterThan(rotated.EnrSequence));
+            Assert.That(stopped.HasEntry(EnrContentKey.QuicCertificateHashes), Is.False);
+            Assert.That(stopped.HasEntry(EnrContentKey.Quic), Is.False);
+            Assert.That(stopped.HasEntry(EnrContentKey.Quic6), Is.False);
+        }
+    }
+
+    [Test]
     public async Task NewHeadBlock_DoesNotRepeatUnchangedEndpointWarnings()
     {
         Block initialHead = Build.A.Block.WithNumber(1).WithTimestamp(10).TestObject;
