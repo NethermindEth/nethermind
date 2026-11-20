@@ -52,6 +52,11 @@ on:
         description: Maximum concurrent matrix jobs (blank = no cap)
         required: false
         type: number
+      hive-timeout:
+        description: Hive's time limit for each simulator run (--sim.timelimit, e.g. 40m); the whole run stops at 50m
+        required: false
+        default: 40m
+        type: string
   workflow_call:
 
 concurrency:
@@ -170,6 +175,7 @@ jobs:
       BUILDARG: ${{ github.event.inputs.buildarg || '' }}
       HIVE_REPO: ${{ github.event.inputs.hive-repo || 'ethereum/hive' }}
       HIVE_BRANCH: ${{ github.event.inputs.hive-branch || 'master' }}
+      HIVE_TIMEOUT: ${{ github.event.inputs.hive-timeout || '40m' }}
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v6
@@ -199,18 +205,31 @@ jobs:
         run: go build .
 
       - name: Run Hive
+        id: hive
         continue-on-error: true
         working-directory: hive
         env:
           LIMIT: ${{ matrix.limit }}
         run: |
+          # A hung simulator must not reach the job timeout, which uploads and checks nothing. At its own time limit
+          # Hive ends the running cases as failed with "timeout": true, writes the suite files, removes its containers
+          # and exits 1, as with failed tests; the results step fails the cases it ended.
           hive_args=(--client nethermind
             --sim "${{ matrix.suite }}"
             --sim.loglevel "$LOG_LEVEL"
-            --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}")
+            --sim.parallelism "${{ matrix.parallelism || env.DEFAULT_PARALLELISM }}"
+            --sim.timelimit "$HIVE_TIMEOUT")
           [[ -n "$LIMIT" ]] && hive_args+=(--sim.limit "$LIMIT")
           [[ -n "$BUILDARG" ]] && hive_args+=(--sim.buildarg "$BUILDARG")
-          ./hive "${hive_args[@]}"
+          # The outer limit covers what Hive's limit does not (image builds, a stuck shutdown, a second simulator):
+          # TERM at 50 minutes, KILL a minute later. That leaves about 9 of the job's 60 minutes for the set-up before
+          # this step and the upload, .NET and the results check after it, which took under 2 minutes in the runs so
+          # far; an estimate, not a bound, as the upload's retries are not capped. The status (124, or 137 if Hive
+          # had to be killed) tells the results step the run is incomplete.
+          status=0
+          timeout --kill-after=1m 50m ./hive "${hive_args[@]}" || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
 
       - name: Upload results
         uses: ./nethermind/.github/actions/upload-artifact
@@ -226,6 +245,9 @@ jobs:
 
       - name: Print results
         working-directory: nethermind
+        env:
+          # Empty when "Run Hive" ended without an output, which the results script rejects as a usage error.
+          HIVE_STATUS: ${{ steps.hive.outputs.status }}
         run: |
           rm -f ../hive/workspace/logs/hive.json
-          dotnet run --file scripts/hive-results.cs -- "../hive/workspace/logs/*.json"
+          dotnet run --file scripts/hive-results.cs -- --hive-exit-code "$HIVE_STATUS" "../hive/workspace/logs/*.json"

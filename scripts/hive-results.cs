@@ -3,13 +3,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 #:property PublishAot=false
 
+using System.Globalization;
 using System.Text.Json;
 
-if (args.Length == 0)
+// The workflow passes the exit status of the Hive run. 0: Hive finished and no case failed. 1: a case failed, or Hive
+// stopped at its own time limit (the cases it ended carry "timeout": true) or on another fatal error. Anything else:
+// Hive was stopped from outside or did not run.
+int? hiveExitCode = null;
+var patterns = new List<string>();
+for (var index = 0; index < args.Length; index++)
 {
-    Console.Error.WriteLine("Usage: hive-results.cs <result-file-or-glob> [...]");
-    return 2;
+    if (args[index] == "--hive-exit-code")
+    {
+        if (hiveExitCode is not null || ++index == args.Length ||
+            !int.TryParse(args[index], NumberStyles.None, CultureInfo.InvariantCulture, out var exitCode))
+            return Usage();
+        hiveExitCode = exitCode;
+    }
+    else if (args[index].StartsWith("--", StringComparison.Ordinal))
+        return Usage();
+    else
+        patterns.Add(args[index]);
 }
+if (patterns.Count == 0)
+    return Usage();
 
 try
 {
@@ -24,7 +41,7 @@ try
     // Each simulator run writes one log next to the suite files, and each suite file names its simulator's log.
     var simulatorLogs = new SortedSet<string>(StringComparer.Ordinal);
     var simulatorsWithCases = new HashSet<string>(StringComparer.Ordinal);
-    foreach (var argument in args)
+    foreach (var argument in patterns)
     {
         var path = Path.GetFullPath(argument, Environment.CurrentDirectory);
         var directory = Path.GetDirectoryName(path)!;
@@ -53,22 +70,27 @@ try
                 foreach (var test in entries)
                 {
                     var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
-                    if (!test.TryGetProperty("summaryResult", out var summary) || summary.ValueKind == JsonValueKind.Null ||
-                        !summary.TryGetProperty("pass", out var passed) ||
-                        passed.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    var hasSummary = test.TryGetProperty("summaryResult", out var summary) && summary.ValueKind != JsonValueKind.Null;
+                    // Hive sets "timeout" only on a case it ended itself: at its time limit, on an interrupt or when the
+                    // simulator exits. Such a case did not finish, whatever "pass" says or whether it is there at all.
+                    var terminated = hasSummary && summary.TryGetProperty("timeout", out var timeout) && timeout.ValueKind == JsonValueKind.True;
+                    bool passed;
+                    if (terminated)
+                        passed = false;
+                    else if (hasSummary && summary.TryGetProperty("pass", out var pass) && pass.ValueKind is (JsonValueKind.True or JsonValueKind.False))
+                        passed = pass.GetBoolean();
+                    else
                     {
                         // Without the wrapper's result the tool's exit is unknown, and so is whether its sub-tests all ran.
                         if (name == wrapper)
                             unfinishedWrappers.Add($"Suite '{suite}' has no result for '{wrapper}'.");
                         continue;
                     }
-                    // Hive sets "timeout" only on a case it ended itself: at its time limit, on an interrupt or when the simulator exits.
-                    var terminated = summary.TryGetProperty("timeout", out var timeout) && timeout.ValueKind == JsonValueKind.True;
                     // Count on the raw name, before the prefix below, so that no launch case passes for a real one.
                     if (name != launchTest && name != wrapper)
                         suiteCases++;
                     // Sync suites reuse case names, so retain their suite prefix to distinguish failures.
-                    suiteResults.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean(), terminated));
+                    suiteResults.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed, terminated));
                 }
                 // A suite that launched the client and stopped, or ran nothing, must fail even next to suites with results.
                 realCases += suiteCases;
@@ -93,13 +115,19 @@ try
     var unexpectedFails = 0;
     foreach (var passed in new[] { true, false })
     {
-        var names = results.Where(result => result.Passed == passed).Select(result => result.Name)
-            .Order(StringComparer.OrdinalIgnoreCase).ThenBy(name => name, StringComparer.Ordinal).ToArray();
-        Console.WriteLine($"\n{(passed ? "Passed" : "Failed")} {names.Length}:\n");
-        foreach (var name in names)
+        var selected = results.Where(result => result.Passed == passed)
+            .OrderBy(result => result.Name, StringComparer.OrdinalIgnoreCase).ThenBy(result => result.Name, StringComparer.Ordinal).ToArray();
+        Console.WriteLine($"\n{(passed ? "Passed" : "Failed")} {selected.Length}:\n");
+        foreach (var (name, _, terminated) in selected)
         {
             var symbol = passed ? "✔" : "✖";
-            if (knownFlaky.Contains(name))
+            // A case Hive ended itself did not finish, so no list excuses it.
+            if (terminated && !passed)
+            {
+                unexpectedFails++;
+                Console.WriteLine($"\u001b[31m{symbol} {name} (terminated by Hive)\u001b[0m");
+            }
+            else if (knownFlaky.Contains(name))
                 Console.WriteLine($"\u001b[33m{symbol} {name} (flaky)\u001b[0m");
             else if (knownFails.Contains(name) && passed)
             {
@@ -128,6 +156,14 @@ try
     problems.AddRange(unfinishedWrappers);
     problems.AddRange(simulatorLogs.Where(log => !simulatorsWithCases.Contains(log))
         .Select(log => $"Simulator log '{log}' has no suite with test cases."));
+    // Any other status means Hive was stopped from outside (124 at the workflow's outer limit, 137 when it had to be
+    // killed) or failed to run, so suite files may be missing.
+    if (hiveExitCode is not (null or 0 or 1))
+        problems.Add($"Hive did not finish: exit status {hiveExitCode}. The results are incomplete.");
+    // Status 1 with no failed case is not a run with failed tests: Hive stopped on its time limit while no case was
+    // running, or on another fatal error, and the cases it did not reach are missing.
+    else if (hiveExitCode == 1 && results.All(result => result.Passed))
+        problems.Add("Hive did not finish: exit status 1 without a failed case. The results are incomplete.");
     if (problems.Count > 0)
         Console.WriteLine();
     foreach (var problem in problems)
@@ -138,4 +174,10 @@ catch (Exception exception) when (exception is IOException or UnauthorizedAccess
 {
     Console.Error.WriteLine(exception.Message);
     return 1;
+}
+
+static int Usage()
+{
+    Console.Error.WriteLine("Usage: hive-results.cs [--hive-exit-code <n>] <result-file-or-glob> [...]");
+    return 2;
 }
