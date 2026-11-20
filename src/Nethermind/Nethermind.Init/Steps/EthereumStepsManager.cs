@@ -80,7 +80,7 @@ namespace Nethermind.Init.Steps
 
             // A command's exit code is the target's outcome, so anything short of it completing has to surface
             // as an exception for Program to map.
-            // Shutdown counts as not completing; the exit code is already SigInt and must not be overwritten.
+            // Shutdown counts as not completing; the exit code is already set by whatever requested the shutdown and must not be overwritten.
             cancellationToken.ThrowIfCancellationRequested();
 
             if (targetTask?.IsCompletedSuccessfully != true)
