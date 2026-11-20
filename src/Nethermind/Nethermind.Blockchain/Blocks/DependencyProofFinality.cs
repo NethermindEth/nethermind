@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Blocks;
 
@@ -12,8 +13,8 @@ namespace Nethermind.Blockchain.Blocks;
 public static class DependencyProofFinality
 {
     /// <summary>Whether <paramref name="header"/> is the finalized block or one of its ancestors, so its proof is not needed.</summary>
-    /// <remarks>Below the finalized height a block is an ancestor when it is the beacon main-chain block of its level, which leads
-    /// to the head the finalized block precedes, or, where beacon sync marks none, the main-chain block.</remarks>
+    /// <remarks>Below the finalized height a block is an ancestor when its level's main-chain block and beacon main-chain block,
+    /// whichever are set, are both this block. A level where they disagree is not trusted, so the proof is fetched.</remarks>
     public static bool IsTrusted(IBlockTree blockTree, BlockHeader header)
     {
         if (header.Hash is not { } hash || blockTree.FindFinalizedHeader() is not { } finalized || header.Number > finalized.Number)
@@ -25,16 +26,15 @@ public static class DependencyProofFinality
         ChainLevelInfo? level = blockTree.FindLevel(header.Number);
         if (level is null) return false;
 
-        // While beacon sync marks a chain at this height, it is the one leading to the finalized block, not the old main chain.
-        bool beaconChainMarked = false;
+        // The main chain and a beacon-sync mark can disagree at a height, either while beacon sync moves to a new branch or
+        // after processing moved on from an old mark; neither is then known to lead to the finalized block.
+        Hash256? beacon = null;
         foreach (BlockInfo blockInfo in level.BlockInfos)
         {
-            if (!blockInfo.IsBeaconMainChain) continue;
-            if (blockInfo.BlockHash == hash) return true;
-            beaconChainMarked = true;
+            if (blockInfo.IsBeaconMainChain) beacon ??= blockInfo.BlockHash;
         }
 
-        if (!beaconChainMarked && level.MainChainBlock?.BlockHash == hash) return true;
-        return false;
+        Hash256? main = level.MainChainBlock?.BlockHash;
+        return (main ?? beacon) == hash && (beacon is null || beacon == hash);
     }
 }
