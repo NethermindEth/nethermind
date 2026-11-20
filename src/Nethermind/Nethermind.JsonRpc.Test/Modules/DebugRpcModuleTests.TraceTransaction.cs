@@ -70,7 +70,7 @@ public partial class DebugRpcModuleTests
             Assert.That(json["result"], Is.Null, response);
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
             Assert.That((string?)json["error"]?["message"], Is.EqualTo(callback == "setup"
-                ? "Error: kaboom" : $"Error: kaboom    in server-side tracer function '{callback}'"), response);
+                ? "Error: kaboom" : $"Error: kaboom in server-side tracer function '{callback}'"), response);
             Assert.That(json["error"]?["data"], Is.Null, response);
         }
     }

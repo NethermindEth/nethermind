@@ -1486,7 +1486,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
         {
             Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.TypeOf<InvalidDataException>()
-                .With.Message.EqualTo("Error: result failed    in server-side tracer function 'result'")
+                .With.Message.EqualTo("Error: result failed in server-side tracer function 'result'")
                 .And.InnerException.InstanceOf<ScriptEngineException>());
         }
 

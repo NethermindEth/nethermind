@@ -668,7 +668,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         catch (Exception exception) when (!_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
         {
             string message = function == TracerFunctions.setup ? exception.Message
-                : $"{exception.Message}    in server-side tracer function '{function}'";
+                : $"{exception.Message} in server-side tracer function '{function}'";
             throw new InvalidDataException(message, exception);
         }
         catch (Exception exception) when (_captureErrors
