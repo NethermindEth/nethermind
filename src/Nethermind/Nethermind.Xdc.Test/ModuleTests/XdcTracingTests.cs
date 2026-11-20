@@ -1,16 +1,20 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Network;
+using Nethermind.State;
 using Nethermind.Xdc.Test.Helpers;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
@@ -62,9 +66,23 @@ internal class XdcTracingTests
         Assert.That(block.Transactions, Has.Length.EqualTo(1));
 
         string hash = $"\"{transaction.Hash}\"";
-        string response = await Request(method, method == "trace_replayTransaction" ? $"""[{hash},["trace"]]""" : $"[{hash}]");
+        string response = await Request(method, method == "trace_replayTransaction" ? $"""[{hash},["trace","stateDiff"]]""" : $"[{hash}]");
 
         AssertTraced(method, response);
+
+        // The replay must match the block's execution, not merely succeed.
+        JToken result = JToken.Parse(response)["result"]!;
+        if (method == "debug_traceTransaction")
+        {
+            Assert.That((ulong?)result["gas"], Is.EqualTo(block.GasUsed), response);
+        }
+        else
+        {
+            JToken? senderDiff = ((JObject?)result["stateDiff"])?.Properties()
+                .SingleOrDefault(account => string.Equals(account.Name, TestItem.AddressB.ToString(), StringComparison.OrdinalIgnoreCase))?.Value;
+            string balance = _blockchain.StateReader.GetBalance(block.Header, TestItem.AddressB).ToHexString(skipLeadingZeros: true);
+            Assert.That((string?)senderDiff?["balance"]?["*"]?["to"], Is.EqualTo(balance), response);
+        }
     }
 
     private Task<string> Request(string method, string parameters)
