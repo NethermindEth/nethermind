@@ -8,8 +8,8 @@ using NUnit.Framework;
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
 
 /// <summary>
-/// Covers <see cref="Bytes.WriteMisalignedWords"/>, <see cref="Bytes.ReadMisalignedWords"/> and
-/// <see cref="Bytes.SequenceEqualByWords"/>, which only the strict-alignment guest calls, so no host path reaches them.
+/// Covers <see cref="Bytes.WriteMisalignedWords"/>, <see cref="Bytes.ReadMisalignedWords"/>,
+/// <see cref="Bytes.SequenceEqualByWords"/> and <see cref="Bytes.CommonPrefixLengthByWords"/>, which only the strict-alignment guest calls, so no host path reaches them.
 /// </summary>
 public class MisalignedWordsTests
 {
@@ -44,10 +44,22 @@ public class MisalignedWordsTests
         {
             Assert.That(Bytes.SequenceEqualByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.True);
             Assert.That(Bytes.SequenceEqualByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, Math.Max(0, length - 1))), Is.EqualTo(length == 0));
+            Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.EqualTo(length));
+            Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, Math.Max(0, length - 1))), Is.EqualTo(Math.Max(0, length - 1)));
+            Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, Math.Max(0, length - 1)), b.AsSpan(skewB, length)), Is.EqualTo(Math.Max(0, length - 1)));
             for (int i = 0; i < length; i++)
             {
                 b[skewB + i] ^= 0x10;
                 Assert.That(Bytes.SequenceEqualByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.False, $"byte {i}");
+                Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.EqualTo(i), $"prefix {i}");
+                Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length - 1)), Is.EqualTo(i), $"prefix {i}, second shorter");
+                Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length - 1), b.AsSpan(skewB, length)), Is.EqualTo(i), $"prefix {i}, first shorter");
+                if (i + 1 < length)
+                {
+                    b[skewB + i + 1] ^= 0x10;
+                    Assert.That(Bytes.CommonPrefixLengthByWords(a.AsSpan(skewA, length), b.AsSpan(skewB, length)), Is.EqualTo(i), $"prefix {i}, later byte also changed");
+                    b[skewB + i + 1] ^= 0x10;
+                }
                 b[skewB + i] ^= 0x10;
             }
         }

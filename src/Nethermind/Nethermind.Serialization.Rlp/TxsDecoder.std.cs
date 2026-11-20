@@ -29,6 +29,7 @@ public static partial class TxsDecoder
                     }
                     catch (Exception e) when (state.skipErrors && e is RlpReaderException or ArgumentException)
                     {
+                        state.decoded[i] = null!;
                     }
 
                     return state;

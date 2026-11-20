@@ -124,11 +124,11 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
                 sendFailedBeforeClose = _sendLock.IsFaulted;
                 _processChannel.Writer.Complete();
             }
-        }));
+        }, CancellationToken.None));
 
         for (int i = 0; i < _workerTaskCount; i++)
         {
-            allTasks.Add(Task.Run(() => WorkerLoop(cts.Token)));
+            allTasks.Add(Task.Run(() => WorkerLoop(cts.Token), CancellationToken.None));
         }
 
         try

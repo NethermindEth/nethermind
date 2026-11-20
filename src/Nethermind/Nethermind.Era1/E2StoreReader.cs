@@ -51,7 +51,7 @@ public class E2StoreReader : IDisposable
 
     public async Task<(T, long)> ReadSnappyCompressedEntryAndDecode<T>(long position, Func<Memory<byte>, T> decoder, ushort expectedType, CancellationToken token = default)
     {
-        Entry entry = ReadEntry(position, expectedType);
+        Entry entry = ReadEntry(position, expectedType, token);
         T returnValue = await ReadEntryValueAsSnappy(position + HeaderSize, entry.Length, decoder, token);
         return ((T, long))(returnValue, entry.Length + HeaderSize);
     }

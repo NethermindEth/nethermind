@@ -229,7 +229,7 @@ public class RequestFailureCauseTests
         finally
         {
             release.Set();
-            await disconnected.WaitAsync(TimeSpan.FromSeconds(5));
+            await disconnected.WaitAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
         }
 
         Assert.That(released, Is.True, "the cancellation callback must be released before its bound expires");
@@ -325,13 +325,13 @@ public class RequestFailureCauseTests
         try
         {
             Assert.That(PeerManager.RequestsInFlightForTest(silent), Is.EqualTo(2));
-            silentSession.ColumnDials[0].SetCanceled();
+            silentSession.ColumnDials[0].SetCanceled(CancellationToken.None);
             ReqRespTimeoutException? exempt = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await first.WaitAsync(token));
 
             Task<IReadOnlyList<DataColumnSidecar>> answered = answering.RequestDataColumnSidecarsByRootAsync(Identifiers(2), token);
             answeringSession.ColumnDials[0].SetResult(new ForkedDataColumnSidecars([], []));
             await answered.WaitAsync(token);
-            silentSession.ColumnDials[1].SetCanceled();
+            silentSession.ColumnDials[1].SetCanceled(CancellationToken.None);
             ReqRespTimeoutException? blamed = await Assert.ThrowsAsync<ReqRespTimeoutException>(async () => await second.WaitAsync(token));
             using (Assert.EnterMultipleScope())
             {

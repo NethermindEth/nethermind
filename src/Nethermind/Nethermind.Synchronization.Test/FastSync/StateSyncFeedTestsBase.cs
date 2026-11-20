@@ -314,7 +314,7 @@ public abstract class StateSyncFeedTestsBase(
         {
             if (_maxRandomizedLatencyMs != 0)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs));
+                await Task.Delay(TimeSpan.FromMilliseconds(TestContext.CurrentContext.Random.NextLong() % _maxRandomizedLatencyMs), token);
             }
 
             if (_executorResultFunction is not null) return await _executorResultFunction(hashes);

@@ -32,15 +32,20 @@ namespace Nethermind.Hive
         public async Task Start(CancellationToken cancellationToken)
         {
             if (_logger.IsInfo) _logger.Info("HIVE initialization started");
-            blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
-            blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
+            try
+            {
+                blockTree.NewBestSuggestedBlock += OnNewBestSuggestedBlock;
+                blockProcessingQueue.BlockRemoved += BlockProcessingFinished;
 
-            ListEnvironmentVariables();
-            await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
-            await InitializeChain(hiveConfig.ChainFile);
-
-            blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
-            blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
+                ListEnvironmentVariables();
+                await InitializeBlocks(hiveConfig.BlocksDir, cancellationToken);
+                await InitializeChain(hiveConfig.ChainFile);
+            }
+            finally
+            {
+                blockTree.NewBestSuggestedBlock -= OnNewBestSuggestedBlock;
+                blockProcessingQueue.BlockRemoved -= BlockProcessingFinished;
+            }
 
             if (_logger.IsInfo) _logger.Info("HIVE initialization completed");
         }

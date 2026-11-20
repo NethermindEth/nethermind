@@ -754,6 +754,7 @@ public partial class BlockDownloaderTests
             .Returns(ci =>
             {
                 IList<Hash256> blockHashes = ci.ArgAt<IList<Hash256>>(0);
+                int responseLength = Math.Min(minResponseLength, blockHashes.Count);
                 lock (requestedHashes)
                 {
                     blockHashes = blockHashes.Where((hash) =>
@@ -774,9 +775,9 @@ public partial class BlockDownloaderTests
                     .Result
                     .Bodies!;
 
-                if (response.Length < minResponseLength)
+                if (response.Length < responseLength)
                 {
-                    BlockBody?[] nullPaddedResponse = new BlockBody[minResponseLength];
+                    BlockBody?[] nullPaddedResponse = new BlockBody[responseLength];
                     for (int i = 0; i < response.Length; i++)
                     {
                         nullPaddedResponse[i] = response[i];
@@ -931,6 +932,48 @@ public partial class BlockDownloaderTests
 
         Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
         ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Rejects_more_bodies_than_requested_without_decoding_them([Values] bool lastEntryEmpty)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        int present = lastEntryEmpty ? blockRequest.BodiesRequests.Count : blockRequest.BodiesRequests.Count + 1;
+        byte[] body = ThrowingHeaderDecoder.BodyWithUncle();
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(body.Length * (blockRequest.BodiesRequests.Count + 1));
+        Range[] ranges = new Range[blockRequest.BodiesRequests.Count + 1];
+        for (int i = 0; i < present; i++)
+        {
+            body.CopyTo(memory.Memory[(i * body.Length)..]);
+            ranges[i] = new Range(i * body.Length, (i + 1) * body.Length);
+        }
+
+        if (lastEntryEmpty)
+        {
+            memory.Memory.Span[present * body.Length] = Rlp.EmptyListByte;
+            ranges[present] = new Range(present * body.Length, present * body.Length + 1);
+        }
+
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, ranges, ThrowingHeaderDecoder.BodyDecoder);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "more block bodies received than requested");
+        ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
     }
 
     [Test]
