@@ -13,8 +13,12 @@ on:
           - 'all'
           - devp2p
           - ethereum/eels/consume-engine
+          - ethereum/eels/consume-enginex
+          - ethereum/eels/consume-reorg
           - ethereum/eels/consume-rlp
           - ethereum/eels/consume-sync
+          - ethereum/eels/consume-wirex
+          - ethereum/eels/execute-blobs
           - ethereum/engine
           - ethereum/graphql
           - ethereum/rpc-compat
@@ -97,6 +101,7 @@ jobs:
             # engine-(auth|[^acw]) catches exchange-capabilities and any future engine suites.
             # The suites that finish in seconds share a job, as most of a job is image builds.
             # ethereum/graphql is left to manual runs: Nethermind serves no GraphQL, so it can only fail.
+            # eels/consume-reorg runs here because the Pyspec tests do not load its reorg fixtures.
             cancun_i_other="^I$(not_prefixed 'nvalid NewPayload, ')"
             cancun_n_z="^([N-QS-Z]|R$(not_prefixed 'e-Execute Payload'))"
             api_i_other="^I$(not_prefixed 'nvalid NewPayload')"
@@ -115,7 +120,8 @@ jobs:
                 {"suite":"ethereum/engine", "limit":"engine-withdrawals/^[SG]", "parallelism":2, "name":"engine-withdrawals-sync-bodies"},
                 {"suite":"ethereum/engine", "limit":"engine-withdrawals/^[^SG]", "parallelism":2, "name":"engine-withdrawals-other"},
                 {"suite":"ethereum/engine", "limit":"engine-(auth|[^acw])", "parallelism":2, "name":"engine-auth-other"},
-                {"suite":"ethereum/(rpc-compat|sync)", "name":"rpc-compat-sync"}
+                {"suite":"ethereum/(rpc-compat|sync)", "name":"rpc-compat-sync"},
+                {"suite":"ethereum/eels/consume-reorg", "name":"eels-consume-reorg"}
               ]'
               echo 'MATRIX_END'
             } >> "$GITHUB_OUTPUT"
