@@ -19,6 +19,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -61,9 +62,33 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             }
             else
             {
-                Assert.That(RefundAt(logs, "SSTORE"), Is.EqualTo(sClearRefund));
+                Assert.That(RefundAt(logs, "SSTORE"), Is.Null);
                 Assert.That(RefundAt(logs, "STOP"), Is.EqualTo(sClearRefund));
             }
+        }
+    }
+
+    [Test]
+    public void Streams_execution_cost_of_an_sstore_that_refills_state_gas_on_Amsterdam()
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 500_000, SetClearSetSlotCode());
+
+        List<StructLog> logs = StreamLogs(GethTraceOptions.Default,
+            tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+            transaction);
+
+        Assert.That(logs.Where(static l => l.Op == "SSTORE").ElementAt(1).GasCost, Is.EqualTo(Eip8038Constants.WarmAccess));
+    }
+
+    [Test]
+    public void Streams_refund_counter_before_a_failing_sstore()
+    {
+        StructLog sstore = StreamLogs(ChildClearOutOfGasCode(), GethTraceOptions.Default).Single(static l => l.Op == "SSTORE");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Error, Is.Not.Null);
+            Assert.That(sstore.Refund, Is.Null);
         }
     }
 
@@ -140,7 +165,7 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(RefundAt(logs, "SELFDESTRUCT"), Is.EqualTo(destroyRefund));
+            Assert.That(RefundAt(logs, "SELFDESTRUCT"), Is.Null);
             Assert.That(RefundAt(logs, "STOP"), Is.EqualTo(destroyRefund));
         }
     }

@@ -88,6 +88,17 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         : stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth ? GetErrorDescription(EvmExceptionType.StackOverflow)
         : null;
 
+    /// <summary>Returns the gas an opcode used, from the gas left before and after it.</summary>
+    /// <param name="gasBefore">The gas left before the opcode.</param>
+    /// <param name="gasAfter">The gas left after the opcode.</param>
+    /// <param name="executionCost">The execution gas cost that the VM reported for the opcode, if any.</param>
+    /// <remarks>
+    /// EIP-8037: an SSTORE that restores a slot gives back to the gas left the state gas that an earlier SSTORE took
+    /// from it, so the gas left can grow. The step then reports its execution gas cost.
+    /// </remarks>
+    protected static ulong GetGasCost(ulong gasBefore, ulong gasAfter, ulong? executionCost) =>
+        gasAfter > gasBefore ? executionCost ?? 0 : gasBefore - gasAfter;
+
     public override void ReportRefund(long refund) => _refundTracker?.Add(refund);
 
     public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress) =>
@@ -205,9 +216,9 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     {
         if (!_gasCostAlreadySetForCurrentOp && CurrentTraceEntry is not null)
         {
-            CurrentTraceEntry.GasCost = CurrentTraceEntry.Gas - gas;
-            // Geth samples after dynamic gas calculation, including this opcode's refund changes.
-            CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
+            CurrentTraceEntry.GasCost = GetGasCost(CurrentTraceEntry.Gas, gas, _calculatedGasCost);
+            if (ReportsRefundAfterOperation)
+                CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
         }
     }
@@ -215,9 +226,16 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     /// <inheritdoc/>
     public override void ReportStorageRefund(long refund)
     {
-        if (CurrentTraceEntry is not null)
+        if (ReportsRefundAfterOperation && CurrentTraceEntry is not null)
             CurrentTraceEntry.Refund = CurrentRefund + refund;
     }
+
+    /// <summary>Whether an entry shows the refund counter after its opcode rather than before it.</summary>
+    /// <remarks>
+    /// The struct logger shows the counter before the opcode, as execution-apis specifies. Geth's EIP-3155 traces
+    /// sample it after the opcode's dynamic gas, which includes the opcode's own refund changes.
+    /// </remarks>
+    protected virtual bool ReportsRefundAfterOperation => false;
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry?.UpdateMemorySize(newSize);
 

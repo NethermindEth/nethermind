@@ -46,6 +46,28 @@ public abstract class GethLikeTracerTestsBase : VirtualMachineTestsBase
             .Done;
     }
 
+    /// <summary>Top-level frame sets an empty slot, restores it to zero and sets it again.</summary>
+    protected static byte[] SetClearSetSlotCode() => Prepare.EvmCode
+        .PersistData("0x1", "0x1")
+        .PersistData("0x1", HexZero)
+        .PersistData("0x1", "0x1")
+        .Op(Instruction.STOP)
+        .Done;
+
+    /// <summary>Child frame runs out of gas on an SSTORE that would clear a slot.</summary>
+    protected byte[] ChildClearOutOfGasCode()
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.Set(new StorageCell(TestItem.AddressC, 0), (UInt256)1);
+        TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PersistData("0x0", HexZero).Done, Spec);
+        TestState.Commit(Spec);
+
+        return Prepare.EvmCode
+            .Call(TestItem.AddressC, 2400)
+            .Op(Instruction.STOP)
+            .Done;
+    }
+
     /// <summary>Parent frame clears a slot, then calls a child that reverts.</summary>
     protected byte[] RefundThenChildRevertCode()
     {
