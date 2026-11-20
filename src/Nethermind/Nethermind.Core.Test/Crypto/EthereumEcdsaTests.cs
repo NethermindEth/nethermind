@@ -486,10 +486,14 @@ namespace Nethermind.Core.Test.Crypto
         /// Every recovery of a typed transaction computes its signing hash, so a sender-cache hit must allocate nothing
         /// and a miss no more than the ECDSA recovery of the address itself.
         /// </summary>
+        /// <remarks>
+        /// The cache is process-wide, so other tests can evict the entry during the hit loop. The loop allows one ECDSA
+        /// recovery for each miss it counts.
+        /// </remarks>
         [Test]
         public void RecoverAddress_allocates_no_more_than_the_ecdsa_recovery([Values] bool fromEncoding)
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            CountingEcdsa ecdsa = new(new EthereumEcdsa(BlockchainIds.Sepolia));
             Transaction warmUp = UniqueTypedTx(ecdsa, fromEncoding ? 0xA110C6UL : 0xA110C0UL);
             Transaction tx = UniqueTypedTx(ecdsa, fromEncoding ? 0xA110C7UL : 0xA110C1UL);
             byte[] warmUpEncoded = Encode(warmUp);
@@ -507,8 +511,10 @@ namespace Nethermind.Core.Test.Crypto
             Address? missed = Recover(tx, encoded);
             long miss = GC.GetAllocatedBytesForCurrentThread() - start;
 
+            const int lookups = 1000;
+            ecdsa.Recoveries = 0;
             start = GC.GetAllocatedBytesForCurrentThread();
-            for (int i = 0; i < 1000; i++)
+            for (int i = 0; i < lookups; i++)
             {
                 Recover(tx, encoded);
             }
@@ -519,7 +525,8 @@ namespace Nethermind.Core.Test.Crypto
                 Assert.That(recoveredDirectly, Is.EqualTo(TestItem.PrivateKeyA.Address), "the signing hash under test");
                 Assert.That(missed, Is.EqualTo(TestItem.PrivateKeyA.Address));
                 Assert.That(miss, Is.EqualTo(ecdsaRecovery), "a miss");
-                Assert.That(hits, Is.Zero, "cache hits");
+                Assert.That(ecdsa.Recoveries, Is.LessThan(lookups), "lookups served from the cache");
+                Assert.That(hits, Is.EqualTo(ecdsa.Recoveries * ecdsaRecovery), "cache hits");
             }
 
             Address? Recover(Transaction transaction, byte[] transactionEncoding) =>
@@ -614,6 +621,27 @@ namespace Nethermind.Core.Test.Crypto
             IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
             ecdsa.ChainId.Returns(chainId);
             return ecdsa;
+        }
+
+        /// <summary>Counts the address recoveries that reach the ECDSA, without allocating.</summary>
+        private sealed class CountingEcdsa(IEthereumEcdsa ecdsa) : IEthereumEcdsa
+        {
+            public int Recoveries;
+
+            public ulong ChainId => ecdsa.ChainId;
+
+            public Address? RecoverAddress(Signature signature, in ValueHash256 message)
+            {
+                Recoveries++;
+                return ecdsa.RecoverAddress(signature, in message);
+            }
+
+            public Signature Sign(PrivateKey privateKey, in ValueHash256 message) => ecdsa.Sign(privateKey, in message);
+
+            public PublicKey? RecoverPublicKey(Signature signature, in ValueHash256 message) => ecdsa.RecoverPublicKey(signature, in message);
+
+            public CompressedPublicKey? RecoverCompressedPublicKey(Signature signature, in ValueHash256 message) =>
+                ecdsa.RecoverCompressedPublicKey(signature, in message);
         }
 
         [Test]
