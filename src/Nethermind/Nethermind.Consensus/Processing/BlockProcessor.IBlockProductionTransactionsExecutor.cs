@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Processing
 {
@@ -31,8 +30,6 @@ namespace Nethermind.Consensus.Processing
 
             public Block Block { get; } = block;
             public IReadOnlyCollection<Transaction> TransactionsInBlock { get; } = transactionsInBlock;
-            internal AggregationInput? LeanProofInput { get; set; }
-            internal IReadOnlyList<FrameDependency> LeanDependencies { get; set; } = [];
             public TxAction Action { get; private set; } = TxAction.Add;
             public string Reason => ReferenceEquals(_reason, DeferredReason) ? _reason = FormatDeferredReason() : _reason;
 

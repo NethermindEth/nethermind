@@ -20,7 +20,7 @@ namespace Nethermind.Crypto;
 public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
 {
     private const string Library = "nethermind_lean";
-    private const uint ExpectedAbiVersion = 21;
+    private const uint ExpectedAbiVersion = 23;
     private static readonly Lazy<bool> BackendAvailable = new(CheckBackend);
     public const int MaxProofBytes = Eip8288Constants.MaxProofBytes;
     public static readonly NativeLeanProofVerifier Instance = new();
@@ -39,7 +39,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
             Span<uint> limits = stackalloc uint[7];
             ReadOnlySpan<uint> expectedLimits = [MaxProofBytes, Eip8288Constants.MaxProofDependencies,
                 Eip8288Constants.MaxRecursiveInputsPerStep, Eip8288Constants.LeanSphincsWitnessBytes, Eip8288Constants.MaxAggregationInputBytes,
-                Eip8288Constants.MaxLeanStarkWitnessesPerStep, Eip8288Constants.MaxLeanStarkInstructions];
+                Eip8288Constants.MaxInnerProofsPerStep, Eip8288Constants.MaxLeanStarkInstructions];
             fixed (uint* p = limits)
                 if (nlean_limits(p, (nuint)limits.Length) != 1 ||
                     !limits.SequenceEqual(expectedLimits))
@@ -212,8 +212,8 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     internal static byte[] SerializeInput(AggregationInput input)
     {
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxRawWitnessesPerStep
-            || Eip8288Dependencies.CountLeanStark(input.Deps) > Eip8288Constants.MaxLeanStarkWitnessesPerStep
-            || input.RecursiveProofs.Count > Eip8288Constants.MaxRecursiveInputsPerStep || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
+            || Eip8288Dependencies.CountLeanStark(input.Deps) + input.RecursiveProofs.Count > Eip8288Constants.MaxInnerProofsPerStep
+            || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
             throw new ArgumentException("Invalid Lean aggregation input", nameof(input));
         using MemoryStream stream = new();
         using BinaryWriter writer = new(stream);

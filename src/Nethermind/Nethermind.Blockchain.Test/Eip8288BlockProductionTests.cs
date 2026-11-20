@@ -70,12 +70,13 @@ public class Eip8288BlockProductionTests
     public void Packing_to_the_byte_budget_leaves_room_for_the_largest_stark_proof([Values] bool carriesProof)
     {
         IReleaseSpec spec = Eip8288Prototype.Instance;
-        BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(spec), BlocksConfig.DefaultMaxTxKilobytes);
+        BlockProcessor.IBlockProductionTransactionPicker picker = Eip8288TransactionPickerTests.CreatePicker(spec);
         IReadOnlyStateProvider state = Substitute.For<IReadOnlyStateProvider>();
         state.GetBalance(Arg.Any<Address>()).Returns(UInt256.MaxValue / 2);
         BlockToProduce block = new(Build.A.BlockHeader.WithGasLimit(ulong.MaxValue / 2).TestObject);
         if (carriesProof)
-            block.LeanProofInputs.Add(new AggregationInput { Deps = [new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)], Witnesses = [new byte[1]] });
+            block.LeanProduction.Prepare(new BlockProcessor.AddingTxEventArgs(0, Build.A.Transaction.TestObject, block, []),
+                new AggregationInput { Deps = [new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default)], Witnesses = [new byte[1]] }, []);
 
         List<Transaction> included = [];
         BlockProcessor.AddingTxEventArgs args;
@@ -108,7 +109,7 @@ public class Eip8288BlockProductionTests
     [Test]
     public void First_dependency_bearing_candidate_needs_room_for_the_largest_stark_proof([Values] bool dependencyBearing)
     {
-        BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), BlocksConfig.DefaultMaxTxKilobytes);
+        BlockProcessor.IBlockProductionTransactionPicker picker = Eip8288TransactionPickerTests.CreatePicker(Eip8288Prototype.Instance);
         BlockToProduce block = new(Build.A.BlockHeader.WithGasLimit(ulong.MaxValue / 2).TestObject)
         {
             TxByteLength = BlocksConfig.DefaultMaxTxKilobytes.KiB - Eip8288Constants.MaxAggregateProofBytes
@@ -1182,7 +1183,7 @@ public class Eip8288BlockProductionTests
         FrameDependency[] committed = superset ? [.. Eip8288Dependencies.Canonicalize([dependency, surplus])] : [dependency];
         BlockToProduce producing = new(template!.Header, [transaction], [], template.Withdrawals)
         {
-            InclusionListProofInput = new() { RecursiveProofs = [new(committed, Eip8288Dependencies.ComputeDepsHash(committed).ToByteArray())] }
+            LeanProduction = { InclusionListProofInput = new() { RecursiveProofs = [new(committed, Eip8288Dependencies.ComputeDepsHash(committed).ToByteArray())] } }
         };
         int proofCallsBefore = verifier.ProofCalls;
         int verificationCallsBefore = verifier.RecursiveVerificationCalls;
@@ -1197,7 +1198,7 @@ public class Eip8288BlockProductionTests
             if (superset) Assert.That(verifier.ProofCalls, Is.GreaterThan(proofCallsBefore), "discarding the surplus needs a new proof");
             else
             {
-                Assert.That(processed.StarkProof, Is.EqualTo(producing.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
+                Assert.That(processed.StarkProof, Is.EqualTo(producing.LeanProduction.InclusionListProofInput!.RecursiveProofs[0].Proof.ToArray()));
                 Assert.That(verifier.ProofCalls, Is.EqualTo(proofCallsBefore), "the unchanged verified IL statement needs no new proof");
             }
             Assert.That(verifier.RecursiveVerificationCalls, Is.GreaterThan(verificationCallsBefore));
@@ -1224,9 +1225,9 @@ public class Eip8288BlockProductionTests
         BlockToProduce producing = new(template!.Header, [listed, .. unlisted], [], template.Withdrawals)
         {
             InclusionListTransactions = [listed],
-            InclusionListProofInput = new()
+            LeanProduction =
             {
-                RecursiveProofs = [new([listedDependency], Eip8288Dependencies.ComputeDepsHash([listedDependency]).ToByteArray())]
+                InclusionListProofInput = new() { RecursiveProofs = [new([listedDependency], Eip8288Dependencies.ComputeDepsHash([listedDependency]).ToByteArray())] }
             }
         };
         await using ScopedBlockProducerEnv environment = chain.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient();

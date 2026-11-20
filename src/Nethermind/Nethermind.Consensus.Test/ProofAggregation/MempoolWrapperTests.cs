@@ -146,7 +146,7 @@ public class MempoolWrapperTests
         }
     }
 
-    // LEANSTARK_SCHEME, enabled here as a deviation from EIP-8288, is valid beside leanSPHINCS in both modes; mode 0 still
+    // LEANSTARK_SCHEME is valid beside leanSPHINCS in both modes; mode 0 still
     // bounds it by MAX_LEANSTARK_DEPS_PER_WRAPPER.
     [Test]
     public void Wrapper_accepts_mixed_leanstark_deps([Values(MempoolWrapper.ModeDirect, MempoolWrapper.ModeRecursive)] byte mode)

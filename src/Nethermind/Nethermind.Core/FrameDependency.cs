@@ -174,50 +174,24 @@ public static class Eip8288Dependencies
         return dependencies;
     }
 
-    // Closes the digest of a list holding leanSTARK dependencies: a 96-byte preimage, which no list of 64-byte entries shares.
-    private static ReadOnlySpan<byte> LeanStarkDepsDomain => "eip8288/leanstark-deps\0\0\0\0\0\0\0\0\0\0"u8;
-
     /// <summary>Spec <c>get_deps_hash</c>, the <c>block_deps_hash</c> and <c>deps_hash</c> a recursive STARK is verified against:
-    /// <c>DEPS_HASH</c> over the canonical dependencies' 64-byte <c>data_hash || key</c> entries, where a leanSPHINCS key is the raw
-    /// public key a triple carries in its <c>verification_key_hash</c> field, not a hash of it.</summary>
+    /// <c>DEPS_HASH</c> over the canonical dependencies' 96-byte <c>scheme || data_hash || verification_key_hash</c> triples.</summary>
     /// <remarks>EIP-8288 leaves <c>DEPS_HASH</c> TBD; this uses Keccak-256, the hash the pinned recursive guest commits its
-    /// dependency digest with. A leanSPHINCS-only list hashes exactly as the EIP specifies. The EIP reserves leanSTARK until
-    /// <c>get_deps_hash</c> is defined for it; as a deviation, a list holding any non-leanSPHINCS dependency (only leanSTARK passes
-    /// validation) commits to
-    /// <c>DEPS_HASH(get_deps_hash(leanSPHINCS) || get_deps_hash(leanSTARK) || "eip8288/leanstark-deps")</c>, the domain
-    /// zero-padded to 32 bytes, as the pinned recursive guest does. That 96-byte preimage is never a list of 64-byte entries,
-    /// and the position of an entry's list binds its scheme.</remarks>
+    /// dependency digest with.</remarks>
     public static ValueHash256 ComputeDepsHash(IReadOnlyList<FrameDependency> dependencies)
     {
-        dependencies = Canonicalize(dependencies);
-        ValueHash256 sphincs = ListDepsHash(dependencies, sphincs: true);
-        // Canonical order sorts by scheme first, so the ends tell whether every entry is leanSPHINCS.
-        if (dependencies.Count == 0 || (dependencies[0].Scheme == Eip8288Constants.LeanSphincsScheme
-            && dependencies[^1].Scheme == Eip8288Constants.LeanSphincsScheme)) return sphincs;
-
-        // Every other scheme joins the leanSTARK list, so no entry escapes the digest; validation rejects unknown schemes.
-        Span<byte> joined = stackalloc byte[96];
-        sphincs.Bytes.CopyTo(joined);
-        ListDepsHash(dependencies, sphincs: false).Bytes.CopyTo(joined[32..]);
-        LeanStarkDepsDomain.CopyTo(joined[64..]);
-        return ValueKeccak.Compute(joined);
-    }
-
-    private static ValueHash256 ListDepsHash(IReadOnlyList<FrameDependency> dependencies, bool sphincs)
-    {
         KeccakHash hash = KeccakHash.Create();
-        foreach (FrameDependency dependency in dependencies)
+        Span<byte> triple = stackalloc byte[Eip8288Constants.DependencyTripleLength];
+        foreach (FrameDependency dependency in Canonicalize(dependencies))
         {
-            if ((dependency.Scheme == Eip8288Constants.LeanSphincsScheme) != sphincs) continue;
-            hash.Update(dependency.DataHash.Bytes);
-            hash.Update(dependency.VerificationKey.Bytes);
+            dependency.WriteTo(triple);
+            hash.Update(triple);
         }
 
         return hash.GenerateValueHash();
     }
 
-    /// <summary>Whether a dependency scheme is enabled: leanSPHINCS, and leanSTARK, which this node enables as a deviation from
-    /// EIP-8288 (see <see cref="ComputeDepsHash"/>).</summary>
+    /// <summary>Whether a dependency scheme is enabled: leanSPHINCS and leanSTARK.</summary>
     public static bool IsAcceptedScheme(byte scheme) => scheme is Eip8288Constants.LeanSphincsScheme or Eip8288Constants.LeanStarkScheme;
 
     /// <summary>Whether a dependency scheme is one EIP-8288 defines.</summary>

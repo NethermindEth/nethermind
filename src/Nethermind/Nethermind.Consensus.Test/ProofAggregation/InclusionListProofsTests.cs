@@ -187,7 +187,7 @@ public class InclusionListProofsTests
     // without verification: the list then obligates no dependency-bearing entry. A list may carry more leanSTARK dependencies
     // than one step verifies.
     [TestCase(Eip8288Constants.MaxProofDependencies + 1, 0, false)]
-    [TestCase(Eip8288Constants.MaxLeanStarkWitnessesPerStep + 8, Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1, true)]
+    [TestCase(Eip8288Constants.MaxInnerProofsPerStep + 8, Eip8288Constants.MaxInnerProofsPerStep + 1, true)]
     public void A_list_proof_beyond_the_proving_bound_obligates_nothing_and_is_not_verified(int count, int leanStark, bool withinBound)
     {
         FakeLeanProofVerifier verifier = new(true);
