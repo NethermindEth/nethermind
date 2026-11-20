@@ -629,7 +629,8 @@ public class GethGenesisLoaderTests
     [TestCase("eip7906PrototypeTime", false, false, true)]
     public void Genesis_frame_transaction_extension_label_schedules_only_its_own_eip(string label, bool eip8250, bool eip8272, bool eip7906)
     {
-        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"{label}\": 15");
+        // Amsterdam supplies the EIP-7843 slot numbers that EIP-8272 requires.
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"{ForksThroughShanghaiAtGenesis}, \"amsterdamTime\": 0, \"{label}\": 15");
 
         using (Assert.EnterMultipleScope())
         {

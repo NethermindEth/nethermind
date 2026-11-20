@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
@@ -64,5 +65,31 @@ public class ChainParametersTests
             IReleaseSpec postSpec = prov.GetSpec(ForkActivation.TimestampOnly(1));
             Assert.That(specProp.GetValue(postSpec), Is.True, $"Property {specPropName} is not activated.");
         }
+    }
+
+    // EIP-8272's recent root contract reads SLOTNUM, so it activates at or after EIP-7843.
+    [TestCase(null, true)]
+    [TestCase(5UL, false)]
+    [TestCase(10UL, false)]
+    [TestCase(11UL, true)]
+    public void Eip8272_refuses_to_activate_before_eip7843(ulong? slotNumberTransition, bool refused)
+    {
+        ChainSpecJson test = new()
+        {
+            Params = new ChainSpecParamsJson
+            {
+                Eip8141TransitionTimestamp = 0,
+                Eip7843TransitionTimestamp = slotNumberTransition,
+                Eip8272TransitionTimestamp = 10
+            }
+        };
+        if (refused)
+        {
+            Assert.That(() => TestSpecHelper.LoadChainSpec(test),
+                Throws.Exception.With.InnerException.InstanceOf<InvalidConfigurationException>());
+            return;
+        }
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(test);
+        Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(10)).IsEip8272Enabled, Is.True);
     }
 }
