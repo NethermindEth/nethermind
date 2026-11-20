@@ -76,11 +76,11 @@ internal sealed class SnapshotHttpStream : Stream
             _chunkCount = (remoteInfo.Length!.Value + settings.ChunkSize - 1) / settings.ChunkSize;
             _producers = new Task[producerCount];
             for (int i = 0; i < producerCount; i++)
-                _producers[i] = Task.Run(FetchChunksAsync);
+                _producers[i] = Task.Run(FetchChunksAsync, CancellationToken.None);
         }
         else
         {
-            _producers = [Task.Run(ReadSequentiallyAsync)];
+            _producers = [Task.Run(ReadSequentiallyAsync, CancellationToken.None)];
         }
     }
 

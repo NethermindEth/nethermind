@@ -442,7 +442,7 @@ public class McpLimitsTests
 
         CallToolResult result = await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call), async (outerModule, token) =>
         {
-            using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token).WaitAsync(WaitLimit);
+            using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token).WaitAsync(WaitLimit, token);
             return executor.Success(ReferenceEquals(lease.Module, outerModule));
         }, CancellationToken.None);
 
@@ -462,7 +462,7 @@ public class McpLimitsTests
             Task<ModuleLease<IEthRpcModule>> rental = executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token);
             bool waited = !rental.IsCompleted;
             provider.Return(nameof(IEthRpcModule.eth_call), held);
-            using ModuleLease<IEthRpcModule> lease = await rental.WaitAsync(WaitLimit);
+            using ModuleLease<IEthRpcModule> lease = await rental.WaitAsync(WaitLimit, token);
             return executor.Success(waited && lease.Module is not null);
         }, CancellationToken.None);
 
@@ -512,7 +512,7 @@ public class McpLimitsTests
 
         McpAssert.Success(await executor.ExecuteAsync("test", nameof(IEthRpcModule.eth_call), async (_, token) =>
         {
-            nested = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token).WaitAsync(WaitLimit);
+            nested = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), token).WaitAsync(WaitLimit, token);
             return executor.Success(1);
         }, CancellationToken.None));
 
