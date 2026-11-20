@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Container;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Optimism.CL;
@@ -119,6 +120,7 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
             // Block processing
             .AddScoped<ITransactionProcessor, OptimismTransactionProcessor>()
             .AddScoped<IBlockProcessor, OptimismBlockProcessor>()
+            .AddSingleton<IBlockValidationModule, OptimismBlockValidationModule>()
             .AddScoped<IWithdrawalProcessor, OptimismWithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, OptimismWithdrawalProcessorFactory>()
             .AddScoped<Create2DeployerContractRewriter>()
@@ -181,4 +183,14 @@ public class OptimismModule(ChainSpec chainSpec, IOptimismConfig optimismConfig)
                 .AddStep(typeof(StartOptimismCl));
         }
     }
+
+    /// <summary>
+    /// Keeps <see cref="OptimismBlockProcessor"/> in the validation and RPC tracing environments.
+    /// </summary>
+    /// <remarks>
+    /// It does not support the transaction trace prefix, so the tracing environments do not swap the processor for
+    /// the generic one, which would replay blocks without the Canyon Create2Deployer preinstall, the Optimism receipts
+    /// and the Jovian post-processing.
+    /// </remarks>
+    private sealed class OptimismBlockValidationModule : Module, IBlockValidationModule;
 }

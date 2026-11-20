@@ -5,16 +5,23 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Autofac;
+using Autofac.Core;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Container;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL;
@@ -86,6 +93,28 @@ public class OptimismModuleTests
         using IContainer container = builder.Build();
 
         Assert.That(container.Resolve<Merge.Plugin.Data.PayloadTransactionCountGuard>(), Is.SameAs(Merge.Plugin.Data.PayloadTransactionCountGuard.Disabled));
+    }
+
+    [Test]
+    public void Tracing_environment_keeps_the_optimism_block_processor()
+    {
+        ChainSpec chainSpec = new()
+        {
+            EngineChainSpecParametersProvider = new TestChainSpecParametersProvider(new OptimismChainSpecEngineParameters())
+        };
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new BlockProcessingModule(new InitConfig(), new BlocksConfig()));
+        builder.RegisterModule(new OptimismModule(chainSpec, new OptimismConfig()));
+        using IContainer container = builder.Build();
+        IBlockValidationModule[] validationModules = container.Resolve<IBlockValidationModule[]>();
+
+        // Configured like the debug and trace RPC environments.
+        using ILifetimeScope tracingScope = container.BeginLifetimeScope(tracing => tracing
+            .AddModule(validationModules)
+            .AddModule(new TransactionTraceModule(validationModules)));
+
+        tracingScope.ComponentRegistry.TryGetRegistration(new TypedService(typeof(IBlockProcessor)), out IComponentRegistration? registration);
+        Assert.That(registration?.Activator.LimitType, Is.EqualTo(typeof(OptimismBlockProcessor)));
     }
 
     // The eth_sendTransaction tests wire their forwarding node the same way.
