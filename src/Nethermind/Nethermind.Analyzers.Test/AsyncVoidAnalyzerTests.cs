@@ -58,6 +58,7 @@ public class AsyncVoidAnalyzerTests
     [TestCase("async Task<int> M() { await Task.Yield(); return 1; }")]
     [TestCase("void M() { }")]
     [TestCase("void M() { Func<Task> f = async () => await Task.Yield(); }")]
+    [TestCase("void M() { Action a = async () => await Task.Yield(); }")]
     public Task Non_async_void_no_diagnostic(string member) =>
         Verify(WrapMember(member));
 
