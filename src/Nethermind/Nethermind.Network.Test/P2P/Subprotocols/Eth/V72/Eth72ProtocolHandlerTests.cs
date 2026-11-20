@@ -749,13 +749,13 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_stop_submitting_the_rest_of_a_packet_after_an_invalid_transaction_requests_a_disconnect()
     {
+        HandleIncomingStatusMessage();
         _session.When(static s => s.InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
             .Do(_ => _session.IsClosing.Returns(true));
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns(AcceptTxResult.Invalid, AcceptTxResult.Accepted, AcceptTxResult.Accepted);
         using TransactionsMessage message = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(message, Eth62MessageCode.Transactions);
 
         using (Assert.EnterMultipleScope())
@@ -1356,6 +1356,7 @@ public class Eth72ProtocolHandlerTests
     private void AssertAnnouncedV0BlobPooledResponseIsHandledAndLateCellsRejected(bool fullBlobs)
     {
         RecreateHandler(providerProbabilityPercent: 100);
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
             .WithNonce(0UL)
@@ -1402,6 +1403,7 @@ public class Eth72ProtocolHandlerTests
                 return AcceptTxResult.AlreadyKnown;
             });
         RecreateHandler(providerProbabilityPercent: 100);
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Cancun.Instance)
             .SignedAndResolved()
@@ -1552,10 +1554,10 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_accept_batched_retry_response_once([Values] bool announced)
     {
+        HandleIncomingStatusMessage();
         Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
         Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
         ValueHash256[] hashes = [first.Hash!.ValueHash256, second.Hash!.ValueHash256];
-        HandleIncomingStatusMessage();
         if (announced)
         {
             using NewPooledTransactionHashesMessage72 announcement = new(
@@ -1581,6 +1583,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_ignore_duplicate_pooled_response_before_sampling_validation()
     {
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(0UL)
@@ -1607,6 +1610,7 @@ public class Eth72ProtocolHandlerTests
     {
         PooledTransactionsOverrideSerializationService serializer = new(_svc);
         RecreateHandler(serializer: serializer);
+        HandleIncomingStatusMessage();
         Transaction announced = BuildBlobTransaction(fullProvider: false);
         Transaction first = Build.A.Transaction.SignedAndResolved().TestObject;
         Transaction unprocessed = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
@@ -1733,6 +1737,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_disconnect_peer_when_sparse_transaction_fails_sampling_validation()
     {
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(0UL)
@@ -1765,6 +1770,7 @@ public class Eth72ProtocolHandlerTests
 
     private void AssertDisconnectsIfPooledBlobTxShapeDiffersFromAnnouncement(bool wrongSize)
     {
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(0UL)
@@ -1805,6 +1811,7 @@ public class Eth72ProtocolHandlerTests
     [TestCase(BlobAnnouncementSize.Consensus)]
     public void should_accept_compatible_pooled_blob_tx_size_announcements(BlobAnnouncementSize announcementSize)
     {
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(0UL)
@@ -1831,6 +1838,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_disconnect_if_eth72_pooled_blob_tx_has_empty_sparse_sidecar()
     {
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(0UL)
@@ -1850,6 +1858,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_disconnect_if_eth72_pooled_blob_tx_commitments_do_not_match_hashes()
     {
+        HandleIncomingStatusMessage();
         Transaction tx = Build.A.Transaction
             .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
             .WithNonce(0UL)
@@ -2205,6 +2214,7 @@ public class Eth72ProtocolHandlerTests
     [Test]
     public void should_cap_cells_response_at_soft_byte_limit()
     {
+        HandleIncomingStatusMessage();
         BlobCellMask requestedMask = BlobCellMask.Full;
         Hash256 firstHash = HashFromInt(1);
         Hash256 secondHash = HashFromInt(2);
@@ -2219,7 +2229,6 @@ public class Eth72ProtocolHandlerTests
         SetupGetCellsResponse(secondTx, requestedMask, requestedMask, cells);
         using GetCellsMessage72 request = new(1234, [firstHash, secondHash], requestedMask.ToBytes());
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(request, Eth72MessageCode.GetCells);
 
         _session.Received(1).DeliverMessage(Arg.Is<CellsMessage72>(m =>
@@ -2926,6 +2935,7 @@ public class Eth72ProtocolHandlerTests
     public void should_treat_post_admission_proof_failure_as_ambiguous()
     {
         RecreateHandler();
+        HandleIncomingStatusMessage();
         _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = BuildBlobTransaction(fullProvider: false);
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
@@ -2956,7 +2966,6 @@ public class Eth72ProtocolHandlerTests
             [tx.Hash!],
             cellMask.ToBytes());
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
         _sparseBlobPoolPeerRegistry.AddPeer(otherPeer);
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, cellMask);
@@ -2975,6 +2984,7 @@ public class Eth72ProtocolHandlerTests
     public void should_re_request_cells_without_evicting_tx_when_stored_sparse_proofs_fail_validation()
     {
         RecreateHandler();
+        HandleIncomingStatusMessage();
         _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = BuildBlobTransaction(fullProvider: false);
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
@@ -3000,7 +3010,6 @@ public class Eth72ProtocolHandlerTests
             [tx.Hash!],
             cellMask.ToBytes());
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
         _sparseBlobPoolPeerRegistry.AddPeer(otherPeer);
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, cellMask);
@@ -3023,6 +3032,7 @@ public class Eth72ProtocolHandlerTests
     public void should_retain_cells_without_disconnect_when_merge_loses_txpool_race()
     {
         RecreateHandler();
+        HandleIncomingStatusMessage();
         _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = BuildBlobTransaction(fullProvider: false);
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
@@ -3048,7 +3058,6 @@ public class Eth72ProtocolHandlerTests
             [tx.Hash!],
             cellMask.ToBytes());
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
         _sparseBlobPoolPeerRegistry.AddPeer(otherPeer);
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, cellMask);
@@ -3223,6 +3232,7 @@ public class Eth72ProtocolHandlerTests
     public void should_re_request_ambiguous_buffered_tuple_when_blob_tx_becomes_pending()
     {
         RecreateHandler();
+        HandleIncomingStatusMessage();
         _blobCustodyTracker.Update(SupernodeCustodyMask());
         Transaction tx = BuildBlobTransaction(fullProvider: true);
         BlobCellMask cellMask = BlobCellMask.FromIndices([4]);
@@ -3254,7 +3264,6 @@ public class Eth72ProtocolHandlerTests
                 return txAvailable;
             });
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
         _sparseBlobPoolPeerRegistry.AddPeer(otherPeer);
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, cellMask);
@@ -5771,6 +5780,9 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.DidNotReceive().RemoveTransaction(tx.Hash!);
     }
 
+    // Tests asserting that no disconnect happened should call this right after the handler is created, before any
+    // slow setup (signing, blob/KZG work): until a Status arrives the handler's 3 s protocol-init timer is running and
+    // would call InitiateDisconnect(ProtocolInitTimeout) on a slow or CPU-starved run.
     private void HandleIncomingStatusMessage()
     {
         using StatusMessage69 statusMsg = new() { ProtocolVersion = 72, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
@@ -6217,7 +6229,6 @@ public class Eth72ProtocolHandlerTests
             [hash],
             announcedType.SupportsBlobs() ? BlobCellMask.Full.ToBytes() : BlobCellMask.Empty.ToBytes());
 
-        HandleIncomingStatusMessage();
         HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
     }
 
