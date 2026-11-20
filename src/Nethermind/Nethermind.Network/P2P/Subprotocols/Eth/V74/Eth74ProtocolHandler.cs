@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -57,6 +58,7 @@ public class Eth74ProtocolHandler(
     private static readonly Func<DependencyProofsMessage, int, DependencyProofsMessage> SelectProofs = static (message, _) => message;
 
     private MessageDictionary<GetDependencyProofsMessage, DependencyProofsMessage>? _proofRequests;
+    private readonly RateLimiter _serveLimiter = new(Eth74Protocol.MaxServedRequestsPerSecond);
 
     private MessageDictionary<GetDependencyProofsMessage, DependencyProofsMessage> ProofRequests =>
         LazyInitializer.EnsureInitialized(ref _proofRequests, () => new(this));
@@ -83,9 +85,15 @@ public class Eth74ProtocolHandler(
         }
     }
 
-    private Task<DependencyProofsMessage> Handle(GetDependencyProofsMessage request, CancellationToken cancellationToken)
+    /// <remarks>EIP-8498 asks for rate limiting against amplification: each request may take hundreds of kilobytes to answer.
+    /// Requests are paced per peer, and one arriving with too long a backlog is answered with no proofs, which its sender
+    /// treats as unavailable and asks another peer for.</remarks>
+    private async Task<DependencyProofsMessage> Handle(GetDependencyProofsMessage request, CancellationToken cancellationToken)
     {
         using GetDependencyProofsMessage req = request;
+        if (_serveLimiter.Backlog > Eth74Protocol.MaxServeBacklog) return new DependencyProofsMessage(req.RequestId, new ArrayPoolList<byte[]>(0));
+        await _serveLimiter.WaitAsync(cancellationToken);
+
         ReadOnlySpan<Hash256> hashes = req.Hashes.AsSpan();
         ArrayPoolList<byte[]> proofs = new(hashes.Length);
         long totalSize = 0;
@@ -96,7 +104,7 @@ public class Eth74ProtocolHandler(
             totalSize += Rlp.LengthOf(proof);
         }
 
-        return Task.FromResult(new DependencyProofsMessage(req.RequestId, proofs));
+        return new DependencyProofsMessage(req.RequestId, proofs);
     }
 
     /// <returns>The stored proof, or the empty entry for an unknown, pre-fork or pruned block.</returns>

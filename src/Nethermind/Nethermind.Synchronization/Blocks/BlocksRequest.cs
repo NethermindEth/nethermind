@@ -13,11 +13,14 @@ public sealed class BlocksRequest : IDisposable
     public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public OwnedBlockBodies? OwnedBodies { get; set; }
 
-    /// <summary>Per block in <see cref="BodiesRequests"/>, its EIP-8288 dependency proof when fetched.</summary>
-    public byte[]?[]? DependencyProofs { get; set; }
+    /// <summary>Hashes per EIP-8498 <c>GetDependencyProofs</c>, an implementation-defined limit serving peers enforce too.</summary>
+    public const int MaxDependencyProofsPerRequest = 64;
 
-    /// <summary>Per block in <see cref="BodiesRequests"/>, whether it needs a dependency proof no peer served.</summary>
-    public bool[]? UnavailableDependencyProofs { get; set; }
+    /// <summary>Blocks whose EIP-8288 dependency proofs are requested.</summary>
+    public IOwnedReadOnlyList<BlockHeader> DependencyProofsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
+
+    /// <summary>The proofs served for <see cref="DependencyProofsRequests"/>, in order; possibly fewer, an empty one unavailable.</summary>
+    public IOwnedReadOnlyList<byte[]>? DependencyProofs { get; set; }
     public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public IOwnedReadOnlyList<byte[]?>? BlockAccessLists { get; set; }
     public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
@@ -31,10 +34,10 @@ public sealed class BlocksRequest : IDisposable
 
     public int? NumberOfLatestBlocksToBeIgnored { get; }
     public Task DownloadTask { get; set; }
-    public int AllCounts => BodiesRequests.Count + BlockAccessListsRequests.Count + ReceiptsRequests.Count;
+    public int AllCounts => BodiesRequests.Count + BlockAccessListsRequests.Count + DependencyProofsRequests.Count + ReceiptsRequests.Count;
     private bool _disposed;
 
-    public override string ToString() => $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {ReceiptsRequests.Count} Receipts";
+    public override string ToString() => $"Blocks Request: {BodiesRequests.Count} Bodies, {BlockAccessListsRequests.Count} Block Access Lists, {DependencyProofsRequests.Count} Dependency Proofs, {ReceiptsRequests.Count} Receipts";
 
     public void Dispose()
     {
@@ -43,10 +46,12 @@ public sealed class BlocksRequest : IDisposable
 
         BodiesRequests.Dispose();
         BlockAccessListsRequests.Dispose();
+        DependencyProofsRequests.Dispose();
         ReceiptsRequests.Dispose();
         ExpectedReceiptCounts?.Dispose();
         OwnedBodies?.Dispose();
         BlockAccessLists?.Dispose();
+        DependencyProofs?.Dispose();
         Receipts?.Dispose();
         DownloadTask?.Dispose();
     }

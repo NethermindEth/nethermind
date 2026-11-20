@@ -344,7 +344,7 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithGasLimit(executionReservation - shortfall).TestObject;
             LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
             proofs.AddVerified(Eip8288Dependencies.ForTransaction(tx, FrameTxSigHash.ComputeValue), [[1]], null);
-            BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+            BlockProcessor.IBlockProductionTransactionPicker txPicker = Eip8288TransactionPickerTests.CreatePicker(Eip8288Prototype.Instance, proofs);
 
             BlockProcessor.AddingTxEventArgs args = txPicker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
 
@@ -363,7 +363,7 @@ namespace Nethermind.Blockchain.Test
             BlockToProduce producing = new(block.Header, block.Transactions, block.Uncles);
             ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
             IWorldState state = Substitute.For<IWorldState>();
-            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: new(FrameTxSigHash.ComputeValue));
+            BlockProcessor.IBlockProductionTransactionPicker picker = Eip8288TransactionPickerTests.CreatePicker(Eip8288Prototype.Instance, new(FrameTxSigHash.ComputeValue));
             BlockProcessor.BlockProductionTransactionsExecutor executor = new(adapter, state, picker, LimboLogs.Instance,
                 NullBlockAccessListManager.Instance, NullTxPool.Instance);
 
@@ -380,7 +380,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void BlockProductionTransactionPicker_takes_more_leanstark_dependencies_than_one_step_verifies()
         {
-            const int count = Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1;
+            const int count = Eip8288Constants.MaxInnerProofsPerStep + 1;
             FrameDependency[] dependencies = Enumerable.Range(0, count).Select(index =>
                 new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(index.ToString()), default)).ToArray();
             Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
@@ -390,7 +390,7 @@ namespace Nethermind.Blockchain.Test
                 UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))];
             LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
             proofs.AddVerified(dependencies, Enumerable.Repeat(new byte[] { 1 }, count).ToArray(), null);
-            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
+            BlockProcessor.IBlockProductionTransactionPicker picker = Eip8288TransactionPickerTests.CreatePicker(Eip8288Prototype.Instance, proofs);
             Block block = Build.A.Block.WithGasLimit(10_000_000).TestObject;
             BlockProcessor.AddingTxEventArgs result = picker.CanAddTransaction(block, transaction, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, 0);
             Assert.That(result.Action, Is.EqualTo(BlockProcessor.TxAction.Add), result.Reason);

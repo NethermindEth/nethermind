@@ -172,7 +172,7 @@ public class Eip8437ClientCaseTests
     // ProofWrapperOmissionTests.
 
     // A complete wrapper can be validated without envelope requests: the transport has no other request than GetProofWrappers.
-    // leanSTARK dependencies, enabled here as a deviation from EIP-8288, are carried like leanSPHINCS ones.
+    // leanSTARK dependencies are carried like leanSPHINCS ones.
     [Test]
     public async Task Complete_wrapper_is_validated_without_envelope_requests([Values] bool mixed)
     {

@@ -151,8 +151,8 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         ValueHash256 statement = depsHash;
         ArgumentNullException.ThrowIfNull(input);
         if (input.Deps.Count != input.Witnesses.Count || input.Deps.Count > Eip8288Constants.MaxRawWitnessesPerStep
-            || Eip8288Dependencies.CountLeanStark(input.Deps) > Eip8288Constants.MaxLeanStarkWitnessesPerStep
-            || input.Discards.Count > Eip8288Constants.MaxProofDependencies || input.RecursiveProofs.Count > Eip8288Constants.MaxRecursiveInputsPerStep)
+            || Eip8288Dependencies.CountLeanStark(input.Deps) + input.RecursiveProofs.Count > Eip8288Constants.MaxInnerProofsPerStep
+            || input.Discards.Count > Eip8288Constants.MaxProofDependencies)
             throw new ArgumentException("Invalid aggregation input shape.", nameof(input));
         foreach (RecursiveProofInput parent in input.RecursiveProofs)
             if (parent.InnerDeps is null || parent.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)

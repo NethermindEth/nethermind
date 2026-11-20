@@ -215,7 +215,7 @@ namespace Nethermind.Consensus.Producers
                     Interlocked.Increment(ref Metrics.LeanProofFallbacks);
                     block = PrepareBlock(parent, payloadAttributes, flags);
                     if (block is not BlockToProduce producing) throw;
-                    producing.LeanDependencyLimit = limit;
+                    producing.LeanProduction.DependencyLimit = limit;
                 }
             }
         }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 using Nethermind.Synchronization.Blocks;
 
@@ -17,5 +18,12 @@ public static class Eth74Protocol
     public const int SoftResponseLimit = Eth73Protocol.SoftResponseLimit;
 
     /// <summary>Hashes per <c>GetDependencyProofs</c>, an implementation-defined limit.</summary>
-    public const int MaxProofsPerRequest = DependencyProofFetcher.MaxProofsPerRequest;
+    public const int MaxProofsPerRequest = BlocksRequest.MaxDependencyProofsPerRequest;
+
+    /// <summary><c>GetDependencyProofs</c> requests served per second per peer, at most
+    /// <see cref="SoftResponseLimit"/> of proofs each.</summary>
+    public const int MaxServedRequestsPerSecond = 4;
+
+    /// <summary>How long a peer's requests may queue before further ones are answered with no proofs.</summary>
+    public static readonly TimeSpan MaxServeBacklog = TimeSpan.FromSeconds(1);
 }

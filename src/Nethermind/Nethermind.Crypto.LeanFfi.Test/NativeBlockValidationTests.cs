@@ -28,7 +28,7 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 public class NativeBlockValidationTests
 {
     [OneTimeSetUp]
-    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(21u));
+    public void EnsureNativeLibraryLoads() => Assert.That(NativeLeanProofVerifier.AbiVersion, Is.EqualTo(23u));
 
     [Test]
     public void BlockValidator_with_native_verifier_accepts_produced_recursive_stark()
@@ -56,7 +56,7 @@ public class NativeBlockValidationTests
     public async Task BlockValidator_with_native_verifier_accepts_a_list_wider_than_one_step()
     {
         const int signatures = Eip8288Constants.MaxRawWitnessesPerStep;
-        const int starks = Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1;
+        const int starks = Eip8288Constants.MaxInnerProofsPerStep + 1;
         (FrameDependency Dependency, byte[] Witness)[] witnesses = await GenerateWitnesses(starks, signatures);
         RecursiveProofInput[] leaves = [Leaf(witnesses[..(starks - 1)]), Leaf(witnesses[(starks - 1)..(starks + signatures / 2)]),
             Leaf(witnesses[(starks + signatures / 2)..])];
