@@ -3,7 +3,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
 using NUnit.Framework;
@@ -19,7 +18,7 @@ namespace Nethermind.Network.Test.Rlpx
             (EncryptionSecrets A, EncryptionSecrets _) = NetTestVectors.GetSecretsPair();
 
             _frameCipher = new FrameCipher(A.AesSecret);
-            _macProcessor = new FrameMacProcessor(TestItem.IgnoredPublicKey, A);
+            _macProcessor = new FrameMacProcessor(A);
         }
 
         [TearDown]

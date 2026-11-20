@@ -10,7 +10,6 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.Rlpx;
@@ -89,8 +88,8 @@ public class ZeroNettyFrameMergerTests
     public void Decodes_encrypted_packets_across_socket_read_boundaries([Values(-1, 0, 1, 17, 4096)] int readSize, [Values] bool combinedEncoder)
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
         EmbeddedChannel outbound = combinedEncoder
             ? new(new ZeroPacketSplitter(new FrameCipher(a.AesSecret), outboundMac))
             : new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), outboundMac), new ZeroPacketSplitter());

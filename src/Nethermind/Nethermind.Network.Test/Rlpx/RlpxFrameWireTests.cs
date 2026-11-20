@@ -8,7 +8,6 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Rlp;
@@ -90,8 +89,8 @@ public class RlpxFrameWireTests
     public void Encrypted_stream_matches_master_and_decodes_to_the_packets_sent()
     {
         (EncryptionSecrets a, EncryptionSecrets b) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor outboundMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor inboundMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor outboundMac = new(a);
+        using FrameMacProcessor inboundMac = new(b);
         ZeroPacketSplitter splitter = new(new FrameCipher(a.AesSecret), outboundMac);
         EmbeddedChannel outbound = new(splitter);
         EmbeddedChannel inbound = new(new ZeroFrameDecoder(new FrameCipher(b.AesSecret), inboundMac), new ZeroFrameMerger(LimboLogs.Instance));

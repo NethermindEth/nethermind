@@ -13,7 +13,6 @@ namespace Nethermind.Network.Rlpx;
 /// </summary>
 public sealed class FrameMacProcessor : IFrameMacProcessor
 {
-    private readonly PublicKey _remoteNodeId;
     private readonly KeccakHash _egressMac;
     private readonly KeccakHash _ingressMac;
     private readonly KeccakHash _egressMacCopy;
@@ -21,9 +20,8 @@ public sealed class FrameMacProcessor : IFrameMacProcessor
     private readonly IBlockCipher _aesEngine;
     private readonly byte[] _macSecret;
 
-    public FrameMacProcessor(PublicKey remoteNodeId, EncryptionSecrets secrets)
+    public FrameMacProcessor(EncryptionSecrets secrets)
     {
-        _remoteNodeId = remoteNodeId;
         _macSecret = secrets.MacSecret;
         _egressMac = secrets.EgressMac;
         _egressMacCopy = _egressMac.Copy();

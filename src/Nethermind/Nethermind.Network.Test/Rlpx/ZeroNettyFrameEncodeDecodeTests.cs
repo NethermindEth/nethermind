@@ -9,7 +9,6 @@ using DotNetty.Common;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core.Test;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
@@ -28,8 +27,8 @@ public class ZeroNettyFrameEncodeDecodeTests
     {
         (EncryptionSecrets expectedSecrets, _) = NetTestVectors.GetSecretsPair();
         (EncryptionSecrets actualSecrets, _) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor expectedMac = new(TestItem.IgnoredPublicKey, expectedSecrets);
-        using FrameMacProcessor actualMac = new(TestItem.IgnoredPublicKey, actualSecrets);
+        using FrameMacProcessor expectedMac = new(expectedSecrets);
+        using FrameMacProcessor actualMac = new(actualSecrets);
         ZeroPacketSplitter? splitter = null;
         CallbackCipher switchingCipher = new(new FrameCipher(actualSecrets.AesSecret), () => splitter!.EnableSnappy(LimboLogs.Instance));
         splitter = new(switchingCipher, actualMac);
@@ -61,7 +60,7 @@ public class ZeroNettyFrameEncodeDecodeTests
             if (++calls == failingCall) throw new InvalidOperationException("Encryption failed");
         });
         (EncryptionSecrets secrets, _) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor mac = new(TestItem.IgnoredPublicKey, secrets);
+        using FrameMacProcessor mac = new(secrets);
         ZeroPacketSplitter splitter = new(cipher, mac);
         if (snappy) splitter.EnableSnappy(LimboLogs.Instance);
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
@@ -80,8 +79,8 @@ public class ZeroNettyFrameEncodeDecodeTests
     {
         (EncryptionSecrets oldSecrets, _) = NetTestVectors.GetSecretsPair();
         (EncryptionSecrets newSecrets, _) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor oldMac = new(TestItem.IgnoredPublicKey, oldSecrets);
-        using FrameMacProcessor newMac = new(TestItem.IgnoredPublicKey, newSecrets);
+        using FrameMacProcessor oldMac = new(oldSecrets);
+        using FrameMacProcessor newMac = new(newSecrets);
         ZeroPacketSplitter oldSplitter = new();
         ZeroPacketSplitter newSplitter = new(new FrameCipher(newSecrets.AesSecret), newMac);
         if (disableFraming)
@@ -132,8 +131,8 @@ public class ZeroNettyFrameEncodeDecodeTests
     {
         (EncryptionSecrets a, _) = NetTestVectors.GetSecretsPair();
         (EncryptionSecrets b, _) = NetTestVectors.GetSecretsPair();
-        using FrameMacProcessor referenceMac = new(TestItem.IgnoredPublicKey, a);
-        using FrameMacProcessor combinedMac = new(TestItem.IgnoredPublicKey, b);
+        using FrameMacProcessor referenceMac = new(a);
+        using FrameMacProcessor combinedMac = new(b);
         ZeroPacketSplitter referenceSplitter = new();
         CombinedEncoder combined = new(new FrameCipher(b.AesSecret), combinedMac);
         EmbeddedChannel reference = new(new ZeroFrameEncoder(new FrameCipher(a.AesSecret), referenceMac), referenceSplitter);
@@ -194,10 +193,10 @@ public class ZeroNettyFrameEncodeDecodeTests
         (EncryptionSecrets A, EncryptionSecrets B) = NetTestVectors.GetSecretsPair();
 
         FrameCipher frameCipher = new(B.AesSecret);
-        FrameMacProcessor macProcessor = new(TestItem.IgnoredPublicKey, B);
+        FrameMacProcessor macProcessor = new(B);
 
         FrameCipher frameCipher2 = new(A.AesSecret);
-        FrameMacProcessor macProcessor2 = new(TestItem.IgnoredPublicKey, A);
+        FrameMacProcessor macProcessor2 = new(A);
 
         Task t1 = Task.Factory.StartNew(() => RunStreamTests(frameCipher, macProcessor, frameCipher2, macProcessor2), TaskCreationOptions.LongRunning);
         Task t2 = Task.Factory.StartNew(() => RunStreamTests(frameCipher2, macProcessor2, frameCipher, macProcessor), TaskCreationOptions.LongRunning);
