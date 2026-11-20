@@ -5228,7 +5228,7 @@ public class TransportTests
     [TestCase("42", -32600)]
     [TestCase("{\"jsonrpc\":2,\"method\":\"eth_chainId\",\"id\":1}", -32600)]
     [TestCase("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":true}", -32600)]
-    [TestCase("{\"jsonrpc\":\"2.0\",\"method\":\"eth_sendRawTransaction\",\"id\":1}", -32601)]
+    [TestCase("{\"jsonrpc\":\"2.0\",\"method\":\"eth_sendRawTransaction\",\"id\":1}", -32602)]
     public async Task Rpc_endpoint_rejects_invalid_requests(string request, int code)
     {
         using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(request));
@@ -5260,9 +5260,9 @@ public class TransportTests
     {
         int firstTokenBytes = BoundedJson.ResultLimit;
         int envelopeBytes = JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = 1, result = "" }).Length - 2;
-        int finalErrorBytes = JsonSerializer.SerializeToUtf8Bytes(RpcEndpoint.Error(null, -32005,
+        int finalErrorBytes = JsonSerializer.SerializeToUtf8Bytes(RpcTestDriver.Error(null, -32005,
             "HTTP batch exceeds the 16 MiB response budget; submit remaining requests separately.")).Length;
-        int secondTokenBytes = RpcEndpoint.BatchResponseLimit - finalErrorBytes - 4
+        int secondTokenBytes = RpcTestDriver.BatchResponseLimit - finalErrorBytes - 4
             - firstTokenBytes - 2 * envelopeBytes + (overBoundary ? 1 : 0);
         using JsonDocument first = JsonDocument.Parse("\"" + new string('a', firstTokenBytes - 2) + "\"");
         using JsonDocument second = JsonDocument.Parse("\"" + new string('b', secondTokenBytes - 2) + "\"");
@@ -5278,7 +5278,7 @@ public class TransportTests
         using MemoryStream responseBody = new();
         DefaultHttpContext context = new();
         context.Response.Body = responseBody;
-        await RpcEndpoint.WriteBatchAsync(context, requests.RootElement, (_, _, _) =>
+        await RpcTestDriver.WriteBatchAsync(context, requests.RootElement, (_, _, _) =>
             Task.FromResult<object>(Interlocked.Increment(ref executions) == 1 ? first.RootElement : second.RootElement),
             logger, CancellationToken.None);
         context.Response.Body.Position = 0;
@@ -5287,7 +5287,7 @@ public class TransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(executions, Is.EqualTo(2));
-            Assert.That(context.Response.Body.Length, Is.LessThanOrEqualTo(RpcEndpoint.BatchResponseLimit));
+            Assert.That(context.Response.Body.Length, Is.LessThanOrEqualTo(RpcTestDriver.BatchResponseLimit));
             Assert.That(response.RootElement.GetArrayLength(), Is.EqualTo(overBoundary ? 4 : 3));
             Assert.That(response.RootElement[0].GetProperty("id").GetInt32(), Is.EqualTo(1));
             Assert.That(response.RootElement[1].GetProperty("id").GetInt32(), Is.EqualTo(2));
@@ -5301,14 +5301,12 @@ public class TransportTests
                 Assert.That(response.RootElement[2].GetProperty("id").GetString(), Is.EqualTo("retained"));
                 Assert.That(response.RootElement[3].GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
                 Assert.That(response.RootElement[3].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32600));
-                Assert.That(logger.Entries, Has.Count.EqualTo(5));
-                Assert.That(logger.Entries[3], Does.Contain("RPC notification -> error -32005 in "));
-                Assert.That(logger.Entries[4], Does.Contain("RPC invalid -> error -32600 in "));
+                Assert.That(logger.Entries, Has.Count.EqualTo(2));
             }
             else
             {
                 Assert.That(response.RootElement[2].GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
-                Assert.That(context.Response.Body.Length, Is.EqualTo(RpcEndpoint.BatchResponseLimit));
+                Assert.That(context.Response.Body.Length, Is.EqualTo(RpcTestDriver.BatchResponseLimit));
                 Assert.That(logger.Entries, Has.Count.EqualTo(2));
             }
         }
@@ -5362,7 +5360,8 @@ public class TransportTests
             jsonrpc = "2.0",
             id = 1,
             method = transaction ? "eth_sendRawTransaction" : "eth_chainId",
-            padding = new string('x', RpcEndpoint.StandardRequestBodySize),
+            @params = new[] { "0x01" },
+            padding = new string('x', RpcTestDriver.StandardRequestBodySize),
         });
         using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(body));
         using MemoryStream responseBody = new();
@@ -5370,7 +5369,7 @@ public class TransportTests
         context.Request.Body = requestBody;
         context.Response.Body = responseBody;
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
-        await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
+        await RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
         Assert.That(context.Response.StatusCode, Is.EqualTo(transaction ? 200 : StatusCodes.Status413PayloadTooLarge));
         if (transaction)
         {
@@ -5385,7 +5384,7 @@ public class TransportTests
     {
         using Stream requestBody = rejectedByServer
             ? new OversizedBody()
-            : new MemoryStream(new byte[RpcEndpoint.MaxRequestBodySize + 1]);
+            : new MemoryStream(new byte[RpcTestDriver.MaxRequestBodySize + 1]);
         using MemoryStream responseBody = new();
         DefaultHttpContext context = new();
         context.Request.Body = requestBody;
@@ -5393,7 +5392,7 @@ public class TransportTests
         RecordingLogger logger = new();
 
         using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
-        await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, logger);
+        await RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, logger);
 
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status413PayloadTooLarge));
@@ -5418,7 +5417,7 @@ public class TransportTests
                 DefaultHttpContext context = new();
                 context.Request.Body = bodies[i];
                 context.Response.Body = responses[i] = new MemoryStream();
-                active[i] = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
+                active[i] = RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
             }
 
             for (int i = 0; i < bodies.Length; i++)
@@ -5455,7 +5454,7 @@ public class TransportTests
         context.Request.Body = requestBody;
         context.Response.Body = responseBody;
 
-        Task pending = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
+        Task pending = RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
         try
         {
             await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
@@ -5494,7 +5493,7 @@ public class TransportTests
         context.Request.Body = requestBody;
         context.Response.Body = responseBody;
 
-        Task pending = RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
+        Task pending = RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance, clock);
         try
         {
             await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
@@ -5521,7 +5520,7 @@ public class TransportTests
         DefaultHttpContext context = new();
         context.Request.Body = requestBody;
         context.Response.Body = responseBody;
-        await RpcEndpoint.HandleAsync(context, rpc.InvokeAsync, logger ?? NullLogger.Instance);
+        await RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, logger ?? NullLogger.Instance);
         return context;
     }
 

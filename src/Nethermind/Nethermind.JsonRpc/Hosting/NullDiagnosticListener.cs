@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-public sealed class NullDiagnosticListener(string name) : DiagnosticListener(name)
+namespace Nethermind.JsonRpc.Hosting;
+
+internal sealed class NullDiagnosticListener(string name) : DiagnosticListener(name)
 {
     public static NullDiagnosticListener Instance { get; } = new("");
 

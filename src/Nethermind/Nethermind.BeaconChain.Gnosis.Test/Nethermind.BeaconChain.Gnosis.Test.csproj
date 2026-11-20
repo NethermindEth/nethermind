@@ -10,6 +10,7 @@
     <Compile Include="../Nethermind.BeaconChain.Test/BeaconChainTestContainer.cs" Link="BeaconChainTestContainer.cs" />
     <Compile Include="../Nethermind.BeaconChain.Test/Spec/ExecutionSchedules.cs" Link="ExecutionSchedules.cs" />
     <Compile Include="../Nethermind.BeaconChain.Test/GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/VerifiedRpcTestExtensions.cs" Link="VerifiedRpcTestExtensions.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Update="TestData/**/*" CopyToOutputDirectory="PreserveNewest" />

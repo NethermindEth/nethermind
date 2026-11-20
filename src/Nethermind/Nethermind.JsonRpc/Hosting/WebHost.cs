@@ -14,18 +14,18 @@ using Microsoft.AspNetCore.Hosting.Builder;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Hosting.Internal;
 using Nethermind.Config;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
-namespace Nethermind.Runner.JsonRpc;
+namespace Nethermind.JsonRpc.Hosting;
 
-internal sealed partial class WebHost : IHost, IAsyncDisposable
+/// <summary>Hosts JSON-RPC middleware on Kestrel using pooled request contexts.</summary>
+/// <remarks>Owns the supplied service provider and disposes it when the host is disposed.</remarks>
+public sealed partial class WebHost : IHost, IAsyncDisposable
 {
     private ApplicationLifetime? _applicationLifetime;
     private readonly IConfiguration _config;
@@ -34,11 +34,17 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
     private readonly ILogManager _logManager;
     private readonly IStartup _startup;
 
-    private bool _stopped;
+    private readonly Lock _stopLock = new();
+    private Task? _stopTask;
     private bool _startedServer;
 
     private IServer? Server { get; set; }
 
+    /// <summary>Creates a host for the supplied service provider and middleware startup.</summary>
+    /// <param name="applicationServices">Services owned by this host.</param>
+    /// <param name="config">The listener configuration.</param>
+    /// <param name="startup">Configures the request middleware.</param>
+    /// <param name="logManager">Provides host logging.</param>
     public WebHost(
         IServiceProvider applicationServices,
         IConfiguration config,
@@ -51,10 +57,11 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         _applicationServices = applicationServices;
         _config = config;
         _startup = startup;
-        _logger = logManager.GetClassLogger<WebHost>();
+        _logger = logManager.GetLogger("Runner.JsonRpc.WebHost");
         _logManager = logManager;
     }
 
+    /// <inheritdoc/>
     public IServiceProvider Services
     {
         get
@@ -64,17 +71,7 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         }
     }
 
-    public IFeatureCollection ServerFeatures
-    {
-        get
-        {
-            EnsureServer();
-            return Server.Features;
-        }
-    }
-
-    public void Start() => StartAsync().GetAwaiter().GetResult();
-
+    /// <inheritdoc/>
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         Debug.Assert(_applicationServices != null, "Initialize must be called first.");
@@ -159,40 +156,63 @@ internal sealed partial class WebHost : IHost, IAsyncDisposable
         }
     }
 
-    public async Task StopAsync(CancellationToken cancellationToken = default)
+    /// <inheritdoc/>
+    public Task StopAsync(CancellationToken cancellationToken = default)
     {
-        if (_stopped)
-            return;
-        _stopped = true;
+        TaskCompletionSource completion;
+        lock (_stopLock)
+        {
+            if (_stopTask is not null) return _stopTask;
+            completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _stopTask = completion.Task;
+        }
 
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(TimeSpan.FromMinutes(1));
-        cancellationToken = cts.Token;
-
-        // Fire IApplicationLifetime.Stopping
-        _applicationLifetime?.StopApplication();
-
-        if (Server != null && _startedServer)
-            await Server.StopAsync(cancellationToken).ConfigureAwait(false);
-
-        // Fire IApplicationLifetime.Stopped
-        _applicationLifetime?.NotifyStopped();
+        // Publish completion before shutdown callbacks can reenter StopAsync.
+        _ = StopCoreAsync(completion, cancellationToken);
+        return completion.Task;
     }
 
+    private async Task StopCoreAsync(TaskCompletionSource completion, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromMinutes(1));
+            cancellationToken = cts.Token;
+
+            // Fire IApplicationLifetime.Stopping
+            _applicationLifetime?.StopApplication();
+
+            if (Server != null && _startedServer)
+                await Server.StopAsync(cancellationToken).ConfigureAwait(false);
+
+            // Fire IApplicationLifetime.Stopped
+            _applicationLifetime?.NotifyStopped();
+            completion.TrySetResult();
+        }
+        catch (OperationCanceledException exception)
+        {
+            completion.TrySetCanceled(exception.CancellationToken);
+        }
+        catch (Exception exception)
+        {
+            completion.TrySetException(exception);
+        }
+    }
+
+    /// <inheritdoc/>
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
+    /// <inheritdoc/>
     public async ValueTask DisposeAsync()
     {
-        if (!_stopped)
+        try
         {
-            try
-            {
-                await StopAsync().ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error("WebHost shutdown error", ex);
-            }
+            await StopAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error("WebHost shutdown error", ex);
         }
 
         await DisposeServiceProviderAsync(_applicationServices).ConfigureAwait(false);

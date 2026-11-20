@@ -9,14 +9,14 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Nethermind.Logging;
 
-namespace Nethermind.Runner.JsonRpc;
+namespace Nethermind.JsonRpc.Hosting;
 
 internal sealed class HostingApplication(
     RequestDelegate application,
     ILogManager logManager,
     HttpContextFactory httpContextFactory) : IHttpApplication<HostingApplication.Context>
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<HostingApplication>();
+    private readonly ILogger _logger = logManager.GetLogger("Runner.JsonRpc.HostingApplication");
     private readonly RequestDelegate _application = application;
     private readonly HttpContextFactory? _httpContextFactory = httpContextFactory;
 

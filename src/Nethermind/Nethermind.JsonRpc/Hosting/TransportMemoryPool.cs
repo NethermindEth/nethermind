@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.AspNetCore.Connections;
 
-namespace Nethermind.Runner.JsonRpc;
+namespace Nethermind.JsonRpc.Hosting;
 
 /// <summary>Gives Kestrel memory pools that hand out <see cref="TransportMemoryPool.BlockSize"/> blocks instead of its 4 KiB ones.</summary>
 /// <remarks>

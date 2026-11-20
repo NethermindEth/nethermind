@@ -20,7 +20,6 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.TxPool;
 
 namespace Nethermind.LightClient.Rpc;
@@ -53,10 +52,9 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
         .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
         .Build();
     private readonly SemaphoreSlim _slots = new(4);
-    private readonly EthereumJsonSerializer _json = new();
     private readonly Nethermind.Logging.ILogger _logger = logs.GetClassLogger<VerifiedCall>();
 
-    internal async Task<string> ExecuteAsync(VerifiedHead head, System.Text.Json.JsonElement request, bool estimateGas, CancellationToken cancellationToken)
+    internal async Task<string> ExecuteAsync(VerifiedHead head, TransactionForRpc request, bool estimateGas, CancellationToken cancellationToken)
     {
         bool trace = _logger.IsDebug;
         using Activity? diagnostic = trace
@@ -203,14 +201,8 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
 
     private sealed record ExecutionState(VerifiedHead Head, VerifiedMemoryCache Cache, ICodeCache CodeCache);
 
-    private async Task<string> ExecuteCoreAsync(VerifiedHead head, System.Text.Json.JsonElement request, bool estimateGas, bool trace, CancellationToken token)
+    private async Task<string> ExecuteCoreAsync(VerifiedHead head, TransactionForRpc model, bool estimateGas, bool trace, CancellationToken token)
     {
-        TransactionForRpc model;
-        try { model = _json.Deserialize<TransactionForRpc>(request.GetRawText()) ?? throw new FormatException(); }
-        catch (Exception exception) when (exception is System.Text.Json.JsonException or FormatException or ArgumentException)
-        {
-            throw new RpcException(-32602, "Invalid transaction object.");
-        }
         if (estimateGas && model.Gas == 0) model.Gas = null;
         model = BlobTransactionForRpc.WithZeroBlobFeeCapOmitted(model);
         BlockHeader header = await GetHeaderAsync(head, trace, token);

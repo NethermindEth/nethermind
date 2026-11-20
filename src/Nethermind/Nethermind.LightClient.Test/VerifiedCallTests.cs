@@ -433,7 +433,8 @@ public class VerifiedCallTests
         source.Head = new(source.Head.Slot + 1, source.Head.Number + 1, Keccak.Compute("unproven block"), Keccak.Compute("unproven state"));
         source.ContractAccountResponse = _ => throw new InvalidDataException("Account proof failed.");
 
-        await Assert.ThrowsAsync<InvalidDataException>(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None));
+        Assert.That(async () => await rpc.InvokeAsync(method, parameters, CancellationToken.None),
+            Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32000));
 
         using (Assert.EnterMultipleScope())
         {

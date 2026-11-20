@@ -7,7 +7,11 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Sockets;
 
 namespace Nethermind.LightClient.Rpc;
 
@@ -26,7 +30,9 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     private readonly VerifiedRpc _rpc;
     private readonly ILogger _logger;
     private readonly TimeProvider _clock;
-    private readonly LightClientMetrics? _metrics;
+    private static readonly EthereumJsonSerializer SocketSerializer = new();
+    private readonly IJsonRpcProcessor _processor;
+    private readonly Nethermind.Logging.ILogManager _logManager;
     private readonly Lock _clientsLock = new();
     private readonly Dictionary<HttpContext, TaskCompletionSource> _connections = [];
     private readonly HashSet<Client> _clients = [];
@@ -40,15 +46,31 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     private long _sequence;
     private bool _disposing;
 
-    internal VerifiedSubscriptions(IExecutionStateSource source, VerifiedRpc rpc, ILogger logger,
-        TimeProvider? clock = null, LightClientMetrics? metrics = null)
+    internal VerifiedSubscriptions(IExecutionStateSource source, VerifiedRpc rpc, IJsonRpcProcessor processor, ILogger logger,
+        TimeProvider? clock = null, Nethermind.Logging.ILogManager? logManager = null)
     {
         _source = source;
         _rpc = rpc;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
-        _metrics = metrics;
+        _processor = processor;
+        _logManager = logManager ?? Nethermind.Logging.NullLogManager.Instance;
         _publisher = PublishLoopAsync();
+    }
+
+    internal static ResultWrapper<string> Subscribe(IJsonRpcDuplexClient? duplex, string name, JsonElement? filter)
+    {
+        if (duplex is not Client client || client.IsClosed)
+            return ResultWrapper<string>.Fail("Subscriptions require an open verified WebSocket connection.", ErrorCodes.MethodNotFound);
+        try { return client.Subscribe(name, filter); }
+        catch (RpcException error) { return ResultWrapper<string>.Fail(error.Message, error.Code); }
+    }
+
+    internal static ResultWrapper<bool> Unsubscribe(IJsonRpcDuplexClient? duplex, string id)
+    {
+        if (duplex is not Client client || client.IsClosed)
+            return ResultWrapper<bool>.Fail("Subscriptions require an open verified WebSocket connection.", ErrorCodes.MethodNotFound);
+        return ResultWrapper<bool>.Success(client.Unsubscribe(id));
     }
 
     /// <summary>Enqueues the final authenticated latest head without waiting for execution data or consumers.</summary>
@@ -303,9 +325,10 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     {
         internal long StartSequence { get; set; }
         internal bool Active { get; set; }
+        internal bool ResponseAccepted { get; set; }
     }
 
-    private sealed class Client
+    private sealed class Client : SocketClient<WebSocketMessageStream>, IJsonRpcDuplexClient
     {
         private readonly VerifiedSubscriptions _owner;
         private readonly WebSocket _socket;
@@ -332,6 +355,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         private int _queuedBytes;
 
         internal Client(VerifiedSubscriptions owner, WebSocket socket, CancellationToken requestAborted)
+            : base(string.Empty, new WebSocketMessageStream(socket, owner._logManager, textOnly: true),
+                SocketSerializer, RpcEndpoint.StandardRequestBodySize + 1, processEmptyMessages: true)
         {
             _owner = owner;
             _socket = socket;
@@ -339,6 +364,11 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             _token = _cancellation.Token;
             _workCancellation = CancellationTokenSource.CreateLinkedTokenSource(_token);
         }
+
+        public event EventHandler? Closed;
+        public bool IsClosed => Volatile.Read(ref _closing) != 0;
+        public bool IsAuthenticated => false;
+        public override void Dispose() => Terminate();
 
         internal void Terminate() => Finish(abort: true);
 
@@ -351,6 +381,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 if (abort) _socket.Abort();
                 _cancellation.Cancel();
             }
+            Closed?.Invoke(this, EventArgs.Empty);
         }
 
         internal void Close(WebSocketCloseStatus status, string reason)
@@ -380,7 +411,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         {
             Task sender = SendAsync();
             Task delivery = DeliverLoopAsync();
-            Task receiver = ReceiveAsync();
+            Task receiver = ReceiveLoopAsync(_token);
             Task workers = Task.WhenAll(sender, delivery, receiver);
             try
             {
@@ -422,6 +453,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                         _closeDeadline?.Dispose();
                         _cancellation.Dispose();
                     }
+                    base.Dispose();
                 }
             }
         }
@@ -442,7 +474,9 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                         _space = null;
                     }
                     space?.TrySetResult();
-                    await _socket.SendAsync(message, WebSocketMessageType.Text, true, _token);
+                    using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
+                    using CancellationTokenSource send = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token);
+                    await _stream.WriteEndOfMessageAsync(message, send.Token);
                 }
                 if (Volatile.Read(ref _finished) == 0 && _closeReason is { } reason)
                     await _socket.CloseOutputAsync(_closeStatus, reason, _token);
@@ -460,119 +494,60 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             }
         }
 
-        private async Task ReceiveAsync()
+        public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
         {
-            byte[] buffer = new byte[4096];
-            using MemoryStream input = new();
-            while (!_cancellation.IsCancellationRequested)
+            try { await base.ReceiveLoopAsync(cancellationToken); }
+            catch (InvalidOperationException exception)
             {
-                input.SetLength(0);
-                WebSocketReceiveResult received;
-                do
-                {
-                    received = await _socket.ReceiveAsync(buffer, _token);
-                    if (received.MessageType == WebSocketMessageType.Close) return;
-                    if (Volatile.Read(ref _closing) != 0) continue;
-                    if (received.MessageType != WebSocketMessageType.Text || input.Length + received.Count > RpcEndpoint.StandardRequestBodySize)
-                    {
-                        _owner._logger.LogWarning("Closing subscription connection after a non-text or oversized request");
-                        return;
-                    }
-                    input.Write(buffer, 0, received.Count);
-                } while (!received.EndOfMessage);
-                if (Volatile.Read(ref _closing) != 0) continue;
-                JsonDocument document;
-                try { document = JsonDocument.Parse(input.ToArray()); }
-                catch (JsonException)
-                {
-                    if (!await EnqueueResponseAsync(JsonSerializer.SerializeToUtf8Bytes(new { jsonrpc = "2.0", id = (object?)null, error = new { code = -32700, message = "Parse error" } }))
-                        && Volatile.Read(ref _closing) == 0) return;
-                    continue;
-                }
-                try
-                {
-                    using (document)
-                    using (CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90), _owner._clock))
-                    using (CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _workCancellation.Token))
-                    {
-                        JsonElement request = document.RootElement;
-                        byte[]? response;
-                        if (request.ValueKind == JsonValueKind.Array)
-                        {
-                            int count = request.GetArrayLength();
-                            if (count == 0)
-                                response = JsonSerializer.SerializeToUtf8Bytes(RpcEndpoint.Error(null, -32600, "Batch must contain at least one request"));
-                            else
-                            {
-                                using BoundedJsonBuffer batch = new(MaxMessageBytes, JsonReservationSlack);
-                                bool hasResponses = await RpcEndpoint.WriteBatchAsync(batch, MaxMessageBytes, request,
-                                    InvokeAsync, _owner._logger, cancellation.Token, _owner._metrics);
-                                response = hasResponses ? batch.WrittenMemory.ToArray() : null;
-                            }
-                        }
-                        else
-                        {
-                            response = null;
-                            await RpcEndpoint.InvokeAsync(request, InvokeAsync, _owner._logger, cancellation.Token, (result, _) =>
-                            {
-                                response = EncodeResponse(request, result, out bool unchanged);
-                                if (!unchanged) DiscardPending();
-                                return unchanged;
-                            }, _owner._metrics);
-                        }
-                        _token.ThrowIfCancellationRequested();
-                        if (Volatile.Read(ref _closing) != 0) continue;
-                        if (response is not null && !await EnqueueResponseAsync(response) && Volatile.Read(ref _closing) == 0) return;
-                        if (response is null) lock (_lock) ActivatePending();
-                    }
-                }
-                catch (OperationCanceledException) when (_workCancellation.IsCancellationRequested && !_token.IsCancellationRequested) { }
+                _owner._logger.LogWarning(exception, "Closing subscription connection after a framing or processing failure");
             }
         }
 
-        private static byte[] EncodeResponse(JsonElement request, object response, out bool unchanged)
+        public override async Task ProcessAsync(ArraySegment<byte> data, CancellationToken cancellationToken)
         {
-            unchanged = true;
-            using BoundedJsonBuffer output = new(MaxMessageBytes, JsonReservationSlack);
+            if (Volatile.Read(ref _closing) != 0) return;
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90), _owner._clock);
+            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _workCancellation.Token);
+            using RpcResponseBuffer response = new(MaxMessageBytes,
+                "WebSocket response exceeds the 256 KiB limit; submit this request over HTTP.", AcceptResponse);
+            JsonRpcContext context = new(Nethermind.JsonRpc.Modules.RpcEndpoint.Ws, this)
+            {
+                RequestAborted = cancellation.Token,
+                StrictEnvelope = true,
+                BatchLimits = new(RpcEndpoint.MaxBatchCount, RpcEndpoint.MaxBatchEnvelopes),
+            };
             try
             {
-                using (Utf8JsonWriter writer = new(output)) JsonSerializer.Serialize(writer, response);
-                return output.WrittenMemory.ToArray();
+                await _owner._processor.ProcessAsync(data.AsMemory(), context, response,
+                    new(JsonRpcInputMode.SingleDocument), _workCancellation.Token);
+                _token.ThrowIfCancellationRequested();
+                if (Volatile.Read(ref _closing) != 0) return;
+                if (response.HasResponses)
+                    await EnqueueResponseAsync(response.WrittenMemory.ToArray());
+                else
+                    lock (_lock) ActivatePending();
             }
-            catch (RpcException)
+            catch (OperationCanceledException) when (_workCancellation.IsCancellationRequested && !_token.IsCancellationRequested) { }
+            finally { DiscardPending(); }
+
+            void AcceptResponse(JsonRpcResponse written, RpcReport report)
             {
-                unchanged = false;
-                object? id = request.ValueKind == JsonValueKind.Object && request.TryGetProperty("id", out JsonElement value)
-                    && value.ValueKind is JsonValueKind.Null or JsonValueKind.Number or JsonValueKind.String ? value : null;
-                byte[] error = JsonSerializer.SerializeToUtf8Bytes(RpcEndpoint.Error(id, -32005,
-                    "WebSocket response exceeds the 256 KiB limit; submit this request over HTTP."));
-                return error.Length <= MaxMessageBytes ? error : JsonSerializer.SerializeToUtf8Bytes(RpcEndpoint.Error(null, -32005,
-                    "WebSocket response identifier exceeds the 256 KiB limit; submit this request over HTTP."));
+                if (report.Method == "eth_subscribe" && report.Success && written is ResultWrapper<string> subscribed)
+                    AcceptSubscription(subscribed.Data);
             }
         }
 
-        private Task<object> InvokeAsync(string method, JsonElement parameters, CancellationToken cancellationToken)
+        internal ResultWrapper<string> Subscribe(string name, JsonElement? filter)
         {
-            if (method is not ("eth_subscribe" or "eth_unsubscribe")) return _owner._rpc.InvokeAsync(method, parameters, cancellationToken);
-            if (parameters.ValueKind != JsonValueKind.Array || parameters.GetArrayLength() is < 1 or > 2 || parameters[0].ValueKind != JsonValueKind.String)
-                throw new RpcException(-32602, "Invalid subscription parameters.");
-            string name = parameters[0].GetString()!;
             lock (_lock)
             {
-                if (method == "eth_unsubscribe")
-                {
-                    if (parameters.GetArrayLength() != 1) throw new RpcException(-32602, "Invalid unsubscribe parameters.");
-                    bool removed = _subscriptions.Remove(name, out Subscription? subscription);
-                    if (removed && subscription!.Logs) _filterGeneration++;
-                    return Task.FromResult<object>(removed);
-                }
                 if (name is not ("newHeads" or "logs")) throw new RpcException(-32602, "Only authenticated newHeads and logs subscriptions are available.");
                 HashSet<Address>? addresses = null;
                 List<HashSet<Hash256>?> topics = [];
-                if (parameters.GetArrayLength() == 2)
+                if (filter is { } value)
                 {
-                    if (name != "logs" || parameters[1].ValueKind != JsonValueKind.Object) throw new RpcException(-32602, "Invalid subscription filter.");
-                    foreach (JsonProperty property in parameters[1].EnumerateObject())
+                    if (name != "logs" || value.ValueKind != JsonValueKind.Object) throw new RpcException(-32602, "Invalid subscription filter.");
+                    foreach (JsonProperty property in value.EnumerateObject())
                     {
                         switch (property.Name)
                         {
@@ -585,8 +560,49 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 if (_subscriptions.Count >= MaxSubscriptions) throw new RpcException(-32000, "Connection reached its 16-subscription limit.");
                 string id = "0x" + Guid.NewGuid().ToString("N");
                 _subscriptions.Add(id, new(id, name == "logs", addresses, topics));
-                return Task.FromResult<object>(id);
+                ResultWrapper<string> response = ResultWrapper<string>.Success(id);
+                response.AddDisposable(() =>
+                {
+                    // Notifications have no acknowledgement to enqueue, but still activate with their completed frame.
+                    if (response.Id.IsMissing) AcceptSubscription(id);
+                });
+                return response;
             }
+        }
+
+        private void AcceptSubscription(string id)
+        {
+            lock (_lock)
+                if (_subscriptions.TryGetValue(id, out Subscription? subscription)) subscription.ResponseAccepted = true;
+        }
+
+        internal bool Unsubscribe(string id)
+        {
+            lock (_lock)
+            {
+                bool removed = _subscriptions.Remove(id, out Subscription? subscription);
+                if (removed && subscription!.Logs) _filterGeneration++;
+                return removed;
+            }
+        }
+
+        public Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default) =>
+            SendResultAsync(result, null, cancellationToken);
+
+        private async Task<int> SendResultAsync(JsonRpcResult result, string? subscription, CancellationToken cancellationToken)
+        {
+            using BoundedJsonBuffer output = new(MaxMessageBytes, JsonReservationSlack);
+            try
+            {
+                JsonRpcResponseWriter.Write(output, result.Response!, EthereumJsonSerializer.JsonOptions);
+            }
+            catch (RpcException)
+            {
+                Terminate();
+                return 0;
+            }
+            byte[] message = output.WrittenMemory.ToArray();
+            return await EnqueueAsync(message, subscription, cancellationToken) ? message.Length : 0;
         }
 
         internal void Interests(long sequence, ref bool heads, ref bool logs)
@@ -717,10 +733,15 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                 bool eligible;
                 lock (_lock) eligible = subscription.Active && subscription.Logs == logs && sequence > subscription.StartSequence;
                 if (!eligible || log is { } entry && !Matches(entry.Address, entry.Topics, subscription)) continue;
-                byte[] message = Notification(subscription.Id, result, logs, removed);
+                JsonElement payload = logs ? WithRemoved(result, removed) : result;
+                using JsonRpcResult notification = JsonRpcResult.Single(new JsonRpcSubscriptionResponse<JsonElement>
+                {
+                    MethodName = "eth_subscription",
+                    Params = new JsonRpcSubscriptionResult<JsonElement> { Subscription = subscription.Id, Result = payload },
+                }, new RpcReport("eth_subscription", 0, true));
                 using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
                 using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _token, cancellationToken);
-                try { if (!await EnqueueAsync(message, subscription.Id, cancellation.Token)) return; }
+                try { if (await SendResultAsync(notification, subscription.Id, cancellation.Token) == 0) return; }
                 catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
                 {
                     if (_token.IsCancellationRequested || cancellationToken.IsCancellationRequested) throw;
@@ -735,7 +756,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         {
             using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10), _owner._clock);
             using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _workCancellation.Token);
-            try { return await EnqueueAsync(message, null, cancellation.Token); }
+            try { return await EnqueueAsync(message, null, cancellation.Token, activatePending: true); }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {
                 if (_workCancellation.IsCancellationRequested)
@@ -751,7 +772,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
             }
         }
 
-        private async Task<bool> EnqueueAsync(byte[] message, string? subscriptionId, CancellationToken cancellationToken)
+        private async Task<bool> EnqueueAsync(byte[] message, string? subscriptionId, CancellationToken cancellationToken,
+            bool activatePending = false)
         {
             if (message.Length > MaxMessageBytes) { Terminate(); return false; }
             while (true)
@@ -765,7 +787,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     if (_queuedBytes + message.Length <= MaxQueuedBytes && _outgoing.Writer.TryWrite(message))
                     {
                         _queuedBytes += message.Length;
-                        if (subscriptionId is null) ActivatePending();
+                        if (activatePending) ActivatePending();
                         return true;
                     }
                     _space ??= new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -779,7 +801,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         {
             foreach (Subscription subscription in _subscriptions.Values)
             {
-                if (subscription.Active) continue;
+                if (subscription.Active || !subscription.ResponseAccepted) continue;
                 subscription.StartSequence = Volatile.Read(ref _owner._sequence);
                 subscription.Active = true;
                 if (subscription.Logs) _filterGeneration++;
@@ -793,30 +815,19 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     if (!subscription.Active) _subscriptions.Remove(id);
         }
 
-        private static byte[] Notification(string id, JsonElement result, bool logs, bool removed)
+        private static JsonElement WithRemoved(JsonElement result, bool removed)
         {
-            using MemoryStream output = new();
+            using BoundedJsonBuffer output = new(MaxMessageBytes, JsonReservationSlack);
             using (Utf8JsonWriter writer = new(output))
             {
                 writer.WriteStartObject();
-                writer.WriteString("jsonrpc", "2.0");
-                writer.WriteString("method", "eth_subscription");
-                writer.WriteStartObject("params");
-                writer.WriteString("subscription", id);
-                writer.WritePropertyName("result");
-                if (!logs) result.WriteTo(writer);
-                else
-                {
-                    writer.WriteStartObject();
-                    foreach (JsonProperty property in result.EnumerateObject())
-                        if (property.Name != "removed") property.WriteTo(writer);
-                    writer.WriteBoolean("removed", removed);
-                    writer.WriteEndObject();
-                }
-                writer.WriteEndObject();
+                foreach (JsonProperty property in result.EnumerateObject())
+                    if (property.Name != "removed") property.WriteTo(writer);
+                writer.WriteBoolean("removed", removed);
                 writer.WriteEndObject();
             }
-            return output.ToArray();
+            using JsonDocument document = JsonDocument.Parse(output.WrittenMemory);
+            return document.RootElement.Clone();
         }
     }
 }

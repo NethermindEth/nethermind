@@ -15,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.LightClient;
 using Nethermind.LightClient.Rpc;
+using Nethermind.LightClient.Test;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;

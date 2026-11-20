@@ -12,6 +12,7 @@ using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.LightClient;
 using Nethermind.LightClient.Rpc;
+using Nethermind.LightClient.Test;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;

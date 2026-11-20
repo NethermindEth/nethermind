@@ -274,7 +274,7 @@ public class VerifiedRpcTests
         JsonElement request = JsonSerializer.SerializeToElement(new { jsonrpc = "2.0", id = 7, method, @params = parameters });
         Microsoft.Extensions.Logging.ILogger logger = NSubstitute.Substitute.For<Microsoft.Extensions.Logging.ILogger>();
 
-        object? raw = await RpcEndpoint.InvokeAsync(request, rpc.InvokeAsync, logger, CancellationToken.None);
+        object? raw = await RpcTestDriver.InvokeAsync(request, rpc.InvokeAsync, logger, CancellationToken.None);
         JsonElement response = JsonSerializer.SerializeToElement(raw);
 
         using (Assert.EnterMultipleScope())
@@ -388,7 +388,7 @@ public class VerifiedRpcTests
         {
             case "net_version": Assert.That(result, Is.EqualTo("1")); break;
             case "web3_clientVersion": Assert.That(result, Is.EqualTo(ProductInfo.ClientId)); break;
-            case "eth_accounts": Assert.That((string[])result, Is.Empty); break;
+            case "eth_accounts": Assert.That(((JsonElement)result).GetArrayLength(), Is.Zero); break;
             default: Assert.That(result, Is.EqualTo(true)); break;
         }
         Assert.That(provider.Requests, Is.Empty);
@@ -469,7 +469,7 @@ public class VerifiedRpcTests
         string raw = "0x" + Convert.ToHexString(Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping));
         JsonElement request = JsonSerializer.SerializeToElement(new { jsonrpc = "2.0", id = 1, method = "eth_sendRawTransaction", @params = new[] { raw } });
 
-        object? response = await RpcEndpoint.InvokeAsync(request, provider.Rpc.InvokeAsync,
+        object? response = await RpcTestDriver.InvokeAsync(request, provider.Rpc.InvokeAsync,
             Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, CancellationToken.None);
         JsonElement result = JsonSerializer.SerializeToElement(response);
 

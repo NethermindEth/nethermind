@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Config;
+using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -19,6 +23,10 @@ using Nethermind.Network;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NLog.Config;
 using NLog.Targets;
+using ApplicationLifetime = Microsoft.Extensions.Hosting.Internal.ApplicationLifetime;
+using RpcEndpoint = Nethermind.LightClient.Rpc.RpcEndpoint;
+using RpcTransport = Nethermind.JsonRpc.Modules.RpcEndpoint;
+using WebHost = Nethermind.JsonRpc.Hosting.WebHost;
 
 LightClientHost.ConfigureNetworkBuffers();
 
@@ -59,7 +67,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     const ulong OptimisticHeadMaxAgeSeconds = 120;
     const ulong FinalizedHeadMaxAgeSeconds = 3600;
     stoppingToken.ThrowIfCancellationRequested();
-    WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+    WebApplicationBuilder builder = LightClientHost.CreateBuilder(args);
     NLog.LogLevel logLevel = NLog.LogLevel.FromString(builder.Configuration["log-level"] ?? "Info");
     LoggingConfiguration loggingConfiguration = new();
     ColoredConsoleTarget consoleTarget = new("console")
@@ -92,11 +100,13 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     }
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "BeaconChain.P2P.*");
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "Network.*");
+    loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "Runner.JsonRpc.*");
     loggingConfiguration.AddRule(NLog.LogLevel.Warn, NLog.LogLevel.Fatal, consoleTarget, "Synchronization.Peers.*");
     NLog.LogManager.Configuration = loggingConfiguration;
     using NLogManager logManager = new();
     builder.Logging.ClearProviders();
-    builder.Services.Replace(ServiceDescriptor.Singleton<ILoggerFactory>(new NethermindLoggerFactory(logManager)));
+    NethermindLoggerFactory loggerFactory = new(logManager);
+    builder.Services.Replace(ServiceDescriptor.Singleton<ILoggerFactory>(loggerFactory));
     builder.Services.AddCors();
     string network = builder.Configuration["network"] ?? "mainnet";
     ulong chainId = network switch
@@ -136,21 +146,40 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     LightClientStatus status = new(spec.ChainId, hostedAccounts,
         latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
     LightClientMetrics metrics = new(network, status.Read);
-    string rpcUrl = builder.Configuration["urls"] ?? "http://127.0.0.1:8545";
-    builder.WebHost.UseUrls(rpcUrl);
+    string rpcUrl = LightClientHost.ReadRpcUrls(builder.Configuration);
+    using VerifiedRpcService rpcService = new(status, logManager);
+    rpcService.Config.AllowedHosts = builder.Configuration["AllowedHosts"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? ["*"];
+    rpcService.Config.CorsOrigins = [];
+    IJsonRpcProcessor processor = rpcService.CreateProcessor(new RpcServiceDiagnostics(rpcService.Service,
+        loggerFactory.CreateLogger("LightClient"), metrics));
+    JsonRpcUrlCollection urls = new(logManager, new JsonRpcConfig(), includeWebSockets: true);
+    List<JsonRpcUrl> listeners = [];
+    foreach (string value in rpcUrl.Split(';', StringSplitOptions.RemoveEmptyEntries))
+    {
+        BindingAddress address = BindingAddress.Parse(value);
+        JsonRpcUrl listener = new(address.Scheme, address.Host, address.Port, RpcTransport.Http | RpcTransport.Ws,
+            false, rpcService.Config.EnabledModules, RpcEndpoint.MaxRequestBodySize);
+        listeners.Add(listener);
+        urls[address.Port] = listener;
+    }
+    string[] listenUrls = await JsonRpcListenUrls.ResolveAsync(listeners, Dns.GetHostAddressesAsync, stoppingToken);
+    builder.Services.AddSingleton<IConfigProvider>(new ConfigProvider(rpcService.Config));
+    builder.Services.AddSingleton<IJsonRpcUrlCollection>(urls);
+    builder.Services.AddSingleton<ApplicationLifetime>();
+    builder.Services.Replace(ServiceDescriptor.Singleton<IHostApplicationLifetime>(services => services.GetRequiredService<ApplicationLifetime>()));
+    builder.Services.AddRouting();
+    builder.WebHost.UseUrls(listenUrls);
     builder.WebHost.ConfigureKestrel(static options => options.Limits.MaxRequestBodySize = RpcEndpoint.MaxRequestBodySize);
-    await using WebApplication app = builder.Build();
-    using CancellationTokenRegistration stopApplication = stoppingToken.Register(app.Lifetime.StopApplication);
-    using CancellationTokenRegistration stopClient = app.Lifetime.ApplicationStopping.Register(shutdown.Cancel);
+    WebApplication webApp = builder.Build();
+    ILogger logger = webApp.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LightClient");
+    await using WebHost app = new(webApp.Services, webApp.Configuration,
+        new LightClientStartup(status, processor, metrics, rpcUrl, logger), logManager);
+    IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+    using CancellationTokenRegistration stopApplication = stoppingToken.Register(lifetime.StopApplication);
+    using CancellationTokenRegistration stopClient = lifetime.ApplicationStopping.Register(shutdown.Cancel);
     stoppingToken.ThrowIfCancellationRequested();
-    ILogger logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("LightClient");
-    LightClientHost.ConfigureRequestPolicy(app, rpcUrl);
-    app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(15), KeepAliveTimeout = TimeSpan.FromSeconds(15) });
-    app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, status.InvokeAsync, logger,
-        stoppingToken: app.Lifetime.ApplicationStopping, metrics: metrics));
-    app.MapGet("/status", status.Read);
-    app.MapGet("/metrics", metrics.WriteAsync);
-    app.MapGet("/ws", status.HandleWebSocketAsync);
+    IHostLifetime hostLifetime = app.Services.GetRequiredService<IHostLifetime>();
+    await hostLifetime.WaitForStartAsync(lifetime.ApplicationStopping);
     await LightClientHost.RunAsync(app, async token =>
     {
         try { await InitializeAsync(token); }
@@ -291,21 +320,21 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
                 () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory, sendPolicy: sendPolicy);
-        VerifiedSubscriptions subscriptions = new(execution, rpc, logger, metrics: metrics);
+        VerifiedSubscriptions subscriptions = new(execution, rpc, processor, logger, logManager: logManager);
         ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
-            PublishPersistedHeaders, app.Lifetime.StopApplication, logger, app.Lifetime.ApplicationStopping);
+            PublishPersistedHeaders, lifetime.StopApplication, logger, lifetime.ApplicationStopping);
         bool rpcInitialized = false;
         try
         {
-            beacon.StartGossip(consensus.ProcessAsync, consensus.ProcessAsync, app.Lifetime.ApplicationStopping);
+            beacon.StartGossip(consensus.ProcessAsync, consensus.ProcessAsync, lifetime.ApplicationStopping);
             InitializeRpc();
-            await SyncAsync(app.Lifetime.ApplicationStopping);
+            await SyncAsync(lifetime.ApplicationStopping);
         }
 
         finally
         {
             status.SetStage(StartupStage.Stopping);
-            app.Lifetime.StopApplication();
+            lifetime.StopApplication();
             try { await subscriptions.DisposeAsync(); }
             finally { await app.StopAsync(CancellationToken.None); }
         }
@@ -313,7 +342,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         void InitializeRpc()
         {
             if (rpcInitialized || publisher.Heads.Finalized is null) return;
-            status.Initialize(rpc.InvokeAsync, subscriptions.HandleAsync, GetLatestHead, () => publisher.Heads.Finalized,
+            status.Initialize(rpc, subscriptions.HandleAsync, GetLatestHead, () => publisher.Heads.Finalized,
                 execution.GetHostedAccountProgress, () => execution.LogHistoryProgress);
             rpcInitialized = true;
         }
@@ -335,7 +364,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
                 ReportPeersAsync(workersStop.Token), beacon.GossipCompletion,
                 execution.HostAccountsAsync(GetFreshLatestHead, clock, workersStop.Token)];
             await Task.WhenAny(workers);
-            app.Lifetime.StopApplication();
+            lifetime.StopApplication();
             await workersStop.CancelAsync();
             await Task.WhenAll(workers);
         }

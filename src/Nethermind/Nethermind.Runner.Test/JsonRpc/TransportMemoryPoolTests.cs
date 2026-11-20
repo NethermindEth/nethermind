@@ -25,6 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -749,9 +750,8 @@ public class TransportMemoryPoolTests
         configProvider.GetConfig<IJsonRpcConfig>().Returns(rpcConfig);
 
         // In the order JsonRpcRunner builds its host: Kestrel first, then Startup's services.
-        WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
+        WebApplicationBuilder builder = JsonRpcHosting.CreateBuilder(new WebApplicationOptions());
         builder.WebHost
-            .UseKestrelCore()
             .ConfigureKestrel(options =>
             {
                 for (int i = 0; i < endpoints; i++) options.Listen(IPAddress.Loopback, 0);

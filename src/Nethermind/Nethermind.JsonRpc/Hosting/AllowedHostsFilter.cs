@@ -6,10 +6,9 @@ using System.Net;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 
-namespace Nethermind.Runner.JsonRpc;
+namespace Nethermind.JsonRpc.Hosting;
 
 /// <summary>
 /// Rejects requests whose <c>Host</c> header is not in <see cref="IJsonRpcConfig.AllowedHosts"/>,

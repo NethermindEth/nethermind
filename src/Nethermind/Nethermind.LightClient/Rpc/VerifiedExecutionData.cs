@@ -244,7 +244,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         _transactionIndex.Set((block.Hash!, "transactions"), hashes, 1024L + 128L * hashes.Count);
     }
 
-    internal async Task<string> SendRawTransactionAsync(VerifiedHead head, byte[] raw, VerifiedCall? frameVerifier,
+    internal async Task<Hash256> SendRawTransactionAsync(VerifiedHead head, byte[] raw, VerifiedCall? frameVerifier,
         CancellationToken cancellationToken)
     {
         if (raw.Length == 0) throw new RpcException(-32003, "Invalid transaction encoding.");
@@ -297,7 +297,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             await frameVerifier.ValidateFrameAdmissionAsync(head, transaction, header, spec, cancellationToken);
             transaction.Hash ??= transaction.CalculateHash();
             await RelayAsync(transaction, spec, cancellationToken);
-            return transaction.Hash!.ToString();
+            return transaction.Hash!;
         }
         try { RecoverSender(transaction); }
         catch (InvalidDataException) { throw new RpcException(-32003, "Invalid transaction signature: the sender cannot be recovered."); }
@@ -316,7 +316,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         }
         transaction.Hash ??= transaction.CalculateHash();
         await RelayAsync(transaction, spec, cancellationToken);
-        return transaction.Hash!.ToString();
+        return transaction.Hash!;
     }
 
     private Task RelayAsync(Transaction transaction, IReleaseSpec spec, CancellationToken cancellationToken) => sendPolicy is null

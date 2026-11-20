@@ -673,8 +673,9 @@ namespace Nethermind.JsonRpc.Modules
                 TryGetTaskResultType(returnType, out Type? resultType) && resultType.IsAssignableTo(typeof(IResultWrapper));
 
             private static bool ShouldReparseStringParameter(Type parameterType, JsonConverter converter) =>
-                converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true ||
-                parameterType.IsArray && parameterType != typeof(byte[]);
+                parameterType != typeof(JsonElement) && parameterType != typeof(JsonElement?) &&
+                (converter.GetType().Namespace?.StartsWith("System.", StringComparison.Ordinal) == true ||
+                 parameterType.IsArray && parameterType != typeof(byte[]));
 
             private static JsonTypeInfo CreateParameterTypeInfo(ParameterInfo parameter, Type parameterType, Type converterType)
             {

@@ -490,6 +490,25 @@ public class VerifiedSubscriptionsTests
     }
 
     [Test]
+    public async Task An_empty_websocket_message_returns_a_parse_error_and_keeps_the_connection_open()
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        socket.PushRaw([]);
+
+        JsonElement error = await socket.Next();
+        JsonElement response = await socket.Request("eth_chainId");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32700));
+            Assert.That(error.GetProperty("id").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(response.GetProperty("result").GetString(), Is.EqualTo("0x1"));
+            Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
+        }
+    }
+
+    [Test]
     public async Task WebSocket_requests_reject_non_text_or_oversized_messages([Values] bool oversized)
     {
         await using Harness harness = new();
@@ -557,6 +576,59 @@ public class VerifiedSubscriptionsTests
             Assert.That(unexpectedNotification, Is.False);
             Assert.That(socket.State, Is.EqualTo(WebSocketState.Open));
         }
+    }
+
+    [Test]
+    public async Task Notification_subscriptions_activate_with_their_completed_frame([Values] bool mixedBatch)
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        object notification = new { jsonrpc = "2.0", method = "eth_subscribe", @params = new[] { "newHeads" } };
+        string? acknowledged = null;
+        if (mixedBatch)
+        {
+            socket.Push(new[] { notification, Request("eth_subscribe", "newHeads") });
+            JsonElement response = await socket.Next();
+            Assert.That(response.GetArrayLength(), Is.EqualTo(1));
+            acknowledged = response[0].GetProperty("result").GetString();
+        }
+        else socket.Push(notification);
+        Assert.That((await socket.Request("eth_chainId")).GetProperty("result").GetString(), Is.EqualTo("0x1"));
+
+        harness.Publish(harness.Source.Add(11, harness.Source.Current, 1));
+        HashSet<string> subscriptions = [];
+        for (int i = 0; i < (mixedBatch ? 2 : 1); i++)
+            subscriptions.Add((await socket.Next()).GetProperty("params").GetProperty("subscription").GetString()!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(subscriptions, Has.Count.EqualTo(mixedBatch ? 2 : 1));
+            if (mixedBatch) Assert.That(subscriptions, Does.Contain(acknowledged));
+            Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
+        }
+        foreach (string id in subscriptions)
+            Assert.That((await socket.Request("eth_unsubscribe", id)).GetProperty("result").GetBoolean(), Is.True);
+    }
+
+    [Test]
+    public async Task Subscriptions_after_an_oversized_response_do_not_leak_capacity([Values] bool notification)
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        harness.Source.Code = new byte[150_000];
+        object subscribe = notification
+            ? new { jsonrpc = "2.0", method = "eth_subscribe", @params = new[] { "newHeads" } }
+            : Request("eth_subscribe", "newHeads");
+        socket.Push(new[] { Request("eth_getCode", Address.ToString(), "latest"), subscribe });
+
+        JsonElement response = await socket.Next();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            Assert.That(response.GetArrayLength(), Is.EqualTo(notification ? 1 : 2));
+        }
+        for (int i = 0; i < VerifiedSubscriptions.MaxSubscriptions; i++)
+            Assert.That((await socket.Request("eth_subscribe", "newHeads")).TryGetProperty("result", out _), Is.True);
     }
 
     [Test]
@@ -792,6 +864,50 @@ public class VerifiedSubscriptionsTests
     }
 
     [Test]
+    public async Task A_stalled_send_is_bounded_even_when_the_queue_is_not_full()
+    {
+        WriteClock clock = new();
+        await using Harness harness = new(clock);
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "newHeads");
+        socket.StallAfter = socket.Sends;
+        clock.ObserveWrites = true;
+
+        harness.Publish(harness.Source.Add(11, harness.Source.Current, 1));
+        await socket.Stalled.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await clock.Created.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        clock.Expire();
+
+        await socket.Aborted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(socket.Sends, Is.EqualTo(2), "the single notification send must time out without needing more queued messages");
+    }
+
+    [Test]
+    public async Task Request_abort_cancels_shared_dispatch_and_disposes_only_its_socket()
+    {
+        await using Harness harness = new();
+        using CancellationTokenSource cancellation = new();
+        FakeSocket aborted = harness.Connect(cancellation.Token);
+        FakeSocket healthy = harness.Connect();
+        harness.Source.BlockGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        aborted.Push(Request("eth_getBlockByHash", harness.Source.Current.Hash!.ToString(), false));
+        await harness.Source.FirstBodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await cancellation.CancelAsync();
+        await harness.Tasks[0].WaitAsync(TimeSpan.FromSeconds(5));
+        JsonElement response = await healthy.Request("eth_chainId");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(aborted.Aborted.Task.IsCompleted, Is.True);
+            Assert.That(aborted.Disposed, Is.True);
+            Assert.That(harness.Source.ActiveBlockReads, Is.Zero);
+            Assert.That(healthy.State, Is.EqualTo(WebSocketState.Open));
+            Assert.That(response.GetProperty("result").GetString(), Is.EqualTo("0x1"));
+        }
+    }
+
+    [Test]
     public async Task Shutdown_joins_connections_and_disposes_their_sockets(
         [Values("idle", "send", "receipts", "close")] string blocked)
     {
@@ -860,6 +976,7 @@ public class VerifiedSubscriptionsTests
     {
         internal Source Source { get; } = new();
         private readonly VerifiedRpc _rpc;
+        private readonly VerifiedRpcService _service;
         private readonly VerifiedSubscriptions _subscriptions;
         internal List<Task> Tasks { get; } = [];
         internal List<HttpContext> Contexts { get; } = [];
@@ -868,14 +985,16 @@ public class VerifiedSubscriptionsTests
         {
             _rpc = new(Source, () => Head(Source.Current), 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => Head(Source.Current),
                 isLatestHeadFresh: _ => Source.LatestFresh, waitForLatestHead: waitForLatest);
-            _subscriptions = new(Source, _rpc, NullLogger.Instance, clock, metrics);
+            _service = new(_rpc, Nethermind.Logging.NullLogManager.Instance);
+            Nethermind.JsonRpc.IJsonRpcProcessor processor = _service.CreateProcessor(new RpcServiceDiagnostics(_service.Service, NullLogger.Instance, metrics));
+            _subscriptions = new(Source, _rpc, processor, NullLogger.Instance, clock);
             _subscriptions.PublishHead(Head(Source.Current));
         }
 
-        internal FakeSocket Connect()
+        internal FakeSocket Connect(CancellationToken requestAborted = default)
         {
             FakeSocket socket = new();
-            DefaultHttpContext context = new();
+            DefaultHttpContext context = new() { RequestAborted = requestAborted };
             context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
             Contexts.Add(context);
             Tasks.Add(_subscriptions.HandleAsync(context));
@@ -894,6 +1013,7 @@ public class VerifiedSubscriptionsTests
         {
             await _subscriptions.DisposeAsync();
             await Task.WhenAll(Tasks);
+            _service.Dispose();
             _rpc.Dispose();
             Source.Dispose();
         }
@@ -1010,7 +1130,8 @@ public class VerifiedSubscriptionsTests
         public override WebSocketState State => _state;
         public override string? SubProtocol => null;
 
-        internal void Push(object request) => _input.Writer.TryWrite(JsonSerializer.SerializeToUtf8Bytes(request));
+        internal void Push(object request) => PushRaw(JsonSerializer.SerializeToUtf8Bytes(request));
+        internal void PushRaw(byte[] message) => _input.Writer.TryWrite(message);
         internal void ResumeSend() => _resume.Writer.TryWrite(true);
         internal async Task<JsonElement> Request(string method, params object[] parameters)
         {

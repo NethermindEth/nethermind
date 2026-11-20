@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Facade.Eth;
 
 namespace Nethermind.LightClient.Rpc;
 
@@ -32,17 +32,48 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
         if (terminal) _startupCompleted.TrySetResult();
     }
 
-    internal void Initialize(Func<string, JsonElement, CancellationToken, Task<object>> invoke,
-        Func<HttpContext, Task> handleWebSocket, Func<VerifiedHead?> getLatest, Func<VerifiedHead?> getFinalized,
+    internal ulong ChainId => chainId;
+    internal bool Listening => (StartupStage)Volatile.Read(ref _stage) is not (StartupStage.Stopping or StartupStage.Failed)
+        && Volatile.Read(ref _runtime) is not null;
+
+    internal void Initialize(VerifiedRpc backend, Func<HttpContext, Task> handleWebSocket,
+        Func<VerifiedHead?> getLatest, Func<VerifiedHead?> getFinalized,
         Func<VerifiedHead?, HostedAccountProgress[]> getHostedAccounts, Func<HistoryProgress> getHistory)
     {
+        Runtime runtime = new(backend, handleWebSocket, getLatest, getFinalized, getHostedAccounts, getHistory);
         lock (_lifecycle)
         {
             if ((StartupStage)_stage is StartupStage.Stopping or StartupStage.Failed) return;
-            Volatile.Write(ref _runtime, new(invoke, handleWebSocket, getLatest, getFinalized, getHostedAccounts, getHistory));
+            Volatile.Write(ref _runtime, runtime);
             Volatile.Write(ref _stage, (int)StartupStage.Running);
         }
         _startupCompleted.TrySetResult();
+    }
+
+    internal SyncingResult GetSyncing()
+    {
+        StartupStage stage = (StartupStage)Volatile.Read(ref _stage);
+        if (stage is not (StartupStage.Stopping or StartupStage.Failed) && Volatile.Read(ref _runtime)?.Backend is { } backend)
+            return backend.GetSyncing();
+        return new() { IsSyncing = true };
+    }
+
+    internal ValueTask<VerifiedRpc> GetBackendAsync(CancellationToken token, bool waitForStartup)
+    {
+        token.ThrowIfCancellationRequested();
+        StartupStage stage = (StartupStage)Volatile.Read(ref _stage);
+        Runtime? runtime = Volatile.Read(ref _runtime);
+        if (stage is not (StartupStage.Stopping or StartupStage.Failed) && runtime?.Backend is { } backend)
+            return ValueTask.FromResult(backend);
+        if (!waitForStartup || stage is StartupStage.Stopping or StartupStage.Failed)
+            throw Unavailable(stage);
+        return WaitForBackendAsync(token);
+    }
+
+    private async ValueTask<VerifiedRpc> WaitForBackendAsync(CancellationToken token)
+    {
+        await _startupCompleted.Task.WaitAsync(token);
+        return await GetBackendAsync(token, waitForStartup: false);
     }
 
     internal ClientProgress Read()
@@ -66,36 +97,6 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
             head is null ? null : new(head.Slot, head.Number, head.BlockHash.ToString(), isFresh(head));
     }
 
-    internal Task<object> InvokeAsync(string method, JsonElement parameters, CancellationToken cancellationToken)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        StartupStage stage = (StartupStage)Volatile.Read(ref _stage);
-        if (stage is not (StartupStage.Stopping or StartupStage.Failed) && Volatile.Read(ref _runtime) is Runtime runtime)
-            return runtime.Invoke(method, parameters, cancellationToken);
-        if (VerifiedRpc.TryReadLocalMetadata(method, parameters, chainId, listening: false, out object metadata))
-            return Task.FromResult(metadata);
-        if (method == "eth_syncing")
-        {
-            if (parameters.ValueKind != JsonValueKind.Undefined &&
-                (parameters.ValueKind != JsonValueKind.Array || parameters.GetArrayLength() != 0))
-                throw new RpcException(-32602, "Invalid parameters.");
-            return Task.FromResult<object>(new { startingBlock = "0x0", currentBlock = "0x0", highestBlock = "0x0" });
-        }
-        if (stage is StartupStage.Stopping or StartupStage.Failed || method == "eth_sendRawTransaction")
-            throw Unavailable(stage);
-        return InvokeWhenInitializedAsync(method, parameters, cancellationToken);
-    }
-
-    private async Task<object> InvokeWhenInitializedAsync(string method, JsonElement parameters, CancellationToken cancellationToken)
-    {
-        await _startupCompleted.Task.WaitAsync(cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        StartupStage stage = (StartupStage)Volatile.Read(ref _stage);
-        if (stage is StartupStage.Stopping or StartupStage.Failed || Volatile.Read(ref _runtime) is not Runtime runtime)
-            throw Unavailable(stage);
-        return await runtime.Invoke(method, parameters, cancellationToken);
-    }
-
     private static RpcException Unavailable(StartupStage stage) =>
         new(-32000, $"Light client is {stage.ToString().ToLowerInvariant()}; check GET /status for authenticated head, account and history progress.");
 
@@ -113,7 +114,7 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
         return context.Response.WriteAsJsonAsync(Read(), context.RequestAborted);
     }
 
-    private sealed record Runtime(Func<string, JsonElement, CancellationToken, Task<object>> Invoke,
-        Func<HttpContext, Task> HandleWebSocket, Func<VerifiedHead?> GetLatest, Func<VerifiedHead?> GetFinalized,
+    private sealed record Runtime(VerifiedRpc Backend, Func<HttpContext, Task> HandleWebSocket,
+        Func<VerifiedHead?> GetLatest, Func<VerifiedHead?> GetFinalized,
         Func<VerifiedHead?, HostedAccountProgress[]> GetHostedAccounts, Func<HistoryProgress> GetHistory);
 }

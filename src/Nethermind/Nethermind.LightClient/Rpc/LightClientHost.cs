@@ -4,12 +4,62 @@
 using System.Net;
 using System.Runtime.CompilerServices;
 using DotNetty.Buffers;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.LightClient.Rpc;
 
 internal static class LightClientHost
 {
+    internal static WebApplicationBuilder CreateBuilder(string[] args)
+    {
+        using ConfigurationManager hostConfiguration = new();
+        hostConfiguration.AddEnvironmentVariables("ASPNETCORE_").AddEnvironmentVariables("DOTNET_").AddCommandLine(args);
+        WebApplicationBuilder builder = JsonRpcHosting.CreateBuilder(new WebApplicationOptions
+        {
+            Args = args,
+            ApplicationName = hostConfiguration[HostDefaults.ApplicationKey],
+            EnvironmentName = hostConfiguration[HostDefaults.EnvironmentKey],
+            ContentRootPath = hostConfiguration[HostDefaults.ContentRootKey],
+            WebRootPath = hostConfiguration[WebHostDefaults.WebRootKey],
+        });
+        builder.Configuration
+            .AddEnvironmentVariables("ASPNETCORE_")
+            .AddEnvironmentVariables("DOTNET_")
+            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true)
+            .AddJsonFile($"appsettings.{builder.Environment.EnvironmentName}.json", optional: true, reloadOnChange: true)
+            .AddEnvironmentVariables()
+            .AddCommandLine(args);
+        builder.WebHost.ConfigureKestrel(static (context, options) =>
+            options.Configure(context.Configuration.GetSection("Kestrel"), reloadOnChange: true));
+        builder.Host.UseDefaultServiceProvider(static (context, options) =>
+        {
+            bool development = context.HostingEnvironment.IsDevelopment();
+            options.ValidateScopes = development;
+            options.ValidateOnBuild = development;
+        });
+        return builder;
+    }
+
+    internal static string ReadRpcUrls(IConfiguration configuration)
+    {
+        string? urls = configuration[WebHostDefaults.ServerUrlsKey];
+        if (urls is null) return "http://127.0.0.1:8545";
+        if (urls.Length != 0) return urls;
+        List<string> listeners = [];
+        AddPorts(WebHostDefaults.HttpPortsKey, "http");
+        AddPorts(WebHostDefaults.HttpsPortsKey, "https");
+        return listeners.Count == 0 ? "http://localhost:5000" : string.Join(';', listeners);
+
+        void AddPorts(string key, string scheme)
+        {
+            foreach (string port in (configuration[key] ?? string.Empty).Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                listeners.Add($"{scheme}://*:{port}");
+        }
+    }
+
     internal static bool TryPrepareDataDirectory(string directory, out string? error)
     {
         try
@@ -65,14 +115,14 @@ internal static class LightClientHost
         }
     }
 
-    internal static void ConfigureRequestPolicy(WebApplication app, string rpcUrls)
+    internal static void ConfigureRequestPolicy(IApplicationBuilder app, string rpcUrls)
     {
         bool loopbackOnly = true;
         if (rpcUrls.Length == 0)
         {
             string[] portKeys = [WebHostDefaults.HttpPortsKey, WebHostDefaults.HttpsPortsKey];
             foreach (string key in portKeys)
-                if (app.Configuration[key]?.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Length > 0)
+                if (app.ApplicationServices.GetRequiredService<IConfiguration>()[key]?.Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).Length > 0)
                     loopbackOnly = false;
         }
         foreach (string value in rpcUrls.Split(';', StringSplitOptions.RemoveEmptyEntries))
@@ -117,12 +167,12 @@ internal static class LightClientHost
         };
     }
 
-    internal static async Task RunAsync(WebApplication app, Func<CancellationToken, Task> synchronize, ILogger? logger = null)
+    internal static async Task RunAsync(IHost app, Func<CancellationToken, Task> synchronize, ILogger? logger = null)
     {
-        IHostApplicationLifetime lifetime = app.Lifetime;
+        IHostApplicationLifetime lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         await app.StartAsync(lifetime.ApplicationStopping);
         if (logger is not null)
-            foreach (string url in app.Urls)
+            foreach (string url in app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses)
                 logger.LogInformation("Light-client RPC and status listening at {Url}", url);
         Task server = app.WaitForShutdownAsync();
         Task? sync = null;
