@@ -163,25 +163,8 @@ internal sealed class DiscoveryNodeAdmission(
            && persistedAddress.Equals(node.Address.Address);
 
     private bool IsManagedExempt(PublicKey nodeId)
-    {
-        if (_staticNodes is not null)
-        {
-            foreach (NetworkNode node in _staticNodes.Nodes)
-            {
-                if (node.NodeId.Equals(nodeId)) return true;
-            }
-        }
-
-        if (_trustedNodes is not null)
-        {
-            foreach (NetworkNode node in _trustedNodes.Nodes)
-            {
-                if (node.NodeId.Equals(nodeId)) return true;
-            }
-        }
-
-        return false;
-    }
+        => _staticNodes?.ContainsNode(nodeId) is true
+           || _trustedNodes?.ContainsNode(nodeId) is true;
 
     private static HashSet<PublicKey> CreateExemptNodeIds(
         KademliaConfig<Node> kademliaConfig,

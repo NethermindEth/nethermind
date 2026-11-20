@@ -199,7 +199,9 @@ public class FilteringNodeHealthTrackerTests
     {
         Node incumbent = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
         ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
-        trustedNodes.Nodes.Returns([new NetworkNode(incumbent.Id, "203.0.113.10", 30303)]);
+        NetworkNode trustedNode = new(incumbent.Id, "203.0.113.10", 30303);
+        trustedNodes.Nodes.Returns([trustedNode]);
+        trustedNodes.ContainsNode(Arg.Any<PublicKey>()).Returns(call => call.Arg<PublicKey>().Equals(trustedNode.NodeId));
         return AssertRefreshOutcome(incumbent, expectEvicted: false, trustedNodes, token);
     }
 

@@ -96,6 +96,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task contains_node_tracks_membership()
+        {
+            Assert.That(_staticNodesManager.ContainsNode(Enode.NodeId), Is.False);
+            await _staticNodesManager.AddAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsNode(Enode.NodeId), Is.True);
+            await _staticNodesManager.RemoveAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsNode(Enode.NodeId), Is.False);
+        }
+
+        [Test]
         public async Task init_loaded_nodes_are_emitted_with_static_flag()
         {
             await _staticNodesManager.InitAsync();

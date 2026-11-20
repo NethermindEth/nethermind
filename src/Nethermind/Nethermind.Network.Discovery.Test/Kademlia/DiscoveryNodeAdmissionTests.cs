@@ -447,10 +447,8 @@ public class DiscoveryNodeAdmissionTests
     [Test]
     public void Static_and_trusted_nodes_are_exempt_on_first_contact_by_identity()
     {
-        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
-        ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
-        trustedNodes.Nodes.Returns([new NetworkNode(TestItem.PublicKeyB, "203.0.114.20", 30303)]);
+        IStaticNodesManager staticNodes = StaticNodes([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
+        ITrustedNodesManager trustedNodes = TrustedNodes([new NetworkNode(TestItem.PublicKeyB, "203.0.114.20", 30303)]);
         Fixture fixture = CreateAdmission(staticNodes: staticNodes, trustedNodes: trustedNodes);
 
         using (Assert.EnterMultipleScope())
@@ -470,8 +468,7 @@ public class DiscoveryNodeAdmissionTests
     {
         ManualTimeProvider clock = new();
         List<NetworkNode> staticNodesList = [];
-        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns(_ => staticNodesList);
+        IStaticNodesManager staticNodes = StaticNodes(staticNodesList);
         Fixture fixture = CreateAdmission(timeProvider: clock, staticNodes: staticNodes);
         Node ordinary = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
         Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
@@ -503,8 +500,7 @@ public class DiscoveryNodeAdmissionTests
     {
         ManualTimeProvider clock = new();
         List<NetworkNode> staticNodesList = [];
-        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns(_ => staticNodesList);
+        IStaticNodesManager staticNodes = StaticNodes(staticNodesList);
         Fixture fixture = CreateAdmission(timeProvider: clock, staticNodes: staticNodes);
         Node cached = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
         Node sameSubnet = CreateNode(TestItem.PublicKeyB, "203.0.113.20");
@@ -533,37 +529,36 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void First_contact_checks_each_managed_set_once()
+    public void First_contact_probes_each_managed_set_once()
     {
-        int staticScans = 0;
-        int trustedScans = 0;
+        int staticProbes = 0;
+        int trustedProbes = 0;
         IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns(_ =>
+        staticNodes.ContainsNode(Arg.Any<PublicKey>()).Returns(_ =>
         {
-            staticScans++;
-            return [];
+            staticProbes++;
+            return false;
         });
         ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
-        trustedNodes.Nodes.Returns(_ =>
+        trustedNodes.ContainsNode(Arg.Any<PublicKey>()).Returns(_ =>
         {
-            trustedScans++;
-            return [];
+            trustedProbes++;
+            return false;
         });
         Fixture fixture = CreateAdmission(staticNodes: staticNodes, trustedNodes: trustedNodes);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
-            Assert.That(staticScans, Is.EqualTo(1), "admission walks each managed set once");
-            Assert.That(trustedScans, Is.EqualTo(1), "admission walks each managed set once");
+            Assert.That(staticProbes, Is.EqualTo(1), "admission probes each managed set once");
+            Assert.That(trustedProbes, Is.EqualTo(1), "admission probes each managed set once");
         }
     }
 
     [Test]
     public void Managed_node_that_lost_its_reservation_is_still_admitted()
     {
-        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
+        IStaticNodesManager staticNodes = StaticNodes([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]);
         Fixture fixture = CreateAdmission(staticNodes: staticNodes);
         Node managed = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
 
@@ -580,8 +575,7 @@ public class DiscoveryNodeAdmissionTests
     public void Static_node_added_after_construction_is_exempt_on_first_contact()
     {
         List<NetworkNode> staticNodesList = [];
-        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns(_ => staticNodesList);
+        IStaticNodesManager staticNodes = StaticNodes(staticNodesList);
         Fixture fixture = CreateAdmission(staticNodes: staticNodes);
         staticNodesList.Add(new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303));
 
@@ -598,10 +592,8 @@ public class DiscoveryNodeAdmissionTests
     {
         List<NetworkNode> staticNodesList = [new(TestItem.PublicKeyA, "203.0.113.10", 30303)];
         List<NetworkNode> trustedNodesList = [new(TestItem.PublicKeyB, "203.0.114.20", 30303)];
-        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns(_ => staticNodesList);
-        ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
-        trustedNodes.Nodes.Returns(_ => trustedNodesList);
+        IStaticNodesManager staticNodes = StaticNodes(staticNodesList);
+        ITrustedNodesManager trustedNodes = TrustedNodes(trustedNodesList);
         Fixture fixture = CreateAdmission(staticNodes: staticNodes, trustedNodes: trustedNodes);
 
         using (Assert.EnterMultipleScope())
@@ -636,8 +628,7 @@ public class DiscoveryNodeAdmissionTests
     public void Promotion_drops_a_stale_static_flag_after_the_node_leaves_its_manager()
     {
         List<NetworkNode> staticNodesList = [new(TestItem.PublicKeyA, "203.0.113.10", 30303)];
-        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
-        staticNodes.Nodes.Returns(_ => staticNodesList);
+        IStaticNodesManager staticNodes = StaticNodes(staticNodesList);
         Fixture fixture = CreateAdmission(staticNodes: staticNodes);
         Node cached = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
         cached.IsStatic = true;
@@ -693,42 +684,56 @@ public class DiscoveryNodeAdmissionTests
         ManualTimeProvider clock = new();
         Fixture fixture = CreateAdmission(timeProvider: clock);
         Node node = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        const int Rounds = 20;
+        const int Racers = 17;
 
-        for (int i = 0; i < 20; i++)
+        // Dedicated threads start together; pool threads would be injected one at a time and start racing after
+        // the first racer already finished. The driver joins both phases so it cannot advance the clock while a
+        // racer is still in the previous round, and the workers are reused instead of restarted per round.
+        using Barrier roundStart = new(Racers + 1);
+        using Barrier roundDone = new(Racers + 1);
+        bool[] results = new bool[Racers];
+        Thread[] threads = new Thread[Racers];
+        for (int index = 0; index < threads.Length; index++)
+        {
+            int racer = index;
+            threads[index] = new Thread(() =>
+            {
+                for (int i = 0; i < Rounds; i++)
+                {
+                    if (!roundStart.SignalAndWait(TimeSpan.FromSeconds(30))) return;
+
+                    results[racer] = racer == 0
+                        ? fixture.Admission.TryAdmit(node)
+                        : fixture.Admission.TryAdmitPromoted(node);
+
+                    if (!roundDone.SignalAndWait(TimeSpan.FromSeconds(30))) return;
+                }
+            })
+            {
+                IsBackground = true,
+            };
+
+            threads[index].Start();
+        }
+
+        for (int i = 0; i < Rounds; i++)
         {
             // Every path expires the reservation, so the racers all fail their refresh check and only one of
             // them can acquire it; the others must recognize the identity that just reacquired it.
             clock.Advance(TimeSpan.FromMinutes(5));
 
-            // Dedicated threads start together; pool threads would be injected one at a time and start racing
-            // after the first racer already finished.
-            using Barrier barrier = new(17);
-            bool[] results = new bool[17];
-            Thread[] threads = new Thread[results.Length];
-            for (int index = 0; index < threads.Length; index++)
+            bool raced = roundStart.SignalAndWait(TimeSpan.FromSeconds(30))
+                         && roundDone.SignalAndWait(TimeSpan.FromSeconds(30));
+
+            using (Assert.EnterMultipleScope())
             {
-                int racer = index;
-                Thread racerThread = new(() =>
-                {
-                    if (barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
-                    {
-                        results[racer] = racer == 0
-                            ? fixture.Admission.TryAdmit(node)
-                            : fixture.Admission.TryAdmitPromoted(node);
-                    }
-                })
-                {
-                    IsBackground = true,
-                };
-
-                threads[index] = racerThread;
-                racerThread.Start();
+                Assert.That(raced, Is.True, $"iteration {i} barrier");
+                Assert.That(results, Is.All.True, $"iteration {i}");
             }
-
-            foreach (Thread thread in threads) thread.Join();
-
-            Assert.That(results, Is.All.True, $"iteration {i}");
         }
+
+        foreach (Thread thread in threads) thread.Join();
     }
 
     private static Fixture CreateAdmission(
@@ -760,6 +765,24 @@ public class DiscoveryNodeAdmissionTests
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
+
+    // The admission resolves managed exemptions by identity through ContainsNode; Nodes keeps the rest of the
+    // resolved graph working. Both track the same list, so additions and removals are observed live.
+    private static IStaticNodesManager StaticNodes(List<NetworkNode> nodes)
+    {
+        IStaticNodesManager manager = Substitute.For<IStaticNodesManager>();
+        manager.Nodes.Returns(_ => nodes);
+        manager.ContainsNode(Arg.Any<PublicKey>()).Returns(call => nodes.Any(n => n.NodeId.Equals(call.Arg<PublicKey>())));
+        return manager;
+    }
+
+    private static ITrustedNodesManager TrustedNodes(List<NetworkNode> nodes)
+    {
+        ITrustedNodesManager manager = Substitute.For<ITrustedNodesManager>();
+        manager.Nodes.Returns(_ => nodes);
+        manager.ContainsNode(Arg.Any<PublicKey>()).Returns(call => nodes.Any(n => n.NodeId.Equals(call.Arg<PublicKey>())));
+        return manager;
+    }
 
     private sealed record Fixture(DiscoveryNodeAdmission Admission);
 }

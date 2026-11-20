@@ -6,6 +6,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network;
 
@@ -21,6 +22,9 @@ public interface ITrustedNodesManager : INodeSource
     /// <returns><see langword="true"/> when the node was removed; <see langword="false"/> when it was not present.</returns>
     Task<bool> RemoveAsync(Enode enode, bool updateFile = true, CancellationToken cancellationToken = default);
     bool IsTrusted(Enode enode);
+
+    /// <summary>Returns <see langword="true"/> when the managed set currently holds <paramref name="nodeId"/>, whatever endpoint it was added with.</summary>
+    bool ContainsNode(PublicKey nodeId);
 
     bool ContainsIp(IPAddress ip);
 }
