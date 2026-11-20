@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Security;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -98,7 +99,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Personal_send_transaction_is_not_available()
         {
             IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
-            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_sendTransaction", "{}", "testPass");
+            JsonElement transaction = JsonSerializer.Deserialize<JsonElement>("{}");
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_sendTransaction", transaction, "testPass");
             Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32601,"message":"the method personal_sendTransaction does not exist/is not available"},"id":67}"""));
         }
 
