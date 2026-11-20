@@ -407,6 +407,7 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
 
             .AddScoped<IForwardHeaderProvider, PowForwardHeaderProvider>()
             .AddScoped<ISyncDownloader<BlocksRequest>, MultiBlockDownloader>()
+            .AddSingleton<DependencyProofFetcher>()
 
             .Add<IPeerAllocationStrategyFactory<BlocksRequest>, BlocksSyncPeerAllocationStrategyFactory>()
             .AddScoped<SyncDispatcher<BlocksRequest>>()

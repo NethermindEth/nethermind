@@ -12,6 +12,9 @@ public sealed class BlocksRequest : IDisposable
 {
     public IOwnedReadOnlyList<BlockHeader> BodiesRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public OwnedBlockBodies? OwnedBodies { get; set; }
+
+    /// <summary>Per block in <see cref="BodiesRequests"/>, its EIP-8288 dependency proof when fetched.</summary>
+    public byte[]?[]? DependencyProofs { get; set; }
     public IOwnedReadOnlyList<BlockHeader> BlockAccessListsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
     public IOwnedReadOnlyList<byte[]?>? BlockAccessLists { get; set; }
     public IOwnedReadOnlyList<BlockHeader> ReceiptsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;

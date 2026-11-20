@@ -565,7 +565,8 @@ namespace Nethermind.Synchronization.Blocks
 
                 Block block = new(entry.Header, body)
                 {
-                    EncodedBlockAccessList = entry.EncodedAccessList
+                    EncodedBlockAccessList = entry.EncodedAccessList,
+                    StarkProof = response.DependencyProofs?[i]
                 };
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
