@@ -267,6 +267,7 @@ public sealed class ArkivChain : IDisposable
             // A fork below the store's head: GolemDB cannot rewind, so restart from a copy taken on this ancestry.
             if (_logger.IsWarn) _logger.Warn($"Arkiv: block {target.ToString(BlockHeader.Format.Short)} forks below the store's head {headNumber} ({headHash}); restoring a store copy");
             BlockHeader from = RestoreCheckpointOnAncestry(cursor, ancestry);
+            headNumber = from.Number;
             ancestry.Clear();
             cursor = tree.FindHeader(target.ParentHash!, BlockTreeLookupOptions.None)!;
             while (cursor.Number > from.Number)
