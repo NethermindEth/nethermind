@@ -60,6 +60,9 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
 
             // Promoting a cached replacement bypasses the health tracker, so it re-runs this same decision.
             kademliaConfig.CanPromoteReplacement = admission.TryAdmitPromoted;
+            // A successful refresh ping renews the incumbent inside the tracker, past the filtering decorator.
+            // The stored instance may carry stale flags, so this re-runs the flagless decision.
+            kademliaConfig.CanRefreshNode = admission.TryAdmitRefresh;
             return admission;
         });
         builder.AddDecorator<INodeHealthTracker<Node>, FilteringNodeHealthTracker>();

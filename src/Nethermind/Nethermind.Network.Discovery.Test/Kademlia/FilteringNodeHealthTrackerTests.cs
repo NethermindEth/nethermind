@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Concurrent;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -176,6 +181,84 @@ public class FilteringNodeHealthTrackerTests
         tracker.OnIncomingMessageFrom(bootnode);
 
         inner.Received(3).OnIncomingMessageFrom(Arg.Any<Node>());
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public Task Refresh_evicts_an_incumbent_that_is_not_admitted(
+        [Values] bool staleTrustedFlag, CancellationToken token)
+    {
+        Node incumbent = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        incumbent.IsTrusted = staleTrustedFlag;
+        return AssertRefreshOutcome(incumbent, expectEvicted: true, trustedNodes: null, token);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public Task Refresh_keeps_an_incumbent_exempted_by_a_live_manager(CancellationToken token)
+    {
+        Node incumbent = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
+        trustedNodes.Nodes.Returns([new NetworkNode(incumbent.Id, "203.0.113.10", 30303)]);
+        return AssertRefreshOutcome(incumbent, expectEvicted: false, trustedNodes, token);
+    }
+
+    private static async Task AssertRefreshOutcome(
+        Node incumbent,
+        bool expectEvicted,
+        ITrustedNodesManager? trustedNodes,
+        CancellationToken token)
+    {
+        Node newcomer = CreateNode(TestItem.PublicKeyB, "203.0.114.20");
+        Node otherIdentity = CreateNode(TestItem.PublicKeyC, "203.0.113.10");
+        ValueHash256 incumbentHash = incumbent.Id.Hash;
+
+        ConcurrentBag<(ValueHash256 Hash, Node Node)> addCalls = [];
+        ConcurrentBag<ValueHash256> removeCalls = [];
+        IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
+        routingTable.TryAddOrRefresh(Arg.Any<ValueHash256>(), Arg.Any<Node>(), out Arg.Any<Node?>())
+            .Returns(call =>
+            {
+                Node node = call.ArgAt<Node>(1);
+                addCalls.Add((call.ArgAt<ValueHash256>(0), node));
+                if (ReferenceEquals(node, newcomer))
+                {
+                    call[2] = incumbent;
+                    return BucketAddResult.Full;
+                }
+
+                call[2] = null;
+                return BucketAddResult.Refreshed;
+            });
+        routingTable.Remove(Arg.Any<ValueHash256>()).Returns(call =>
+        {
+            removeCalls.Add(call.ArgAt<ValueHash256>(0));
+            return true;
+        });
+
+        using IContainer container = DiscoveryAdmissionTestContainer.Create(
+            routingTable: routingTable,
+            trustedNodes: trustedNodes);
+        INodeHealthTracker<Node> tracker = container.Resolve<INodeHealthTracker<Node>>();
+        container.Resolve<IKademliaMessageSender<PublicKey, Node>>()
+            .Ping(Arg.Any<Node>(), Arg.Any<CancellationToken>()).Returns(true);
+
+        Assert.That(container.Resolve<DiscoveryNodeAdmission>().TryAdmit(otherIdentity), Is.True);
+
+        tracker.OnIncomingMessageFrom(newcomer);
+
+        if (expectEvicted)
+        {
+            await AsyncTestHelpers.AssertEventuallyAsync(
+                () => removeCalls.Any(hash => hash == incumbentHash), token);
+            Assert.That(addCalls, Has.None.Matches<(ValueHash256 Hash, Node Node)>(call => call.Hash == incumbentHash));
+        }
+        else
+        {
+            await AsyncTestHelpers.AssertEventuallyAsync(
+                () => addCalls.Any(call => call.Hash == incumbentHash), token);
+            Assert.That(removeCalls, Does.Not.Contain(incumbentHash));
+        }
     }
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);

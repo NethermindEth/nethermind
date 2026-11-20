@@ -74,7 +74,19 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             {
                 if (await kademliaMessageSender.Ping(toRefresh, token))
                 {
-                    OnIncomingMessageFrom(toRefresh);
+                    // The pong's own admission decision is not ordered against this ping result, so re-check
+                    // while the eviction is still pending. An admitted message from the node clears that flag
+                    // first, in which case the refresh already succeeded. Read the callback live, as discovery
+                    // installs it after construction.
+                    Func<TNode, bool>? canRefreshNode = config.CanRefreshNode;
+                    if (canRefreshNode is null || canRefreshNode(toRefresh))
+                    {
+                        OnIncomingMessageFrom(toRefresh);
+                    }
+                    else if (_logger.IsEnabled(LogLevel.Trace))
+                    {
+                        _logger.LogTrace($"Refresh of {toRefresh} was rejected by admission.");
+                    }
                 }
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -91,6 +103,7 @@ public class NodeHealthTracker<TKey, TNode, TKadKey>(
             if (_isRefreshing.TryRemove(nodeHash, out _))
             {
                 routingTable.Remove(nodeHash);
+                _peerFailures.Delete(nodeHash);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)

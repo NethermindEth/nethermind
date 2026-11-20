@@ -141,8 +141,10 @@ internal static class DiscoveryAdmissionTestContainer
                 staticNodes,
                 trustedNodes,
                 configuredStaticNodes?.ToArray());
-            // Mirror the production module: a promoted replacement is re-checked by the same admission.
+            // Mirror the production module: a promoted replacement and a successful refresh are re-checked by
+            // the same admission.
             kademliaConfig.CanPromoteReplacement = manualAdmission.TryAdmitPromoted;
+            kademliaConfig.CanRefreshNode = manualAdmission.TryAdmitRefresh;
             builder.RegisterInstance(manualAdmission);
         }
 
@@ -163,6 +165,14 @@ internal static class DiscoveryAdmissionTestContainer
         }
 
         IContainer container = builder.Build();
+        if (admission is not null)
+        {
+            // A supplied instance replaces the module factory, so mirror the callback wiring it would have done.
+            KademliaConfig<Node> resolvedConfig = container.Resolve<KademliaConfig<Node>>();
+            resolvedConfig.CanPromoteReplacement = admission.TryAdmitPromoted;
+            resolvedConfig.CanRefreshNode = admission.TryAdmitRefresh;
+        }
+
         if (enabled && persisted is not null && IPAddress.TryParse(localIp ?? currentIp, out IPAddress? localAddress))
         {
             // Mirror DiscoveryApp: record the address each persisted node was actually restored with.

@@ -72,7 +72,7 @@ internal sealed class DiscoveryNodeAdmission(
     /// reservation may extend it, and a node that moves to a different address or whose window was taken over
     /// by another identity is filtered again. An identity is not remembered separately from its reservation.
     /// </remarks>
-    public bool TryAdmit(Node node) => TryAdmitCore(node, trustInstanceFlags: true);
+    public bool TryAdmit(Node node) => TryAdmitCore(node, trustInstanceFlags: true, rejectionContext: null);
 
     /// <summary>
     /// Re-validates a node taken from a bucket's replacement cache before it is promoted into the bucket.
@@ -86,7 +86,18 @@ internal sealed class DiscoveryNodeAdmission(
     /// reservation is extended, so a node promoted after it became exempt stops renewing the reservation it still
     /// holds.
     /// </remarks>
-    public bool TryAdmitPromoted(Node node) => TryAdmitCore(node, trustInstanceFlags: false);
+    public bool TryAdmitPromoted(Node node) => TryAdmitCore(node, trustInstanceFlags: false, " on replacement promotion");
+
+    /// <summary>
+    /// Re-validates a node already in the routing table before its refresh ping renews the entry.
+    /// </summary>
+    /// <remarks>
+    /// The stored instance carries the flags it was admitted with, which may be stale if the operator removed it
+    /// from a manager since, so instance flags are ignored exactly as in <see cref="TryAdmitPromoted"/>. Live
+    /// exemptions are still resolved, and a node that no longer holds its reservation is filtered like any other.
+    /// It reads no routing-table state, so it may run outside the table lock.
+    /// </remarks>
+    public bool TryAdmitRefresh(Node node) => TryAdmitCore(node, trustInstanceFlags: false, " on refresh");
 
     /// <summary>
     /// Records a node restored from discovery storage as exempt from the filter at its restored address.
@@ -102,7 +113,7 @@ internal sealed class DiscoveryNodeAdmission(
         if (_enabled && node.Enr is null) _persistedAddresses[node.Id] = node.Address.Address;
     }
 
-    private bool TryAdmitCore(Node node, bool trustInstanceFlags)
+    private bool TryAdmitCore(Node node, bool trustInstanceFlags, string? rejectionContext)
     {
         if (!_enabled) return true;
 
@@ -116,10 +127,7 @@ internal sealed class DiscoveryNodeAdmission(
 
         if (_logger.IsTrace)
         {
-            if (trustInstanceFlags)
-                _logger.Trace($"Discovery node filtered by recent IP: {node:hide}.");
-            else
-                _logger.Trace($"Discovery node filtered by recent IP on replacement promotion: {node:hide}.");
+            _logger.Trace($"Discovery node filtered by recent IP{rejectionContext}: {node:hide}.");
         }
 
         return false;
