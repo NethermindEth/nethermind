@@ -48,6 +48,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private bool _pendingStep;
     private bool _pendingPostStep;
     private bool _pendingSelfDestruct;
+    private bool _rootReverted;
     private string? _codeDepositError;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
@@ -57,6 +58,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
+
+    internal bool IsFrameTransaction { get; init; }
 
     /// <summary>Creates a JavaScript tracer using the supplied execution context and engine.</summary>
     /// <remarks>SELFDESTRUCT refunds are credited at transaction finalization, avoiding a second credit at the opcode boundary.</remarks>
@@ -387,6 +390,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
+        if (_depth == 0 && !IsFrameTransaction) _rootReverted = true;
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 
@@ -403,6 +407,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.ReportActionError(evmExceptionType);
         string? error = _codeDepositError ?? evmExceptionType.GetEvmExceptionDescription();
+        // A precompile can fail without running an opcode; its parent's last step is not its error.
+        if (_log.depth == _depth + 1) error = _codeDepositError ?? _log.error ?? error;
         // The root's error stays for ctx.error, which MarkAsFailed sets.
         if (_depth > 0)
             _codeDepositError = null;
@@ -471,9 +477,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
         _ctx.Output = output.AsSpan().ToArray();
-        // A revert reason is decoded from the output, which an exceptional halt never has.
         // A failed code deposit and the halting step carry Geth's detailed text; a precompile call has neither.
-        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _codeDepositError ?? _log.error ?? description : error;
+        _ctx.error = _rootReverted ? EvmExceptionType.Revert.GetEvmExceptionDescription()
+            : output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _codeDepositError ?? _log.error ?? description : error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -555,7 +561,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
             if (required)
             {
-                if (_captureErrors) throw new ArgumentException($"trace object must expose required function {name}");
+                if (_captureErrors) throw new ArgumentException($"trace object must expose a function {name}()");
                 throw new InvalidDataException($"trace object must expose a function {name}()");
             }
             return TracerFunctions.none;
@@ -642,6 +648,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         {
             _external.ThrowIfCancellationRequested();
             throw new GethTraceDeadlineException();
+        }
+        catch (Exception exception) when (!_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
+        {
+            string message = function == TracerFunctions.setup ? exception.Message
+                : $"{exception.Message} in server-side tracer function '{function}'";
+            throw new InvalidDataException(message, exception);
         }
         catch (Exception exception) when (_captureErrors
             && (_engine.TryGetInputError(exception, out string? inputError, observedNullThrow)

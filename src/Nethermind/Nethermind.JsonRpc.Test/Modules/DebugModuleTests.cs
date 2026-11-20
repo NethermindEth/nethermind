@@ -1097,6 +1097,29 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task DebugTraceTransaction_buffered_trace_runs_on_the_dispatcher_token()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+
+        try
+        {
+            await SerializedRequest("debug_traceTransaction", TestItem.KeccakA, new { tracer = "noopTracer" });
+            _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, timeout.Token, Arg.Any<GethTraceOptions>(),
+                Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+    }
+
+    [Test]
     public void DebugTraceCall_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest, [Values] bool withOverrides)
     {
         Block validated = Build.A.Block.WithNumber(1).TestObject;
@@ -1725,6 +1748,40 @@ public class DebugModuleTests
         {
             yield return Build.A.Block.WithNumber(1).TestObject;
             File.WriteAllText(file, "other writer");
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void DebugGetBadBlocks_WhenTimedOutDuringWrite_StopsAndLeavesNoFile()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        bool resumedAfterTimeout = false;
+        _debugBridge.GetBadBlocks().Returns(TimeOutAfter(Build.A.Block.WithNumber(1).TestObject, Build.A.Block.WithNumber(2).TestObject));
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => CreateModule().debug_getBadBlocks(file), Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(resumedAfterTimeout, Is.False, "the write stops at the first block after the timeout");
+                Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
+                Assert.That(timeout.DisposeCount, Is.EqualTo(1), "the cancelled timeout source is disposed, not pooled");
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+
+        IEnumerable<Block> TimeOutAfter(Block first, Block second)
+        {
+            yield return first;
+            timeout.Cancel();
+            yield return second;
+            resumedAfterTimeout = true;
         }
     }
 

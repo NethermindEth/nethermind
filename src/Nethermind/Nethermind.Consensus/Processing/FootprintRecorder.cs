@@ -25,6 +25,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 {
     private bool _active;
     private bool _opaque;
+    private bool _effectsOverflowed;
 
     private readonly Dictionary<AddressAsKey, int> _accountIndex = [];
     private AccountPrecondition[] _accounts = new AccountPrecondition[32];
@@ -38,6 +39,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     // Per effect: the index of its account, or of its slot for a storage write.
     private int[] _owners = new int[32];
     private int _effectCount;
+    private StateEffect _unrecordedEffect;
 
     private (Snapshot Snapshot, int Effects)[] _frames = new (Snapshot, int)[16];
     private int _frameCount;
@@ -52,6 +54,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     // Buffers a run grows past this are dropped at the next start, so a huge transaction is not kept for the env's life.
     private const int RetainedCapacity = 1024;
+
+    internal const int MaxEffects = 16384;
 
     public OutcomeTracer Outcome { get; } = new();
 
@@ -68,6 +72,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         _effectCount = 0;
         _frameCount = 0;
         _opaque = false;
+        _effectsOverflowed = false;
         Machine?.BlockContextReads = BlockContextReads.None;
         if (_accounts.Length > RetainedCapacity)
         {
@@ -118,7 +123,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     public TransactionFootprint? Finish(Transaction tx, in TransactionResult result, bool refreshed = false)
     {
         _active = false;
-        if (_opaque || !result || !Outcome.HasResult) return null;
+        if (_opaque || _effectsOverflowed || !result || !Outcome.HasResult) return null;
 
         // The run skipped the nonce check; only the transaction's own nonce makes it valid.
         if (!_accountIndex.TryGetValue(tx.SenderAddress!, out int senderIndex)) return null;
@@ -340,7 +345,14 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     {
         if (_effectCount == _effects.Length)
         {
-            Array.Resize(ref _effects, _effects.Length * 2);
+            if (_effectCount == MaxEffects)
+            {
+                _effectsOverflowed = true;
+                _unrecordedEffect = default;
+                return ref _unrecordedEffect;
+            }
+
+            Array.Resize(ref _effects, Math.Min(MaxEffects, _effects.Length * 2));
             Array.Resize(ref _owners, _effects.Length);
         }
 
@@ -393,6 +405,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         _effectCount = _frames[i].Effects;
         _frameCount = i + 1;
+        if (_effectCount < MaxEffects) _effectsOverflowed = false;
     }
 
     /// <remarks>
@@ -641,6 +654,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     private void RecordCode(EffectKind kind, Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code)
     {
         ref StateEffect effect = ref AccountEffect(kind, address);
+        if (_effectsOverflowed) return;
+
         effect.CodeHash = codeHash;
         // Copied: the run's buffer may be reused.
         effect.Code = code.ToArray();

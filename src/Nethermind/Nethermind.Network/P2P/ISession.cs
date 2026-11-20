@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
@@ -53,7 +52,7 @@ namespace Nethermind.Network.P2P
 
         bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler);
 
-        void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
+        void Init(byte p2PVersion, IPacketSender packetSender);
 
         /// <summary>
         /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
