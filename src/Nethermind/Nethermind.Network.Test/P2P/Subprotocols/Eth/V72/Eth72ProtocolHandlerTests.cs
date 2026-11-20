@@ -83,16 +83,7 @@ public class Eth72ProtocolHandlerTests
 
         _disposables = [];
         _deliveredMessages = [];
-        _session = Substitute.For<ISession>();
-        Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
-        _session.Node.Returns(node);
-        _session.When(static s => s.DeliverMessage(Arg.Any<P2PMessage>()))
-            .Do(c =>
-            {
-                P2PMessage message = c.Arg<P2PMessage>();
-                _deliveredMessages.Add(message);
-                message.AddTo(_disposables);
-            });
+        _session = CreateSession();
 
         _syncManager = Substitute.For<ISyncServer>();
         _transactionPool = Substitute.For<ITxPool>();
@@ -5868,6 +5859,7 @@ public class Eth72ProtocolHandlerTests
         ILogManager? logManager = null)
     {
         _handler.Dispose();
+        _session = CreateSession();
         _txPoolConfig.SparseBlobProviderProbabilityPercent.Returns(providerProbabilityPercent);
         _handler = new Eth72ProtocolHandler(
             _session,
@@ -5890,6 +5882,7 @@ public class Eth72ProtocolHandlerTests
     private TestEth72ProtocolHandler RecreateTestHandler(IBackgroundTaskScheduler backgroundTaskScheduler)
     {
         _handler.Dispose();
+        _session = CreateSession();
         TestEth72ProtocolHandler handler = new(
             _session,
             _svc,
@@ -5908,6 +5901,22 @@ public class Eth72ProtocolHandlerTests
         _handler = handler;
         handler.Init();
         return handler;
+    }
+
+    // Each handler gets its own session: a replaced handler's protocol-init timeout keeps running after Dispose
+    // and would otherwise disconnect the session its replacement uses.
+    private ISession CreateSession()
+    {
+        ISession session = Substitute.For<ISession>();
+        session.Node.Returns(new Node(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303)));
+        session.When(static s => s.DeliverMessage(Arg.Any<P2PMessage>()))
+            .Do(c =>
+            {
+                P2PMessage message = c.Arg<P2PMessage>();
+                _deliveredMessages.Add(message);
+                message.AddTo(_disposables);
+            });
+        return session;
     }
 
     private static Transaction BuildBlobTransaction(bool fullProvider)
