@@ -17,7 +17,7 @@ try
     var launchTest = "client launch (nethermind)";
     var knownFails = File.ReadAllLines(Path.Combine(scripts, "known-failing-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);
     var knownFlaky = File.ReadAllLines(Path.Combine(scripts, "known-flaky-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);
-    var results = new List<(string Name, bool Passed)>();
+    var results = new List<(string Name, bool Passed, bool Terminated)>();
     foreach (var argument in args)
     {
         var path = Path.GetFullPath(argument, Environment.CurrentDirectory);
@@ -35,7 +35,14 @@ try
                 var entries = cases.ValueKind == JsonValueKind.Array
                     ? cases.EnumerateArray().ToArray()
                     : cases.EnumerateObject().Select(property => property.Value).ToArray();
-                var suiteResults = new List<(string Name, bool Passed)>();
+                // devp2p runs its test tool inside one case of these suites, which therefore fails with any failed sub-test.
+                var wrapper = suite switch
+                {
+                    "eth" or "snap" or "snap2" => launchTest,
+                    "discv4" or "discv5" => "nethermind",
+                    _ => null
+                };
+                var suiteResults = new List<(string Name, bool Passed, bool Terminated)>();
                 foreach (var test in entries)
                 {
                     if (!test.TryGetProperty("summaryResult", out var summary) || summary.ValueKind == JsonValueKind.Null ||
@@ -43,13 +50,15 @@ try
                         passed.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
                         continue;
                     var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
+                    // Hive sets "timeout" only on a case it ended itself: at its time limit, on an interrupt or when the simulator exits.
+                    var terminated = summary.TryGetProperty("timeout", out var timeout) && timeout.ValueKind == JsonValueKind.True;
                     // Sync suites reuse case names, so retain their suite prefix to distinguish failures.
-                    suiteResults.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean()));
+                    suiteResults.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean(), terminated));
                 }
-                // devp2p runs its test tool inside the launch test of these suites, so there it fails with any sub-test.
-                // Drop it only when the suite reported sub-tests; otherwise it is the suite's only result and counts.
-                if (suite is "eth" or "snap" or "snap2" && suiteResults.Any(result => result.Name != launchTest))
-                    suiteResults.RemoveAll(result => result.Name == launchTest);
+                // Drop the failed wrapper only when a failed sub-test explains it and Hive did not end it: a tool that
+                // crashes or hangs after passing sub-tests, or that Hive stops, must still fail the job.
+                if (wrapper is not null && suiteResults.Any(result => result.Name != wrapper && !result.Passed))
+                    suiteResults.RemoveAll(result => result.Name == wrapper && !result.Passed && !result.Terminated);
                 results.AddRange(suiteResults);
             }
             catch (Exception exception) when (exception is JsonException or InvalidOperationException or KeyNotFoundException)

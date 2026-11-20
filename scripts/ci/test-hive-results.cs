@@ -15,6 +15,7 @@ try
     var failing = "known failing (nethermind)";
     var flaky = "flaky (nethermind)";
     var tests = 0;
+    var failures = new List<string>();
     foreach (var scenario in new[]
     {
         ("missing_result_files", "engine", Array.Empty<(string, bool)>(), 1, "Hive ran no test cases."),
@@ -53,11 +54,7 @@ try
         var directory = Directory.CreateTempSubdirectory("hive-results-tests-");
         try
         {
-            var scripts = Directory.CreateDirectory(Path.Combine(directory.FullName, "scripts"));
-            var listedLaunch = name == "listed_launch_pass" ? $"{launch}\n" : "";
-            File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), $"# suite\n\n{failing}\nsync/{failing}\nsnapsync/{failing}\n{flaky}\n{listedLaunch}");
-            File.WriteAllText(Path.Combine(scripts.FullName, "known-flaky-hive-tests.txt"), $"# suite\n\n{flaky}\n");
-            var logs = Directory.CreateDirectory(Path.Combine(directory.FullName, "hive", "workspace", "logs"));
+            var (scripts, logs) = Prepare(directory, listLaunch: name == "listed_launch_pass");
             var entries = cases.Select(test => (JsonNode)new JsonObject { ["name"] = test.Item1, ["summaryResult"] = new JsonObject { ["pass"] = test.Item2 } }).ToArray();
             var testCases = name == "array_cases" ? (JsonNode)new JsonArray(entries)
                 : new JsonObject(entries.Select((test, index) => KeyValuePair.Create(index.ToString(), (JsonNode?)test)));
@@ -67,16 +64,16 @@ try
             if (name == "null_summary_ignored")
                 json = "{\"name\":\"engine\",\"testCases\":{\"1\":{\"name\":\"pending\",\"summaryResult\":null}}}";
             if (name != "missing_result_files")
-                File.WriteAllText(Path.Combine(logs.FullName, "first.json"), json);
-            // A passing sibling suite, read before the snap file.
+                File.WriteAllText(Path.Combine(logs, "first.json"), json);
+            // A passing sibling suite.
             if (name == "snap_failed_launch_only")
-                File.WriteAllText(Path.Combine(logs.FullName, "eth.json"), "{\"name\":\"eth\",\"testCases\":{\"1\":{\"name\":\"test_a\",\"summaryResult\":{\"pass\":true}}}}");
+                File.WriteAllText(Path.Combine(logs, "eth.json"), "{\"name\":\"eth\",\"testCases\":{\"1\":{\"name\":\"test_a\",\"summaryResult\":{\"pass\":true}}}}");
             if (name is "multiple_files" or "explicit_paths")
-                File.WriteAllText(Path.Combine(logs.FullName, "second.json"), json);
+                File.WriteAllText(Path.Combine(logs, "second.json"), json);
             if (name == "malformed_json")
-                File.WriteAllText(Path.Combine(logs.FullName, "broken.json"), "invalid");
+                File.WriteAllText(Path.Combine(logs, "broken.json"), "invalid");
             if (name == "missing_known_file")
-                File.Delete(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"));
+                File.Delete(Path.Combine(scripts, "known-failing-hive-tests.txt"));
             var arguments = name == "explicit_paths"
                 ? new[] { "hive/workspace/logs/first.json", "hive/workspace/logs/second.json" }
                 : ["hive/workspace/logs/*.json"];
@@ -84,21 +81,107 @@ try
                 workingDirectory: directory.FullName);
             if (code != expectedCode || !output.Replace("\r\n", "\n").Contains(expectedOutput, StringComparison.Ordinal) ||
                 (name is "malformed_json" or "missing_known_file" && error.Length == 0))
-                throw new InvalidOperationException($"{name}: expected exit {expectedCode} and '{expectedOutput}', got {code}\n{output}\n{error}");
-            if (name == "malformed_json" && !error.Contains("broken.json", StringComparison.Ordinal))
-                throw new InvalidOperationException("Malformed JSON must identify its source file.");
-            Console.WriteLine($"PASS {name}");
-            tests++;
+                Fail(name, $"expected exit {expectedCode} and '{expectedOutput}', got {code}\n{output}\n{error}");
+            else if (name == "malformed_json" && !error.Contains("broken.json", StringComparison.Ordinal))
+                Fail(name, "malformed JSON must identify its source file");
+            else
+                Pass(name);
         }
         finally { directory.Delete(recursive: true); }
     }
-    var missing = await ScriptProcess.Run("dotnet", [executable], CancellationToken.None);
-    if (missing.Code != 2 || !missing.Error.Contains("Usage:", StringComparison.Ordinal))
-        throw new InvalidOperationException("Missing arguments must report usage.");
-    Console.WriteLine("PASS missing_arguments");
-    Console.WriteLine($"Passed {tests + 1} tests.");
+
+    // Scenarios with several suite files, per-case Hive flags, simulator logs and options.
+    foreach (var scenario in new Scenario[]
+    {
+        // A failed devp2p tool wrapper counts unless a failed sub-test of the same suite file explains it.
+        new("eth_launch_fails_after_passes", [new("eth", [Failed(launch), Passed("test_a")])], 1, ["Unexpected fails: 1"]),
+        new("snap_launch_fails_after_passes", [new("snap", [Failed(launch), Passed("test_a")])], 1, ["Unexpected fails: 1"]),
+        new("snap2_launch_fails_after_passes", [new("snap2", [Failed(launch), Passed("test_a")])], 1, ["Unexpected fails: 1"]),
+        new("eth_launch_next_to_flaky_pass", [new("eth", [Failed(launch), Passed(flaky)])], 1, ["Unexpected fails: 1"]),
+        new("eth_launch_explained_by_flaky", [new("eth", [Failed(launch), Failed(flaky)])], 0, ["Unexpected fails: 0"]),
+        new("eth_launch_explained_once", [new("eth", [Failed(launch), Failed("test_a")])], 1, ["Unexpected fails: 1"]),
+        new("eth_launch_passes", [new("eth", [Passed(launch), Passed("test_a")])], 0, ["\u001b[32m✔\u001b[0m client launch (nethermind)", "Unexpected fails: 0"]),
+        new("eth_launch_terminated_next_to_known", [new("eth", [Terminated(launch), Failed(failing)])], 1, ["\u001b[31m✖\u001b[0m client launch (nethermind)", "Unexpected fails: 1"]),
+        new("rpc_launch_next_to_known", [new("rpc-compat", [Failed(launch), Failed(failing)])], 1, ["Unexpected fails: 1"]),
+        new("discv4_wrapper_explained", [new("discv4", [Failed("nethermind"), Failed(failing)])], 0, ["Unexpected fails: 0"]),
+        new("discv5_wrapper_explained", [new("discv5", [Failed("nethermind"), Failed(failing)])], 0, ["Unexpected fails: 0"]),
+        new("discv5_wrapper_fails_after_passes", [new("discv5", [Failed("nethermind"), Passed("test_a")])], 1, ["\u001b[31m✖\u001b[0m nethermind", "Unexpected fails: 1"]),
+        // A failed sub-test in another file, of the same suite, explains nothing, whichever file is read first.
+        new("eth_launch_sibling_read_after", [new("eth", [Failed(launch), Passed("test_a")], "a.json"), new("eth", [Failed(failing)], "b.json")], 1, ["Unexpected fails: 1"]),
+        new("eth_launch_sibling_read_before", [new("eth", [Failed(failing)], "a.json"), new("eth", [Failed(launch), Passed("test_a")], "b.json")], 1, ["Unexpected fails: 1"]),
+    })
+    {
+        var directory = Directory.CreateTempSubdirectory("hive-results-tests-");
+        try
+        {
+            var (_, logs) = Prepare(directory, listLaunch: false);
+            for (var index = 0; index < scenario.Files.Length; index++)
+            {
+                var file = scenario.Files[index];
+                var testCases = new JsonObject();
+                for (var test = 0; test < file.Cases.Length; test++)
+                {
+                    var (testName, passed, terminated) = file.Cases[test];
+                    var summary = passed is { } pass ? new JsonObject { ["pass"] = pass } : null;
+                    if (terminated && summary is not null)
+                        summary["timeout"] = true;
+                    testCases[(test + 1).ToString()] = new JsonObject { ["name"] = testName, ["summaryResult"] = summary };
+                }
+                var suite = new JsonObject { ["name"] = file.Name, ["testCases"] = testCases };
+                if (file.SimLog is not null)
+                    suite["simLog"] = file.SimLog;
+                File.WriteAllText(Path.Combine(logs, file.File ?? $"{index}.json"), suite.ToJsonString());
+            }
+            foreach (var log in scenario.Logs ?? [])
+                File.WriteAllText(Path.Combine(logs, log), "");
+            var (code, output, error) = await ScriptProcess.Run("dotnet",
+                [executable, .. scenario.Options ?? [], .. scenario.Paths ?? ["hive/workspace/logs/*.json"]], CancellationToken.None,
+                workingDirectory: directory.FullName);
+            var text = (output + error).Replace("\r\n", "\n");
+            var missing = scenario.Output.Where(expected => !text.Contains(expected, StringComparison.Ordinal)).ToArray();
+            if (code != scenario.Code || missing.Length > 0)
+                Fail(scenario.Name, $"expected exit {scenario.Code} and '{string.Join("', '", scenario.Output)}', got {code}\n{output}\n{error}");
+            else
+                Pass(scenario.Name);
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
+    var missingArguments = await ScriptProcess.Run("dotnet", [executable], CancellationToken.None);
+    if (missingArguments.Code != 2 || !missingArguments.Error.Contains("Usage:", StringComparison.Ordinal))
+        Fail("missing_arguments", "missing arguments must report usage");
+    else
+        Pass("missing_arguments");
+    if (failures.Count > 0)
+        throw new InvalidOperationException($"{failures.Count} scenario(s) failed: {string.Join(", ", failures)}");
+    Console.WriteLine($"Passed {tests} tests.");
+
+    void Pass(string name)
+    {
+        Console.WriteLine($"PASS {name}");
+        tests++;
+    }
+
+    void Fail(string name, string message)
+    {
+        Console.WriteLine($"FAIL {name}: {message}");
+        failures.Add(name);
+    }
+
+    (string Scripts, string Logs) Prepare(DirectoryInfo directory, bool listLaunch)
+    {
+        var scripts = Directory.CreateDirectory(Path.Combine(directory.FullName, "scripts"));
+        var listedLaunch = listLaunch ? $"{launch}\n" : "";
+        File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), $"# suite\n\n{failing}\nsync/{failing}\nsnapsync/{failing}\n{flaky}\n{listedLaunch}");
+        File.WriteAllText(Path.Combine(scripts.FullName, "known-flaky-hive-tests.txt"), $"# suite\n\n{flaky}\n");
+        return (scripts.FullName, Directory.CreateDirectory(Path.Combine(directory.FullName, "hive", "workspace", "logs")).FullName);
+    }
 }
 finally { buildDirectory.Delete(recursive: true); }
+
+static TestCase Passed(string name) => new(name, true, false);
+static TestCase Failed(string name) => new(name, false, false);
+static TestCase Terminated(string name) => new(name, false, true);
 
 static string FindEntryPoint()
 {
@@ -110,3 +193,12 @@ static string FindEntryPoint()
     }
     throw new DirectoryNotFoundException("Run this test from within the Nethermind checkout.");
 }
+
+// A case of a suite file: a null Passed writes a summary that Hive has not filled in; Terminated sets Hive's "timeout".
+readonly record struct TestCase(string Name, bool? Passed, bool Terminated);
+
+// A suite file in the logs directory; File defaults to "<index>.json", in the order of the scenario.
+sealed record SuiteFile(string Name, TestCase[] Cases, string? File = null, string? SimLog = null);
+
+// Options go before Paths, which default to the logs glob; Logs are empty files created next to the suite files.
+sealed record Scenario(string Name, SuiteFile[] Files, int Code, string[] Output, string[]? Logs = null, string[]? Options = null, string[]? Paths = null);
