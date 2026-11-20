@@ -286,7 +286,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public async Task Wrong_subscription_name()
         {
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "wrongSubscriptionType");
-            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,\"message\":\"Wrong subscription type: wrongSubscriptionType.\"},\"id\":67}";
+            string expectedResult = "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32602,\"message\":\"Wrong subscription type: wrongSubscriptionType.\"},\"id\":67}";
             Assert.That(expectedResult, Is.EqualTo(serialized));
         }
 
