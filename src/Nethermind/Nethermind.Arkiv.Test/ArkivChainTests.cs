@@ -51,8 +51,8 @@ public class ArkivChainTests
         if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
     }
 
-    private ArkivChain Open(ulong checkpointInterval = 0) =>
-        RabdiFixture.OpenChain(_directory, _db, RabdiFixture.BlockTreeOver(_tree), checkpointInterval);
+    private ArkivChain Open(ulong checkpointInterval = 0, bool holdHeadBlock = false) =>
+        RabdiFixture.OpenChain(_directory, _db, RabdiFixture.BlockTreeOver(_tree), checkpointInterval, holdHeadBlock);
 
     private static Block B(int number) => RabdiFixture.Blocks[number - 1];
 
@@ -201,6 +201,84 @@ public class ArkivChainTests
         {
             Assert.That(chain.Execute(B(121), commit: true).StateRoot, Is.EqualTo(B(121).StateRoot!));
             Assert.That(chain.Head, Is.EqualTo((121UL, B(121).Hash!)));
+        }
+    }
+
+    [Test]
+    public void Held_blocks_commit_as_their_children_arrive_and_reach_every_headers_root()
+    {
+        using ArkivChain chain = Open(holdHeadBlock: true);
+        foreach (Block block in RabdiFixture.Blocks)
+        {
+            Assert.That(chain.Execute(block, commit: true).StateRoot, Is.EqualTo(block.StateRoot!), $"block {block.Number}");
+        }
+        Assert.That(chain.Head, Is.EqualTo((699UL, B(699).Hash!)), "the last block waits for a child");
+    }
+
+    /// <summary>
+    /// The late-block case (arkiv#287): a block at the tip, then a competing one at its height. Held, the first leaves
+    /// nothing to undo: the competitor executes over the same parent, and the chain goes on from either one. There is no
+    /// store copy (CheckpointInterval 0), so anything that needed a restore would throw.
+    /// </summary>
+    [TestCase(true, TestName = "A_one_block_reorg_at_the_tip_needs_no_store_copy(the competitor wins)")]
+    [TestCase(false, TestName = "A_one_block_reorg_at_the_tip_needs_no_store_copy(the first block wins after all)")]
+    public void A_one_block_reorg_at_the_tip_needs_no_store_copy(bool competitorWins)
+    {
+        using ArkivChain chain = Open(holdHeadBlock: true);
+        for (int n = 1; n <= 20; n++) chain.Execute(B(n), commit: true);
+        Block fork20 = RabdiFixture.Sibling(B(20));
+        _tree[fork20.Hash!] = fork20;
+
+        Assert.That(chain.Execute(fork20, commit: true).StateRoot, Is.EqualTo(B(20).StateRoot!));
+        Block winner = competitorWins ? fork20 : B(20);
+        Block child = competitorWins ? RabdiFixture.OnParent(B(21), fork20) : B(21);
+        _tree[child.Hash!] = child;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Head, Is.EqualTo((19UL, B(19).Hash!)), "neither block at 20 is committed yet");
+            Assert.That(chain.Execute(child, commit: true).StateRoot, Is.EqualTo(B(21).StateRoot!));
+            Assert.That(chain.Head, Is.EqualTo((20UL, winner.Hash!)), "the block the chain went on from committed");
+        }
+        Block grandchild = competitorWins ? RabdiFixture.OnParent(B(22), child) : B(22);
+        Assert.That(chain.Execute(grandchild, commit: true).StateRoot, Is.EqualTo(B(22).StateRoot!));
+    }
+
+    [Test]
+    public void Without_holding_a_one_block_reorg_at_the_tip_needs_a_store_copy()
+    {
+        using ArkivChain chain = Open();
+        for (int n = 1; n <= 20; n++) chain.Execute(B(n), commit: true);
+        Block fork20 = RabdiFixture.Sibling(B(20));
+        _tree[fork20.Hash!] = fork20;
+
+        InvalidOperationException? refused = Assert.Throws<InvalidOperationException>(() => chain.Execute(fork20, commit: true));
+        Assert.That(refused!.Message, Does.Contain("no store copy"));
+    }
+
+    [Test]
+    public void A_build_commits_the_held_parent_first()
+    {
+        using ArkivChain chain = Open(holdHeadBlock: true);
+        for (int n = 1; n <= 20; n++) chain.Execute(B(n), commit: true);
+        chain.PrepareBuild(B(21).Header);
+        Assert.That(chain.Head, Is.EqualTo((20UL, B(20).Hash!)));
+    }
+
+    [Test]
+    public void After_a_restart_a_held_block_is_executed_again()
+    {
+        using (ArkivChain chain = Open(holdHeadBlock: true))
+        {
+            for (int n = 1; n <= 20; n++) chain.Execute(B(n), commit: true);
+        }
+
+        using ArkivChain reopened = Open(holdHeadBlock: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.Head, Is.EqualTo((19UL, B(19).Hash!)));
+            Assert.That(reopened.Execute(B(21), commit: true).StateRoot, Is.EqualTo(B(21).StateRoot!));
+            Assert.That(reopened.Head, Is.EqualTo((20UL, B(20).Hash!)));
         }
     }
 

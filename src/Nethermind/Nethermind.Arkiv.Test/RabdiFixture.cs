@@ -53,9 +53,10 @@ public static class RabdiFixture
     /// <summary>
     /// Opens an <see cref="ArkivChain"/> on Rabdi's genesis over a store in <paramref name="baseDbPath"/>; the test is
     /// skipped when the native library was not built (<c>-p:BuildArkivNative=true</c>), as Nethermind builds without Rust,
-    /// and fails instead when <c>ARKIV_REQUIRE_NATIVE</c> is set (the Arkiv CI workflow).
+    /// and fails instead when <c>ARKIV_REQUIRE_NATIVE</c> is set (the Arkiv CI workflow). Blocks commit as they execute
+    /// unless <paramref name="holdHeadBlock"/> is set, as it is by default on a node.
     /// </summary>
-    public static ArkivChain OpenChain(string baseDbPath, IDb db, IBlockTree blockTree, ulong checkpointInterval = 0)
+    public static ArkivChain OpenChain(string baseDbPath, IDb db, IBlockTree blockTree, ulong checkpointInterval = 0, bool holdHeadBlock = false)
     {
         if (!File.Exists(Path.Combine(AppContext.BaseDirectory, "libarkiv_ffi.so")))
         {
@@ -69,6 +70,7 @@ public static class RabdiFixture
             GenesisFile = GenesisFile,
             StoreDirectory = Path.Combine(baseDbPath, "store"),
             CheckpointInterval = checkpointInterval,
+            HoldHeadBlock = holdHeadBlock,
         };
         return new ArkivChain(config, new InitConfig { BaseDbPath = baseDbPath }, db, new Lazy<IBlockTree>(blockTree), new EthereumEcdsa(ChainId), LimboLogs.Instance);
     }
