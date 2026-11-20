@@ -676,7 +676,7 @@ namespace Nethermind.Db
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
             {
-                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 _operations.Add((key.ToArray(), value, flags));
             }
 
@@ -686,7 +686,7 @@ namespace Nethermind.Db
 
             public void Clear()
             {
-                if (_disposed) throw new ObjectDisposedException(nameof(MemDbWriteBatch));
+                ObjectDisposedException.ThrowIf(_disposed, this);
                 _operations.Clear();
             }
 

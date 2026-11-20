@@ -3,7 +3,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -12,6 +16,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
+using Nethermind.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
@@ -26,6 +32,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -41,6 +48,7 @@ using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using GetPooledTransactionsMessage65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.GetPooledTransactionsMessage;
+using ShouldGossip = Nethermind.TxPool.ShouldGossip;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V68;
 
@@ -1252,6 +1260,63 @@ public class Eth68ProtocolHandlerTests
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
         _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
+    }
+
+    [Test]
+    public async Task Announced_blob_tx_is_requested_after_another_copy_failed_its_sidecar_checks()
+    {
+        if (!KzgPolynomialCommitments.IsInitialized) await KzgPolynomialCommitments.InitializeAsync();
+        TestSpecProvider specProvider = new(Osaka.Instance);
+        IBlockTree blockTree = Build.A.BlockTree(specProvider).OfChainLength(1).TestObject;
+        ChainHeadSpecProvider headSpec = new(specProvider, blockTree);
+        TestReadOnlyStateProvider state = new();
+        state.CreateAccount(TestItem.AddressA, UInt256.MaxValue);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.SpecProvider.Returns(headSpec);
+        headInfo.ReadOnlyStateProvider.Returns(state);
+        headInfo.BlockGasLimit.Returns(30_000_000UL);
+        headInfo.CurrentProofVersion.Returns(ProofVersion.V1);
+        TxPoolConfig txPoolConfig = new() { BlobsSupport = BlobsSupportMode.InMemory };
+        EthereumEcdsa ecdsa = new(specProvider.ChainId);
+        await using TxPool.TxPool txPool = new(
+            ecdsa,
+            new BlobTxStorage(),
+            headInfo,
+            txPoolConfig,
+            new TxValidator(specProvider.ChainId),
+            new SpecChangeTxValidator(specProvider.ChainId),
+            LimboLogs.Instance,
+            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(),
+            new FrameTxWidthLedger(txPoolConfig, LimboLogs.Instance),
+            ShouldGossip.Instance);
+        _transactionPool = txPool;
+        _handler.Dispose();
+        _handler = CreateHandler(txPoolConfig, headSpec);
+        _handler.Init();
+
+        MempoolTransaction valid = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(spec: Osaka.Instance)
+            .WithChainId(specProvider.ChainId)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyA)
+            .MempoolTestObject;
+        Transaction invalidTx = new();
+        valid.Transaction.CopyTo(invalidTx);
+        invalidTx.Hash = invalidTx.CalculateHash();
+        ShardBlobNetworkWrapper wrapper = valid.NetworkWrapper!;
+        MempoolTransaction invalid = new(invalidTx, wrapper with { Proofs = [(byte)(wrapper.Proofs[0] ^ 1), .. wrapper.Proofs[1..]] });
+
+        AcceptTxResult rejected = txPool.SubmitTx(invalid, TxHandlingOptions.None);
+        HandleIncomingStatusMessage();
+        using ArrayPoolList<byte> types = new(1) { (byte)valid.Type };
+        using ArrayPoolList<int> sizes = new(1) { valid.GetLength() };
+        using ArrayPoolList<ValueHash256> hashes = new(1) { valid.Hash!.ValueHash256 };
+        using NewPooledTransactionHashesMessage68 announcement = new(types, sizes, hashes);
+        HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
+
+        Assert.That(rejected, Is.EqualTo(AcceptTxResult.InvalidBlobProofs));
+        _session.Received(1).DeliverMessage(Arg.Is<GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == 1 && m.EthMessage.Hashes[0] == valid.Hash));
     }
 
     private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig, IChainHeadSpecProvider? specProvider = null) =>

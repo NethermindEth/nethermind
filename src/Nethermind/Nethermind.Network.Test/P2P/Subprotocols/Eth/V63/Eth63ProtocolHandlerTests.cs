@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -211,6 +213,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             _ctx.SyncServer.Received(2 * NethermindSyncLimits.MaxReceiptFetch)
                 .TryAppendReceipts(Arg.Any<Hash256>(), Arg.Any<IRlpDecoder<TxReceipt>>(), Arg.Any<bool>(), Arg.Any<ArrayPoolList<byte>>());
+        }
+
+        [Test]
+        public void Should_prefetch_receipt_lookups_a_window_at_a_time()
+        {
+            ServeReceipts([]);
+
+            const int lookups = 2 * NethermindSyncLimits.MaxReceiptFetch;
+            _ctx.SyncServer.ReceivedWithAnyArgs((lookups + 15) / 16).PrefetchReceipts(null!, 0, 0);
+            for (int start = 0; start < lookups; start += 16)
+            {
+                _ctx.SyncServer.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), start, Math.Min(16, lookups - start));
+            }
         }
 
         private ReceiptsMessage ServeReceipts(TxReceipt[] receipts)

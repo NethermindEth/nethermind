@@ -455,12 +455,12 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 DateTimeOffset now = DateTimeOffset.UtcNow;
                 if (payload.Value.StartDateTime + _cleanupOldPayloadDelay <= now)
                 {
-                    if (_logger.IsDebug) _logger.Info($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.Best.CurrentBestBlock?.Timestamp}");
+                    if (_logger.IsDebug) _logger.Debug($"A new payload to remove: {payload.Key}, Current time {now:t}, Payload timestamp: {payload.Value.Best.CurrentBestBlock?.Timestamp}");
 
                     if (_payloadStorage.TryRemove(payload.Key, out IBlockImprovementContext? context))
                     {
                         context.DisposeAndCancelOngoingImprovements();
-                        if (_logger.IsDebug) _logger.Info($"Cleaned up payload with id={payload.Key} as it was not requested");
+                        if (_logger.IsDebug) _logger.Debug($"Cleaned up payload with id={payload.Key} as it was not requested");
                     }
                 }
             }

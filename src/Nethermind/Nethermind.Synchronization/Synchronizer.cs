@@ -185,6 +185,7 @@ namespace Nethermind.Synchronization
 
         private void StartFullSyncComponents()
         {
+            // BlockDownloader is one singleton shared by the full and fast sync components, so this subscription covers both.
             fullSyncComponent.BlockDownloader.SyncEvent += DownloaderOnSyncEvent;
             fullSyncComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
@@ -199,9 +200,7 @@ namespace Nethermind.Synchronization
             });
         }
 
-        private void StartFastSyncComponents()
-        {
-            fastSyncComponent.BlockDownloader.SyncEvent += DownloaderOnSyncEvent;
+        private void StartFastSyncComponents() =>
             fastSyncComponent.Dispatcher.Start(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -213,7 +212,6 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info("Fast sync blocks downloader task completed.");
                 }
             });
-        }
 
         private void StartSnapAndStateSyncComponents() =>
             _stateSyncTask = stateSyncRunner.Run(_syncCancellation!.Token).ContinueWith(t =>

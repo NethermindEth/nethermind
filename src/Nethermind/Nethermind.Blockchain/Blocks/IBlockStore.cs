@@ -60,6 +60,10 @@ public interface IBlockStore
     /// <summary>The stored block encoding, in memory that the caller disposes.</summary>
     /// <remarks>Unlike <see cref="GetRlp"/>, the database value need not be copied to a managed array.</remarks>
     MemoryManager<byte>? GetOwnedRlp(ulong blockNumber, Hash256 blockHash) => ArrayMemoryManager.From(GetRlp(blockNumber, blockHash));
+
+    /// <summary>Starts reading stored blocks into memory before the reads that need them.</summary>
+    /// <remarks>Returns before the reads complete. A store that cannot read ahead does nothing.</remarks>
+    void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) { }
     ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash);
     void Cache(Block block);
 

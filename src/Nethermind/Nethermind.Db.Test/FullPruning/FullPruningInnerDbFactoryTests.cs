@@ -77,7 +77,7 @@ namespace Nethermind.Db.Test.FullPruning
         [Test]
         public void keeps_the_live_db_when_the_factory_already_resolved_a_path()
         {
-            // GetFullDbPath advances the factory's index as a side effect, so the live DB must come from disk.
+            // The live DB comes from disk, so what the factory was asked before does not change what is deleted.
             TestContext test = new();
             test.Directory.Exists.Returns(true);
             IDirectoryInfo live = Dir("0");
@@ -88,6 +88,26 @@ namespace Nethermind.Db.Test.FullPruning
             Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(1));
             live.DidNotReceive().Delete(Arg.Any<bool>());
             leftover.Received(1).Delete(true);
+        }
+
+        public enum Layout { NoDb, LegacyDb, IndexedDb }
+
+        [TestCase(Layout.NoDb, 0, 1)]
+        [TestCase(Layout.LegacyDb, null, 0)]
+        [TestCase(Layout.IndexedDb, 10, 11)]
+        public void GetFullDbPath_returns_the_next_db_path_without_advancing(Layout layout, int? next, int? afterNext)
+        {
+            TestContext test = new();
+            IDirectoryInfo indexedDb = Dir("10");
+            test.Directory.Exists.Returns(layout != Layout.NoDb);
+            if (layout == Layout.LegacyDb) test.Directory.EnumerateFiles().Returns(new[] { Substitute.For<IFileInfo>() });
+            if (layout == Layout.IndexedDb) test.Directory.EnumerateDirectories().Returns(new[] { indexedDb });
+
+            Assert.That(test.TestedDbFactory.GetFullDbPath(test.DbSettings), Is.EqualTo(Combine(test.Path, next)));
+            Assert.That(test.TestedDbFactory.GetFullDbPath(test.DbSettings), Is.EqualTo(Combine(test.Path, next)));
+            test.TestedDbFactory.CreateDb(test.DbSettings);
+            test.RocksDbFactory.Received(1).CreateDb(Arg.Is(MatchSettings(test, next)));
+            Assert.That(test.TestedDbFactory.GetFullDbPath(test.DbSettings), Is.EqualTo(Combine(test.Path, afterNext)));
         }
 
         [Test]

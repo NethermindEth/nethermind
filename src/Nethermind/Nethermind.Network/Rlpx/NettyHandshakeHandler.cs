@@ -161,7 +161,7 @@ namespace Nethermind.Network.Rlpx
             ZeroNettyP2PHandler handler = new(_session, _logManager);
             context.Channel.Pipeline.AddLast(_group, handler);
 
-            handler.Init(packetSender, context);
+            _session.Init(5, packetSender);
 
             if (_logger.IsTrace) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
             context.Channel.Pipeline.Remove(this);

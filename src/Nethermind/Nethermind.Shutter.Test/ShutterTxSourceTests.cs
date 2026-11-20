@@ -63,7 +63,8 @@ class ShutterTxSourceTests
             using CancellationTokenSource source = new();
             Task wait = txSource.WaitForTransactions(slot, source.Token);
             source.Cancel();
-            Assert.That(wait.IsCompleted, Is.True);
+            Assert.That(() => wait.Wait(TimeSpan.Zero), Throws.InstanceOf<AggregateException>()
+                .With.InnerException.InstanceOf<OperationCanceledException>());
         }
 
         IDictionary keyWaitTasks = (IDictionary)typeof(ShutterTxSource)

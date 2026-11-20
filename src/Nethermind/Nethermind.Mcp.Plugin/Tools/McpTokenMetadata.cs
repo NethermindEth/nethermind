@@ -81,8 +81,8 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
 
     /// <summary>Returns the token metadata at <paramref name="block"/>, or <see langword="null"/> if <paramref name="token"/> has no code.</summary>
     /// <remarks>Never throws for contract misbehaviour; returns <see langword="null"/> also when the code cannot be read (for example state not available).</remarks>
-    public McpTokenInfo? Get(IEthRpcModule eth, Address token, BlockParameter block) =>
-        TryGet(eth, token, block, null, out McpTokenInfo? info) ? info : null;
+    public McpTokenInfo? Get(IEthRpcModule eth, Address token, BlockParameter block, CancellationToken cancellationToken = default) =>
+        TryGet(eth, token, block, null, out McpTokenInfo? info, cancellationToken) ? info : null;
 
     /// <summary>Reads the token metadata at <paramref name="block"/> like <see cref="Get"/>, checking <paramref name="stop"/> before every RPC.</summary>
     /// <returns><see langword="false"/> if <paramref name="stop"/> interrupted the read; nothing is cached then.</returns>
@@ -91,7 +91,8 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
     /// <param name="block">The block to read at.</param>
     /// <param name="stop">Returns <see langword="true"/> once no further RPC may start; cached metadata is still returned.</param>
     /// <param name="info">The metadata, or <see langword="null"/> if the token has no code or it cannot be read.</param>
-    internal bool TryGet(IEthRpcModule eth, Address token, BlockParameter block, Func<bool>? stop, out McpTokenInfo? info)
+    /// <param name="cancellationToken">Cancels the contract calls of the read.</param>
+    internal bool TryGet(IEthRpcModule eth, Address token, BlockParameter block, Func<bool>? stop, out McpTokenInfo? info, CancellationToken cancellationToken = default)
     {
         info = null;
         try
@@ -113,12 +114,12 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
 
             bool transient = false;
             if (stop?.Invoke() == true) return false;
-            string? name = ReadText(eth, token, block, NameSelector, ref transient);
+            string? name = ReadText(eth, token, block, NameSelector, cancellationToken, ref transient);
             if (stop?.Invoke() == true) return false;
-            string? symbol = ReadText(eth, token, block, SymbolSelector, ref transient);
+            string? symbol = ReadText(eth, token, block, SymbolSelector, cancellationToken, ref transient);
             if (stop?.Invoke() == true) return false;
             bool decimalsFailed = false;
-            byte? decimals = ReadDecimals(eth, token, block, ref decimalsFailed);
+            byte? decimals = ReadDecimals(eth, token, block, cancellationToken, ref decimalsFailed);
             transient |= decimalsFailed;
             info = new McpTokenInfo(token, name, symbol, decimals) { DecimalsLookupFailed = decimalsFailed };
             // A moved head means the calls may have read different blocks, and the entry would describe neither.
@@ -244,10 +245,10 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
 
     /// <summary>Executes a bounded read-only call and classifies the outcome.</summary>
     /// <returns>The return data, or <see langword="null"/> on failure; <paramref name="transient"/> is set when the failure may go away on retry.</returns>
-    internal static byte[]? Call(IEthRpcModule eth, Address to, byte[] input, BlockParameter block, ulong gas, ref bool transient)
+    internal static byte[]? Call(IEthRpcModule eth, Address to, byte[] input, BlockParameter block, ulong gas, ref bool transient, CancellationToken cancellationToken = default)
     {
         LegacyTransactionForRpc transaction = new() { To = to, Input = input, Gas = gas };
-        using ResultWrapper<HexBytes> result = eth.eth_call(transaction, block);
+        using ResultWrapper<HexBytes> result = eth.eth_call(transaction, block, cancellationToken: cancellationToken);
         if (result.Result.ResultType == ResultType.Success)
         {
             return result.Data.Bytes.ToArray();
@@ -262,12 +263,12 @@ public sealed class McpTokenMetadata(ILogManager logManager, IBlockFinder? block
         return null;
     }
 
-    private static string? ReadText(IEthRpcModule eth, Address token, BlockParameter block, byte[] selector, ref bool transient) =>
-        Call(eth, token, selector, block, MetadataCallGas, ref transient) is { } data ? DecodeText(data) : null;
+    private static string? ReadText(IEthRpcModule eth, Address token, BlockParameter block, byte[] selector, CancellationToken cancellationToken, ref bool transient) =>
+        Call(eth, token, selector, block, MetadataCallGas, ref transient, cancellationToken) is { } data ? DecodeText(data) : null;
 
-    private static byte? ReadDecimals(IEthRpcModule eth, Address token, BlockParameter block, ref bool transient)
+    private static byte? ReadDecimals(IEthRpcModule eth, Address token, BlockParameter block, CancellationToken cancellationToken, ref bool transient)
     {
-        byte[]? data = Call(eth, token, DecimalsSelector, block, MetadataCallGas, ref transient);
+        byte[]? data = Call(eth, token, DecimalsSelector, block, MetadataCallGas, ref transient, cancellationToken);
         if (data is not { Length: >= 32 } || data.AsSpan(0, 31).ContainsAnyExcept((byte)0))
         {
             return null;

@@ -7,7 +7,9 @@ using Autofac;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -17,6 +19,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Mcp.Plugin.Tools;
 using Nethermind.Specs;
@@ -210,6 +213,42 @@ public class McpLimitsTests
         }
 
         await WaitUntil(() => provider.Returned == 1, "the module must be returned once the slow call completes");
+    }
+
+    /// <remarks>Only its token stops a native call trace: the tracer does not enforce its own <c>timeout</c> option on this path.</remarks>
+    [Test]
+    public async Task Trace_stops_at_the_tool_timeout_or_on_client_cancellation_and_returns_its_module([Values] bool clientCancels)
+    {
+        await using McpTestNode node = await CreateWithFaults(clientCancels ? null : static c => c.ToolTimeout = 300);
+        McpTxScenario scenario = await McpTxScenario.Create(node);
+        FaultInjectingRpcModuleProvider provider = Faults(node);
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IDebugRpcModule debug = Substitute.For<IDebugRpcModule>();
+        debug.debug_traceTransaction(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            CancellationToken token = call.ArgAt<CancellationToken>(2);
+            entered.TrySetResult();
+            token.WaitHandle.WaitOne(WaitLimit * 2);
+            token.ThrowIfCancellationRequested();
+            return ResultWrapper<GethLikeTxTrace>.Fail("the trace was not cancelled");
+        });
+        provider.Override(nameof(IDebugRpcModule.debug_traceTransaction), debug);
+        await using McpClient client = await node.CreateClient();
+        using CancellationTokenSource clientCancellation = new();
+
+        Task<CallToolResult> trace = McpToolCalls.Call(client, "trace_transaction", [("hash", scenario.ForwardCall.Hash!.ToString())], clientCancellation.Token);
+        await entered.Task.WaitAsync(WaitLimit);
+        if (clientCancels)
+        {
+            await clientCancellation.CancelAsync();
+            Assert.That(async () => await trace, Throws.InstanceOf<OperationCanceledException>());
+        }
+        else
+        {
+            McpAssert.Error(await trace.WaitAsync(WaitLimit), McpAssert.Timeout);
+        }
+
+        await WaitUntil(() => provider.Returned == 1, "the trace must stop on its token and return the debug module");
     }
 
     [Test]
@@ -597,7 +636,7 @@ public class McpLimitsTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         using CancellationTokenSource cancellation = new();
         int calls = 0;
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(_ =>
             {
                 if (Interlocked.Increment(ref calls) == 1) cancellation.Cancel();

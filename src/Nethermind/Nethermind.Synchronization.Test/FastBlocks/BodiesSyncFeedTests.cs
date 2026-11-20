@@ -327,6 +327,23 @@ public class BodiesSyncFeedTests
         Assert.That(_feed.IsFinished, Is.EqualTo(shouldFinish));
     }
 
+    // The history pruner reads this record to recognise a finished descent. The barrier is 10.
+    [TestCase(null, null, 10UL)] // no descent yet: records the barrier
+    [TestCase(null, 7UL, 10UL)] // no descent yet: replaces an older record
+    [TestCase(50UL, null, 10UL)] // a descent without a record: records the barrier
+    [TestCase(50UL, 7UL, 7UL)] // a descent with a record: keeps it
+    public void Records_the_barrier_the_descent_started_with(ulong? lowestInsertedBody, ulong? recorded, ulong expected)
+    {
+        _syncConfig.AncientBodiesBarrier = 10;
+        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBody;
+        if (recorded is not null)
+            _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, recorded.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+
+        _feed.InitializeFeed();
+
+        Assert.That(_metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task When_AncientBodiesBarrier_exceeds_SyncPivot_then_finishes_immediately()
     {

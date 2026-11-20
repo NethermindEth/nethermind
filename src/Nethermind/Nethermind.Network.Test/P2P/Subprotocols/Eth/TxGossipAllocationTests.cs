@@ -7,7 +7,6 @@ using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
-using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
@@ -489,7 +488,7 @@ public class TxGossipAllocationTests
             handler = null!;
             return false;
         }
-        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender) { }
+        public void Init(byte p2PVersion, IPacketSender packetSender) { }
         public void InitiateDisconnect(DisconnectReason disconnectReason, string details) =>
             throw new AssertionException($"peer {node.Id} disconnected: {disconnectReason} {details}");
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details) { }

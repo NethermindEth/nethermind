@@ -99,6 +99,129 @@ public class MempoolStatePrewarmerTests
     }
 
     [Test]
+    public void SelectDelta_StopsAtTheGasBudget()
+    {
+        Transaction[] ordered =
+        [
+            Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithGasLimit(40).TestObject,
+            Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithGasLimit(60).TestObject,
+            Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithGasLimit(1).TestObject,
+        ];
+        Dictionary<AddressAsKey, int> warmedPerSender = [];
+
+        Transaction[] delta = SelectDelta(ordered, warmedPerSender, gasBudget: 100);
+        Transaction[] secondPass = SelectDelta(ordered, warmedPerSender, gasBudget: 100);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delta, Is.EqualTo(ordered[..2]), "a transaction that does not fit the budget is skipped");
+            Assert.That(warmedPerSender.ContainsKey(TestItem.AddressC), Is.False, "a transaction past the budget is not recorded as warmed");
+            Assert.That(secondPass, Is.Empty, "already warmed transactions still use the budget");
+        }
+    }
+
+    [Test]
+    public void SelectDelta_SkipsTheRestOfASenderThatDoesNotFit()
+    {
+        Transaction[] ordered =
+        [
+            Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithGasLimit(40).TestObject,
+            Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(0).WithGasLimit(70).TestObject,
+            Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithNonce(1).WithGasLimit(10).TestObject,
+            Build.A.Transaction.WithSenderAddress(TestItem.AddressC).WithGasLimit(50).TestObject,
+        ];
+        Dictionary<AddressAsKey, int> warmedPerSender = [];
+
+        Transaction[] delta = SelectDelta(ordered, warmedPerSender, gasBudget: 100);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(delta, Is.EqualTo(new[] { ordered[0], ordered[3] }));
+            Assert.That(warmedPerSender.ContainsKey(TestItem.AddressB), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task NextDelta_HoldsNoMoreGasThanTwoPredictedBlocks()
+    {
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(30_000_000).TestObject;
+        Transaction[] transactions = TestItem.Addresses[..8]
+            .Select(static sender => Build.A.Transaction.WithSenderAddress(sender).WithGasLimit(10_000_000).TestObject)
+            .ToArray();
+        RepeatingDeltaPreWarmer preWarmer = new(passes: 1);
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns([.. transactions]);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
+        Transaction[][] deltas = await preWarmer.Deltas.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.That(deltas[0], Is.EqualTo(transactions[..6]));
+    }
+
+    [Test]
+    public async Task NextDelta_WarmsALateTxAfterReplaysOfAGrowingSender()
+    {
+        const ulong blockGasLimit = 30_000_000;
+        const int lateArrivalPass = 15;
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(blockGasLimit).TestObject;
+        Transaction[] queue = Enumerable.Range(0, 20)
+            .Select(static nonce => Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithNonce((ulong)nonce).WithGasLimit(1_000_000).TestObject)
+            .ToArray();
+        Transaction late = Build.A.Transaction.WithSenderAddress(TestItem.AddressB).WithGasLimit(1_000_000).TestObject;
+        RepeatingDeltaPreWarmer preWarmer = new(passes: queue.Length);
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
+        int pass = 0;
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns(_ => ++pass < lateArrivalPass ? [.. queue[..pass]] : [late, .. queue[..pass]]);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
+        Transaction[][] deltas = await preWarmer.Deltas.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deltas[lateArrivalPass - 2], Has.Length.EqualTo(lateArrivalPass - 1));
+            Assert.That(deltas[lateArrivalPass - 1], Does.Contain(late));
+        }
+    }
+
+    [Test]
+    public async Task NextDelta_StopsNewWorkAtTheSessionGasBudget()
+    {
+        const ulong blockGasLimit = 30_005_000;
+        const ulong txGasLimit = 10_000_000;
+        const int newTxsInBudget = 12;
+        BlockHeader headHeader = Build.A.BlockHeader.WithNumber(10).WithTimestamp(100).WithGasLimit(blockGasLimit).TestObject;
+        Transaction[] arrivals = TestItem.Addresses[..20]
+            .Select(static sender => Build.A.Transaction.WithSenderAddress(sender).WithGasLimit(txGasLimit).TestObject)
+            .ToArray();
+        RepeatingDeltaPreWarmer preWarmer = new(passes: arrivals.Length);
+        using MempoolStatePrewarmer prewarmer = CreatePrewarmer(preWarmer, headHeader, out IBlockTree blockTree, out ITxSource txSource, out _);
+        int pass = 0;
+        txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>())
+            .Returns(_ => [.. Enumerable.Reverse(arrivals[..++pass])]);
+
+        blockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(new Block(headHeader)));
+        Transaction[][] deltas = await preWarmer.Deltas.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        ulong executedGas = 0;
+        foreach (Transaction[] delta in deltas)
+        {
+            foreach (Transaction tx in delta) executedGas += tx.GasLimit;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deltas[0], Is.EqualTo(arrivals[..1]));
+            Assert.That(executedGas, Is.EqualTo(newTxsInBudget * txGasLimit));
+            Assert.That(executedGas, Is.LessThanOrEqualTo(4 * blockGasLimit));
+            Assert.That(deltas[^1], Is.Empty);
+        }
+
+        txSource.Received(newTxsInBudget).GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes>(), Arg.Any<bool>());
+    }
+
+    [Test]
     public void SelectDelta_ReusedScratchPreservesInterleavedSenderOrder([Values(2, 257)] int count)
     {
         Transaction[] a = BuildSenderTxs(TestItem.PrivateKeyA, count);
@@ -452,6 +575,25 @@ public class MempoolStatePrewarmerTests
         public void Dispose() { }
     }
 
+    private sealed class RepeatingDeltaPreWarmer(int passes) : IBlockCachePreWarmer
+    {
+        public readonly TaskCompletionSource<Transaction[][]> Deltas = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public IDisposable PreWarmCaches(Block suggestedBlock, BlockHeader parent, IReleaseSpec spec, CancellationToken cancellationToken = default) => null;
+        public void ClearCaches() { }
+        public bool IsBalReadWarmingEnabled(IReleaseSpec spec) => false;
+
+        public Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken)
+        {
+            Transaction[][] deltas = new Transaction[passes][];
+            for (int i = 0; i < passes; i++) deltas[i] = nextDelta(CancellationToken.None)?.Block.Transactions;
+            Deltas.TrySetResult(deltas);
+            return Task.CompletedTask;
+        }
+
+        public void Dispose() { }
+    }
+
     /// <summary>Captures the head and token each session is started with, without running it.</summary>
     private sealed class TokenCapturingPreWarmer : IBlockCachePreWarmer
     {
@@ -483,8 +625,8 @@ public class MempoolStatePrewarmerTests
     }
 
     private static Transaction[] SelectDelta(IEnumerable<Transaction> orderedTxs, Dictionary<AddressAsKey, int> warmedPerSender,
-        Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> bySender = null, CancellationToken token = default) =>
-        MempoolStatePrewarmer.SelectDelta(orderedTxs.Select(static tx => (MempoolTransaction)tx), warmedPerSender, bySender, token);
+        Dictionary<AddressAsKey, MempoolStatePrewarmer.SenderSelection> bySender = null, CancellationToken token = default, ulong gasBudget = ulong.MaxValue) =>
+        MempoolStatePrewarmer.SelectDelta(orderedTxs.Select(static tx => (MempoolTransaction)tx), warmedPerSender, bySender, token, gasBudget);
 
     private static Transaction[] BuildSenderTxs(PrivateKey sender, int count) =>
         Enumerable.Range(0, count)

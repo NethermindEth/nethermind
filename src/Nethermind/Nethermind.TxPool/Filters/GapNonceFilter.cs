@@ -37,10 +37,7 @@ namespace Nethermind.TxPool.Filters
             int numberOfSenderTxsInPending = tx.CarriesBlobs
                 ? _blobTxs.GetAccountDomainBucketCount(tx.SenderAddress!)
                 : _txs.GetAccountDomainBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
-            ulong currentNonce = state.SenderAccount.Nonce;
-            ulong nextNonceInOrder = currentNonce + (ulong)numberOfSenderTxsInPending;
-            bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
-            if (!isTxNonceNextInOrder)
+            if (!IsNonceInOrder(tx.Nonce, state.SenderAccount.Nonce, numberOfSenderTxsInPending))
             {
                 Metrics.PendingTransactionsNonceGap++;
                 if (_logger.IsTrace)
@@ -53,5 +50,8 @@ namespace Nethermind.TxPool.Filters
 
             return AcceptTxResult.Accepted;
         }
+
+        internal static bool IsNonceInOrder(ulong nonce, ulong accountNonce, int pendingCount) =>
+            nonce <= accountNonce + (ulong)pendingCount;
     }
 }

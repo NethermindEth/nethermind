@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
@@ -249,6 +251,45 @@ public class LogFilterTests
             Assert.That(topics.Where(t => !Accepts(expression, t, useStructRef)), Is.Empty);
             Assert.That(Accepts(expression, Keccak.Compute("missing"), useStructRef), Is.False);
             Assert.That(expression.AcceptsAnyBlock, Is.False);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void sequence_topics_filters_with_equal_expressions_are_equal_and_hash_alike(
+        [Values("none", "specific", "any then specific", "or then specific")] string expressions)
+    {
+        // Each filter gets its own array, as two requests with the same topics would; the copy keeps an empty one apart
+        // from the shared empty array.
+        SequenceTopicsFilter first = new(Expressions());
+        SequenceTopicsFilter second = new((TopicExpression[])Expressions().Clone());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Equals(second), Is.True);
+            Assert.That(first.GetHashCode(), Is.EqualTo(second.GetHashCode()));
+            Assert.That(new HashSet<SequenceTopicsFilter> { first }.Contains(second), Is.True);
+        }
+
+        TopicExpression[] Expressions() => expressions switch
+        {
+            "none" => [],
+            "specific" => [TestTopicExpressions.Specific(TestItem.KeccakA)],
+            "any then specific" => [TestTopicExpressions.Any, TestTopicExpressions.Specific(TestItem.KeccakA)],
+            _ => [TestTopicExpressions.Or(TestItem.KeccakA, TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakC)],
+        };
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void sequence_topics_filters_with_different_expressions_are_not_equal()
+    {
+        SequenceTopicsFilter filter = new(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakB));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filter.Equals(new SequenceTopicsFilter(TestTopicExpressions.Specific(TestItem.KeccakA), TestTopicExpressions.Specific(TestItem.KeccakC))), Is.False);
+            Assert.That(filter.Equals(new SequenceTopicsFilter(TestTopicExpressions.Specific(TestItem.KeccakB), TestTopicExpressions.Specific(TestItem.KeccakA))), Is.False);
+            Assert.That(filter.Equals(new SequenceTopicsFilter(TestTopicExpressions.Specific(TestItem.KeccakA))), Is.False);
+            Assert.That(((IEquatable<SequenceTopicsFilter>)filter).Equals(null), Is.False);
         }
     }
 

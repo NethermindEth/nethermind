@@ -324,6 +324,9 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 return InvalidTraceTypes<ParityTxTraceFromReplay>();
             }
 
+            // A reward belongs to a block, not to a call, so the call is traced alone, as in trace_callMany.
+            parityTypes &= ~ParityTraceTypes.Rewards;
+
             if (headerSearch.IsError)
             {
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
@@ -350,7 +353,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
                 {
                     using Scope<ITracer> env = tracerEnv.BuildAndOverride(header, stateOverride);
                     IReadOnlyCollection<ParityLikeTxTrace> result = TraceBlockDirect(env.Component, block, new(parityTypes, specProvider), isSigned);
-                    return new ParityTxTraceFromReplay(result.SingleOrDefault());
+                    // Anything but exactly one trace throws, so no other trace can stand in for the call's own.
+                    return new ParityTxTraceFromReplay(result.Single());
                 });
         }
 
@@ -1009,10 +1013,10 @@ namespace Nethermind.JsonRpc.Modules.Trace
         /// Trace simulated blocks transactions (eth_simulateV1)
         /// </summary>
         public ResultWrapper<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>> trace_simulateV1(
-            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null) =>
+            SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null, string[]? traceTypes = null, CancellationToken cancellationToken = default) =>
             TryGetParityTypes(traceTypes ?? ["Trace"], out ParityTraceTypes parityTypes)
                 ? new SimulateTxExecutor<ParityLikeTxTrace>(blockchainBridge, blockFinder, jsonRpcConfig, specProvider, new ParityStyleSimulateBlockTracerFactory(types: parityTypes), _secondsPerSlot)
-                    .Execute(payload, blockParameter)
+                    .Execute(payload, blockParameter, cancellationToken: cancellationToken)
                 : InvalidTraceTypes<IReadOnlyList<SimulateBlockResult<ParityLikeTxTrace>>>();
     }
 }

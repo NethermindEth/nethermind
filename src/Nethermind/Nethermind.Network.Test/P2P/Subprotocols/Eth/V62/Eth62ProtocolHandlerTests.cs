@@ -573,6 +573,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             }
         }
 
+        [Test]
+        public void Prefetches_requested_bodies_a_window_at_a_time([Values(1, 16, 17, 40)] int count)
+        {
+            Hash256[] hashes = Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString())).ToArray();
+
+            RequestBlockBodies(hashes);
+
+            int[] starts = Enumerable.Range(0, (count + 15) / 16).Select(static w => w * 16).Where(start => count - start > 1).ToArray();
+            _syncManager.ReceivedWithAnyArgs(starts.Length).PrefetchBlocks(null!, 0, 0);
+            foreach (int start in starts) _syncManager.Received(1).PrefetchBlocks(Arg.Any<IReadOnlyList<Hash256>>(), start, Math.Min(16, count - start));
+        }
+
         private void ServeBlock(Hash256 hash, Block block) =>
             _syncManager.FindBlockRlp(hash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
 
@@ -1005,6 +1017,35 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             await getTask;
 
             Assert.That(getMsg.BlockHashes.Count, Is.EqualTo(4));
+        }
+
+        [Test]
+        public async Task Rejects_more_block_bodies_than_the_hashes_sent([Values] bool moreThanSent)
+        {
+            using BlockBodiesMessage reply = new(Build.A.Block.TestObjectNTimes(moreThanSent ? 5 : 4));
+            List<Hash256> requests = Enumerable.Repeat(Keccak.Zero, 1000).ToList();
+            GetBlockBodiesMessage? sent = null;
+
+            NodeStatsLight nodeStats = new(_session.Node, timeProvider: new ManualTimeProvider());
+            INodeStatsManager nodeStatsManager = Substitute.For<INodeStatsManager>();
+            nodeStatsManager.GetOrAdd(Arg.Any<Node>()).Returns(nodeStats);
+            RecreateHandler(stats: nodeStatsManager);
+            _session
+                .When(session => session.DeliverMessage(Arg.Any<GetBlockBodiesMessage>()))
+                .Do(info => sent = (GetBlockBodiesMessage)info[0]);
+
+            HandleIncomingStatusMessage();
+            Task<OwnedBlockBodies> getTask = ((ISyncPeer)_handler).GetBlockBodies(requests, CancellationToken.None);
+            HandleZeroMessage(reply, Eth62MessageCode.BlockBodies);
+            using OwnedBlockBodies bodies = await getTask;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(sent!.BlockHashes.Count, Is.EqualTo(4));
+                Assert.That(bodies.Count, Is.EqualTo(moreThanSent ? 0 : 4));
+            }
+
+            _session.Received(moreThanSent ? 1 : 0).InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
         }
 
         [Test]

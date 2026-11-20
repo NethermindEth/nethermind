@@ -65,8 +65,8 @@ public sealed class UnusedNewExpressionAnalyzer : DiagnosticAnalyzer
             switch (operation)
             {
                 case IVariableDeclaratorOperation declarator:
-                    // Skip discard variables (named "_")
-                    if (declarator.Symbol.Name == "_")
+                    // Disposal reads using locals implicitly.
+                    if (declarator.Symbol.Name == "_" || declarator.Symbol.IsUsing)
                         break;
 
                     IVariableInitializerOperation? initializer = declarator.Initializer;

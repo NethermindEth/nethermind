@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Nethermind.Libp2p" />
+    <PackageReference Include="Snappier" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.BeaconChain.Test" />
+    <InternalsVisibleTo Include="Nethermind.Optimism.Test" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Logging\Nethermind.Logging.csproj" />
+  </ItemGroup>
+</Project>

@@ -34,14 +34,16 @@ public static partial class ZkEvmBitOperations
 
     /// <summary>Reads the 8 bytes at <paramref name="source"/>, which need not be aligned, as a big-endian value.</summary>
     /// <remarks>
-    /// Without Zbb the bytes are gathered most significant first. The zkVMs without Zbb also reject misaligned
-    /// accesses, so an unaligned load would be gathered byte by byte anyway; gathering in big-endian order drops
-    /// the reversal on top of it.
+    /// Without Zbb the bytes are gathered most significant first. The zkVMs without Zbb other than OpenVM also reject
+    /// misaligned accesses, so an unaligned load would be gathered byte by byte anyway; gathering in big-endian order
+    /// drops the reversal on top of it. OpenVM takes a misaligned load at the cost of an aligned one, so there one
+    /// load and <see cref="Bswap64"/> cost less than the gather.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong ReadUInt64BigEndian(ref byte source)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (OpenVmFlag.IsActive) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
         if (IntPtr.Size == sizeof(uint))
         {
             // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.
