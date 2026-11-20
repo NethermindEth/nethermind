@@ -2,10 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -34,6 +39,60 @@ public class OverrideCodeCacheTests
         }
 
         Assert.That(reused, Is.True);
+    }
+
+    [Test]
+    public void Codes_that_share_a_set_do_not_evict_each_other()
+    {
+        byte[] prefix = Guid.NewGuid().ToByteArray();
+        List<byte[]> codes = [];
+        for (int i = 0; codes.Count < OverrideCodeCache.Ways; i++)
+        {
+            byte[] code = [.. prefix, (byte)i, (byte)(i >> 8), (byte)(i >> 16)];
+            if (codes.Count == 0 || OverrideCodeCache.SetOf(code) == OverrideCodeCache.SetOf(codes[0])) codes.Add(code);
+        }
+
+        // As above, a parallel fixture can replace an entry between the two passes.
+        bool reused = false;
+        for (int attempt = 0; attempt < 5 && !reused; attempt++)
+        {
+            CodeInfo[] first = [.. codes.Select(Resolve)];
+            reused = codes.Select(Resolve).SequenceEqual(first);
+        }
+
+        Assert.That(reused, Is.True);
+
+        static CodeInfo Resolve(byte[] code)
+        {
+            OverrideCodeCache.Resolve(code, out _, out CodeInfo info);
+            return info;
+        }
+    }
+
+    [Test]
+    public void A_repeated_override_code_is_read_as_the_cached_array([Values] bool withPrefix)
+    {
+        byte[] code = [0x60, 0x01, 0x5b, .. Guid.NewGuid().ToByteArray()];
+        string json = $$"""{"code":"{{code.ToHexString(withPrefix)}}"}""";
+
+        bool reused = false;
+        for (int attempt = 0; attempt < 5 && !reused; attempt++)
+        {
+            OverrideCodeCache.Resolve(code, out _, out _);
+            reused = ReferenceEquals(JsonSerializer.Deserialize<AccountOverride>(json, EthereumJsonSerializer.JsonOptions)!.Code, code);
+        }
+
+        Assert.That(reused, Is.True);
+    }
+
+    [Test]
+    public void An_override_code_not_seen_before_is_read_into_its_own_array()
+    {
+        byte[] code = [0x60, 0x02, 0x5b, .. Guid.NewGuid().ToByteArray()];
+
+        AccountOverride read = JsonSerializer.Deserialize<AccountOverride>($$"""{"code":"{{code.ToHexString(true)}}"}""", EthereumJsonSerializer.JsonOptions)!;
+
+        Assert.That(read.Code, Is.EqualTo(code).And.Not.SameAs(code));
     }
 
     [Test]

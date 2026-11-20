@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -56,7 +59,9 @@ public sealed class AccountOverrideConverter : JsonConverter<AccountOverride>
                     result.Balance = TypeInfoJsonSerializer.Deserialize<UInt256?>(ref reader, options);
                     break;
                 case Code:
-                    result.Code = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
+                    result.Code = TryReadCachedCode(ref reader, out byte[]? cached)
+                        ? cached
+                        : TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
                     break;
                 case MovePrecompileToAddress:
                     result.MovePrecompileToAddress = TypeInfoJsonSerializer.Deserialize<Address>(ref reader, options);
@@ -71,6 +76,27 @@ public sealed class AccountOverrideConverter : JsonConverter<AccountOverride>
         }
 
         return result;
+    }
+
+    /// <summary>Gets the array <see cref="OverrideCodeCache"/> already holds for the code the reader is on.</summary>
+    /// <remarks>
+    /// A repeated override code then costs no array of its own. Only a contiguous, unescaped hex string of whole bytes
+    /// is looked up; any other token, and invalid hex, is left to the byte array converter and its errors.
+    /// </remarks>
+    private static bool TryReadCachedCode(ref Utf8JsonReader reader, [NotNullWhen(true)] out byte[]? cached)
+    {
+        cached = null;
+        if (reader.TokenType != JsonTokenType.String || reader.HasValueSequence || reader.ValueIsEscaped) return false;
+
+        ReadOnlySpan<byte> hex = reader.ValueSpan;
+        if (hex.StartsWith("0x"u8)) hex = hex[2..];
+        if (hex.Length == 0 || (hex.Length & 1) != 0 || hex.Length > 2 * OverrideCodeCache.MaxCachedLength) return false;
+
+        byte[] scratch = ArrayPool<byte>.Shared.Rent(hex.Length >> 1);
+        Span<byte> code = scratch.AsSpan(0, hex.Length >> 1);
+        bool found = HexConverter.TryDecodeFromUtf8(hex, code) && OverrideCodeCache.TryGetCached(code, out cached);
+        ArrayPool<byte>.Shared.Return(scratch);
+        return found;
     }
 
     public override void Write(Utf8JsonWriter writer, AccountOverride value, JsonSerializerOptions options)
