@@ -1472,7 +1472,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void ApplyToPushedByte(ref ulong end, ulong pushed)
             {
                 // The slot the PUSH1 would have taken is free.
-                if (AirbenderFlag.IsActive)
+                if (AirbenderArithmetic.IsAvailable)
                     AirbenderArithmetic.ShiftLeft(Unsafe.AsPointer(ref Unsafe.Subtract(ref end, LimbsPerWord)), (int)pushed);
                 else
                     ShiftLeft(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
@@ -1488,7 +1488,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong bits = shift;
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
                 {
-                    if (AirbenderFlag.IsActive)
+                    if (AirbenderArithmetic.IsAvailable)
                         AirbenderArithmetic.ShiftLeft(Unsafe.AsPointer(ref value), (int)bits);
                     else
                         ShiftLeft(ref value, (int)bits);
@@ -1511,7 +1511,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static void ApplyToPushedByte(ref ulong end, ulong pushed)
             {
                 // The slot the PUSH1 would have taken is free.
-                if (AirbenderFlag.IsActive)
+                if (AirbenderArithmetic.IsAvailable)
                     AirbenderArithmetic.ShiftRight(Unsafe.AsPointer(ref Unsafe.Subtract(ref end, LimbsPerWord)), (int)pushed);
                 else
                     ShiftRight(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
@@ -1527,7 +1527,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong bits = shift;
                 if ((Unsafe.Add(ref shift, 1) | Unsafe.Add(ref shift, 2) | Unsafe.Add(ref shift, 3) | (bits >> 8)) == 0)
                 {
-                    if (AirbenderFlag.IsActive)
+                    if (AirbenderArithmetic.IsAvailable)
                         AirbenderArithmetic.ShiftRight(Unsafe.AsPointer(ref value), (int)bits);
                     else
                         ShiftRight(ref value, (int)bits);
@@ -1565,7 +1565,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong word = ref Unsafe.Subtract(ref end, LimbsPerWord);
                 ref ulong copied = ref Unsafe.Subtract(ref end, depth * LimbsPerWord);
                 // The delegation takes two distinct words, which a DUP1's copy is not.
-                if (AirbenderFlag.IsActive && depth > 1 &&
+                if (AirbenderArithmetic.IsAvailable && depth > 1 &&
                     (typeof(TOperation) == typeof(AddOperation) || typeof(TOperation) == typeof(SubtractOperation)))
                 {
                     if (typeof(TOperation) == typeof(AddOperation))
@@ -1708,7 +1708,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 else if (typeof(TOperation) == typeof(ArithmeticShiftRightOperation))
                 {
                     // The slot the PUSH1 would have taken is free.
-                    if (AirbenderFlag.IsActive)
+                    if (AirbenderArithmetic.IsAvailable)
                         AirbenderArithmetic.ShiftRightArithmetic(Unsafe.AsPointer(ref word), (int)pushed);
                     else
                         ShiftRight(ref word, (int)pushed, arithmetic: true);

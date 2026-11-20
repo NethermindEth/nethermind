@@ -261,13 +261,13 @@ internal static unsafe class GuestWord
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void LoadBigEndian(ref ulong slot, ref byte source)
     {
-        if (OpenVmFlag.IsActive && !ZkEvmBitOperations.IsOpenVmRv32)
+        if (OpenVmFlag.IsActive && !OpenVm32Flag.IsActive)
         {
             LoadAlignedBigEndian(ref slot, (ulong*)Unsafe.AsPointer(ref source));
             return;
         }
 
-        if (StrictAlignmentFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32)
+        if (StrictAlignmentFlag.IsActive || OpenVm32Flag.IsActive)
         {
             nuint misalignment = Misalignment(ref source);
             if (misalignment == 0)
@@ -300,13 +300,13 @@ internal static unsafe class GuestWord
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void StoreBigEndian(ref byte destination, ref ulong end)
     {
-        if (OpenVmFlag.IsActive && !ZkEvmBitOperations.IsOpenVmRv32)
+        if (OpenVmFlag.IsActive && !OpenVm32Flag.IsActive)
         {
             StoreAlignedBigEndian((ulong*)Unsafe.AsPointer(ref destination), ref end);
             return;
         }
 
-        if (StrictAlignmentFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32)
+        if (StrictAlignmentFlag.IsActive || OpenVm32Flag.IsActive)
         {
             nuint misalignment = Misalignment(ref destination);
             if (misalignment == 0)

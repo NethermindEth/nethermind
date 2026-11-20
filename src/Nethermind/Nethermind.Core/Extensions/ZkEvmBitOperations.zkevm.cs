@@ -23,14 +23,6 @@ public static partial class ZkEvmBitOperations
     /// </remarks>
     internal static bool HasByteReverse => ZiskFlag.IsActive;
 
-    /// <summary>Whether the guest runs on OpenVM's RV32 line.</summary>
-    /// <remarks>
-    /// There, as on Airbender, word loads and stores must be aligned: OpenVM's RV32 memory computes a misaligned one wrong
-    /// rather than trapping, so the JIT expands byte by byte every access it cannot prove aligned, and a path that knows
-    /// the alignment reads whole words.
-    /// </remarks>
-    internal static bool IsOpenVmRv32 => OpenVmFlag.IsActive && IntPtr.Size == sizeof(uint);
-
     // Without Zbb, RISC-V has no byte-swap instruction and this all-64-bit form beats the BCL's ReverseEndianness.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ulong Bswap64(ulong x)
@@ -51,7 +43,7 @@ public static partial class ZkEvmBitOperations
     internal static ulong ReadUInt64BigEndian(ref byte source)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
-        if (OpenVmFlag.IsActive && !IsOpenVmRv32) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (OpenVmFlag.IsActive && !OpenVm32Flag.IsActive) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
         if (IntPtr.Size == sizeof(uint))
         {
             // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.

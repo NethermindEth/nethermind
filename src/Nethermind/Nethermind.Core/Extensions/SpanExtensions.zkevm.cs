@@ -122,7 +122,7 @@ namespace Nethermind.Core.Extensions
         /// <remarks>Airbender and OpenVM's RV32 line read it as two plain words: an unaligned read there is tested or expanded per word.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong ReadIndexLane(ref byte lane) =>
-            AirbenderFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32 ? Unsafe.As<byte, ulong>(ref lane) : Unsafe.ReadUnaligned<ulong>(ref lane);
+            AirbenderFlag.IsActive || OpenVm32Flag.IsActive ? Unsafe.As<byte, ulong>(ref lane) : Unsafe.ReadUnaligned<ulong>(ref lane);
 
         /// <summary>Hashes a 32-byte slot index of the address whose <see cref="SumAddressWords"/> is given.</summary>
         /// <remarks>

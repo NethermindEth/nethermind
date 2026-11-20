@@ -402,7 +402,7 @@ public static partial class KeccakCache
         length - MinMemoLength <= MaxMemoLength - MinMemoLength &&
         (!ReadsAlignedWords || ((nuint)Unsafe.AsPointer(ref inputRef) & (sizeof(uint) - 1)) == 0);
 
-    private static bool ReadsAlignedWords => AirbenderFlag.IsActive || ZkEvmBitOperations.IsOpenVmRv32;
+    private static bool ReadsAlignedWords => AirbenderFlag.IsActive || OpenVm32Flag.IsActive;
 
     /// <summary>The input's slot in <see cref="Memo"/>.</summary>
     /// <remarks>

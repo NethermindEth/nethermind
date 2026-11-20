@@ -54,7 +54,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if (_opcodeTable is { NoTrace: null })
             _sharedHandlers = (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[])lookup.Clone();
 
-        if (AirbenderFlag.IsActive)
+        if (AirbenderArithmetic.IsAvailable)
             AirbenderArithmetic.Initialize();
 
         lookup[(int)Instruction.PUSH1] = AsTableEntry(&RawCalliHelper.ExecutePush1);
@@ -908,7 +908,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpLt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+            public static bool Evaluate(ref ulong end) => AirbenderArithmetic.IsAvailable
                 ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), signed: false)
                 : IsBelow(ref end, -LimbsPerWord, -2 * LimbsPerWord);
         }
@@ -922,7 +922,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpGt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+            public static bool Evaluate(ref ulong end) => AirbenderArithmetic.IsAvailable
                 ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), signed: false)
                 : IsBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
         }
@@ -936,7 +936,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpSLt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+            public static bool Evaluate(ref ulong end) => AirbenderArithmetic.IsAvailable
                 ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), signed: true)
                 : IsSignedBelow(ref end, -LimbsPerWord, -2 * LimbsPerWord);
         }
@@ -950,7 +950,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 Entry(&ExecuteOpcode<Math2Opcode<EvmInstructions.OpSGt, OffFlag>, OffFlag, OffFlag, OnFlag>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            public static bool Evaluate(ref ulong end) => AirbenderFlag.IsActive
+            public static bool Evaluate(ref ulong end) => AirbenderArithmetic.IsAvailable
                 ? AirbenderArithmetic.IsBelowConsuming(Unsafe.AsPointer(ref Unsafe.Add(ref end, -2 * LimbsPerWord)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -LimbsPerWord)), signed: true)
                 : IsSignedBelow(ref end, -2 * LimbsPerWord, -LimbsPerWord);
         }
@@ -1015,7 +1015,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end)
             {
-                if (AirbenderFlag.IsActive)
+                if (AirbenderArithmetic.IsAvailable)
                 {
                     AirbenderArithmetic.Add(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -4)));
                     return;
@@ -1076,7 +1076,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end)
             {
-                if (AirbenderFlag.IsActive)
+                if (AirbenderArithmetic.IsAvailable)
                 {
                     AirbenderArithmetic.SubtractFrom(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), Unsafe.AsPointer(ref Unsafe.Add(ref end, -4)));
                     return;
@@ -1183,7 +1183,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong bits = Unsafe.Add(ref end, -4);
                 if ((Unsafe.Add(ref end, -3) | Unsafe.Add(ref end, -2) | Unsafe.Add(ref end, -1) | (bits >> 8)) == 0)
                 {
-                    if (AirbenderFlag.IsActive)
+                    if (AirbenderArithmetic.IsAvailable)
                         AirbenderArithmetic.ShiftRightArithmetic(Unsafe.AsPointer(ref Unsafe.Add(ref end, -8)), (int)bits);
                     else
                         ShiftRight(ref Unsafe.Add(ref end, -8), (int)bits, arithmetic: true);
