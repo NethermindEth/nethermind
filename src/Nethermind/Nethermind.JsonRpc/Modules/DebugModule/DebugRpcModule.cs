@@ -947,21 +947,11 @@ public class DebugRpcModule(
         return ResultWrapper<StorageRangeResult>.Success(new StorageRangeResult(range));
     }
 
-    public ResultWrapper<GethLikeTxTrace[]> debug_traceBlockFromFile(string fileName, GethTraceOptions options = null) => throw new NotImplementedException();
-
-    public ResultWrapper<object> debug_dumpBlock(BlockParameter blockParameter) => throw new NotImplementedException();
-
-    public ResultWrapper<GcStats> debug_gcStats() => throw new NotImplementedException();
-
     public ResultWrapper<byte[]> debug_getBlockRlp(ulong blockNumber) =>
         GetBlockRlpOrFail(new BlockParameter(blockNumber));
 
     public ResultWrapper<byte[]> debug_getBlockRlpByHash(Hash256 hash) =>
         GetBlockRlpOrFail(new BlockParameter(hash));
-
-    public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter) => throw new NotImplementedException();
-
-    public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
     public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) =>
         ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockParameter));
