@@ -627,16 +627,57 @@ namespace Nethermind.Network.Test
         [Test]
         public async Task Privileged_incoming_peer_keeps_its_disconnect_exemption_during_hello_validation([Values] bool isStatic)
         {
-            await using Context ctx = new();
+            await using Context ctx = new(maxActivePeers: 0);
+            ProtocolsManagerTests.Context protocols = new(rlpxHost: ctx.RlpxPeer, peerManager: ctx.PeerManager, clientIdMatcher: "^allowed$");
             ctx.PeerManager.Start();
             ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.4", 12345) { IsStatic = isStatic, IsTrusted = !isStatic });
 
             ctx.RlpxPeer.CreateIncoming(receiveHello: false, CreateIncomingSessionTemplate(TestItem.PublicKeyB));
             Session session = ctx.Sessions.Last();
             InitSession(session);
-            session.InitiateDisconnect(DisconnectReason.ClientFiltered, "client id not matched");
+            protocols.ReceiveHello(session);
 
-            Assert.That(session.IsClosing, Is.False);
+            AssertGenuineSessionKept(ctx, session);
+        }
+
+        [Test]
+        public async Task Disconnect_before_handshake_notification_does_not_create_a_peer()
+        {
+            await using Context ctx = new();
+            ctx.RlpxPeer.SessionCreated += (_, e) => e.Session.HandshakeComplete += (_, _) =>
+                e.Session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "closed");
+            ctx.PeerManager.Start();
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+
+            Assert.That(ctx.PeerPool.TryGet(TestItem.PublicKeyB, out _), Is.False);
+        }
+
+        [Test]
+        public async Task Pending_inbound_limit_releases_capacity_on_hello_or_disconnect([Values] bool receiveHello)
+        {
+            await using Context ctx = new(maxActivePeers: 1);
+            ctx.Stats = Substitute.For<INodeStatsManager>();
+            ctx.CreatePeerManager();
+            ctx.PeerManager.Start();
+            Session template = CreateIncomingSessionTemplate(TestItem.PublicKeyB);
+            for (int i = 0; i < 11; i++) ctx.RlpxPeer.CreateIncoming(receiveHello: false, template);
+
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, template);
+            Session overflow = ctx.Sessions.Last();
+            InitSession(overflow);
+            Assert.That(overflow.IsClosing, Is.True);
+            ctx.Stats.DidNotReceive().GetOrAdd(Arg.Any<Node>());
+
+            Session pending = ctx.Sessions[0];
+            if (receiveHello)
+                ctx.PeerManager.OnP2PProtocolInitialized(pending);
+            else
+                pending.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "closed");
+
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, template);
+            Session next = ctx.Sessions.Last();
+            InitSession(next);
+            Assert.That(next.IsClosing, Is.False);
         }
 
         private static void AssertGenuineSessionKept(Context ctx, Session genuine)

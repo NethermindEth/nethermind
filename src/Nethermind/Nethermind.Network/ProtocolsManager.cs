@@ -95,6 +95,8 @@ namespace Nethermind.Network
             session.Initialized -= _onSessionInitialized;
             _sessions.TryRemove(session.SessionId, out _);
 
+            if (session.RemoteNodeId is null) return;
+
             if (_logger.IsTrace && session.BestStateReached == SessionState.Initialized)
             {
                 TraceSessionDisconnected(session, e);
@@ -107,21 +109,10 @@ namespace Nethermind.Network
                 registrations.TryRemove(session.SessionId, out _);
             }
 
-            PublicKey? handlerKey = null;
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
             {
                 _syncPool.RemovePeer(removed);
-                if (removed.Node?.Id is not null)
-                {
-                    handlerKey = removed.Node.Id;
-                    _txPool.RemovePeer(handlerKey);
-                }
-            }
-
-            PublicKey sessionKey = session.Node?.Id;
-            if (sessionKey is not null && sessionKey != handlerKey)
-            {
-                _txPool.RemovePeer(session.Node.Id);
+                if (removed.IncludeInTxPool) _txPool.RemovePeer(removed);
             }
         }
 
