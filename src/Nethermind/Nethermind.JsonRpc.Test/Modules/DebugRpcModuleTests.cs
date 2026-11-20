@@ -2401,7 +2401,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_accepts_empty_account_override(
-        [Values] bool streaming, [Values("null", "{}")] string accountOverride,
+        [Values] bool streaming, [Values("null", "{}", """{"balance":"0x1"}""")] string accountOverride,
         [Values(null, "0x0")] string? txIndex, [Values("0x0000000000000000000000000000000000000010", "0x0000000000000000000000000000000000000004")] string address)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)

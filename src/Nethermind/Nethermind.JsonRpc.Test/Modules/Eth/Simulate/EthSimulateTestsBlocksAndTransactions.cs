@@ -3206,7 +3206,7 @@ public class EthSimulateTestsBlocksAndTransactions
     /// the sequential one. An override without <c>code</c> keeps the precompile, which a delegation does not run.
     /// </summary>
     [Test]
-    public async Task eth_simulateV1_overridden_precompile_address_runs_code([Values] bool balPath, [Values] bool overrideCode)
+    public async Task eth_simulateV1_overridden_precompile_address_runs_code_only_with_code_override([Values] bool balPath, [Values] bool overrideCode)
     {
         Address identity = Address.FromNumber(4);
         Address delegator = new("0xc400000000000000000000000000000000000000");
