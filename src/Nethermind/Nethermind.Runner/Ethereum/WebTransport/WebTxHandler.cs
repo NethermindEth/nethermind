@@ -93,12 +93,13 @@ internal sealed class WebTxHandler(ITxPool txPool)
     {
         _ when result == AcceptTxResult.Accepted => TxResultCode.Accepted,
         _ when result == AcceptTxResult.AlreadyKnown => TxResultCode.AlreadyKnown,
-        _ when result == AcceptTxResult.OldNonce || result == AcceptTxResult.NonceGap
+        _ when result.TxError == TxValidationError.NonceCapExceeded || result == AcceptTxResult.OldNonce || result == AcceptTxResult.NonceGap
             || result == AcceptTxResult.NonceTooFarInFuture => TxResultCode.InvalidNonce,
-        _ when result == AcceptTxResult.ReplacementNotAllowed => TxResultCode.InvalidFee,
+        _ when result.TxError == TxValidationError.PriorityFeeAboveFeeCap || result == AcceptTxResult.ReplacementNotAllowed => TxResultCode.InvalidFee,
         _ when result == AcceptTxResult.FeeTooLow => TxResultCode.GasPriceTooLow,
         _ when result == AcceptTxResult.InsufficientFunds => TxResultCode.InsufficientFunds,
-        _ when result == AcceptTxResult.GasLimitExceeded => TxResultCode.InvalidGasLimit,
+        _ when result.TxError is TxValidationError.IntrinsicGas or TxValidationError.GasLimitCapExceeded
+            || result == AcceptTxResult.GasLimitExceeded => TxResultCode.InvalidGasLimit,
         _ when result == AcceptTxResult.PoolUnavailable || result == AcceptTxResult.Syncing || result == AcceptTxResult.FeeTooLowToCompete
             || result == AcceptTxResult.PendingTxsOfConflictingType || result == AcceptTxResult.NotCurrentNonceForDelegation
             || result == AcceptTxResult.DelegatorHasPendingTx => TxResultCode.PoolError,

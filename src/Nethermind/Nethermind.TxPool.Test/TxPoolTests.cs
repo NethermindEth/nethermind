@@ -453,6 +453,8 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
                 Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(result.TxError, Is.EqualTo(TxValidationError.IntrinsicGas));
+                Assert.That(result.WithMessage("new detail").TxError, Is.EqualTo(TxValidationError.IntrinsicGas));
             }
         }
 
@@ -476,6 +478,7 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(tx.SenderAddress, Is.EqualTo(sender));
                 Assert.That(result, Is.EqualTo(expected));
+                Assert.That(result.TxError, Is.EqualTo(selfTransfer ? TxValidationError.None : TxValidationError.IntrinsicGas));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(selfTransfer ? 1 : 0));
                 Assert.That(tx.IntrinsicGasMemo, Is.Null);
             }

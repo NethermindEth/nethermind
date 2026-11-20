@@ -13,7 +13,10 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -23,6 +26,8 @@ using Nethermind.Network.Enr;
 using Nethermind.Runner.Ethereum.WebTransport;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -100,6 +105,33 @@ public class BrowserProtocolTests
 
         Assert.That(() => handler.Handle(payload, CancellationToken.None), Throws.InstanceOf<RlpReaderException>());
         pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+    }
+
+    [Test]
+    public async Task Submit_reports_the_specific_reasons_from_transaction_validation()
+    {
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Osaka.Instance))
+            .WithGenesisPostProcessor(static (genesis, _) => genesis.Header.GasLimit = 30_000_000));
+        WebTxHandler handler = new(chain.TxPool);
+        IEthereumEcdsa wrongChain = new EthereumEcdsa(chain.SpecProvider.ChainId + 1);
+        Transaction[] transactions =
+        [
+            Tx().WithNonce(ulong.MaxValue).Signed(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Tx().WithType(TxType.EIP1559).WithMaxFeePerGas(2_000_000_000).WithMaxPriorityFeePerGas(3_000_000_000)
+                .Signed(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Tx().WithGasLimit(20_999).Signed(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Tx().WithData([1]).WithGasLimit(21_016).Signed(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Tx().WithGasLimit(Eip7825Constants.DefaultTxGasLimitCap + 1).Signed(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject,
+            Tx().WithType(TxType.EIP1559).WithGasLimit(20_999).WithMaxFeePerGas(2_000_000_000).WithMaxPriorityFeePerGas(1_000_000_000)
+                .Signed(wrongChain, TestItem.PrivateKeyA).TestObject,
+        ];
+        byte[] payload = RlpTestHelper.EncodeSequence(transactions.Select(static tx => TxDecoder.Instance.Encode(tx)).ToArray());
+
+        Assert.That(handler.Handle(payload, CancellationToken.None), Is.EqualTo(Convert.FromHexString("ccc102c103c106c106c106c108")));
+
+        static TransactionBuilder<Transaction> Tx() => TxBuilder.A.Transaction.WithTo(TestItem.AddressB)
+            .WithValue(0).WithGasLimit(21_000).WithGasPrice(10_000_000_000);
     }
 
     private static IEnumerable<TestCaseData> MalformedBatches()

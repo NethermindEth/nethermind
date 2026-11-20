@@ -104,7 +104,7 @@ namespace Nethermind.TxPool.Filters
             // It may happen that other nodes send us transactions that were signed for another chain or don't have enough gas.
             if (logger.IsTrace) TraceMalformed(tx, result);
             state.SidecarRejected = TxErrorMessages.IsBlobSidecarError(result.Error);
-            return AcceptTxResult.Invalid.WithMessage(result.ToString());
+            return AcceptTxResult.Invalid.WithValidationError(result);
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]

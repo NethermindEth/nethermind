@@ -284,14 +284,14 @@ public class TxValidatorTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(TxType.Legacy, 10, 5, ExpectedResult = true)]
-    [TestCase(TxType.AccessList, 10, 5, ExpectedResult = true)]
-    [TestCase(TxType.EIP1559, 10, 5, ExpectedResult = true)]
-    [TestCase(TxType.Legacy, 5, 10, ExpectedResult = true)]
-    [TestCase(TxType.AccessList, 5, 10, ExpectedResult = true)]
-    [TestCase(TxType.EIP1559, 5, 10, ExpectedResult = false)]
-    public bool MaxFeePerGas_is_required_to_be_greater_than_MaxPriorityFeePerGas(TxType txType, int maxFeePerGas,
-        int maxPriorityFeePerGas)
+    [TestCase(TxType.Legacy, 10, 5, TxValidationError.None)]
+    [TestCase(TxType.AccessList, 10, 5, TxValidationError.None)]
+    [TestCase(TxType.EIP1559, 10, 5, TxValidationError.None)]
+    [TestCase(TxType.Legacy, 5, 10, TxValidationError.None)]
+    [TestCase(TxType.AccessList, 5, 10, TxValidationError.None)]
+    [TestCase(TxType.EIP1559, 5, 10, TxValidationError.PriorityFeeAboveFeeCap)]
+    public void MaxFeePerGas_is_required_to_be_greater_than_MaxPriorityFeePerGas(TxType txType, int maxFeePerGas,
+        int maxPriorityFeePerGas, TxValidationError expectedError)
     {
         byte[] sigData = new byte[65];
         sigData[31] = 1; // correct r
@@ -311,7 +311,14 @@ public class TxValidatorTests
         tx.Type = txType;
 
         TxValidator txValidator = new(TestBlockchainIds.ChainId);
-        return txValidator.IsWellFormed(tx, London.Instance);
+        ValidationResult result = txValidator.IsWellFormed(tx, London.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.AsBool(), Is.EqualTo(expectedError == TxValidationError.None));
+            Assert.That(result.TxError, Is.EqualTo(expectedError));
+            Assert.That(result.Error, Is.EqualTo(expectedError == TxValidationError.None ? null : TxErrorMessages.InvalidMaxPriorityFeePerGas));
+        }
     }
 
     [MaxTime(Timeout.MaxTestTime)]
@@ -980,6 +987,7 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.TxGasLimitCapExceeded(cap + 1, cap)));
+            Assert.That(result.TxError, Is.EqualTo(TxValidationError.GasLimitCapExceeded));
         }
 
         static Transaction TxWithGasLimit(ulong gasLimit) => Build.A.Transaction
@@ -1008,6 +1016,7 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(result.TxError, Is.EqualTo(TxValidationError.IntrinsicGas));
             Assert.That(tx.IntrinsicGasMemo, skipMemo ? Is.Null : Is.Not.Null);
             Assert.That(result.Error, skipErrorDetails
                 ? Is.SameAs(TxErrorMessages.IntrinsicGasTooLow)
@@ -1037,9 +1046,11 @@ public class TxValidatorTests
             .WithGasLimit(gasLimit)
             .SignedAndResolved().TestObject, spec);
 
+        ValidationResult belowFloor = Validate(floor - 1);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Validate(floor - 1).Error, Is.EqualTo(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(belowFloor.Error, Is.EqualTo(TxErrorMessages.IntrinsicGasTooLow));
+            Assert.That(belowFloor.TxError, Is.EqualTo(TxValidationError.IntrinsicGas));
             Assert.That(Validate(floor).AsBool, Is.True);
         }
     }
@@ -1064,6 +1075,7 @@ public class TxValidatorTests
         {
             Assert.That(result.AsBool, Is.False);
             Assert.That(result.Error, Is.EqualTo(TxErrorMessages.NonceTooHigh));
+            Assert.That(result.TxError, Is.EqualTo(TxValidationError.NonceCapExceeded));
         }
     }
 
