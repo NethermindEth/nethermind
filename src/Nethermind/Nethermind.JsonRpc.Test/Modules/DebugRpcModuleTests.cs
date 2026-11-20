@@ -1228,6 +1228,89 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    public static IEnumerable<TestCaseData> OpcodeLoggerLimitCases()
+    {
+        // Streamed counts pin Geth boundaries; buffered counts pin the conservative estimate.
+        (string Code, bool DisableStack, bool EnableMemory, long Limit, int Count, int EstimatedCount)[] cases =
+        [
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 770, 9, 3),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 771, 10, 3),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1138, 14, 4),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1139, 15, 4),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1290, 15, 4),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1291, 16, 4),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1439, 16, 4),
+            ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1440, 17, 4),
+            ("602a600055600060005500", false, false, 507, 5, 2),
+            ("602a600055600060005500", false, false, 508, 6, 2),
+            ("602a600055600060005500", false, false, 752, 6, 3),
+            ("602a600055600060005500", false, false, 753, 7, 3),
+            ("602a61ffff5360006000f3", false, true, 224, 3, 1),
+            ("602a61ffff5360006000f3", false, true, 225, 4, 1),
+            ("602a61ffff5360006000f3", false, true, 141613, 4, 4),
+            ("602a61ffff5360006000f3", false, true, 141614, 5, 4),
+            ("602a60005260206000f3", false, false, -1, 0, 0),
+            ("602a60005260206000f3", false, false, 0, 6, 6),
+            ("602a60005260206000f3", false, false, 1, 1, 1),
+            ("602a60005260206000f3", false, false, 65, 1, 1),
+            ("602a60005260206000f3", false, false, 66, 2, 1),
+            ("602a60005260206000f3", false, false, 137, 2, 1),
+            ("602a60005260206000f3", false, false, 138, 3, 1),
+            ("602a60005260206000f3", false, false, 2147483648, 6, 6),
+            ("602a60005260206000f3", true, false, 54, 1, 1),
+            ("602a60005260206000f3", true, false, 55, 2, 1),
+            ("602a60005260206000f3", true, false, 109, 2, 1),
+            ("602a60005260206000f3", true, false, 110, 3, 1),
+            ("602a60005260206000f3", false, true, 362, 4, 2),
+            ("602a60005260206000f3", false, true, 363, 5, 2),
+            ("602a60005560005460005260206000f3", false, false, 370, 3, 2),
+            ("602a60005560005460005260206000f3", false, false, 371, 4, 2),
+            ("602a60005560005460005260206000f3", false, false, 659, 5, 3),
+            ("602a60005560005460005260206000f3", false, false, 660, 6, 3),
+            ("602a60005260206000fd", false, false, -1, 0, 0),
+            ("602a60005260206000fd", false, false, 1, 1, 1),
+            ("602a60005260206000fd", false, false, 138, 3, 1),
+        ];
+        foreach ((string code, bool disableStack, bool enableMemory, long limit, int count, int estimatedCount) in cases)
+        {
+            foreach (bool streamMode in new[] { false, true })
+                yield return new TestCaseData(code, disableStack, enableMemory, limit, streamMode ? count : estimatedCount, streamMode);
+        }
+    }
+
+    /// <remarks>
+    /// <c>debug_traceCallMany</c> keeps the byte budget that <c>debug_traceCall</c> used before <c>limit</c> counted
+    /// opcode steps there.
+    /// </remarks>
+    [TestCaseSource(nameof(OpcodeLoggerLimitCases))]
+    public async Task Debug_traceCallMany_opcode_logger_limit(
+        string code, bool disableStack, bool enableMemory, long limit, int expectedCount, bool streamMode)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x" + code, state = new Dictionary<string, string>() },
+            ["0x0000000000000000000000000000000000009012"] = new { code = "0x602a60005260206000f3" }
+        };
+        object[] bundles = [new { transactions = new[] { new { to = TestItem.AddressC.ToString(), gas = "0x186a0" } } }];
+        string unlimitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany",
+            bundles, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, stateOverrides });
+        string limitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCallMany",
+            bundles, "latest", new { streamMode, disableStack, enableMemory, enableReturnData = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
+
+        JToken expected = JToken.Parse(unlimitedResponse)["result"]![0]![0]!;
+        JArray entries = (JArray)expected["structLogs"]!;
+        while (entries.Count > expectedCount)
+            entries.RemoveAt(entries.Count - 1);
+
+        JToken actual = JToken.Parse(limitedResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null, limitedResponse);
+            Assert.That(JToken.DeepEquals(actual["result"]?[0]?[0], expected), Is.True, limitedResponse);
+        }
+    }
+
     /// <remarks>As in the other <c>debug_trace*</c> methods, <c>limit</c> counts opcode steps, also in a child frame.</remarks>
     [Test]
     public async Task Debug_traceCall_opcode_logger_limit_counts_steps(
