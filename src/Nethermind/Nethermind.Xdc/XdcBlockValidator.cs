@@ -7,8 +7,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Xdc;
 
 public class XdcBlockValidator(
@@ -16,7 +14,7 @@ public class XdcBlockValidator(
     IHeaderValidator headerValidator,
     IUnclesValidator unclesValidator,
     ISpecProvider specProvider,
-    ILogManager logManager, ILeanProofVerifier leanProofVerifier) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager, leanProofVerifier)
+    ILogManager logManager) : BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager)
 {
     protected override bool ValidateEip4844Fields(Block block, IReleaseSpec spec, ref string? error) => true;
 }

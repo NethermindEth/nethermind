@@ -219,8 +219,7 @@ public class SyncServerTests
             mergeHeaderValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
             ctx.WorldStateManager,
@@ -447,8 +446,7 @@ public class SyncServerTests
             headerValidatorWithInterceptor,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
 
         ctx.SyncServer = new SyncServer(
             ctx.WorldStateManager,
@@ -491,8 +489,7 @@ public class SyncServerTests
             headerValidator,
             Always.Valid,
             MainnetSpecProvider.Instance,
-            LimboLogs.Instance,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            LimboLogs.Instance);
 
         ctx.SyncServer = ctx.CreateSyncServer(localBlockTree, blockValidator);
 

@@ -118,13 +118,16 @@ public static partial class StatelessExecutor
             specProvider,
             NullLogManager.Instance
         );
-        BlockValidator blockValidator = new(
-            new TxValidator(specProvider.ChainId),
-            headerValidator,
-            new UnclesValidator(blockTree, headerValidator, NullLogManager.Instance),
+        RecursiveStarkBlockValidator blockValidator = new(
+            new BlockValidator(
+                new TxValidator(specProvider.ChainId),
+                headerValidator,
+                new UnclesValidator(blockTree, headerValidator, NullLogManager.Instance),
+                specProvider,
+                NullLogManager.Instance),
+            leanProofVerifier,
             specProvider,
-            NullLogManager.Instance,
-            leanProofVerifier
+            NullLogManager.Instance
         );
 
         if (!blockValidator.ValidateSuggestedBlock(suggestedBlock, parentHeader, out string? error, validateHashes))

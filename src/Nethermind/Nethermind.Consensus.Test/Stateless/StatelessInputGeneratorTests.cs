@@ -14,6 +14,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Test.ProofAggregation;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -189,6 +190,24 @@ public class StatelessInputGeneratorTests
         using Witness witness = EmptyWitness([Rlp.Encode(parent).Bytes]);
 
         Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance), _leanProofVerifier), Is.False);
+    }
+
+    // EIP-8288: the executor builds its block validator by hand, so it must add the recursive STARK check itself.
+    [Test]
+    public void Direct_execution_checks_the_recursive_stark([Values("valid", "missing", "deps")] string mutation)
+    {
+        (Block block, Witness witness, _) = CreateBlock(amsterdam: true);
+        using (witness)
+        {
+            // Without dependencies the proof is empty, so the deps hash is what binds the commitment to the block.
+            block.StarkProof = mutation == "missing" ? null : [];
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString,
+                mutation == "deps" ? TestItem.KeccakA : new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+            block.Header.Hash = block.Header.CalculateHash();
+
+            Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Eip8288Prototype.Instance), new FakeLeanProofVerifier(true)),
+                Is.EqualTo(mutation == "valid"));
+        }
     }
 
     [Test]

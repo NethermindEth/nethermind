@@ -166,8 +166,7 @@ public class InvalidBlockInterceptorTest
     [Test]
     public void Corrupt_peer_proof_does_not_poison_valid_header([Values] bool missing)
     {
-        BlockValidator bodyValidator = new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance,
-            NullLogManager.Instance, Substitute.For<ILeanProofVerifier>());
+        BlockValidator bodyValidator = new(Always.Valid, Always.Valid, Always.Valid, MainnetSpecProvider.Instance, NullLogManager.Instance);
         _baseValidator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
             .Returns(call => bodyValidator.ValidateBodyAgainstHeader(call.Arg<BlockHeader>(), call.Arg<BlockBody>(), out _));
         BlockHeader parent = Build.A.BlockHeader.TestObject;

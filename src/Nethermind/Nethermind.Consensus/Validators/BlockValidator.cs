@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -29,15 +27,13 @@ public class BlockValidator(
     IHeaderValidator? headerValidator,
     IUnclesValidator? unclesValidator,
     ISpecProvider? specProvider,
-    ILogManager? logManager,
-    ILeanProofVerifier leanProofVerifier)
+    ILogManager? logManager)
     : IBlockValidator
 {
     private readonly IHeaderValidator _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
     private readonly ITxValidator _txValidator = txValidator ?? throw new ArgumentNullException(nameof(txValidator));
     private readonly IUnclesValidator _unclesValidator = unclesValidator ?? throw new ArgumentNullException(nameof(unclesValidator));
     private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-    private readonly ILeanProofVerifier _leanProofVerifier = leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier));
     private readonly BlockDecoder _blockDecoder = new();
     private readonly ILogger _logger = logManager?.GetClassLogger<BlockValidator>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
@@ -105,9 +101,8 @@ public class BlockValidator(
     }
 
     /// <summary>
-    /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
-    /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
-    /// STARK must verify against the block fork's <c>AGGREGATED_VK</c>, or be empty when there are none.
+    /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present and the body must carry the
+    /// <c>stark_proof</c> it commits to. <see cref="RecursiveStarkBlockValidator"/> verifies the proof.
     /// </summary>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
@@ -132,23 +127,6 @@ public class BlockValidator(
             || !StarkProofMatchesCommitment(block.Header, block.Body))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
-            return false;
-        }
-
-        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
-        Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
-        if (recursiveStark.BlockDepsHash != computed)
-        {
-            error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);
-            if (_logger.IsWarn) _logger.Warn($"Block deps hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {recursiveStark.BlockDepsHash}, got {computed}");
-            return false;
-        }
-
-        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
-                block.StarkProof))
-        {
-            error = BlockErrorMessages.InvalidRecursiveStark;
-            if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
             return false;
         }
 
