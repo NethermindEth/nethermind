@@ -51,6 +51,76 @@ public class ZeroNettyFrameEncodeDecodeTests
     }
 
     [Test]
+    public void Enabling_snappy_after_sizing_the_output_encodes_the_packet_with_snappy()
+    {
+        (EncryptionSecrets expectedSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets actualSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor expectedMac = new(expectedSecrets);
+        using FrameMacProcessor actualMac = new(actualSecrets);
+        ZeroPacketSplitter expectedSplitter = new(new FrameCipher(expectedSecrets.AesSecret), expectedMac);
+        expectedSplitter.EnableSnappy(LimboLogs.Instance);
+        EmbeddedChannel expectedChannel = new(expectedSplitter);
+        CombinedEncoder actual = new(new FrameCipher(actualSecrets.AesSecret), actualMac);
+        IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+        context.Allocator.Returns(PooledByteBufferAllocator.Default);
+        // Random content does not compress, so Snappy needs more room than the framed size the output gets.
+        byte[] packet = new byte[6 * 1024];
+        new Random(7).NextBytes(packet);
+        packet[0] = 2;
+        try
+        {
+            using DisposableByteBuffer input = Unpooled.WrappedBuffer(packet).AsDisposable();
+            Assert.That(actual.AcceptOutboundMessage(input), Is.True);
+            using DisposableByteBuffer output = actual.Allocate(context).AsDisposable();
+            actual.EnableSnappy(LimboLogs.Instance);
+            actual.Encode(input, output);
+
+            expectedChannel.WriteOutbound(Unpooled.WrappedBuffer(packet));
+            using DisposableByteBuffer expected = expectedChannel.ReadOutbound<IByteBuffer>().AsDisposable();
+            Assert.That(output.AsSpan(), Is.SequenceEqualTo(expected.AsSpan()));
+        }
+        finally
+        {
+            expectedChannel.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
+    public void Packet_over_buffer_components_encodes_as_in_one_buffer([Values] bool snappy)
+    {
+        (EncryptionSecrets contiguousSecrets, _) = NetTestVectors.GetSecretsPair();
+        (EncryptionSecrets segmentedSecrets, _) = NetTestVectors.GetSecretsPair();
+        using FrameMacProcessor contiguousMac = new(contiguousSecrets);
+        using FrameMacProcessor segmentedMac = new(segmentedSecrets);
+        ZeroPacketSplitter contiguousSplitter = new(new FrameCipher(contiguousSecrets.AesSecret), contiguousMac);
+        ZeroPacketSplitter segmentedSplitter = new(new FrameCipher(segmentedSecrets.AesSecret), segmentedMac);
+        if (snappy)
+        {
+            contiguousSplitter.EnableSnappy(LimboLogs.Instance);
+            segmentedSplitter.EnableSnappy(LimboLogs.Instance);
+        }
+
+        EmbeddedChannel contiguous = new(contiguousSplitter);
+        EmbeddedChannel segmented = new(segmentedSplitter);
+        byte[] packet = new byte[Frame.DefaultMaxFrameSize * 2 + 100];
+        new Random(11).NextBytes(packet);
+        packet[0] = 2;
+        try
+        {
+            contiguous.WriteOutbound(Unpooled.WrappedBuffer(packet));
+            segmented.WriteOutbound(Unpooled.WrappedBuffer(Unpooled.WrappedBuffer(packet, 0, 700), Unpooled.WrappedBuffer(packet, 700, packet.Length - 700)));
+            using DisposableByteBuffer expected = contiguous.ReadOutbound<IByteBuffer>().AsDisposable();
+            using DisposableByteBuffer actual = segmented.ReadOutbound<IByteBuffer>().AsDisposable();
+            Assert.That(actual.AsSpan(), Is.SequenceEqualTo(expected.AsSpan()));
+        }
+        finally
+        {
+            contiguous.FinishAndReleaseAll();
+            segmented.FinishAndReleaseAll();
+        }
+    }
+
+    [Test]
     public async Task Combined_encoder_releases_buffers_when_encryption_fails([Values(1, 2)] int failingCall, [Values] bool snappy)
     {
         using PooledBufferLeakDetector detector = new();
@@ -185,6 +255,8 @@ public class ZeroNettyFrameEncodeDecodeTests
         : ZeroPacketSplitter(cipher, mac)
     {
         public void Encode(IByteBuffer input, IByteBuffer output) => base.Encode(null, input, output);
+
+        public IByteBuffer Allocate(IChannelHandlerContext context) => AllocateBuffer(context);
     }
 
     [Test]
