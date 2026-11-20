@@ -193,6 +193,21 @@ public class ProtocolsManagerTests
         public void RaiseChanged() => Changed?.Invoke();
     }
 
+    /// <summary>A satellite protocol that is initialized as soon as it starts, as snap is.</summary>
+    private sealed class SatelliteProtocolHandler(ISession session, string code, INodeStatsManager nodeStats, IMessageSerializationService serializer)
+        : ProtocolHandlerBase(session, nodeStats, serializer, RunImmediatelyScheduler.Instance, LimboLogs.Instance)
+    {
+        public override string Name => code;
+        protected override TimeSpan InitTimeout => TimeSpan.FromSeconds(10);
+        public override byte ProtocolVersion => 1;
+        public override string ProtocolCode => code;
+        public override int MessageIdSpaceSize => 1;
+        public override void Init() => NotifyProtocolInitialized(new ProtocolInitializedEventArgs(this));
+        public override void HandleMessage(Packet message) { }
+        public override void DisconnectProtocol(DisconnectReason disconnectReason, string details) { }
+        public override void Dispose() { }
+    }
+
     public class Context
     {
         private readonly int _localPort = 30312;
@@ -217,9 +232,11 @@ public class ProtocolsManagerTests
         private readonly ITxPoolConfig _txPoolConfig;
         private readonly IChainHeadSpecProvider _specProvider;
         private readonly IForkInfo _forkInfo;
+        private readonly string[] _satelliteProtocols;
 
-        public Context(ILogManager? logManager = null)
+        public Context(ILogManager? logManager = null, string[]? satelliteProtocols = null)
         {
+            _satelliteProtocols = satelliteProtocols ?? [];
             _packetSender = Substitute.For<IPacketSender>();
             _syncServer = Substitute.For<ISyncServer>();
             _syncServer = Substitute.For<ISyncServer>();
@@ -260,8 +277,8 @@ public class ProtocolsManagerTests
                 _protocolValidator,
                 _peerManager,
                 _peerStorage,
-                BuildProtocolHandlerFactories(),
-                [new DefaultP2PCapabilityResolver()],
+                [.. BuildProtocolHandlerFactories(), .. _satelliteProtocols.Select(BuildSatelliteFactory)],
+                [new DefaultP2PCapabilityResolver(), new FakeCapabilityResolver(caps => caps.UnionWith(_satelliteProtocols.Select(code => new Capability(code, 1))))],
                 logManager ?? LimboLogs.Instance);
         }
 
@@ -294,6 +311,12 @@ public class ProtocolsManagerTests
                     Protocol.Eth,
                     71)
             ];
+
+        private IProtocolHandlerFactory BuildSatelliteFactory(string code) =>
+            new ReusableProtocolHandlerFactory<SatelliteProtocolHandler>(
+                session => new SatelliteProtocolHandler(session, code, _nodeStatsManager, _serializer),
+                code,
+                1);
 
         public Context CreateIncomingSession()
         {
@@ -461,6 +484,27 @@ public class ProtocolsManagerTests
 
             return ReceiveHello(msg);
         }
+
+        public Context ReceiveHelloWithSatellites()
+        {
+            using HelloMessage msg = new();
+            msg.Capabilities = new ArrayPoolList<Capability>(1 + _satelliteProtocols.Length, [new Capability("eth", 68), .. _satelliteProtocols.Select(code => new Capability(code, 1))]);
+            msg.NodeId = TestItem.PublicKeyB;
+            msg.ClientId = "other client v1";
+            msg.P2PVersion = 5;
+            msg.ListenPort = 30314;
+
+            return ReceiveHello(msg);
+        }
+
+        public Context VerifySatellitesAttached()
+        {
+            _syncPeerPool.Received(1).AddPeer(Arg.Is<ISyncPeer>(peer => HasAllSatellites(peer)));
+            return this;
+        }
+
+        private bool HasAllSatellites(ISyncPeer peer) =>
+            _satelliteProtocols.All(code => peer.TryGetSatelliteProtocol(code, out object _));
 
         public Context ReceiveHelloNoEth()
         {
@@ -644,6 +688,17 @@ public class ProtocolsManagerTests
         new NodeRecordSigner(new EthereumEcdsa(0), TestItem.PrivateKeyB).Sign(record);
         return record;
     }
+
+    [Test]
+    // Both start as soon as the hello agrees on them, while eth still waits for the peer's status: both are parked.
+    public void Attaches_every_satellite_protocol_that_starts_before_eth() => new Context(satelliteProtocols: ["sat1", "sat2"])
+            .CreateIncomingSession()
+            .ActivateChannel()
+            .Handshake()
+            .Init()
+            .ReceiveHelloWithSatellites()
+            .ReceiveStatus()
+            .VerifySatellitesAttached();
 
     [Test]
     public void Removes_sync_peers_on_disconnect() => When
