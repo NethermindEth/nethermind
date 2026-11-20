@@ -985,7 +985,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         cancellationToken.IsCancellationRequested && exception.CancellationToken == cancellationToken;
 
     private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
-        $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : responseError.Message)}";
+        $"Error response handling JsonRpc Id:{request.Id} Method:{request.MethodForLogging} | Code: {responseError.Code} Message: {(SensitiveLogMasking.Enabled ? "[redacted]" : JsonRpcRequest.EncodeLogText(responseError.Message))}";
 
     /// <remarks>Debug lines only: the forwarded header is caller-controlled, so it must not reach default-level output.</remarks>
     private static string DescribeRemoteAddress(JsonRpcContext context) =>
@@ -1019,7 +1019,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = !response.TryGetError(out Error? responseError);
         if (isSuccess)
         {
-            if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.Method} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (_logger.IsTrace) _logger.Trace($"Responded to Id:{request.Id} Method:{request.MethodForLogging} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             if (response.Streaming is { } streaming)
             {
                 streaming.ReportCompletion = true;

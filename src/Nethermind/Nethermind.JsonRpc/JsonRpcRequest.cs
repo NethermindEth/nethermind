@@ -60,6 +60,10 @@ namespace Nethermind.JsonRpc
 
         internal ref readonly JsonRpcId IdRef => ref _id;
 
-        public override string ToString() => $"Id:{Id}, {Method}(params omitted)";
+        internal string MethodForLogging => EncodeLogText(Method);
+
+        internal static string EncodeLogText(string? value) => value is null ? string.Empty : JsonEncodedText.Encode(value).ToString();
+
+        public override string ToString() => $"Id:{Id}, {MethodForLogging}(params omitted)";
     }
 }
