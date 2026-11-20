@@ -89,7 +89,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         : base(options, destroyRefund)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        if (flushThresholdBytes <= 0) throw new ArgumentOutOfRangeException(nameof(flushThresholdBytes));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(flushThresholdBytes);
 
         _transaction = transaction;
         _limit = options.Limit;
