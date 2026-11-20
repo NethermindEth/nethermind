@@ -27,10 +27,11 @@
   <PropertyGroup>
     <NativeKeccakDir>$(MSBuildThisFileDirectory)..\..\native\nmkeccak\</NativeKeccakDir>
     <NativeKeccakOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', '$(Configuration)', 'libnmkeccak.so'))</NativeKeccakOutput>
-    <NativeKeccakSupported Condition="$([MSBuild]::IsOSPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64' And ('$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'linux-x64')">true</NativeKeccakSupported>
+    <NativeKeccakSupported Condition="'$(EnableZkEvm)' != 'true' And $([MSBuild]::IsOSPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64' And ('$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'linux-x64')">true</NativeKeccakSupported>
   </PropertyGroup>
 
   <Target Name="BuildNativeKeccak" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'" Inputs="$(NativeKeccakDir)nmkeccak.c;$(NativeKeccakDir)build.sh;@(NativeKeccakSource)" Outputs="$(NativeKeccakOutput)">
+    <Delete Files="$(NativeKeccakOutput)" />
     <Exec Command="command -v &quot;${CC:-gcc}&quot;" IgnoreExitCode="true" StandardOutputImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="GccExitCode" />
     </Exec>
@@ -46,6 +47,10 @@
       <None Include="$(NativeKeccakOutput)" Link="libnmkeccak.so" CopyToOutputDirectory="PreserveNewest" />
     </ItemGroup>
   </Target>
+
+  <ItemGroup>
+    <FileWrites Include="$(NativeKeccakOutput)" />
+  </ItemGroup>
 
   <ItemGroup>
     <NativeKeccakSource Include="$(NativeKeccakDir)xkcp\*" />
