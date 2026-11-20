@@ -39,8 +39,10 @@ public class AccountChangesAtIndex(Address address)
     private readonly List<StorageSlot> _storageSlots = [];
     private readonly Dictionary<UInt256, int> _storageSlotIndex = [with(UInt256Comparer.GetOptimized())];
     // The record GetOrAddSlot last resolved: a contract writing one slot again and again skips the index. Checked by key,
-    // so an index left over from before a reset can only miss.
+    // so an index left over from before a reset can only miss. The key's low limb sits beside it, so a different slot,
+    // which almost always differs there, misses without reading the list.
     private int _lastSlot = -1;
+    private ulong _lastSlotLowLimb;
     private int _storageChangeCount;
     private readonly HashSet<UInt256> _storageReads = [with(UInt256Comparer.GetOptimized())];
     private bool _storageReadsMayHoldChangedSlots;
@@ -77,9 +79,12 @@ public class AccountChangesAtIndex(Address address)
 
     private ref StorageSlot GetOrAddSlot(in UInt256 key)
     {
-        Span<StorageSlot> slots = CollectionsMarshal.AsSpan(_storageSlots);
-        int last = _lastSlot;
-        if ((uint)last < (uint)slots.Length && slots[last].Key == key) return ref slots[last];
+        if (key.u0 == _lastSlotLowLimb)
+        {
+            Span<StorageSlot> slots = CollectionsMarshal.AsSpan(_storageSlots);
+            int last = _lastSlot;
+            if ((uint)last < (uint)slots.Length && slots[last].Key == key) return ref slots[last];
+        }
 
         ref int index = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlotIndex, key, out bool exists);
         if (!exists)
@@ -89,6 +94,7 @@ public class AccountChangesAtIndex(Address address)
         }
 
         _lastSlot = index;
+        _lastSlotLowLimb = key.u0;
         return ref CollectionsMarshal.AsSpan(_storageSlots)[index];
     }
 
