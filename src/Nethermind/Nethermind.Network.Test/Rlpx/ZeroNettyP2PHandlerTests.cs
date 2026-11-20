@@ -244,6 +244,23 @@ public class ZeroNettyP2PHandlerTests
         Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released after disconnecting");
     }
 
+    [Test]
+    public void When_received_packet_exceeds_max_size_then_disconnect_whether_snappy_is_enabled_or_not([Values] bool snappy)
+    {
+        ISession session = Substitute.For<ISession>();
+        IChannelHandlerContext channelHandlerContext = Substitute.For<IChannelHandlerContext>();
+        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
+        if (snappy) handler.EnableSnappy();
+
+        NettyBufferPacket packet = new(Unpooled.WrappedBuffer(new byte[SnappyParameters.MaxSnappyLength + 1]));
+
+        handler.ChannelRead(channelHandlerContext, packet);
+
+        session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, "Max message size exceeded");
+        session.DidNotReceive().ReceiveMessage(Arg.Any<NettyBufferPacket>());
+        Assert.That(packet.ReferenceCount, Is.Zero, "the inbound packet must be released after disconnecting");
+    }
+
     private static IEnumerable<TestCaseData> SnappyPayloadsExceedingMaxLength()
     {
         yield return new TestCaseData(Snappy.CompressToArray(Enumerable.Repeat<byte>(0, SnappyParameters.MaxSnappyLength + 1).ToArray()))

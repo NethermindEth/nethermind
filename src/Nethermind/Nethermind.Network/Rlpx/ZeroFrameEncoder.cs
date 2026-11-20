@@ -20,7 +20,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly IFrameCipher _frameCipher = frameCipher ?? throw new ArgumentNullException(nameof(frameCipher));
         private readonly IFrameMacProcessor _frameMacProcessor = frameMacProcessor ?? throw new ArgumentNullException(nameof(frameMacProcessor));
-        private readonly FrameHeaderReader _headerReader = new();
+        private readonly byte[] _headerBytes = new byte[Frame.HeaderSize];
 
         private readonly byte[] _encryptBuffer = new byte[Frame.BlockSize];
         private readonly byte[] _macBuffer = new byte[16];
@@ -34,7 +34,8 @@ namespace Nethermind.Network.Rlpx
                     throw new CorruptedFrameException($"Frame prepared for sending was in incorrect format: length was {input.ReadableBytes}");
                 }
 
-                FrameHeaderReader.FrameInfo frame = _headerReader.ReadFrameHeader(input);
+                input.ReadBytes(_headerBytes);
+                FrameHeaderReader.FrameInfo frame = FrameHeaderReader.ReadFrameHeader(_headerBytes);
 
                 output.EnsureWritable(Frame.HeaderSize + Frame.MacSize + frame.PayloadSize + Frame.MacSize);
 
@@ -52,7 +53,7 @@ namespace Nethermind.Network.Rlpx
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void WriteHeader(IByteBuffer output)
         {
-            _frameCipher.Encrypt(_headerReader.HeaderBytes, _encryptBuffer);
+            _frameCipher.Encrypt(_headerBytes, _encryptBuffer);
             output.WriteBytes(_encryptBuffer);
         }
 
