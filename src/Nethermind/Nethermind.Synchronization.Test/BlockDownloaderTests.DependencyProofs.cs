@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
@@ -105,6 +106,24 @@ public partial class BlockDownloaderTests
         }
     }
 
+    // A synced block committing to the empty proof stores it, so payload bodies and eth/74 serve it as for a newPayload block.
+    [Test]
+    public async Task Synced_block_without_dependencies_stores_the_empty_proof()
+    {
+        (IContainer node, Context ctx, BlockHeader[] headers) = await DependencyProofNode(emptyProofs: true);
+        await using IContainer scope = node;
+        BlocksRequest bodies = await Prepare(ctx);
+
+        using BlocksRequest? next = await ServeBodiesAndPrepareOrNull(ctx, bodies);
+
+        IStarkProofStore proofStore = node.Resolve<IStarkProofStore>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next?.DependencyProofsRequests.Count ?? 0, Is.Zero, "the empty proof is not requested");
+            foreach (BlockHeader header in headers) Assert.That(proofStore.Get(header.Number, header.Hash!), Is.Empty);
+        }
+    }
+
     [Test]
     public void Dependency_proof_requests_are_allocated_to_eth74_peers_at_or_above_the_blocks()
     {
@@ -119,7 +138,7 @@ public partial class BlockDownloaderTests
         Assert.That(allocated, Is.SameAs(eth74));
     }
 
-    private Task<(IContainer Node, Context Ctx, BlockHeader[] Headers)> DependencyProofNode()
+    private Task<(IContainer Node, Context Ctx, BlockHeader[] Headers)> DependencyProofNode(bool emptyProofs = false)
     {
         IForwardHeaderProvider forwardHeaderProvider = Substitute.For<IForwardHeaderProvider>();
         IContainer node = CreateNode(builder => builder
@@ -131,7 +150,7 @@ public partial class BlockDownloaderTests
         for (int i = 0; i < DependencyProofs.Length; i++)
         {
             BlockHeader header = Build.A.BlockHeader.WithParent(chain[i]).WithTransactionsRoot(TxTrie.CalculateRoot([BodyTransaction])).TestObject;
-            header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(DependencyProofs[i]), Keccak.Compute("deps"));
+            header.RecursiveStark = new RecursiveStarkCommitment(emptyProofs ? Keccak.OfAnEmptyString : Keccak.Compute(DependencyProofs[i]), Keccak.Compute("deps"));
             header.Hash = header.CalculateHash();
             chain[i + 1] = header;
         }
@@ -152,11 +171,14 @@ public partial class BlockDownloaderTests
         (await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None))
         ?? throw new AssertionException("No request was prepared.");
 
-    private static async Task<BlocksRequest> ServeBodiesAndPrepare(Context ctx, BlocksRequest bodies)
+    private static async Task<BlocksRequest> ServeBodiesAndPrepare(Context ctx, BlocksRequest bodies) =>
+        await ServeBodiesAndPrepareOrNull(ctx, bodies) ?? throw new AssertionException("No request was prepared.");
+
+    private static async Task<BlocksRequest?> ServeBodiesAndPrepareOrNull(Context ctx, BlocksRequest bodies)
     {
         bodies.OwnedBodies = new OwnedBlockBodies([.. bodies.BodiesRequests.Select(static _ => new BlockBody([BodyTransaction], []))]);
         ctx.FullSyncFeedComponent.BlockDownloader.HandleResponse(bodies, Peer(EthVersions.Eth74));
-        return await Prepare(ctx);
+        return await ctx.FullSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
     }
 
     private static PeerInfo Peer(byte version, ulong head = 100)

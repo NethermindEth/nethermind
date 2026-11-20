@@ -585,7 +585,9 @@ namespace Nethermind.Synchronization.Blocks
                 Block block = new(entry.Header, body)
                 {
                     EncodedBlockAccessList = entry.EncodedAccessList,
+                    // A block committing to the empty proof carries it, so it is stored and served as for a block from newPayload.
                     StarkProof = entry.DependencyProof
+                        ?? (entry.Header.RecursiveStark?.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null)
                 };
 
                 if (_logger.IsTrace) _logger.Trace($"Adding block to requests map {entry.Header.Number}");
