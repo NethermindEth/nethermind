@@ -568,6 +568,75 @@ namespace Nethermind.Network.Test
             }
         }
 
+        [Test]
+        public async Task Incoming_session_without_hello_does_not_take_the_claimed_identity()
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+            Session unproven = ctx.Sessions.Single();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.PeerManager.ActivePeers, Is.Empty);
+                Assert.That(ctx.PeerPool.TryGet(TestItem.PublicKeyB, out _), Is.False);
+            }
+
+            ctx.RlpxPeer.CreateIncoming(CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+            Session genuine = ctx.Sessions.Last();
+            InitSession(unproven);
+            InitSession(genuine);
+            unproven.MarkDisconnected(DisconnectReason.BreachOfProtocol, DisconnectType.Local, "invalid frame MAC");
+
+            AssertGenuineSessionKept(ctx, genuine);
+        }
+
+        [Test]
+        public async Task Incoming_session_without_hello_does_not_displace_the_connected_peer([Values] ConnectionDirection genuineDirection)
+        {
+            // This node keeps the IN direction for PublicKeyB, so an unproven IN claim would otherwise replace an OUT session.
+            await using Context ctx = new();
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+            Session template = CreateIncomingSessionTemplate(TestItem.PublicKeyB);
+
+            if (genuineDirection == ConnectionDirection.In)
+            {
+                ctx.RlpxPeer.CreateIncoming(template);
+            }
+            else
+            {
+                ctx.RlpxPeer.SessionCreated += HandshakeOnCreate;
+                ctx.PeerPool.GetOrAdd(template.Node);
+                Assert.That(() => ctx.PeerManager.ActivePeers.SingleOrDefault()?.OutSession,
+                    Is.Not.Null.After(_delayLonger, 20), "peer manager did not establish the OUT session");
+                ctx.RlpxPeer.SessionCreated -= HandshakeOnCreate;
+            }
+
+            Session genuine = ctx.Sessions.Single();
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, template);
+            Session unproven = ctx.Sessions.Last();
+            InitSession(genuine);
+            InitSession(unproven);
+            unproven.MarkDisconnected(DisconnectReason.BreachOfProtocol, DisconnectType.Local, "invalid frame MAC");
+
+            AssertGenuineSessionKept(ctx, genuine);
+        }
+
+        private static void AssertGenuineSessionKept(Context ctx, Session genuine)
+        {
+            Peer peer = ctx.PeerManager.ActivePeers.Single();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(genuine.Direction == ConnectionDirection.In ? peer.InSession : peer.OutSession, Is.SameAs(genuine));
+                Assert.That(genuine.IsClosing, Is.False);
+                Assert.That(ctx.Stats.IsConnectionDelayed(genuine.Node).DelayReason,
+                    Is.Not.AnyOf(NodeStatsEventType.Disconnect, NodeStatsEventType.LocalDisconnectDelay),
+                    "the unproven session's disconnect was recorded against the claimed identity");
+            }
+        }
+
         private static Session CreateIncomingSessionTemplate(PublicKey remoteNodeId)
         {
             Session session = new(30303, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
@@ -676,6 +745,7 @@ namespace Nethermind.Network.Test
 
             ISession session = Substitute.For<ISession>();
             session.Node.Returns(new Node(TestItem.PublicKeyA, "1.2.3.4", 30303)); // plain (non-static, non-trusted)
+            session.Direction.Returns(ConnectionDirection.Out);
             ctx.PeerManager.OnP2PProtocolInitialized(session);
 
             if (shouldDisconnect)
@@ -1293,6 +1363,7 @@ namespace Nethermind.Network.Test
             {
                 _timeProvider = timeProvider ?? TimeProvider.System;
                 RlpxPeer = new RlpxMock(Sessions);
+                RlpxPeer.HelloReceived += session => PeerManager.OnP2PProtocolInitialized(session);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
                 DiscoveryApp.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
@@ -1521,6 +1592,7 @@ namespace Nethermind.Network.Test
                 session.RemotePort = 12345;
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
                 session.Handshake(new PrivateKeyGenerator().Generate().PublicKey);
+                HelloReceived?.Invoke(session);
             }
 
             public int ConnectAsyncCallsCount => Volatile.Read(ref _connectAsyncCallsCount);
@@ -1537,7 +1609,14 @@ namespace Nethermind.Network.Test
             public event EventHandler<SessionEventArgs> SessionCreated;
             public event SessionDisconnectedEventHandler SessionDisconnected;
 
-            public void CreateIncoming(params Session[] sessions)
+            /// <summary>Raised when an incoming session receives the Hello that proves the remote holds its key.</summary>
+            public event Action<ISession>? HelloReceived;
+
+            public void CreateIncoming(params Session[] sessions) => CreateIncoming(receiveHello: true, sessions);
+
+            /// <summary>Handshakes an incoming session for each template, with the template's claimed remote key.</summary>
+            /// <param name="receiveHello">When false, the remote never proves that it holds the claimed key.</param>
+            public void CreateIncoming(bool receiveHello, params Session[] sessions)
             {
                 List<Session> incomingSessions = [];
                 foreach (Session session in sessions)
@@ -1548,6 +1627,7 @@ namespace Nethermind.Network.Test
                     Track(sessionIn);
                     SessionCreated?.Invoke(this, new SessionEventArgs(sessionIn));
                     sessionIn.Handshake(session.RemoteNodeId);
+                    if (receiveHello) HelloReceived?.Invoke(sessionIn);
                     incomingSessions.Add(sessionIn);
                 }
 

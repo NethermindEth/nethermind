@@ -63,6 +63,7 @@ namespace Nethermind.Network
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
         private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        private readonly HashSet<Guid> _incomingSessionsAwaitingHello = []; // guarded by _sessionLock
         private readonly int _outgoingConnectParallelism;
         private readonly EventHandler<EventArgs> _onHandshakeComplete;
         private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
@@ -967,6 +968,15 @@ namespace Nethermind.Network
 
         public void OnP2PProtocolInitialized(ISession session)
         {
+            if (session.Direction == ConnectionDirection.In)
+            {
+                lock (_sessionLock)
+                {
+                    if (_isStopping || !_incomingSessionsAwaitingHello.Remove(session.SessionId)) return;
+                    ProcessIncomingConnection(session);
+                }
+            }
+
             // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
             // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
             if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
@@ -1263,6 +1273,12 @@ namespace Nethermind.Network
                     return;
                 }
 
+                // The remote never proved it holds the claimed key, so nothing is recorded against that identity.
+                if (_incomingSessionsAwaitingHello.Remove(session.SessionId))
+                {
+                    return;
+                }
+
                 Peer peer = _peerPool.GetOrAdd(session.Node);
                 if (session.Direction == ConnectionDirection.Out)
                 {
@@ -1326,11 +1342,11 @@ namespace Nethermind.Network
 
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeCompleted);
 
-                //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
                 if (session.Direction == ConnectionDirection.In)
                 {
-                    // For incoming connection, this is the entry point.
-                    ProcessIncomingConnection(session);
+                    // The AUTH message only claims the remote key. The MAC of the first frame, the Hello, proves that
+                    // the remote holds it, so the session is processed in OnP2PProtocolInitialized.
+                    _incomingSessionsAwaitingHello.Add(session.SessionId);
                 }
                 else
                 {
