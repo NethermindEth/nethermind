@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Network.P2P.Subprotocols.Eth.V73;
+using Nethermind.Synchronization.Blocks;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V74;
 
@@ -16,5 +17,5 @@ public static class Eth74Protocol
     public const int SoftResponseLimit = Eth73Protocol.SoftResponseLimit;
 
     /// <summary>Hashes per <c>GetDependencyProofs</c>, an implementation-defined limit.</summary>
-    public const int MaxProofsPerRequest = 64;
+    public const int MaxProofsPerRequest = DependencyProofFetcher.MaxProofsPerRequest;
 }

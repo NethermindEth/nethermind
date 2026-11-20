@@ -563,6 +563,13 @@ namespace Nethermind.Synchronization.Blocks
                     continue;
                 }
 
+                // EIP-8288: a block whose dependency proof was not served waits for it rather than being validated without it.
+                if (response.UnavailableDependencyProofs?[i] == true)
+                {
+                    entry.RetryBlockRequest();
+                    continue;
+                }
+
                 Block block = new(entry.Header, body)
                 {
                     EncodedBlockAccessList = entry.EncodedAccessList,

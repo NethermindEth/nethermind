@@ -6,6 +6,7 @@ using System.Linq;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -158,4 +159,17 @@ public class InvalidBlockInterceptorTest
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
     }
 
+    // EIP-8288: a block whose dependency proof is not available yet is not invalid, so its hash is not tracked as such.
+    [Test]
+    public void Missing_dependency_proof_is_not_tracked_as_invalid()
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent).TestObject;
+        _baseValidator.ValidateSuggestedBlock(block, parent, out Arg.Any<string?>())
+            .Returns(call => { call[2] = BlockErrorMessages.MissingDependencyProof; return false; });
+
+        Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.False);
+
+        _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
+    }
 }

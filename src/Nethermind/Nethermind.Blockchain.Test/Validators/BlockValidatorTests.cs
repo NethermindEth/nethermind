@@ -155,11 +155,11 @@ public class BlockValidatorTests
         Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingRecursiveStark));
     }
 
-    // EIPs#12549: the proof is in neither header nor body. One received with the block must hash to dependency_proof_hash,
-    // checked before the verifier runs; a block without one, as synced from peers, is validated without it.
+    // EIPs#12549: a proof received with the block must hash to dependency_proof_hash before the verifier runs. A block
+    // committing to a nonempty proof it does not carry is never valid: its proof is not available yet.
     [TestCase(true)]
     [TestCase(false)]
-    public void Eip8288_rejects_mismatched_proof_before_verification_and_skips_a_missing_one(bool missing)
+    public void Eip8288_rejects_mismatched_proof_before_verification_and_a_missing_one_as_unavailable(bool missing)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
         block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
@@ -167,10 +167,21 @@ public class BlockValidatorTests
         FixedLeanProofVerifier verifier = new(true);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.EqualTo(missing), error);
-            Assert.That(error, Is.EqualTo(missing ? null : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
+            Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingDependencyProof : BlockErrorMessages.InvalidRecursiveStark));
             Assert.That(verifier.RecursiveCalls, Is.Zero);
         }
+    }
+
+    // A block committing to the empty proof needs none to be validated, so a dependency-free block synced without one is valid.
+    [Test]
+    public void Eip8288_validates_a_block_committing_to_the_empty_proof_without_it()
+    {
+        (Block block, BlockHeader parent) = Eip8288Block(withDependency: false);
+        block.Header.RecursiveStark = new(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        block.StarkProof = null;
+
+        Assert.That(CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error), Is.True, error);
     }
 
     [Test]
@@ -239,6 +250,8 @@ public class BlockValidatorTests
             Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
         }
 
+        // The proof travels apart from the RLP block, as the execution payload or eth/74 delivers it.
+        decoded.StarkProof = block.StarkProof;
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(decoded, parent, out string? error);
 
         Assert.That(result, Is.True, error);

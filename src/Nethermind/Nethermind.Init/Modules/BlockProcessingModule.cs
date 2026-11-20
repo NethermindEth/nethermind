@@ -58,6 +58,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddKeyedSingleton<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey,
                 static ctx => new SpecChangeTxValidator(ctx.Resolve<ISpecProvider>().ChainId))
             .AddSingleton<IBlockValidator, BlockValidator>()
+            .AddDecorator<IBlockValidator, DependencyProofAvailabilityBlockValidator>()
             .AddSingleton<IHeaderValidator, HeaderValidator>()
             .AddSingleton<IUnclesValidator, UnclesValidator>()
 

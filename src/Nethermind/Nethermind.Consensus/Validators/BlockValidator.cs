@@ -111,10 +111,9 @@ public class BlockValidator(
     /// empty when there are no dependencies.
     /// </summary>
     /// <remarks>
-    /// The proof is in neither header nor body; only the execution payload carries it, so a block from <c>eth</c> sync or
-    /// re-read from the block store has none. Such a block is checked against everything but the proof: an empty
-    /// statement must still commit to the empty proof (header validation), and a nonempty one is taken on the
-    /// commitment its block hash carries.
+    /// The proof is in neither header nor body; only the execution payload carries it. A block committing to the empty proof
+    /// needs none to be validated. One committing to a nonempty proof it does not carry fails with
+    /// <see cref="BlockErrorMessages.MissingDependencyProof"/> once every other check passed, which is not invalidity.
     /// </remarks>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
@@ -150,9 +149,15 @@ public class BlockValidator(
             return false;
         }
 
-        if (block.StarkProof is not null
-            && !RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
-                block.StarkProof))
+        byte[]? proof = block.StarkProof ?? (recursiveStark.DependencyProofHash == Keccak.OfAnEmptyString ? [] : null);
+        if (proof is null)
+        {
+            error = BlockErrorMessages.MissingDependencyProof;
+            return false;
+        }
+
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, Eip8288Verifier.For(spec), dependencies.Count, in computed.ValueHash256,
+                proof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");
