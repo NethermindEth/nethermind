@@ -643,5 +643,222 @@ namespace Nethermind.JsonRpc.Test.Modules
             blockFinder.Head.Returns(Build.A.Block.WithNumber(1).WithBaseFeePerGas(10.GWei).TestObject);
             return blockFinder;
         }
+
+        /// <remarks>
+        /// The first caller is held in its scan. The others start after it, and the scan is released once each of them has
+        /// read the head and then waits or has finished, so each has missed the cache before the first scan publishes:
+        /// they wait on the estimate's lock, or without one each runs a scan of its own.
+        /// </remarks>
+        [Test]
+        public void Estimate_ConcurrentMissesOnANewHead_ShareOneScan([Values] bool priorityFee)
+        {
+            using HeldScan scan = new();
+            HeldScan.Caller first = scan.Start(priorityFee);
+            bool held = scan.WaitUntilScanHeld();
+            HeldScan.Caller[] followers = [scan.Start(priorityFee), scan.Start(priorityFee), scan.Start(priorityFee)];
+            bool parked = scan.WaitUntilAllParked();
+            int scansWhileHeld = scan.Scans;
+            UInt256? newHeadPriceWhileHeld = scan.CachedForNewHead(priorityFee);
+            UInt256? lastPriceWhileHeld = scan.Cache(priorityFee).LastPrice;
+            scan.Release();
+            UInt256?[] estimates = [.. followers.Prepend(first).Select(static caller => caller.Wait())];
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(held && parked, Is.True, "the first caller is held in its scan and the others wait or have finished");
+                Assert.That(scansWhileHeld, Is.EqualTo(1), "the others scanned while the first scan was held");
+                Assert.That(newHeadPriceWhileHeld, Is.Null, "the new head was published before its scan ended");
+                Assert.That(lastPriceWhileHeld, Is.EqualTo(HeldScan.PreviousPrice(priorityFee)));
+                Assert.That(estimates, Is.All.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
+                Assert.That(scan.Scans, Is.EqualTo(1), "one scan for every caller");
+                Assert.That(scan.HeadReads, Is.EqualTo(4), "each caller reads the head once");
+                Assert.That(scan.CachedForNewHead(priorityFee), Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
+            }
+        }
+
+        /// <remarks>
+        /// While a scan is held, calls that do not need it complete: the other estimate on its own cold cache, a cache hit and
+        /// a call without a head. A lock shared by the two estimates, or taken before the head or cache checks, holds them up.
+        /// </remarks>
+        [Test]
+        public void Estimate_WhileAScanIsHeld_CallsThatDoNotNeedItComplete([Values] bool priorityFee)
+        {
+            using HeldScan scan = new();
+            HeldScan.Caller first = scan.Start(priorityFee);
+            bool held = scan.WaitUntilScanHeld();
+            UInt256? otherEstimate = scan.Start(!priorityFee).Wait();
+            scan.SetHead(scan.PreviousHead);
+            UInt256? cacheHit = scan.Start(priorityFee).Wait();
+            scan.SetHead(null);
+            UInt256? noHead = scan.Start(priorityFee).Wait();
+            bool stillHeld = first.IsRunning;
+            scan.Release();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(held && stillHeld, Is.True, "the first scan is held throughout");
+                Assert.That(otherEstimate, Is.EqualTo(HeldScan.ExpectedPrice(!priorityFee)), "the other estimate, on its own cold cache");
+                Assert.That(cacheHit, Is.EqualTo(HeldScan.PreviousPrice(priorityFee)), "a cache hit");
+                Assert.That(noHead, Is.EqualTo(priorityFee ? EthGasPriceConstants.FallbackMaxPriorityFeePerGas : HeldScan.PreviousPrice(false)), "no head");
+                Assert.That(first.Wait(), Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
+                Assert.That(scan.Scans, Is.EqualTo(2), "one scan per estimate");
+            }
+        }
+
+        /// <remarks>
+        /// The held scan throws. Its caller gets the exception, and a caller that waited for it scans again, while the
+        /// previous price stays cached until that scan publishes.
+        /// </remarks>
+        [Test]
+        public void Estimate_ScanThrows_WaitingCallerScansAgain([Values] bool priorityFee)
+        {
+            InvalidOperationException failure = new("The scan failed.");
+            using HeldScan scan = new() { FirstScanFailure = failure };
+            PriceCache? cacheDuringRetry = null;
+            scan.OnLaterScan = () => cacheDuringRetry = scan.Cache(priorityFee);
+            HeldScan.Caller first = scan.Start(priorityFee);
+            bool held = scan.WaitUntilScanHeld();
+            HeldScan.Caller follower = scan.Start(priorityFee);
+            bool parked = scan.WaitUntilAllParked();
+            scan.Release();
+            Exception? firstError = first.WaitForError();
+            UInt256? retried = follower.Wait();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(held && parked, Is.True, "the first caller is held in its scan and the other waits or has finished");
+                Assert.That(firstError, Is.SameAs(failure), "the first caller gets its scan's exception");
+                Assert.That(retried, Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)), "the waiting caller scans again");
+                Assert.That(scan.Scans, Is.EqualTo(2));
+                Assert.That(cacheDuringRetry?.LastPrice, Is.EqualTo(HeldScan.PreviousPrice(priorityFee)), "the failed scan replaced the previous price");
+                Assert.That(cacheDuringRetry?.TryGetPrice(scan.NewHead.Hash!, out _), Is.False, "the failed scan published a price");
+                Assert.That(scan.CachedForNewHead(priorityFee), Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
+            }
+        }
+
+        /// <summary>
+        /// An oracle on a new head at number 0 whose one legacy transaction pays 20 gwei over a 10 gwei London base fee, so a
+        /// scan is one <c>FindBlock</c> call and estimates a 20 gwei gas price and a 10 gwei tip. Both caches still hold the
+        /// price of a previous head at the same number. The first <c>FindBlock</c> call waits for <c>Release</c>; later
+        /// ones return at once.
+        /// </summary>
+        private sealed class HeldScan : IDisposable
+        {
+            private static readonly TimeSpan Guard = TimeSpan.FromSeconds(10);
+            private readonly ManualResetEventSlim _scanHeld = new();
+            private readonly ManualResetEventSlim _release = new();
+            private readonly List<Caller> _callers = [];
+            private Block? _head;
+            private int _scans;
+            private int _headReads;
+
+            public HeldScan()
+            {
+                IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+                blockFinder.Head.Returns(_ =>
+                {
+                    Interlocked.Increment(ref _headReads);
+                    return Volatile.Read(ref _head);
+                });
+                blockFinder.FindBlock(0UL).Returns(_ => Scan());
+                _head = NewHead;
+                Oracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance)
+                {
+                    _gasPriceEstimation = new(PreviousHead.Hash, PreviousPrice(priorityFee: false)),
+                    _maxPriorityFeePerGasEstimation = new(PreviousHead.Hash, PreviousPrice(priorityFee: true))
+                };
+            }
+
+            public Block NewHead { get; } = Build.A.Block.Genesis.WithBaseFeePerGas(10.GWei).WithTransactions(Build.A.Transaction.WithGasPrice(20.GWei).TestObject).TestObject;
+            public Block PreviousHead { get; } = Build.A.Block.Genesis.WithTimestamp(1).TestObject;
+            public GasPriceOracle Oracle { get; }
+            public Exception? FirstScanFailure { get; init; }
+            public Action? OnLaterScan { get; set; }
+            public int Scans => Volatile.Read(ref _scans);
+            public int HeadReads => Volatile.Read(ref _headReads);
+
+            public static UInt256 ExpectedPrice(bool priorityFee) => priorityFee ? 10.GWei : 20.GWei;
+            public static UInt256 PreviousPrice(bool priorityFee) => priorityFee ? 5.GWei : 7.GWei;
+
+            public Caller Start(bool priorityFee)
+            {
+                Caller caller = new(Oracle, priorityFee);
+                _callers.Add(caller);
+                return caller;
+            }
+
+            public bool WaitUntilScanHeld() => _scanHeld.Wait(Guard);
+
+            /// <summary>Waits until every caller has read the head and then waits, on a lock or an event, or has finished.</summary>
+            public bool WaitUntilAllParked() => SpinWait.SpinUntil(() => HeadReads >= _callers.Count && _callers.All(static caller => caller.IsParked), Guard);
+
+            public void SetHead(Block? head) => Volatile.Write(ref _head, head);
+            public void Release() => _release.Set();
+            public PriceCache Cache(bool priorityFee) => priorityFee ? Oracle._maxPriorityFeePerGasEstimation : Oracle._gasPriceEstimation;
+            public UInt256? CachedForNewHead(bool priorityFee) => Cache(priorityFee).TryGetPrice(NewHead.Hash!, out UInt256? price) ? price : null;
+
+            public void Dispose()
+            {
+                Release();
+                // Only once every caller has finished, so none waits on a disposed event.
+                if (_callers.Count(static caller => !caller.Join()) == 0)
+                {
+                    _scanHeld.Dispose();
+                    _release.Dispose();
+                }
+            }
+
+            private Block Scan()
+            {
+                if (Interlocked.Increment(ref _scans) > 1)
+                {
+                    OnLaterScan?.Invoke();
+                    return NewHead;
+                }
+
+                _scanHeld.Set();
+                if (!_release.Wait(TimeSpan.FromMinutes(1)))
+                {
+                    throw new TimeoutException("The held scan was not released.");
+                }
+
+                return FirstScanFailure is null ? NewHead : throw FirstScanFailure;
+            }
+
+            /// <summary>One estimate on a thread of its own, whose state tells whether it waits.</summary>
+            public sealed class Caller
+            {
+                private readonly Thread _thread;
+                private UInt256 _result;
+                private Exception? _error;
+
+                public Caller(GasPriceOracle oracle, bool priorityFee)
+                {
+                    _thread = new(() =>
+                    {
+                        try
+                        {
+                            _result = priorityFee ? oracle.GetMaxPriorityGasFeeEstimate() : oracle.GetGasPriceEstimate().GetAwaiter().GetResult();
+                        }
+                        catch (Exception exception)
+                        {
+                            _error = exception;
+                        }
+                    });
+                    _thread.IsBackground = true;
+                    _thread.Start();
+                }
+
+                public bool IsParked => !_thread.IsAlive || (_thread.ThreadState & ThreadState.WaitSleepJoin) != 0;
+                public bool IsRunning => _thread.IsAlive;
+                public bool Join() => _thread.Join(Guard);
+
+                /// <returns>The estimate, or <c>null</c> if it is still running.</returns>
+                public UInt256? Wait() => !Join() ? null : _error is null ? _result : throw new InvalidOperationException("The estimate failed.", _error);
+
+                /// <returns>The exception the estimate threw, or <c>null</c>.</returns>
+                public Exception? WaitForError() => Join() ? _error : null;
+            }
+        }
     }
 }

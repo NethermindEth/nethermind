@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -27,6 +28,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
         protected readonly UInt256 _minGasPrice = minGasPrice ?? new BlocksConfig().MinGasPrice;
         protected internal PriceCache _gasPriceEstimation;
         protected internal PriceCache _maxPriorityFeePerGasEstimation;
+        // One per estimate: callers that miss the cache on the same head wait for the scan in progress and take its
+        // price instead of repeating it. Cache hits never take them.
+        private readonly Lock _gasPriceEstimationLock = new();
+        private readonly Lock _maxPriorityFeePerGasEstimationLock = new();
         private UInt256 FallbackGasPrice(in UInt256? baseFeePerGas = null) => _gasPriceEstimation.LastPrice ?? GetMinimumGasPrice(baseFeePerGas ?? UInt256.Zero);
         protected ISpecProvider SpecProvider { get; } = specProvider;
         internal UInt256 IgnoreUnder { get; init; } = EthGasPriceConstants.DefaultIgnoreUnder;
@@ -48,17 +53,25 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return ValueTask.FromResult(price!.Value);
             }
 
-            IEnumerable<UInt256> txGasPrices = GetGasPricesFromRecentBlocks(headBlock.Number);
-            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
-            gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
-            // Samples from older blocks carry their lower base fees, so a rising base fee can leave the percentile below the head's.
-            if (SpecProvider.GetSpec(headBlock.Header).IsEip1559Enabled)
+            lock (_gasPriceEstimationLock)
             {
-                gasPriceEstimate = UInt256.Max(gasPriceEstimate, headBlock.BaseFeePerGas + _minGasPrice);
-            }
+                if (_gasPriceEstimation.TryGetPrice(headBlockHash, out price))
+                {
+                    return ValueTask.FromResult(price!.Value);
+                }
 
-            _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
-            return ValueTask.FromResult(gasPriceEstimate!);
+                IEnumerable<UInt256> txGasPrices = GetGasPricesFromRecentBlocks(headBlock.Number);
+                UInt256 gasPriceEstimate = GetGasPriceAtPercentile(txGasPrices.ToList()) ?? GetMinimumGasPrice(headBlock.BaseFeePerGas);
+                gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
+                // Samples from older blocks carry their lower base fees, so a rising base fee can leave the percentile below the head's.
+                if (SpecProvider.GetSpec(headBlock.Header).IsEip1559Enabled)
+                {
+                    gasPriceEstimate = UInt256.Max(gasPriceEstimate, headBlock.BaseFeePerGas + _minGasPrice);
+                }
+
+                _gasPriceEstimation.Set(headBlockHash, gasPriceEstimate);
+                return ValueTask.FromResult(gasPriceEstimate!);
+            }
         }
 
         internal IEnumerable<UInt256> GetGasPricesFromRecentBlocks(ulong blockNumber) =>
@@ -79,15 +92,23 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
                 return price!.Value;
             }
 
-            IEnumerable<UInt256> gasPricesWithFee = GetGasPricesFromRecentBlocks(headBlock.Number,
-                EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas,
-                static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee),
-                _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice);
+            lock (_maxPriorityFeePerGasEstimationLock)
+            {
+                if (_maxPriorityFeePerGasEstimation.TryGetPrice(headBlockHash, out price))
+                {
+                    return price!.Value;
+                }
 
-            UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice;
-            gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
-            _maxPriorityFeePerGasEstimation.Set(headBlockHash, gasPriceEstimate);
-            return gasPriceEstimate!;
+                IEnumerable<UInt256> gasPricesWithFee = GetGasPricesFromRecentBlocks(headBlock.Number,
+                    EthGasPriceConstants.DefaultBlocksLimitMaxPriorityFeePerGas,
+                    static (transaction, eip1559Enabled, baseFee) => transaction.CalculateMaxPriorityFeePerGas(eip1559Enabled, baseFee),
+                    _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice);
+
+                UInt256 gasPriceEstimate = GetGasPriceAtPercentile(gasPricesWithFee.ToList()) ?? _maxPriorityFeePerGasEstimation.LastPrice ?? _minGasPrice;
+                gasPriceEstimate = UInt256.Min(gasPriceEstimate!, EthGasPriceConstants.MaxGasPrice);
+                _maxPriorityFeePerGasEstimation.Set(headBlockHash, gasPriceEstimate);
+                return gasPriceEstimate!;
+            }
         }
 
         private UInt256 GetMinimumGasPrice(in UInt256 baseFeePerGas) => (_minGasPrice + baseFeePerGas) * _defaultMinGasPriceMultiplier / 100ul;
