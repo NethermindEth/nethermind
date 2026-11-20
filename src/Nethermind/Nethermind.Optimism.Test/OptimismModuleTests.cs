@@ -96,7 +96,7 @@ public class OptimismModuleTests
     }
 
     [Test]
-    public void Tracing_environment_keeps_the_optimism_block_processor()
+    public void Tracing_environment_replays_with_the_optimism_block_processor()
     {
         ChainSpec chainSpec = new()
         {
@@ -113,8 +113,13 @@ public class OptimismModuleTests
             .AddModule(validationModules)
             .AddModule(new TransactionTraceModule(validationModules)));
 
-        tracingScope.ComponentRegistry.TryGetRegistration(new TypedService(typeof(IBlockProcessor)), out IComponentRegistration? registration);
-        Assert.That(registration?.Activator.LimitType, Is.EqualTo(typeof(OptimismBlockProcessor)));
+        tracingScope.ComponentRegistry.TryGetRegistration(
+            new KeyedService(TransactionTraceModule.BlockProcessorKey, typeof(BlockProcessor)), out IComponentRegistration? registration);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracingScope.IsRegistered<TransactionTraceExecutor>(), Is.True, "the environment replays transaction prefixes");
+            Assert.That(registration?.Activator.LimitType, Is.EqualTo(typeof(OptimismTransactionTraceBlockProcessor)));
+        }
     }
 
     // The eth_sendTransaction tests wire their forwarding node the same way.
