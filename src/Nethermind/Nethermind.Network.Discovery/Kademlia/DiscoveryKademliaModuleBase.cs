@@ -21,7 +21,8 @@ public abstract class DiscoveryKademliaModuleBase(Node currentNode, IReadOnlyLis
     /// </summary>
     /// <remarks>
     /// discv4 enables this because its persisted-node admission exemption is scoped to the address that was
-    /// admitted; an ENR can advertise an endpoint that never answered a ping.
+    /// admitted; an ENR can advertise an endpoint that never answered a ping. The signed ENR is persisted alongside
+    /// the bonded endpoint, so a restore can still fall back to a family the local listener serves.
     /// </remarks>
     protected virtual bool PersistBondedEndpoint => false;
 

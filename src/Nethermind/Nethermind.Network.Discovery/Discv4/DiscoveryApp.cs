@@ -133,10 +133,27 @@ public class DiscoveryApp : KademliaDiscoveryApp
         }
 
         Node enode = new(networkNode);
-        return enode.HasDiscoveryEndpoint &&
-               DiscoveryAddressSupport.Supports(localIp, enode.DiscoveryAddress.Address)
-            ? enode
-            : null;
+        if (enode.HasDiscoveryEndpoint &&
+            DiscoveryAddressSupport.Supports(localIp, enode.DiscoveryAddress.Address))
+        {
+            return enode;
+        }
+
+        // The bonded endpoint is in a family the listener cannot serve. The ENR kept next to it may still advertise
+        // one the listener can, so restore from it now rather than dropping a peer that was bonded before the change.
+        if (networkNode.FallbackEnr is { Signature: not null } record &&
+            KademliaAdapterBase.HasExpectedNodeId(record, networkNode.NodeId.Hash.ValueHash256) &&
+            CompositeDiscoveryApp.TryCreateReachableDiscoveryNode(
+                record,
+                localIp,
+                preferredEndpoint: enode.DiscoveryAddress,
+                out Node? fallbackNode))
+        {
+            fallbackNode.SetVerifiedEnr(record);
+            return fallbackNode;
+        }
+
+        return null;
     }
 
     internal static List<Node> CreateBootNodes(NetworkNode[] configuredBootnodes, ILogger logger, IPAddress localIp)
@@ -224,7 +241,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
         await _persistenceManager.LoadPersistedNodes(
             cancellationToken,
             node => RestorePersistedNode(node, LocalIp),
-            admission.AddPersistedNode);
+            (_, persistedNode) => admission.AddPersistedNode(persistedNode));
 
         Task persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
 

@@ -8,6 +8,7 @@ using System.Text;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.Enr;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
@@ -35,9 +36,15 @@ namespace Nethermind.Network
         {
             string nodeString = Encoding.UTF8.GetString(firstItem);
             long reputation = decoderContext.DecodeLong();
+            NodeRecord? fallbackEnr = decoderContext.HasNext
+                ? NodeRecord.FromEnrString(decoderContext.DecodeString(RlpLimit))
+                : null;
             decoderContext.CheckEnd();
-            NetworkNode node = new(NormalizeLegacyUnbracketedIpv6Enode(nodeString));
-            node.Reputation = reputation;
+            NetworkNode node = new(NormalizeLegacyUnbracketedIpv6Enode(nodeString))
+            {
+                Reputation = reputation,
+                FallbackEnr = fallbackEnr
+            };
             return node;
         }
 
@@ -110,6 +117,10 @@ namespace Nethermind.Network
             {
                 writer.Encode(item.ToString());
                 writer.Encode(item.Reputation);
+                if (item.FallbackEnr is { } fallbackEnr)
+                {
+                    writer.Encode(fallbackEnr.ToString());
+                }
             }
 
             writer.EndSequence(sequence);
@@ -129,13 +140,15 @@ namespace Nethermind.Network
         private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors) => ShouldEncodeNodeString(item)
             ? Rlp.LengthOf(item.ToString())
                 + Rlp.LengthOf(item.Reputation)
+                + (item.FallbackEnr is { } fallbackEnr ? Rlp.LengthOf(fallbackEnr.ToString()) : 0)
             : Rlp.LengthOf(item.NodeId.Bytes)
                 + Rlp.LengthOf(item.Host)
                 + Rlp.LengthOf(item.Port)
                 + 1
                 + Rlp.LengthOf(item.Reputation);
 
-        private static bool ShouldEncodeNodeString(NetworkNode item) => item.IsEnr || item.DiscoveryPort != item.Port;
+        private static bool ShouldEncodeNodeString(NetworkNode item) =>
+            item.IsEnr || item.DiscoveryPort != item.Port || item.FallbackEnr is not null;
 
         private static bool IsNodeString(ReadOnlySpan<byte> value) =>
             value.Length != PublicKey.LengthInBytes &&

@@ -36,10 +36,12 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// table and hurt bootstrapping more than the subnet concentration this filter addresses. A persisted
 /// node is therefore exempt only at the endpoint that was persisted for it: discv4 stores the bonded
 /// endpoint, which is the one the node was admitted at. An ENR record does not prove the endpoint it
-/// advertises was admitted, so it goes through the filter like any other node. Identity alone does not
-/// entitle an ordinary node to skip the filter after it reappears at another address, or persisted
-/// identities from different subnets could all bypass the subnet limit once they move into one subnet
-/// after a restart. An entry without a usable address cannot be exempted and is skipped.
+/// advertises was admitted, so it goes through the filter like any other node; a record that keeps the
+/// signed ENR next to its bonded endpoint for address-family fallback earns no exemption for it either.
+/// Identity alone does not entitle an ordinary node to skip the filter after it reappears at another
+/// address, or persisted identities from different subnets could all bypass the subnet limit once they
+/// move into one subnet after a restart. An entry without a usable address cannot be exempted and is
+/// skipped.
 /// </para>
 /// </remarks>
 internal sealed class DiscoveryNodeAdmission(
@@ -100,17 +102,26 @@ internal sealed class DiscoveryNodeAdmission(
     public bool TryAdmitRefresh(Node node) => TryAdmitCore(node, trustInstanceFlags: false, " on refresh");
 
     /// <summary>
-    /// Records a node restored from discovery storage as exempt from the filter at its restored address.
+    /// Records a node restored from discovery storage as exempt from the filter at the endpoint it was bonded at.
     /// </summary>
     /// <remarks>
-    /// Only an enode record persists the bonded endpoint the node was admitted at. An ENR may advertise an
-    /// endpoint the node never answered a ping from, and a record written before the bonded endpoint was stored
-    /// carries no admitted endpoint, so those nodes go through ordinary admission instead of being exempted.
+    /// Only an enode record names the endpoint the node answered a ping from, which is the address admission
+    /// exempts. A record that also keeps the signed ENR for address-family fallback is still exempt only at its
+    /// bonded endpoint: a node restored at the ENR's endpoint goes through ordinary admission. An ENR-only record
+    /// advertises an endpoint the node may never have answered a ping from, and a record written before the bonded
+    /// endpoint was stored carries none, so those nodes go through ordinary admission instead of being exempted.
     /// </remarks>
-    /// <param name="node">The node restored from discovery storage.</param>
-    public void AddPersistedNode(Node node)
+    /// <param name="persistedNode">The persisted record, as loaded from discovery storage.</param>
+    public void AddPersistedNode(NetworkNode persistedNode)
     {
-        if (_enabled && node.Enr is null) _persistedAddresses[node.Id] = node.Address.Address;
+        if (_enabled && persistedNode.Enode is { } bondedEndpoint)
+        {
+            // A legacy row may store an IPv4-mapped host, while a Node address is always unmapped, so compare in that form.
+            IPAddress bondedAddress = bondedEndpoint.HostIp;
+            _persistedAddresses[persistedNode.NodeId] = bondedAddress.IsIPv4MappedToIPv6
+                ? bondedAddress.MapToIPv4()
+                : bondedAddress;
+        }
     }
 
     private bool TryAdmitCore(Node node, bool trustInstanceFlags, string? rejectionContext)

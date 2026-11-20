@@ -229,6 +229,34 @@ public class DiscoveryAppTests
     }
 
     [Test]
+    public void Should_apply_identity_check_to_the_fallback_enr([Values] bool matchingIdentity)
+    {
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            matchingIdentity ? TestItem.PrivateKeyA : TestItem.PrivateKeyB,
+            IPAddress.Parse("192.0.2.1"),
+            tcpPort: 30303,
+            udpPort: 30304);
+        NetworkNode persistedNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("2001:db8::1"), 30303, 30304))
+        {
+            FallbackEnr = record
+        };
+
+        Node? restoredNode = DiscoveryApp.RestorePersistedNode(persistedNode, IPAddress.Parse("198.51.100.1"));
+
+        Assert.That(restoredNode is not null, Is.EqualTo(matchingIdentity));
+        if (restoredNode is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restoredNode.Host, Is.EqualTo("192.0.2.1"));
+                Assert.That(restoredNode.Port, Is.EqualTo(30303));
+                Assert.That(restoredNode.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(restoredNode.Enr?.ToString(), Is.EqualTo(record.ToString()));
+            }
+        }
+    }
+
+    [Test]
     public void Should_ignore_configured_enr_without_udp_endpoint()
     {
         NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: null);

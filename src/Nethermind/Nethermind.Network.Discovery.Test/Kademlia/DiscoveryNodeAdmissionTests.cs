@@ -331,6 +331,20 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
+    public void Persisted_legacy_row_with_ipv4_mapped_host_keeps_its_exemption()
+    {
+        Fixture fixture = CreateAdmission(
+            persisted: [new NetworkNode(new Enode(TestItem.PublicKeyA, IPAddress.Parse("::ffff:203.0.113.10"), 30303))]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // Another identity holds the /24, so the persisted node would be filtered without its exemption.
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.113.20")), Is.True);
+            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.True);
+        }
+    }
+
+    [Test]
     public void Persisted_enr_is_not_exempt_at_its_advertised_address()
     {
         NodeRecord record = TestEnrBuilder.BuildSigned(

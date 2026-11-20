@@ -175,14 +175,14 @@ internal static class DiscoveryAdmissionTestContainer
 
         if (enabled && persisted is not null && IPAddress.TryParse(localIp ?? currentIp, out IPAddress? localAddress))
         {
-            // Mirror DiscoveryApp: record the address each persisted node was actually restored with.
+            // Mirror DiscoveryApp: register the exemption at the persisted bonded address, which restore need not have chosen.
             DiscoveryNodeAdmission resolvedAdmission = container.Resolve<DiscoveryNodeAdmission>();
             foreach (NetworkNode persistedNode in persisted)
             {
                 Node? node = DiscoveryApp.RestorePersistedNode(persistedNode, localAddress);
                 if (node is not null)
                 {
-                    resolvedAdmission.AddPersistedNode(node);
+                    resolvedAdmission.AddPersistedNode(persistedNode);
                 }
             }
         }
