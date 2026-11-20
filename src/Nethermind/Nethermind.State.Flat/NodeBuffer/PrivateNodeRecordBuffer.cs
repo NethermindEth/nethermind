@@ -104,19 +104,37 @@ internal sealed class PrivateNodeRecordBuffer(int generationBytes) : INodeRecord
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             _roots.Clear();
-            if (_active is null) return;
-
-            ulong next = NodeRecordBuffer.NextGeneration(_active.Id);
-            // The first generation always has the base size, so its storage is reused rather than reallocated.
-            // Its used prefix is zeroed, as a write batch hands out zero-filled bytes.
-            Generation first = _generations[0]!;
-            NativeNodeBuffer reused = first.Data;
-            reused.AsSpan(0, (int)Math.Min(first.Used, reused.Length)).Clear();
-            _generations[0] = null;
-            FreeGenerations();
-            _firstGeneration = next;
-            StartGeneration(next, reused);
+            if (_active is not null) RestartAt(NodeRecordBuffer.NextGeneration(_active.Id));
         }
+    }
+
+    /// <summary>Frees every record and root and numbers later records from the start again, as in a new buffer.</summary>
+    /// <returns><see langword="false"/>, with nothing freed, while a pin is held.</returns>
+    /// <remarks>No record or pointer handed out before may be used after.</remarks>
+    public bool TryReset()
+    {
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_pinCount != 0) return false;
+
+            _roots.Clear();
+            if (_active is not null) RestartAt(1);
+            return true;
+        }
+    }
+
+    private void RestartAt(ulong firstGeneration)
+    {
+        // The first generation always has the base size, so its storage is reused rather than reallocated.
+        // Its used prefix is zeroed, as a write batch hands out zero-filled bytes.
+        Generation first = _generations[0]!;
+        NativeNodeBuffer reused = first.Data;
+        reused.AsSpan(0, (int)Math.Min(first.Used, reused.Length)).Clear();
+        _generations[0] = null;
+        FreeGenerations();
+        _firstGeneration = firstGeneration;
+        StartGeneration(firstGeneration, reused);
     }
 
     /// <summary>Stops new operations; native storage is released once every pin is.</summary>

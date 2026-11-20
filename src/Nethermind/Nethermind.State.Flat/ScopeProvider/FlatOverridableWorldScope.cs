@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
@@ -12,7 +13,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
-using NonBlocking;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
@@ -22,13 +22,17 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// </summary>
 public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarget
 {
+    private const int LocalGenerationBytes = 128 * 1024;
+
     private readonly IReadOnlyDb _codeDbOverlay;
+    // Not NonBlocking's, whose Clear allocates a new table on every reset; removing entries here allocates nothing.
     private readonly ConcurrentDictionary<StateId, Snapshot> _snapshots = new();
     private readonly IResourcePool _resourcePool;
     private readonly IFlatDbManager _flatDbManager;
     private readonly KnownHeadersScopeProvider _worldState;
     private readonly INodeRecordBuffer _nodeRecordBuffer;
     private OverlayNodeRecordBuffer? _overlayNodeRecordBuffer;
+    private PrivateNodeRecordBuffer _localNodeRecordBuffer = new(LocalGenerationBytes);
     private bool _isDisposed = false;
 
     public FlatOverridableWorldScope(
@@ -58,7 +62,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
     public IStateReader GlobalStateReader { get; }
 
     /// <remarks>Created on first use after a reset and disposed by the next reset, so the global buffer stays pinned only that long.</remarks>
-    private OverlayNodeRecordBuffer OverlayBuffer => _overlayNodeRecordBuffer ??= new OverlayNodeRecordBuffer(_nodeRecordBuffer);
+    private OverlayNodeRecordBuffer OverlayBuffer => _overlayNodeRecordBuffer ??= new OverlayNodeRecordBuffer(_nodeRecordBuffer, _localNodeRecordBuffer);
 
     public void ResetOverrides()
     {
@@ -67,10 +71,17 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         foreach (KeyValuePair<StateId, Snapshot> kvp in _snapshots)
         {
             kvp.Value.Dispose();
+            _snapshots.TryRemove(kvp.Key, out _);
         }
 
-        _snapshots.Clear();
+        bool overlayUsed = _overlayNodeRecordBuffer is not null;
         DisposeOverlay();
+        // A pin held past the reset, as by a scope left open, keeps the old records, so later writes go to a new buffer.
+        if (overlayUsed && !_localNodeRecordBuffer.TryReset())
+        {
+            _localNodeRecordBuffer.Dispose();
+            _localNodeRecordBuffer = new PrivateNodeRecordBuffer(LocalGenerationBytes);
+        }
     }
 
     private void DisposeOverlay()
@@ -141,6 +152,7 @@ public class FlatOverridableWorldScope : IOverridableWorldScope, IFlatCommitTarg
         }
         _snapshots.Clear();
         DisposeOverlay();
+        _localNodeRecordBuffer.Dispose();
     }
 
     private class OverridableFlatScopeProvider(

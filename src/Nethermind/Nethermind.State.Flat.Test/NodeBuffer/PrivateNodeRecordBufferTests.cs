@@ -61,6 +61,34 @@ internal class PrivateNodeRecordBufferTests
         Assert.That(() => record.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the last pin frees storage");
     }
 
+    [Test]
+    public void TryReset_frees_records_and_restarts_numbering_only_while_unpinned()
+    {
+        using PrivateNodeRecordBuffer buffer = new(GenerationBytes);
+        List<(ulong Pointer, byte[] Rlp)> records = [.. Enumerable.Range(0, 10).Select(i => NodeRecordBufferTests.Leaf(i, 1000)).Select(rlp => (Append(buffer, rlp), rlp))];
+        INodeRecordBufferPin pin = buffer.PinHead();
+        bool resetWhilePinned = buffer.TryReset();
+        bool locatedWhilePinned = records.All(record => buffer.TryLocate(record.Pointer, out _));
+        pin.Dispose();
+        bool resetUnpinned = buffer.TryReset();
+        bool locatedAfterReset = records.Where(record => record.Pointer >> 32 != records[0].Pointer >> 32).Any(record => buffer.TryLocate(record.Pointer, out _));
+        ulong foundRootAfterReset = buffer.FindRoot(null, ValueKeccak.Compute(records[0].Rlp), ulong.MaxValue);
+        byte[] next = NodeRecordBufferTests.Leaf(-1, 1000);
+        ulong afterReset = Append(buffer, next);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(records.Select(record => record.Pointer >> 32).Distinct().Count(), Is.GreaterThan(1), "records span several generations");
+            Assert.That(resetWhilePinned, Is.False);
+            Assert.That(locatedWhilePinned, Is.True, "a refused reset frees nothing");
+            Assert.That(resetUnpinned, Is.True);
+            Assert.That(locatedAfterReset, Is.False, "later generations are freed");
+            Assert.That(foundRootAfterReset, Is.Zero, "roots are freed");
+            Assert.That(afterReset, Is.EqualTo(records[0].Pointer), "numbering restarts as in a new buffer");
+            Assert.That(buffer.TryLocate(afterReset, out NodeRecord record) && record.Rlp.SequenceEqual(next), Is.True);
+        }
+    }
+
     private static ulong Append(PrivateNodeRecordBuffer buffer, byte[] rlp)
     {
         ValueHash256 hash = ValueKeccak.Compute(rlp);

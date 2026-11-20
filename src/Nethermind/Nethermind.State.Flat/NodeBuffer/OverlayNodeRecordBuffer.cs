@@ -11,22 +11,22 @@ namespace Nethermind.State.Flat.NodeBuffer;
 /// <remarks>
 /// Pointers below the boundary of the global pin taken at construction resolve in the global buffer, and the rest in a private
 /// <see cref="PrivateNodeRecordBuffer"/> that takes every write. Private generations are exposed numbered after the pinned global one,
-/// so the two pointer ranges never overlap and the private records are freed with this buffer instead of growing the global one.
+/// so the two pointer ranges never overlap and the private records never grow the global buffer.
+/// The private buffer is borrowed, and its owner resets or disposes it.
 /// Every pin of this buffer also holds the global pin, so the global records it reads outlive <see cref="Dispose"/> until its last pin is released.
 /// </remarks>
 internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
 {
-    private const int LocalGenerationBytes = 128 * 1024;
-
     private readonly INodeRecordBuffer _global;
     private readonly INodeRecordBufferPin _globalPin;
-    private readonly INodeRecordBuffer _local = new PrivateNodeRecordBuffer(LocalGenerationBytes);
+    private readonly INodeRecordBuffer _local;
     private readonly ulong _globalBoundary;
     private readonly ulong _localOffset;
 
-    public OverlayNodeRecordBuffer(INodeRecordBuffer global)
+    public OverlayNodeRecordBuffer(INodeRecordBuffer global, INodeRecordBuffer local)
     {
         _global = global;
+        _local = local;
         _globalPin = global.PinHead();
         _globalBoundary = _globalPin.WriteBoundary;
         _localOffset = _globalBoundary >> NodeRecordBuffer.OffsetBits << NodeRecordBuffer.OffsetBits;
@@ -77,12 +77,8 @@ internal sealed class OverlayNodeRecordBuffer : INodeRecordBuffer
         if (IsLocal(rootPointer)) _local.SetRoot(address, root, rootPointer - _localOffset);
     }
 
-    /// <summary>Stops new operations; the private records and the global pin are released once every pin of this buffer is.</summary>
-    public void Dispose()
-    {
-        _local.Dispose();
-        _globalPin.Dispose();
-    }
+    /// <summary>Releases the global pin once every pin of this buffer is; the private buffer is left to its owner.</summary>
+    public void Dispose() => _globalPin.Dispose();
 
     private bool IsLocal(ulong pointer) => pointer >= _globalBoundary && !NodeRecordCodec.IsTransient(pointer);
 
