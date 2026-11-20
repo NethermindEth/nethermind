@@ -63,6 +63,15 @@ namespace Nethermind.Consensus.Producers
             return header;
         }
 
+        protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
+        {
+            BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
+            // EIP-4895 requires the list once Shanghai is active; there is no beacon chain to supply it
+            return block.Withdrawals is null && _specProvider.GetSpec(block.Header).WithdrawalsEnabled
+                ? new BlockToProduce(block.Header, block.Transactions, block.Uncles, [])
+                : block;
+        }
+
         public void Dispose() => BlockTree.NewHeadBlock -= OnNewHeadBlock;
 
         private class RandomizedDifficultyCalculator(IBlocksConfig blocksConfig, IDifficultyCalculator fallbackDifficultyCalculator) : IDifficultyCalculator
