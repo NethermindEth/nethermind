@@ -329,6 +329,17 @@ namespace Nethermind.Config.Test
             Assert.That(provider.GetRawValue(category, nameof(IAliasCollisionConfig.Other)), Is.EqualTo(expected));
         }
 
+        [TestCase("UncategorizedAlias")]
+        [TestCase("uncategorizedalias")]
+        [TestCase("UncategorizedAliasConfig")]
+        public void Raw_value_short_alias_is_not_shadowed_by_uncategorized_config(string category)
+        {
+            ConfigProvider provider = new();
+            provider.Initialize();
+
+            Assert.That(provider.GetRawValue(category, nameof(IUncategorizedAliasConfig.Value)), Is.EqualTo(6));
+        }
+
         public static IEnumerable<TestCaseData> ReportedKeyCases()
         {
             yield return new TestCaseData(
@@ -468,5 +479,26 @@ namespace Nethermind.Config.Test
     {
         public int Value { get; set; } = 4;
         public int Other { get; set; } = 5;
+    }
+
+    public interface IUncategorizedAlias : INoCategoryConfig
+    {
+    }
+
+    public class UncategorizedAlias : IUncategorizedAlias
+    {
+        public string? Config { get; set; }
+        public string? CliSwitchLocal { get; set; }
+    }
+
+    public interface IUncategorizedAliasConfig : IConfig
+    {
+        [ConfigItem(Description = "Test item of a category whose short alias is the name of a config without a category.", DefaultValue = "6")]
+        int Value { get; set; }
+    }
+
+    public class UncategorizedAliasConfig : IUncategorizedAliasConfig
+    {
+        public int Value { get; set; } = 6;
     }
 }

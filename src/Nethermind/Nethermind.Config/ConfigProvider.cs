@@ -153,7 +153,8 @@ public class ConfigProvider : IConfigProvider
             && configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase) is not null;
 
         static bool IsExactCategory(Type configType, string? category) =>
-            string.Equals(configType.Name[1..], category, StringComparison.OrdinalIgnoreCase);
+            IsCategory(configType, category)
+            && string.Equals(configType.Name[1..], category, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
