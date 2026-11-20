@@ -73,13 +73,16 @@ public class AccountChangesAtIndexTests
         }
     }
 
-    /// <remarks>Repeated and interleaved writes resolve their slot through the last-slot shortcut and through the index.</remarks>
+    /// <remarks>Repeated and interleaved writes resolve their slot through the last-slot shortcut and through the index.
+    /// A slot that shares slot 1's low limb must miss the shortcut on its full key.</remarks>
     [Test]
     public void Interleaved_writes_keep_each_slots_prestate_and_latest_value()
     {
+        UInt256 sameLowLimb = new(1, 1, 0, 0);
         BlockAccessListAtIndex slice = new();
         slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)10, after: (UInt256)11);
         slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)11, after: (UInt256)12);
+        slice.AddStorageChange(TestItem.AddressA, sameLowLimb, before: (UInt256)30, after: (UInt256)31);
         slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)20, after: (UInt256)21);
         slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)12, after: (UInt256)13);
         slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)21, after: (UInt256)22);
@@ -93,6 +96,9 @@ public class AccountChangesAtIndexTests
             Assert.That(first, Is.EqualTo((UInt256)10));
             Assert.That(account.TryGetPreTxStorage((UInt256)2, out UInt256 second), Is.True);
             Assert.That(second, Is.EqualTo((UInt256)20));
+            Assert.That(account.StorageChanges[sameLowLimb].Value, Is.EqualTo((UInt256)31));
+            Assert.That(account.TryGetPreTxStorage(sameLowLimb, out UInt256 third), Is.True);
+            Assert.That(third, Is.EqualTo((UInt256)30));
         }
     }
 
