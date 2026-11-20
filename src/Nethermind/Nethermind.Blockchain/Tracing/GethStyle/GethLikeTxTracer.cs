@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -42,6 +43,20 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     public sealed override bool IsTracingStack { get; protected set; }
     protected bool IsTracingFullMemory { get; }
     protected long CurrentRefund => _refundTracker?.Refund ?? 0;
+
+    private static readonly JsonEncodedText PrevRandaoJsonName = JsonEncodedText.Encode(nameof(Instruction.PREVRANDAO));
+
+    /// <summary>Whether the traced block is after the merge, where opcode 0x44 is <c>PREVRANDAO</c>.</summary>
+    /// <remarks>EIP-4399. The VM selects the value of 0x44 by the same header flag.</remarks>
+    internal bool IsPostMerge { get; set; }
+
+    /// <summary>Returns the name of <paramref name="opcode"/> at the fork of the traced block.</summary>
+    protected string GetOpcodeName(Instruction opcode) =>
+        opcode == Instruction.PREVRANDAO && IsPostMerge ? nameof(Instruction.PREVRANDAO) : OpcodeJsonNames.GetName(opcode);
+
+    /// <inheritdoc cref="GetOpcodeName"/>
+    protected JsonEncodedText GetOpcodeJsonName(Instruction opcode) =>
+        opcode == Instruction.PREVRANDAO && IsPostMerge ? PrevRandaoJsonName : OpcodeJsonNames.Get(opcode);
 
     public override void MarkAsSuccess(
         Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) =>
@@ -162,7 +177,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         CurrentTraceEntry = CreateTraceEntry(opcode);
         CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
-        CurrentTraceEntry.Opcode = OpcodeJsonNames.GetName(opcode);
+        CurrentTraceEntry.Opcode = GetOpcodeName(opcode);
         CurrentTraceEntry.ProgramCounter = pc;
         CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
         _gasCostAlreadySetForCurrentOp = false;

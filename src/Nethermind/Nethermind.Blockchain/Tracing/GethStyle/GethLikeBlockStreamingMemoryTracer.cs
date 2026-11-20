@@ -25,6 +25,14 @@ public sealed class GethLikeBlockStreamingMemoryTracer(
     : BlockTracerBase<GethLikeTxTrace, GethLikeTxDirectStreamingTracer>(options.TxHash), IDisposable
 {
     private GethLikeTxDirectStreamingTracer? _reusableTxTracer;
+    private bool _isPostMerge;
+
+    /// <inheritdoc/>
+    public override void StartNewBlockTrace(Block block)
+    {
+        base.StartNewBlockTrace(block);
+        _isPostMerge = block.Header.IsPostMerge;
+    }
 
     protected override GethLikeTxDirectStreamingTracer OnStart(Transaction? tx)
     {
@@ -37,6 +45,7 @@ public sealed class GethLikeBlockStreamingMemoryTracer(
         {
             _reusableTxTracer.ResetForNextTx(tx);
         }
+        _reusableTxTracer.IsPostMerge = _isPostMerge;
         return _reusableTxTracer;
     }
 
