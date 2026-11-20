@@ -97,6 +97,44 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
         return testResults;
     }
 
+    /// <summary>Runs the tests of <paramref name="group"/> that the filter selects on one client, and reports each result.</summary>
+    /// <remarks>A test that cannot be loaded is reported as failed, and a group whose client cannot start fails each of its tests.</remarks>
+    internal async Task<List<EthereumTestResult>> RunEngineXGroupAsync(EngineXGroup group)
+    {
+        List<EthereumTestResult> results = [];
+        List<BlockchainTest> tests = [];
+        foreach (EngineXTestRef testRef in group.Tests)
+        {
+            foreach (EthereumTest loadedTest in EngineXFixtures.LoadTests(testRef))
+            {
+                if (loadedTest is FailedToLoadTest)
+                    results.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure) { Rejections = [] });
+                else if (loadedTest is BlockchainTest test && (_filterRegex is null || test.Name is null || _filterRegex.IsMatch(test.Name)))
+                {
+                    test.ChainId = _chainId;
+                    tests.Add(test);
+                }
+            }
+        }
+
+        if (tests.Count > 0)
+        {
+            try
+            {
+                results.AddRange(await RunEngineXGroup(EngineXFixtures.CreateGroupTest(group, tests[0]), tests));
+            }
+            catch (Exception ex)
+            {
+                foreach (BlockchainTest test in tests)
+                    results.Add(new EthereumTestResult(test.FixtureId ?? test.Name, test.ForkName, $"pre-allocation group {group.PreHash}: {ex}") { Rejections = [] });
+            }
+        }
+
+        foreach (EthereumTestResult result in results)
+            ReportResult(result);
+        return results;
+    }
+
     public async Task<EthereumTestResult> RunSingleTestAsync(BlockchainTest test)
     {
         test.ChainId = _chainId;
