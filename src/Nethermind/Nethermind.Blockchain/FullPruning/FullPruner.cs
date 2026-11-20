@@ -146,6 +146,10 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 await RunFullPruning(pruningContext, cancellationToken);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                if (_logger.IsInfo) _logger.Info("Full pruning canceled.");
+            }
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("full pruning failed. ", e);

@@ -190,6 +190,31 @@ public class FullPrunerTests(int fullPrunerMemoryBudgetMb, int degreeOfParalleli
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task pruning_canceled_at_shutdown_is_not_logged_as_an_error()
+    {
+        TestLogger errors = new() { IsInfo = false, IsWarn = false, IsDebug = false, IsTrace = false };
+        TestContext test = new(
+            true,
+            fullScanMemoryBudgetMb: fullPrunerMemoryBudgetMb,
+            degreeOfParallelism: degreeOfParallelism,
+            logManager: new OneLoggerLogManager(new(errors)));
+        using CancellationTokenSource processExit = new();
+        test.ProcessExitSource.Token.Returns(processExit.Token);
+
+        // Without new blocks the run parks waiting for the main chain, as it does at shutdown on an idle node.
+        test.TriggerPruningViaEvent();
+        Assert.That(() => test.FullPruningDb.Context, Is.Not.Null.After(Timeout.MaxTestTime, 1));
+        await processExit.CancelAsync();
+
+        Task disposed = test.FullPruningDb.Context.DisposeEvent.Task;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await Task.WhenAny(disposed, Task.Delay(Timeout.MaxWaitTime * 5)), Is.SameAs(disposed), "pruning did not stop");
+            Assert.That(errors.LogList, Is.Empty);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task pruning_fails_without_committing_when_a_node_is_missing()
     {
         TestContext test = new(
