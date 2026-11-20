@@ -184,7 +184,7 @@ public class OptimismEthRpcModuleTest
             .Build();
 
         Transaction tx = Build.A.Transaction.Signed(TestItem.PrivateKeyA).TestObject;
-        byte[] raw = Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes;
+        byte[] raw = Rlp.Encode(item: tx, behaviors: RlpBehaviors.None);
         string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", raw.ToHexString());
         ResultWrapper<Hash256> result = await rpcBlockchain.EthRpcModule.eth_sendRawTransaction(raw);
 
