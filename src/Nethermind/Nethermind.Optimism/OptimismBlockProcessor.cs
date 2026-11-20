@@ -19,8 +19,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
@@ -44,8 +42,7 @@ public class OptimismBlockProcessor : BlockProcessor
         IWithdrawalProcessor withdrawalProcessor,
         IExecutionRequestsProcessor executionRequestsProcessor,
         IBlockAccessListManager balManager,
-        ICostHelper costHelper,
-        ILeanProofVerifier leanProofVerifier)
+        ICostHelper costHelper)
         : base(
             specProvider,
             blockValidator,
@@ -58,8 +55,7 @@ public class OptimismBlockProcessor : BlockProcessor
             logManager,
             withdrawalProcessor,
             executionRequestsProcessor,
-            balManager,
-            leanProofVerifier)
+            balManager)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _opSpecHelper = opSpecHelper;

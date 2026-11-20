@@ -6,7 +6,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.ExecutionRequests;
+using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Autofac;
@@ -22,8 +29,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Crypto;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -62,6 +71,50 @@ public class Eip8288BlockProductionTests
             Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames![1]).Single(), Is.EqualTo(raw));
             Assert.That(TxDecoder.Instance.Encode(transaction).Bytes, Is.EqualTo(encoded));
         }
+    }
+
+    [Test]
+    public async Task Production_proof_is_attached_under_a_plugin_processor_and_import_never_proves([Values] bool pluginProcessor)
+    {
+        CountingVerifier verifier = new();
+        LeanProofStore proofs = new(FrameTxSigHash.ComputeValue);
+        ProcessingLog log = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs, builder =>
+        {
+            if (pluginProcessor) builder.AddSingleton(log).AddScoped<IBlockProcessor, PluginBlockProcessor>();
+        });
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("plugin"), default);
+        Transaction transaction = CreateTransaction(chain, dependency, []);
+        FrameDependency resolved = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue)[0];
+        proofs.AddVerified([resolved], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
+
+        Block block = await ProduceAndImport(chain, slot: 1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Transactions, Is.EqualTo((Transaction[])[transaction]));
+            Assert.That(block.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeDepsHash([resolved]).ToByteArray()));
+            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(Eip8288Dependencies.ComputeDepsHash([resolved]))));
+            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.Hash));
+            Assert.That(verifier.ProofCalls, Is.EqualTo(1), "only production proves; import verifies the attached proof");
+            Assert.That(chain.BlockProcessor, Is.Not.TypeOf<ProductionProofBlockProcessor>());
+            Assert.That(log.Producing, Is.EqualTo(pluginProcessor ? 1 : 0));
+            Assert.That(log.Importing, Is.EqualTo(pluginProcessor ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Production_fails_when_the_inner_processor_never_reports_executed_transactions()
+    {
+        BlockToProduce block = new(Build.A.BlockHeader.TestObject);
+        IBlockProcessor inner = Substitute.For<IBlockProcessor>();
+        inner.ProcessOne(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, Eip8288Prototype.Instance, default)
+            .Returns((block, []));
+        ProductionProofBlockProcessor processor = new(inner, Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(), new CountingVerifier());
+
+        Assert.That(() => processor.ProcessOne(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance, Eip8288Prototype.Instance),
+            Throws.InvalidOperationException);
     }
 
     // EIP-7934 counts the body's stark_proof, which production attaches only after packing: a body that will carry a proof
@@ -902,7 +955,7 @@ public class Eip8288BlockProductionTests
         int widest = 1;
         while (widest < backlog.Length
                && RecursiveStarkAggregator.EstimatedCost(new AggregationInput { Deps = backlog[..(widest + 1)], Witnesses = new ReadOnlyMemory<byte>[widest + 1] })
-                  <= BlockProcessor.MaxScheduledStatementCost) widest++;
+                  <= ProductionProofPlanner.MaxScheduledStatementCost) widest++;
         HashSet<FrameDependency> all = [.. backlog];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Length == widest), Is.True.After(5000, 20));
         Assert.That(proofs.ProvenSubsets(all).Any(subset => subset.Length > widest), Is.False);
@@ -946,7 +999,7 @@ public class Eip8288BlockProductionTests
         await chain.BlockProducer.BuildBlock(cancellationToken: deadline.Token).WaitAsync(TimeSpan.FromSeconds(5));
 
         AggregationInput wideInput = new() { Deps = wide, Witnesses = new ReadOnlyMemory<byte>[wide.Length] };
-        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(BlockProcessor.MaxScheduledStatementCost));
+        Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(ProductionProofPlanner.MaxScheduledStatementCost));
         HashSet<FrameDependency> all = [.. backlog, .. wide];
         Assert.That(() => proofs.ProvenSubsets(all).Any(subset => subset.Intersect(wide).Any()), Is.True.After(5000, 20));
     }
@@ -1442,6 +1495,29 @@ public class Eip8288BlockProductionTests
         Assert.That(chain.BlockTree.SuggestBlock(block!), Is.EqualTo(AddBlockResult.Added));
         await imported;
         return block!;
+    }
+
+    private sealed class ProcessingLog
+    {
+        public int Producing { get; set; }
+        public int Importing { get; set; }
+    }
+
+    /// <summary>A plugin processor that, like Optimism's, overrides block processing and replaces the standard one everywhere.</summary>
+    private sealed class PluginBlockProcessor(ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculator rewardCalculator,
+        IBlockProcessor.IBlockTransactionsExecutor executor, IWorldState state, IReceiptStorage receipts, IBeaconBlockRootHandler beaconRoot,
+        IBlockhashStore blockHashes, ILogManager logManager, IWithdrawalProcessor withdrawals, IExecutionRequestsProcessor requests,
+        IBlockAccessListManager balManager, ProcessingLog log)
+        : BlockProcessor(specProvider, blockValidator, rewardCalculator, executor, state, receipts, beaconRoot, blockHashes, logManager,
+            withdrawals, requests, balManager)
+    {
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, IReleaseSpec spec,
+            CancellationToken token)
+        {
+            if (options.ContainsFlag(ProcessingOptions.ProducingBlock)) log.Producing++;
+            else if (!block.IsGenesis) log.Importing++;
+            return base.ProcessBlock(block, blockTracer, options, spec, token);
+        }
     }
 
     private sealed class CountingVerifier : ILeanProofVerifier

@@ -33,7 +33,7 @@ internal class XdcBlockProcessor(
     ILogManager logManager,
     IWithdrawalProcessor withdrawalProcessor,
     IExecutionRequestsProcessor executionRequestsProcessor,
-    IBlockAccessListManager balManager, ILeanProofVerifier leanProofVerifier) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager, leanProofVerifier), IBlockProcessor
+    IBlockAccessListManager balManager) : BlockProcessor(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor, stateProvider, receiptStorage, beaconBlockRootHandler, blockHashStore, logManager, withdrawalProcessor, executionRequestsProcessor, balManager), IBlockProcessor
 {
     protected override Hash256 CalculateReceiptsRoot(TxReceipt[] receipts, IReleaseSpec spec, Block block) =>
         base.CalculateReceiptsRoot(AsEncodedForTrie(receipts, spec), spec, block);
