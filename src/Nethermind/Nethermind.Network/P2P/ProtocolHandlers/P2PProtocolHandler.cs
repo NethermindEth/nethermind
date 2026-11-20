@@ -279,6 +279,13 @@ public class P2PProtocolHandler(
 
         if (Logger.IsTrace) TraceReceivedHello();
 
+        // Snappy applies to every message after a p2p v5 Hello, so it must be on before
+        // any check below, or later admission, can send a Disconnect.
+        if (hello.P2PVersion >= 5)
+        {
+            Session.EnableSnappy();
+        }
+
         if (hello.NodeId == _localNodeId || Session.RemoteNodeId == _localNodeId)
         {
             if (Logger.IsDebug) Logger.Debug($"Disconnecting {Session:hide}: remote identity is this node's own identity");

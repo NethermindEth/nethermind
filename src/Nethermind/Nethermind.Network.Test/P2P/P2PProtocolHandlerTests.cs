@@ -133,6 +133,38 @@ namespace Nethermind.Network.Test.P2P
             _session.Received(1).InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>());
         }
 
+        [TestCase((byte)5, true)]
+        [TestCase((byte)4, false)]
+        public void Enables_snappy_for_v5_hello_before_rejecting_it(byte p2pVersion, bool snappy)
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            bool snappyEnabled = false;
+            bool? snappyEnabledAtDisconnect = null;
+            _session.When(static session => session.EnableSnappy()).Do(_ => snappyEnabled = true);
+            _session.When(static session => session.InitiateDisconnect(DisconnectReason.NoCapabilityMatched, Arg.Any<string>()))
+                .Do(_ => snappyEnabledAtDisconnect = snappyEnabled);
+
+            using HelloMessage message = new()
+            {
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
+                NodeId = TestItem.PublicKeyB,
+                ClientId = "Nethermind/v1.0",
+                ListenPort = 30303,
+                P2PVersion = p2pVersion,
+            };
+
+            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
+            data.ReadByte(); // adaptive packet type
+
+            p2PProtocolHandler.HandleMessage(new Packet(data.ReadAllBytesAsArray())
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            });
+
+            Assert.That(snappyEnabledAtDisconnect, Is.EqualTo(snappy));
+        }
+
         [Test]
         public void Pongs_to_ping()
         {
