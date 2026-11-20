@@ -19,10 +19,11 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <remarks>
 /// Initializes a new instance of the <see cref="DiscoveryPersistenceManager"/> class.
 /// <para>
-/// discv4 persists the bonded endpoint because its persisted-node admission exemption is scoped to the address
-/// that was admitted, and an ENR may advertise an endpoint that never answered a ping. When the verified signed ENR
-/// advertises the other address family, it is persisted alongside the endpoint so a restore can still reach the
-/// node after a listener-family change. discv5 has no such exemption, so it keeps the ENR and lets restore choose a
+/// discv4 persists the bonded endpoint while its recent-IP filter is enabled, because its persisted-node admission
+/// exemption is scoped to the address that was admitted, and an ENR may advertise an endpoint that never answered a
+/// ping. When the verified signed ENR advertises the other address family, it is persisted alongside the endpoint so a
+/// restore can still reach the node after a listener-family change. With the filter disabled no exemption is needed,
+/// so discv4 keeps the ENR; discv5 has no such exemption at all, so it always keeps the ENR and lets restore choose a
 /// reachable family.
 /// </para>
 /// </remarks>
@@ -34,7 +35,8 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// <param name="logManager">Log manager for logging events.</param>
 /// <param name="persistBondedEndpoint">
 /// Whether to persist the bonded routing endpoint instead of the node's ENR. When enabled, a verified signed ENR
-/// is stored alongside the endpoint when it offers an endpoint in the other address family.
+/// is stored alongside the endpoint when it offers an endpoint in the other address family. The caller passes this
+/// as false whenever the persisted-node exemption it protects is disabled.
 /// </param>
 /// <exception cref="ArgumentNullException">Thrown if any required parameter is null.</exception>
 public sealed class DiscoveryPersistenceManager(

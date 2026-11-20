@@ -97,9 +97,9 @@ public class NetworkNode
     /// The signed ENR recorded alongside a persisted bonded endpoint.
     /// </summary>
     /// <remarks>
-    /// discv4 persists the endpoint a node answered a ping from, because its persisted-node admission exemption is
-    /// scoped to that address. The signed ENR is kept as well so a restore can choose an endpoint in a family the
-    /// local listener can serve when the bonded endpoint is in the other family.
+    /// discv4 persists the endpoint a node answered a ping from while its recent-IP filter is enabled, because that
+    /// exemption is scoped to that address. The signed ENR is kept as well so a restore can choose an endpoint in a
+    /// family the local listener can serve when the bonded endpoint is in the other family.
     /// </remarks>
     public NodeRecord? FallbackEnr { get; init; }
 

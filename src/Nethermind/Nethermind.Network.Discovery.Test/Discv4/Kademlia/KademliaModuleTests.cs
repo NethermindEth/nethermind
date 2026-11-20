@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Kademlia;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv4;
 using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Test.Kademlia;
@@ -147,7 +148,45 @@ public class KademliaModuleTests
 
     [Test]
     [CancelAfter(10000)]
-    public async Task Discv4_persists_the_bonded_endpoint(CancellationToken cancellationToken)
+    public async Task Discv4_persists_the_bonded_endpoint_while_recent_ip_filtering_is_enabled(CancellationToken cancellationToken)
+    {
+        NetworkNode persistedNode = await PersistSingleNodeAsync(filterEnabled: true, CreateDualStackNode(), cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedNode.IsEnode, Is.True);
+            Assert.That(persistedNode.HostIp, Is.EqualTo(IPAddress.Parse("203.0.113.10")));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task Discv4_restores_the_enr_family_when_recent_ip_filtering_is_disabled(CancellationToken cancellationToken)
+    {
+        Node node = CreateDualStackNode();
+
+        NetworkNode persistedNode = await PersistSingleNodeAsync(filterEnabled: false, node, cancellationToken);
+
+        // Guards the wiring, not a lost-peer outcome: with the filter off the row keeps the ENR, and restore picks the
+        // family the listener serves. A filter-on row reaches the same endpoint through FallbackEnr, so the row format
+        // is the only observable this test can pin.
+        Node? restoredNode = DiscoveryApp.RestorePersistedNode(persistedNode, IPAddress.Parse("2001:db8::5"));
+
+        Assert.That(restoredNode, Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedNode.IsEnr, Is.True);
+            Assert.That(restoredNode!.Host, Is.EqualTo("2001:db8::1"));
+            Assert.That(restoredNode.Port, Is.EqualTo(30304));
+            Assert.That(restoredNode.DiscoveryPort, Is.EqualTo(30304));
+            Assert.That(restoredNode.Enr!.GetHex(), Is.EqualTo(node.Enr!.GetHex()));
+        }
+    }
+
+    private static async Task<NetworkNode> PersistSingleNodeAsync(
+        bool filterEnabled,
+        Node node,
+        CancellationToken cancellationToken)
     {
         INetworkStorage storage = Substitute.For<INetworkStorage>();
         List<NetworkNode> persistedNodes = [];
@@ -156,6 +195,7 @@ public class KademliaModuleTests
         storage.When(s => s.UpdateNodes(Arg.Any<IEnumerable<NetworkNode>>()))
             .Do(call =>
             {
+                // The interval is short enough that a second tick can land before cancellation.
                 if (captured) return;
                 captured = true;
                 persistedNodes.AddRange(call.Arg<IEnumerable<NetworkNode>>());
@@ -163,6 +203,7 @@ public class KademliaModuleTests
         storage.When(s => s.Commit()).Do(_ => committed.TrySetResult());
 
         using IContainer container = DiscoveryAdmissionTestContainer.Create(
+            enabled: filterEnabled,
             storage: storage,
             discoveryConfig: new DiscoveryConfig
             {
@@ -170,12 +211,6 @@ public class KademliaModuleTests
                 MaxNodeLifecycleManagersCount = 100,
             });
 
-        NodeRecord enr = TestEnrBuilder.BuildSigned(
-            TestItem.PrivateKeyA,
-            IPAddress.Parse("203.0.114.20"),
-            tcpPort: 30304,
-            udpPort: 30304);
-        Node node = new(TestItem.PublicKeyA, "203.0.113.10", 30304, 30304) { Enr = enr };
         container.Resolve<IKademlia<PublicKey, Node>>().AddOrRefresh(node);
 
         using CancellationTokenSource cts = new();
@@ -190,12 +225,26 @@ public class KademliaModuleTests
         {
         }
 
-        NetworkNode persistedNode = persistedNodes.Single(n => n.NodeId.Equals(TestItem.PublicKeyA));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(persistedNode.IsEnode, Is.True);
-            Assert.That(persistedNode.HostIp, Is.EqualTo(IPAddress.Parse("203.0.113.10")));
-        }
+        return persistedNodes.Single(n => n.NodeId.Equals(TestItem.PublicKeyA));
+    }
+
+    private static Node CreateDualStackNode()
+    {
+        NodeRecord enr = TestEnrBuilder.BuildSigned(
+            TestItem.PrivateKeyA,
+            IPAddress.Parse("203.0.114.20"),
+            tcpPort: 30304,
+            udpPort: 30304,
+            configureExtras: record =>
+            {
+                record.SetEntry(new Ip6Entry(IPAddress.Parse("2001:db8::1")));
+                record.SetEntry(new Tcp6Entry(30304));
+                record.SetEntry(new Udp6Entry(30304));
+            });
+
+        Node node = new(TestItem.PublicKeyA, "203.0.113.10", 30304, 30304);
+        Assert.That(node.SetVerifiedEnr(enr), Is.True);
+        return node;
     }
 
     private static IContainer CreateContainer(bool filterEnabled)
