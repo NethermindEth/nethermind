@@ -3,7 +3,6 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,7 +28,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
         store.Insert(block.Number, block.Hash!, Proof);
         RecordingValidator inner = new();
 
-        bool valid = Create(inner, store, finalized: null).ValidateSuggestedBlock(block, Build.A.BlockHeader.TestObject, out string? error);
+        bool valid = Create(inner, store).ValidateSuggestedBlock(block, Build.A.BlockHeader.TestObject, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
@@ -39,32 +38,45 @@ public class DependencyProofAvailabilityBlockValidatorTests
         }
     }
 
-    // EIPs#12549 and EIP-8498: a missing proof is accepted only at or below the finalized block, and only that failure is.
-    [TestCase(null, null, false)]
-    [TestCase(9UL, BlockErrorMessages.MissingDependencyProof, false)]
-    [TestCase(10UL, BlockErrorMessages.MissingDependencyProof, true)]
-    [TestCase(11UL, BlockErrorMessages.MissingDependencyProof, true)]
-    [TestCase(11UL, BlockErrorMessages.InvalidRecursiveStark, false)]
-    public void Trusts_finality_only_for_a_missing_proof(ulong? finalizedNumber, string? innerError, bool expected)
+    // EIPs#12549 and EIP-8498: a missing proof is accepted only for the finalized block or a canonical ancestor of it, and
+    // only that failure is. A side-chain block below the finalized height is not trusted.
+    [TestCase("none", BlockErrorMessages.MissingDependencyProof, false)]
+    [TestCase("below", BlockErrorMessages.MissingDependencyProof, false)]
+    [TestCase("finalized", BlockErrorMessages.MissingDependencyProof, true)]
+    [TestCase("canonical-ancestor", BlockErrorMessages.MissingDependencyProof, true)]
+    [TestCase("beacon-ancestor", BlockErrorMessages.MissingDependencyProof, true)]
+    [TestCase("side-chain", BlockErrorMessages.MissingDependencyProof, false)]
+    [TestCase("unmarked", BlockErrorMessages.MissingDependencyProof, false)]
+    [TestCase("canonical-ancestor", BlockErrorMessages.InvalidRecursiveStark, false)]
+    public void Trusts_finality_only_for_a_missing_proof_of_a_finalized_ancestor(string relation, string innerError, bool expected)
     {
         (Block block, StarkProofStore store) = Committed(10);
-        RecordingValidator inner = new() { Error = innerError ?? BlockErrorMessages.MissingDependencyProof };
+        RecordingValidator inner = new() { Error = innerError };
+        IBlockTree blockTree = Substitute.For<IBlockTree>();
+        BlockHeader? finalized = relation switch
+        {
+            "none" => null,
+            "below" => Build.A.BlockHeader.WithNumber(9).TestObject,
+            "finalized" => block.Header,
+            _ => Build.A.BlockHeader.WithNumber(11).TestObject
+        };
+        blockTree.FindFinalizedHeader().Returns(finalized);
+        BlockInfo levelBlock = new(relation == "side-chain" ? TestItem.KeccakH : block.Hash!, 0,
+            relation == "beacon-ancestor" ? BlockMetadata.BeaconMainChain : BlockMetadata.None);
+        blockTree.FindLevel(block.Number).Returns(new ChainLevelInfo(relation is "canonical-ancestor" or "side-chain", levelBlock));
 
-        bool valid = Create(inner, store, finalizedNumber).ValidateSuggestedBlock(block, Build.A.BlockHeader.TestObject, out string? error);
+        bool valid = new DependencyProofAvailabilityBlockValidator(inner, store, blockTree)
+            .ValidateSuggestedBlock(block, Build.A.BlockHeader.TestObject, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.EqualTo(expected));
-            Assert.That(error, expected ? Is.Null : Is.EqualTo(inner.Error));
+            Assert.That(error, expected ? Is.Null : Is.EqualTo(innerError));
         }
     }
 
-    private static DependencyProofAvailabilityBlockValidator Create(IBlockValidator inner, IStarkProofStore store, ulong? finalized)
-    {
-        IBlockFinder finder = Substitute.For<IBlockFinder>();
-        finder.FindFinalizedHeader().Returns(finalized is { } number ? Build.A.BlockHeader.WithNumber(number).TestObject : null);
-        return new DependencyProofAvailabilityBlockValidator(inner, store, finder);
-    }
+    private static DependencyProofAvailabilityBlockValidator Create(IBlockValidator inner, IStarkProofStore store) =>
+        new(inner, store, Substitute.For<IBlockTree>());
 
     private static (Block Block, StarkProofStore Store) Committed(ulong number)
     {

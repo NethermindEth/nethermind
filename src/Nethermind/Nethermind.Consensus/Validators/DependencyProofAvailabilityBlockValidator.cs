@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Messages;
 
@@ -16,7 +16,7 @@ namespace Nethermind.Consensus.Validators;
 /// invalidity, unless <see cref="DependencyProofFinality"/> trusts it: the only path that accepts a block committing to a
 /// nonempty proof without verifying it.
 /// </remarks>
-public sealed class DependencyProofAvailabilityBlockValidator(IBlockValidator inner, IStarkProofStore proofStore, IBlockFinder blockFinder)
+public sealed class DependencyProofAvailabilityBlockValidator(IBlockValidator inner, IStarkProofStore proofStore, IBlockTree blockTree)
     : IBlockValidator
 {
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
@@ -45,7 +45,7 @@ public sealed class DependencyProofAvailabilityBlockValidator(IBlockValidator in
 
     private bool TrustFinality(Block block, bool valid, [NotNullWhen(false)] ref string? error)
     {
-        if (valid || error != BlockErrorMessages.MissingDependencyProof || !DependencyProofFinality.IsTrusted(blockFinder, block.Header))
+        if (valid || error != BlockErrorMessages.MissingDependencyProof || !DependencyProofFinality.IsTrusted(blockTree, block.Header))
             return valid;
 
         error = null;

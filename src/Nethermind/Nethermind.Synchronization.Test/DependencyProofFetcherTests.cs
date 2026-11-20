@@ -157,6 +157,23 @@ public class DependencyProofFetcherTests
         }
     }
 
+    // A side-chain block below the finalized height is not covered by finality, so its proof is fetched.
+    [Test]
+    public async Task Requests_a_side_chain_block_below_finality()
+    {
+        BlockHeader sibling = Committed(5, Proof);
+        PeerInfo source = Peer(12, [Proof]);
+        (DependencyProofFetcher fetcher, _) = Fetcher([], Committed(8, [9]));
+
+        (byte[]?[] proofs, bool[] unavailable) = await fetcher.FetchAsync(source, [sibling], CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proofs, Is.EqualTo(new[] { Proof }));
+            Assert.That(unavailable, Is.EqualTo(new[] { false }));
+        }
+    }
+
     private static (DependencyProofFetcher Fetcher, ISyncPeerPool Pool) Fetcher(IEnumerable<PeerInfo> peers, BlockHeader? finalized = null)
     {
         ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
