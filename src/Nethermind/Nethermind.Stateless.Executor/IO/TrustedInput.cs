@@ -350,7 +350,7 @@ public static partial class TrustedInput
         Witness witness = new()
         {
             Headers = new ItemList(ReadItems(data, WitnessHeadersList, 0)),
-            State = new ItemList(ReadItems(data, StateNodesList, 0)),
+            State = new ItemList(ReadStateNodes(data)),
             Codes = ReadCodes(data),
             Keys = ArrayPoolList<byte[]>.Empty()
         };
@@ -507,6 +507,8 @@ public static partial class TrustedInput
 
         return position;
     }
+
+    private static partial byte[][] ReadStateNodes(ReadOnlySpan<byte> data);
 
     /// <summary>The <paramref name="length"/>-byte item at <paramref name="start"/> as an array.</summary>
     /// <remarks>See <c>TrustedInput.std.cs</c> and <c>.zkevm.cs</c>.</remarks>

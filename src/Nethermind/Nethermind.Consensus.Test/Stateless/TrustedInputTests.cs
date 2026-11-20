@@ -111,6 +111,7 @@ public class TrustedInputTests
     private const int WitnessHeadersList = 60;
     private const int StateNodesList = 64;
     private const int CodesList = 68;
+    private const int TotalLengthOffset = 72;
     // Codes carry their execution padding before the padding to 8.
     private const int CodeExecutionPadding = 34;
 
@@ -144,7 +145,7 @@ public class TrustedInputTests
     }
 
     [Test]
-    public async Task Input_in_native_memory_at_any_offset_validates_as_the_array_does([Values(0, 4)] int misalignment)
+    public async Task Input_in_native_memory_at_any_offset_validates_as_the_array_does([Range(0, 7)] int misalignment)
     {
         (byte[] input, Block block) = await CreateInput(amsterdam: false);
         StatelessValidationResult expected = Execute(input);
@@ -157,6 +158,28 @@ public class TrustedInputTests
             Assert.That(actual.NewPayloadRequestRoot, Is.EqualTo(block.Hash));
             Assert.That(actual.ChainId, Is.EqualTo(expected.ChainId));
             Assert.That(actual.SchemaId, Is.EqualTo(expected.SchemaId));
+        }
+    }
+
+    [Test]
+    public async Task State_and_sender_hints_can_be_read_out_of_writer_order([Values(StateNodesList, SenderHintsSection)] int field)
+    {
+        (byte[] input, Block block) = await CreateInput(amsterdam: false);
+        int offset = BinaryPrimitives.ReadInt32LittleEndian(input.AsSpan(field));
+        int length = field == StateNodesList
+            ? BinaryPrimitives.ReadInt32LittleEndian(input.AsSpan(CodesList)) - offset
+            : BinaryPrimitives.ReadInt32LittleEndian(input.AsSpan(SenderHintsSection + sizeof(int)));
+        int relocated = input.Length;
+        Array.Resize(ref input, relocated + length);
+        input.AsSpan(offset, length).CopyTo(input.AsSpan(relocated));
+        BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(field), relocated);
+        BinaryPrimitives.WriteInt32LittleEndian(input.AsSpan(TotalLengthOffset), input.Length);
+
+        StatelessValidationResult result = Execute(input);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsSuccess, Is.True);
+            Assert.That(result.NewPayloadRequestRoot, Is.EqualTo(block.Hash));
         }
     }
 
