@@ -12,6 +12,10 @@ namespace Nethermind.State.Flat.Test;
 public class MpmcRingBufferTests
 {
     [Test]
+    public void Constructor_RejectsSingleSlotCapacity() =>
+        Assert.That(() => new MpmcRingBuffer<int>(1), Throws.ArgumentException);
+
+    [Test]
     public void HasReadyItem_TracksPublishedItems()
     {
         MpmcRingBuffer<int> jobQueue = new(4);

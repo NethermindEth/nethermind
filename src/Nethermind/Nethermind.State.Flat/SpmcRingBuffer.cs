@@ -50,8 +50,8 @@ public sealed class SpmcRingBuffer<T>
 
     public SpmcRingBuffer(int capacityPowerOfTwo)
     {
-        if (capacityPowerOfTwo <= 0 || (capacityPowerOfTwo & (capacityPowerOfTwo - 1)) != 0)
-            throw new ArgumentException("Capacity must be power of two.");
+        if (capacityPowerOfTwo < 2 || (capacityPowerOfTwo & (capacityPowerOfTwo - 1)) != 0)
+            throw new ArgumentException("Capacity must be a power of two and at least 2.", nameof(capacityPowerOfTwo));
 
         _capacity = capacityPowerOfTwo;
         _mask = capacityPowerOfTwo - 1;
