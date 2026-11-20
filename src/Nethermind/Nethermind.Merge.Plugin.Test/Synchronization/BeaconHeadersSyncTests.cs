@@ -393,6 +393,36 @@ public class BeaconHeadersSyncTests
     }
 
     [Test]
+    public async Task When_pivot_moves_down_the_feed_requests_the_new_parent()
+    {
+        Context ctx = new()
+        {
+            SyncConfig = new SyncConfig
+            {
+                FastSync = true,
+                PivotNumber = 0,
+                PivotHash = Keccak.Zero.ToString(),
+                PivotTotalDifficulty = "0"
+            },
+        };
+        ctx.SetupRemoteBlockTreeOfLength(111);
+        const uint high = 100;
+        const uint low = 90;
+        ctx.BeaconSync.InitBeaconHeaderSync(ctx.RemoteBlockTree.FindHeader(high)!);
+        ctx.Feed.InitializeFeed();
+
+        using (HeadersSyncBatch? first = await ctx.Feed.PrepareRequest())
+        {
+            Assert.That(first?.EndNumber, Is.EqualTo(high - 1));
+        }
+
+        ctx.BeaconSync.InitBeaconHeaderSync(ctx.RemoteBlockTree.FindHeader(low)!);
+
+        using HeadersSyncBatch? second = await ctx.Feed.PrepareRequest();
+        Assert.That(second?.EndNumber, Is.EqualTo(low - 1));
+    }
+
+    [Test]
     public async Task When_pivot_changed_during_header_sync_after_chain_merged__do_not_return_null_request()
     {
         ISyncConfig syncConfig = new SyncConfig
