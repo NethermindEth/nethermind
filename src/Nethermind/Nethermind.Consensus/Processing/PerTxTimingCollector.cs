@@ -8,23 +8,11 @@ using Nethermind.Core.Threading;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>
-/// Process-wide collector for per-transaction execution timing.
-/// Enabled by <see cref="ProcessingStats"/> when SlowBlockPerTxThresholdMs >= 0.
-/// The tx executor calls <see cref="Prepare"/> and <see cref="Record"/>;
-/// ProcessingStats snapshots via <see cref="Snapshot"/> after block execution.
+/// Collects per-transaction timing for each block-processing loop.
 /// </summary>
 /// <remarks>
-/// <para><b>Threading contract.</b> State is shared across threads (no <c>[ThreadStatic]</c>):
-/// <see cref="Prepare"/> runs on the block-processing thread before parallel tx execution;
-/// parallel workers call <see cref="Record"/> into the list it allocated; <see cref="Snapshot"/>
-/// runs on the block-processing thread after parallel execution returns.</para>
-/// <para><b>Synchronisation.</b> Visibility
-/// of the <see cref="Prepare"/> writes to parallel workers relies on the synchronisation barrier
-/// inside <c>ParallelUnbalancedWork.For</c> (which establishes happens-before between the calling
-/// thread and the workers, then again between the workers and the joining thread). If this collector
-/// is ever used outside that join-barrier pattern (e.g. <c>Task.Run</c>-and-forget), reads of
-/// <c>_ticksPerTx</c> on the worker may observe a stale <c>null</c> or a previous block's list.</para>
-/// <para>The main block processor owns the buffer. Other processing contexts cannot prepare or take it.</para>
+/// The block-processing thread prepares and takes its own buffer. Parallel workers record into the
+/// buffer supplied by their executor. The executor joins the workers before the owner takes the buffer.
 /// </remarks>
 public static class PerTxTimingCollector
 {
@@ -32,32 +20,28 @@ public static class PerTxTimingCollector
     // Backing storage is pooled via ArrayPoolList<long>; the underlying array is rented
     // from the shared pool and returned on Dispose. The 256-slot capacity floor keeps
     // small blocks in a single pool bucket to avoid churn.
+    [ThreadStatic]
     private static ArrayPoolList<long>? _ticksPerTx;
 
-    /// <summary>Whether per-tx timing capture is active.</summary>
+    /// <summary>Whether timing capture is enabled on the calling block-processing thread.</summary>
     public static bool IsEnabled => _enabled && ProcessingThread.IsBlockProcessingThread;
 
     /// <summary>Called by ProcessingStats to enable/disable capture.</summary>
     public static void SetEnabled(bool enabled) => _enabled = enabled;
 
     /// <summary>Called by the tx executor before processing transactions.</summary>
-    public static void Prepare(int txCount)
+    public static ArrayPoolList<long>? Prepare(int txCount)
     {
-        if (!IsEnabled) return;
+        if (!IsEnabled) return null;
 
-        // Either Snapshot already handed off the previous list and nulled this reference,
-        // or the previous block produced no snapshot (e.g. zero txs). In both cases dispose
-        // the leftover (if any) so the pool reclaims its backing array.
-        _ticksPerTx?.Dispose();
-        _ticksPerTx = new ArrayPoolList<long>(capacity: Math.Max(txCount, 256), count: txCount);
+        DiscardPending();
+        return _ticksPerTx = new ArrayPoolList<long>(capacity: Math.Max(txCount, 256), count: txCount);
     }
 
     /// <summary>Called by the tx executor after each transaction.</summary>
-    public static void Record(int index, long ticks)
+    public static void Record(ArrayPoolList<long> timings, int index, long ticks)
     {
-        ArrayPoolList<long>? list = _ticksPerTx;
-        if (list is null) return;
-        Span<long> span = list.AsSpan();
+        Span<long> span = timings.AsSpan();
         if ((uint)index < (uint)span.Length) span[index] = ticks;
     }
 
@@ -73,5 +57,11 @@ public static class PerTxTimingCollector
         if (!IsEnabled || handoff is null || handoff.Count == 0) return null;
         _ticksPerTx = null;
         return handoff;
+    }
+
+    internal static void DiscardPending()
+    {
+        _ticksPerTx?.Dispose();
+        _ticksPerTx = null;
     }
 }
