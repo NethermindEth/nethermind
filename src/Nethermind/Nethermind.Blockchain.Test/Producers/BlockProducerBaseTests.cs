@@ -106,6 +106,27 @@ public partial class BlockProducerBaseTests
         Assert.That(logManager.Errors, reported ? Is.Not.Empty : Is.Empty);
     }
 
+    [TestCase(typeof(OperationCanceledException), 0L)]
+    [TestCase(typeof(InvalidOperationException), 1L)]
+    [NonParallelizable]
+    public async Task Runner_counts_only_a_failure_other_than_cancellation(Type exceptionType, long counted)
+    {
+        IBlockProductionTrigger trigger = Substitute.For<IBlockProductionTrigger>();
+        IBlockProducer producer = Substitute.For<IBlockProducer>();
+        producer.BuildBlock(Arg.Any<BlockHeader?>(), Arg.Any<IBlockTracer?>(), Arg.Any<PayloadAttributes?>(), Arg.Any<IBlockProducer.Flags>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromException<Block?>((Exception)Activator.CreateInstance(exceptionType)!));
+        StandardBlockProducerRunner runner = new(trigger, Build.A.BlockTree().TestObject, producer);
+        runner.Start();
+        long failedBefore = Metrics.FailedBlockSeals;
+        BlockProductionEventArgs args = new(Build.A.BlockHeader.TestObject);
+
+        trigger.TriggerBlockProduction += Raise.EventWith(args);
+
+        await Assert.ThatAsync(() => args.BlockProductionTask, Throws.InstanceOf(exceptionType));
+        Assert.That(Metrics.FailedBlockSeals - failedBefore, Is.EqualTo(counted));
+        await runner.StopAsync();
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Parent_timestamp_is_used_consistently()
     {

@@ -1619,7 +1619,7 @@ namespace Nethermind.TxPool.Test
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(result, Is.EqualTo(AcceptTxResult.Invalid));
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Syncing));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
             }
         }
