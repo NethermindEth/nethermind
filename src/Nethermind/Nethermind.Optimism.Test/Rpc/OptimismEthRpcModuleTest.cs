@@ -158,14 +158,17 @@ public class OptimismEthRpcModuleTest
     private const string FailedToForward = """{"jsonrpc":"2.0","error":{"code":-32603,"message":"Failed to forward transaction"},"id":67}""";
 
     [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"nonce too low"}}""",
-        """{"jsonrpc":"2.0","error":{"code":-32000,"message":"nonce too low"},"id":67}""",
+        """{"jsonrpc":"2.0","error":{"code":-32000,"message":"nonce too low"},"id":67}""", true,
         TestName = "Forwarded transaction rejected by the sequencer returns its error")]
+    [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32603,"message":"internal error"}}""",
+        """{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal error"},"id":67}""", false,
+        TestName = "Forwarded transaction hitting a sequencer failure returns its error")]
     [TestCase($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""",
-        $$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}""",
+        $$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}""", false,
         TestName = "Forwarded transaction accepted by the sequencer returns its hash")]
-    [TestCase("", FailedToForward, TestName = "Empty sequencer response returns failed to forward")]
-    [TestCase("<html>502 Bad Gateway</html>", FailedToForward, TestName = "Non-JSON sequencer response returns failed to forward")]
-    public async Task Send_raw_transaction_forwards_the_sequencer_response(string sequencerResponse, string expected)
+    [TestCase("", FailedToForward, false, TestName = "Empty sequencer response returns failed to forward")]
+    [TestCase("<html>502 Bad Gateway</html>", FailedToForward, false, TestName = "Non-JSON sequencer response returns failed to forward")]
+    public async Task Send_raw_transaction_forwards_the_sequencer_response(string sequencerResponse, string expected, bool isRequestError)
     {
         IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
         sequencer.Post("eth_sendRawTransaction", Arg.Any<object?[]>()).Returns(sequencerResponse);
@@ -181,9 +184,16 @@ public class OptimismEthRpcModuleTest
             .Build();
 
         Transaction tx = Build.A.Transaction.Signed(TestItem.PrivateKeyA).TestObject;
-        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).ToHexString());
+        byte[] raw = Rlp.Encode(item: tx, behaviors: RlpBehaviors.None).Bytes;
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", raw.ToHexString());
+        ResultWrapper<Hash256> result = await rpcBlockchain.EthRpcModule.eth_sendRawTransaction(raw);
 
-        Assert.That(serialized, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Is.EqualTo(expected));
+            // A rejected transaction is the caller's error; a sequencer failure stays the operator's.
+            Assert.That(result.IsRequestError, Is.EqualTo(isRequestError));
+        }
     }
 
     [Test]

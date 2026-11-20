@@ -156,6 +156,37 @@ public class JsonRpcProcessorTests
             $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
     }
 
+    // A rejected transaction carries the server code -32000 but is the caller's fault, so it follows the request-error
+    // rule above: Debug for unauthenticated callers, WARN when authenticated.
+    [TestCase(true, false, false, TestName = "Rejected transaction is not WARN for an unauthenticated caller")]
+    [TestCase(true, true, true, TestName = "Rejected transaction keeps WARN when authenticated")]
+    [TestCase(false, false, true, TestName = "Server error with the same code keeps WARN")]
+    public async Task Request_error_flag_follows_request_error_log_level(bool requestError, bool isAuthenticated, bool expectWarn)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = ErrorCodes.TransactionRejected, Message = "already known", RequestError = requestError }
+        });
+        string request = CreateRequest("1", "eth_sendRawTransaction", """["0x00"]""");
+        JsonRpcContext context = isAuthenticated ? CreateEngineContext() : CreateHttpContext();
+
+        TestLogger warnLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        await ProcessAsync(CreateProcessorWithLogger(service, warnLogger), request, context);
+
+        TestLogger debugLogger = new();
+        await ProcessAsync(CreateProcessorWithLogger(service, debugLogger), request, context);
+
+        string expectedFragment = $"Code: {ErrorCodes.TransactionRejected} Message: already known";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(warnLogger.LogList.Where(l => l.Contains(expectedFragment)), expectWarn ? Is.Not.Empty : Is.Empty,
+                $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
+            Assert.That(debugLogger.LogList.Where(l => l.Contains(expectedFragment)), Is.Not.Empty,
+                "the rejection must stay available at Debug");
+        }
+    }
+
     // The two tests above cover errors a module produced. Bytes that never decode into a request never reach one, so
     // -32700 is raised on the transport path instead, which had its own unconditional Error line. Same rule applies:
     // undecodable bytes are the caller's fault, and the JWT endpoint keeps the operator's line.

@@ -479,7 +479,7 @@ public partial class EthRpcModule(
         }
         catch (RlpReaderException)
         {
-            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected, isTemporary: true);
+            return ResultWrapper<Hash256>.Fail("Invalid RLP.", ErrorCodes.TransactionRejected, isRequestError: true);
         }
     }
 
@@ -724,7 +724,7 @@ public partial class EthRpcModule(
         ResultWrapper<Hash256> sendResult = await eth_sendRawTransaction(transaction);
         if (sendResult.Result.ResultType != ResultType.Success)
         {
-            return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode, sendResult.IsTemporary);
+            return ResultWrapper<ReceiptForRpc?>.Fail(sendResult.Result.Error ?? "Send failed", sendResult.ErrorCode, sendResult.IsTemporary, sendResult.IsRequestError);
         }
         Hash256 hash = sendResult.Data;
 
@@ -778,10 +778,10 @@ public partial class EthRpcModule(
             if (acceptTxResult.Equals(AcceptTxResult.Accepted))
                 return ResultWrapper<Hash256>.Success(txHash);
 
-            // A rejected transaction is the caller's error, so it must not log a warning per request
+            // A rejected transaction is the caller's error, so it is logged like a request error rather than a warning per request
             return acceptTxResult.Equals(AcceptTxResult.SignFailed)
                 ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
-                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected, isTemporary: true);
+                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected, isRequestError: true);
         }
         catch (Exception e)
         {

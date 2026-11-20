@@ -2446,7 +2446,7 @@ public partial class EthRpcModuleTests
     [TestCase("eth_sendRawTransaction", false)]
     [TestCase("eth_sendRawTransactionSync", true)]
     [TestCase("eth_sendRawTransactionSync", false)]
-    public async Task Send_raw_transaction_rejection_does_not_warn(string method, bool invalidRlp)
+    public async Task Send_raw_transaction_rejection_is_a_request_error(string method, bool invalidRlp)
     {
         ITxSender sender = Substitute.For<ITxSender>();
         sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
@@ -2465,7 +2465,8 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
-            Assert.That(error.SuppressWarning, Is.True);
+            Assert.That(error.RequestError, Is.True);
+            Assert.That(error.SuppressWarning, Is.False, "the rejection must stay visible at Debug");
         }
     }
 
