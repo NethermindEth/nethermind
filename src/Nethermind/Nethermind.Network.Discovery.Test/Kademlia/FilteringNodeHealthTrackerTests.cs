@@ -164,16 +164,24 @@ public class FilteringNodeHealthTrackerTests
     [Test]
     public void Trusted_static_and_bootnode_bypass_filter()
     {
-        (INodeHealthTracker<Node> tracker, INodeHealthTracker<Node> inner, _) = CreateTracker();
+        NetworkNode trustedNode = new(TestItem.PublicKeyA, "203.0.113.10", 30303);
+        ITrustedNodesManager trustedNodes = Substitute.For<ITrustedNodesManager>();
+        trustedNodes.Nodes.Returns([trustedNode]);
+        trustedNodes.ContainsNode(Arg.Any<PublicKey>()).Returns(call => call.Arg<PublicKey>().Equals(trustedNode.NodeId));
+        NetworkNode staticNode = new(TestItem.PublicKeyB, "203.0.113.11", 30303);
+        IStaticNodesManager staticNodes = Substitute.For<IStaticNodesManager>();
+        staticNodes.Nodes.Returns([staticNode]);
+        staticNodes.ContainsNode(Arg.Any<PublicKey>()).Returns(call => call.Arg<PublicKey>().Equals(staticNode.NodeId));
+
+        (INodeHealthTracker<Node> tracker, INodeHealthTracker<Node> inner, _) =
+            CreateTracker(staticNodes: staticNodes, trustedNodes: trustedNodes);
         Node trusted = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        trusted.IsTrusted = true;
-        Node staticNode = CreateNode(TestItem.PublicKeyB, "203.0.113.11");
-        staticNode.IsStatic = true;
+        Node managedStatic = CreateNode(TestItem.PublicKeyB, "203.0.113.11");
         Node bootnode = CreateNode(TestItem.PublicKeyC, "203.0.113.12");
         bootnode.IsBootnode = true;
 
         tracker.OnIncomingMessageFrom(trusted);
-        tracker.OnIncomingMessageFrom(staticNode);
+        tracker.OnIncomingMessageFrom(managedStatic);
         tracker.OnIncomingMessageFrom(bootnode);
 
         inner.Received(3).OnIncomingMessageFrom(Arg.Any<Node>());
@@ -286,7 +294,9 @@ public class FilteringNodeHealthTrackerTests
             bool subnetBucketing = true,
             NetworkNode[]? persisted = null,
             KademliaConfig<Node>? config = null,
-            string currentIp = "198.51.100.1")
+            string currentIp = "198.51.100.1",
+            IStaticNodesManager? staticNodes = null,
+            ITrustedNodesManager? trustedNodes = null)
     {
         INodeHealthTracker<Node> inner = Substitute.For<INodeHealthTracker<Node>>();
         IRoutingTable<Node, ValueHash256> routingTable = Substitute.For<IRoutingTable<Node, ValueHash256>>();
@@ -297,6 +307,8 @@ public class FilteringNodeHealthTrackerTests
             persisted: persisted,
             kademliaConfig: config,
             routingTable: routingTable,
+            staticNodes: staticNodes,
+            trustedNodes: trustedNodes,
             innerTracker: inner);
         _containers.Add(container);
         return (container.Resolve<INodeHealthTracker<Node>>(), inner, routingTable);

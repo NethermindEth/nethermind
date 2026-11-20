@@ -28,8 +28,9 @@ namespace Nethermind.Network.Discovery.Kademlia;
 /// a node rebuilt from a packet carries no flags. The identity set is built once from configuration: self,
 /// bootnodes, and configured static peers. Static and trusted nodes are resolved live from their managers,
 /// so a removal is observed on the next admission unless the identity is also exempt for an independent
-/// reason, and an addition stops the node renewing the reservation it still holds. Flags on an admitted
-/// instance are evidence for that call only and never create a lasting entitlement.
+/// reason, and an addition stops the node renewing the reservation it still holds. Only the bootnode flag is
+/// used as instance evidence, because it comes from configuration; a static or trusted flag can be stale by
+/// the time it is seen, as the operator may have removed the node from its manager in between.
 /// </para>
 /// <para>
 /// Every routing-table node is persisted, so filtering persisted nodes at load could empty the routing
@@ -148,14 +149,13 @@ internal sealed class DiscoveryNodeAdmission(
     // cannot evict the entry between the two and reject the node against a reservation it already owns.
     private bool AdmitAddress(Node node) => _filter.TryAcceptOrRefresh(node.Address.Address, node.Id);
 
-    // Instance flags are evidence for the call that carries them only. TryAdmit sees the node's current flags, but
-    // a promotion re-checks an instance cached minutes earlier, whose flags may have gone stale since the operator
-    // could have removed it from its manager while it waited. Caching the flags by identity would keep the exemption
-    // alive after that removal; lasting exemptions come from the configuration-backed set and live manager
-    // membership, resolved by IsManagedExempt.
+    // A bootnode flag comes from configuration, so it cannot go stale. Static and trusted flags can: the operator can
+    // remove the node from its manager after the instance was constructed, and live membership, resolved by
+    // IsManagedExempt, already covers a node that is still managed. A promotion or refresh re-checks an instance
+    // cached minutes earlier, so it ignores every instance flag.
     private bool IsExempt(Node node, bool trustInstanceFlags)
         => _exemptNodeIds.Contains(node.Id)
-           || (trustInstanceFlags && (node.IsBootnode || node.IsStatic || node.IsTrusted))
+           || (trustInstanceFlags && node.IsBootnode)
            || IsPersistedAtSameAddress(node);
 
     private bool IsPersistedAtSameAddress(Node node)

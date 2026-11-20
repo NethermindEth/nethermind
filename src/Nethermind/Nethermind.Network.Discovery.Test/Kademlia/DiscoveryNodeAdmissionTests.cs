@@ -387,11 +387,11 @@ public class DiscoveryNodeAdmissionTests
     [Test]
     public void Trusted_static_and_bootnode_nodes_bypass_the_filter_without_consuming_capacity()
     {
-        Fixture fixture = CreateAdmission();
+        Fixture fixture = CreateAdmission(
+            staticNodes: StaticNodes([new NetworkNode(TestItem.PublicKeyB, "203.0.113.11", 30303)]),
+            trustedNodes: TrustedNodes([new NetworkNode(TestItem.PublicKeyA, "203.0.113.10", 30303)]));
         Node trusted = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        trusted.IsTrusted = true;
         Node staticNode = CreateNode(TestItem.PublicKeyB, "203.0.113.11");
-        staticNode.IsStatic = true;
         Node bootnode = CreateNode(TestItem.PublicKeyC, "203.0.113.12");
         bootnode.IsBootnode = true;
 
@@ -425,21 +425,21 @@ public class DiscoveryNodeAdmissionTests
     }
 
     [Test]
-    public void Flag_exemption_applies_only_to_the_current_call()
+    public void Instance_flags_do_not_exempt_a_node_its_manager_no_longer_lists()
     {
         Fixture fixture = CreateAdmission();
         // An ordinary node already holds the subnet.
         Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyE, "203.0.113.20")), Is.True);
 
-        Node flagged = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
-        flagged.IsTrusted = true;
+        Node flaggedTrusted = CreateNode(TestItem.PublicKeyA, "203.0.113.10");
+        flaggedTrusted.IsTrusted = true;
+        Node flaggedStatic = CreateNode(TestItem.PublicKeyB, "203.0.113.11");
+        flaggedStatic.IsStatic = true;
 
         using (Assert.EnterMultipleScope())
         {
-            // The flag admits the flagged instance without reserving the subnet...
-            Assert.That(fixture.Admission.TryAdmit(flagged), Is.True);
-            // ...but a packet rebuild without the flag inherits no lasting identity entitlement.
-            Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.False);
+            Assert.That(fixture.Admission.TryAdmit(flaggedTrusted), Is.False);
+            Assert.That(fixture.Admission.TryAdmit(flaggedStatic), Is.False);
         }
     }
 
@@ -629,10 +629,10 @@ public class DiscoveryNodeAdmissionTests
 
         using (Assert.EnterMultipleScope())
         {
-            // A still-flagged instance is admitted for its own call...
-            Assert.That(fixture.Admission.TryAdmit(flaggedStatic), Is.True);
-            Assert.That(fixture.Admission.TryAdmit(flaggedTrusted), Is.True);
-            // ...but it does not restore the identity's exemption.
+            // A still-flagged instance carries no entitlement once the operator removed it...
+            Assert.That(fixture.Admission.TryAdmit(flaggedStatic), Is.False);
+            Assert.That(fixture.Admission.TryAdmit(flaggedTrusted), Is.False);
+            // ...and an unflagged rebuild is rejected just the same.
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyA, "203.0.113.10")), Is.False);
             Assert.That(fixture.Admission.TryAdmit(CreateNode(TestItem.PublicKeyB, "203.0.114.20")), Is.False);
         }
