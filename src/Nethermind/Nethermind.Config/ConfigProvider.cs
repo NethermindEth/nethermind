@@ -98,6 +98,12 @@ public class ConfigProvider : IConfigProvider
             return null;
         }
 
+        // Sources and categories are keyed by the full name (e.g. SyncConfig); accept the short form (Sync) too
+        if (!string.IsNullOrEmpty(category) && !category.EndsWith("Config", StringComparison.OrdinalIgnoreCase))
+        {
+            category += "Config";
+        }
+
         for (int i = 0; i < _configSource.Count; i++)
         {
             (bool isSet, string? str) = _configSource[i].GetRawValue(category, name);

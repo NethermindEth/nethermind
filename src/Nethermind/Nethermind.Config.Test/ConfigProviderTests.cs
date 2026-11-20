@@ -253,6 +253,27 @@ namespace Nethermind.Config.Test
             }
         }
 
+        [TestCase("JsonRpc")]
+        [TestCase("JsonRpcConfig")]
+        [TestCase("jsonrpc")]
+        public void Raw_value_is_returned_for_short_and_full_category_names(string category)
+        {
+            IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable("NETHERMIND_JSONRPCCONFIG_HOST").Returns("10.0.0.1");
+
+            ConfigProvider provider = new();
+            provider.AddSource(new ArgsConfigSource(new Dictionary<string, string> { ["JsonRpc.Port"] = "1234" }));
+            provider.AddSource(new EnvConfigSource(environment));
+            provider.Initialize();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetRawValue(category, nameof(IJsonRpcConfig.Port)), Is.EqualTo("1234"));
+                Assert.That(provider.GetRawValue(category, nameof(IJsonRpcConfig.Host)), Is.EqualTo("10.0.0.1"));
+                Assert.That(provider.GetRawValue(category, nameof(IJsonRpcConfig.Timeout)), Is.EqualTo(new JsonRpcConfig().Timeout));
+            }
+        }
+
         public static IEnumerable<TestCaseData> ReportedKeyCases()
         {
             yield return new TestCaseData(
