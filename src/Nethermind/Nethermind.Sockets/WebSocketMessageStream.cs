@@ -112,7 +112,12 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
                 innerException = innerException.InnerException;
             }
 
-            if (innerException is SocketException socketException)
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // The caller ended the connection, e.g. at shutdown, so the abort is expected.
+                if (_logger.IsTrace) _logger.Trace($"WebSockets receive cancelled: {innerException?.Message}");
+            }
+            else if (innerException is SocketException socketException)
             {
                 if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                 {

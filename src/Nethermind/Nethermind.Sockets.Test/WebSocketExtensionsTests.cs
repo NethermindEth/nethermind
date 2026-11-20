@@ -404,6 +404,30 @@ public class WebSocketExtensionsTests
     }
 
     [Test]
+    public async Task Logs_an_aborted_receive_at_info_only_when_it_was_not_cancelled([Values] bool cancelled)
+    {
+        WebSocket socket = Substitute.For<WebSocket>();
+        socket.State.Returns(WebSocketState.Open);
+        socket.ReceiveAsync(Arg.Any<Memory<byte>>(), Arg.Any<CancellationToken>()).Returns(
+            ValueTask.FromException<ValueWebSocketReceiveResult>(new OperationCanceledException(null, new ConnectionAbortedException())));
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        logger.IsTrace.Returns(true);
+        WebSocketMessageStream stream = new(socket, new OneLoggerLogManager(new ILogger(logger)));
+        using CancellationTokenSource cts = new();
+        if (cancelled) await cts.CancelAsync();
+
+        ReceiveResult result = await stream.ReceiveAsync(new byte[16], cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Closed, Is.True);
+            logger.Received(cancelled ? 0 : 1).Info(Arg.Any<string>());
+            logger.Received(cancelled ? 1 : 0).Trace(Arg.Any<string>());
+        }
+    }
+
+    [Test]
     public void Correct_isnull_on_result()
     {
         using (Assert.EnterMultipleScope())
