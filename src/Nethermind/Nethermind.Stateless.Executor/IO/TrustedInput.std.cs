@@ -13,4 +13,6 @@ public static partial class TrustedInput
 
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length) =>
         ExecutableCodeMemory.Copy(data.Slice(start, length));
+
+    private static partial bool RetainHints => true;
 }

@@ -17,6 +17,8 @@ public static class RpcTransactionErrors
     public const string MissingToInBlobTx = "missing \"to\" in blob transaction";
     public const string ZeroMaxFeePerBlobGas = "maxFeePerBlobGas, if specified, must be non-zero";
     public const string BlobFeeCapWithoutBlobHashes = "maxFeePerBlobGas specified without blobVersionedHashes";
+    /// <summary>Reports <c>r</c> or <c>s</c> given without a <c>v</c> a signature can carry.</summary>
+    public const string InvalidSignatureV = "missing or invalid v for the signature in r and s";
 
     internal const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
     internal const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";

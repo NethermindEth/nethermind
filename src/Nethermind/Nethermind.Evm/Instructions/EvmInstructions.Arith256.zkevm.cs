@@ -135,13 +135,47 @@ public static unsafe partial class EvmInstructions
         WordDivision.Remainder((uint*)words, in m, out result);
     }
 
+    /// <summary>Divides <paramref name="a"/> by <paramref name="b"/> on Airbender's u256 delegation if the quotient is at most seven.</summary>
+    /// <remarks>
+    /// When the top limb of <paramref name="b"/> is nonzero and that of <paramref name="a"/> is below eight times it,
+    /// <c>a &lt; 8 b</c>. Subtracting <paramref name="b"/> until the delegation borrows and adding it back once is then
+    /// at most nine delegations, where <see cref="WordDivision"/> normalises and divides eight digits. SNARK verifiers
+    /// reduce this way modulo a 254-bit prime.
+    /// </remarks>
+    [SkipLocalsInit]
+    private static bool TryAirbenderSmallQuotient(in UInt256 a, in UInt256 b, out uint quotient, out UInt256 remainder)
+    {
+        if (b.u3 == 0 || a.u3 >> 3 >= b.u3)
+        {
+            Unsafe.SkipInit(out quotient);
+            Unsafe.SkipInit(out remainder);
+            return false;
+        }
+
+        byte* buffer = stackalloc byte[2 * 32 + 31];
+        UInt256* words = (UInt256*)(((nuint)buffer + 31) & ~(nuint)31);
+        words[0] = a;
+        words[1] = b;
+        uint count = 0;
+        while (!AirbenderArithmetic.Subtract(words, words + 1))
+            count++;
+
+        AirbenderArithmetic.Add(words, words + 1);
+        quotient = count;
+        remainder = words[0];
+        return true;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
         Debug.Assert(!b.IsZero);
         if (AirbenderFlag.IsActive)
         {
-            WordDivision.DivRem(in a, in b, out result, out _);
+            if (TryAirbenderSmallQuotient(in a, in b, out uint quotient, out _))
+                result = new UInt256(quotient);
+            else
+                WordDivision.DivRem(in a, in b, out result, out _);
             return;
         }
 
@@ -163,7 +197,7 @@ public static unsafe partial class EvmInstructions
         {
             if (b.IsZero)
                 result = default;
-            else
+            else if (!TryAirbenderSmallQuotient(in a, in b, out _, out result))
                 WordDivision.DivRem(in a, in b, out _, out result);
             return;
         }

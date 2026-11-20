@@ -125,6 +125,11 @@ public partial class NewPayloadRequest<TExecutionPayload>
 
     private byte[][] GetFlatEncodedRequests()
     {
+        if (ExecutionRequests.Deposits.Length == 0 && ExecutionRequests.Withdrawals.Length == 0
+            && ExecutionRequests.Consolidations.Length == 0 && ExecutionRequests.BuilderDeposits.Length == 0
+            && ExecutionRequests.BuilderExits.Length == 0)
+            return [];
+
         ExecutionRequest[] deposits = new ExecutionRequest[ExecutionRequests.Deposits.Length];
 
         for (int i = 0; i < deposits.Length; i++)

@@ -41,7 +41,7 @@ public class EthereumStepsLoaderTests
             .. LoadStepInfoFromAssembly(typeof(EthereumRunner).Assembly),
         ];
 
-        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(DropPruningTrieState), typeof(SeedFlatHistoryGenesis), typeof(StartHistoryWindowPruner), typeof(StartHistoryWalkVerification), typeof(StartCommitmentReclaimer), typeof(StartTransactionChangesetBuilder), typeof(StartPivotHistoryImage), typeof(EraStep), typeof(EraEStep)];
+        HashSet<Type> optionalSteps = [typeof(RunVerifyTrie), typeof(ImportFlatDb), typeof(PreparePruningTrieStateMigration), typeof(StartPruningTrieStateMigration), typeof(DropPruningTrieState), typeof(SeedFlatHistoryGenesis), typeof(StartHistoryWindowPruner), typeof(StartHistoryWalkVerification), typeof(StartCommitmentReclaimer), typeof(StartTransactionChangesetBuilder), typeof(StartPivotHistoryImage), typeof(EraStep), typeof(EraEStep)];
         steps = steps.Where((s) => !optionalSteps.Contains(s.StepBaseType)).ToHashSet();
 
         using IContainer container = new ContainerBuilder()
@@ -85,6 +85,15 @@ public class EthereumStepsLoaderTests
                 new StepInfo(typeof(SelfCancellingOptionalStep)),
                 new StepInfo(typeof(RequiredDependentStep)),
                 new StepInfo(typeof(RequiredGrandDependentStep)),
+                new StepInfo(typeof(ThrowingConstructorStep)),
+                new StepInfo(typeof(OptionalStepThrowingOnFirstConstruction)),
+                new StepInfo(typeof(SelfDependentStep)),
+                new StepInfo(typeof(CycleStepA)),
+                new StepInfo(typeof(CycleStepB)),
+                new StepInfo(typeof(StepAfterCycle)),
+                new StepInfo(typeof(StepBehindStepAfterCycle)),
+                new StepInfo(typeof(SecondCycleStepA)),
+                new StepInfo(typeof(SecondCycleStepB)),
         ]);
 
     [Test]

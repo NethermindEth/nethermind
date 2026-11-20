@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.Intrinsics.X86;
@@ -244,6 +245,30 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Scalar_absorb_matches_per_block_permutation([Values(1, 2, 7, 30)] int blocks)
+        {
+            const int rateBytes = 136;
+            byte[] input = new byte[blocks * rateBytes];
+            new Random(blocks).NextBytes(input);
+
+            ulong[] expected = new ulong[25];
+            for (int block = 0; block < blocks; block++)
+            {
+                for (int lane = 0; lane < rateBytes / sizeof(ulong); lane++)
+                {
+                    expected[lane] ^= BinaryPrimitives.ReadUInt64LittleEndian(input.AsSpan(block * rateBytes + lane * sizeof(ulong)));
+                }
+
+                KeccakHash.KeccakF1600Scalar(ref expected[0]);
+            }
+
+            ulong[] actual = new ulong[25];
+            KeccakHash.AbsorbBlocksScalar(ref actual[0], ref input[0], blocks);
+
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void Eight_way_hash_matches_individual_hashes([Values(32, 64, 136, 272, 408, 544, 1088, 2176)] int inputLength)
             => AssertBatchedHashMatchesIndividualHashes(inputLength, 8);
 
@@ -388,7 +413,7 @@ namespace Nethermind.Core.Test
         // is at least 68, which the widest output, 66, exercises at its tightest.
         [Test]
         public void Supported_output_sizes_agree_across_the_one_shot_and_incremental_paths(
-            [Values(20, 32, 300)] int inputLength,
+            [Values(20, 32, 135, 136, 137, 271, 272, 273, 300, 4096)] int inputLength,
             [Values(1, 32, 64, 66)] int outputLength)
         {
             byte[] input = FilledInput(inputLength);

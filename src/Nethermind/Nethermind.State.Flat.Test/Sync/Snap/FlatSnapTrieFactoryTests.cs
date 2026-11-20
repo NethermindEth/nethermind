@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync.Snap;
@@ -60,6 +61,7 @@ public class FlatSnapTrieFactoryTests
         public void SelfDestructRange(in ValueHash256 fromPath, in ValueHash256 toPath, in ValueHash256? keptAccount) { }
         public void DeleteStateTrieNodeRange(in ValueHash256 from, in ValueHash256 to) { }
         public void DeleteStorageTrieNodeRange(in ValueHash256 addressHash, in ValueHash256 from, in ValueHash256 to) { }
+        public void SetMigrationCursor(in MigrationCursor? cursor) { }
         public void Dispose() { }
     }
 
@@ -183,7 +185,7 @@ public class FlatSnapTrieFactoryTests
         {
             // Proofless flow: no boundary stitching, no IsPersisted, double-write check off.
             storageTree.BulkSetAndUpdateRootHash([new PathWithStorageSlot(new ValueHash256("0x1000000000000000000000000000000000000000000000000000000000000000"), [1])]);
-            storageTree.Commit(Keccak.MaxValue);
+            storageTree.Commit(Keccak.Zero, Keccak.MaxValue);
         }
 
         using (ISnapTree<PathWithAccount> stateTree = factory.CreateStateTree())
@@ -236,12 +238,13 @@ public class FlatSnapTrieFactoryTests
         ValueHash256 storageQueued = Path("2");
         ValueHash256 storageQueuedFromSlot8 = Path("3");
         ValueHash256 refreshedFromSlot8 = Path("4");
+        ValueHash256 storageQueuedAfterSlot9 = Path("5");
         ValueHash256 slot1 = Path("1");
         ValueHash256 slotC = Path("c");
 
         using (IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
         {
-            foreach (ValueHash256 account in (ValueHash256[])[LastAccount, writtenAfter, inFinishedPartition, storageQueued, storageQueuedFromSlot8, refreshedFromSlot8])
+            foreach (ValueHash256 account in (ValueHash256[])[LastAccount, writtenAfter, inFinishedPartition, storageQueued, storageQueuedFromSlot8, refreshedFromSlot8, storageQueuedAfterSlot9])
             {
                 batch.SetAccountRaw(account, new AccountStruct(1));
                 batch.SetStorageRawEncoded(account, slot1, SlotRlp);
@@ -256,12 +259,18 @@ public class FlatSnapTrieFactoryTests
 
             // Leaves on the path to the next account: one of the last account downloaded, one past it.
             batch.SetStateTrieNode(TreePath.FromHexString("9"), BuildLeafRlp(new string('0', 63)));
+            // The same in a storage trie: the leaf of the last slot downloaded, on the path to the next one.
+            batch.SetStorageTrieNode(storageQueuedAfterSlot9.ToCommitment(), TreePath.FromHexString("9"), BuildLeafRlp(new string('0', 63)));
             batch.SetStateTrieNode(TreePath.FromHexString("900"), BuildLeafRlp("f" + new string('0', 60)));
         }
 
         CreateResumingFactory(persistence, db).SaveCheckpoint(CreateCheckpoint(
             storagesToRetrieve: [new PathWithAccount(storageQueued, new AccountStruct(1))],
-            storageRanges: [new StorageRangeProgress([new PathWithAccount(storageQueuedFromSlot8, new AccountStruct(1))], Path("8"), null)],
+            storageRanges:
+            [
+                new StorageRangeProgress([new PathWithAccount(storageQueuedFromSlot8, new AccountStruct(1))], Path("8"), null),
+                new StorageRangeProgress([new PathWithAccount(storageQueuedAfterSlot9, new AccountStruct(1))], Path("9").IncrementPath(), null),
+            ],
             accountsToRefresh: [new AccountWithStorageStartingHash { PathAndAccount = new PathWithAccount(refreshedFromSlot8, new AccountStruct(1)), StorageStartingHash = Path("8"), StorageHashLimit = ValueKeccak.MaxValue }]));
 
         FlatSnapTrieFactory factory = CreateResumingFactory(persistence, db);
@@ -273,7 +282,7 @@ public class FlatSnapTrieFactoryTests
             Assert.That(factory.LoadCheckpoint(), Is.Not.Null, "the checkpoint is what the resumed run starts from");
 
             foreach ((ValueHash256 account, bool kept) in (ValueTuple<ValueHash256, bool>[])
-                     [(LastAccount, true), (writtenAfter, false), (inFinishedPartition, true), (storageQueued, true), (storageQueuedFromSlot8, true), (refreshedFromSlot8, true)])
+                     [(LastAccount, true), (writtenAfter, false), (inFinishedPartition, true), (storageQueued, true), (storageQueuedFromSlot8, true), (refreshedFromSlot8, true), (storageQueuedAfterSlot9, true)])
             {
                 Assert.That(reader.GetAccountRaw(account) is not null, Is.EqualTo(kept), $"account {account}");
             }
@@ -286,6 +295,7 @@ public class FlatSnapTrieFactoryTests
                          (storageQueued, slot1, false), (storageQueued, slotC, false),
                          (storageQueuedFromSlot8, slot1, true), (storageQueuedFromSlot8, slotC, false),
                          (refreshedFromSlot8, slot1, true), (refreshedFromSlot8, slotC, false),
+                         (storageQueuedAfterSlot9, slot1, true), (storageQueuedAfterSlot9, slotC, false),
                      ])
             {
                 UInt256 value = default;
@@ -301,6 +311,7 @@ public class FlatSnapTrieFactoryTests
                          // The root and the node at 8 are on the path to slot 8, the ones at c are past it.
                          (storageQueuedFromSlot8, ["1", "1111111111111111"]),
                          (refreshedFromSlot8, ["1", "1111111111111111"]),
+                         (storageQueuedAfterSlot9, ["1", "8", "1111111111111111"]),
                      ])
             {
                 foreach (string node in StorageNodePaths)
@@ -309,6 +320,9 @@ public class FlatSnapTrieFactoryTests
                         Is.EqualTo(keptNodes.Contains(node)), $"storage node {node} of {account}");
                 }
             }
+
+            // Unlike the account leaf at 9 below, the slot leaf at 9 goes, as no storage range persists a node reaching past it.
+            Assert.That(reader.LoadStorageRlp(storageQueuedAfterSlot9.ToCommitment(), TreePath.FromHexString("9"), ReadFlags.None), Is.Null, "slot leaf on the path to the next slot");
 
             // The branches at 9 lie on the path to the next account and the nodes at a past it. The leaf at 9 is on that
             // path too, but it holds the last account downloaded before the checkpoint, so it stays.

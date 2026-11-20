@@ -626,7 +626,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
 
                 public ScenarioBuilder AndAPeerWithHighDiffGenesisOnlyIsKnown()
                 {
-                    AddPeeringSetup("malicious genesis network", AddPeer(ValidGenesis));
+                    AddPeeringSetup("malicious genesis network", AddPeer(InvalidGenesisWithHighTotalDifficulty));
                     return this;
                 }
 

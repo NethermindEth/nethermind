@@ -585,6 +585,18 @@
           "Nethermind.Crypto": "[2.3.0-preview, )"
         }
       },
+      "nethermind.beaconchain": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Crypto.Bls": "[0.3.17.15, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.Logging.Microsoft": "[2.3.0-preview, )",
+          "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Network.Libp2p": "[2.3.0-preview, )",
+          "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
+          "Snappier": "[1.3.1, )"
+        }
+      },
       "nethermind.blockchain": {
         "type": "Project",
         "dependencies": {
@@ -1032,6 +1044,14 @@
           "Nethermind.Serialization.Rlp": "[2.3.0-preview, )"
         }
       },
+      "nethermind.network.libp2p": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Libp2p": "[1.2.0, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Snappier": "[1.3.1, )"
+        }
+      },
       "nethermind.network.stats": {
         "type": "Project",
         "dependencies": {
@@ -1065,9 +1085,9 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Init": "[2.3.0-preview, )",
           "Nethermind.JsonRpc": "[2.3.0-preview, )",
-          "Nethermind.Libp2p": "[1.2.0, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.2.0, )",
           "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
+          "Nethermind.Network.Libp2p": "[2.3.0-preview, )",
           "Snappier": "[1.3.1, )"
         }
       },
@@ -1138,11 +1158,11 @@
           "Nethermind.Core": "[2.3.0-preview, )",
           "Nethermind.Crypto": "[2.3.0-preview, )",
           "Nethermind.Init": "[2.3.0-preview, )",
-          "Nethermind.Libp2p": "[1.2.0, )",
           "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery": "[1.2.0, )",
           "Nethermind.Logging.Microsoft": "[2.3.0-preview, )",
           "Nethermind.Merge.Plugin": "[2.3.0-preview, )",
           "Nethermind.Network.Discovery": "[2.3.0-preview, )",
+          "Nethermind.Network.Libp2p": "[2.3.0-preview, )",
           "Nethermind.Serialization.Ssz": "[2.3.0-preview, )",
           "Nethermind.Specs": "[2.3.0-preview, )"
         }
