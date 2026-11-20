@@ -1,0 +1,867 @@
+{
+ "until": "2026-11-19",
+ "source": "review comments 2026-05-19..2026-11-19",
+ "clusters": {
+  "xmldoc": {
+   "n": 103,
+   "prs": 94,
+   "valid": 84,
+   "invalid": 0,
+   "human": 15,
+   "authors": 7,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12275#discussion_r3526481983",
+     "hudem1"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13173#discussion_r3951715036",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12943#discussion_r3873883611",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12679#discussion_r3869650617",
+     "benaadams"
+    ]
+   ]
+  },
+  "dispose": {
+   "n": 104,
+   "prs": 91,
+   "valid": 76,
+   "invalid": 1,
+   "human": 41,
+   "authors": 10,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11908#discussion_r3376090906",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/9146#discussion_r3347543929",
+     "flcl42"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13406#discussion_r3994126912",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13405#discussion_r3993094546",
+     "benaadams"
+    ]
+   ]
+  },
+  "arraypool": {
+   "n": 44,
+   "prs": 37,
+   "valid": 31,
+   "invalid": 1,
+   "human": 22,
+   "authors": 9,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11908#discussion_r3376090906",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12864#discussion_r3800706500",
+     "AnkushinDaniil"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13520#discussion_r4022773765",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13406#discussion_r3994126912",
+     "benaadams"
+    ]
+   ],
+   "samples": [
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12017#discussion_r3421289690",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.Core/JsonConverters/ByteArrayConverter.cs",
+     "line": null,
+     "body": "If we are using ArrayPoolList we could avoid allocating array here"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11991#discussion_r3410296057",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+     "line": null,
+     "body": "**Low \u2014 memory-retention upper bound worth documenting**\n\n`ArrayPool<byte>.Create(maxArrayLength: 2MB, maxArraysPerBucket: 8)` creates ~18 power-of-2 size buckets (16 B \u2026 2 MB). Worst-case retained memory per thread is therefore up to `8 \u00d7 18 \u00d7 2 MB \u2248 290 MB` (though in practice EVM allocations are small and buckets near 2 MB are rarely touched). \n\nFor a node with a large OS thread-pool (stress tests, high-parallelism pre-warmer), this multiplies by the number of OS threads. The existing comment"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11974#discussion_r3399969857",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+     "line": null,
+     "body": "**Medium \u2014 pattern divergence with `SafeArrayPool<T>`**\n\nThe codebase already has `SafeArrayPool<T>` (`Nethermind.Core/Collections/SafeArrayPool.cs`) that abstracts ZK_EVM allocation. Its `ZK_EVM` path returns `new T[minimumLength]` specifically because `ArrayPool<T>` is unavailable in zkVM. This PR adds a second `#if ZK_EVM` branch directly in `EvmPooledMemory`, bypassing that abstraction.\n\nThe pow2 sizing is the genuine fix here (avoids O(n\u00b2) realloc churn) but it could be applied at the `Safe"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11974#discussion_r3399970016",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+     "line": null,
+     "body": "**Low \u2014 pow2 pre-zeroing not reflected in `_lastZeroedSize`**\n\n`new byte[capacity]` zero-initializes the full `capacity` bytes. But `RentSlow` always sets `_lastZeroedSize = Size` (not `capacity`) at the end. Subsequent growth that stays within the already-allocated pow2 buffer \u2014 the common case, and the whole point of pow2 sizing \u2014 will hit `Size > _lastZeroedSize` in `EnsureRented` and call `Array.Clear` on already-zeroed bytes.\n\nThis is a correctness non-issue, but it adds unnecessary `Clear`"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11954#discussion_r3386040497",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.State.Flat/ScopeProvider/FlatWorldStateScope.cs",
+     "line": null,
+     "body": "ArrayPoolListRef"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11954#discussion_r3394857222",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.State.Flat/ScopeProvider/FlatWorldStateScope.cs",
+     "line": null,
+     "body": "**Low \u2014 null-pool guard should be hoisted (svlachakis's Claim 3, still present)**\n\n`if (_warmReadPool is null) return;` appears at line 288 but the `using ArrayPoolList<...> jobs = new(totalSlots, totalSlots);` allocation and the loop that fills it run from lines 274\u2013286. In the current calling pattern the pool is never null when `RunSinkSlotReads` is reached (read-only scopes never pass a `sink`, so the `if (sink is not null)` guard at line 247 prevents this method from being entered), but the "
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11908#discussion_r3376030155",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.State/PersistentStorageProvider.cs",
+     "line": null,
+     "body": "Maybe better to use ArrayPoolListRef?"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11894#discussion_r3372591977",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.Blockchain/BlockTree.cs",
+     "line": null,
+     "body": "```suggestion\n            using ArrayPoolListRef<DeferredHeaderEvent> pending = new(headers.Count);\n```"
+    }
+   ]
+  },
+  "sleep": {
+   "n": 152,
+   "prs": 113,
+   "valid": 100,
+   "invalid": 1,
+   "human": 64,
+   "authors": 13,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12811#discussion_r3784329197",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13426#discussion_r3999217949",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13282#discussion_r3961542824",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13036#discussion_r3888756418",
+     "LukaszRozmej"
+    ]
+   ],
+   "samples": [
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11711#discussion_r3297082902",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Xdc/XdcHotStuff.cs",
+     "line": null,
+     "body": "**High: `StopAsync` does not await the in-flight round task.**\n\nThe old implementation awaited `_runTask` before returning. The new one cancels `_roundCts` then immediately returns `Task.CompletedTask`, so any in-progress `RunRound` may still be executing (awaiting `Task.Delay`, calling `BuildAndProposeBlock`, etc.) when the caller considers the runner stopped. If the host disposes dependencies immediately after `await StopAsync()`, `RunRound` can still touch them \u2014 a use-after-dispose race.\n\nCo"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12050#discussion_r3432746556",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Network/IPResolver.cs",
+     "line": null,
+     "body": "**High \u2014 First caller's `CancellationToken` is permanently baked into `_resolveTask`.**\n\n`_resolveTask ??= ResolveCore(cancellationToken)` means whichever caller wins the lock owns the token used for all retries. If that first caller passes a short-lived or already-cancelled token, `ResolveExternalIp` will throw `OperationCanceledException` during a `Task.Delay` between retries, permanently faulting `_resolveTask`. Every subsequent `Resolve()` call then immediately gets a faulted `ValueTask` \u2014 t"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12811#discussion_r3784329197",
+     "author": "wurdum",
+     "path": "src/Nethermind/Nethermind.Network/SessionMonitor.cs",
+     "line": null,
+     "body": "The disconnect window is wall-clock, but pings don't go out once per interval: `LastPingUtc` is stamped just after the tick that triggered the ping, so the `> _pingInterval` guard fails on the next tick and the ping slips a full interval. The effective period is ~2 intervals, so `3` tolerates two misses, not three \u2014 measured at both 500 ms and 10 s. A peer that pongs slower than the 3 s `Timeouts.P2PPing` gets dropped.\n```csharp\n// The loop pings on every other tick (the > _pingInterval guard at"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13436#discussion_r3999808958",
+     "author": "claude",
+     "path": ".github/workflows/run-expb-reproducible-benchmarks.yml",
+     "line": null,
+     "body": "**Medium \u2014 strict equality discards a full run's data on one missing row, after the wall-clock is already spent.**\n\nTwo concerns:\n\n1. `EXPECTED_AMOUNT` is the config's `amount`, i.e. what was *requested*, not what expb actually dispatched. If expb ever trims the payload list (end of the fusaka range at block 25,499,999, a skipped payload, a truncated table) the gate false-fails a run whose data was fine.\n2. On a 1000-payload fusaka run this throws away ~all of the measurement because one K6 row "
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13042#discussion_r3887314395",
+     "author": "claude",
+     "path": ".github/workflows/run-frame-tx-measurements.yml",
+     "line": null,
+     "body": "**Low \u2014 all three projects are built regardless of which harness was selected.**\n\n`harness: verify` needs only `Nethermind.Evm.Test`, but this builds `Nethermind.TxPool.Test` and `Nethermind.Blockchain.Test` too. On a single shared measurement runner with a queueing concurrency group, that is wall-clock other dispatches wait on. Deriving the set from `HARNESS` \u2014 or building lazily inside `run_harness` before the `dotnet test` and shutting the build server down after the last build \u2014 keeps the pr"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13036#discussion_r3888756418",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.Facade/Find/LogIndexBuilder.cs",
+     "line": null,
+     "body": "**MEDIUM \u2014 still open from the previous round: the sliced below-boundary path has no give-up.**\n\nReplacing `MarkCompleted` with the stall branch leaves a 5-second `Task.Delay` loop with no bound and a single `Warn` per `start`. Any below-boundary height that keeps a body while `_receiptStorage.Get(block)` returns empty (`TryGetBlockReceipts`, lines 561-563) parks the descent permanently \u2014 `BackwardSyncCompletion` never completes and the log index never finishes.\n\nTwo configurations reach it and "
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/8003#discussion_r2022904934",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.Merge.Plugin/BlockProduction/PayloadPreparationService.cs",
+     "line": null,
+     "body": "use that cancellation token in ContinueWith and Task.Delay?"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13994#discussion_r4123160314",
+     "author": "manusw7",
+     "path": "src/Nethermind/Nethermind.Consensus/Processing/FrameTxPrefixSimulator.cs",
+     "line": null,
+     "body": "**[LOW] A timed-out simulation can be reclassified as preempted**\n\n`IsCancelled` checks `TimedOut` before `Preempted`, so a run that hits its wall-clock bound aborts without latching `_preempted`. This catch then reads `tracer.Preempted` again, which calls the callback at that point: if a block started processing in between, the timeout comes back as `RejectYielded`, so it is not charged to the sender and the transaction gets a refetch. A test that aborts on the timeout and sets `IsProcessingBlo"
+    }
+   ]
+  },
+  "syncasync": {
+   "n": 73,
+   "prs": 60,
+   "valid": 58,
+   "invalid": 0,
+   "human": 17,
+   "authors": 11,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11887#discussion_r3406229365",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12303#discussion_r3531661205",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13476#discussion_r4017170329",
+     "Marchhill"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13960#discussion_r4115420771",
+     "benaadams"
+    ]
+   ]
+  },
+  "logguard": {
+   "n": 16,
+   "prs": 15,
+   "valid": 9,
+   "invalid": 0,
+   "human": 3,
+   "authors": 4,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/15052#discussion_r4351767048",
+     "marcindsobczak"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13611#discussion_r4231285286",
+     "flcl42"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/8616#discussion_r3266272813",
+     "claude"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12130#discussion_r3470160696",
+     "claude"
+    ]
+   ],
+   "samples": [
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11507#discussion_r3280069191",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Xdc/SignTransactionManager.cs",
+     "line": null,
+     "body": "**Medium \u2014 unchecked `ExtraConsensusData` null dereference**\n\n`ExtraConsensusData` is accessed without a null guard. `XdcHotStuff` explicitly checks this field at two sites (`OnNewHeadBlock:367`, `CommitCertificateAndVote:305`), indicating it can be null in practice. An unguarded `NullReferenceException` here propagates into the blockchain core event dispatch.\n\nThe author's prior response addressed the `XdcBlockHeader` cast on line 72, not `ExtraConsensusData` nullability here.\n\nIf the invariant"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/10759#discussion_r3258341291",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Serialization.Rlp/IRlpDecoder.cs",
+     "line": null,
+     "body": "Inconsistency with `GetContentLength` (fixed in this PR): `GetContentLength` correctly uses `items[i] is null ? Rlp.OfEmptyList.Length : GetLength(items[i])`, but all three `EncodeToNewNettyStream` variants (T?[], IList<T?>, ArrayPoolListRef<T?>) still call `GetLength(items[i])` without a null guard. In practice this is safe because all decoders that handle nullable arrays return `1` for null, matching `Rlp.OfEmptyList.Length`. But the inconsistency is confusing and pre-dates this PR. A follow-u"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/8616#discussion_r3266272813",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Network.Discovery/Kademlia/KBucketTree.cs",
+     "line": null,
+     "body": "**HIGH \u2013 Performance: Unguarded `_logger.Debug` in hot path**\n\n`GetBucketForHash` is called on every routing-table read (every `TryAddOrRefresh`, `Remove`, and `GetKNearestNeighbour`). The two `_logger.Debug` calls here (and on line 105) have no `if (_logger.IsDebug)` guard, which means a string interpolation allocation happens on **every single routing-table access** even in production where debug logging is disabled.\n\nSimilarly unguarded calls exist on lines 115 (`ShouldSplit`), 146 (`Remove`)"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12595#discussion_r3681712935",
+     "author": "wurdum",
+     "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessorBase.FrameTx.cs",
+     "line": null,
+     "body": "The default-code path never issues `ReportAction`, so this `ReportLog` fires with an empty tracer call stack whenever a frame transaction runs entirely through default code (EOA sender: signature `VERIFY` plus codeless `SENDER` transfer). `NativeCallTracer.ReportLog` indexes `_callStack[^1]` without a count guard, so `debug_traceTransaction` with `callTracer` and `withLog: true` throws `ArgumentOutOfRangeException` on such a transaction. A one-line `if (_callStack.Count == 0) return;` in the tra"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/9532#discussion_r3427918879",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Synchronization/StateSync/StateSyncDownloader.cs",
+     "line": null,
+     "body": "**Low \u2013 `Logger.Error` guarded by `Logger.IsTrace`**\n\nExceptions are logged at Error level, but only when trace is enabled \u2014 so they're invisible in production. This is carried over from the original code (`\"DEBUG/ERROR\"` prefix is the tell). \n\nSame pattern appears in `TryGetNodeDataViaEthProtocol` (line 121) and `TryGetNodeDataViaSnapProtocol` (line 165). If you want these visible in production, swap to `Logger.IsDebug`/`Logger.Debug`, or leave as-is if the intent is to keep them trace-only."
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/15170#discussion_r4378846521",
+     "author": "marcindsobczak",
+     "path": "src/Nethermind/Nethermind.Network/PeerPool.cs",
+     "line": null,
+     "body": "**[suggestion] Low** \u2014 no test pins the `!IsPromoted(incoming)` guard. With it removed (`if (incoming.IsStatic)`), the same 214 tests pass. The guard matters on a common path: `OnDisconnected` calls `GetOrAdd(session.Node)` (`PeerManager.cs:1269`), and on a primary dial `session.Node` is the pooled node itself (`Rlpx/RlpxHost.cs:757`). Without the guard, the first disconnect of an outbound session to a host-promoted node makes it permanently static: no 10-minute demotion and no demotion after a "
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13611#discussion_r4231285286",
+     "author": "flcl42",
+     "path": "src/Nethermind/Nethermind.BeaconChain/Sync/BeaconSyncOrchestrator.cs",
+     "line": null,
+     "body": "**Low: a stored canonical block that fails to decode stops the whole driver, and does so again on every start.**\n\n`ReplayStoredBlocksAsync` calls `store.TryGetForkedBlock`, which Snappy-decompresses and SSZ-decodes the record without a guard. A corrupt or incompatible record throws out of `RunCoreAsync`. `BeaconChainService` then logs \"Embedded beacon chain driver failed\" and stops, and every restart fails the same way until the database is deleted. The envelope read earlier in this method, `Try"
+    }
+   ]
+  },
+  "dbl": {
+   "n": 7,
+   "prs": 7,
+   "valid": 6,
+   "invalid": 0,
+   "human": 4,
+   "authors": 3,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13517#discussion_r4059742085",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12980#discussion_r3904889372",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/14495#discussion_r4234535683",
+     "claude"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12568#discussion_r3649544429",
+     "claude"
+    ]
+   ]
+  },
+  "skip": {
+   "n": 37,
+   "prs": 23,
+   "valid": 28,
+   "invalid": 0,
+   "human": 16,
+   "authors": 6,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11728#discussion_r3379192921",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/14886#discussion_r4308620706",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12745#discussion_r3765216264",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12329#discussion_r3538348718",
+     "claude"
+    ]
+   ],
+   "samples": [
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11728#discussion_r3379192921",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.Network.Discovery/Discv5/Kademlia/KademliaAdapter.cs",
+     "line": null,
+     "body": "SkipLocalsInit?"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12329#discussion_r3538348718",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Evm.Precompiles/std/Bls12381PairingCheckPrecompile.cs",
+     "line": null,
+     "body": "**Low / robustness.** `acc` is `stackalloc`'d under `[SkipLocalsInit]` (uninitialized), and when `npairs == 0` the result is correct *only* if `MillerLoopN(..., 0)` writes the Fp12 identity into `acc` rather than leaving it untouched. This is a new, implicit dependency on the binding's behavior for the empty-product case \u2014 the old code made it explicit with `GT.One(...)`.\n\nIt is covered by the new `All_infinity_input_returns_one` regression test, so it's correct today. But since a silent regress"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13533#discussion_r4024939485",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Serialization.SszGenerator/SszGenerator.cs",
+     "line": null,
+     "body": "**Low:** This `chunks.Clear()` is the one line here that a future reader cannot derive from the code. It exists because `Merkleizer.CalculateRoot` unconditionally reads `_chunks[^1]`, and with zero members nothing is ever fed, so that slot would be read unwritten. Today `stackalloc` is zero-initialised (no `[module: SkipLocalsInit]` in these assemblies), so it's purely defensive \u2014 which is exactly the kind of thing that gets \"cleaned up\" later.\n\n`Merkle.cs:313-314` already carries the equivalent"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13253#discussion_r3953891754",
+     "author": "copilot-pull-request-reviewer",
+     "path": "src/Nethermind/Nethermind.Evm.Fody/MethodCloner.cs",
+     "line": null,
+     "body": "MethodCloner copies `CustomAttribute` instances by reference (`_target.CustomAttributes.Add(attribute)`), which can lead to invalid Cecil ownership/state (same attribute object attached to multiple providers) and risks losing or corrupting method-level attributes like `MethodImpl` / `SkipLocalsInit` on either the source or the clone; clone the attribute objects instead."
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13253#discussion_r3953908467",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Evm/EvmStack.cs",
+     "line": null,
+     "body": "**Low \u2014 no-op attribute, with a latent footgun for future edits.**\n\n`PopWord256` has no `stackalloc` and no locals that require zeroing, so this attribute emits nothing; the PR description and README both say as much (\"on local-free bodies this is a policy marker only and changes no emitted flag\"). The same applies to most of the ~90 `[SkipLocalsInit]` additions in this PR \u2014 I checked `EvmStack.PopAddress`/`PushZero`, `CreateFullCallFrame`, `TryInlineStaticPrecompileCall` (both the `.std` and `."
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/13167#discussion_r3938739456",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Trie/TrieNode.Decoder.cs",
+     "line": null,
+     "body": "**Medium (performance):** `RlpEncodeBranch` is the only encoder in this class without `[SkipLocalsInit]` (`EncodeExtension`, `EncodeLeaf` and `HashPreparedBranchPairs` all have it, and there is no module-level `SkipLocalsInit` in `Nethermind.Trie`). `Unsafe.SkipInit(out scratch)` only satisfies definite assignment \u2014 it does not clear the `.locals init` flag, and because the scratch is address-exposed (a `Span` is taken over it) the JIT zeroes all 528 bytes in the prologue of **every** branch enc"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12986#discussion_r3859804641",
+     "author": "copilot-pull-request-reviewer",
+     "path": "src/Nethermind/Nethermind.Db.Rocks/DbOnTheRocks.cs",
+     "line": null,
+     "body": "The new `[SkipLocalsInit]` + `stackalloc` fast path reads from an uninitialized stack buffer; add an explicit SAFETY comment explaining why this cannot expose unwritten stack bytes (i.e., native call writes exactly `valueLength` bytes when `fits != 0`, and the buffer is ignored otherwise).\n\nThis issue also appears on line 1075 of the same file."
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12986#discussion_r3859809470",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Db.Rocks/DbOnTheRocks.cs",
+     "line": null,
+     "body": "**Medium \u2014 the `fits != 0` \u21d2 `valueLength <= StackBufferSize` invariant is trusted but never checked, and the method is `[SkipLocalsInit]`.**\n\nIf the native ever reports `fits = 1` with `valueLength > 1024` (a fork bug, a stale `librocksdb` picked up at runtime, or a future signature change), `new ReadOnlySpan<byte>(buffer, length)` reads past the 1 KiB stack buffer. Because of `[SkipLocalsInit]`, the bytes past the buffer are *uninitialized stack memory* \u2014 they get copied into a `byte[]` that i"
+    }
+   ]
+  },
+  "catch": {
+   "n": 157,
+   "prs": 126,
+   "valid": 128,
+   "invalid": 1,
+   "human": 37,
+   "authors": 11,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12737#discussion_r3751398403",
+     "flcl42"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12125#discussion_r3625305129",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11961#discussion_r3664202469",
+     "hudem1"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13426#discussion_r3999217949",
+     "LukaszRozmej"
+    ]
+   ]
+  },
+  "unused": {
+   "n": 339,
+   "prs": 281,
+   "valid": 244,
+   "invalid": 8,
+   "human": 81,
+   "authors": 16,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12556#discussion_r3637377599",
+     "AnkushinDaniil"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13189#discussion_r3952701889",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13128#discussion_r3942320239",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13098#discussion_r3933048703",
+     "LukaszRozmej"
+    ]
+   ]
+  },
+  "nullforg": {
+   "n": 54,
+   "prs": 48,
+   "valid": 43,
+   "invalid": 0,
+   "human": 7,
+   "authors": 7,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12628#discussion_r3690944297",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13228#discussion_r3951799263",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12869#discussion_r3805040376",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/14383#discussion_r4228028088",
+     "damian-orzechowski"
+    ]
+   ]
+  },
+  "testcase": {
+   "n": 336,
+   "prs": 290,
+   "valid": 283,
+   "invalid": 3,
+   "human": 101,
+   "authors": 15,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12204#discussion_r3518610687",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12048#discussion_r3505445871",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12033#discussion_r3519169388",
+     "AnkushinDaniil"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12818#discussion_r3784855716",
+     "flcl42"
+    ]
+   ],
+   "samples": [
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11981#discussion_r3404620823",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Merge.Plugin/MergePlugin.cs",
+     "line": null,
+     "body": "**Low \u2014 duplicate `GlobalWorldStateBlockProducerEnvFactory` instance when `BuildBlocksOnMainState=true`**\n\n`BaseMergePluginModule` always registers a fresh `GlobalWorldStateBlockProducerEnvFactory` singleton here. When `BuildBlocksOnMainState=true`, `BlockProcessingModule` registers *another* `GlobalWorldStateBlockProducerEnvFactory` singleton as `IBlockProducerEnvFactory`. Both share the same `IWorldStateManager.GlobalWorldState` and each creates its own persistent env scope.\n\nFunctionally corr"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11974#discussion_r3399969671",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs",
+     "line": null,
+     "body": "**Medium \u2014 magic number duplicates `MinRentSize` in `RentSlow`**\n\n`1_024` here is the same value as `const int MinRentSize = 1_024` declared in `RentSlow`. If that constant is ever changed, these two will silently diverge. `MinRentSize` should be promoted to a private class-level constant and reused here."
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11917#discussion_r3366109904",
+     "author": "alexb5dh",
+     "path": "src/Nethermind/Nethermind.Evm.Precompiles/Bls12381G1MsmPrecompile.cs",
+     "line": null,
+     "body": "Really don't like OP-specific code getting deep into precompiles.\r\n\r\nMaybe do a decorator around `Run` method, and somewhere in OP step wrap a few specific precompiles? Will also avoid this code being duplicated 4 times.\r\n\r\nI think Taiko can be used as reference - it has custom `IPrecompileProvider`, and also overrides `VirtualMachine.ExecutePrecompileCall` (probably won't be needed)."
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11908#discussion_r3376090899",
+     "author": "LukaszRozmej",
+     "path": "tools/StatelessInputGen/InputGenerator.cs",
+     "line": null,
+     "body": "**[blocker] EIP-155 hashing duplicated and divergent from `EthereumEcdsaExtensions.RecoverAddress`.** The inline `ComputeSignatureHash` uses:\n```csharp\nulong sigChainId = tx.Signature!.ChainId ?? chainId;\nbool applyEip155 = tx.Type == TxType.Legacy && tx.Signature.ChainId.HasValue;\n```\nThe canonical extension (`EthereumEcdsaExtensions.cs:57-80`) also considers `tx.Signature.V == CalculateV(chainId, \u2026)` and uses `ecdsa.ChainId` for legacy txs when `useSignatureChainId` is false. For well-formed m"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11887#discussion_r3402962106",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.Merge.Plugin/SszRest/Handlers/SszVersionDescriptors.cs",
+     "line": null,
+     "body": "this is duplicated in every type?"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11854#discussion_r3333310014",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.Facade/Simulate/SimulateBridgeHelper.cs",
+     "line": null,
+     "body": "Duplicate"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11830#discussion_r3341007790",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.JsonRpc/Modules/DebugModule/DebugRpcModule.cs",
+     "line": null,
+     "body": "There is duplication of logic with other parts of code and other PR's, unify"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11781#discussion_r3308442099",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.JsonRpc/StreamingResultBase.cs",
+     "line": null,
+     "body": "The hardcoded `\"debug_trace\"` prefix is misleading when this method is called from `ParityTxTraceFromReplayStreamingResult` handling `trace_*` RPCs. `WriteToWithStatusAsync` already accepts parameterised log messages \u2014 consider adding an optional `string? cancellationLogMessage = null` parameter here and using it in the catch block, defaulting to the current string."
+    }
+   ]
+  },
+  "config": {
+   "n": 39,
+   "prs": 31,
+   "valid": 28,
+   "invalid": 0,
+   "human": 11,
+   "authors": 5,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/9449#discussion_r2426512037",
+     "rubo"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12966#discussion_r3863105479",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13398#discussion_r3994023119",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/9131#discussion_r2277311686",
+     "rubo"
+    ]
+   ]
+  },
+  "fireforget": {
+   "n": 36,
+   "prs": 30,
+   "valid": 29,
+   "invalid": 0,
+   "human": 8,
+   "authors": 5,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13431#discussion_r3999262011",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11094#discussion_r3733884743",
+     "hudem1"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13647#discussion_r4069571347",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/14292#discussion_r4216825383",
+     "LukaszRozmej"
+    ]
+   ]
+  },
+  "linq": {
+   "n": 157,
+   "prs": 104,
+   "valid": 118,
+   "invalid": 1,
+   "human": 83,
+   "authors": 12,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/7345#discussion_r2030656140",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12192#discussion_r3506349140",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11937#discussion_r3414380495",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12360#discussion_r3719628260",
+     "benaadams"
+    ]
+   ],
+   "samples": [
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11887#discussion_r3348345483",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Merge.Plugin/SszRest/Handlers/CapabilitiesSszHandler.cs",
+     "line": null,
+     "body": "**Low \u2014 LINQ usage violates \"no LINQ when for/foreach works\" rule**\n\n`SupportedForksOrdered.Take(timestampForkCount + 1)` creates an iterator allocation. Per repo coding style: \"No LINQ when a simple for/foreach works\". A simple loop is a drop-in replacement with no semantic difference:\n\n```suggestion\n        IEnumerable<string> supportedForks = timestampForkCount == 0\n            ? SszRestPaths.SupportedForksOrdered\n            : (IEnumerable<string>)SszRestPaths.SupportedForksOrdered.Take(Math"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11755#discussion_r3299282461",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.JsonRpc/Modules/Trace/StreamingParityLikeBlockTracer.cs",
+     "line": null,
+     "body": "**Low \u2014 unused import**\n\n`System.Linq` is imported but no LINQ extension methods are used in this file. All iteration is done with `foreach`.\n\n```suggestion\n```\n"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11625#discussion_r3255560496",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Stateless.Executor/IO/SszForkActivation.cs",
+     "line": null,
+     "body": "**High + Low**: Two issues here:\n\n1. **Correctness**: If a malformed input provides empty `BlockNumber` or `Timestamp` lists (both declared `[SszList(1)]`, so 0 elements is valid SSZ), `FirstOrDefault()` returns 0 and silently activates genesis-era fork rules, which could mean a less-strict spec is applied to a newer block.\n\n2. **Style**: `FirstOrDefault()` is LINQ; prefer array indexing per the no-LINQ coding-style rule.\n\n```suggestion\n    {\n        if (BlockNumber.Length != 1 || Timestamp.Leng"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11573#discussion_r3227012784",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Core/BlockAccessLists/ReadOnlyAccountChanges.cs",
+     "line": null,
+     "body": "**Medium: LINQ `SequenceEqual` \u2014 violates `coding-style.md` rule \"No LINQ when a simple for/foreach works\"**\n\nReplace with `MemoryExtensions.SequenceEqual` on `ReadOnlySpan<T>` (zero-alloc, no iterator, BCL method not LINQ):\n\n```suggestion\n        return ((ReadOnlySpan<UInt256>)_storageReads).SequenceEqual(other._storageReads)\n            && ((ReadOnlySpan<BalanceChange>)_balanceChanges).SequenceEqual(other._balanceChanges)\n            && ((ReadOnlySpan<NonceChange>)_nonceChanges).SequenceEqual("
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/11573#discussion_r3259689381",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Core/BlockAccessLists/ReadOnlySlotChanges.cs",
+     "line": null,
+     "body": "**Medium: LINQ `SequenceEqual` \u2014 same pattern as was fixed in `ReadOnlyAccountChanges.Equals` (M1 round 1)**\n\n`Changes.SequenceEqual(other.Changes)` resolves to `Enumerable.SequenceEqual<StorageChange>` (via `using System.Linq` at line 5), not `MemoryExtensions.SequenceEqual`. The array-to-`IEnumerable<T>` reference conversion is preferred over the user-defined array-to-`ReadOnlySpan<T>` conversion in C# extension-method overload resolution.\n\nFix: use `MemoryExtensions.SequenceEqual` on `ReadOnl"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12370#discussion_r3558675309",
+     "author": "claude",
+     "path": "src/Nethermind/Nethermind.Xdc/XdcBlockhashStore.cs",
+     "line": null,
+     "body": "**Medium \u2014 LINQ + redundant work on a per-block hot path.**\n\n`code.SequenceEqual(Eip2935Constants.Code)` binds to `Enumerable.SequenceEqual` (LINQ over `IEnumerable<byte>`), which the repo style rules disallow where a loop/span works, and it allocates enumerators. More importantly, once the contract is deployed this override still calls `GetCode(...)` and does a full byte-by-byte comparison **every block**, purely to re-validate already-correct code.\n\nPrefer comparing the code hash, which avoids"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12192#discussion_r3506349140",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.JsonRpc/Modules/Proof/ProofRpcModule.cs",
+     "line": null,
+     "body": "Can we avoid LINQ?"
+    },
+    {
+     "url": "https://github.com/NethermindEth/nethermind/pull/12192#discussion_r3506354232",
+     "author": "LukaszRozmej",
+     "path": "src/Nethermind/Nethermind.JsonRpc/Modules/Eth/EthRpcModule.cs",
+     "line": null,
+     "body": "avoid LINQ"
+    }
+   ]
+  },
+  "todo": {
+   "n": 24,
+   "prs": 18,
+   "valid": 21,
+   "invalid": 0,
+   "human": 3,
+   "authors": 4,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12175#discussion_r3500749247",
+     "Marchhill"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11947#discussion_r3386225393",
+     "claude"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11908#discussion_r3351565055",
+     "claude"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11807#discussion_r3315821533",
+     "claude"
+    ]
+   ]
+  },
+  "methodimpl": {
+   "n": 52,
+   "prs": 42,
+   "valid": 40,
+   "invalid": 0,
+   "human": 14,
+   "authors": 10,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12300#discussion_r3529877982",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11965#discussion_r3491555164",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13188#discussion_r3945101960",
+     "wurdum"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13832#discussion_r4106552887",
+     "benaadams"
+    ]
+   ]
+  },
+  "commented": {
+   "n": 7,
+   "prs": 5,
+   "valid": 6,
+   "invalid": 0,
+   "human": 1,
+   "authors": 2,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/10231#discussion_r2727674980",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/7345#discussion_r3266688524",
+     "claude"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/8003#discussion_r3310731385",
+     "claude"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11663#discussion_r3262872251",
+     "claude"
+    ]
+   ]
+  },
+  "nameof": {
+   "n": 5,
+   "prs": 5,
+   "valid": 5,
+   "invalid": 0,
+   "human": 2,
+   "authors": 2,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/14302#discussion_r4195252656",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/14493#discussion_r4245819292",
+     "LukaszRozmej"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/12696#discussion_r3719892795",
+     "claude"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13393#discussion_r4105598656",
+     "claude"
+    ]
+   ]
+  },
+  "throwhelper": {
+   "n": 27,
+   "prs": 25,
+   "valid": 21,
+   "invalid": 0,
+   "human": 7,
+   "authors": 5,
+   "ex": [
+    [
+     "https://github.com/NethermindEth/nethermind/pull/13315#discussion_r3989749968",
+     "Marchhill"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/14796#discussion_r4314340567",
+     "benaadams"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/16010#discussion_r4597247444",
+     "hudem1"
+    ],
+    [
+     "https://github.com/NethermindEth/nethermind/pull/11693#discussion_r3269969134",
+     "claude"
+    ]
+   ]
+  }
+ }
+}

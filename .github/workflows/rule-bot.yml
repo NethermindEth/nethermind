@@ -1,0 +1,442 @@
+name: Review rule bot
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Print the candidate packages without opening a pull request
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rule-bot
+  cancel-in-progress: false
+
+env:
+  DATA: ${{ github.workspace }}/rule-bot/data
+  STATE: ${{ github.workspace }}/rule-bot/state
+  LOGS: ${{ github.workspace }}/rule-bot/logs
+  DRY_RUN: ${{ inputs.dry_run || 'false' }}
+
+jobs:
+  plan:
+    name: Collect review comments and plan
+    runs-on: ubuntu-latest
+    outputs:
+      solutions: ${{ steps.solutions.outputs.solutions }}
+      route_b: ${{ steps.plan.outputs.route_b }}
+      route_b_id: ${{ steps.plan.outputs.route_b_id }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Restore collection state
+        uses: actions/cache/restore@v5
+        with:
+          path: rule-bot/state
+          key: rule-bot-state-${{ github.run_id }}
+          restore-keys: rule-bot-state-
+
+      - name: Collect review threads since the last run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p "$DATA" "$STATE"
+          python3 scripts/rule-bot/rule_bot.py collect --state "$STATE"
+          python3 scripts/rule-bot/rule_bot.py findings --state "$STATE" --data "$DATA"
+          python3 scripts/rule-bot/rule_bot.py gates --data "$DATA"
+          python3 scripts/rule-bot/rule_bot.py catalog --sdk "$DOTNET_ROOT/sdk/$(dotnet --version)" --data "$DATA"
+
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/rule-bot/rule_bot.py plan --data "$DATA" --state "$STATE" --github-output "$GITHUB_OUTPUT"
+
+      - name: List CI solutions
+        id: solutions
+        run: python3 scripts/rule-bot/rule_bot.py solutions --github-output "$GITHUB_OUTPUT"
+
+      - name: Upload data
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-data
+          path: rule-bot/data
+
+      - name: Upload state
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-state
+          path: rule-bot/state
+
+  route-b:
+    name: Write a new analyzer
+    needs: plan
+    if: needs.plan.outputs.route_b != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Keep bot files out of git
+        run: echo /rule-bot/ >> .git/info/exclude
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Download data
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-data
+          path: rule-bot/data
+
+      - name: Generate and check the analyzer
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+        run: bash scripts/rule-bot/route-b.sh "$DATA"
+
+      - name: Upload analyzer
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-route-b
+          path: |
+            rule-bot/data/route_b.json
+            rule-bot/data/analyzer.patch
+            rule-bot/data/analyzer-*.log
+          if-no-files-found: ignore
+
+  measure:
+    name: Build ${{ matrix.solution }}
+    needs: [plan, route-b]
+    if: always() && needs.plan.result == 'success' && needs.route-b.result != 'failure' && needs.route-b.result != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      matrix:
+        solution: ${{ fromJSON(needs.plan.outputs.solutions) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: ${{ matrix.solution == 'src/Nethermind/EthereumTests.slnx' }}
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Download data
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-data
+          path: rule-bot/data
+
+      - name: Download analyzer
+        if: needs.plan.outputs.route_b != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-route-b
+          path: rule-bot/data
+
+      - name: Turn the candidate rules on
+        env:
+          ROUTE_B_ID: ${{ needs.plan.outputs.route_b_id }}
+        run: |
+          extra=()
+          if [ -n "$ROUTE_B_ID" ] && [ -s "$DATA/analyzer.patch" ] && jq -e '.tests_ok and .red_ok and .guard_ok' "$DATA/route_b.json" > /dev/null; then
+            git apply "$DATA/analyzer.patch"
+            extra=(--extra "$ROUTE_B_ID")
+          fi
+          python3 scripts/rule-bot/rule_bot.py overlay --ids "$DATA/measure_ids.txt" "${extra[@]}"
+
+      - name: Build
+        env:
+          SOLUTION: ${{ matrix.solution }}
+        run: bash scripts/rule-bot/build.sh "$SOLUTION" "$LOGS"
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-log-${{ strategy.job-index }}
+          path: rule-bot/logs
+
+  propose:
+    name: Count hits and choose a package
+    needs: [plan, route-b, measure]
+    if: always() && needs.measure.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      slug: ${{ steps.propose.outputs.slug }}
+      route: ${{ steps.propose.outputs.route }}
+      ids: ${{ steps.package.outputs.ids }}
+      rebuild: ${{ steps.package.outputs.rebuild }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download data
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-data
+          path: rule-bot/data
+
+      - name: Download analyzer
+        if: needs.plan.outputs.route_b != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-route-b
+          path: rule-bot/data
+
+      - name: Download build logs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rule-bot-log-*
+          path: rule-bot/logs
+          merge-multiple: true
+
+      - name: Count hits
+        env:
+          ROUTE_B_ID: ${{ needs.plan.outputs.route_b_id }}
+        run: |
+          ids=$(grep -v '^$' "$DATA/measure_ids.txt" | paste -sd, -)
+          [ -n "$ROUTE_B_ID" ] && ids="${ids:+$ids,}$ROUTE_B_ID"
+          python3 scripts/rule-bot/rule_bot.py hits --logs "$LOGS" --root "$GITHUB_WORKSPACE" --ids "$ids" --out "$DATA/hits.json"
+
+      - name: Install Claude Code
+        if: needs.plan.outputs.route_b != ''
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Check analyzer precision
+        if: needs.plan.outputs.route_b != ''
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ROUTE_B_ID: ${{ needs.plan.outputs.route_b_id }}
+        run: |
+          [ -f "$DATA/route_b.json" ] || exit 0
+          WHY=$(jq -r '.why // empty' "$DATA/route_b.json")
+          python3 scripts/rule-bot/rule_bot.py sample --hits "$DATA/hits.json" --id "$ROUTE_B_ID" --seed "$GITHUB_RUN_ID" --out "$DATA/sample.json"
+          if [ "$(jq length "$DATA/sample.json")" -gt 0 ]; then
+            bash scripts/rule-bot/llm.sh scripts/rule-bot/prompts/label.txt "Read,Glob,Grep,Write($DATA/labels.json)" \
+              "ID=$ROUTE_B_ID" "WHY=$WHY" "SAMPLE=$DATA/sample.json" "RESULT=$DATA/labels.json" > "$DATA/label-llm.log" 2>&1 || true
+          fi
+          python3 scripts/rule-bot/rule_bot.py precision --labels "$DATA/labels.json" --hits "$DATA/hits.json" --id "$ROUTE_B_ID" --route-b "$DATA/route_b.json" || true
+
+      - name: Choose a package
+        id: propose
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/rule-bot/rule_bot.py propose --data "$DATA" --github-output "$GITHUB_OUTPUT"
+
+      - name: Prepare the package
+        id: package
+        if: steps.propose.outputs.slug != ''
+        run: |
+          python3 scripts/rule-bot/rule_bot.py package --data "$DATA" --github-output "$GITHUB_OUTPUT"
+          python3 scripts/rule-bot/rule_bot.py body --data "$DATA" --head "$GITHUB_SHA" --out "$DATA/body.md"
+
+      - name: Write summary
+        run: |
+          {
+            echo '## Review rule bot'
+            echo
+            echo "Dry run: $DRY_RUN"
+            echo
+            echo '```'
+            jq -r '.decisions[] | "route \(.route) \(.cluster) \(.id) prod \(.prod) test \(.test) -> \(.verdict)"' "$DATA/candidates.json"
+            jq -r '.packages[] | "package \(.slug) prod \(.prod)" + (if (.open_prs | length) > 0 then " duplicate of open #\(.open_prs | map(tostring) | join(", #"))" else "" end)' "$DATA/candidates.json"
+            jq -r '"chosen \(.chosen.slug // "none")"' "$DATA/candidates.json"
+            echo '```'
+            [ -f "$DATA/body.md" ] && { echo; echo '### Pull request body'; echo; cat "$DATA/body.md"; }
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload data
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-result
+          path: rule-bot/data
+
+  fix:
+    name: Fix the hits
+    needs: [plan, propose]
+    if: always() && needs.propose.result == 'success' && needs.propose.outputs.slug != '' && inputs.dry_run != true
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Keep bot files out of git
+        run: echo /rule-bot/ >> .git/info/exclude
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Download data
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-result
+          path: rule-bot/data
+
+      - name: Turn the rules on for production code
+        env:
+          ROUTE: ${{ needs.propose.outputs.route }}
+        run: |
+          [ "$ROUTE" = B ] && git apply "$DATA/analyzer.patch"
+          python3 scripts/rule-bot/rule_bot.py overlay --ids "$DATA/package-ids.txt" --exclude-tests
+
+      - name: Fix the hits
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          IDS: ${{ needs.propose.outputs.ids }}
+          SOLUTIONS: ${{ needs.propose.outputs.rebuild }}
+        run: |
+          bash scripts/rule-bot/llm.sh scripts/rule-bot/prompts/fix.txt "Read,Glob,Grep,Edit,Bash(dotnet build:*)" \
+            "IDS=$IDS" "HITS=$DATA/fix-hits.txt" "SOLUTIONS=$SOLUTIONS" "RESULT=$DATA/fix-result.json" > "$DATA/fix-llm.log" 2>&1 || true
+          git diff --stat
+
+      - name: Check that no production hit is left
+        env:
+          IDS: ${{ needs.propose.outputs.ids }}
+          SOLUTIONS: ${{ needs.propose.outputs.rebuild }}
+        run: |
+          rm -rf "$LOGS"
+          for s in $SOLUTIONS; do bash scripts/rule-bot/build.sh "$s" "$LOGS"; done
+          python3 scripts/rule-bot/rule_bot.py hits --logs "$LOGS" --root "$GITHUB_WORKSPACE" --ids "$IDS" --out "$DATA/after.json"
+          left=$(jq '[.counts[].prod] | add' "$DATA/after.json")
+          [ "$left" = 0 ] || { echo "fix: $left production hits left"; exit 1; }
+
+      - name: Check changed paths
+        env:
+          ROUTE: ${{ needs.propose.outputs.route }}
+          IDS: ${{ needs.propose.outputs.ids }}
+        run: |
+          git add -N .
+          new_id=()
+          [ "$ROUTE" = B ] && new_id=(--new-id "$IDS")
+          python3 scripts/rule-bot/rule_bot.py guard --base HEAD "${new_id[@]}"
+          git diff HEAD --binary > "$DATA/fix.patch"
+
+      - name: Upload fix
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-fix
+          path: |
+            rule-bot/data/fix.patch
+            rule-bot/data/body.md
+            rule-bot/data/candidates.json
+
+  open-pr:
+    name: Open the pull request
+    needs: [propose, fix]
+    if: always() && needs.fix.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          token: ${{ steps.gh-app.outputs.token }}
+
+      - name: Keep bot files out of git
+        run: echo /rule-bot/ >> .git/info/exclude
+
+      - name: Download fix
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-fix
+          path: rule-bot/data
+
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          APP_USER: ${{ steps.gh-app.outputs.app-slug }}[bot]
+          ROUTE: ${{ needs.propose.outputs.route }}
+          IDS: ${{ needs.propose.outputs.ids }}
+          SLUG: ${{ needs.propose.outputs.slug }}
+        run: |
+          set -euo pipefail
+          if [ -n "$(gh pr list --state open --label rule-bot --json number --jq '.[].number')" ]; then
+            echo "A rule bot pull request is already open"
+            exit 0
+          fi
+          git apply "$DATA/fix.patch"
+          new_id=()
+          [ "$ROUTE" = B ] && new_id=(--new-id "$IDS")
+          git add -N .
+          python3 scripts/rule-bot/rule_bot.py guard --base HEAD "${new_id[@]}"
+          branch="rule-bot/$SLUG"
+          title="Enable ${IDS//,/, } for production code"
+          [ "$ROUTE" = B ] && title="Add analyzer $IDS"
+          git config user.name "$APP_USER"
+          git config user.email "$APP_USER@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          git -c core.hooksPath=/dev/null commit -m "$title"
+          git push origin "$branch"
+          gh label create rule-bot --color 5319E7 --description "Opened by the review rule bot" 2>/dev/null || true
+          gh pr create -B master -H "$branch" -t "$title" -F "$DATA/body.md" -l rule-bot
+
+  save-state:
+    name: Save collection state
+    needs: [plan, route-b, propose]
+    if: always() && needs.plan.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download state
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-state
+          path: rule-bot/state
+
+      - name: Download analyzer
+        if: needs.route-b.result == 'success' && inputs.dry_run != true
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-route-b
+          path: rule-bot/data
+
+      - name: Record the analyzer attempts
+        if: needs.route-b.result == 'success' && inputs.dry_run != true
+        run: |
+          mapfile -t clusters < <(jq -r '.attempts[].cluster' "$DATA/route_b.json")
+          [ "${#clusters[@]}" -eq 0 ] || python3 scripts/rule-bot/rule_bot.py tried --state "$STATE" --cluster "${clusters[@]}"
+
+      - name: Save state
+        uses: actions/cache/save@v5
+        with:
+          path: rule-bot/state
+          key: rule-bot-state-${{ github.run_id }}
