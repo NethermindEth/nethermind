@@ -320,6 +320,7 @@ public abstract class ContractDataStoreTests
         context.DataContract.GetAllItemsFromBlock(head.Header).Returns(expected);
 
         context.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(olderHead));
+        Task olderRefresh = context.Store.LatestRefreshTask;
         Assert.That(olderRefreshStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
         currentHead = head;
         context.BlockTree.NewHeadBlock += Raise.EventWith(new BlockEventArgs(head));
@@ -327,7 +328,7 @@ public abstract class ContractDataStoreTests
         // give a refresh that does not wait for the older one the time to complete first
         await Task.WhenAny(headRefresh, Task.Delay(200));
         releaseOlderRefresh.Set();
-        await headRefresh;
+        await Task.WhenAll(olderRefresh, headRefresh);
 
         Assert.That(context.Store.Collection.GetSnapshot(), Is.EquivalentTo(expected));
     }
