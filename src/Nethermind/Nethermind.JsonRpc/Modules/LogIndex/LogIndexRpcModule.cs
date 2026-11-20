@@ -16,7 +16,14 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
 {
     public ResultWrapper<IEnumerable<long>> logIndex_blockNumbers(Filter filter)
     {
+        if (!storage.Enabled)
+            return ResultWrapper<IEnumerable<long>>.Fail("Log index is disabled.", ErrorCodes.ResourceUnavailable);
+
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
+
+        // The log index can only narrow blocks by address or topic, so it cannot serve a filter that matches every block
+        if (logFilter.AcceptsAnyBlock)
+            return ResultWrapper<IEnumerable<long>>.Fail("Filter must specify at least one address or topic.", ErrorCodes.InvalidParams);
 
         if (GetBlockNumber(logFilter.FromBlock) is not { } from)
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.FromBlock} is not found.", ErrorCodes.UnknownBlockError);
