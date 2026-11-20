@@ -1387,9 +1387,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             _speculativeTask.GetAwaiter().GetResult();
         }
-        catch
+        catch (OperationCanceledException)
         {
-            // Warming failures are already logged inside the pass; nothing actionable here.
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError("Speculative pre-warming pass ended with an error", ex);
         }
         _speculativeCts.Dispose();
         _speculativeCts = null;
@@ -1834,6 +1837,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (Exception ex) when (ex is EvmException or OverflowException)
         {
             // Ignore, regular tx processing exceptions
+            if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Pre-warming tx[{txIndex}] {tx.Hash} stopped: {ex.Message}");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2421,8 +2425,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     worldState.WarmUp(to);
                 }
             }
-            catch (MissingTrieNodeException)
+            catch (MissingTrieNodeException ex)
             {
+                ILogger logger = Static.LogManager.GetClassLogger<BlockCachePreWarmer>();
+                if (logger.IsTrace) logger.Trace($"Skipped warming {sender} and {to}: {ex.Message}");
             }
         }
     }
