@@ -15,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Kademlia;
 using Nethermind.Network;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Discovery.Test.Kademlia;
 using Nethermind.Network.Enr;
@@ -46,6 +47,25 @@ public class KademliaModuleTests
         DiscoveryNodeAdmission second = container.Resolve<DiscoveryNodeAdmission>();
 
         Assert.That(ReferenceEquals(first, second), Is.True);
+    }
+
+    [Test]
+    public void Peer_candidate_reservations_are_shared_with_the_compatibility_constructor()
+    {
+        using IContainer container = CreateContainer(filterEnabled: true);
+        KademliaConfig<Node> kademliaConfig = container.Resolve<KademliaConfig<Node>>();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                ReferenceEquals(container.Resolve<PeerCandidateReservations>(), container.Resolve<PeerCandidateReservations>()),
+                Is.True,
+                "the gate and the adapter must release from the same store");
+            Assert.That(
+                ReferenceEquals(container.Resolve<PeerCandidateReservations>(), PeerCandidateReservations.For(kademliaConfig)),
+                Is.True,
+                "the compatibility constructor must observe the store the container wires");
+        }
     }
 
     [Test]

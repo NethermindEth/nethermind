@@ -155,7 +155,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             _adapter = CreateAdapter(FailsafeRequestTimeoutMs);
         }
 
-        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500, INodeHealthTracker<Node>? nodeHealthTracker = null)
+        private KademliaAdapter CreateAdapter(int requestTimeoutMs, NetworkListenerState? listenerState = null, int bondWaitTime = 1, IEcdsa? ecdsa = null, int maxOutgoingMessagePerSecond = 500, INodeHealthTracker<Node>? nodeHealthTracker = null, bool useCompatibilityConstructor = false)
         {
             if (listenerState is null)
             {
@@ -164,32 +164,33 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 listenerState.SetDiscoveryAddress(IPAddress.Any);
             }
 
-            _reservations = new PeerCandidateReservations(_kademliaConfig);
-            return new KademliaAdapter(
-                new Lazy<IKademlia<PublicKey, Node>>(() => _kademliaMessageReceiver),
-                _routingTable,
-                new Lazy<INodeHealthTracker<Node>>(() => nodeHealthTracker ?? _nodeHealthTracker),
-                new DiscoveryConfig
-                {
-                    EnrTimeout = requestTimeoutMs,
-                    PingTimeout = requestTimeoutMs,
-                    SendNodeTimeout = requestTimeoutMs,
-                    BondWaitTime = bondWaitTime,
-                    MaxOutgoingMessagePerSecond = maxOutgoingMessagePerSecond,
-                },
-                _kademliaConfig,
-                _reservations,
-                _nodeRecordProvider,
-                _ipResolver,
-                _nodeStatsManager,
-                _timestamper,
-                Substitute.For<IProcessExitSource>(),
-                ecdsa ?? new Ecdsa(),
-                _logManager,
-                listenerState)
+            Lazy<IKademlia<PublicKey, Node>> kademlia = new(() => _kademliaMessageReceiver);
+            Lazy<INodeHealthTracker<Node>> tracker = new(() => nodeHealthTracker ?? _nodeHealthTracker);
+            DiscoveryConfig discoveryConfig = new()
             {
-                MsgSender = _msgSender,
+                EnrTimeout = requestTimeoutMs,
+                PingTimeout = requestTimeoutMs,
+                SendNodeTimeout = requestTimeoutMs,
+                BondWaitTime = bondWaitTime,
+                MaxOutgoingMessagePerSecond = maxOutgoingMessagePerSecond,
             };
+            IProcessExitSource processExitSource = Substitute.For<IProcessExitSource>();
+            IEcdsa signer = ecdsa ?? new Ecdsa();
+
+            _reservations = useCompatibilityConstructor
+                ? PeerCandidateReservations.For(_kademliaConfig)
+                : new PeerCandidateReservations(_kademliaConfig);
+
+            KademliaAdapter adapter = useCompatibilityConstructor
+                ? new KademliaAdapter(kademlia, _routingTable, tracker, discoveryConfig, _kademliaConfig,
+                    _nodeRecordProvider, _ipResolver, _nodeStatsManager, _timestamper, processExitSource, signer,
+                    _logManager, listenerState)
+                : new KademliaAdapter(kademlia, _routingTable, tracker, discoveryConfig, _kademliaConfig,
+                    _reservations, _nodeRecordProvider, _ipResolver, _nodeStatsManager, _timestamper,
+                    processExitSource, signer, _logManager, listenerState);
+
+            adapter.MsgSender = _msgSender;
+            return adapter;
         }
 
         private async Task UseExpiringRequestTimeouts()
@@ -390,6 +391,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             Assert.That(await _adapter.Ping(_receiver, token), Is.True);
             await AssertNoPeerCandidate(token);
             ecdsa.DidNotReceive().RecoverCompressedPublicKey(Arg.Any<Signature>(), Arg.Any<ValueHash256>());
+        }
+
+        [Test]
+        [CancelAfter(10000)]
+        public async Task Compatibility_constructor_uses_the_configured_reservation_store(CancellationToken token)
+        {
+            await _adapter.DisposeAsync();
+            _adapter = CreateAdapter(FailsafeRequestTimeoutMs, useCompatibilityConstructor: true);
+            _receiver.Enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyB,
+                _receiver.Address.Address, tcpPort: 30303, udpPort: 30303);
+            ConfigureBondCallback();
+#pragma warning disable NUnit2045 // The reservation is a precondition for the ping; preserve fail-fast ordering.
+            Assert.That(_reservations.TryReserve(_receiver.IdHash), Is.True);
+            Assert.That(await _adapter.Ping(_receiver, token), Is.True);
+#pragma warning restore NUnit2045
+            await AssertNoPeerCandidate(token);
         }
 
         [Test]

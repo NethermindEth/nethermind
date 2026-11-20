@@ -41,6 +41,35 @@ public class KademliaAdapter(
     NetworkListenerState listenerState
 ) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
+    /// <summary>
+    /// Builds an adapter that shares the peer-candidate reservations of every other component wired to
+    /// <paramref name="kademliaConfig"/>, as the injectable constructor does.
+    /// </summary>
+    /// <remarks>
+    /// Retained so subclasses compiled against the pre-existing constructor keep loading, and so they still
+    /// release into the same store the admission gate releases from. The store is derived from
+    /// <paramref name="kademliaConfig"/>, which must be the instance the container wires.
+    /// </remarks>
+    public KademliaAdapter(
+        Lazy<IKademlia<PublicKey, Node>> kademlia,
+        IRoutingTable<Node, ValueHash256> routingTable,
+        Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
+        IDiscoveryConfig discoveryConfig,
+        KademliaConfig<Node> kademliaConfig,
+        INodeRecordProvider nodeRecordProvider,
+        IIPResolver ipResolver,
+        INodeStatsManager nodeStatsManager,
+        ITimestamper timestamper,
+        IProcessExitSource processExitSource,
+        IEcdsa ecdsa,
+        ILogManager logManager,
+        NetworkListenerState listenerState)
+        : this(kademlia, routingTable, nodeHealthTracker, discoveryConfig, kademliaConfig,
+            PeerCandidateReservations.For(kademliaConfig), nodeRecordProvider, ipResolver, nodeStatsManager,
+            timestamper, processExitSource, ecdsa, logManager, listenerState)
+    {
+    }
+
     private const int MaxNodesPerNeighborsMsg = 12;
     private const int PeerCandidateChannelCapacity = 64;
 

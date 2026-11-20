@@ -73,7 +73,9 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             .AddSingleton<IKademliaNodeSource, NodeSource>()
 
             // Some transport wiring.
-            .AddSingleton<PeerCandidateReservations>()
+            // The factory keeps the registration and the adapter's compatibility constructor on one store.
+            .AddSingleton<PeerCandidateReservations, KademliaConfig<Node>>(
+                static kademliaConfig => PeerCandidateReservations.For(kademliaConfig))
             .AddSingleton<IKademliaAdapter, KademliaAdapter>()
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
