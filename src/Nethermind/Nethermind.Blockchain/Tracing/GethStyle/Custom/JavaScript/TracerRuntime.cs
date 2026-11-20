@@ -44,6 +44,8 @@ internal sealed partial class TracerRuntime : IDisposable
 
     private const string TracersPath = "Data/JSTracers/";
     private const string Extension = ".js";
+    private const string LegacySuffix = "_legacy";
+    private const string GethLegacySuffix = "Legacy";
     private const string BigIntegerJavaScript = "_bigInteger.js";
     private const string CreateUint8ArrayCode = "(function (U) {return function (length) {return new U(length);};})(Uint8Array)";
 
@@ -99,6 +101,12 @@ internal sealed partial class TracerRuntime : IDisposable
         fileName = string.Empty;
         if (!BuiltInNameRegex().IsMatch(tracer)) return false;
         fileName = ToTracerFileName(tracer);
+        if (IsBuiltIn(fileName)) return true;
+
+        // Geth names the legacy tracers in camel case, e.g. callTracerLegacy for callTracer_legacy.
+        string name = Path.GetFileNameWithoutExtension(fileName);
+        if (!name.EndsWith(GethLegacySuffix, StringComparison.Ordinal)) return false;
+        fileName = ToTracerFileName(name[..^GethLegacySuffix.Length] + LegacySuffix);
         return IsBuiltIn(fileName);
     }
 

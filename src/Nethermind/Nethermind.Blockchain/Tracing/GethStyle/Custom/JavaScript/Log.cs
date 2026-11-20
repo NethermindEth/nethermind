@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
 
             private Opcode(Instruction value) => Value = value;
 
+            [NoScriptAccess]
             public Instruction Value { get; }
 
             internal static Opcode Of(Instruction value) => All[(byte)value];
@@ -80,6 +81,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
 
         public class Memory
         {
+            [NoScriptAccess]
             public TraceMemory MemoryTrace;
             internal Engine? InputErrorEngine { get; set; }
 
@@ -134,6 +136,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
             private readonly Address _address = address;
             private readonly ReadOnlyMemory<byte>? _input = input;
             private IJavaScriptObject? _valueConverted;
+            [NoScriptAccess]
             public Address Caller { get; } = caller;
 
             public ITypedArray<byte> getAddress() => _address.Bytes.ToTypedScriptArray();
