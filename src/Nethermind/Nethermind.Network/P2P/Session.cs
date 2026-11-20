@@ -54,8 +54,9 @@ namespace Nethermind.Network.P2P
         {
             Direction = ConnectionDirection.In;
             State = SessionState.New;
+            ArgumentNullException.ThrowIfNull(connection);
             ArgumentNullException.ThrowIfNull(logManager);
-            _connection = connection ?? throw new ArgumentNullException(nameof(connection));
+            _connection = connection;
             _disconnectsAnalyzer = disconnectsAnalyzer;
             _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = null;
@@ -71,10 +72,12 @@ namespace Nethermind.Network.P2P
             ILogManager logManager)
         {
             State = SessionState.New;
-            _node = remoteNode ?? throw new ArgumentNullException(nameof(remoteNode));
-            _connection = connection ?? throw new ArgumentNullException(nameof(connection));
-            _disconnectsAnalyzer = disconnectsAnalyzer;
+            ArgumentNullException.ThrowIfNull(remoteNode);
+            ArgumentNullException.ThrowIfNull(connection);
             ArgumentNullException.ThrowIfNull(logManager);
+            _node = remoteNode;
+            _connection = connection;
+            _disconnectsAnalyzer = disconnectsAnalyzer;
             _logger = logManager.GetClassLogger<Session>();
             RemoteNodeId = remoteNode.Id;
             RemoteHost = remoteNode.Host;
@@ -550,7 +553,7 @@ namespace Nethermind.Network.P2P
 
         private async Task DisconnectAsync(DisconnectType disconnectType)
         {
-            //in case pipeline did not get to p2p - no disconnect delay
+            // A local disconnect after init may have sent the peer a disconnect message, which the delay lets go out
             if (_packetSender is not null && disconnectType == DisconnectType.Local)
             {
                 await Task.Delay(Timeouts.Disconnection);
@@ -566,7 +569,7 @@ namespace Nethermind.Network.P2P
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void TraceDisconnectError(Exception e) => _logger.Trace($"Error while disconnecting on context on {this:hide} : {e:hide}");
+            void TraceDisconnectError(Exception e) => _logger.Trace($"Error while disconnecting on {this:hide} : {e:hide}");
         }
 
         public event EventHandler<DisconnectEventArgs> Disconnecting;
