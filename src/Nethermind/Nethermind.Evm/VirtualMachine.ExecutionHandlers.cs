@@ -107,7 +107,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     /// <summary>
-    /// <see cref="InitializeFrameSkippingNoOpCredit"/> under EIP-7928, which records the account the skipped credit would have.
+    /// <see cref="InitializeFrameSkippingNoOpCredit"/> under EIP-7928, which records the account read the skipped credit would have recorded.
     /// </summary>
     /// <remarks>
     /// A zero credit changes no balance, so all it leaves in the block access list is the account's entry, which

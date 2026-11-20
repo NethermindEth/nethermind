@@ -33,8 +33,30 @@ public class CallFrameEntryCreditTests
     [TestCase(ExecutionType.CALL, 1, true, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CALL, 0, false, false, ExpectedResult = true)]
     [TestCase(ExecutionType.CREATE, 0, true, false, ExpectedResult = true)]
-    [TestCase(ExecutionType.CALL, 0, true, true, ExpectedResult = true)]
-    public bool Frame_entry_credits_the_executing_account(ExecutionType executionType, int value, bool hasCode, bool blockAccessList)
+    [TestCase(ExecutionType.CALL, 0, true, true, ExpectedResult = false)]
+    [TestCase(ExecutionType.DELEGATECALL, 1, true, true, ExpectedResult = false)]
+    [TestCase(ExecutionType.CALL, 1, true, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CALL, 0, false, true, ExpectedResult = true)]
+    [TestCase(ExecutionType.CREATE, 0, true, true, ExpectedResult = true)]
+    public bool Frame_entry_credits_the_executing_account(ExecutionType executionType, int value, bool hasCode, bool blockAccessList) =>
+        EnterFrame(executionType, value, hasCode, blockAccessList).ReceivedCalls().Any(static call => call.GetMethodInfo().Name
+            is nameof(IWorldState.AccountExists) or nameof(IWorldState.AddToBalance) or nameof(IWorldState.AddToBalanceAndCreateIfNotExists));
+
+    /// <remarks>
+    /// Under EIP-7928 a frame whose zero credit is skipped still leaves the account's entry in the block access list,
+    /// which is all the credit left there.
+    /// </remarks>
+    [Test]
+    public void Frame_entry_without_a_credit_records_the_executing_account_under_EIP_7928(
+        [Values(ExecutionType.CALL, ExecutionType.STATICCALL, ExecutionType.DELEGATECALL)] ExecutionType executionType,
+        [Values] bool blockAccessList)
+    {
+        IWorldState worldState = EnterFrame(executionType, 0, hasCode: true, blockAccessList);
+
+        worldState.Received(blockAccessList ? 1 : 0).AddAccountRead(Callee);
+    }
+
+    private static IWorldState EnterFrame(ExecutionType executionType, int value, bool hasCode, bool blockAccessList)
     {
         IReleaseSpec spec = blockAccessList ? Amsterdam.Instance : Osaka.Instance;
         FrameEnteringVirtualMachine vm = new(spec);
@@ -45,9 +67,7 @@ public class CallFrameEntryCreditTests
             env, new StackAccessTracker(), default);
 
         vm.EnterFrame(frame);
-
-        return vm.WorldState.ReceivedCalls().Any(static call => call.GetMethodInfo().Name
-            is nameof(IWorldState.AccountExists) or nameof(IWorldState.AddToBalance) or nameof(IWorldState.AddToBalanceAndCreateIfNotExists));
+        return vm.WorldState;
     }
 
     private sealed class FrameEnteringVirtualMachine : VirtualMachine<EthereumGasPolicy>
