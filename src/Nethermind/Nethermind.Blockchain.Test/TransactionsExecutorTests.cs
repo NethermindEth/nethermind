@@ -380,7 +380,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void BlockProductionTransactionPicker_takes_more_leanstark_dependencies_than_one_step_verifies()
         {
-            const int count = Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1;
+            const int count = Eip8288Constants.MaxInnerProofsPerStep + 1;
             FrameDependency[] dependencies = Enumerable.Range(0, count).Select(index =>
                 new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute(index.ToString()), default)).ToArray();
             Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;

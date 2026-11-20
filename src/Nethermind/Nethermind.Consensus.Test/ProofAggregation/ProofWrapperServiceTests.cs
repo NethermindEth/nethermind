@@ -267,7 +267,7 @@ public class ProofWrapperServiceTests
         {
             "limit" or "wide" => (2, static i => 9 - i),
             "transaction limit" => (1, static _ => Eip8288Constants.MaxSigsPerTx + 1),
-            "leanstark beyond one step" => (Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1, static _ => Eip8288Constants.MaxStarksPerTx),
+            "leanstark beyond one step" => (Eip8288Constants.MaxInnerProofsPerStep + 1, static _ => Eip8288Constants.MaxStarksPerTx),
             "unsorted" => (1, static _ => 2),
             _ => (1, (Func<int, int>)(static _ => 1))
         };
@@ -1875,7 +1875,7 @@ public class ProofWrapperServiceTests
         }).Bytes;
     }
 
-    // leanSTARK, enabled here as a deviation from EIP-8288, is accepted like leanSPHINCS; a scheme EIP-8288 does not define is
+    // leanSTARK is accepted like leanSPHINCS; a scheme EIP-8288 does not define is
     // malformed encoding.
     [TestCase(Eip8288Constants.LeanStarkScheme, ProofWrapperAcceptanceStatus.Accepted)]
     [TestCase((byte)0x99, ProofWrapperAcceptanceStatus.Malformed)]

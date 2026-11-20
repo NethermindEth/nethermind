@@ -28,20 +28,27 @@ public class FrameDependencyTests
             Assert.Throws<ArgumentException>(() => NativeLeanProofVerifier.SerializeInput(input));
     }
 
-    // The native host takes one aggregation step: at most MaxLeanStarkWitnessesPerStep raw leanSTARK and MaxRawWitnessesPerStep raw
-    // witnesses, discarded ones included, MaxRecursiveInputsPerStep children and lists up to the output capacity. Anything wider is
-    // refused before it is encoded.
+    // The native host takes one aggregation step: at most MaxInnerProofsPerStep raw leanSTARK witnesses and children together and
+    // MaxRawWitnessesPerStep raw witnesses, discarded ones included, and lists up to the output capacity. Anything wider is refused
+    // before it is encoded.
     [TestCase("step", false)]
     [TestCase("raw leanSTARK", true)]
     [TestCase("raw witnesses", true)]
     [TestCase("children", true)]
+    [TestCase("raw leanSTARK and a child", true)]
     [TestCase("child list", true)]
     [TestCase("discards", true)]
     [TestCase("child proof", true)]
     [TestCase("witness", true)]
     public void Aggregation_input_beyond_one_step_is_refused_before_encoding(string scenario, bool refused)
     {
-        int starks = Eip8288Constants.MaxLeanStarkWitnessesPerStep + (scenario == "raw leanSTARK" ? 1 : 0);
+        int children = scenario switch
+        {
+            "children" => Eip8288Constants.MaxInnerProofsPerStep + 1,
+            "raw leanSTARK and a child" => 2,
+            _ => 1
+        };
+        int starks = Eip8288Constants.MaxInnerProofsPerStep - 1 + (scenario == "raw leanSTARK" ? 2 : 0);
         int raw = Eip8288Constants.MaxRawWitnessesPerStep + (scenario == "raw witnesses" ? 1 : 0);
         FrameDependency[] deps = [.. Enumerable.Range(0, raw)
             .Select(i => Dependency(i < starks ? Eip8288Constants.LeanStarkScheme : Eip8288Constants.LeanSphincsScheme, i))];
@@ -52,7 +59,7 @@ public class FrameDependencyTests
         {
             Deps = deps,
             Witnesses = [.. deps.Select((_, i) => (ReadOnlyMemory<byte>)new byte[i == 0 && scenario == "witness" ? Eip8288Constants.MaxProofBytes + 1 : 1])],
-            RecursiveProofs = [.. Enumerable.Repeat(child, scenario == "children" ? Eip8288Constants.MaxRecursiveInputsPerStep + 1 : 1)],
+            RecursiveProofs = [.. Enumerable.Repeat(child, children)],
             Discards = [.. list.Take(Eip8288Constants.MaxProofDependencies), .. scenario == "discards" ? deps[..1] : []]
         };
 
@@ -133,45 +140,35 @@ public class FrameDependencyTests
     private static readonly FrameDependency VectorG1 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0x07, 0);
     private static readonly FrameDependency VectorG2 = VectorDependency(Eip8288Constants.LeanStarkScheme, 0xA5, 0, 0x5A);
 
-    // Expected digests computed with OpenSSL's Keccak-256: leanSPHINCS-only lists from the EIP-8288 get_deps_hash
-    // pseudocode, lists with leanSTARK entries from this node's split-domain deviation.
+    // Expected digests computed with OpenSSL's Keccak-256 from the EIP-8288 get_deps_hash pseudocode.
     private static IEnumerable<TestCaseData> DepsHashVectors()
     {
         yield return new TestCaseData(Array.Empty<FrameDependency>(), "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470").SetName("empty");
-        yield return new TestCaseData(new[] { VectorA }, "535b1be06804ff1c42441f5b486c07a4f0b788bb24cbd7a3a21c405a869730b5").SetName("one");
-        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "a9cb9f718bf29878fea69d892f229c0a49932e21555106f3bf37044f142262ba").SetName("three_with_duplicate");
-        yield return new TestCaseData(new[] { VectorD, VectorA, VectorC, VectorB }, "43c9b8d263f3c5128d4b200350327b8ff8423c4d2235654c497b281c0efc7a2e").SetName("four");
-        yield return new TestCaseData(new[] { VectorG1 }, "472b9b9746554a2d22de24296cc51b74741f0a369b0355bbbc07dace239e4c49").SetName("stark_only");
-        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "82cb3c09f78c3f79ed0f35e6c946c28c79861d6c743468255a828b8ba22fbab9").SetName("mixed");
-        yield return new TestCaseData(new[] { VectorG2, VectorD }, "527d30bc3378b13fda7d9d0815b5d31abcb474d1ce10ee338c30be03e3fb8cde").SetName("same_data_and_key_under_both_schemes");
+        yield return new TestCaseData(new[] { VectorA }, "55e7aa7764c98a36595d5e85cf33c2c57c1fcbc41ef8462e25628222bdaacc97").SetName("one");
+        yield return new TestCaseData(new[] { VectorB, VectorA, VectorC, VectorA }, "551e9c71bad89f976e1f45e189f7977be8f8c33ede75aceec2ff700ea2897ddc").SetName("three_with_duplicate");
+        yield return new TestCaseData(new[] { VectorD, VectorA, VectorC, VectorB }, "ae3c8d458b0e121abb9b431ec64184a53553ce9748a2ca2eded4963ed9024825").SetName("four");
+        yield return new TestCaseData(new[] { VectorG1 }, "14bee892857ccf0b41ae1b9a1d0924eabf7f1f2fde3109c986523a8bba56e5a5").SetName("stark_only");
+        yield return new TestCaseData(new[] { VectorG2, VectorA, VectorG1, VectorC }, "9f817fe4f18a79d6d0acc3ec430ff1f1630318750448ae8b74ed5ba172ac13a1").SetName("mixed");
+        yield return new TestCaseData(new[] { VectorG2, VectorD }, "74dbf293dc20a9035b99ce4ea7ac7087c9b5092c11534e0af4253ee8f58feb4a").SetName("same_data_and_key_under_both_schemes");
     }
 
     [TestCaseSource(nameof(DepsHashVectors))]
     public void ComputeDepsHash_matches_eip_pseudocode_vectors(FrameDependency[] dependencies, string expected) =>
         Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies).ToString(withZeroX: false), Is.EqualTo(expected));
 
-    // A leanSPHINCS-only list is the spec digest: Keccak-256 over its canonical 64-byte data_hash || key entries.
-    [Test]
-    public void LeanSphincs_only_list_hashes_to_the_spec_digest()
-    {
-        FrameDependency[] dependencies = [VectorD, VectorA, VectorC, VectorB];
-        byte[] entries = [.. Eip8288Dependencies.Canonicalize(dependencies)
-            .SelectMany(static dep => dep.DataHash.ToByteArray().Concat(dep.VerificationKey.ToByteArray()))];
-        Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies), Is.EqualTo(ValueKeccak.Compute(entries)));
-    }
-
-    // Scheme 0x0F sorts before leanSPHINCS: the leanSPHINCS list must still hold exactly the 0x10 entries.
+    // Every list, of any schemes, is Keccak-256 over its canonical 96-byte triples, scheme word included.
+    [TestCase(Eip8288Constants.LeanSphincsScheme)]
     [TestCase(Eip8288Constants.LeanStarkScheme)]
     [TestCase((byte)0x0F)]
-    public void Mixed_list_hashes_each_scheme_list_under_the_domain(byte other)
+    public void ComputeDepsHash_hashes_the_canonical_96_byte_triples(byte other)
     {
-        FrameDependency second = VectorDependency(other, 0x02, 3);
-        static byte[] List(params FrameDependency[] deps) =>
-            ValueKeccak.Compute([.. deps.SelectMany(static d => d.DataHash.ToByteArray().Concat(d.VerificationKey.ToByteArray()))]).ToByteArray();
-        byte[] domain = new byte[32];
-        "eip8288/leanstark-deps"u8.CopyTo(domain);
-        byte[] expected = [.. List(VectorA, VectorB), .. List(second), .. domain];
-        Assert.That(Eip8288Dependencies.ComputeDepsHash([VectorB, second, VectorA]), Is.EqualTo(ValueKeccak.Compute(expected)));
+        FrameDependency[] dependencies = [VectorB, VectorDependency(other, 0x02, 3), VectorA, VectorB];
+        byte[] triples = Eip8288Dependencies.Serialize(Eip8288Dependencies.Canonicalize(dependencies));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(triples, Has.Length.EqualTo(3 * Eip8288Constants.DependencyTripleLength));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash(dependencies), Is.EqualTo(ValueKeccak.Compute(triples)));
+        }
     }
 
     // The scheme is part of a dependency: the same data and key under the other scheme is another digest.
@@ -282,9 +279,11 @@ public class FrameDependencyTests
             new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakD.ValueHash256, TestItem.KeccakC.ValueHash256)];
         FrameDependency[] expected = dependencies.OrderBy(dep => Convert.ToHexString(Eip8288Dependencies.Serialize([dep])), StringComparer.Ordinal).ToArray();
         List<FrameDependency> reversed = [.. expected.Reverse(), .. expected];
-        Assert.That(Eip8288Dependencies.Canonicalize(reversed), Is.EqualTo(expected));
-        byte[] entries = [.. expected.SelectMany(static dep => dep.DataHash.ToByteArray().Concat(dep.VerificationKey.ToByteArray()))];
-        Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(ValueKeccak.Compute(entries)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8288Dependencies.Canonicalize(reversed), Is.EqualTo(expected));
+            Assert.That(Eip8288Dependencies.ComputeDepsHash(reversed), Is.EqualTo(ValueKeccak.Compute(Eip8288Dependencies.Serialize(expected))));
+        }
     }
 
     [Test]

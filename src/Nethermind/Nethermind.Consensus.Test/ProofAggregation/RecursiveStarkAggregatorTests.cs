@@ -411,10 +411,31 @@ public class RecursiveStarkAggregatorTests
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
+    // EIP-8288 MAX_INNER_PROOFS_PER_STEP counts a step's raw leanSTARK witnesses and recursive proofs together.
+    [TestCase(1, false)]
+    [TestCase(2, true)]
+    public void Production_cache_refuses_a_step_beyond_the_inner_proof_cap(int children, bool refused)
+    {
+        FrameDependency[] starks = [.. Enumerable.Range(0, Eip8288Constants.MaxInnerProofsPerStep - 1)
+            .Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"cap:{i}"), default))];
+        RecursiveProofInput child = new([Sphincs("cap child")], [1]);
+        AggregationInput input = new()
+        {
+            Deps = starks,
+            Witnesses = [.. starks.Select(static _ => (ReadOnlyMemory<byte>)new byte[] { 1 })],
+            RecursiveProofs = [.. Enumerable.Repeat(child, children)]
+        };
+        ProductionProofCache cache = new(new FakeLeanProofVerifier(true));
+        ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([.. starks, .. child.InnerDeps]);
+
+        Assert.That(() => cache.ProveRecursiveStark(hash, Eip8288Verifier.PinnedAggregatedVk.Bytes, input),
+            refused ? Throws.ArgumentException : Throws.Nothing);
+    }
+
     [Test]
     public void LeanStark_witnesses_beyond_one_step_fold_into_one_list()
     {
-        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 2 * Eip8288Constants.MaxLeanStarkWitnessesPerStep + 1)
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(Enumerable.Range(0, 2 * Eip8288Constants.MaxInnerProofsPerStep + 1)
             .Select(static i => new FrameDependency(Eip8288Constants.LeanStarkScheme, ValueKeccak.Compute($"step:{i}"), default)));
         GenericBoundedVerifier verifier = new();
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
@@ -637,7 +658,7 @@ public class RecursiveStarkAggregatorTests
             {
                 Assert.That(RecursiveStarkAggregatorTests.TryAggregate(input, Accepting, Eip8288Verifier.Pinned, out IReadOnlyList<FrameDependency> dependencies, out ValueHash256 actual), Is.True);
                 Assert.That(actual, Is.EqualTo(hash));
-                Assert.That(Eip8288Dependencies.CountLeanStark(input.Deps), Is.LessThanOrEqualTo(Eip8288Constants.MaxLeanStarkWitnessesPerStep));
+                Assert.That(Eip8288Dependencies.CountLeanStark(input.Deps) + input.RecursiveProofs.Count, Is.LessThanOrEqualTo(Eip8288Constants.MaxInnerProofsPerStep));
             }
             ProofCalls++;
             return hash.ToByteArray();
