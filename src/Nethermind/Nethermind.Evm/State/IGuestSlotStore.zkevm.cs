@@ -16,6 +16,10 @@ public interface IGuestSlotStore
     /// <returns>The slot's index, for <see cref="WriteAt"/> before any other storage access.</returns>
     int ReadForStore(in StorageCell storageCell, out UInt256 current, out UInt256 original);
 
-    /// <summary>Writes <paramref name="newValue"/> to the slot <see cref="ReadForStore"/> found, as <see cref="IWorldState.Set(in StorageCell, in UInt256)"/> does.</summary>
-    void WriteAt(int slot, in UInt256 newValue);
+    /// <summary>Writes <paramref name="newValue"/> to the slot <see cref="ReadForStore"/> found, as <see cref="IWorldState.Set(in StorageCell, in UInt256, in UInt256)"/> does.</summary>
+    /// <param name="slot">The index <see cref="ReadForStore"/> returned.</param>
+    /// <param name="storageCell">The cell <see cref="ReadForStore"/> was given.</param>
+    /// <param name="current">The value <see cref="ReadForStore"/> read.</param>
+    /// <param name="newValue">The value to write.</param>
+    void WriteAt(int slot, in StorageCell storageCell, in UInt256 current, in UInt256 newValue);
 }
