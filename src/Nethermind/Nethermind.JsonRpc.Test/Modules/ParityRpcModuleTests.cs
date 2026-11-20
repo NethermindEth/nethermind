@@ -25,6 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.Logging;
 using Nethermind.KeyStore;
@@ -410,7 +411,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task parity_setEngineSigner()
         {
-            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
+            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, new JsonRpcContext(RpcEndpoint.IPC), "parity_setEngineSigner", TestItem.AddressA, "password");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             using (Assert.EnterMultipleScope())
             {
@@ -423,7 +424,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task parity_setEngineSignerSecret()
         {
-            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
+            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, new JsonRpcContext(RpcEndpoint.IPC), "parity_setEngineSignerSecret", TestItem.PrivateKeyA.ToString());
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             using (Assert.EnterMultipleScope())
             {
@@ -436,8 +437,8 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task parity_clearEngineSigner()
         {
-            await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_setEngineSigner", TestItem.AddressA, "password");
-            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, "parity_clearEngineSigner");
+            await RpcTest.TestSerializedRequest(_parityRpcModule, new JsonRpcContext(RpcEndpoint.IPC), "parity_setEngineSigner", TestItem.AddressA, "password");
+            string serialized = await RpcTest.TestSerializedRequest(_parityRpcModule, new JsonRpcContext(RpcEndpoint.IPC), "parity_clearEngineSigner");
             string expectedResult = "{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}";
             using (Assert.EnterMultipleScope())
             {

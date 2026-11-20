@@ -16,7 +16,7 @@ public class BlobProofsManagerTests
         [Values] bool hasProof)
     {
         byte[][] commitments = hasCommitment ? [new byte[Ckzg.BytesPerCommitment]] : [];
-        byte[][] proofs = hasProof ? [new byte[Ckzg.BytesPerProof]] : [];
+        byte[] proofs = hasProof ? new byte[Ckzg.BytesPerProof] : [];
 
         ShardBlobNetworkWrapper wrapper = new([], commitments, proofs, version);
 
@@ -36,7 +36,7 @@ public class BlobProofsManagerTests
         bool expected)
     {
         byte[][] commitments = hasCommitment ? [new byte[Ckzg.BytesPerCommitment]] : [];
-        byte[][] proofs = hasProof ? [new byte[Ckzg.BytesPerProof]] : [];
+        byte[] proofs = hasProof ? new byte[Ckzg.BytesPerProof] : [];
 
         ShardBlobNetworkWrapper wrapper = new([], commitments, proofs, version);
 

@@ -19,6 +19,7 @@ internal sealed class InFlightOperations
 {
     private int _count;
     private int _closed;
+    private Action? _onDrained;
 
     /// <summary>The operations that have started and not ended.</summary>
     public int Count => Volatile.Read(ref _count);
@@ -28,11 +29,14 @@ internal sealed class InFlightOperations
     {
         Interlocked.Increment(ref _count);
         if (Volatile.Read(ref _closed) == 0) return true;
-        Interlocked.Decrement(ref _count);
+        End();
         return false;
     }
 
-    public void End() => Interlocked.Decrement(ref _count);
+    public void End()
+    {
+        if (Interlocked.Decrement(ref _count) == 0 && Volatile.Read(ref _onDrained) is not null) RunOnDrained();
+    }
 
     /// <summary>Refuses every operation that has not started yet.</summary>
     public void Close() => Interlocked.Exchange(ref _closed, 1);
@@ -51,4 +55,12 @@ internal sealed class InFlightOperations
 
         return true;
     }
+
+    public void RunWhenDrained(Action action)
+    {
+        Interlocked.Exchange(ref _onDrained, action);
+        if (Volatile.Read(ref _count) == 0) RunOnDrained();
+    }
+
+    private void RunOnDrained() => Interlocked.Exchange(ref _onDrained, null)?.Invoke();
 }

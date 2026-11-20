@@ -41,6 +41,7 @@ namespace Nethermind.Specs.Test
         public ulong NetworkId => SpecProvider.NetworkId;
         public ulong ChainId => SpecProvider.ChainId;
         public string SealEngine => SpecProvider.SealEngine;
+        public bool GenesisStateUnavailable => SpecProvider.GenesisStateUnavailable;
 
         public ForkActivation[] TransitionActivations => SpecProvider.TransitionActivations;
     }

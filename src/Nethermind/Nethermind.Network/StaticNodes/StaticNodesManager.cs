@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -34,11 +33,6 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
         bool added = TryAddNode(networkNode);
         if (_logger.IsInfo) _logger.Info($"Static node {(added ? "added" : "was already added")}: {networkNode:hide}");
 
-        if (added)
-        {
-            NodeAdded?.Invoke(this, new NodeEventArgs(new Node(networkNode, isStatic: true)));
-        }
-
         return await PersistAsync(added, networkNode, updateFile, cancellationToken);
     }
 
@@ -56,30 +50,9 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
 
     public async IAsyncEnumerable<Node> DiscoverNodes([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        Channel<Node> ch = Channel.CreateBounded<Node>(128); // Some reasonably large value
-
-        foreach (Node node in _nodes.Select(static kvp => new Node(kvp.Value, isStatic: true)))
+        await foreach (NetworkNode node in DiscoverNetworkNodes(cancellationToken))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return node;
-        }
-
-        void handler(object? _, NodeEventArgs args) => ch.Writer.TryWrite(args.Node);
-
-        try
-        {
-            NodeAdded += handler;
-
-            await foreach (Node node in ch.Reader.ReadAllAsync(cancellationToken))
-            {
-                yield return node;
-            }
-        }
-        finally
-        {
-            NodeAdded -= handler;
+            yield return new Node(node, isStatic: true);
         }
     }
-
-    private event EventHandler<NodeEventArgs>? NodeAdded;
 }

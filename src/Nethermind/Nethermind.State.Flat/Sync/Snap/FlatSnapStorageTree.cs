@@ -32,7 +32,7 @@ public class FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersis
         _store.BulkSet(entries);
     }
 
-    public bool Commit(ValueHash256 upperBound)
+    public bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
         if (_pendingEntries is not null)
         {
@@ -54,7 +54,7 @@ public class FlatSnapStorageTree(IPersistence.IPersistenceReader reader, IPersis
             }
         }
 
-        return _store.Commit(upperBound, skipRoot: false);
+        return _store.Commit(lowerBound, upperBound, skipRoot: false);
     }
 
     public void Dispose()

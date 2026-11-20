@@ -72,14 +72,14 @@ public class FlatSnapTreeTrieNodeParityTests
         ValueHash256[] keys = Keys();
         TestRawTrieStore store = new(new TestMemDb());
         StateTree state = new(store.GetTrieStore(null), LimboLogs.Instance);
-        PathWithAccount owner = new(keys[0], Build.An.Account.WithBalance(1).TestObject);
+        Account ownerAccount = Build.An.Account.WithBalance(1).TestObject;
         if (storage)
         {
-            StorageTree storageTree = new(store.GetTrieStore(owner.Path.ToCommitment()), LimboLogs.Instance);
+            StorageTree storageTree = new(store.GetTrieStore(keys[0].ToCommitment()), LimboLogs.Instance);
             foreach (ValueHash256 key in keys) storageTree.Set(key, Rlp.Encode(key.Bytes[..4]), false);
             storageTree.Commit();
-            owner = new(owner.Path, owner.Account!.WithChangedStorageRoot(storageTree.RootHash));
-            state.Set(owner.Path.ToCommitment(), owner.Account);
+            ownerAccount = ownerAccount.WithChangedStorageRoot(storageTree.RootHash);
+            state.Set(keys[0].ToCommitment(), ownerAccount);
         }
         else
         {
@@ -88,6 +88,7 @@ public class FlatSnapTreeTrieNodeParityTests
 
         state.Commit();
         Hash256 stateRoot = state.RootHash;
+        PathWithAccount owner = new(keys[0], ownerAccount.ToStruct());
         SnapStateServer server = new(store.AsReadOnly(), LimboLogs.Instance);
         List<Func<ISnapTrieFactory, (AddRangeResult Result, bool IsRootPersisted)>> ranges = [];
         ValueHash256 origin = ValueKeccak.Zero;
@@ -108,7 +109,7 @@ public class FlatSnapTreeTrieNodeParityTests
                 ranges.Add(factory =>
                 {
                     using IByteArrayList rangeProofs = new ByteArrayListAdapter(proof.ToPooledList());
-                    (AddRangeResult result, _, _, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(factory, owner, entries, start, ValueKeccak.MaxValue, rangeProofs);
+                    (AddRangeResult result, _, _, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(factory, owner, entries, start, ValueKeccak.Zero, ValueKeccak.MaxValue, rangeProofs);
                     return (result, isRootPersisted);
                 });
             }
@@ -174,7 +175,7 @@ public class FlatSnapTreeTrieNodeParityTests
             IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
             SnapUpperBoundAdapter adapter = new(address is null
                 ? new PersistenceTrieStoreAdapter(reader, writeBatch, enableDoubleWriteCheck: false)
-                : new PersistenceStorageTrieStoreAdapter(reader, writeBatch, address, enableDoubleWriteCheck: false));
+                : new PersistenceStorageTrieStoreAdapter(reader, writeBatch, address, enableDoubleWriteCheck: false), boundWholePath: address is not null);
             PatriciaTree tree = address is null ? new StateTree(adapter, LimboLogs.Instance) : new StorageTree(adapter, LimboLogs.Instance);
             return new TrieNodeTree<TEntry>(tree, adapter, reader, writeBatch, address);
         }
@@ -202,12 +203,13 @@ public class FlatSnapTreeTrieNodeParityTests
 
         public void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries) => ISnapTree<TEntry>.DoBulkSetAndUpdateRootHash(tree, entries);
 
-        public bool Commit(ValueHash256 upperBound)
+        public bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
         {
             PatriciaSnapProof.StitchBoundaries(_proofNodes, this);
+            adapter.LowerBound = lowerBound;
             adapter.UpperBound = upperBound;
             tree.Commit(skipRoot: address is null, WriteFlags.DisableWAL);
-            return _proofNodes is not { Count: > 0 } || _proofNodes[0].Item1.IsPersisted;
+            return _proofNodes is { Count: > 0 } ? _proofNodes[0].Item1.IsPersisted : lowerBound == ValueKeccak.Zero && upperBound == ValueKeccak.MaxValue;
         }
 
         public void Dispose()

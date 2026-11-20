@@ -96,7 +96,10 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
             try
             {
                 if (Stopped()) return results;
-                using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call));
+                using CancellationTokenSource rental = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                TimeSpan left = budget - clock.Elapsed;
+                rental.CancelAfter(left > TimeSpan.Zero ? left : TimeSpan.Zero);
+                using ModuleLease<IEthRpcModule> lease = await executor.RentAsync<IEthRpcModule>(nameof(IEthRpcModule.eth_call), rental.Token);
                 if (lease.Module is null) return Failed("The eth_call module is unavailable for the price feed.");
                 if (!TryResolveReference(lease.Module, block, Stopped, pinnedHead, out PriceReference reference, out string referenceError)) return Failed(referenceError);
                 foreach ((AddressAsKey key, McpPriceFeed feed) in feeds)
@@ -105,7 +108,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
                     if (Stopped()) break;
                     try
                     {
-                        TryReadFeed(lease.Module, feed, block, Stopped, reference, out McpPriceQuote? quote, out string reason);
+                        TryReadFeed(lease.Module, feed, block, Stopped, reference, cancellationToken, out McpPriceQuote? quote, out string reason);
                         results[key] = new(quote, reason);
                     }
                     catch (OperationCanceledException error) when (!cancellationToken.IsCancellationRequested)
@@ -165,7 +168,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
     private const string DeadlineNote = "USD omitted because the price lookup deadline was reached.";
 
     public bool TryRead(IEthRpcModule eth, string token, BlockParameter block, Func<bool>? stop,
-        out McpPriceQuote? quote, out string reason)
+        out McpPriceQuote? quote, out string reason, CancellationToken cancellationToken = default)
     {
         quote = null;
         if (profile.IsTestnet)
@@ -181,14 +184,14 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
             return false;
         }
 
-        return TryReadFeed(eth, feed, block, stop, out quote, out reason);
+        return TryReadFeed(eth, feed, block, stop, out quote, out reason, cancellationToken);
     }
 
     internal bool TryReadFeed(IEthRpcModule eth, McpPriceFeed feed, BlockParameter block, Func<bool>? stop,
-        out McpPriceQuote? quote, out string reason) => TryReadFeed(eth, feed, block, stop, null, out quote, out reason);
+        out McpPriceQuote? quote, out string reason, CancellationToken cancellationToken = default) => TryReadFeed(eth, feed, block, stop, null, cancellationToken, out quote, out reason);
 
     private bool TryReadFeed(IEthRpcModule eth, McpPriceFeed feed, BlockParameter block, Func<bool>? stop, PriceReference? resolved,
-        out McpPriceQuote? quote, out string reason)
+        CancellationToken cancellationToken, out McpPriceQuote? quote, out string reason)
     {
         quote = null;
         reason = "The Chainlink feed did not return valid price data at this block.";
@@ -207,7 +210,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
             reason = "The Chainlink feed did not return valid price data at this block.";
 
             bool transient = false;
-            byte[]? round = McpTokenMetadata.Call(eth, feed.Address, LatestRoundSelector, block, McpTokenMetadata.MetadataCallGas, ref transient);
+            byte[]? round = McpTokenMetadata.Call(eth, feed.Address, LatestRoundSelector, block, McpTokenMetadata.MetadataCallGas, ref transient, cancellationToken);
             if (round is not { Length: 160 }) return false;
             if (stop?.Invoke() == true)
             {
@@ -215,7 +218,7 @@ internal sealed class McpPriceReader(McpChainProfile profile, ILogManager logMan
                 return false;
             }
 
-            byte[]? decimalsData = McpTokenMetadata.Call(eth, feed.Address, DecimalsSelector, block, McpTokenMetadata.MetadataCallGas, ref transient);
+            byte[]? decimalsData = McpTokenMetadata.Call(eth, feed.Address, DecimalsSelector, block, McpTokenMetadata.MetadataCallGas, ref transient, cancellationToken);
             if (decimalsData is not { Length: 32 } || decimalsData.AsSpan(0, 31).ContainsAnyExcept((byte)0) || decimalsData[31] > 36)
                 return false;
 
@@ -308,9 +311,9 @@ internal sealed class McpPriceTools(McpToolExecutor executor, McpPriceReader pri
             return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
                 "No verified Chainlink USD price feed is configured for this token on this chain; use a listed well-known token or 'native'."));
 
-        return executor.ExecuteAsync("token_price", nameof(IEthRpcModule.eth_call), (eth, _) =>
+        return executor.ExecuteAsync("token_price", nameof(IEthRpcModule.eth_call), (eth, cancellation) =>
         {
-            if (!prices.TryRead(eth, token, query, null, out McpPriceQuote? quote, out string reason))
+            if (!prices.TryRead(eth, token, query, null, out McpPriceQuote? quote, out string reason, cancellation))
                 return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable, reason));
 
             JsonObject result = new()

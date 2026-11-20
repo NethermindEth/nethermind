@@ -26,12 +26,13 @@ public class PatriciaSnapStateTree(StateTree tree, SnapUpperBoundAdapter adapter
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithAccount> entries) =>
         ISnapTree<PathWithAccount>.DoBulkSetAndUpdateRootHash(tree, entries);
 
-    public bool Commit(ValueHash256 upperBound)
+    public bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
         PatriciaSnapProof.StitchBoundaries(_proofNodes, this);
+        adapter.LowerBound = lowerBound;
         adapter.UpperBound = upperBound;
         tree.Commit(skipRoot: true, WriteFlags.DisableWAL);
-        return _proofNodes is not { Count: > 0 } || _proofNodes[0].Item1.IsPersisted;
+        return _proofNodes is { Count: > 0 } ? _proofNodes[0].Item1.IsPersisted : lowerBound == ValueKeccak.Zero && upperBound == ValueKeccak.MaxValue;
     }
 
     public void Dispose() { } // No-op - Patricia doesn't own resources

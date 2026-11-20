@@ -16,29 +16,35 @@ internal static class PatriciaSnapProof
     private const int ExtensionRlpChildIndex = 1;
 
     /// <summary>Sets the root of <paramref name="tree"/> to the proof's <paramref name="nodes"/>, as boundary proof <see cref="TrieNode"/>s.</summary>
-    /// <returns>The nodes with their paths, the root first, for <see cref="StitchBoundaries"/>.</returns>
+    /// <remarks>A leaf below the root is not a boundary proof node: it is committed as the entries are, so it is not stitched.</remarks>
+    /// <returns>The nodes to stitch with their paths, the root first, for <see cref="StitchBoundaries"/>.</returns>
     public static List<(TrieNode, TreePath)> SetRoot(PatriciaTree tree, IByteArrayList proofs, IReadOnlyList<SnapProofNode> nodes)
     {
+        TrieNode[] trieNodes = new TrieNode[nodes.Count];
         List<(TrieNode, TreePath)> sortedBoundaryList = [with(capacity: nodes.Count)];
-        foreach (SnapProofNode proofNode in nodes)
+        for (int i = 0; i < nodes.Count; i++)
         {
+            SnapProofNode proofNode = nodes[i];
             TrieNode node = new(NodeType.Unknown, proofs[proofNode.ProofIndex].ToArray(), isDirty: true);
-            node.IsBoundaryProofNode = true;
 
             TreePath emptyPath = TreePath.Empty;
             node.ResolveNode(UnknownNodeResolver.Instance, emptyPath);
             node.ResolveKey(UnknownNodeResolver.Instance, ref emptyPath);
+
+            bool isKeptLeaf = proofNode.ParentIndex >= 0 && node.IsLeaf;
+            node.IsBoundaryProofNode = !isKeptLeaf;
 
             for (int mask = proofNode.ClearedChildren; mask != 0; mask &= mask - 1)
             {
                 node.SetChild(BitOperations.TrailingZeroCount(mask), null);
             }
 
-            if (proofNode.ParentIndex >= 0) sortedBoundaryList[proofNode.ParentIndex].Item1.SetChild(proofNode.ChildIndex, node);
-            sortedBoundaryList.Add((node, proofNode.Path));
+            if (proofNode.ParentIndex >= 0) trieNodes[proofNode.ParentIndex].SetChild(proofNode.ChildIndex, node);
+            trieNodes[i] = node;
+            if (!isKeptLeaf) sortedBoundaryList.Add((node, proofNode.Path));
         }
 
-        tree.RootRef = sortedBoundaryList[0].Item1;
+        tree.RootRef = trieNodes[0];
         return sortedBoundaryList;
     }
 

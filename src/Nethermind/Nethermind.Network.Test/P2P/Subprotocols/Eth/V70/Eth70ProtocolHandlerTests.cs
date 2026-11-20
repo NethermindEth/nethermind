@@ -165,6 +165,21 @@ public class Eth70ProtocolHandlerTests
     }
 
     [Test]
+    public void Should_prefetch_receipts_a_window_at_a_time()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, Enumerable.Repeat(Keccak.Zero, 40).ToArray().ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _syncManager.ReceivedWithAnyArgs(3).PrefetchReceipts(null!, 0, 0);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 0, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 16, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 32, 8);
+    }
+
+    [Test]
     public void Should_stop_response_when_receipts_are_not_known_locally()
     {
         using GetReceiptsMessage70 request = new(1111, 0, new[] { Keccak.Zero }.ToPooledList());
@@ -1597,6 +1612,43 @@ public class Eth70ProtocolHandlerTests
         {
             Assert.That(responses[1].Message, Is.EqualTo(responses[0].Message));
             Assert.That(responses[1].LastBlockIncomplete, Is.EqualTo(responses[0].LastBlockIncomplete));
+        }
+    }
+
+    [Test]
+    public void Serves_full_receipts_response_as_decoded_ones([Values(0L, 3L)] long firstBlockReceiptIndex)
+    {
+        const int count = 64;
+        TxReceipt[][] blocks = [.. Enumerable.Range(0, count).Select(static i => SoftLimitTestHelper.CreateLogHeavyReceipts(200 + i))];
+        Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
+        for (int i = 0; i < count; i++) _syncManager.GetReceipts(hashes[i]).Returns(blocks[i]);
+        ReceiptsMessageSerializer70 serializer = new(_specProvider);
+        byte[]? response = null;
+        int servedCount = 0;
+        bool lastBlockIncomplete = false;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call =>
+            {
+                ReceiptsMessage70 message = (ReceiptsMessage70)call[0];
+                servedCount = message.TxReceipts.Count;
+                lastBlockIncomplete = message.LastBlockIncomplete;
+                response = new byte[serializer.GetLength(message)];
+                serializer.Serialize(response, message);
+            });
+        HandleIncomingStatusMessage();
+
+        using GetReceiptsMessage70 request = new(1111, firstBlockReceiptIndex, hashes.ToPooledList());
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        TxReceipt[][] expectedBlocks = blocks[..servedCount];
+        expectedBlocks[0] = expectedBlocks[0][(int)firstBlockReceiptIndex..];
+        using ReceiptsMessage70 decoded = new(1111, expectedBlocks.ToPooledList(), lastBlockIncomplete);
+        byte[] expected = new byte[serializer.GetLength(decoded)];
+        serializer.Serialize(expected, decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Has.Length.GreaterThan(1024 * 1024));
+            Assert.That(response, Is.EqualTo(expected));
         }
     }
 

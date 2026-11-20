@@ -134,6 +134,12 @@ public class PerTableDbConfigTests
         }
     }
 
+#if DEBUG
+    [Test]
+    public void Named_databases_still_require_declared_options() =>
+        Assert.Throws<Nethermind.Core.Exceptions.InvalidConfigurationException>(() => new PerTableDbConfig(new DbConfig(), "UndeclaredPlugin"));
+#endif
+
     [Test]
     public void AllDbConfigMemberMustBeDeclaredInIDbConfig()
     {

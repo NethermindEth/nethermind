@@ -218,6 +218,35 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     /// <summary>
+    /// A block that cannot be executed yet, because its parent has no state, and that the block validator turns down
+    /// is INVALID whether or not the validator gave a reason; the reason is optional in the Engine API.
+    /// </summary>
+    [TestCase(null)]
+    [TestCase("")]
+    [TestCase("invalid")]
+    public async Task Unexecutable_block_turned_down_by_the_validator_is_invalid_with_or_without_a_reason(string? error)
+    {
+        Block block = PostMergeBlock();
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: false,
+            configure: (_, stateReader) => stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h != null && h.Hash == block.ParentHash)).Returns(false),
+            suggestedBlockError: error);
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block)).WaitAsync(AnswerWait);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(result.Data.LatestValidHash, Is.Null);
+            Assert.That(result.Data.ValidationError, Is.EqualTo(error));
+        }
+    }
+
+    /// <summary>
     /// A request that has to wait before the hand-off writes its Received line as the wait starts, not once it is
     /// over, so a wait on our side does not read like a late payload; here, for a parent still committing.
     /// </summary>
@@ -1665,7 +1694,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         RecoverSignatures? senderRecovery = null,
         ISpecProvider? specProvider = null,
         ILogManager? logManager = null,
-        IInvalidChainTracker? invalidChainTracker = null)
+        IInvalidChainTracker? invalidChainTracker = null,
+        string? suggestedBlockError = "invalid")
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -1707,7 +1737,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), false)
             .Returns(callInfo =>
             {
-                callInfo[2] = validateSuggestedBlock ? null : "invalid";
+                callInfo[2] = validateSuggestedBlock ? null : suggestedBlockError;
                 return validateSuggestedBlock;
             });
 

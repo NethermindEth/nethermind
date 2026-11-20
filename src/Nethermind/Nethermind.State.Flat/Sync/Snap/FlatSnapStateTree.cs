@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Flat.Persistence;
@@ -32,7 +31,7 @@ public class FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersiste
         _store.BulkSet(entries);
     }
 
-    public bool Commit(ValueHash256 upperBound)
+    public bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
         if (_pendingEntries is not null)
         {
@@ -43,14 +42,14 @@ public class FlatSnapStateTree(IPersistence.IPersistenceReader reader, IPersiste
                 {
                     if (enableDoubleWriteCheck && reader.GetAccountRaw(account.Path) is not null)
                         throw new Exception($"Double account flat write. {account.Path}");
-                    Account accountValue = account.Account
-                        ?? throw new InvalidOperationException("A SNAP account entry must contain an account value.");
-                    writeBatch.SetAccountRaw(account.Path, accountValue);
+                    if (account.Account.IsNull)
+                        throw new InvalidOperationException("A SNAP account entry must contain an account value.");
+                    writeBatch.SetAccountRaw(account.Path, account.Account);
                 }
             }
         }
 
-        return _store.Commit(upperBound, skipRoot: true);
+        return _store.Commit(lowerBound, upperBound, skipRoot: true);
     }
 
     public void Dispose()

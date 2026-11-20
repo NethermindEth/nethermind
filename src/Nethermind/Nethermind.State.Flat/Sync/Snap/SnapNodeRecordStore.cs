@@ -68,17 +68,21 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
         RootHash = new Hash256(_root.Hash);
     }
 
-    /// <summary>Persists the trie's nodes as <see cref="SnapUpperBoundAdapter"/> commits a stitched trie: each whose keys all lie at or below <paramref name="upperBound"/> and whose children are all persisted.</summary>
+    /// <summary>
+    /// Persists the trie's nodes as <see cref="SnapUpperBoundAdapter"/> commits a stitched trie: each within [<paramref name="lowerBound"/>,
+    /// <paramref name="upperBound"/>] whose children are all persisted.
+    /// </summary>
     /// <remarks>
     /// The nodes are reached from the root by their records' child pointers. A child without a pointer is not written by this range,
-    /// so is checked in persistence.
+    /// so is checked in persistence. A storage node is bounded by its whole path, a state node by the keys under it.
     /// </remarks>
     /// <param name="skipRoot">Whether the root is left out.</param>
-    /// <returns>Whether the proof's root is persisted; true without a proof.</returns>
-    public bool Commit(in ValueHash256 upperBound, bool skipRoot)
+    /// <returns>Whether the proof's root is persisted; without a proof, whether the bounds cover the whole key space.</returns>
+    public bool Commit(in ValueHash256 lowerBound, in ValueHash256 upperBound, bool skipRoot)
     {
-        bool isRootWritten = _root.Pointer != 0 && Persist(_root.Pointer, TreePath.Empty, upperBound, skipRoot);
-        if (_proofRootPointer == 0 || isRootWritten) return true;
+        bool isRootWritten = _root.Pointer != 0 && Persist(_root.Pointer, TreePath.Empty, lowerBound, upperBound, skipRoot);
+        if (_proofRootPointer == 0) return lowerBound == ValueKeccak.Zero && upperBound == ValueKeccak.MaxValue;
+        if (isRootWritten) return true;
 
         // The range never writes a leaf root of the proof, which a range holding its key may have, as stitching checks.
         _buffer!.TryLocate(_proofRootPointer, out NodeRecord proofRoot);
@@ -218,7 +222,7 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
 
     /// <summary>Persists the persistable nodes below the record at <paramref name="pointer"/>, then the record's node when it is persistable too.</summary>
     /// <returns>Whether the node is persisted.</returns>
-    private bool Persist(ulong pointer, in TreePath path, in ValueHash256 upperBound, bool skip)
+    private bool Persist(ulong pointer, in TreePath path, in ValueHash256 lowerBound, in ValueHash256 upperBound, bool skip)
     {
         _buffer!.TryLocate(pointer, out NodeRecord record);
         NodeRecordRef view = record.View;
@@ -233,13 +237,15 @@ internal sealed class SnapNodeRecordStore(IPersistence.IPersistenceReader reader
         {
             int index = BitOperations.TrailingZeroCount(mask);
             ulong childPointer = view.Child(index).Pointer;
-            if (childPointer != 0) childrenPersisted &= Persist(childPointer, isBranch ? keyEnd.Append(index) : keyEnd, upperBound, skip: false);
+            if (childPointer != 0) childrenPersisted &= Persist(childPointer, isBranch ? keyEnd.Append(index) : keyEnd, lowerBound, upperBound, skip: false);
         }
 
-        // Only the root can be a leaf of the proof, which references the others by hash. Its key is outside the range, so
-        // the range holding it persists it.
+        // A leaf root of the proof has its key outside the range, so the range holding it persists it. A leaf below it is the
+        // one before a storage range continuing a run, which this range persists within its bounds as it does the entries.
         bool isProofLeaf = pointer == _proofRootPointer && view.Kind == NodeRecordKind.Leaf;
-        if (skip || isProofLeaf || !childrenPersisted || keyEnd.ToUpperBoundPath() > upperBound || !AreOtherChildrenPersisted(view, keyEnd, isBranch)) return false;
+        TreePath upperBoundPath = address is null ? keyEnd : path;
+        bool isInBounds = upperBoundPath.ToUpperBoundPath() <= upperBound && path.ToLowerBoundPath() >= lowerBound;
+        if (skip || isProofLeaf || !childrenPersisted || !isInBounds || !AreOtherChildrenPersisted(view, keyEnd, isBranch)) return false;
 
         Write(path, view.Rlp);
         return true;

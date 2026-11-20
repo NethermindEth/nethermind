@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
@@ -134,6 +135,8 @@ public class FlatSnapTrieFactory(
     /// commit never persists a node whose keys reach past the committed range, so such a node was written after the
     /// checkpoint. A leaf or an extension on that path whose keys lie wholly outside the range is kept, as it may well
     /// predate the checkpoint, and trie reassembly can rebuild a missing branch from the flat entries but not a leaf.
+    /// In a storage trie such a leaf or extension is deleted too: a range commit persists no storage node whose path
+    /// reaches past the range, and reassembly rebuilds a missing slot leaf from the flat entries.
     /// </para>
     /// </remarks>
     private void DiscardWritesAfter(SnapCheckpoint checkpoint)
@@ -147,12 +150,12 @@ public class FlatSnapTrieFactory(
                 if (!partition.MoreAccountsToRight) continue;
 
                 batch.DeleteStateTrieNodeRange(partition.NextAccountPath, partition.AccountPathLimit);
-                DeleteNodesReachingInto(reader, batch, address: null, partition.NextAccountPath, partition.AccountPathLimit);
+                DeleteNodesReachingInto(reader, batch, address: null, partition.NextAccountPath, partition.AccountPathLimit, wholePath: false);
 
                 if (TryGetFirstAccountKeyAtOrAfter(partition.NextAccountPath, out ValueHash256 firstAccount))
                 {
                     batch.DeleteAccountRange(firstAccount, partition.AccountPathLimit);
-                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit);
+                    batch.SelfDestructRange(firstAccount, partition.AccountPathLimit, null);
                 }
             }
 
@@ -163,7 +166,7 @@ public class FlatSnapTrieFactory(
                 // Over the whole trie, every node is within the range deleted above.
                 if (from == ValueKeccak.Zero && to == ValueKeccak.MaxValue) continue;
 
-                DeleteNodesReachingInto(reader, batch, accountPath.ToCommitment(), from, to);
+                DeleteNodesReachingInto(reader, batch, accountPath.ToCommitment(), from, to, wholePath: true);
             }
         }
 
@@ -172,16 +175,16 @@ public class FlatSnapTrieFactory(
 
     /// <summary>
     /// Deletes the nodes on the paths to <paramref name="from"/> and <paramref name="to"/> whose keys reach into
-    /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c>, in the storage trie of <paramref name="address"/>, or in
-    /// the state trie when it is <c>null</c>.
+    /// <c>[<paramref name="from"/>, <paramref name="to"/>]</c>, or whose path does when <paramref name="wholePath"/> is
+    /// set, in the storage trie of <paramref name="address"/>, or in the state trie when it is <c>null</c>.
     /// </summary>
-    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in ValueHash256 from, in ValueHash256 to)
+    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in ValueHash256 from, in ValueHash256 to, bool wholePath)
     {
-        DeleteNodesReachingInto(reader, batch, address, new TreePath(from, MaxNodePathLength), from, to);
-        DeleteNodesReachingInto(reader, batch, address, new TreePath(to, MaxNodePathLength), from, to);
+        DeleteNodesReachingInto(reader, batch, address, new TreePath(from, MaxNodePathLength), from, to, wholePath);
+        DeleteNodesReachingInto(reader, batch, address, new TreePath(to, MaxNodePathLength), from, to, wholePath);
     }
 
-    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in TreePath boundary, in ValueHash256 from, in ValueHash256 to)
+    private static void DeleteNodesReachingInto(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch batch, Hash256? address, in TreePath boundary, in ValueHash256 from, in ValueHash256 to, bool wholePath)
     {
         for (int length = 0; length < MaxNodePathLength; length++)
         {
@@ -192,7 +195,7 @@ public class FlatSnapTrieFactory(
                 : reader.TryLoadStorageRlp(address, path, ReadFlags.None, AppendNodeKey, new Span<TreePath>(ref keys));
             if (!found) continue;
 
-            if (keys.ToUpperBoundPath().CompareTo(from) < 0 || keys.ToLowerBoundPath().CompareTo(to) > 0) continue;
+            if (!wholePath && (keys.ToUpperBoundPath().CompareTo(from) < 0 || keys.ToLowerBoundPath().CompareTo(to) > 0)) continue;
 
             // A null span deletes the key.
             if (address is null) batch.SetStateTrieNode(path, default);
@@ -289,8 +292,11 @@ public class FlatSnapTrieFactory(
         public bool IsPreimageMode => Inner.IsPreimageMode;
         public Account? GetAccount(Address address) => Inner.GetAccount(address);
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => Inner.TryGetSlot(address, slot, ref outValue);
+        public MigrationCursor? GetMigrationCursor() => Inner.GetMigrationCursor();
         public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStateRlp(path, flags, action, arg);
         public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStorageRlp(address, path, flags, action, arg);
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStateRlp(path, hash, flags, action, arg);
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => Inner.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => Inner.GetAccountRaw(addrHash);
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => Inner.TryGetStorageRaw(addrHash, slotHash, ref value);
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => Inner.CreateAccountIterator(startKey, endKey);

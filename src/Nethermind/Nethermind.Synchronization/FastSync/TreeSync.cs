@@ -51,7 +51,6 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _stateDbLock = new();
         private readonly ReaderWriterLockSlim _codeDbLock = new();
 
-        private readonly Stopwatch _networkWatch = new();
         private long _handleWatch = new();
 
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
@@ -71,7 +70,7 @@ namespace Nethermind.Synchronization.FastSync
         // SimpleDispatcher.Run drains in-flight workers before returning, and StateSyncRunner
         // only resets / cleans up outside dispatcher.Run — the drain is the sole barrier.
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _ongoingRequests = new();
-        private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = [];
+        private readonly Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = [];
         private LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
         private LruKeyCache<ValueHash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
         private ConcurrentDictionary<StateSyncItem.NodeKey, byte[]> _previouslyPendingItems = new();
@@ -199,7 +198,7 @@ namespace Nethermind.Synchronization.FastSync
                     {
                         AddAgainAllItems();
                         if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo:hide} failed to satisfy request.");
-                        Interlocked.Increment(ref _data.NotAssignedCount);
+                        Interlocked.Increment(ref _data.NoResponseCount);
                         return SyncResponseHandlingResult.LesserQuality;
                     }
 
@@ -298,14 +297,6 @@ namespace Nethermind.Synchronization.FastSync
                     _data.DisplayProgressReport(_ongoingRequests.Count, _branchProgress, _logger);
 
                     long elapsedTime = (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds;
-                    long total = elapsedTime + _networkWatch.ElapsedMilliseconds;
-                    if (total != 0)
-                    {
-                        // calculate averages
-                        if (_logger.IsTrace)
-                            _logger.Trace(
-                                $"Prepare batch {_networkWatch.ElapsedMilliseconds}ms ({(decimal)_networkWatch.ElapsedMilliseconds / total:P0}) - Handle {elapsedTime:N0}ms ({(decimal)elapsedTime / total:P0})");
-                    }
 
                     if (Stopwatch.GetElapsedTime(startTime).TotalMilliseconds > 250)
                     {
@@ -343,20 +334,20 @@ namespace Nethermind.Synchronization.FastSync
 
             if (_rootNode == Keccak.EmptyTreeHash)
             {
-                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - root is empty tree");
+                if (_logger.IsDebug) _logger.Debug("StateNode sync: falling asleep - root is empty tree");
                 return true;
             }
 
             BlockHeader? pivotHeader = _stateSyncPivot.GetPivotHeader();
             if (pivotHeader is null || pivotHeader.StateRoot != _rootNode)
             {
-                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - updating state root");
+                if (_logger.IsDebug) _logger.Debug("StateNode sync: falling asleep - updating state root");
                 return true;
             }
 
             if (_hintsToResetRoot >= 32 && DateTime.UtcNow - _lastResetRoot > _minTimeBetweenReset)
             {
-                if (_logger.IsDebug) _logger.Info("StateNode sync: falling asleep - many missing responses");
+                if (_logger.IsDebug) _logger.Debug("StateNode sync: falling asleep - many missing responses");
                 _stateSyncPivot.UpdateHeaderForcefully();
                 return true;
             }
@@ -752,7 +743,9 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                _dependencies = [];
+                // Cleared in place, as the dictionary is the lock target; trimmed, as clearing keeps its capacity.
+                _dependencies.Clear();
+                _dependencies.TrimExcess();
             }
 
             if (_pendingItems.Count != 0)
@@ -770,7 +763,6 @@ namespace Nethermind.Synchronization.FastSync
         private void CleanupMemory()
         {
             _ongoingRequests.Clear();
-            _dependencies.Clear();
             _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
             _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
             if (_rootSaved == 1)
@@ -940,8 +932,7 @@ namespace Nethermind.Synchronization.FastSync
                         else
                         {
                             TreePath finalPath = currentStateSyncItem.Path.Append(trieNode.Key);
-                            Hash256 address = finalPath.Path.ToCommitment();
-                            _store.EnsureStorageEmpty(address);
+                            _store.EnsureStorageEmpty(finalPath.Path);
                             isAccountComplete |= dependentItem.ResolveDependency();
                         }
 
@@ -969,19 +960,22 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        private static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
+        /// <remarks>
+        /// Saturates at <see cref="uint.MaxValue"/>: a storage trie starts from the rightness of its account, so the sum
+        /// can pass 32 bits, and a wrapped value would queue a far-right node as a far-left one.
+        /// </remarks>
+        internal static uint CalculateRightness(NodeType nodeType, StateSyncItem currentStateSyncItem, int childIndex)
         {
-            if (nodeType == NodeType.Branch)
+            // 16^(7 - level), the width of one child at this level; 1 from level 7 down
+            ulong childWidth = 1UL << (4 * Math.Max(0, 7 - currentStateSyncItem.Level));
+            ulong offset = nodeType switch
             {
-                return currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * (uint)childIndex;
-            }
+                NodeType.Branch => childWidth * (ulong)childIndex,
+                NodeType.Extension => childWidth * 16 - 1,
+                _ => throw new InvalidOperationException($"Not designed for {nodeType}")
+            };
 
-            if (nodeType == NodeType.Extension)
-            {
-                return currentStateSyncItem.Rightness + (uint)Math.Pow(16, Math.Max(0, 7 - currentStateSyncItem.Level)) * 16 - 1;
-            }
-
-            throw new InvalidOperationException($"Not designed for {nodeType}");
+            return (uint)Math.Min(currentStateSyncItem.Rightness + offset, uint.MaxValue);
         }
 
         /// <summary>

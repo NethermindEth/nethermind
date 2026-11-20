@@ -44,7 +44,7 @@ public class ReceiptsSyncFeedTests
     {
         public Scenario(ISpecProvider specProvider, int nonEmptyBlocks, int txPerBlock, int emptyBlocks = 0)
         {
-            int pivot = checked((int)_pivotNumber);
+            int pivot = checked((int)ScenarioPivotNumber);
             Blocks = new Block[pivot + 1];
             Blocks[0] = Build.A.Block.Genesis.TestObject;
 
@@ -76,6 +76,7 @@ public class ReceiptsSyncFeedTests
 
     private static readonly ISpecProvider _specProvider;
     private IReceiptStorage _receiptStorage;
+    private IReceiptsInsertBatch _insertBatch;
     private ISyncPointers _syncPointers;
     private ISyncPeerPool _syncPeerPool;
     private ReceiptsSyncFeed _feed;
@@ -87,7 +88,9 @@ public class ReceiptsSyncFeedTests
     private IDb _metadataDb;
     private IHistoryPruner _historyPruner;
 
-    private static ulong _pivotNumber = 1024;
+    private const ulong ScenarioPivotNumber = 1024;
+    // Per test: NUnit reuses the fixture instance, and a test may raise it.
+    private ulong _pivotNumber;
 
     private static readonly Scenario _1024BodiesWithOneTxEach;
     private static readonly Scenario _256BodiesWithOneTxEach;
@@ -108,7 +111,10 @@ public class ReceiptsSyncFeedTests
     [SetUp]
     public void Setup()
     {
+        _pivotNumber = ScenarioPivotNumber;
         _receiptStorage = Substitute.For<IReceiptStorage>();
+        _insertBatch = Substitute.For<IReceiptsInsertBatch>();
+        _receiptStorage.StartInsertBatch().Returns(_insertBatch);
         _syncPointers = new MemorySyncPointers();
         _blockTree = Substitute.For<IBlockTree>();
         _blockStore = Substitute.For<IBlockStore>();
@@ -135,6 +141,7 @@ public class ReceiptsSyncFeedTests
     [TearDown]
     public void TearDown()
     {
+        _insertBatch?.Dispose();
         _feed?.Dispose();
         _syncPeerPool?.DisposeAsync();
         _syncReport?.Dispose();
@@ -501,7 +508,7 @@ public class ReceiptsSyncFeedTests
 
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
         _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
-        _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+        _insertBatch.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>());
     }
 
     private static void FillBatchResponses(ReceiptsSyncBatch batch)
@@ -541,7 +548,7 @@ public class ReceiptsSyncFeedTests
     {
         LoadScenario(_1024BodiesWithOneTxEach);
         List<(ulong BlockNumber, ulong GasUsedTotal)> stored = [];
-        _receiptStorage.TryInsertNetworkReceipts(default!, default, default, default).ReturnsForAnyArgs(ci =>
+        _insertBatch.TryInsertNetworkReceipts(default!, default, default).ReturnsForAnyArgs(ci =>
         {
             if (storeTakesEncoded)
             {
@@ -552,7 +559,7 @@ public class ReceiptsSyncFeedTests
 
             return storeTakesEncoded;
         });
-        _receiptStorage.When(static s => s.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true))
+        _insertBatch.When(static b => b.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>()))
             .Do(ci => stored.Add((ci.Arg<Block>().Number, ci.Arg<TxReceipt[]>()[0].GasUsedTotal)));
 
         using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
@@ -574,7 +581,7 @@ public class ReceiptsSyncFeedTests
             Assert.That(stored, Is.EqualTo(batch.Infos.Select(static info => (info!.BlockNumber, info.BlockNumber))));
         }
 
-        _receiptStorage.ReceivedWithAnyArgs(encodedInserts).TryInsertNetworkReceipts(default!, default, default, default);
+        _insertBatch.ReceivedWithAnyArgs(encodedInserts).TryInsertNetworkReceipts(default!, default, default);
         _blockStore.ReceivedWithAnyArgs(encodedInserts).GetOwnedRlp(default, default!);
     }
 
@@ -600,8 +607,8 @@ public class ReceiptsSyncFeedTests
         SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
 
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
-        _receiptStorage.DidNotReceiveWithAnyArgs().TryInsertNetworkReceipts(default!, default, default, default);
-        _receiptStorage.Received(batch.Infos.Length).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+        _insertBatch.DidNotReceiveWithAnyArgs().TryInsertNetworkReceipts(default!, default, default);
+        _insertBatch.Received(batch.Infos.Length).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>());
     }
 
     [Test]
@@ -630,7 +637,7 @@ public class ReceiptsSyncFeedTests
         SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
 
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
-        _receiptStorage.Received(batch.Infos.Length).Insert(Arg.Any<Block>(), Arg.Is<TxReceipt[]>(r => r[0].Bloom == withBloom.Bloom), true);
+        _insertBatch.Received(batch.Infos.Length).Insert(Arg.Any<Block>(), Arg.Is<TxReceipt[]>(r => r[0].Bloom == withBloom.Bloom));
     }
 
     [Test]
@@ -694,7 +701,33 @@ public class ReceiptsSyncFeedTests
         SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch);
 
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
-        _receiptStorage.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+        _insertBatch.Received(requested).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>());
+    }
+
+    [Test]
+    public async Task Moves_the_receipts_pointer_only_after_the_insert_batch_is_stored()
+    {
+        LoadScenario(_1024BodiesWithOneTxEach);
+        using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+        FillBatchResponses(batch!);
+        ulong? pointerBefore = _syncPointers.LowestInsertedReceiptBlockNumber;
+        ulong? pointerDuringWrite = null;
+        _insertBatch.When(static b => b.Dispose()).Do(_ =>
+        {
+            using ReceiptsSyncBatch? concurrent = _feed.PrepareRequest().GetAwaiter().GetResult();
+            pointerDuringWrite = _syncPointers.LowestInsertedReceiptBlockNumber;
+        });
+
+        SyncResponseHandlingResult handlingResult = _feed.HandleResponse(batch!);
+        using ReceiptsSyncBatch? next = await _feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(pointerDuringWrite, Is.EqualTo(pointerBefore));
+            Assert.That(_syncPointers.LowestInsertedReceiptBlockNumber, Is.LessThan(pointerBefore!.Value));
+            _insertBatch.Received(1).Dispose();
+        }
     }
 
     [Test]
@@ -717,7 +750,7 @@ public class ReceiptsSyncFeedTests
 
         Assert.That(handlingResult, Is.EqualTo(SyncResponseHandlingResult.OK));
         _syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
-        _receiptStorage.Received(batch.Infos.Length - 1).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>(), true);
+        _insertBatch.Received(batch.Infos.Length - 1).Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]>());
     }
 
     [Test]

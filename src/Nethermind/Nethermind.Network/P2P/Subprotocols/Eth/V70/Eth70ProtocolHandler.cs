@@ -97,8 +97,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
     private ReceiptsResponse FulfillReceiptsRequest(GetReceiptsMessage70 getReceiptsMessage, CancellationToken cancellationToken)
     {
         ReadOnlySpan<Hash256> hashes = getReceiptsMessage.Hashes.AsSpan();
-        ArrayPoolList<byte> buffer = new(0);
-        using ArrayPoolList<Range> blocks = new(Math.Min(hashes.Length, MaxReceiptsLookups));
+        int maxBlocks = Math.Min(hashes.Length, MaxReceiptsLookups);
+        ArrayPoolList<byte> buffer = [with(GetReceiptsBufferCapacity(maxBlocks))];
+        using ArrayPoolList<Range> blocks = new(maxBlocks);
         using ArrayPoolList<int> receiptStarts = new(0);
         bool lastBlockIncomplete = false;
         try
@@ -108,6 +109,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
             for (int blockIndex = 0; blockIndex < hashes.Length && blockIndex < MaxReceiptsLookups; blockIndex++)
             {
                 if (cancellationToken.IsCancellationRequested) break;
+
+                int remaining = Math.Min(hashes.Length, MaxReceiptsLookups) - blockIndex;
+                if (blockIndex % ServingPrefetchWindow == 0 && remaining > 1) SyncServer.PrefetchReceipts(getReceiptsMessage.Hashes, blockIndex, Math.Min(ServingPrefetchWindow, remaining));
 
                 int blockStart = buffer.Count;
                 if (!SyncServer.TryAppendReceipts(hashes[blockIndex], ReceiptMessageDecoder, withBloom: false, buffer)) break;

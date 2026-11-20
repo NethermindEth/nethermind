@@ -25,9 +25,12 @@ public interface ISnapTree<in TEntry> : IDisposable where TEntry : ISnapEntry
     bool IsPersisted(in TreePath path, in ValueHash256 keccak);
     void BulkSetAndUpdateRootHash(IReadOnlyList<TEntry> entries);
 
-    /// <summary>Persists the range and the proof's nodes whose children are all persisted.</summary>
-    /// <returns>Whether the proof's root is persisted; true without a proof.</returns>
-    bool Commit(ValueHash256 upperBound);
+    /// <summary>
+    /// Persists the entries up to <paramref name="upperBound"/>, and the nodes within [<paramref name="lowerBound"/>, <paramref name="upperBound"/>]
+    /// whose children are all persisted, other than the proof's boundary nodes.
+    /// </summary>
+    /// <returns>Whether the proof's root is persisted; without a proof, whether the bounds cover the whole key space.</returns>
+    bool Commit(ValueHash256 lowerBound, ValueHash256 upperBound);
 
     /// <summary>
     /// Converts entries to <see cref="PatriciaTree.BulkSetEntry"/>, tracks metrics,

@@ -233,8 +233,8 @@ public class ReceiptsIteratorTests
                     continue;
                 }
 
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? recoveredTransactionHash);
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? repeatedTransactionHash);
+                bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 recoveredTransactionHash);
+                bool repeated = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 repeatedTransactionHash);
                 if (useLogContext)
                 {
                     Assert.That(receipt.TxHash.Bytes.Length, Is.Zero, "direct recovery must not construct a hash span");
@@ -243,8 +243,8 @@ public class ReceiptsIteratorTests
 
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(recoveredTransactionHash, Is.EqualTo(useLogContext ? expectedHashes[i] : null), "only selective recovery supplies a direct hash");
-                    Assert.That(repeatedTransactionHash, Is.SameAs(recoveredTransactionHash), "repeated recovery reuses the hash object");
+                    Assert.That(recovered ? recoveredTransactionHash : default, Is.EqualTo(useLogContext ? expectedHashes[i].ValueHash256 : default), "only selective recovery supplies a direct hash");
+                    Assert.That((repeated, repeatedTransactionHash), Is.EqualTo((recovered, recoveredTransactionHash)), "repeated recovery returns the same hash");
                     Assert.That(receipt.TxHash.ToCommitment(), Is.EqualTo(expectedHashes[i]), $"receipt {i} must carry its transaction's hash");
                     Assert.That(receipt.BlockHash.ToCommitment(), Is.EqualTo(block.Hash), $"receipt {i} must carry the block hash");
                     Assert.That(receipt.BlockNumber, Is.EqualTo(block.Number), $"receipt {i} must carry the block number");
@@ -330,12 +330,12 @@ public class ReceiptsIteratorTests
             }
             if (sequence is RecoverySequence.LogOnly or RecoverySequence.LogThenFull or RecoverySequence.FullThenLog)
             {
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? hash);
-                iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? repeatedHash);
+                bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 hash);
+                bool repeated = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 repeatedHash);
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(hash, Is.EqualTo(sequence == RecoverySequence.FullThenLog ? null : transactions[1].Hash));
-                    Assert.That(repeatedHash, Is.SameAs(hash));
+                    Assert.That(recovered ? hash : default, Is.EqualTo(sequence == RecoverySequence.FullThenLog ? default : transactions[1].Hash!.ValueHash256));
+                    Assert.That((repeated, repeatedHash), Is.EqualTo((recovered, hash)));
                 }
             }
             if (sequence == RecoverySequence.LogThenFull)
@@ -396,19 +396,19 @@ public class ReceiptsIteratorTests
         try
         {
             Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
-            iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? hash);
-            Assert.That(hash ?? receipt.TxHash.ToCommitment(), Is.EqualTo(block.Transactions[0].Hash));
+            bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 hash);
+            Assert.That(recovered ? hash : receipt.TxHash.ToCommitment().ValueHash256, Is.EqualTo(block.Transactions[0].Hash!.ValueHash256));
             if (recoveryOverride != RecoveryOverride.Default)
             {
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(hash, Is.Null, "the custom full context must retain its fallback behavior");
+                    Assert.That(recovered, Is.False, "the custom full context must retain its fallback behavior");
                     Assert.That(((ICustomRecovery)recovery).LogContextCalls, Is.EqualTo(1), "custom log factories must not be bypassed");
                 }
             }
             else
             {
-                Assert.That(hash, Is.Not.Null, "the default deferred context must return its hash directly");
+                Assert.That(recovered, Is.True, "the default deferred context must return its hash directly");
             }
         }
         finally

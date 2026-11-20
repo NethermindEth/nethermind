@@ -93,12 +93,12 @@ public class FlatSnapTreesTests
         FakeWriteBatch writer = new();
         using FlatSnapStateTree tree = NewStateTree(reader, writer);
 
-        Account account = new(1, 100);
+        AccountStruct account = new(1, 100);
         ValueHash256 lowPath = PathHash("11");
         ValueHash256 highPath = PathHash("99");
 
         tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
-        tree.Commit(PathHash("55"));
+        tree.Commit(ValueKeccak.Zero, PathHash("55"));
 
         Assert.That(writer.SetAccountRawCalls, Has.One.EqualTo((lowPath, account)));
     }
@@ -110,9 +110,9 @@ public class FlatSnapTreesTests
         reader.GetAccountRaw(Arg.Any<ValueHash256>()).Returns([0x01]);
         using FlatSnapStateTree tree = NewStateTree(reader, enableDoubleWriteCheck: true);
 
-        tree.BulkSetAndUpdateRootHash([new PathWithAccount(PathHash("11"), new Account(1, 100))]);
+        tree.BulkSetAndUpdateRootHash([new PathWithAccount(PathHash("11"), new AccountStruct(1, 100))]);
 
-        Assert.That(() => tree.Commit(new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
+        Assert.That(() => tree.Commit(ValueKeccak.Zero, new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
             Throws.Exception.With.Message.Contain("Double account flat write"));
     }
 }

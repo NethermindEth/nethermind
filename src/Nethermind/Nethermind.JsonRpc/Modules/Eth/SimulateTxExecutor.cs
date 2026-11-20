@@ -110,7 +110,8 @@ public class SimulateTxExecutor<TTrace>(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
-        SearchResult<BlockHeader>? searchResult = null)
+        SearchResult<BlockHeader>? searchResult = null,
+        CancellationToken cancellationToken = default)
     {
         if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
@@ -208,18 +209,10 @@ public class SimulateTxExecutor<TTrace>(
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
-        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        try
-        {
-            Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
-            return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
-                : Execute(header.Clone(), data, stateOverride, timeout.Token);
-        }
-        finally
-        {
-            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-        }
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
+        return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), data, stateOverride, cancellationToken);
     }
 
     private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
@@ -332,7 +325,7 @@ internal static class SimulateErrorMessages
     /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
     /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).
     /// </summary>
-    public const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+    public const string FeeCapBelowBaseFee = RpcTransactionErrors.FeeCapBelowBaseFee;
 
     /// <summary>
     /// Returned when the sender does not have enough balance to cover gas + value

@@ -49,6 +49,7 @@ using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
 
 [assembly: InternalsVisibleTo("Ethereum.Basic.Test")]
+[assembly: InternalsVisibleTo("Ethereum.Ssz.Test")]
 
 namespace Ethereum.Test.Base;
 

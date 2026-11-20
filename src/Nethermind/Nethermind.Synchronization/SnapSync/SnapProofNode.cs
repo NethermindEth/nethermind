@@ -6,6 +6,10 @@ using Nethermind.Trie;
 namespace Nethermind.Synchronization.SnapSync;
 
 /// <summary>A node of a range proof that the range's trie is built over, as <see cref="SnapProviderHelper"/> trims it.</summary>
+/// <remarks>
+/// A leaf below the root is the one before a storage range that continues a run downloaded at one root: it is persisted
+/// as the entries are, within the range's bounds, rather than stitched as a boundary node.
+/// </remarks>
 /// <param name="ProofIndex">The index of the node's RLP in the proofs.</param>
 /// <param name="Path">The node's path.</param>
 /// <param name="ParentIndex">The index, in the same list, of the proof node it is a child of, or -1 for the root.</param>

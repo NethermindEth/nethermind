@@ -96,6 +96,7 @@ namespace Nethermind.Blockchain.Receipts
 
         // Serialises the queued receipts write, the canonical-index write, and a synchronous removal. Shared with _pendingReceipts.
         private readonly Lock _writeLock = new();
+        private readonly Lock _migratedBlockNumberLock = new();
 
         // Bodies skipped by StoresBodies, held until capture durably covers their block so a capture breakdown can
         // persist them before the pending state persist prunes the blocks' snapshots — their only other source.
@@ -727,6 +728,14 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <inheritdoc/>
+        /// <remarks>Also prefetches the block bodies, which the compact receipts encoding needs. Receipts stored under hash keys are not prefetched.</remarks>
+        public void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks)
+        {
+            if (!_legacyHashKey) KeyValueStoreExtensions.PrefetchBlockNumPrefixed(_receiptsDb, blocks);
+            _blockStore.Prefetch(blocks);
+        }
+
+        /// <inheritdoc/>
         /// <remarks>Gives the compact values only; the block's receipts not yet written are left to <see cref="Get(Hash256, bool)"/>.</remarks>
         public bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination)
         {
@@ -811,16 +820,25 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             Span<byte> receiptsData = GetOwnedReceiptData(blockNumber, blockHash);
-            IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
-            if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+            try
             {
-                IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
-                    new RecoveryBlockSource(this, blockNumber, blockHash));
-                iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                IReceiptRefDecoder refDecoder = _storageDecoder.GetRefDecoder(receiptsData);
+                if (_defaultReceiptsRecovery is not null && ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData))
+                {
+                    IReceiptsRecovery.IDeferredLogRecoveryContext context = _defaultReceiptsRecovery.CreateDeferredLogRecoveryContext(
+                        new RecoveryBlockSource(this, blockNumber, blockHash));
+                    iterator = new ReceiptsIterator(receiptsData, _receiptsDb, refDecoder, context, blockHash, blockNumber);
+                    return true;
+                }
+                iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
                 return true;
             }
-            iterator = CreateRecoveryIterator(receiptsData, blockNumber, blockHash, refDecoder);
-            return true;
+            catch
+            {
+                // No iterator took the value, so nothing else will release it; a malformed one throws here.
+                _receiptsDb.DangerousReleaseMemory(receiptsData);
+                throw;
+            }
         }
 
         private ReceiptsIterator CreateRecoveryIterator(Span<byte> receiptsData, ulong blockNumber, Hash256 blockHash, IReceiptRefDecoder refDecoder)
@@ -853,11 +871,7 @@ namespace Nethermind.Blockchain.Receipts
         public void Insert(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical = true, WriteFlags writeFlags = WriteFlags.None, ulong? lastBlockNumber = null)
         {
             InsertCore(block, txReceipts, spec, ensureCanonical, writeFlags, lastBlockNumber);
-
-            if (block.Number < MigratedBlockNumber)
-            {
-                MigratedBlockNumber = block.Number;
-            }
+            LowerMigratedBlockNumber(block.Number);
         }
 
         void IReceiptMigrationStore.InsertForMigration(Block block, TxReceipt[] receipts)
@@ -871,7 +885,7 @@ namespace Nethermind.Blockchain.Receipts
                 InsertCore(block, txReceipts, spec, ensureCanonical: false, WriteFlags.None, lastBlockNumber: null,
                     storeBody: storesBody);
                 if (!storesBody) RetainSkippedBody(block, txReceipts ?? []);
-                if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
+                LowerMigratedBlockNumber(block.Number);
                 return;
             }
 
@@ -896,10 +910,7 @@ namespace Nethermind.Blockchain.Receipts
             if (StoresBodies(spec)) _pendingReceipts.Publish(block.Number, blockHash, (txReceipts, behaviors));
             else RetainSkippedBody(block, txReceipts);
 
-            if (block.Number < MigratedBlockNumber)
-            {
-                MigratedBlockNumber = block.Number;
-            }
+            LowerMigratedBlockNumber(block.Number);
 
             ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
         }
@@ -1083,8 +1094,21 @@ namespace Nethermind.Blockchain.Receipts
             }
         }
 
-        [SkipLocalsInit]
         private void InsertCore(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, bool ensureCanonical, WriteFlags writeFlags, ulong? lastBlockNumber, bool storeBody = true)
+        {
+            txReceipts = WriteBody(block, txReceipts, spec, storeBody ? _receiptsDb : null, writeFlags);
+            CacheInserted(block, txReceipts);
+
+            if (ensureCanonical)
+            {
+                EnsureCanonical(block, lastBlockNumber);
+            }
+
+            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+        }
+
+        [SkipLocalsInit]
+        private TxReceipt[] WriteBody(Block block, TxReceipt[]? txReceipts, IReleaseSpec spec, IWriteOnlyKeyValueStore? bodies, WriteFlags writeFlags)
         {
             txReceipts ??= [];
             int txReceiptsLength = txReceipts.Length;
@@ -1102,25 +1126,89 @@ namespace Nethermind.Blockchain.Receipts
             ulong blockNumber = block.Number;
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            if (storeBody)
+            if (bodies is not null)
             {
                 using ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeToArrayPoolSpan(txReceipts, behaviors);
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
 
-                _receiptsDb.PutSpan(blockNumPrefixed, rlp, writeFlags);
+                bodies.PutSpan(blockNumPrefixed, rlp, writeFlags);
             }
 
+            return txReceipts;
+        }
+
+        private void CacheInserted(Block block, TxReceipt[] txReceipts)
+        {
             // Sync and era import insert blocks decoded from the database, whose creations then get no contract address.
             if (HasAllSenders(block)) _receiptsCache.Set(block.Hash, txReceipts);
             else _receiptsCache.Delete(block.Hash);
+        }
 
-            if (ensureCanonical)
+        public IReceiptsInsertBatch StartInsertBatch() => new ReceiptsInsertBatch(this);
+
+        private sealed class ReceiptsInsertBatch : IReceiptsInsertBatch
+        {
+            private readonly PersistentReceiptStorage _storage;
+            private readonly IColumnsWriteBatch<ReceiptsColumns> _batch;
+            private readonly IWriteBatch _bodies;
+            private readonly IWriteBatch _transactions;
+            private readonly ArrayPoolList<(BlockHeader Header, TxReceipt[]? Receipts, bool Cache)> _inserted = [with(16)];
+            private ulong _lowestBlockNumber = ulong.MaxValue;
+            private bool _disposed;
+
+            public ReceiptsInsertBatch(PersistentReceiptStorage storage)
             {
-                EnsureCanonical(block, lastBlockNumber);
+                _storage = storage;
+                _batch = storage._database.StartWriteBatch();
+                _bodies = _batch.GetColumnBatch(ReceiptsColumns.Blocks);
+                _transactions = _batch.GetColumnBatch(ReceiptsColumns.Transactions);
             }
 
-            ReceiptsInserted?.Invoke(this, new(block.Header, txReceipts));
+            public void Insert(Block block, TxReceipt[]? receipts)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                TxReceipt[] written = _storage.WriteBody(block, receipts, _storage._specProvider.GetSpec(block.Header), _bodies, WriteFlags.None);
+                _storage.EnsureCanonical(block, null, _transactions);
+                _inserted.Add((block.Header, written, HasAllSenders(block)));
+                _lowestBlockNumber = Math.Min(_lowestBlockNumber, block.Number);
+            }
+
+            public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                if (!_storage._storageDecoder.CanEncodeNetworkReceipts) return false;
+
+                TxReceipt[]? receipts = _storage.WriteNetworkReceipts(block, blockReceipts, withBloom, _bodies);
+                _storage.EnsureCanonical(block, null, _transactions);
+                _inserted.Add((block.Header, receipts, false));
+                _lowestBlockNumber = Math.Min(_lowestBlockNumber, block.Number);
+                return true;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+
+                try
+                {
+                    _batch.Dispose();
+                    if (_inserted.Count > 0) _storage.LowerMigratedBlockNumber(_lowestBlockNumber);
+
+                    foreach ((BlockHeader header, TxReceipt[]? receipts, bool cache) in _inserted)
+                    {
+                        if (cache && receipts is not null) _storage._receiptsCache.Set(header.Hash, receipts);
+                        else _storage._receiptsCache.Delete(header.Hash);
+
+                        if (receipts is not null) _storage.ReceiptsInserted?.Invoke(_storage, new(header, receipts));
+                    }
+                }
+                finally
+                {
+                    _inserted.Dispose();
+                }
+            }
         }
 
         /// <inheritdoc/>
@@ -1128,18 +1216,28 @@ namespace Nethermind.Blockchain.Receipts
         /// Stores the receipts as <see cref="Insert(Block, TxReceipt[], IReleaseSpec, bool, WriteFlags, ulong?)"/> stores them
         /// once decoded. Only the compact form takes them, as it stores no field recovered from the transactions but their hashes.
         /// </remarks>
-        [SkipLocalsInit]
         public bool TryInsertNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, bool ensureCanonical)
         {
             if (!_storageDecoder.CanEncodeNetworkReceipts) return false;
 
+            TxReceipt[]? insertedReceipts = WriteNetworkReceipts(block, blockReceipts, withBloom, _receiptsDb);
+            _receiptsCache.Delete(block.Hash);
+            if (ensureCanonical) EnsureCanonical(block, null);
+            LowerMigratedBlockNumber(block.Number);
+            if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
+            return true;
+        }
+
+        [SkipLocalsInit]
+        private TxReceipt[]? WriteNetworkReceipts(Block block, ReadOnlyMemory<byte> blockReceipts, bool withBloom, IWriteOnlyKeyValueStore bodies)
+        {
             IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             TxReceipt[]? insertedReceipts = null;
             using (ArrayPoolSpan<byte> rlp = _storageDecoder.EncodeNetworkReceipts(blockReceipts.Span, withBloom, spec.IsEip658Enabled, block.Transactions))
             {
                 Span<byte> blockNumPrefixed = stackalloc byte[40];
                 GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
-                _receiptsDb.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
+                bodies.PutSpan(blockNumPrefixed, rlp, WriteFlags.None);
 
                 if (ReceiptsInserted is not null)
                 {
@@ -1150,11 +1248,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
             }
 
-            _receiptsCache.Delete(block.Hash);
-            if (ensureCanonical) EnsureCanonical(block, null);
-            if (block.Number < MigratedBlockNumber) MigratedBlockNumber = block.Number;
-            if (insertedReceipts is not null) ReceiptsInserted?.Invoke(this, new(block.Header, insertedReceipts));
-            return true;
+            return insertedReceipts;
         }
 
         private static bool HasAllSenders(Block block)
@@ -1165,6 +1259,14 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             return true;
+        }
+
+        private void LowerMigratedBlockNumber(ulong blockNumber)
+        {
+            lock (_migratedBlockNumberLock)
+            {
+                if (blockNumber < _migratedBlockNumber) MigratedBlockNumber = blockNumber;
+            }
         }
 
         public ulong MigratedBlockNumber
@@ -1420,7 +1522,7 @@ namespace Nethermind.Blockchain.Receipts
             {
                 for (int i = 0; i < block.TransactionCount; i++)
                 {
-                    Hash256 txHash = block.GetNextTransactionHash();
+                    ValueHash256 txHash = block.GetNextTransactionValueHash();
                     writeBatch[txHash.Bytes] = null;
                 }
             }
