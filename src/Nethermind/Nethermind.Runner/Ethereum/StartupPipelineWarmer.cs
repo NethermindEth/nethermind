@@ -107,8 +107,7 @@ internal static class StartupPipelineWarmer
     private static async Task RunAsync(ChainSpec source, IConfigProvider liveConfig, bool flatState, string directory, IRpcAuthentication authentication,
         PrivateKey[] keys, Action<ContainerBuilder>? configureContainer, WarmMetrics warmMetrics, CancellationToken cancellationToken)
     {
-        // A devnet genesis may still be in the future; both warm blocks must follow it.
-        ulong timestamp = Math.Max((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds(), source.Genesis!.Header.Timestamp + 2);
+        ulong timestamp = WarmupTimestamp(source.Genesis!.Header.Timestamp, (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds());
         ChainSpec chainSpec = CreateChainSpec(source, liveConfig.GetConfig<IBlocksConfig>().MinGasPrice, keys);
         ConfigProvider config = CreateConfig(liveConfig, flatState, directory, authentication is JwtAuthentication, keys[0]);
         // A separate root prevents a fallback registration from reaching the live database or world state.
@@ -142,6 +141,10 @@ internal static class StartupPipelineWarmer
             exitSource.Exit(0);
         }
     }
+
+    /// <summary>The second warm block's timestamp; a devnet genesis may still be in the future, and both warm blocks must follow it.</summary>
+    internal static ulong WarmupTimestamp(ulong genesisTimestamp, ulong now) =>
+        Math.Max(now, genesisTimestamp > ulong.MaxValue - 2 ? ulong.MaxValue : genesisTimestamp + 2);
 
     private static ChainSpec CreateChainSpec(ChainSpec source, UInt256 minGasPrice, PrivateKey[] keys)
     {

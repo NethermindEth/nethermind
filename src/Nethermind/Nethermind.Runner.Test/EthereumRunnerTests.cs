@@ -475,6 +475,12 @@ public class EthereumRunnerTests
         await StartupPipelineWarmer.WarmupAsync(LoadWarmupChainSpec("amsterdam", genesisTimestamp), WarmupConfig(directory.Path), false, cancellation.Token);
     }
 
+    [TestCase(100UL, 1_000UL, ExpectedResult = 1_000UL)]
+    [TestCase(1_000UL, 100UL, ExpectedResult = 1_002UL)]
+    [TestCase(ulong.MaxValue - 1, 100UL, ExpectedResult = ulong.MaxValue)]
+    public ulong Startup_pipeline_warmup_timestamp_follows_genesis(ulong genesisTimestamp, ulong now) =>
+        StartupPipelineWarmer.WarmupTimestamp(genesisTimestamp, now);
+
     [Test]
     public async Task Startup_pipeline_warmup_authenticates_after_slow_start()
     {
