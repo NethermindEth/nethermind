@@ -483,7 +483,7 @@ def propose(args):
             f.write(f"slug={chosen['slug'] if chosen else ''}\nroute={chosen['route'] if chosen else ''}\n")
 
 
-def overlay_only(diff):
+def overlay_only(diff, ids=()):
     section = None
     for line in diff:
         if line.startswith("-"):
@@ -496,13 +496,13 @@ def overlay_only(diff):
                 return False
             section = text
         else:
-            m = re.fullmatch(r"dotnet_diagnostic\.[A-Z]+\d+\.severity = (\w+)", text)
-            if not m or section is None or m[1] != OVERLAY_SECTIONS[section]:
+            m = re.fullmatch(r"dotnet_diagnostic\.([A-Z]+\d+)\.severity = (\w+)", text)
+            if not m or section is None or m[1] not in ids or m[2] != OVERLAY_SECTIONS[section]:
                 return False
     return True
 
 
-def check_paths(changes, unshipped_diff, new_id, fix_files=(), editorconfig_diff=()):
+def check_paths(changes, unshipped_diff, new_id, fix_files=(), editorconfig_diff=(), ids=()):
     bad = []
     for status, path in changes:
         if path == UNSHIPPED:
@@ -511,7 +511,7 @@ def check_paths(changes, unshipped_diff, new_id, fix_files=(), editorconfig_diff
             if status != "M" or removed or not new_id or len(added) != 1 or not added[0][1:].startswith(f"{new_id} |"):
                 bad.append(f"{path}: only one appended row for {new_id or 'the new rule'} is allowed")
         elif path == ".editorconfig":
-            if status != "M" or not overlay_only(editorconfig_diff):
+            if status != "M" or not overlay_only(editorconfig_diff, ids):
                 bad.append(f"{path}: only the rule overlay may be appended")
         elif not path.endswith(".cs") or path.startswith(GUARDED_PREFIXES):
             bad.append(f"{path}: outside the paths the bot may change")
@@ -580,7 +580,7 @@ def guard(args):
         edits = [l for l in subprocess.run(["git", "diff", "-U0", args.base, "--", EDITORCONFIG], capture_output=True, text=True).stdout.splitlines() if l[:1] in "+-" and not l.startswith(("+++", "---"))]
         out = subprocess.run(["git", "diff", "--summary", args.base], capture_output=True, text=True, check=True).stdout
         changes += [("X", l.split()[-1]) for l in out.splitlines() if re.search(r"mode (120000|100755)|mode change", l)]
-    bad = check_paths(changes, udiff, args.new_id, fix_files_of(args.files), edits)
+    bad = check_paths(changes, udiff, args.new_id, fix_files_of(args.files), edits, set(filter(None, (args.ids or "").split(","))))
     bad += [f"{p}: symlink, mode, rename, binary or unlisted header change" for st, p in changes if st == "X"]
     for b in bad:
         print(f"guard: FAIL {b}")
@@ -744,7 +744,7 @@ def main(argv=None):
     s = sub.add_parser("hits"); s.add_argument("--logs", required=True); s.add_argument("--root", required=True); s.add_argument("--ids", required=True)
     s.add_argument("--out", required=True); s.set_defaults(fn=hits)
     s = sub.add_parser("propose"); s.add_argument("--data", required=True); s.add_argument("--offline", action="store_true"); s.add_argument("--github-output"); s.set_defaults(fn=propose)
-    s = sub.add_parser("guard"); s.add_argument("--base", default="HEAD"); s.add_argument("--patch"); s.add_argument("--new-id"); s.add_argument("--files")
+    s = sub.add_parser("guard"); s.add_argument("--base", default="HEAD"); s.add_argument("--patch"); s.add_argument("--new-id"); s.add_argument("--files"); s.add_argument("--ids")
     s.set_defaults(fn=guard)
     s = sub.add_parser("sample"); s.add_argument("--hits", required=True); s.add_argument("--id", required=True); s.add_argument("--repo", default=".")
     s.add_argument("--seed", type=int, default=0); s.add_argument("--out", required=True); s.set_defaults(fn=sample)

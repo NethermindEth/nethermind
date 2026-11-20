@@ -134,7 +134,16 @@ class Guard(unittest.TestCase):
     def test_editorconfig_overlay_append_passes(self):
         overlay = rb.overlay(["NETH012"], True).splitlines()
         diff = ["+" + l for l in overlay]
-        self.assertEqual(rb.check_paths([("M", ".editorconfig")], [], None, (), diff), [])
+        self.assertEqual(rb.check_paths([("M", ".editorconfig")], [], None, (), diff, {"NETH012"}), [])
+
+    def test_editorconfig_overlay_for_unlisted_id_fails(self):
+        diff = ["+" + l for l in rb.overlay(["NETH012"], True).splitlines()]
+        self.assertTrue(rb.check_paths([("M", ".editorconfig")], [], None, (), diff))
+        self.assertTrue(rb.check_paths([("M", ".editorconfig")], [], None, (), diff, {"NETH013"}))
+
+    def test_editorconfig_cannot_silence_an_enforced_rule_in_test_sections(self):
+        diff = ["+" + l for l in rb.overlay(["NETH012"], True).splitlines()] + ["+[tools/*/{*Test*,*Benchmark*}/**.cs]", "+dotnet_diagnostic.CA2012.severity = none"]
+        self.assertTrue(rb.check_paths([("M", ".editorconfig")], [], None, (), diff, {"NETH012"}))
 
     def test_editorconfig_cannot_silence_a_rule(self):
         for diff in (["-dotnet_diagnostic.CA1851.severity = warning", "+dotnet_diagnostic.CA1851.severity = none"],
