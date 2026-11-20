@@ -27,6 +27,8 @@ public class GuestModExpEmptyOperandTests
     [TestCase("07", "", "01", ExpectedResult = "00", TestName = "an empty exponent gives 0 modulo 1")]
     [TestCase("07", "", "0001", ExpectedResult = "0000", TestName = "an empty exponent gives 0 modulo a padded 1")]
     [TestCase("", "05", "0100", ExpectedResult = "0000", TestName = "an empty base gives 0 modulo a multi-byte modulus")]
+    [TestCase("07", "", "0101", ExpectedResult = "0001", TestName = "an empty exponent gives 1 modulo a modulus ending in 01")]
+    [TestCase("07", "", "05", ExpectedResult = "01", TestName = "an empty exponent gives 1 modulo a one-byte modulus")]
     public string Empty_operands_yield_the_eip198_result(string @base, string exponent, string modulus)
     {
         byte[] input = Bytes.Concat(
