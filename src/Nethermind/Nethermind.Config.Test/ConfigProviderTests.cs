@@ -299,6 +299,26 @@ namespace Nethermind.Config.Test
             }
         }
 
+        [TestCase("AliasCollision", 3)]
+        [TestCase("aliascollision", 3)]
+        [TestCase("AliasCollisionConfig", "40")]
+        public void Raw_value_prefers_exact_category_over_short_alias(string category, object expected)
+        {
+            IEnvironment environment = Substitute.For<IEnvironment>();
+            environment.GetEnvironmentVariable(Arg.Any<string>()).Returns((string?)null);
+            environment.GetEnvironmentVariable("NETHERMIND_ALIASCOLLISIONCONFIG_VALUE").Returns("40");
+            ConfigProvider provider = new();
+            provider.AddSource(new EnvConfigSource(environment));
+            provider.Initialize();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(provider.GetConfig<IAliasCollision>().Value, Is.EqualTo(3));
+                Assert.That(provider.GetConfig<IAliasCollisionConfig>().Value, Is.EqualTo(40));
+                Assert.That(provider.GetRawValue(category, nameof(IAliasCollision.Value)), Is.EqualTo(expected));
+            }
+        }
+
         public static IEnumerable<TestCaseData> ReportedKeyCases()
         {
             yield return new TestCaseData(
@@ -412,5 +432,27 @@ namespace Nethermind.Config.Test
     public class UnsuffixedCategory : IUnsuffixedCategory
     {
         public int Value { get; set; } = 1;
+    }
+
+    public interface IAliasCollision : IConfig
+    {
+        [ConfigItem(Description = "Test item of a category whose name is the short alias of another category.", DefaultValue = "3")]
+        int Value { get; set; }
+    }
+
+    public class AliasCollision : IAliasCollision
+    {
+        public int Value { get; set; } = 3;
+    }
+
+    public interface IAliasCollisionConfig : IConfig
+    {
+        [ConfigItem(Description = "Test item of a category whose short alias is another category's name.", DefaultValue = "4")]
+        int Value { get; set; }
+    }
+
+    public class AliasCollisionConfig : IAliasCollisionConfig
+    {
+        public int Value { get; set; } = 4;
     }
 }

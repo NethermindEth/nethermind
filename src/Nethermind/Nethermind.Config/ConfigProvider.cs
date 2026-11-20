@@ -128,14 +128,31 @@ public class ConfigProvider : IConfigProvider
 
     private static IEnumerable<(Type ConfigType, Type DirectImplementation)> FindConfigTypes(string? category, string name)
     {
+        // An exact category name (Foo for IFoo) wins over the short alias of another one (Foo for IFooConfig)
+        bool hasExactMatch = false;
+        foreach ((Type configType, _) in ConfigTypesFromAssembly)
+        {
+            if (HasProperty(configType, category, name) && IsExactCategory(configType, category))
+            {
+                hasExactMatch = true;
+                break;
+            }
+        }
+
         foreach ((Type configType, Type directImplementation) in ConfigTypesFromAssembly)
         {
-            if (IsCategory(configType, category)
-                && configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase) is not null)
+            if (HasProperty(configType, category, name) && (!hasExactMatch || IsExactCategory(configType, category)))
             {
                 yield return (configType, directImplementation);
             }
         }
+
+        static bool HasProperty(Type configType, string? category, string name) =>
+            IsCategory(configType, category)
+            && configType.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase) is not null;
+
+        static bool IsExactCategory(Type configType, string? category) =>
+            string.Equals(configType.Name[1..], category, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>
