@@ -186,6 +186,47 @@ public class OptimismEthRpcModuleTest
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
+    [TestCase(TxType.Legacy)]
+    [TestCase(TxType.EIP1559)]
+    [TestCase(TxType.SetCode)]
+    [TestCase(TxType.DepositTx)]
+    public async Task Send_raw_transaction_forwards_the_input_bytes_unchanged(TxType type)
+    {
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
+        Transaction tx = type switch
+        {
+            TxType.DepositTx => Build.A.Transaction.WithType(TxType.DepositTx).WithSourceHash(TestItem.KeccakA)
+                .WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).WithValue(3).TestObject,
+            TxType.SetCode => Build.A.Transaction.WithType(TxType.SetCode).WithChainId(BlockchainIds.Mainnet)
+                .WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1).WithTo(TestItem.AddressB)
+                .WithAuthorizationCode(new AuthorizationTuple(BlockchainIds.Mainnet, TestItem.AddressC, 0, 0, 1, 1))
+                .Signed(TestItem.PrivateKeyA).TestObject,
+            TxType.EIP1559 => Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(BlockchainIds.Mainnet)
+                .WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1).Signed(TestItem.PrivateKeyA).TestObject,
+            _ => Build.A.Transaction.Signed(TestItem.PrivateKeyA).TestObject
+        };
+        byte[] raw = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping);
+
+        IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
+        sequencer.Post("eth_sendRawTransaction", Arg.Any<object?[]>()).Returns($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""");
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: sequencer,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", raw.ToHexString(true));
+
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}"""));
+        await sequencer.Received(1).Post("eth_sendRawTransaction",
+            Arg.Is<object?[]>(parameters => parameters.Length == 1 && ((byte[])parameters[0]!).SequenceEqual(raw)));
+    }
+
     [TestCase("0x", TestName = "Empty raw transaction is rejected without forwarding")]
     [TestCase("0x1234", TestName = "Raw transaction that is not RLP is rejected without forwarding")]
     public async Task Send_raw_transaction_rejects_invalid_rlp_without_forwarding(string rawTransaction)
