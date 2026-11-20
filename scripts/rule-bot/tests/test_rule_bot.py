@@ -131,6 +131,26 @@ class Guard(unittest.TestCase):
         for st in ("M", "D"):
             self.assertTrue(rb.check_paths([(st, existing)], [], "NETH012"), st)
 
+    def test_editorconfig_overlay_append_passes(self):
+        overlay = rb.overlay(["NETH012"], True).splitlines()
+        diff = ["+" + l for l in overlay]
+        self.assertEqual(rb.check_paths([("M", ".editorconfig")], [], None, (), diff), [])
+
+    def test_editorconfig_cannot_silence_a_rule(self):
+        for diff in (["-dotnet_diagnostic.CA1851.severity = warning", "+dotnet_diagnostic.CA1851.severity = none"],
+                     ["+[*.cs]", "+dotnet_diagnostic.CA1851.severity = none"],
+                     ["+[*.cs]", "+dotnet_diagnostic.CA1851.severity = suggestion"],
+                     ["+[src/Nethermind/Nethermind.Core/**.cs]", "+dotnet_diagnostic.NETH012.severity = none"],
+                     ["+dotnet_diagnostic.NETH012.severity = warning"],
+                     ["+[*.cs]", "+root = true"]):
+            self.assertTrue(rb.check_paths([("M", ".editorconfig")], [], None, (), diff), diff)
+
+    def test_patch_changes_collects_editorconfig_lines(self):
+        patch = "\n".join(["diff --git a/.editorconfig b/.editorconfig", "index 1111111..2222222 100644", "--- a/.editorconfig", "+++ b/.editorconfig",
+                           "@@ -10 +10 @@", "-dotnet_diagnostic.CA1851.severity = warning", "+dotnet_diagnostic.CA1851.severity = none"])
+        changes, _, edits = rb.patch_changes(patch)
+        self.assertTrue(rb.check_paths(changes, [], None, (), edits))
+
     def test_build_files_fail(self):
         for p in ("src/Nethermind/Directory.Build.props", "src/Nethermind/Nethermind.Core/Nethermind.Core.csproj", "x.globalconfig"):
             self.assertTrue(rb.check_paths([("A", p)], [], "NETH012", {p}), p)
@@ -168,14 +188,14 @@ class Guard(unittest.TestCase):
             "diff --git a/scripts/rule-bot/run b/scripts/rule-bot/run", "new file mode 100755", "index 0000000..6666666",
             "diff --git a/src/a.cs b/src/b.cs", "similarity index 100%", "rename from src/a.cs", "rename to src/b.cs",
         ])
-        changes, udiff = rb.patch_changes(patch)
+        changes, udiff, _ = rb.patch_changes(patch)
         self.assertEqual(changes, [("M", self.hit), ("A", "src/Nethermind/Nethermind.Analyzers/R.cs"), ("M", UNSHIPPED),
                                    ("X", "scripts/rule-bot/run"), ("X", "src/b.cs")])
         self.assertEqual(udiff, self.row)
 
     def test_patch_changes_sees_files_without_git_header(self):
         patch = "\n".join(["--- /dev/null", "+++ b/.github/workflows/evil.yml", "@@ -0,0 +1 @@", "+on: push"])
-        changes, _ = rb.patch_changes(patch)
+        changes, *_ = rb.patch_changes(patch)
         self.assertEqual(changes, [("X", ".github/workflows/evil.yml")])
         self.assertTrue(rb.check_paths(changes, [], None, set()))
 
@@ -183,7 +203,7 @@ class Guard(unittest.TestCase):
         patch = "\n".join([
             f"diff --git a/{self.hit} b/{self.hit}", "index 1111111..2222222 100644", f"--- a/{self.hit}", f"+++ b/{self.hit}",
             "@@ -1 +1 @@", "-a", "+b", "--- /dev/null", "+++ b/src/Nethermind/Directory.Build.props", "@@ -0,0 +1 @@", "+<Project />"])
-        changes, _ = rb.patch_changes(patch)
+        changes, *_ = rb.patch_changes(patch)
         self.assertIn(("X", "src/Nethermind/Directory.Build.props"), changes)
 
     def test_test_class_is_validated(self):

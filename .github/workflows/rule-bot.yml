@@ -327,6 +327,7 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           IDS: ${{ needs.propose.outputs.ids }}
           SOLUTIONS: ${{ needs.propose.outputs.rebuild }}
+          RULE_BOT_DENY: Edit(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Write(src/Nethermind/Nethermind.Analyzers/**),Write(src/Nethermind/Nethermind.Analyzers.Test/**)
         run: |
           bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/fix.txt" "Read,Glob,Grep,Edit(src/**/*.cs),Edit(tools/**/*.cs),Bash(dotnet build:*)" \
             "IDS=$IDS" "HITS=$DATA/fix-hits.txt" "SOLUTIONS=$SOLUTIONS" "RESULT=$DATA/fix-result.json" > "$DATA/fix-llm.log" 2>&1 || true

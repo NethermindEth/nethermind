@@ -25,6 +25,8 @@ BOT_LABEL = "rule-bot"
 COOLDOWN_DAYS = 56
 ROUTE_B_TRIES = 3
 UNSHIPPED = "src/Nethermind/Nethermind.Analyzers/AnalyzerReleases.Unshipped.md"
+EDITORCONFIG = ".editorconfig"
+OVERLAY_SECTIONS = {"[*.cs]": "warning", "[src/Nethermind/{*Test*,*Benchmark*}/**.cs]": "none", "[tools/*/{*Test*,*Benchmark*}/**.cs]": "none"}
 GUARDED_PREFIXES = (".github/", ".agents/", "scripts/")
 ANALYZER_DIRS = ("src/Nethermind/Nethermind.Analyzers/", "src/Nethermind/Nethermind.Analyzers.Test/")
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
@@ -481,7 +483,26 @@ def propose(args):
             f.write(f"slug={chosen['slug'] if chosen else ''}\nroute={chosen['route'] if chosen else ''}\n")
 
 
-def check_paths(changes, unshipped_diff, new_id, fix_files=()):
+def overlay_only(diff):
+    section = None
+    for line in diff:
+        if line.startswith("-"):
+            return False
+        text = line[1:].strip()
+        if not text:
+            continue
+        if text.startswith("["):
+            if text not in OVERLAY_SECTIONS:
+                return False
+            section = text
+        else:
+            m = re.fullmatch(r"dotnet_diagnostic\.[A-Z]+\d+\.severity = (\w+)", text)
+            if not m or section is None or m[1] != OVERLAY_SECTIONS[section]:
+                return False
+    return True
+
+
+def check_paths(changes, unshipped_diff, new_id, fix_files=(), editorconfig_diff=()):
     bad = []
     for status, path in changes:
         if path == UNSHIPPED:
@@ -490,8 +511,8 @@ def check_paths(changes, unshipped_diff, new_id, fix_files=()):
             if status != "M" or removed or not new_id or len(added) != 1 or not added[0][1:].startswith(f"{new_id} |"):
                 bad.append(f"{path}: only one appended row for {new_id or 'the new rule'} is allowed")
         elif path == ".editorconfig":
-            if status != "M":
-                bad.append(f"{path}: may only be modified")
+            if status != "M" or not overlay_only(editorconfig_diff):
+                bad.append(f"{path}: only the rule overlay may be appended")
         elif not path.endswith(".cs") or path.startswith(GUARDED_PREFIXES):
             bad.append(f"{path}: outside the paths the bot may change")
         elif not (new_id and status == "A" and path.startswith(ANALYZER_DIRS)) and not (status == "M" and path in fix_files):
@@ -500,7 +521,7 @@ def check_paths(changes, unshipped_diff, new_id, fix_files=()):
 
 
 def patch_changes(text):
-    changes, udiff, path, status, in_unshipped, old_left, new_left = [], [], None, None, False, 0, 0
+    changes, udiff, edits, path, status, in_unshipped, in_editorconfig, old_left, new_left = [], [], [], None, None, False, False, 0, 0
 
     def flush():
         if path:
@@ -513,6 +534,8 @@ def patch_changes(text):
             new_left -= tag in " +"
             if in_unshipped and tag in "+-":
                 udiff.append(line)
+            if in_editorconfig and tag in "+-":
+                edits.append(line)
             continue
         m = re.match(r"^@@ -\d+(?:,(\d+))? \+\d+(?:,(\d+))? @@", line)
         if m:
@@ -523,6 +546,7 @@ def patch_changes(text):
             flush()
             path, status = m[2], "M" if m[1] == m[2] else "R"
             in_unshipped = path == UNSHIPPED
+            in_editorconfig = path == EDITORCONFIG
             continue
         m = re.match(r"^(?:---|\+\+\+) (?:[ab]/)?(\S+)", line)
         if m and m[1] != "/dev/null" and m[1] != path:
@@ -539,7 +563,7 @@ def patch_changes(text):
         elif re.match(r"^index [0-9a-f]+\.\.[0-9a-f]+ (?!100644)", line):
             status = "X"
     flush()
-    return changes, udiff
+    return changes, udiff, edits
 
 
 def fix_files_of(path):
@@ -548,14 +572,15 @@ def fix_files_of(path):
 
 def guard(args):
     if args.patch:
-        changes, udiff = patch_changes(open(args.patch, errors="replace").read())
+        changes, udiff, edits = patch_changes(open(args.patch, errors="replace").read())
     else:
         out = subprocess.run(["git", "diff", "--name-status", "--no-renames", args.base], capture_output=True, text=True, check=True).stdout
         changes = [tuple(l.split("\t", 1)) for l in out.splitlines() if l]
         udiff = subprocess.run(["git", "diff", "-U0", args.base, "--", UNSHIPPED], capture_output=True, text=True).stdout.splitlines()
+        edits = [l for l in subprocess.run(["git", "diff", "-U0", args.base, "--", EDITORCONFIG], capture_output=True, text=True).stdout.splitlines() if l[:1] in "+-" and not l.startswith(("+++", "---"))]
         out = subprocess.run(["git", "diff", "--summary", args.base], capture_output=True, text=True, check=True).stdout
         changes += [("X", l.split()[-1]) for l in out.splitlines() if re.search(r"mode (120000|100755)|mode change", l)]
-    bad = check_paths(changes, udiff, args.new_id, fix_files_of(args.files))
+    bad = check_paths(changes, udiff, args.new_id, fix_files_of(args.files), edits)
     bad += [f"{p}: symlink, mode, rename, binary or unlisted header change" for st, p in changes if st == "X"]
     for b in bad:
         print(f"guard: FAIL {b}")

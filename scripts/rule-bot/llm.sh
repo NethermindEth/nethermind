@@ -13,4 +13,6 @@ template = open(sys.argv[1]).read()
 sys.stdout.write(re.sub(r"\{\{(\w+)\}\}", lambda m: values.get(m[1], m[0]), template))
 EOF
 )
-claude -p "$prompt" --model "${RULE_BOT_MODEL:-opus}" --allowedTools "$tools" --max-turns "${RULE_BOT_MAX_TURNS:-80}"
+deny=()
+[ -z "${RULE_BOT_DENY:-}" ] || deny=(--disallowedTools "$RULE_BOT_DENY")
+claude -p "$prompt" --model "${RULE_BOT_MODEL:-opus}" --allowedTools "$tools" "${deny[@]}" --max-turns "${RULE_BOT_MAX_TURNS:-80}"
