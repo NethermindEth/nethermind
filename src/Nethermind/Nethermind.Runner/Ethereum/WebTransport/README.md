@@ -44,6 +44,7 @@ send side. Close the client's send side and then the session after reading the r
   around the EIP-2718 typed envelope. The `0x11` reply is an RLP list with one
   `[resultCode]` entry per transaction in submission order. Code 0 means the
   transaction entered the local pool. Codes 1–8 use Geth's `webtx` result categories.
+  A node without a local pool returns code 7 when a transaction reaches pool admission.
   Pool rejections without a more specific local result use code 8.
 - `webdisc/1` is an experimental Nethermind extension. Send `0x10` with an empty
   RLP list (`c0`) to request up to 16 signed ENRs. The `0x11` response contains those

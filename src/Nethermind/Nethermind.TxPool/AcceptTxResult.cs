@@ -228,6 +228,9 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult PaymasterWidthUnmet = new(TxPoolErrorMessages.PaymasterWidthUnmet);
 
+        /// <summary>The node has no local transaction pool for this submission.</summary>
+        public static readonly AcceptTxResult PoolUnavailable = new("transaction pool unavailable");
+
         /// <summary>
         /// Declares a result distinct from every other declared result.
         /// </summary>

@@ -93,7 +93,11 @@ public class NethermindRunnerModule(
         if (command is not null)
             builder.AddSingleton(new StepCommandSelection(command));
         else if (configProvider.GetConfig<INetworkConfig>().WebTransportPort != 0)
-            builder.AddStep(typeof(BrowserWebTransport));
+            builder
+                .AddSingleton<WebTxHandler>()
+                .AddSingleton<WebDiscHandler>()
+                .AddSingleton<BrowserProtocol>()
+                .AddStep(typeof(BrowserWebTransport));
 
         foreach (INethermindPlugin plugin in plugins)
         {

@@ -4,18 +4,26 @@
 #nullable enable annotations
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
+using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
 using Nethermind.Runner.Ethereum.WebTransport;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stats.Model;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -25,13 +33,13 @@ namespace Nethermind.Runner.Test.Ethereum.WebTransport;
 
 public class BrowserProtocolTests
 {
-    [TestCase(BrowserProtocol.TxMode, "webtx/1")]
-    [TestCase(BrowserProtocol.DiscoveryMode, "webdisc/1")]
-    public void Handshake_signs_the_geth_challenge_with_the_enr_key(byte mode, string capability)
+    [TestCase((byte)BrowserCapability.WebTx, "webtx/1")]
+    [TestCase((byte)BrowserCapability.WebDisc, "webdisc/1")]
+    public void Handshake_signs_the_geth_challenge_with_the_enr_key(byte selected, string capability)
     {
-        using BrowserProtocol protocol = CreateProtocol(out _);
+        using BrowserProtocol protocol = CreateProtocol();
         byte[] nonce = [.. Enumerable.Range(0, BrowserProtocol.NonceLength).Select(static i => (byte)i)];
-        byte[] handshake = protocol.CreateHandshake(mode, nonce);
+        byte[] handshake = protocol.CreateHandshake((BrowserCapability)selected, nonce);
         RlpReader reader = new(handshake);
         RlpReader fields = reader.EnterSequence(out int length);
         byte[] proof = fields.DecodeByteArray(size: Signature.Size);
@@ -56,7 +64,7 @@ public class BrowserProtocolTests
     [Test]
     public void Submit_preserves_batch_order_and_encodes_pool_outcomes()
     {
-        using BrowserProtocol protocol = CreateProtocol(out ITxPool pool);
+        WebTxHandler handler = CreateTxHandler(out ITxPool pool);
         AcceptTxResult[] outcomes =
         [
             AcceptTxResult.Accepted, AcceptTxResult.AlreadyKnown, AcceptTxResult.OldNonce,
@@ -64,7 +72,7 @@ public class BrowserProtocolTests
             AcceptTxResult.GasLimitExceeded.WithMessage("detail"), AcceptTxResult.Syncing, AcceptTxResult.FailedToResolveSender
         ];
         List<Hash256?> submitted = [];
-        pool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None).Returns(call =>
+        pool.SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.RequireLocalAdmission).Returns(call =>
         {
             submitted.Add(call.Arg<Transaction>().Hash);
             return outcomes[submitted.Count - 1];
@@ -76,7 +84,7 @@ public class BrowserProtocolTests
         ];
         byte[] payload = RlpTestHelper.EncodeSequence(transactions.Select(static tx => TxDecoder.Instance.Encode(tx)).ToArray());
 
-        byte[] result = protocol.Submit(payload, CancellationToken.None);
+        byte[] result = handler.Handle(payload, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -88,9 +96,9 @@ public class BrowserProtocolTests
     [TestCaseSource(nameof(MalformedBatches))]
     public void Submit_rejects_malformed_batches_before_pool_admission(byte[] payload)
     {
-        using BrowserProtocol protocol = CreateProtocol(out ITxPool pool);
+        WebTxHandler handler = CreateTxHandler(out ITxPool pool);
 
-        Assert.That(() => protocol.Submit(payload, CancellationToken.None), Throws.InstanceOf<RlpReaderException>());
+        Assert.That(() => handler.Handle(payload, CancellationToken.None), Throws.InstanceOf<RlpReaderException>());
         pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
@@ -112,44 +120,44 @@ public class BrowserProtocolTests
     [Test]
     public void Blob_without_a_sidecar_rejects_only_that_transaction([Values] bool withSidecar)
     {
-        using BrowserProtocol protocol = CreateProtocol(out ITxPool pool);
+        WebTxHandler handler = CreateTxHandler(out ITxPool pool);
         Transaction blob = TxBuilder.A.Transaction.WithShardBlobTxTypeAndFields(isMempoolTx: withSidecar).Signed().TestObject;
         byte[] legacyItem = TxDecoder.Instance.Encode(SignedTransaction(TxType.Legacy));
         byte[] blobItem = TxDecoder.Instance.Encode(blob, withSidecar ? RlpBehaviors.InMempoolForm : RlpBehaviors.None);
         byte[] payload = RlpTestHelper.EncodeSequence(blobItem, legacyItem);
 
-        byte[] response = protocol.Submit(payload, CancellationToken.None);
+        byte[] response = handler.Handle(payload, CancellationToken.None);
 
         Assert.That(response, Is.EqualTo(new byte[] { 0xc4, 0xc1, withSidecar ? (byte)0x80 : (byte)8, 0xc1, 0x80 }));
-        pool.Received(withSidecar ? 1 : 0).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.Blob), TxHandlingOptions.None);
-        pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.Legacy), TxHandlingOptions.None);
+        pool.Received(withSidecar ? 1 : 0).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.Blob), TxHandlingOptions.RequireLocalAdmission);
+        pool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.Legacy), TxHandlingOptions.RequireLocalAdmission);
     }
 
     [Test]
     public void Submit_limits_the_number_of_transactions([Values(0, 15, 16, 17)] int count)
     {
-        using BrowserProtocol protocol = CreateProtocol(out ITxPool pool);
+        WebTxHandler handler = CreateTxHandler(out ITxPool pool);
         byte[] item = TxDecoder.Instance.Encode(SignedTransaction(TxType.Legacy));
         byte[] payload = RlpTestHelper.EncodeSequence(Enumerable.Repeat(item, count).ToArray());
 
         if (count > 16)
         {
-            Assert.That(() => protocol.Submit(payload, CancellationToken.None), Throws.TypeOf<RlpLimitException>());
+            Assert.That(() => handler.Handle(payload, CancellationToken.None), Throws.TypeOf<RlpLimitException>());
             pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
             return;
         }
 
-        byte[] response = protocol.Submit(payload, CancellationToken.None);
+        byte[] response = handler.Handle(payload, CancellationToken.None);
 
         Assert.That(response, Is.EqualTo(RlpTestHelper.EncodeSequence(Enumerable.Repeat(new byte[] { 0xc1, 0x80 }, count).ToArray())));
-        pool.Received(count).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+        pool.Received(count).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.RequireLocalAdmission);
     }
 
     [Test]
     public void Submit_limits_the_complete_encoded_message([Values(-1, 0, 1)] int sizeDelta)
     {
-        using BrowserProtocol protocol = CreateProtocol(out ITxPool pool);
-        int size = BrowserProtocol.MaxSubmitSize + sizeDelta;
+        WebTxHandler handler = CreateTxHandler(out ITxPool pool);
+        int size = WebTxHandler.MaxRequestSize + sizeDelta;
         Transaction tx = TxBuilder.A.Transaction.WithData(new byte[size]).Signed().TestObject;
         byte[] payload = RlpTestHelper.EncodeSequence(TxDecoder.Instance.Encode(tx));
         tx.Data = new byte[2 * size - payload.Length];
@@ -158,43 +166,96 @@ public class BrowserProtocolTests
 
         if (sizeDelta > 0)
         {
-            Assert.That(() => protocol.Submit(payload, CancellationToken.None), Throws.TypeOf<RlpLimitException>());
+            Assert.That(() => handler.Handle(payload, CancellationToken.None), Throws.TypeOf<RlpLimitException>());
             pool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
             return;
         }
 
-        Assert.That(protocol.Submit(payload, CancellationToken.None), Is.EqualTo(new byte[] { 0xc2, 0xc1, 0x80 }));
-        pool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.None);
+        Assert.That(handler.Handle(payload, CancellationToken.None), Is.EqualTo(new byte[] { 0xc2, 0xc1, 0x80 }));
+        pool.Received(1).SubmitTx(Arg.Any<Transaction>(), TxHandlingOptions.RequireLocalAdmission);
     }
 
     [Test]
-    public void Discovery_response_contains_complete_signed_rlp_records_in_order()
+    public void Submit_reports_pool_error_when_the_node_has_no_transaction_pool([Values] bool decorated)
     {
-        NodeRecord first = SignedRecord(TestItem.PrivateKeyA, 1);
-        NodeRecord second = SignedRecord(TestItem.PrivateKeyB, 2);
-        byte[] response = BrowserProtocol.EncodePeerRecords([first, second]);
-        RlpReader reader = new(response);
-        RlpReader items = reader.EnterSequence(out int length);
-        byte[] firstEncoded = items.ReadEncodedItem().ToArray();
-        byte[] secondEncoded = items.ReadEncodedItem().ToArray();
-        reader.ExitSequence(in items, length);
+        ITxPool pool = NullTxPool.Instance;
+        if (decorated)
+        {
+            pool = Substitute.For<ITxPool>();
+            pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(static call =>
+                NullTxPool.Instance.SubmitTx(call.Arg<Transaction>(), call.Arg<TxHandlingOptions>()));
+        }
+
+        WebTxHandler handler = new(pool);
+        Transaction transaction = SignedTransaction(TxType.Legacy);
+        byte[] payload = RlpTestHelper.EncodeSequence(TxDecoder.Instance.Encode(transaction));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.HasNext, Is.False);
-            Assert.That(firstEncoded, Is.EqualTo(first.ToRlpBytes()));
-            Assert.That(secondEncoded, Is.EqualTo(second.ToRlpBytes()));
-            Assert.That(NodeRecord.FromBytes(firstEncoded).EnrSequence, Is.EqualTo(1));
-            Assert.That(NodeRecord.FromBytes(secondEncoded).EnrSequence, Is.EqualTo(2));
+            Assert.That(handler.Handle(payload, CancellationToken.None), Is.EqualTo(new byte[] { 0xc2, 0xc1, 7 }));
+            Assert.That(pool.SubmitTx(transaction, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         }
     }
 
-    private static BrowserProtocol CreateProtocol(out ITxPool pool)
+    [Test]
+    public async Task Discovery_returns_self_and_only_current_verified_quic_peers([Values] bool stale)
+    {
+        WebDiscHandler handler = CreateDiscHandler(out INodeRecordProvider records, out IPeerPool peerPool);
+        NodeRecord self = SignedRecord(TestItem.PrivateKeyA, 1);
+        NodeRecord second = SignedRecord(TestItem.PrivateKeyB, 2);
+        records.GetCurrentAsync().Returns(self);
+        Node peer = new(TestItem.PrivateKeyB.PublicKey, new IPEndPoint(IPAddress.Loopback, 30303));
+        Assert.That(peer.SetVerifiedEnr(second), Is.True);
+        peerPool.Peers[peer.Id] = new Peer(peer);
+
+        byte[] request = [Rlp.EmptyListByte];
+        byte[] initial = await handler.HandleAsync(request, CancellationToken.None);
+        if (stale)
+            peer.ObserveEnrSequence(3);
+
+        byte[] response = await handler.HandleAsync(request, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(initial, Is.EqualTo(RlpTestHelper.EncodeSequence(self.ToRlpBytes(), second.ToRlpBytes())));
+            Assert.That(response, Is.EqualTo(stale ? RlpTestHelper.EncodeSequence(self.ToRlpBytes()) : initial));
+        }
+    }
+
+    [TestCase("")]
+    [TestCase("80")]
+    [TestCase("c0c0")]
+    public void Discovery_rejects_requests_other_than_an_empty_list(string hex)
+    {
+        WebDiscHandler handler = CreateDiscHandler(out INodeRecordProvider records, out _);
+
+        Assert.That(async () => await handler.HandleAsync(Convert.FromHexString(hex), CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+        _ = records.DidNotReceive().GetCurrentAsync(Arg.Any<CancellationToken>());
+    }
+
+    private static BrowserProtocol CreateProtocol()
     {
         IProtectedPrivateKey nodeKey = Substitute.For<IProtectedPrivateKey>();
         nodeKey.Unprotect().Returns(static _ => new PrivateKey(TestItem.PrivateKeyA.KeyBytes));
+        return new BrowserProtocol(new EthereumEcdsa(1), nodeKey, CreateTxHandler(out _), CreateDiscHandler(out _, out _));
+    }
+
+    private static WebTxHandler CreateTxHandler(out ITxPool pool)
+    {
         pool = Substitute.For<ITxPool>();
-        return new BrowserProtocol(new EthereumEcdsa(1), nodeKey, pool);
+        return new WebTxHandler(pool);
+    }
+
+    private static WebDiscHandler CreateDiscHandler(out INodeRecordProvider records, out IPeerPool peerPool)
+    {
+        IIPResolver resolver = Substitute.For<IIPResolver>();
+        resolver.Resolve(Arg.Any<CancellationToken>()).Returns(new IIPResolver.NethermindIp(IPAddress.Loopback, IPAddress.Loopback));
+        NetworkListenerState listenerState = new(new NetworkConfig(), resolver, LimboLogs.Instance);
+        listenerState.SetWebTransport(new(IPAddress.Loopback, 30304, new byte[64]));
+        records = Substitute.For<INodeRecordProvider>();
+        peerPool = Substitute.For<IPeerPool>();
+        peerPool.Peers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+        return new WebDiscHandler(listenerState, records, peerPool);
     }
 
     private static Transaction SignedTransaction(TxType type, int nonce = 0) =>
@@ -204,6 +265,9 @@ public class BrowserProtocolTests
     {
         NodeRecord record = new() { EnrSequence = sequence };
         record.SetEntry(new SecP256k1Entry(key.CompressedPublicKey));
+        record.SetEntry(new IpEntry(IPAddress.Loopback));
+        record.SetEntry(new QuicPortEntry(30304));
+        record.SetEntry(new QuicCertificateHashesEntry(new byte[64]));
         new NodeRecordSigner(new Ecdsa(), key).Sign(record);
         return record;
     }

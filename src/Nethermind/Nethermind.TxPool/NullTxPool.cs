@@ -50,7 +50,8 @@ namespace Nethermind.TxPool
 
         public long GetRemovalGeneration(Address sender) => 0;
 
-        public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) => AcceptTxResult.Accepted;
+        public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions txHandlingOptions) =>
+            (txHandlingOptions & TxHandlingOptions.RequireLocalAdmission) != 0 ? AcceptTxResult.PoolUnavailable : AcceptTxResult.Accepted;
 
         public AcceptTxResult ValidateTxForBlobSampling(Transaction tx) => AcceptTxResult.Invalid;
 

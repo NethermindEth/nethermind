@@ -27,8 +27,8 @@ internal static class Http3WebTransport
 
     internal static async Task ServeAsync(
         MsQuicConnection connection,
-        Func<string, (byte Mode, byte[] Nonce)?> parseOffer,
-        Func<Stream, byte, byte[], CancellationToken, Task> exchange,
+        Func<string, (BrowserCapability Capability, byte[] Nonce)?> parseOffer,
+        Func<Stream, BrowserCapability, byte[], CancellationToken, Task> exchange,
         CancellationToken cancellationToken)
     {
         // The connection keeps HTTP/3 critical streams open until QUIC shutdown.
@@ -61,7 +61,7 @@ internal static class Http3WebTransport
             written += EncodeInteger(prefix.AsSpan(written), selected.Id);
             await stream.WriteAsync(prefix.AsMemory(0, written), token);
 
-            await exchange(stream, selectedOffer.Mode, selectedOffer.Nonce, token);
+            await exchange(stream, selectedOffer.Capability, selectedOffer.Nonce, token);
             stream.CompleteWrites();
 
             using CancellationTokenSource closing = CancellationTokenSource.CreateLinkedTokenSource(token);

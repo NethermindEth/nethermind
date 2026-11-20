@@ -7,6 +7,7 @@ using System.IO;
 using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Buffers;
 using Nethermind.Network.Rlpx;
 using Snappier;
 
@@ -21,14 +22,14 @@ internal static class BrowserFrames
     private const int MaxResponseLength = 8 * 1024;
 
     // WT-Available-Protocols is a Structured Fields list of strings. Its parameters have no semantics.
-    internal static (byte Mode, byte[] Nonce)? ParseOffer(string value)
+    internal static (BrowserCapability Capability, byte[] Nonce)? ParseOffer(string value)
     {
         if (value.Length > 4096)
             return null;
 
         Span<byte> nonce = stackalloc byte[BrowserProtocol.NonceLength];
         bool hasNonce = false;
-        byte mode = 0;
+        BrowserCapability? capability = null;
         ReadOnlySpan<char> remaining = value.AsSpan().TrimStart(" \t");
         while (true)
         {
@@ -37,11 +38,11 @@ internal static class BrowserFrames
 
             if (item.SequenceEqual("webtx/1"))
             {
-                mode = BrowserProtocol.TxMode;
+                capability = BrowserCapability.WebTx;
             }
-            else if (mode == 0 && item.SequenceEqual("webdisc/1"))
+            else if (capability is null && item.SequenceEqual("webdisc/1"))
             {
-                mode = BrowserProtocol.DiscoveryMode;
+                capability = BrowserCapability.WebDisc;
             }
             else if (item.StartsWith(NoncePrefix, StringComparison.Ordinal))
             {
@@ -55,7 +56,7 @@ internal static class BrowserFrames
 
             remaining = remaining.TrimStart(" \t");
             if (remaining.IsEmpty)
-                return mode != 0 && hasNonce ? (mode, nonce.ToArray()) : null;
+                return hasNonce && capability is { } selected ? (selected, nonce.ToArray()) : null;
             if (remaining[0] != ',')
                 return null;
 
@@ -64,23 +65,18 @@ internal static class BrowserFrames
     }
 
     internal static async ValueTask<(IMemoryOwner<byte> Owner, int Length)> ReadRequestAsync(
-        Stream stream, byte mode, CancellationToken cancellationToken)
+        Stream stream, int limit, CancellationToken cancellationToken)
     {
-        int limit = mode switch
-        {
-            BrowserProtocol.TxMode => BrowserProtocol.MaxSubmitSize,
-            BrowserProtocol.DiscoveryMode => 1,
-            _ => throw new ArgumentOutOfRangeException(nameof(mode)),
-        };
-
         byte[] header = new byte[HeaderLength];
         await stream.ReadExactlyAsync(header, cancellationToken);
         int encodedLength = header[1] << 16 | header[2] << 8 | header[3];
-        if (header[0] != RequestCode || encodedLength == 0 || encodedLength > Snappy.GetMaxCompressedLength(limit))
+        // A Snappy element can spend a tag and four length bytes on one literal byte, plus the block's length varint.
+        int maxEncodedLength = 6 * limit + 5;
+        if (header[0] != RequestCode || encodedLength == 0 || encodedLength > maxEncodedLength)
             throw new InvalidDataException("Invalid browser WebTransport request frame.");
 
-        using IMemoryOwner<byte> compressed = MemoryPool<byte>.Shared.Rent(encodedLength);
-        Memory<byte> encoded = compressed.Memory[..encodedLength];
+        using ArrayPoolDisposableReturn compressed = ArrayPoolDisposableReturn.Rent(encodedLength, out byte[] buffer);
+        Memory<byte> encoded = buffer.AsMemory(0, encodedLength);
         await stream.ReadExactlyAsync(encoded, cancellationToken);
         int decodedLength = Snappy.GetUncompressedLength(encoded.Span);
         if (decodedLength <= 0 || decodedLength > limit || !SnappyBlockValidator.IsValid(encoded.Span, decodedLength))
@@ -89,11 +85,7 @@ internal static class BrowserFrames
         IMemoryOwner<byte> decoded = MemoryPool<byte>.Shared.Rent(decodedLength);
         try
         {
-            Span<byte> payload = decoded.Memory.Span[..decodedLength];
-            Snappy.Decompress(encoded.Span, payload);
-            if (mode == BrowserProtocol.DiscoveryMode && payload[0] != 0xc0)
-                throw new InvalidDataException("The browser discovery request does not contain an empty RLP list.");
-
+            Snappy.Decompress(encoded.Span, decoded.Memory.Span[..decodedLength]);
             return (decoded, decodedLength);
         }
         catch
@@ -108,14 +100,14 @@ internal static class BrowserFrames
         if (payload.Length is <= 0 or > MaxResponseLength)
             throw new ArgumentOutOfRangeException(nameof(payload));
 
-        using IMemoryOwner<byte> buffer = MemoryPool<byte>.Shared.Rent(HeaderLength + Snappy.GetMaxCompressedLength(payload.Length));
-        int length = Snappy.Compress(payload, buffer.Memory.Span[HeaderLength..]);
-        Span<byte> header = buffer.Memory.Span[..HeaderLength];
+        using ArrayPoolDisposableReturn compressed = ArrayPoolDisposableReturn.Rent(HeaderLength + Snappy.GetMaxCompressedLength(payload.Length), out byte[] buffer);
+        int length = Snappy.Compress(payload, buffer.AsSpan(HeaderLength));
+        Span<byte> header = buffer.AsSpan(0, HeaderLength);
         header[0] = ResponseCode;
         header[1] = (byte)(length >> 16);
         header[2] = (byte)(length >> 8);
         header[3] = (byte)length;
-        await stream.WriteAsync(buffer.Memory[..(HeaderLength + length)], cancellationToken);
+        await stream.WriteAsync(buffer.AsMemory(0, HeaderLength + length), cancellationToken);
     }
 
     private static bool TryReadString(ref ReadOnlySpan<char> remaining, out ReadOnlySpan<char> item)
