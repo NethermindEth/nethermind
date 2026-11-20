@@ -1,0 +1,123 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.Find;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Timers;
+using Nethermind.Db.LogIndex;
+using Nethermind.Facade;
+using Nethermind.Facade.Filters;
+using Nethermind.Facade.Find;
+using Nethermind.JsonRpc.Modules.LogIndex;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.JsonRpc.Test.Modules;
+
+[Parallelizable(ParallelScope.All)]
+public class LogIndexRpcModuleTests
+{
+    private const long HeadNumber = 10;
+
+    [TestCase("""{"fromBlock":"latest","toBlock":"latest"}""")]
+    [TestCase("""{"fromBlock":"0x1","toBlock":"0x5","topics":[null]}""")]
+    [TestCase("""{"fromBlock":"0x1","toBlock":"0x5","topics":[[],null]}""")]
+    [TestCase("""{"fromBlock":"0x1","toBlock":"0x5","address":[]}""")]
+    public async Task logIndex_blockNumbers_without_address_or_topics_returns_invalid_params(string filter)
+    {
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(EnabledStorage()), "logIndex_blockNumbers", filter);
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InvalidParams}"));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_with_address_returns_indexed_blocks()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => ((IEnumerable<int>)[2, 4]).GetEnumerator());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":["0x2","0x4"],"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_with_topic_after_wildcard_returns_indexed_blocks()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(1, TestItem.KeccakA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => ((IEnumerable<int>)[3]).GetEnumerator());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":[],"topics":[null,"{{TestItem.KeccakA}}",[]]}""");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":["0x3"],"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_with_failing_storage_returns_error()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => throw new InvalidOperationException("Storage failure"));
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InternalError}"));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_with_disabled_index_returns_error()
+    {
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(new DisabledLogIndexStorage()), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_without_max_indexed_block_returns_error()
+    {
+        // The state after a reorg the index could not revert: postings remain but MaxBlockNumber is null
+        ILogIndexStorage storage = EnabledStorage();
+        storage.MaxBlockNumber.Returns((int?)null);
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => ((IEnumerable<int>)[2, 4]).GetEnumerator());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"));
+    }
+
+    private static ILogIndexStorage EnabledStorage()
+    {
+        ILogIndexStorage storage = Substitute.For<ILogIndexStorage>();
+        storage.Enabled.Returns(true);
+        storage.MinBlockNumber.Returns((int?)0);
+        storage.MaxBlockNumber.Returns((int?)HeadNumber);
+        return storage;
+    }
+
+    private static ILogIndexRpcModule CreateModule(ILogIndexStorage storage)
+    {
+        FilterStore filterStore = new(Substitute.For<ITimerFactory>());
+        IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
+        bridge.GetFilter(Arg.Any<BlockParameter>(), Arg.Any<BlockParameter>(), Arg.Any<HashSet<AddressAsKey>?>(), Arg.Any<IEnumerable<Hash256[]?>?>())
+            .Returns(info => filterStore.CreateLogFilter(info.ArgAt<BlockParameter>(0), info.ArgAt<BlockParameter>(1),
+                info.ArgAt<HashSet<AddressAsKey>?>(2), info.ArgAt<IEnumerable<Hash256[]?>?>(3), setId: false));
+
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(Build.A.Block.WithNumber(HeadNumber).TestObject);
+
+        return new LogIndexRpcModule(storage, Substitute.For<ILogIndexBuilder>(), blockFinder, bridge);
+    }
+}
