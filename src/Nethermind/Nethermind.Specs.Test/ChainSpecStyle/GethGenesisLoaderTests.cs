@@ -803,7 +803,9 @@ public class GethGenesisLoaderTests
                         "10": "0x01",
                         "0000000000000000000000000000000000000000000000000000000000000002": "02",
                         "0x0000000000000000000000000000000000000000000000000000000000000003": "0x03",
-                        "f0": "0x04"
+                        "f0": "0x04",
+                        "20": "10",
+                        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff": "0x05"
                     }
                 }
             }
@@ -815,8 +817,31 @@ public class GethGenesisLoaderTests
             [0x10] = "01",
             [2] = "02",
             [3] = "03",
-            [0xf0] = "04"
+            [0xf0] = "04",
+            [0x20] = "10",
+            [UInt256.MaxValue] = "05"
         }));
+    }
+
+    [TestCase("")]
+    [TestCase("0x")]
+    public void Reads_empty_storage_key_as_slot_zero(string key)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(allocJson: $$"""
+            { "0x0000000000000000000000000000000000000001": { "balance": "0x1", "storage": { "{{key}}": "0x01" } } }
+            """);
+
+        Assert.That(chainSpec.Allocations![new Address("0x0000000000000000000000000000000000000001")].Storage!.Keys, Is.EqualTo(new[] { UInt256.Zero }));
+    }
+
+    [Test]
+    public void Rejects_storage_key_longer_than_32_bytes()
+    {
+        string key = new('1', 66);
+
+        Assert.That(() => LoadStandardGethGenesis(allocJson: $$"""
+            { "0x0000000000000000000000000000000000000001": { "balance": "0x1", "storage": { "{{key}}": "0x01" } } }
+            """), Throws.TypeOf<InvalidDataException>());
     }
 
     public static IEnumerable<TestCaseData> GethGenesisDetectionCases
