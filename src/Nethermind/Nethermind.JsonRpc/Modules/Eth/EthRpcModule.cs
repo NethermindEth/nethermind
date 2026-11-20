@@ -778,10 +778,12 @@ public partial class EthRpcModule(
             if (acceptTxResult.Equals(AcceptTxResult.Accepted))
                 return ResultWrapper<Hash256>.Success(txHash);
 
-            // A rejected transaction is the caller's error, so it is logged like a request error rather than a warning per request
+            // A rejected transaction is the caller's error, so it is logged like a request error rather than a warning
+            // per request. Syncing is the node's state, not the caller's fault, so it keeps its warning.
             return acceptTxResult.Equals(AcceptTxResult.SignFailed)
                 ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
-                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected, isRequestError: true);
+                : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected,
+                    isRequestError: !acceptTxResult.Equals(AcceptTxResult.Syncing));
         }
         catch (Exception e)
         {

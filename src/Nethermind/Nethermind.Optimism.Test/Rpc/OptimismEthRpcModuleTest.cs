@@ -158,17 +158,20 @@ public class OptimismEthRpcModuleTest
     private const string FailedToForward = """{"jsonrpc":"2.0","error":{"code":-32603,"message":"Failed to forward transaction"},"id":67}""";
 
     [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"nonce too low"}}""",
-        """{"jsonrpc":"2.0","error":{"code":-32000,"message":"nonce too low"},"id":67}""", true,
+        """{"jsonrpc":"2.0","error":{"code":-32000,"message":"nonce too low"},"id":67}""",
         TestName = "Forwarded transaction rejected by the sequencer returns its error")]
+    [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32000,"message":"Failed to send transaction."}}""",
+        """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Failed to send transaction."},"id":67}""",
+        TestName = "Forwarded transaction hitting a sequencer server failure with -32000 returns its error")]
     [TestCase("""{"jsonrpc":"2.0","id":67,"error":{"code":-32603,"message":"internal error"}}""",
-        """{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal error"},"id":67}""", false,
+        """{"jsonrpc":"2.0","error":{"code":-32603,"message":"internal error"},"id":67}""",
         TestName = "Forwarded transaction hitting a sequencer failure returns its error")]
     [TestCase($$"""{"jsonrpc":"2.0","id":67,"result":"{{ForwardedHash}}"}""",
-        $$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}""", false,
+        $$"""{"jsonrpc":"2.0","result":"{{ForwardedHash}}","id":67}""",
         TestName = "Forwarded transaction accepted by the sequencer returns its hash")]
-    [TestCase("", FailedToForward, false, TestName = "Empty sequencer response returns failed to forward")]
-    [TestCase("<html>502 Bad Gateway</html>", FailedToForward, false, TestName = "Non-JSON sequencer response returns failed to forward")]
-    public async Task Send_raw_transaction_forwards_the_sequencer_response(string sequencerResponse, string expected, bool isRequestError)
+    [TestCase("", FailedToForward, TestName = "Empty sequencer response returns failed to forward")]
+    [TestCase("<html>502 Bad Gateway</html>", FailedToForward, TestName = "Non-JSON sequencer response returns failed to forward")]
+    public async Task Send_raw_transaction_forwards_the_sequencer_response(string sequencerResponse, string expected)
     {
         IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
         sequencer.Post("eth_sendRawTransaction", Arg.Any<object?[]>()).Returns(sequencerResponse);
@@ -191,8 +194,8 @@ public class OptimismEthRpcModuleTest
         using (Assert.EnterMultipleScope())
         {
             Assert.That(serialized, Is.EqualTo(expected));
-            // A rejected transaction is the caller's error; a sequencer failure stays the operator's.
-            Assert.That(result.IsRequestError, Is.EqualTo(isRequestError));
+            // The sequencer's -32000 covers its own failures too, so no forwarded error is demoted.
+            Assert.That(result.IsRequestError, Is.False);
         }
     }
 

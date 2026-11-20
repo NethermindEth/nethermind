@@ -211,12 +211,11 @@ public class OptimismEthRpcModule(
             }
         }
 
-        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it. A transaction the
-        // sequencer rejected is the caller's error like a local pool rejection; other sequencer errors keep their level.
+        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it. It keeps its WARN:
+        // a sequencer also answers -32000 for its own failures, so the code does not tell them apart from rejections.
         if (forwarded?.Error is { } error)
         {
-            return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code,
-                isRequestError: error.Code == ErrorCodes.TransactionRejected);
+            return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code);
         }
 
         return forwarded?.Result is { } result ? ResultWrapper<Hash256>.Success(result) : ResultWrapper<Hash256>.Fail("Failed to forward transaction");

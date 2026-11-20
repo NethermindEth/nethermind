@@ -2442,15 +2442,17 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Invalid RLP.\"},\"id\":67}"));
     }
 
-    [TestCase("eth_sendRawTransaction", true)]
-    [TestCase("eth_sendRawTransaction", false)]
-    [TestCase("eth_sendRawTransactionSync", true)]
-    [TestCase("eth_sendRawTransactionSync", false)]
-    public async Task Send_raw_transaction_rejection_is_a_request_error(string method, bool invalidRlp)
+    [TestCase("eth_sendRawTransaction", true, false, true)]
+    [TestCase("eth_sendRawTransaction", false, false, true)]
+    [TestCase("eth_sendRawTransactionSync", true, false, true)]
+    [TestCase("eth_sendRawTransactionSync", false, false, true)]
+    [TestCase("eth_sendRawTransaction", false, true, false, TestName = "Syncing node is not a request error")]
+    public async Task Send_raw_transaction_rejection_is_a_request_error(string method, bool invalidRlp, bool syncing, bool expectRequestError)
     {
         ITxSender sender = Substitute.For<ITxSender>();
         sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>((TestItem.KeccakA, AcceptTxResult.AlreadyKnown)));
+            .Returns(new ValueTask<(Hash256 Hash, AcceptTxResult? AddTxResult)>(
+                (TestItem.KeccakA, syncing ? AcceptTxResult.Syncing : AcceptTxResult.AlreadyKnown)));
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new JsonRpcConfig()))
             .AddSingleton(sender)
@@ -2465,7 +2467,7 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(error.Code, Is.EqualTo(ErrorCodes.TransactionRejected));
-            Assert.That(error.RequestError, Is.True);
+            Assert.That(error.RequestError, Is.EqualTo(expectRequestError));
             Assert.That(error.SuppressWarning, Is.False, "the rejection must stay visible at Debug");
         }
     }
