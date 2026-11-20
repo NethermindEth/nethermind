@@ -178,6 +178,49 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         ];
     }
 
+    /// <remarks>
+    /// As in Geth, a step's <c>gasCost</c> is its execution charge; the state gas it spills into, or refills, the
+    /// remaining gas shows only in <c>gas</c>.
+    /// </remarks>
+    [TestCaseSource(nameof(AmsterdamStateGasOperations))]
+    public void Operation_reports_its_execution_cost_on_Amsterdam(byte[] code, string opcode, ulong expectedGasCost, long? expectedRefund)
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 1_000_000, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        GethTxTraceEntry entry = trace.Entries.Last(e => e.Opcode == opcode && e.Depth == 1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Failed, Is.False);
+            Assert.That(entry.Error, Is.Null);
+            Assert.That(entry.GasCost, Is.EqualTo(expectedGasCost));
+            Assert.That(entry.Refund, Is.EqualTo(expectedRefund));
+        }
+    }
+
+    internal static TestCaseData[] AmsterdamStateGasOperations()
+    {
+        Address newAccount = new("0x1000000000000000000000000000000000000001");
+        return
+        [
+            new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, "SSTORE",
+                Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite, null).SetArgDisplayNames("SSTORE new slot"),
+            new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, "SSTORE",
+                GasCostOf.WarmStateRead, (long)Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE restored slot"),
+            new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Op(Instruction.STOP).Done, "CREATE",
+                Eip8038Constants.CreateAccess, null).SetArgDisplayNames("CREATE new account"),
+            new TestCaseData(Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Op(Instruction.STOP).Done, "CREATE2",
+                Eip8038Constants.CreateAccess + GasCostOf.InitCodeWord + GasCostOf.Sha3Word + GasCostOf.Memory, null).SetArgDisplayNames("CREATE2 new account"),
+            new TestCaseData(Prepare.EvmCode.CallWithValue(newAccount, 0, 1).Op(Instruction.STOP).Done, "CALL",
+                Eip8038Constants.ColdAccountAccess + Eip8038Constants.CallValue, null).SetArgDisplayNames("CALL value to new account"),
+            new TestCaseData(Prepare.EvmCode.PushData(newAccount).Op(Instruction.SELFDESTRUCT).Done, "SELFDESTRUCT",
+                GasCostOf.SelfDestructEip150 + Eip8038Constants.ColdAccountAccess + Eip8038Constants.AccountWrite, null).SetArgDisplayNames("SELFDESTRUCT to new account"),
+        ];
+    }
+
     internal static TestCaseData[] OutOfGasOperations() =>
     [
         new TestCaseData(Prepare.EvmCode.PushData(1).Done, 2UL, GasCostOf.VeryLow).SetArgDisplayNames("PUSH1"),
