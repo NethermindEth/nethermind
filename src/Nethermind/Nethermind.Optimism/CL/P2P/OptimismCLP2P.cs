@@ -29,8 +29,8 @@ using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Network;
-using Nethermind.Libp2p;
 using Nethermind.Libp2p.Core.Discovery;
+using Nethermind.Network.Libp2p;
 using Channel = System.Threading.Channels.Channel;
 
 namespace Nethermind.Optimism.CL.P2P;
@@ -58,6 +58,9 @@ public class OptimismCLP2P : IDisposable
     private LocalPeer? _localPeer;
     private ITopic? _blocksV2Topic;
     private PeerStore? _peerStore;
+    private CancellationTokenSource? _staticPeerKeeperStop;
+    private int _disposed;
+    private Task? _staticPeerKeeper;
 
     private ulong? _headNumber = null;
 
@@ -74,7 +77,12 @@ public class OptimismCLP2P : IDisposable
         _logger = logManager.GetClassLogger<OptimismCLP2P>();
         _config = config;
         _executionEngineManager = executionEngineManager;
-        _staticPeerList = staticPeerList.Select(Multiaddress.Decode).ToArray();
+        _staticPeerList = StaticPeerKeeper.ParseStaticPeers(staticPeerList, "Optimism CL static peers", _logger);
+        // A dropped entry can be the sequencer, without which no unsafe block arrives by gossip.
+        if (_staticPeerList.Length != staticPeerList.Length)
+        {
+            throw new InvalidConfigurationException("Optimism CL static peers contain an entry no dial can reach.", ExitCodes.GeneralError);
+        }
         _blockValidator = new P2PBlockValidator(chainId, sequencerP2PAddress, timestamper, logManager);
         _ipResolver = ipResolver;
 
@@ -83,25 +91,52 @@ public class OptimismCLP2P : IDisposable
         _serviceProvider = new ServiceCollection()
             .AddSingleton<PeerStore>()
             .AddSingleton(new PayloadByNumberProtocol(chainId, PayloadDecoder.Instance, logManager))
-            .AddLibp2p(builder => builder.WithPubsub().AddProtocol<PayloadByNumberProtocol>())
+            .AddLibp2p(builder => ConfigureGossipStack(builder).AddProtocol<PayloadByNumberProtocol>())
             .AddSingleton(new IdentifyProtocolSettings
             {
                 ProtocolVersion = "",
                 AgentVersion = "optimism"
             })
-            .AddSingleton(new PubsubSettings()
-            {
-                ReconnectionAttempts = int.MaxValue,
-                Degree = 3,
-                LowestDegree = 2,
-                HighestDegree = 6,
-                LazyDegree = 3,
-                MaxRpcBytes = MaxGossipSize,
-                DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
-                GetMessageId = CalculateMessageId
-            })
+            .AddSingleton(CreatePubsubSettings())
             .BuildServiceProvider();
     }
+
+    internal static Libp2pStackBuilder ConfigureGossipStack(Libp2pStackBuilder builder)
+    {
+        GossipStreamBudget budget = new();
+        Add<GossipsubProtocolV13>();
+        Add<GossipsubProtocolV12>();
+        Add<GossipsubProtocolV11>();
+        Add<GossipsubProtocol>();
+        Add<FloodsubProtocol>();
+        return builder;
+
+        // Listeners precede the library protocols; those remain available for its outbound dials by concrete type.
+        void Add<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] T>() where T : class, ISessionProtocol
+        {
+            T protocol = ActivatorUtilities.GetServiceOrCreateInstance<T>(builder.ServiceProvider);
+            builder.AddProtocol(new BoundedGossipProtocol(protocol, budget));
+            builder.AddProtocol(protocol);
+        }
+    }
+
+    /// <summary>The gossipsub parameters of OP Stack block gossip.</summary>
+    /// <remarks>OP Stack rollup-node-p2p.md "Message ID computation" takes the L1 message id; op-node p2p/gossip.go BuildMsgIdFn
+    /// hashes it in its Altair form, topic included, which is the id the network's IHAVE lists carry.</remarks>
+    internal static PubsubSettings CreatePubsubSettings() => new()
+    {
+        ReconnectionAttempts = int.MaxValue,
+        Degree = 3,
+        LowestDegree = 2,
+        HighestDegree = 6,
+        LazyDegree = 3,
+        DefaultSignaturePolicy = PubsubSettings.SignaturePolicy.StrictNoSign,
+        GetMessageId = CalculateMessageId,
+        // rollup-node-p2p.md "Message compression and limits": gossip carries up to 10 MiB, beyond the library's 1 MiB RPC and 512 KiB IWANT bounds.
+        MaxRpcBytes = Eth2MessageId.MaxMessageSize,
+        MaxOutboundRpcBytesPerPeer = 2L * Eth2MessageId.MaxMessageSize,
+        MaxIwantResponseBytes = MaxGossipSize,
+    };
 
     private void OnMessage(byte[] msg, CancellationToken token)
     {
@@ -311,6 +346,9 @@ public class OptimismCLP2P : IDisposable
         return true;
     }
 
+    /// <summary>Internal so a test can see which static peers startup kept.</summary>
+    internal IReadOnlyList<Multiaddress> StaticPeersForTest => _staticPeerList;
+
     public async Task Run(CancellationToken token)
     {
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
@@ -356,6 +394,18 @@ public class OptimismCLP2P : IDisposable
 
 
         if (_logger.IsInfo) _logger.Info("CL P2P is started");
+        CancellationTokenSource keeperStop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        // Read before publishing: a concurrent Dispose takes and disposes the published source.
+        CancellationToken keeperToken = keeperStop.Token;
+        Interlocked.Exchange(ref _staticPeerKeeperStop, keeperStop);
+        // A Dispose that ran before the publish found nothing to stop, so the keeper stops itself.
+        if (Volatile.Read(ref _disposed) != 0) StopStaticPeerKeeper();
+        _staticPeerKeeper = StaticPeerKeeper.RunAsync(_localPeer!, _router!, _staticPeerList, StaticPeerKeeper.CheckInterval, _logger, keeperToken);
+        _ = _staticPeerKeeper.ContinueWith(keeper =>
+        {
+            // Observed whatever the log level, so the failure never reaches UnobservedTaskException.
+            if (keeper.Exception is { } failure && _logger.IsError) _logger.Error("Optimism CL static peer keeper failed; a lost static peer is no longer redialed.", failure);
+        }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
         await MainLoop(token);
     }
 
@@ -363,7 +413,7 @@ public class OptimismCLP2P : IDisposable
     private static ReadOnlySpan<byte> MessageDomainInvalidSnappy => [0x00, 0x00, 0x00, 0x00];
 
     // OP Stack rollup node p2p specification: gossipsub message ID computation
-    internal static MessageId CalculateMessageId(Message message)
+    private static MessageId CalculateMessageId(Message message)
     {
         ReadOnlySpan<byte> data = message.Data.Span;
         string topic = message.Topic;
@@ -394,16 +444,39 @@ public class OptimismCLP2P : IDisposable
 
     private static bool TryGetDecompressedLength(ReadOnlySpan<byte> data, out int length)
     {
-        bool isValid = GoSnappy.TryReadDecodedLength(data, out uint decodedLength, out _) && decodedLength <= MaxGossipSize;
+        // A three-byte Snappy copy emits at most 64 bytes. Reject impossible lengths before renting a buffer.
+        bool isValid = GoSnappy.TryReadDecodedLength(data, out uint decodedLength, out _)
+            && decodedLength <= MaxGossipSize && decodedLength <= 22L * data.Length;
         length = isValid ? (int)decodedLength : 0;
         return isValid;
     }
 
     public void Reset(ulong headNumber) => _headNumber = headNumber;
 
+    /// <summary>Internal so a test can dial from the started host.</summary>
+    internal ILocalPeer? LocalPeerForTest => _localPeer;
+
+    /// <summary>Internal so a test can see the static peer keeper end.</summary>
+    internal Task? StaticPeerKeeperForTest => _staticPeerKeeper;
+
+    private void StopStaticPeerKeeper()
+    {
+        if (Interlocked.Exchange(ref _staticPeerKeeperStop, null) is { } keeperStop)
+        {
+            keeperStop.Cancel();
+            keeperStop.Dispose();
+        }
+    }
+
     public void Dispose()
     {
         _blocksV2Topic?.Unsubscribe();
         _blocksP2PMessageChannel.Writer.Complete();
+        // The keeper would otherwise dial through the disposed peer until the run token is cancelled.
+        Interlocked.Exchange(ref _disposed, 1);
+        StopStaticPeerKeeper();
+        // Disposing through ILocalPeer marks the peer closed before it disconnects, so a dial that completes later is closed too.
+        _localPeer?.DisposeAsync().AsTask().ContinueWith(static disposal => _ = disposal.Exception,
+            CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
     }
 }

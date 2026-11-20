@@ -20,11 +20,6 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private void ChangeState(SyncFeedState newState)
         {
-            if (newState == SyncFeedState.Active)
-            {
-                _taskCompletionSource ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            }
-
             if (CurrentState == newState)
             {
                 return;
@@ -33,6 +28,11 @@ namespace Nethermind.Synchronization.ParallelSync
             if (CurrentState == SyncFeedState.Finished)
             {
                 return;
+            }
+
+            if (newState == SyncFeedState.Active)
+            {
+                _taskCompletionSource ??= new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             }
 
             CurrentState = newState;

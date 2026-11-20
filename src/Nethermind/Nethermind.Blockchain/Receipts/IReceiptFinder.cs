@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -39,6 +40,10 @@ namespace Nethermind.Blockchain.Receipts
         /// <param name="destination">The list that the encoded sequence of the block's receipts is added to.</param>
         /// <returns><see langword="false"/> when the receipts are not in a form this gives; nothing is then added.</returns>
         bool TryAppendNetworkReceipts(BlockHeader header, bool withBloom, ArrayPoolList<byte> destination) => false;
+
+        /// <summary>Starts reading the stored receipts of blocks, and what <see cref="TryAppendNetworkReceipts"/> needs with them, before the reads that need them.</summary>
+        /// <remarks>Returns before the reads complete. A finder that cannot read ahead does nothing.</remarks>
+        void Prefetch(ReadOnlySpan<(ulong Number, ValueHash256 Hash)> blocks) { }
 
         /// <summary>Gets the recovered receipt of one transaction without decoding the other receipts or transactions of its block.</summary>
         /// <param name="block">The block containing the transaction. Its memory stays owned by the caller.</param>

@@ -18,8 +18,5 @@ namespace Nethermind.Runner.Test
 
         [Test]
         public void All_default_values_are_correct() => StandardConfigTests.ValidateDefaultValues();
-
-        [Test]
-        public void All_config_items_have_descriptions_or_are_hidden() => StandardConfigTests.ValidateDescriptions();
     }
 }

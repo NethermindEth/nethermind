@@ -10,11 +10,13 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.State;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
@@ -175,6 +177,35 @@ public class SynchronizerModuleTests
         }
     }
 
+    [Test]
+    public async Task Downloader_sync_event_is_reported_once([Values] bool fastSync)
+    {
+        await using IContainer container = BuildSyncContainer(fastSync: fastSync);
+        ISynchronizer synchronizer = container.Resolve<ISynchronizer>();
+        ISyncPeer peer = Substitute.For<ISyncPeer>();
+        peer.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
+        int reported = 0;
+        synchronizer.SyncEvent += (_, e) =>
+        {
+            if (e.Peer == peer) Interlocked.Increment(ref reported);
+        };
+        synchronizer.Start();
+
+        // An empty request whose download completed raises one Completed event; the request disposes the task.
+        Task downloadTask = new(static () => { });
+        downloadTask.RunSynchronously();
+        container.Resolve<BlockDownloader>().HandleResponse(new BlocksRequest { DownloadTask = downloadTask }, new PeerInfo(peer));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(
+                container.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FastSyncFeed)).BlockDownloader,
+                Is.SameAs(container.ResolveNamed<SyncFeedComponent<BlocksRequest>>(nameof(FullSyncFeed)).BlockDownloader),
+                "the full and fast sync components share one downloader");
+            Assert.That(reported, Is.EqualTo(1));
+        }
+    }
+
     /// <summary>
     /// A production container: SynchronizerModule wires the feeds, their dispatchers and the lifetime scopes that own
     /// them, and the join added for #13154 relies on Autofac owning the concrete <see cref="Synchronizer"/>. Only the
@@ -184,9 +215,10 @@ public class SynchronizerModuleTests
     private static IContainer BuildSyncContainer(
         IStateSyncRunner? stateSyncRunner = null,
         ISyncFeed<BlocksRequest>? fullSyncFeed = null,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        bool fastSync = true)
     {
-        SyncConfig syncConfig = new() { FastSync = true, SnapSync = true };
+        SyncConfig syncConfig = new() { FastSync = fastSync, SnapSync = fastSync };
 
         ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new ConfigProvider(syncConfig)))
