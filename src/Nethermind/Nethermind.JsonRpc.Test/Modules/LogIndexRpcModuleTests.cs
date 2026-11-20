@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -45,6 +46,32 @@ public class LogIndexRpcModuleTests
             $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
 
         Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":["0x2","0x4"],"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_with_topic_after_wildcard_returns_indexed_blocks()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(1, TestItem.KeccakA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => ((IEnumerable<int>)[3]).GetEnumerator());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":[],"topics":[null,"{{TestItem.KeccakA}}",[]]}""");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":["0x3"],"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_with_failing_storage_returns_error()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => throw new InvalidOperationException("Storage failure"));
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.InternalError}"));
     }
 
     [Test]
