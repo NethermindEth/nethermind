@@ -20,6 +20,10 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         if (!storage.Enabled)
             return ResultWrapper<IEnumerable<long>>.Fail("Log index is disabled.", ErrorCodes.ResourceUnavailable);
 
+        // Null when nothing is indexed yet or the index stopped at a reorg it could not revert and may hold stale blocks
+        if (storage.MaxBlockNumber is null)
+            return ResultWrapper<IEnumerable<long>>.Fail("Log index is not available.", ErrorCodes.ResourceUnavailable);
+
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
 
         // The log index can only narrow blocks by address or topic, so it cannot serve a filter that matches every block

@@ -83,10 +83,27 @@ public class LogIndexRpcModuleTests
         Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"));
     }
 
+    [Test]
+    public async Task logIndex_blockNumbers_without_max_indexed_block_returns_error()
+    {
+        // The state after a reorg the index could not revert: postings remain but MaxBlockNumber is null
+        ILogIndexStorage storage = EnabledStorage();
+        storage.MaxBlockNumber.Returns((int?)null);
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => ((IEnumerable<int>)[2, 4]).GetEnumerator());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"));
+    }
+
     private static ILogIndexStorage EnabledStorage()
     {
         ILogIndexStorage storage = Substitute.For<ILogIndexStorage>();
         storage.Enabled.Returns(true);
+        storage.MinBlockNumber.Returns((int?)0);
+        storage.MaxBlockNumber.Returns((int?)HeadNumber);
         return storage;
     }
 
