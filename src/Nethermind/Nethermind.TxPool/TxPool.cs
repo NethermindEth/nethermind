@@ -1760,6 +1760,12 @@ namespace Nethermind.TxPool
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
             if (!canRecycle)
                 PooledBlobBuffers.Disown(tx);
+            // Disposal detached the handlers that release a pooled transaction's reservations.
+            if (Volatile.Read(ref _isDisposed))
+            {
+                PooledBlobBuffers.Return(tx);
+                return AcceptTxResult.Invalid.WithMessage("Transaction pool is disposed.");
+            }
             bool startBroadcast = _txPoolConfig.PersistentBroadcastEnabled
                                   && (handlingOptions & TxHandlingOptions.PersistentBroadcast) ==
                                   TxHandlingOptions.PersistentBroadcast;
@@ -3163,7 +3169,7 @@ namespace Nethermind.TxPool
         public async ValueTask DisposeAsync()
         {
             if (_isDisposed) return;
-            _isDisposed = true;
+            Volatile.Write(ref _isDisposed, true);
             _timer?.Dispose();
             await _cts.CancelAsync();
             TxPoolHeadChanged -= _broadcaster.OnNewHead;
