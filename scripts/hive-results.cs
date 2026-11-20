@@ -10,6 +10,8 @@ using System.Text.Json;
 // stopped at its own time limit (the cases it ended carry "timeout": true) or on another fatal error. Anything else:
 // Hive was stopped from outside or did not run.
 int? hiveExitCode = null;
+// A limit without a suite part (/<test>) makes Hive start every suite, also those where no test matches.
+var allowEmptySuites = false;
 var patterns = new List<string>();
 for (var index = 0; index < args.Length; index++)
 {
@@ -19,6 +21,12 @@ for (var index = 0; index < args.Length; index++)
             !int.TryParse(args[index], NumberStyles.None, CultureInfo.InvariantCulture, out var exitCode))
             return Usage();
         hiveExitCode = exitCode;
+    }
+    else if (args[index] == "--allow-empty-suites")
+    {
+        if (allowEmptySuites)
+            return Usage();
+        allowEmptySuites = true;
     }
     else if (args[index].StartsWith("--", StringComparison.Ordinal))
         return Usage();
@@ -151,7 +159,7 @@ try
     var problems = new List<string>();
     if (realCases == 0)
         problems.Add("Hive ran no test cases.");
-    else
+    else if (!allowEmptySuites)
         problems.AddRange(emptySuites.Select(suite => $"Suite '{suite}' ran no test cases."));
     problems.AddRange(unfinishedWrappers);
     problems.AddRange(simulatorLogs.Where(log => !simulatorsWithCases.Contains(log))
@@ -178,6 +186,6 @@ catch (Exception exception) when (exception is IOException or UnauthorizedAccess
 
 static int Usage()
 {
-    Console.Error.WriteLine("Usage: hive-results.cs [--hive-exit-code <n>] <result-file-or-glob> [...]");
+    Console.Error.WriteLine("Usage: hive-results.cs [--hive-exit-code <n>] [--allow-empty-suites] <result-file-or-glob> [...]");
     return 2;
 }

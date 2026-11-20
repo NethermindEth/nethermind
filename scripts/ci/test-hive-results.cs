@@ -128,6 +128,12 @@ try
         new("simulator_with_launch_only", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("graphql", [Passed(launch)], SimLog: "2-simulator-b.log")], 1, ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
         new("first_simulator_without_suites", [new("engine", [Passed("test_a")], SimLog: "2-simulator-b.log")], 1, ["Simulator log '1-simulator-a.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
         new("simulators_all_reported", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("rpc-compat", [Passed("test_a")], SimLog: "2-simulator-b.log")], 0, ["Unexpected fails: 0"], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
+        // Under a limit without a suite part (/<test>) suites without cases are expected; the other rules stay.
+        new("empty_suite_allowed", [new("engine", [Passed(launch)]), new("rpc-compat", [Passed("test_a")])], 0, ["Unexpected fails: 0"], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
+        new("empty_suites_allowed_none_ran", [new("engine", [Passed(launch)]), new("rpc-compat", [])], 1, ["Hive ran no test cases."], Options: ["--allow-empty-suites"]),
+        new("empty_suite_allowed_simulator_without_cases", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("graphql", [Passed(launch)], SimLog: "2-simulator-b.log")], 1,
+            ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
+        new("allow_empty_suites_twice", [new("engine", [Passed("test_a")])], 2, ["Usage:"], Options: ["--allow-empty-suites", "--allow-empty-suites"]),
         new("simulator_shared_by_suites", [new("discv4", [Passed("nethermind"), Passed("test_b")], SimLog: "1-simulator-a.log"), new("eth", [Passed(launch), Passed("test_a")], SimLog: "1-simulator-a.log")], 0, ["Unexpected fails: 0"], Logs: ["1-simulator-a.log"]),
         // Hive's exit status: 0 is a finished run, 1 needs a failed case, anything else was stopped or failed.
         new("hive_exit_1_without_failures", [new("engine", [Passed("test_a")])], 1, ["Hive did not finish: exit status 1 without a failed case. The results are incomplete.", "Unexpected fails: 0"], Options: ["--hive-exit-code", "1"]),

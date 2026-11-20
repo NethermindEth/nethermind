@@ -248,6 +248,10 @@ jobs:
         env:
           # Empty when "Run Hive" ended without an output, which the results script rejects as a usage error.
           HIVE_STATUS: ${{ steps.hive.outputs.status }}
+          LIMIT: ${{ matrix.limit }}
         run: |
           rm -f ../hive/workspace/logs/hive.json
-          dotnet run --file scripts/hive-results.cs -- --hive-exit-code "$HIVE_STATUS" "../hive/workspace/logs/*.json"
+          options=(--hive-exit-code "$HIVE_STATUS")
+          # A limit without a suite part (/<test>) makes Hive start every suite, also those where no test matches.
+          [[ "$LIMIT" == /* ]] && options+=(--allow-empty-suites)
+          dotnet run --file scripts/hive-results.cs -- "${options[@]}" "../hive/workspace/logs/*.json"

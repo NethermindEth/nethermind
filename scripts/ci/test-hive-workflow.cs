@@ -23,6 +23,8 @@ tests.Case("results steps run after a failed Hive run", () =>
         "Upload results and Print results must run whenever Run Hive ran");
     RpcScriptTests.Assert(WorkflowTest.Text(WorkflowTest.Get(print, "env"), "HIVE_STATUS") == "${{ steps.hive.outputs.status }}",
         "Print results must read the status of Run Hive");
+    RpcScriptTests.Assert(WorkflowTest.Text(WorkflowTest.Get(print, "env"), "LIMIT") == "${{ matrix.limit }}" && !printBody.Contains("${{", StringComparison.Ordinal),
+        "Print results must read the limit through env, never by interpolation");
     RpcScriptTests.Assert(WorkflowTest.Get(print, "continue-on-error") is null, "a failing results check must fail the job");
     var input = WorkflowTest.Get(WorkflowTest.Get(WorkflowTest.Get(WorkflowTest.Get(workflow.Document, "on"), "workflow_dispatch"), "inputs"), "hive-timeout");
     RpcScriptTests.Assert(WorkflowTest.Text(input, "default") == "40m" &&
@@ -105,18 +107,40 @@ foreach (var hive in new HiveRun[]
             File.WriteAllText(Path.Combine(logs.FullName, "1-suite.json"), hive.Suite);
         var check = CiWorkflow.Run(resultsShim + printBody, new()
         {
-            ["HIVE_STATUS"] = CiWorkflow.Outputs(output)["status"], ["HIVE_RESULTS"] = Path.Combine(tests.DirectoryPath, "build", "hive-results.dll")
+            ["HIVE_STATUS"] = CiWorkflow.Outputs(output)["status"], ["LIMIT"] = "", ["HIVE_RESULTS"] = Path.Combine(tests.DirectoryPath, "build", "hive-results.dll")
         }, Path.Combine(root.FullName, "nethermind"));
         RpcScriptTests.Assert(check.Code == hive.CheckerCode && hive.CheckerOutput.All(line => check.Output.Contains(line, StringComparison.Ordinal)) &&
             (hive.Absent is null || !check.Output.Contains(hive.Absent, StringComparison.Ordinal)),
             $"Print results must exit {hive.CheckerCode} with '{string.Join("', '", hive.CheckerOutput)}', got {check.Code}: {check.Output}{check.Error}");
     });
 
+// Only a limit without a suite part (/<test>) lets suites without cases pass: Hive then starts every suite.
+const string withEmptySuite = """{"name":"graphql","testCases":{"1":{"name":"client launch (nethermind)","summaryResult":{"pass":true}}}}""";
+tests.Case("empty suites allowed only under a limit without a suite part", () =>
+{
+    foreach (var (limit, code) in new[] { ("/Status", 0), ("eth/Status", 1), ("", 1) })
+    {
+        var root = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "limit-" + limit.Replace('/', '_')));
+        var logs = Directory.CreateDirectory(Path.Combine(root.FullName, "hive", "workspace", "logs"));
+        var scripts = Directory.CreateDirectory(Path.Combine(root.FullName, "nethermind", "scripts"));
+        File.WriteAllText(Path.Combine(scripts.FullName, "known-failing-hive-tests.txt"), "# suite\n\nknown failing (nethermind)\n");
+        File.WriteAllText(Path.Combine(scripts.FullName, "known-flaky-hive-tests.txt"), "# suite\n");
+        File.WriteAllText(Path.Combine(logs.FullName, "1-suite.json"), listedFailure);
+        File.WriteAllText(Path.Combine(logs.FullName, "2-suite.json"), withEmptySuite);
+        var check = CiWorkflow.Run(resultsShim + printBody, new()
+        {
+            ["HIVE_STATUS"] = "1", ["LIMIT"] = limit, ["HIVE_RESULTS"] = Path.Combine(tests.DirectoryPath, "build", "hive-results.dll")
+        }, Path.Combine(root.FullName, "nethermind"));
+        RpcScriptTests.Assert(check.Code == code && check.Output.Contains("Suite 'graphql' ran no test cases.", StringComparison.Ordinal) == (code == 1),
+            $"limit '{limit}' must give exit {code}, got {check.Code}: {check.Output}{check.Error}");
+    }
+});
+
 tests.Case("results step fails without a status", () =>
 {
     var root = Directory.CreateDirectory(Path.Combine(tests.DirectoryPath, "no-status"));
     Directory.CreateDirectory(Path.Combine(root.FullName, "nethermind"));
-    var check = CiWorkflow.Run(resultsShim + printBody, new() { ["HIVE_STATUS"] = "", ["HIVE_RESULTS"] = Path.Combine(tests.DirectoryPath, "build", "hive-results.dll") },
+    var check = CiWorkflow.Run(resultsShim + printBody, new() { ["HIVE_STATUS"] = "", ["LIMIT"] = "", ["HIVE_RESULTS"] = Path.Combine(tests.DirectoryPath, "build", "hive-results.dll") },
         Path.Combine(root.FullName, "nethermind"));
     RpcScriptTests.Assert(check.Code == 2 && check.Error.Contains("Usage:", StringComparison.Ordinal), $"an empty status must be a usage error, got {check.Code}: {check.Error}");
 });
