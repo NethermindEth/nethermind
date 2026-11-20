@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
@@ -24,7 +25,8 @@ public interface ITrustedNodesManager : INodeSource
     bool IsTrusted(Enode enode);
 
     /// <summary>Returns <see langword="true"/> when the managed set currently holds <paramref name="nodeId"/>, whatever endpoint it was added with.</summary>
-    bool ContainsNode(PublicKey nodeId);
+    /// <remarks>The default scans <see cref="Nodes"/>, so implementations that keep an index should override it.</remarks>
+    bool ContainsNode(PublicKey nodeId) => Nodes.Any(node => node.NodeId.Equals(nodeId));
 
     bool ContainsIp(IPAddress ip);
 }
