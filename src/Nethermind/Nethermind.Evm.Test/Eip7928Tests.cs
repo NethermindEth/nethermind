@@ -1021,6 +1021,39 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    /// <remarks>
+    /// A frame entered with no value credits its account nothing, so the account must reach the BAL through the call that
+    /// resolved its code.
+    /// </remarks>
+    [TestCase(Instruction.CALL)]
+    [TestCase(Instruction.STATICCALL)]
+    [TestCase(Instruction.DELEGATECALL)]
+    [TestCase(Instruction.CALLCODE)]
+    public void Eip7928_value_less_call_chain_records_every_frame_account(Instruction callOpcode)
+    {
+        Address middle = TestItem.AddressE;
+        Address innermost = TestItem.AddressF;
+        InitWorldState(TestState, BuildCallOpcodeResultStorageWriteCode(callOpcode, middle, UInt256.Zero));
+        Prepare middleCode = callOpcode switch
+        {
+            Instruction.CALL => Prepare.EvmCode.Call(innermost, 20_000),
+            Instruction.STATICCALL => Prepare.EvmCode.StaticCall(innermost, 20_000),
+            Instruction.DELEGATECALL => Prepare.EvmCode.DelegateCall(innermost, 20_000),
+            _ => Prepare.EvmCode.CallCode(innermost, 20_000),
+        };
+        AddAccountToState(middle, code: middleCode.Op(Instruction.STOP).Done);
+        AddAccountToState(innermost, code: [(byte)Instruction.STOP]);
+
+        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertStorageChange(bal, _callTargetAddress, UInt256.Zero, UInt256.One);
+            AssertPureAccountRead(bal.GetAccountChanges(middle));
+            AssertPureAccountRead(bal.GetAccountChanges(innermost));
+        }
+    }
+
     [TestCase(Instruction.CREATE, Instruction.SLOAD, TestName = "EIP7928_create_sload_selfdestruct_records_storage_read")]
     [TestCase(Instruction.CREATE, Instruction.SSTORE, TestName = "EIP7928_create_sstore_selfdestruct_records_storage_read")]
     [TestCase(Instruction.CREATE2, Instruction.SLOAD, TestName = "EIP7928_create2_sload_selfdestruct_records_storage_read")]
