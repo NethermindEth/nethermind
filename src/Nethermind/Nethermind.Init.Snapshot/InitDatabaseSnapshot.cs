@@ -30,6 +30,7 @@ public class InitDatabaseSnapshot(
     private const int MaxRetryDelaySeconds = 300;
     private const int ChecksumBufferSize = 65536;
     private const int ChecksumProgressIntervalSeconds = 30;
+    private const string LockFileSuffix = ".snapshot.lock";
 
     private readonly ILogger _logger = api.LogManager.GetClassLogger<InitDatabaseSnapshot>();
 
@@ -59,6 +60,8 @@ public class InitDatabaseSnapshot(
         if (snapshotConfig.Streaming && snapshotConfig.StreamingConnections is < 1 or > MaxStreamingConnections)
             throw new InvalidOperationException($"Snapshot.StreamingConnections must be between 1 and {MaxStreamingConnections}, got {snapshotConfig.StreamingConnections}.");
 
+        // Held until this method returns, on every path: before the checkpoint, the marker or the database is read.
+        using FileStream? databaseLock = LockDatabase(dbPath);
         SnapshotCheckpoint checkpoint = new(snapshotConfig, api.LogManager);
         Directory.CreateDirectory(snapshotConfig.SnapshotDirectory);
 
@@ -140,6 +143,52 @@ public class InitDatabaseSnapshot(
         File.Delete(snapshotPath);
         checkpoint.Advance(SnapshotStage.Completed);
     }
+
+    /// <summary>
+    /// Keeps a second start on the same database path out until this one returns. It could otherwise see this start's
+    /// marker, wait the restart delay and delete what this start extracted, finished or not. The lock is a file next to
+    /// the database directory, outside what a cleanup deletes, held open with <see cref="FileShare.None"/>: on Unix an
+    /// advisory flock, which the kernel releases when the process exits. The file is never deleted: a process that opened
+    /// it just before would then hold its lock on a file that the next start no longer finds.
+    /// </summary>
+    private FileStream? LockDatabase(string dbPath)
+    {
+        // As configured, links not resolved: a link and its target are two paths, with two locks.
+        string fullPath = Path.TrimEndingDirectorySeparator(Path.GetFullPath(dbPath));
+        string? parent = Path.GetDirectoryName(fullPath);
+        if (parent is null)
+        {
+            // Not refused: such a database started before the lock existed.
+            if (_logger.IsWarn)
+                _logger.Warn($"The database directory {dbPath:hide} is a filesystem root, which has no place outside it for a lock file, so a second process starting on it at the same time is not kept out of the snapshot initialization.");
+            return null;
+        }
+
+        string lockPath = fullPath + LockFileSuffix;
+        try
+        {
+            Directory.CreateDirectory(parent);
+            return new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None, bufferSize: 0);
+        }
+        catch (IOException e) when (IsHeldElsewhere(e))
+        {
+            throw new IOException(
+                $"Another process is initializing the database at {(SensitiveLogMasking.Enabled ? "[redacted]" : dbPath)} from a snapshot: it holds the lock file {(SensitiveLogMasking.Enabled ? "[redacted]" : lockPath)}. Nothing was deleted. Let that process finish or stop it, then restart.",
+                SensitiveLogMasking.Enabled ? null : e);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Such as a parent directory the node may not write to: a node that started before the lock existed still starts.
+            if (_logger.IsWarn)
+                _logger.Warn($"Could not take the lock file {lockPath:hide}, so a second process starting on the database at {dbPath:hide} at the same time is not kept out of the snapshot initialization. Error: {(SensitiveLogMasking.Enabled ? e.GetType().Name : e.Message)}");
+            return null;
+        }
+    }
+
+    // How a FileShare.None handle held elsewhere is reported: ERROR_SHARING_VIOLATION on Windows, and on Unix the errno
+    // EWOULDBLOCK of the flock behind it (11 on Linux, 35 on macOS). A permission error is an UnauthorizedAccessException.
+    private static bool IsHeldElsewhere(IOException e) =>
+        e.HResult == (OperatingSystem.IsWindows() ? unchecked((int)0x80070020) : OperatingSystem.IsLinux() ? 11 : 35);
 
     private async Task DownloadWithRetryAsync(
         SnapshotDownloader downloader, string url, string destinationPath, SnapshotCheckpoint checkpoint, CancellationToken cancellationToken)

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.IO.Abstractions;
 using System.Net;
 using System.Security.Cryptography;
@@ -632,6 +633,169 @@ public class InitDatabaseSnapshotTests
         }
     }
 
+    [TestCase(false, TestName = "Execute_SecondStartDuringAnExtraction_StopsAtOnceAndLetsTheFirstFinish")]
+    [TestCase(true, TestName = "Execute_SecondStartDuringARestartedExtraction_StopsAtOnceAndLetsTheFirstFinish")]
+    public async Task Execute_SecondStartDuringAnExtraction_StopsAtOnceAndLetsTheFirstFinish(bool restarted)
+    {
+        // Restarted: the first start cleans up an unfinished extraction before it streams.
+        if (restarted)
+            await FailExtraction(new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)));
+        using FlakySnapshotServer server = new();
+        Dictionary<string, byte[]> files = TestArchive.BuildFiles(seed: 43);
+        byte[] archive = TestArchive.BuildTarZst(files);
+        server.Content = archive;
+        _snapshotConfig.SnapshotFileName = "snapshot.tar.zst";
+        _snapshotConfig.DownloadUrl = server.Url;
+        _snapshotConfig.Streaming = true;
+        _snapshotConfig.Checksum = Convert.ToHexString(SHA256.HashData(archive));
+        // The probe, then the archive: the first start is held at the archive request, after it marked the database.
+        TaskCompletionSource extracting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource resume = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int requests = 0;
+        server.BeforeResponse = async token =>
+        {
+            if (Interlocked.Increment(ref requests) != 2)
+                return;
+            extracting.TrySetResult();
+            await resume.Task.WaitAsync(token);
+        };
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(60));
+        Task first = new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
+        await extracting.Task.WaitAsync(TimeSpan.FromSeconds(30));
+
+        // Without the lock, the second start would see the first one's marker. Had it waited the restart delay, the first
+        // start would finish meanwhile, and the second would then delete the finished database.
+        Task second = new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
+        Assert.That(File.Exists(MarkerPath), Is.True, "the second start must not delete what the first one is extracting");
+        resume.SetResult();
+        await first;
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => second))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain("Another process is initializing the database"), "the second start must stop at the first one's lock");
+            Assert.That(File.ReadAllBytes(Path.Combine(_dbPath, "state", "a43.sst")), Is.EqualTo(files["state/a43.sst"]), "the first start must finish its extraction");
+            Assert.That(File.Exists(MarkerPath), Is.False, "the first start must remove its marker when it finishes");
+            Assert.That(server.RequestCount, Is.EqualTo(2), "the second start must not download anything");
+        }
+
+        // The lock is free again: a later start takes it and skips the initialized database as before.
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(timeout.Token);
+        Assert.That(server.RequestCount, Is.EqualTo(2), "a later start must skip the initialized database");
+    }
+
+    [TestCase(false, TestName = "Execute_LockHeldElsewhere_StopsAtOnceAndKeepsTheUnfinishedExtraction")]
+    [TestCase(true, TestName = "Execute_LockHeldElsewhereWithUnwrittenMarker_ReportsTheLock")]
+    public async Task Execute_LockHeldElsewhere_StopsAtOnceAndKeepsTheUnfinishedExtraction(bool unwrittenMarker)
+    {
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        await FailExtraction(step);
+        // The holder created its marker and has not written it yet: read before the lock, it would be reported as a foreign file.
+        if (unwrittenMarker)
+            File.WriteAllBytes(MarkerPath, []);
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
+        string[] entries = Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories);
+        using FileStream held = HoldLock(); // as a second process starting on the same database would
+        Stopwatch elapsed = Stopwatch.StartNew();
+
+        IOException exception = (await Assert.ThrowsAsync<IOException>(() => step.Execute(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(5)), "the start must stop at once, without the restart delay");
+            Assert.That(exception.Message, Does.Contain("Another process is initializing the database").And.Contain(LockPath),
+                "the error must say why the start stops and name the lock file");
+            Assert.That(Directory.GetFileSystemEntries(_dbPath, "*", SearchOption.AllDirectories), Is.EquivalentTo(entries),
+                "nothing may be deleted, the marker included");
+            Assert.That(ReadCheckpoint(), Is.EqualTo(SnapshotStage.Verified), "the checkpoint must stay");
+        }
+    }
+
+    [TestCase(false, TestName = "Execute_AfterFailedRun_ReleasesTheLock")]
+    [TestCase(true, TestName = "Execute_AfterCancelledRun_ReleasesTheLock")]
+    public async Task Execute_AfterFailedOrCancelledRun_ReleasesTheLock(bool cancel)
+    {
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        await FailExtraction(step);
+        if (cancel)
+        {
+            // Stopped in the restart delay, as Ctrl+C would.
+            using CancellationTokenSource stopped = new();
+            stopped.Cancel();
+            await Assert.CatchAsync<OperationCanceledException>(() => step.Execute(stopped.Token), "precondition: the restart must be cancelled");
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(LockPath), Is.True, "the step must lock the database path with a file next to it");
+            Assert.That(() => HoldLock().Dispose(), Throws.Nothing, "a run that failed or was cancelled must release its lock");
+        }
+    }
+
+    [Test]
+    public async Task Execute_RestartedExtraction_KeepsTheLockFileOutsideTheDatabase()
+    {
+        InitDatabaseSnapshot step = new(_api, DrivesWithFreeSpace(long.MaxValue));
+        await FailExtraction(step);
+        File.WriteAllBytes(_snapshotPath, TestArchive.BuildTar(TestArchive.BuildFiles(seed: 43)));
+
+        await step.Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(LockPath), Is.True, "the cleanup must keep the lock file: it sits next to the database directory, not in it");
+            Assert.That(Directory.EnumerateFileSystemEntries(_dbPath).Select(Path.GetFileName), Is.EquivalentTo(new[] { "state", "headers" }),
+                "the lock file is no part of the database");
+        }
+    }
+
+    [Test]
+    public async Task Execute_DatabasePathWithTrailingSeparator_KeepsTheLockNextToTheDirectory()
+    {
+        _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = _dbPath + Path.DirectorySeparatorChar });
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(LockPath), Is.True, "db/ and db must share the lock file next to the directory");
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True, "a lock file inside would make a fresh database look non-empty");
+        }
+    }
+
+    [TestCase(false, TestName = "Execute_LockPathIsADirectory_WarnsAndInitializes")]
+    [TestCase(true, TestName = "Execute_LockFileNameTooLong_WarnsAndInitializes")]
+    public async Task Execute_LockFileCannotBeOpened_WarnsAndInitializes(bool nameTooLong)
+    {
+        if (nameTooLong)
+        {
+            // With the suffix, the name exceeds the 255-byte limit: an IOException that is not a sharing violation.
+            _dbPath = Path.Combine(_tempDir.Path, new string('d', 250));
+            _api.Config<IInitConfig>().Returns(new InitConfig { BaseDbPath = _dbPath });
+        }
+        else
+        {
+            // Opening a directory as a file fails as a permission error does, with an UnauthorizedAccessException, also as root.
+            Directory.CreateDirectory(LockPath);
+        }
+
+        WriteSnapshotTar();
+        AdvanceCheckpoint(SnapshotStage.Verified);
+        TestLogger logger = new();
+        _api.LogManager.Returns(new OneLoggerLogManager(new(logger)));
+
+        await new InitDatabaseSnapshot(_api, DrivesWithFreeSpace(long.MaxValue)).Execute(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(File.Exists(Path.Combine(_dbPath, "state.bin")), Is.True,
+                "a lock file that cannot be opened is not another process's lock, and must not stop a start that worked before the lock existed");
+            Assert.That(logger.LogList.Any(static line => line.Contains("Could not take the lock file")), Is.True, "the start must say it runs without the lock");
+        }
+    }
+
     [TestCase(1_000, 0, 2_500, TestName = "FreshDownload")]
     [TestCase(1_000, 400, 2_100, TestName = "ResumedDownload")]
     public void GetRequiredSpaceForDownload_ForGivenSizes_AddsRemainingBytesToExtractionEstimate(
@@ -658,6 +822,10 @@ public class InitDatabaseSnapshotTests
 
     // Spelled out rather than taken from the production code: the name is an on-disk format.
     private string MarkerPath => Path.Combine(_dbPath, ".nethermind-snapshot-extracting");
+
+    private string LockPath => _dbPath + ".snapshot.lock";
+
+    private FileStream HoldLock() => new(LockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
 
     private void AdvanceCheckpoint(SnapshotStage stage) =>
         new SnapshotCheckpoint(_snapshotConfig, LimboLogs.Instance).Advance(stage);
