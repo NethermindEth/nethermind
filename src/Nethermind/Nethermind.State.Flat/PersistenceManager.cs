@@ -107,7 +107,9 @@ public class PersistenceManager(
     ///   → seed = canonical state at
     ///   the next boundary block (<c>persistedBlock + CompactSize</c>). Looked up via
     ///   <see cref="IStateHeaderProvider"/> — the boundary is always locally synced even
-    ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.</item>
+    ///   during catch-up sync where the CL-reported finalized tip is beyond the chain head.
+    ///   A persisted-tier candidate that stops short of the boundary from an aligned base is skipped
+    ///   until <c>head - nextBoundary &gt;= MinReorgDepth + CompactSize</c>, waiting for the full chunk.</item>
     ///   <item>Backstop fallback (if the finalized trigger persisted nothing): if
     ///   <c>snapshotsDepth &gt; </c> the backstop depth (<c>LongFinalityMaxReorgDepth</c> when long
     ///   finality is enabled, otherwise <c>MaxReorgDepth</c>, raised to at least
@@ -156,7 +158,7 @@ public class PersistenceManager(
             {
                 (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
                     new StateId(nextBoundary, canonicalRoot), currentPersistedState, _compactSize);
-                if (IsDeferrablePartialChunk(persisted, nextBoundary, latestSnapshot))
+                if (IsDeferrablePartialChunk(persisted, currentPersistedState, nextBoundary, latestSnapshot))
                     persisted!.Dispose();
                 else if (persisted is not null || inMemory is not null)
                     return (persisted, inMemory, null);
@@ -217,11 +219,14 @@ public class PersistenceManager(
     /// When persistence outruns the persisted-snapshot compactor, the walk only finds the oldest small piece
     /// of the range, and draining it piece by piece (1, 2, 4, 8, 16 blocks) costs one RocksDB batch each
     /// instead of one per range. Deferring is bounded: once the head is a full window past the
-    /// <c>MinReorgDepth</c> gate, the partial chunk is persisted as before.
+    /// <c>MinReorgDepth</c> gate, the partial chunk is persisted as before. Only a base on a compaction
+    /// boundary defers: the compactor builds boundary-aligned ranges, so from a base left mid-window by a
+    /// backstop or byte-budget persist no range would start at the base and waiting gains nothing.
     /// </remarks>
-    private bool IsDeferrablePartialChunk(PersistedSnapshot? persisted, ulong nextBoundary, in StateId latestSnapshot) =>
+    private bool IsDeferrablePartialChunk(PersistedSnapshot? persisted, in StateId currentPersistedState, ulong nextBoundary, in StateId latestSnapshot) =>
         persisted is not null
         && persisted.To.BlockNumber != nextBoundary
+        && nextBoundary - (currentPersistedState == StateId.PreGenesis ? 0UL : currentPersistedState.BlockNumber) == _compactSize
         && latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) < _minReorgDepth + _compactSize;
 
     private StateId ForcedPersistSeed(in StateId latestSnapshot) =>
