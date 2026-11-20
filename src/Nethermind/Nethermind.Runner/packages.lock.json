@@ -575,6 +575,19 @@
           "Nethermind.Sockets": "[2.3.0-preview, )"
         }
       },
+      "nethermind.arkiv": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[2.3.0-preview, )",
+          "Nethermind.Blockchain": "[2.3.0-preview, )",
+          "Nethermind.Consensus": "[2.3.0-preview, )",
+          "Nethermind.Init": "[2.3.0-preview, )",
+          "Nethermind.JsonRpc": "[2.3.0-preview, )",
+          "Nethermind.Network": "[2.3.0-preview, )",
+          "Nethermind.State": "[2.3.0-preview, )",
+          "Nethermind.Synchronization": "[2.3.0-preview, )"
+        }
+      },
       "nethermind.balrecorder": {
         "type": "Project",
         "dependencies": {

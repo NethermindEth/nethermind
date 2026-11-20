@@ -1,0 +1,56 @@
+[package]
+name = "arkiv-ffi"
+version = "1.0.0"
+edition = "2024"
+rust-version = "1.97"
+license = "LGPL-3.0-only"
+publish = false
+description = "C ABI over Arkiv's own executor and GolemDB store, for the Nethermind Arkiv plugin"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# Every Arkiv crate is pinned to the tag the Rabdi image (ghcr.io/arkiv-network/arkiv-reth:v1.0.0)
+# was built from, so the state transition and the state root are the deployed ones, not a copy.
+[dependencies]
+arkiv-reth-executor = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-reth-statemanager = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-reth-chainspec = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-reth-rpc = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-golemdb = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-golemdb-state = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-interfaces = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-rpc-types = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-query = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+arkiv-tokenomics = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+reth-ethereum = { git = "https://github.com/Arkiv-Network/reth", tag = "custom-golemdb-v2.7.0-v1.0.0", features = ["evm", "node"] }
+reth-evm = { git = "https://github.com/Arkiv-Network/reth", tag = "custom-golemdb-v2.7.0-v1.0.0" }
+reth-chainspec = { git = "https://github.com/Arkiv-Network/reth", tag = "custom-golemdb-v2.7.0-v1.0.0" }
+reth-cli = { git = "https://github.com/Arkiv-Network/reth", tag = "custom-golemdb-v2.7.0-v1.0.0" }
+alloy-primitives = { version = "1.6", features = ["rlp"] }
+alloy-consensus = "2.5"
+alloy-eips = "2.5"
+alloy-rlp = "0.3"
+alloy-evm = "0.39"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+eyre = "0.6"
+alloy-sol-types = "1"
+arkiv-bindings = { git = "https://github.com/Arkiv-Network/arkiv", tag = "v1.0.0" }
+jsonrpsee-types = "0.26"
+# GolemDB's own crates, at the tag arkiv v1.0.0 pins, for reading a store directory the node has not opened (state sync).
+golemdb-storage = { git = "https://github.com/Arkiv-Network/golemdb", tag = "v1.0.0" }
+golemdb-storage-mdbx = { git = "https://github.com/Arkiv-Network/golemdb", tag = "v1.0.0" }
+golemdb-cells = { git = "https://github.com/Arkiv-Network/golemdb", tag = "v1.0.0" }
+golemdb-merkle = { git = "https://github.com/Arkiv-Network/golemdb", tag = "v1.0.0" }
+
+[dev-dependencies]
+alloy-rpc-types-eth = "2.5"
+alloy-rpc-types-engine = { version = "2.5", features = ["serde"] }
+alloy-signer-local = "2.5"
+alloy-network = "2.5"
+
+[profile.release]
+debug = 1
+lto = "thin"
+codegen-units = 16
