@@ -56,8 +56,8 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     private bool _generatedStorageWritesSorted = true;
     // First (row, lane) where Add overflowed: row capacity is sized to the suggested side,
     // so an overflow is itself a structural mismatch — HasAt would otherwise drop it.
-    private Address? _generatedOverflowAddress;
-    private uint _generatedOverflowIndex;
+    // One immutable record, so the validator never pairs an address with another record's index.
+    private GeneratedOverflow? _generatedOverflow;
 
     public BlockAccessListValidationIndex(int txCount, AddressIndex addressIndex, BlockAccessListValidationIndex suggested, int storageReadsCapacity, int storageWritesCapacity, bool trackStorageReads = true)
     {
@@ -196,11 +196,12 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         // every slice up to i has been indexed and any overflow at or below i is recorded.
         lock (_overflowLock)
         {
-            if (_generatedOverflowAddress is not null && _generatedOverflowIndex <= index) return;
-            _generatedOverflowAddress = address;
-            _generatedOverflowIndex = index;
+            if (_generatedOverflow is { } recorded && recorded.Index <= index) return;
+            Volatile.Write(ref _generatedOverflow, new GeneratedOverflow(address, index));
         }
     }
+
+    private sealed record GeneratedOverflow(Address Address, uint Index);
 
     /// <summary>
     /// Indexes <paramref name="slice"/> from the worker that produced it, concurrently with other workers and with
@@ -264,14 +265,14 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
     /// </summary>
     public bool TryGetGeneratedOverflow(out Address address, out uint index)
     {
-        if (_generatedOverflowAddress is null)
+        if (Volatile.Read(ref _generatedOverflow) is not { } overflow)
         {
             address = default!;
             index = 0;
             return false;
         }
-        address = _generatedOverflowAddress;
-        index = _generatedOverflowIndex;
+        address = overflow.Address;
+        index = overflow.Index;
         return true;
     }
 
