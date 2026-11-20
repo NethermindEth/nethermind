@@ -54,6 +54,7 @@ public class OptimismPostMergeBlockProducer(
         BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
         if (attrs.GetTransactions() is { Length: > 0 } transactions)
         {
+            blockToProduce.RequiredTransactions = transactions;
             blockToProduce.TransactionsExemptFromByteLimit = new HashSet<Transaction>(transactions, ReferenceEqualityComparer.Instance);
         }
 
