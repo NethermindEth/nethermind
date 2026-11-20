@@ -71,7 +71,7 @@ public partial class EthRpcModuleTests
 
     [Test]
     public async Task Rpc_accepts_empty_account_override(
-        [Values("eth_call", "eth_estimateGas")] string method, [Values("null", "{}")] string accountOverride)
+        [Values("eth_call", "eth_estimateGas")] string method, [Values("null", "{}", """{"balance":"0x1"}""")] string accountOverride)
     {
         using Context ctx = await Context.Create();
         const string address = "0x0000000000000000000000000000000000000004";
@@ -86,7 +86,7 @@ public partial class EthRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json["error"], Is.Null, response);
-            Assert.That((string?)json["result"], method == "eth_call" ? Is.EqualTo("0x") : Is.Not.Null.And.Not.Empty, response);
+            Assert.That((string?)json["result"], method == "eth_call" ? Is.EqualTo("0x1234") : Is.Not.Null.And.Not.Empty, response);
         }
     }
 

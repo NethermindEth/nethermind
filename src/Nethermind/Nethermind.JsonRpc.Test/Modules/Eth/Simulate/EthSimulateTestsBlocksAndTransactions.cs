@@ -1531,12 +1531,10 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
-    /// <remarks>Any override of a precompile's address, even <c>null</c>, turns it into an empty account, so the
-    /// identity precompile echoes its input only when no override is given.</remarks>
-    [TestCase("null", "0x")]
-    [TestCase("{}", "0x")]
-    [TestCase(null, "0x1234")]
-    public async Task eth_simulateV1_accepts_null_account_override(string? accountOverride, string expectedReturnData)
+    /// <remarks>Only a <c>code</c> override or a move turns off a precompile, so the identity precompile echoes its
+    /// input with any of these overrides.</remarks>
+    [Test]
+    public async Task eth_simulateV1_accepts_null_account_override([Values("null", "{}", """{"balance":"0x1"}""", null)] string? accountOverride)
     {
         string stateOverrides = accountOverride is null ? "" : $"\"stateOverrides\":{{\"0x0000000000000000000000000000000000000004\":{accountOverride}}},";
         string payloadJson = $$"""{"blockStateCalls":[{{{stateOverrides}}"calls":[{"from":"{{TestItem.AddressA}}","to":"0x0000000000000000000000000000000000000004","input":"0x1234"}]}]}""";
@@ -1549,7 +1547,7 @@ public class EthSimulateTestsBlocksAndTransactions
 #pragma warning disable NUnit2045 // The operation must succeed before inspecting its result.
         Assert.That(result.Result.ResultType, Is.EqualTo(Core.ResultType.Success), result.Result.Error);
 #pragma warning restore NUnit2045
-        Assert.That(result.Data.Single().Calls.Single().ReturnData, Is.EqualTo(Bytes.FromHexString(expectedReturnData)));
+        Assert.That(result.Data.Single().Calls.Single().ReturnData, Is.EqualTo(Bytes.FromHexString("0x1234")));
     }
 
     // PUSH1 0, PUSH1 0, PUSH1 0, CREATE, PUSH1 0, MSTORE, PUSH1 32, PUSH1 0, RETURN: returns the created address, or zero on a collision.
@@ -3203,12 +3201,12 @@ public class EthSimulateTestsBlocksAndTransactions
     }
 
     /// <summary>
-    /// Regression test: as in geth, any override of a precompile's address turns it into an ordinary account, which
+    /// Regression test: a <c>code</c> override of a precompile's address turns it into an ordinary account, which
     /// runs its code instead of the precompile, both when called and through a delegation, on the EIP-7928 path and on
-    /// the sequential one.
+    /// the sequential one. An override without <c>code</c> keeps the precompile, which a delegation does not run.
     /// </summary>
     [Test]
-    public async Task eth_simulateV1_overridden_precompile_address_runs_code([Values] bool balPath, [Values] bool overrideCode)
+    public async Task eth_simulateV1_overridden_precompile_address_runs_code_only_with_code_override([Values] bool balPath, [Values] bool overrideCode)
     {
         Address identity = Address.FromNumber(4);
         Address delegator = new("0xc400000000000000000000000000000000000000");
@@ -3240,7 +3238,9 @@ public class EthSimulateTestsBlocksAndTransactions
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls.Select(static c => c.Error), Is.All.Null);
-            Assert.That(calls.Select(static c => c.ReturnData), overrideCode ? Is.All.EqualTo(new UInt256(42).ToBigEndian()) : Is.All.Empty);
+            Assert.That(calls.Select(static c => c.ReturnData), overrideCode
+                ? Is.All.EqualTo(new UInt256(42).ToBigEndian())
+                : Is.EqualTo(new[] { EcrecoverInput, [] }));
         }
     }
 

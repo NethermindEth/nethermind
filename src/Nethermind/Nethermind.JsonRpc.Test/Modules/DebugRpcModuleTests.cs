@@ -2401,7 +2401,7 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_accepts_empty_account_override(
-        [Values] bool streaming, [Values("null", "{}")] string accountOverride,
+        [Values] bool streaming, [Values("null", "{}", """{"balance":"0x1"}""")] string accountOverride,
         [Values(null, "0x0")] string? txIndex, [Values("0x0000000000000000000000000000000000000010", "0x0000000000000000000000000000000000000004")] string address)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -2423,7 +2423,8 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(json["error"], Is.Null, response);
             Assert.That((bool?)json["result"]?["failed"], Is.False, response);
-            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x"), response);
+            // The identity precompile at 0x04 echoes its input, since an override without code keeps it.
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo(address.EndsWith('4') ? "0x1234" : "0x"), response);
             Assert.That(json["result"]?["structLogs"], Is.Empty, response);
         }
     }
