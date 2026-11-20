@@ -38,6 +38,9 @@ public class AccountChangesAtIndex(Address address)
     // reads them in place.
     private readonly List<StorageSlot> _storageSlots = [];
     private readonly Dictionary<UInt256, int> _storageSlotIndex = [with(UInt256Comparer.GetOptimized())];
+    // The record GetOrAddSlot last resolved: a contract writing one slot again and again skips the index. Checked by key,
+    // so an index left over from before a reset can only miss.
+    private int _lastSlot = -1;
     private int _storageChangeCount;
     private readonly HashSet<UInt256> _storageReads = [with(UInt256Comparer.GetOptimized())];
     private bool _storageReadsMayHoldChangedSlots;
@@ -74,6 +77,10 @@ public class AccountChangesAtIndex(Address address)
 
     private ref StorageSlot GetOrAddSlot(in UInt256 key)
     {
+        Span<StorageSlot> slots = CollectionsMarshal.AsSpan(_storageSlots);
+        int last = _lastSlot;
+        if ((uint)last < (uint)slots.Length && slots[last].Key == key) return ref slots[last];
+
         ref int index = ref CollectionsMarshal.GetValueRefOrAddDefault(_storageSlotIndex, key, out bool exists);
         if (!exists)
         {
@@ -81,6 +88,7 @@ public class AccountChangesAtIndex(Address address)
             _storageSlots.Add(new StorageSlot { Key = key });
         }
 
+        _lastSlot = index;
         return ref CollectionsMarshal.AsSpan(_storageSlots)[index];
     }
 

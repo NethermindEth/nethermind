@@ -73,6 +73,29 @@ public class AccountChangesAtIndexTests
         }
     }
 
+    /// <remarks>Repeated and interleaved writes resolve their slot through the last-slot shortcut and through the index.</remarks>
+    [Test]
+    public void Interleaved_writes_keep_each_slots_prestate_and_latest_value()
+    {
+        BlockAccessListAtIndex slice = new();
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)10, after: (UInt256)11);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)11, after: (UInt256)12);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)20, after: (UInt256)21);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)1, before: (UInt256)12, after: (UInt256)13);
+        slice.AddStorageChange(TestItem.AddressA, (UInt256)2, before: (UInt256)21, after: (UInt256)22);
+        AccountChangesAtIndex account = slice.GetAccountChanges(TestItem.AddressA)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.StorageChanges[(UInt256)1].Value, Is.EqualTo((UInt256)13));
+            Assert.That(account.StorageChanges[(UInt256)2].Value, Is.EqualTo((UInt256)22));
+            Assert.That(account.TryGetPreTxStorage((UInt256)1, out UInt256 first), Is.True);
+            Assert.That(first, Is.EqualTo((UInt256)10));
+            Assert.That(account.TryGetPreTxStorage((UInt256)2, out UInt256 second), Is.True);
+            Assert.That(second, Is.EqualTo((UInt256)20));
+        }
+    }
+
     [Test]
     public void Clear_trims_oversized_account_changes_before_pooling()
     {
