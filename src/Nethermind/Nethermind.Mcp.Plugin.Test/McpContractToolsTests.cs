@@ -315,7 +315,7 @@ public class McpContractToolsTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(call =>
             ResultWrapper<byte[]>.Success(call.ArgAt<Address>(0) == new Address("0xeEeEEEeE14D718C2B47D9923Deab1335E144EeEe") ? [] : [0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(call =>
             {
                 LegacyTransactionForRpc tx = (LegacyTransactionForRpc)call.ArgAt<SignableTransactionForRpc>(0);

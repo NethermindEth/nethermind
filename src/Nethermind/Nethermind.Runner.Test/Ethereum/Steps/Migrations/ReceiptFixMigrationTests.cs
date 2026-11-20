@@ -5,6 +5,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -110,6 +111,59 @@ public class ReceiptFixMigrationTests
             syncPeerPool.DidNotReceiveWithAnyArgs().ReportBreachOfProtocol(default!, default, default!);
             Assert.That(nodeReceipts.Get(block), Has.Length.EqualTo(validReceipts.Length));
             Assert.That(nodeReceipts.Get(block)[0].Bloom, Is.EqualTo(validReceipts[0].Bloom));
+        }
+    }
+
+    public enum DownloadFailure { NoPeer, NoReceipts, PeerThrows }
+
+    [Test]
+    public async Task Failed_download_is_logged_at_error_level([Values] DownloadFailure failure)
+    {
+        InMemoryReceiptStorage canonicalReceipts = new();
+        IBlockTree blockTree = Core.Test.Builders.Build.A.BlockTree().WithTransactions(canonicalReceipts).OfChainLength(6).TestObject;
+        Block block = blockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        TxReceipt[] validReceipts = canonicalReceipts.Get(block);
+        InMemoryReceiptStorage nodeReceipts = new();
+
+        // The first attempt fails as the case says and the retry succeeds.
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<ReadOnlyMemory<int>>(), Arg.Any<CancellationToken>())
+            .Returns(
+                _ => failure switch
+                {
+                    DownloadFailure.NoReceipts => Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(new ArrayPoolList<TxReceipt[]?>(0)),
+                    DownloadFailure.PeerThrows => throw new InvalidOperationException("peer failed"),
+                    _ => Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(new ArrayPoolList<TxReceipt[]?>(1) { validReceipts })
+                },
+                _ => Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(new ArrayPoolList<TxReceipt[]?>(1) { validReceipts }));
+        PeerInfo peerInfo = new(syncPeer);
+        ISyncPeerPool syncPeerPool = Substitute.For<ISyncPeerPool>();
+        int allocations = 0;
+        syncPeerPool.Allocate(Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(_ =>
+            {
+                SyncPeerAllocation allocation = new(AllocationContexts.Receipts);
+                if (failure != DownloadFailure.NoPeer || allocations++ > 0) allocation.AllocatePeer(peerInfo);
+                return Task.FromResult(allocation);
+            });
+        TestErrorLogManager logs = new(); // Info is off, Error is on
+
+        ReceiptFixMigration migration = new(
+            blockTree,
+            nodeReceipts,
+            syncPeerPool,
+            new SyncConfig { FixReceipts = true, FixReceiptsStartingBlock = 1, FixReceiptsLastBlock = 1 },
+            MainnetSpecProvider.Instance,
+            logs);
+
+        await migration.Run(CancellationToken.None);
+
+        TestErrorLogManager.Error[] errors = [.. logs.Errors.Where(static e => e.Text.StartsWith("Fail to download missing receipts", StringComparison.Ordinal))];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errors, Has.Length.EqualTo(1));
+            Assert.That(errors.SingleOrDefault()?.Exception, failure == DownloadFailure.PeerThrows ? Is.InstanceOf<InvalidOperationException>() : Is.Null);
+            Assert.That(nodeReceipts.Get(block), Has.Length.EqualTo(validReceipts.Length));
         }
     }
 }
