@@ -243,6 +243,30 @@ namespace Nethermind.Core.Test.Crypto
         }
 
         [Test]
+        public void EnsureSenderCacheCapacity_only_grows_and_the_grown_cache_serves_ingress_recoveries()
+        {
+            int before = EthereumEcdsaExtensions.SenderCacheCapacity;
+            EthereumEcdsaExtensions.EnsureSenderCacheCapacity(before / 2);
+            int afterShrinkRequest = EthereumEcdsaExtensions.SenderCacheCapacity;
+            EthereumEcdsaExtensions.EnsureSenderCacheCapacity(before * 2);
+
+            EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
+            Transaction tx = Build.A.Transaction.WithNonce(0xCAC4E00UL).TestObject;
+            ecdsa.Sign(TestItem.PrivateKeyA, tx, true);
+            Address? recovered = ecdsa.RecoverAddress(tx);
+            // Recovers nothing itself: only a hit in the grown cache returns the sender.
+            Address? cached = NonRecoveringEcdsa(ecdsa.ChainId).RecoverAddress(tx);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(afterShrinkRequest, Is.EqualTo(before));
+                Assert.That(EthereumEcdsaExtensions.SenderCacheCapacity, Is.EqualTo(before * 2));
+                Assert.That(recovered, Is.EqualTo(TestItem.PrivateKeyA.Address));
+                Assert.That(cached, Is.EqualTo(TestItem.PrivateKeyA.Address));
+            }
+        }
+
+        [Test]
         public void Verify_returns_false_for_unsigned_transaction()
         {
             EthereumEcdsa ecdsa = new(BlockchainIds.Sepolia);
