@@ -624,6 +624,21 @@ namespace Nethermind.Network.Test
             AssertGenuineSessionKept(ctx, genuine);
         }
 
+        [Test]
+        public async Task Privileged_incoming_peer_keeps_its_disconnect_exemption_during_hello_validation([Values] bool isStatic)
+        {
+            await using Context ctx = new();
+            ctx.PeerManager.Start();
+            ctx.PeerPool.GetOrAdd(new Node(TestItem.PublicKeyB, "1.2.3.4", 12345) { IsStatic = isStatic, IsTrusted = !isStatic });
+
+            ctx.RlpxPeer.CreateIncoming(receiveHello: false, CreateIncomingSessionTemplate(TestItem.PublicKeyB));
+            Session session = ctx.Sessions.Last();
+            InitSession(session);
+            session.InitiateDisconnect(DisconnectReason.ClientFiltered, "client id not matched");
+
+            Assert.That(session.IsClosing, Is.False);
+        }
+
         private static void AssertGenuineSessionKept(Context ctx, Session genuine)
         {
             Peer peer = ctx.PeerManager.ActivePeers.Single();

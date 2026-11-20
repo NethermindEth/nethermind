@@ -987,13 +987,6 @@ namespace Nethermind.Network
 
         private void ProcessIncomingConnection(ISession session)
         {
-            if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
-            {
-                // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
-                session.Node.IsStatic = existingPeer.Node.IsStatic;
-                session.Node.IsTrusted = existingPeer.Node.IsTrusted;
-            }
-
             if (_logger.IsTrace) TraceProcessingIncoming();
 
             // if we have already initiated connection before
@@ -1273,7 +1266,7 @@ namespace Nethermind.Network
                     return;
                 }
 
-                // The remote never proved it holds the claimed key, so nothing is recorded against that identity.
+                // Not accepted after a valid Hello, so the remote may not hold the claimed key: record nothing against it.
                 if (_incomingSessionsAwaitingHello.Remove(session.SessionId))
                 {
                     return;
@@ -1344,6 +1337,14 @@ namespace Nethermind.Network
 
                 if (session.Direction == ConnectionDirection.In)
                 {
+                    // Set before the Hello, so the disconnect exemptions of privileged peers apply to its validation.
+                    if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
+                    {
+                        // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
+                        session.Node.IsStatic = existingPeer.Node.IsStatic;
+                        session.Node.IsTrusted = existingPeer.Node.IsTrusted;
+                    }
+
                     // The AUTH message only claims the remote key. The MAC of the first frame, the Hello, proves that
                     // the remote holds it, so the session is processed in OnP2PProtocolInitialized.
                     _incomingSessionsAwaitingHello.Add(session.SessionId);
