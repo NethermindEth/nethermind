@@ -30,7 +30,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     -p:SaveDiskSpace=true \
     -p:SourceRevisionId=$COMMIT_HASH
 
-FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-resolute@sha256:bc0d6653979efba491ab3d6f589d691f96c309c3c3ef81325efa6978e7b7f242
+FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-resolute-chiseled@sha256:fc0ee12f9ea79bde6cda88c7a34e5467fe383dbb62276be0ec13e5e9cc1654ac
 
 ARG COMMIT_HASH=unknown
 ARG VERSION=unknown
@@ -57,8 +57,8 @@ VOLUME /nethermind-bootnode/data
 EXPOSE 30303/udp 8546 6060
 
 COPY --from=build /publish .
-COPY tools/Bootnode/docker-entrypoint.sh .
 
-RUN chmod +x docker-entrypoint.sh
+# The chiseled base runs as a non-root user, which cannot read the root-owned data of existing volumes
+USER root
 
-ENTRYPOINT ["./docker-entrypoint.sh"]
+ENTRYPOINT ["./Nethermind.Bootnode"]
