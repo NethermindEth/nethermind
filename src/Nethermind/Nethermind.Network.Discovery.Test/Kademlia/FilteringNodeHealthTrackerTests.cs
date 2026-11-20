@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -21,6 +22,20 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 
 public class FilteringNodeHealthTrackerTests
 {
+    private readonly List<IContainer> _containers = [];
+
+    [TearDown]
+    public async Task DisposeContainers()
+    {
+        // Containers from CreateTracker must outlive the assertions, so they are released here.
+        for (int i = _containers.Count - 1; i >= 0; i--)
+        {
+            await _containers[i].DisposeAsync();
+        }
+
+        _containers.Clear();
+    }
+
     [Test]
     public void Rejects_second_node_from_same_subnet_or_exact_ip(
         [Values("203.0.113.10", "203.0.113.20")] string secondNodeIp)
@@ -265,7 +280,7 @@ public class FilteringNodeHealthTrackerTests
 
     private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
 
-    private static (INodeHealthTracker<Node> Tracker, INodeHealthTracker<Node> Inner, IRoutingTable<Node, ValueHash256> RoutingTable)
+    private (INodeHealthTracker<Node> Tracker, INodeHealthTracker<Node> Inner, IRoutingTable<Node, ValueHash256> RoutingTable)
         CreateTracker(
             bool enabled = true,
             bool subnetBucketing = true,
@@ -283,6 +298,7 @@ public class FilteringNodeHealthTrackerTests
             kademliaConfig: config,
             routingTable: routingTable,
             innerTracker: inner);
+        _containers.Add(container);
         return (container.Resolve<INodeHealthTracker<Node>>(), inner, routingTable);
     }
 }

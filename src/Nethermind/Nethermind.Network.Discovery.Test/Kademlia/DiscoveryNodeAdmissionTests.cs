@@ -24,6 +24,20 @@ namespace Nethermind.Network.Discovery.Test.Kademlia;
 
 public class DiscoveryNodeAdmissionTests
 {
+    private readonly List<IContainer> _containers = [];
+
+    [TearDown]
+    public async Task DisposeContainers()
+    {
+        // Containers from CreateAdmission must outlive the assertions, so they are released here.
+        for (int i = _containers.Count - 1; i >= 0; i--)
+        {
+            await _containers[i].DisposeAsync();
+        }
+
+        _containers.Clear();
+    }
+
     [Test]
     public void Rejects_second_node_from_same_subnet_or_exact_ip(
         [Values("203.0.113.10", "203.0.113.20")] string secondNodeIp)
@@ -736,7 +750,7 @@ public class DiscoveryNodeAdmissionTests
         foreach (Thread thread in threads) thread.Join();
     }
 
-    private static Fixture CreateAdmission(
+    private Fixture CreateAdmission(
         bool enabled = true,
         bool subnetBucketing = true,
         KademliaConfig<Node>? config = null,
@@ -761,6 +775,7 @@ public class DiscoveryNodeAdmissionTests
             staticNodes: staticNodes,
             trustedNodes: trustedNodes,
             configuredStaticNodes: configuredStaticNodes);
+        _containers.Add(container);
         return new Fixture(container.Resolve<DiscoveryNodeAdmission>());
     }
 

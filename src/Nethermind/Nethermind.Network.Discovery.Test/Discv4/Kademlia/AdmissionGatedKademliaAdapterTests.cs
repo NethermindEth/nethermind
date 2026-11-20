@@ -25,6 +25,20 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia;
 
 public class AdmissionGatedKademliaAdapterTests
 {
+    private readonly List<IContainer> _containers = [];
+
+    [TearDown]
+    public async Task DisposeContainers()
+    {
+        // Containers from CreateGate must outlive the assertions, so they are released here.
+        for (int i = _containers.Count - 1; i >= 0; i--)
+        {
+            await _containers[i].DisposeAsync();
+        }
+
+        _containers.Clear();
+    }
+
     [Test]
     public async Task Filtered_ping_is_forwarded_to_inner_so_the_handshake_completes()
     {
@@ -197,7 +211,7 @@ public class AdmissionGatedKademliaAdapterTests
         await inner.Received(1).Ping(node, token);
     }
 
-    private static (IKademliaAdapter Gate, IKademliaAdapter Inner, DiscoveryNodeAdmission Admission, PeerCandidateReservations Reservations)
+    private (IKademliaAdapter Gate, IKademliaAdapter Inner, DiscoveryNodeAdmission Admission, PeerCandidateReservations Reservations)
         CreateGate(bool enabled = true, bool subnetBucketing = true)
     {
         IKademliaAdapter inner = Substitute.For<IKademliaAdapter>();
@@ -206,6 +220,7 @@ public class AdmissionGatedKademliaAdapterTests
             enabled,
             subnetBucketing,
             innerAdapter: inner);
+        _containers.Add(container);
         return (container.Resolve<IKademliaAdapter>(),
             inner,
             container.Resolve<DiscoveryNodeAdmission>(),

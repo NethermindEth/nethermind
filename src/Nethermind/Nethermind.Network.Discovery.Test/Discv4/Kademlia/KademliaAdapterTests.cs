@@ -63,6 +63,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private IKademliaAdapter _adapter = null!;
         private PeerCandidateReservations _reservations = null!;
+        // Containers built by CreateGate and CreateAdmission, released in teardown so the decorator outlives the assertions.
+        private readonly List<IContainer> _containers = [];
 
         private IKademlia<PublicKey, Node> _kademliaMessageReceiver = null!;
         private IRoutingTable<Node, ValueHash256> _routingTable = null!;
@@ -242,7 +244,17 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
         }
 
         [TearDown]
-        public async Task TearDown() => await _adapter.DisposeAsync();
+        public async Task TearDown()
+        {
+            await _adapter.DisposeAsync();
+
+            for (int i = _containers.Count - 1; i >= 0; i--)
+            {
+                await _containers[i].DisposeAsync();
+            }
+
+            _containers.Clear();
+        }
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
@@ -1293,16 +1305,21 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 logManager: _logManager,
                 admission: admission,
                 innerTracker: inner);
+            _containers.Add(container);
             return (admission, container.Resolve<INodeHealthTracker<Node>>());
         }
 
         private DiscoveryNodeAdmission CreateAdmission(TimeProvider timeProvider)
-            => DiscoveryAdmissionTestContainer.Create(
+        {
+            IContainer container = DiscoveryAdmissionTestContainer.Create(
                 currentIp: "198.51.100.1",
                 timeProvider: timeProvider,
                 kademliaConfig: _kademliaConfig,
                 routingTable: _routingTable,
-                logManager: _logManager).Resolve<DiscoveryNodeAdmission>();
+                logManager: _logManager);
+            _containers.Add(container);
+            return container.Resolve<DiscoveryNodeAdmission>();
+        }
 
         private IKademliaAdapter CreateGate(DiscoveryNodeAdmission admission)
         {
@@ -1314,6 +1331,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 admission: admission,
                 innerAdapter: _adapter,
                 reservations: _reservations);
+            _containers.Add(container);
             return container.Resolve<IKademliaAdapter>();
         }
 
