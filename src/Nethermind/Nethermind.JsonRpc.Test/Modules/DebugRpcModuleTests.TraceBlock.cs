@@ -3804,10 +3804,13 @@ public partial class DebugRpcModuleTests
     [TestCase("debug_traceBlock", -32000)]
     [TestCase("debug_traceBlockByNumber", -32000)]
     [TestCase("debug_traceBlockByHash", -32000)]
+    [TestCase("debug_traceBadBlock", -32000)]
     public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
     {
         using Context context = await Context.Create();
         await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        if (method == "debug_traceBadBlock")
+            context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(context.Blockchain.BlockTree.Head!);
         object? argument = method switch
         {
             "debug_traceBlock" => Rlp.Encode(context.Blockchain.BlockTree.Head).ToHexString(true),
@@ -3821,6 +3824,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
             Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expectedCode));
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("time: invalid duration \"bad\""));
         }
     }
 
