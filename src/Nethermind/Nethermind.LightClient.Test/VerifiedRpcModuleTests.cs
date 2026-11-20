@@ -262,8 +262,6 @@ public class VerifiedRpcModuleTests
         internal List<string> Methods { get; } = [];
         internal TaskCompletionSource ReadStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context) =>
-            SendRequestAsync(request, context, context.RequestAborted);
         public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken token)
         {
             Methods.Add(request.Method);

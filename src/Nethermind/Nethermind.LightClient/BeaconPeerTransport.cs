@@ -147,7 +147,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     /// <summary>Opens durable beacon identity and ENR sequence storage owned by the caller.</summary>
     internal static ColumnsDb<BeaconChainDbColumns> OpenPeerDb(string dataDirectory, BeaconChainSpec spec, ILogManager logs)
     {
-        string path = Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "network");
+        string path = Path.GetFullPath(Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "network"));
         DbConfig config = new()
         {
             WriteAheadLogSync = true,

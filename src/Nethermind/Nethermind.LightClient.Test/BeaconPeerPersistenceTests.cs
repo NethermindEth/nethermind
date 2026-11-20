@@ -27,7 +27,19 @@ public class BeaconPeerPersistenceTests
         "NethermindBeaconPeerPersistenceTests", Guid.NewGuid().ToString("N"));
 
     [TearDown]
-    public void TearDown() => Directory.Delete(_directory, recursive: true);
+    public void TearDown()
+    {
+        if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);
+    }
+
+    [Test]
+    public void A_relative_data_directory_contains_the_beacon_network_database()
+    {
+        string relativePath = Path.GetFileName(_directory);
+        _directory = Path.GetFullPath(relativePath);
+        using ColumnsDb<BeaconChainDbColumns> db = BeaconPeerTransport.OpenPeerDb(relativePath, BeaconChainSpec.Mainnet, LimboLogs.Instance);
+        Assert.That(File.Exists(Path.Combine(_directory, "cl", "1", "network", "CURRENT")), Is.True);
+    }
 
     [Test]
     [CancelAfter(45_000)]

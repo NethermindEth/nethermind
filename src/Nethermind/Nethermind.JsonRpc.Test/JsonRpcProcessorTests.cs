@@ -1647,6 +1647,21 @@ public class JsonRpcProcessorTests
         await service.Received(2).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), Arg.Any<CancellationToken>());
     }
 
+    /// <remarks>Three batched calls run both inline and in the concurrent batch window.</remarks>
+    [Test]
+    public async Task Dispatch_passes_the_transport_token_to_the_service([Values] RequestTransport transport, [Values(1, 3)] int requestCount)
+    {
+        IJsonRpcService service = CreateEchoService();
+        JsonRpcProcessor processor = CreateProcessor(service, new JsonRpcConfig { BatchProcessingConcurrency = 4, EthModuleConcurrentInstances = 4 });
+        string[] requests = [.. Enumerable.Range(1, requestCount).Select(static id => CreateRequest(id.ToString(), "eth_call"))];
+        using CancellationTokenSource transportAbort = new();
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor,
+            Encoding.UTF8.GetBytes(requestCount == 1 ? requests[0] : CreateBatchRequest(requests)), transport, cancellationToken: transportAbort.Token);
+
+        await service.Received(requestCount).SendRequestAsync(Arg.Any<JsonRpcRequest>(), Arg.Any<JsonRpcContext>(), transportAbort.Token);
+    }
+
     [Test]
     public async Task Can_process_batch_request_with_result_limit([Values(false, true)] bool limit, [Values(false, true)] bool returnErrors)
     {

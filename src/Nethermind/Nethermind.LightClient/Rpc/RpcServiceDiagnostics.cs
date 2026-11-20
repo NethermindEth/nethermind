@@ -22,9 +22,6 @@ internal sealed class RpcServiceDiagnostics(IJsonRpcService service, ILogger log
         if (Pending.TryGetValue(response, out Observation? observation)) observation.Suppressed = true;
     }
 
-    public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context) =>
-        SendRequestAsync(request, context, context.RequestAborted);
-
     public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
     {
         long started = Stopwatch.GetTimestamp();

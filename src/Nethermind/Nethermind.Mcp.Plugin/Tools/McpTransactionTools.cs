@@ -692,11 +692,10 @@ internal sealed class McpTransactionTools(
             return null;
         }
 
-        // The native tracer is bounded only by JsonRpc.Timeout, so it runs on its own task and the answer stops waiting for it
-        // after the trace budget; an abandoned trace keeps its debug module and the call's concurrency slot until it finishes
-        // and stays tracked for shutdown.
-        Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> trace = Task.Run(() => RunTraceAsync(context.Hash), CancellationToken.None);
+        // The native tracer runs on its own task, which the answer stops waiting for after the trace budget and then cancels;
+        // an abandoned trace keeps its debug module and the call's concurrency slot until it stops and stays tracked for shutdown.
         using CancellationTokenSource wait = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> trace = Task.Run(() => RunTraceAsync(context.Hash, wait.Token), CancellationToken.None);
         try
         {
             Task finished = await Task.WhenAny(trace, Task.Delay(traceTimeout, wait.Token));
@@ -731,7 +730,7 @@ internal sealed class McpTransactionTools(
         }
     }
 
-    private async Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> RunTraceAsync(Hash256 hash)
+    private async Task<(bool Available, TraceFacts? Facts, IResultWrapper? Failure)> RunTraceAsync(Hash256 hash, CancellationToken cancellationToken)
     {
         using ModuleLease<IDebugRpcModule> debug = await executor.RentAsync<IDebugRpcModule>(nameof(IDebugRpcModule.debug_traceTransaction), CancellationToken.None);
         if (debug.Module is null)
@@ -749,7 +748,7 @@ internal sealed class McpTransactionTools(
             List<McpValueTransfer> transfers = [];
             int total = McpTxCallTree.CollectValueTransfers(root, transfers, MaxInternalTransfers);
             return new TraceFacts(transfers, total, McpTxCallTree.FindFailingFrame(root), root.Error, total == transfers.Count);
-        });
+        }, cancellationToken: cancellationToken);
         return (true, facts, failure);
     }
 
@@ -1169,7 +1168,7 @@ internal sealed class McpTransactionTools(
 
         // Simulating on a hash selector pins the base block even if the head moves meanwhile.
         using ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> result =
-            eth.eth_simulateV1(payload, new BlockParameter(header.Hash!));
+            eth.eth_simulateV1(payload, new BlockParameter(header.Hash!), token);
         if (result.Result.ResultType != ResultType.Success)
         {
             return SimulateFailure(result);

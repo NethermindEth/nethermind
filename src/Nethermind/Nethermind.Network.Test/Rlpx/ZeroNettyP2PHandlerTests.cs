@@ -59,7 +59,7 @@ public class ZeroNettyP2PHandlerTests
         OneLoggerLogManager logManager = new(new ILogger(logger));
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
-        Session session = CreateInitializedSession(context, logManager, privilege);
+        Session session = CreateInitializedSession(logManager, privilege);
         MessageSerializationService serializer = new(
             SerializerInfo.Create(new StatusMessageSerializer()), SerializerInfo.Create(new StatusMessageSerializer69()));
         using Eth68ProtocolHandler protocol = CreateEthHandler(session, version, serializer, logManager);
@@ -156,7 +156,7 @@ public class ZeroNettyP2PHandlerTests
         using PooledBufferLeakDetector detector = new();
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
         context.Allocator.Returns(detector.Allocator);
-        Session session = CreateInitializedSession(context, LimboLogs.Instance, PeerPrivilege.Trusted);
+        Session session = CreateInitializedSession(LimboLogs.Instance, PeerPrivilege.Trusted);
         IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
         serializer.Deserialize<StatusMessage>(Arg.Any<ZeroPacket>()).Returns(_ => throw new RlpLimitException("status exceeds decode limits"));
         using Eth68ProtocolHandler protocol = CreateEthHandler(session, 68, serializer, LimboLogs.Instance);
@@ -922,21 +922,21 @@ public class ZeroNettyP2PHandlerTests
         return new NettyBufferPacket(buffer) { PacketType = packetType };
     }
 
-    private static Session CreateInitializedSession(IChannelHandlerContext context, ILogManager logManager, PeerPrivilege privilege)
+    private static Session CreateInitializedSession(ILogManager logManager, PeerPrivilege privilege)
     {
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303)
         {
             IsStatic = privilege == PeerPrivilege.Static,
             IsTrusted = privilege == PeerPrivilege.Trusted
         };
-        Session session = new(30303, node, context.Channel, NullDisconnectsAnalyzer.Instance, logManager);
+        Session session = new(30303, node, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, logManager);
         IProtocolHandler p2p = Substitute.For<IProtocolHandler>();
         p2p.ProtocolCode.Returns(Protocol.P2P);
         p2p.Name.Returns(Protocol.P2P);
         p2p.MessageIdSpaceSize.Returns(0x10);
         session.AddProtocolHandler(p2p);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, context, Substitute.For<IPacketSender>());
+        session.Init(5, Substitute.For<IPacketSender>());
         return session;
     }
 

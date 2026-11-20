@@ -100,9 +100,6 @@ internal sealed class VerifiedRpcService : IDisposable
 
     private sealed class PolicyService(IJsonRpcService inner, VerifiedRpcService owner) : IJsonRpcService
     {
-        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context) =>
-            SendRequestAsync(request, context, context.RequestAborted);
-
         public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken token)
         {
             token.ThrowIfCancellationRequested();

@@ -39,6 +39,43 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task Debug_single_trace_javascript_callback_errors_keep_their_message(
+        [Values("debug_traceCall", "debug_traceTransaction")] string method,
+        [Values("setup", "step", "fault", "enter", "exit", "result")] string callback, [Values] bool mux)
+    {
+        using Context context = await Context.Create();
+        byte[] code = callback is "enter" or "exit"
+            ? Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.STOP).Done
+            : Prepare.EvmCode.Op(callback == "fault" ? Instruction.INVALID : Instruction.STOP).Done;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA)).WithCode(code).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        await context.Blockchain.AddBlock(transaction);
+        string tracer = "{fault:function(){" + (callback == "fault" ? "throw Error('kaboom');" : "")
+            + "},setup:function(){" + (callback == "setup" ? "throw Error('kaboom');" : "")
+            + "},step:function(){" + (callback == "step" ? "throw Error('kaboom');" : "")
+            + "},enter:function(){" + (callback == "enter" ? "throw Error('kaboom');" : "")
+            + "},exit:function(){" + (callback == "exit" ? "throw Error('kaboom');" : "")
+            + "},result:function(){" + (callback == "result" ? "throw Error('kaboom');" : "return {};") + "}}";
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        object[] parameters = method == "debug_traceCall"
+            ? [new { from = TestItem.AddressA.ToString(), data = "0x" + Convert.ToHexString(code), gas = "0x186a0" }, "latest", options]
+            : [transaction.Hash!, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(callback == "setup"
+                ? "Error: kaboom" : $"Error: kaboom in server-side tracer function '{callback}'"), response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceTransaction_missing_body_returns_top_level_error(
         [Values] bool streamMode, [Values("5s", "bad")] string timeout)
     {
@@ -255,33 +292,31 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceTransaction_javascript_duration_policy(
-        [Values("bad", "5s", "0s", "-1s", "4294968s")] string timeout,
+        [Values("bad", "5s", "0s", "-1s", "121s", "4294968s")] string timeout,
         [Values(null, false, true)] bool? streamMode)
     {
-        using Context context = await Context.Create();
-        Transaction transaction = await AddBlockWithTransfer(context);
+        DeadlineExecution clock = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        Transaction transaction = Build.A.Transaction.WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressB))
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        await chain.AddBlock(transaction);
+        clock.Enabled = true;
         const string tracer = "{fault:function(){},result:function(){return {};}}";
-        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock), "debug_traceTransaction",
             transaction.Hash!, new { tracer, timeout, streamMode });
         string expected;
         if (timeout == "bad")
         {
             expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"Cannot parse 'bad' as a duration. Expected Go format ('5s', '100ms', '2m30s') or TimeSpan format ('hh:mm:ss')."},"id":67}""";
         }
-        else if (timeout == "5s")
+        else if (timeout is "0s" or "-1s")
         {
-            expected = """{"jsonrpc":"2.0","result":{},"id":67}""";
+            expected = """{"jsonrpc":"2.0","error":{"code":-32000,"message":"execution timeout"},"id":67}""";
         }
         else
         {
-            TimeSpan duration = TimeSpan.FromSeconds(timeout == "0s" ? 0 : timeout == "-1s" ? -1 : 4_294_968);
-            ArgumentOutOfRangeException error = new("options", duration, "Tracer timeout must be between 1ns and 2m.");
-            expected = JsonSerializer.Serialize(new
-            {
-                jsonrpc = "2.0",
-                error = new { code = ErrorCodes.InvalidParams, message = error.Message },
-                id = 67
-            });
+            expected = """{"jsonrpc":"2.0","result":{},"id":67}""";
         }
 
         Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(expected)).Using(JToken.EqualityComparer));
@@ -312,7 +347,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceTransaction_javascript_selector_errors(
         [Values("debug_traceTransaction", "debug_traceTransactionByBlockAndIndex", "debug_traceTransactionByBlockhashAndIndex",
             "debug_traceTransactionInBlockByHash", "debug_traceTransactionInBlockByIndex")] string method,
-        [Values("unknownTracer", "{fault:function(){}} ")] string tracer,
+        [Values("unknownTracer", "{fault:function(){}} ", "{ ) }")] string tracer,
         [Values] bool mux)
     {
         using Context context = await Context.Create();
@@ -331,9 +366,12 @@ public partial class DebugRpcModuleTests
             _ => [blockRlp, "0x0", options]
         };
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
-        string expectedMessage = tracer == "unknownTracer"
-            ? "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)"
-            : "trace object must expose a function result()";
+        string expectedMessage = tracer switch
+        {
+            "unknownTracer" => "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)",
+            "{ ) }" => "SyntaxError: Unexpected token ')'",
+            _ => "trace object must expose a function result()"
+        };
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
@@ -341,6 +379,53 @@ public partial class DebugRpcModuleTests
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
             Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedMessage), response);
             Assert.That(json["error"]?["data"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_extensions_keep_their_javascript_compile_error_envelopes(
+        [Values("debug_simulateV1", "debug_traceCallMany", "debug_traceCallMany overrides")] string method, [Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        await AddBlockWithTransfer(context);
+        const string valid = "{fault:function(){},result:function(){return 1;}}";
+        string before = await Send(valid);
+        Assert.That(JToken.Parse(before)["error"], Is.Null, before);
+        string response = await Send("{ ) }");
+        JToken json = JToken.Parse(response);
+        if (method == "debug_traceCallMany")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.True, response);
+            }
+        }
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(json["result"], Is.Null, response);
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("Tracer code could not be compiled: SyntaxError: Unexpected token ')'"), response);
+            }
+        }
+        string after = await Send(valid);
+        Assert.That(JToken.Parse(after)["error"], Is.Null, after);
+
+        Task<string> Send(string tracer)
+        {
+            object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x186a0" };
+            object options = new { tracer, streamMode };
+            return method switch
+            {
+                "debug_simulateV1" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+                    new { blockStateCalls = new[] { new { calls = new[] { call } } } }, "latest", options),
+                "debug_traceCallMany" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+                    new[] { new { transactions = new[] { call } } }, "latest", options),
+                _ => RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCallMany",
+                    new[] { new { transactions = new[] { call }, stateOverrides = new Dictionary<string, object>() } }, "latest", options)
+            };
         }
     }
 
@@ -393,13 +478,13 @@ public partial class DebugRpcModuleTests
             object options = new { tracer = script, timeout = "30s" };
             return method switch
             {
-                "debug_traceCall" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, call, "latest", options),
-                "debug_traceCall indexed" => RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCall", call, "latest",
+                "debug_traceCall" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method, call, "latest", options),
+                "debug_traceCall indexed" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, "debug_traceCall", call, "latest",
                     new { tracer = script, timeout = "30s", txIndex = "0x0" }),
-                "debug_traceTransaction" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, transaction.Hash!, options),
-                "debug_simulateV1" => RpcTest.TestSerializedRequest(context.DebugRpcModule, method,
+                "debug_traceTransaction" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method, transaction.Hash!, options),
+                "debug_simulateV1" => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method,
                     new { blockStateCalls = new[] { new { calls = new[] { call } } } }, "latest", options),
-                _ => RpcTest.TestSerializedRequest(context.DebugRpcModule, method, new[] { new { transactions = new[] { call } } }, "latest", options)
+                _ => RpcTest.TestSerializedRequest(context.DebugRpcModule, config.Timeout, method, new[] { new { transactions = new[] { call } } }, "latest", options)
             };
         }
     }

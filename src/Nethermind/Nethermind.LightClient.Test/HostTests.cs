@@ -1043,8 +1043,6 @@ public class HostTests
 
     private sealed class StartedRpcService(IJsonRpcService inner, TaskCompletionSource started) : IJsonRpcService
     {
-        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context) =>
-            SendRequestAsync(request, context, context.RequestAborted);
         public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken token)
         {
             try { return inner.SendRequestAsync(request, context, token); }

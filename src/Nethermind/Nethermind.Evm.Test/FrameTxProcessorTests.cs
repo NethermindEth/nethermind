@@ -5286,6 +5286,28 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    [Test]
+    public void Execute_FrameTxTracedWithJavaScript_PreservesTheTransactionError([Values] bool earlierRevert, [Values] bool assertionReverts)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        byte[] revert = Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done;
+        byte[] success = Prepare.EvmCode.Op(Instruction.STOP).Done;
+        DeployContract(Observer, earlierRevert ? revert : success);
+        DeployContract(Recipient, assertionReverts ? revert : success);
+        Transaction tx = FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.Assert, target: Recipient));
+        GethTraceOptions options = GethTraceOptions.Default with
+        {
+            Tracer = "{fault:function(){},result:function(ctx){return ctx.error || '';}}"
+        };
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, options, baseFeePerGas: 0, out TxReceipt receipt);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(earlierRevert || assertionReverts ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(document.RootElement.GetString(), Is.EqualTo(assertionReverts ? "ASSERT frame reverted" : earlierRevert ? "frame failed" : ""));
+        }
+    }
+
     /// <summary>The tracer outputs that carry a frame transaction's transaction-level status.</summary>
     public enum FrameTxStatusConsumer
     {

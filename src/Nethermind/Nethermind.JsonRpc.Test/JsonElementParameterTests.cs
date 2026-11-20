@@ -46,7 +46,7 @@ public class JsonElementParameterTests
     }
 
     [RpcModule(ModuleType.Eth)]
-    public interface IValueRpcModule : IRpcModule
+    private interface IValueRpcModule : IRpcModule
     {
         ResultWrapper<JsonElement> test_value(JsonElement value);
         ResultWrapper<JsonElement?> test_optionalValue(JsonElement? value = null);

@@ -47,6 +47,7 @@ jobs:
             "Dockerfile.pgo"
             "scripts/build/Dockerfile"
             "tools/Bootnode/Dockerfile"
+            "tools/LightClient/Dockerfile"
           )
 
           for file in "${dockerfiles[@]}"; do
@@ -55,7 +56,7 @@ jobs:
 
           runtime_pattern="\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*"
 
-          for file in "Dockerfile" "Dockerfile.pgo" "tools/Bootnode/Dockerfile"; do
+          for file in "Dockerfile" "Dockerfile.pgo" "tools/Bootnode/Dockerfile" "tools/LightClient/Dockerfile"; do
             sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" "$file"
           done
 

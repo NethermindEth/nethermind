@@ -78,9 +78,6 @@ internal static class RpcTestDriver
     private sealed class DelegateService(Func<string, JsonElement, CancellationToken, Task<object>> invoke,
         Microsoft.Extensions.Logging.ILogger logger) : IJsonRpcService
     {
-        public ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context) =>
-            SendRequestAsync(request, context, context.RequestAborted);
-
         public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken cancellationToken)
         {
             if (request.JsonRpc != "2.0" || request.Method is null)

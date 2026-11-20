@@ -334,8 +334,8 @@ public class SnapProofTests
         using (MemDb db = new())
         {
             PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, NullLogManager.Instance);
-            Assert.That(SnapProviderHelper.AddStorageRange(factory, new(ValueKeccak.Compute(Address.Bytes), account.ToStruct()),
-                response.PathsAndSlots[0], requested, requested.IncrementPath(), response.Proofs).result,
+            Assert.That(SnapProviderHelper.ReconstructStorageProofNodes(factory, new(ValueKeccak.Compute(Address.Bytes), account.ToStruct()),
+                response.PathsAndSlots[0], requested, requested.IncrementPath(), response.Proofs),
                 Is.EqualTo(AddRangeResult.OK), "The single-key range check alone accepts this response.");
         }
         Assert.That(ExecutionProofVerifier.VerifyStorage(root, key, proof), Is.EqualTo(existing ? (UInt256)42 : UInt256.Zero));

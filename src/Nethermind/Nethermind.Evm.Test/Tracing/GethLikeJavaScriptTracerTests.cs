@@ -244,6 +244,34 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(trace, new[] { "step:CALL:", "enter", "exit:out of gas", "step:POP:", "step:STOP:" });
     }
 
+    [TestCase("01", 10000L, "stack underflow (0 <=> 2)")]
+    [TestCase("600055", 10000L, "stack underflow (1 <=> 2)")]
+    [TestCase("6000600055", 2300L, "out of gas: not enough gas for reentrancy sentry")]
+    [TestCase("fe", 10000L, "invalid opcode: INVALID")]
+    [TestCase("600056", 10000L, "invalid jump destination")]
+    public void Exit_reports_frame_error_details_without_leaking_to_later_frames(string childCode, long childGas, string expected)
+    {
+        const string userTracer = """
+            {
+                errors: [],
+                enter: function(frame) { },
+                exit: function(frame) { this.errors.push(frame.getError() || ""); },
+                fault: function(log) { },
+                result: function() { return this.errors; }
+            }
+            """;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(childCode), Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, childGas).Op(Instruction.POP)
+            .Call(Sha256Precompile.Address, 10).Op(Instruction.POP)
+            .Call(TestItem.AddressD, 10000).Op(Instruction.POP)
+            .Op(Instruction.STOP).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(userTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new[] { expected, "out of gas", "" });
+    }
+
     [Test]
     public void Create_frame_to_is_the_creation_address_when_the_precheck_fails([Values] bool salted)
     {
@@ -676,11 +704,14 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         AssertResult(traces, expectedStrings);
     }
 
-    [TestCase("../JSTracers/callTracer_legacy")]
-    [TestCase(null)]
-    [TestCase("{ ) }")]
-    public void Unusable_tracer_is_refused_on_construction(string? tracer) =>
-        Assert.That(() => GetTracer(tracer!).Dispose(), Throws.ArgumentException);
+    [TestCase("../JSTracers/callTracer_legacy", typeof(InvalidDataException), "SyntaxError: Unexpected token '.'")]
+    [TestCase(null, typeof(ArgumentException), "Tracer '' not found")]
+    [TestCase("{ ) }", typeof(InvalidDataException), "SyntaxError: Unexpected token ')'")]
+    public void Unusable_tracer_is_refused_on_construction(string? tracer, Type exceptionType, string message)
+    {
+        Exception error = Assert.Throws(exceptionType, () => GetTracer(tracer!).Dispose())!;
+        Assert.That(error.Message, Is.EqualTo(message));
+    }
 
     [TestCase("flatCallTracer")]
     [TestCase("noSuchTracer.js")]
@@ -1485,7 +1516,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
         using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
         {
-            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.TypeOf<InvalidDataException>()
+                .With.Message.EqualTo("Error: result failed in server-side tracer function 'result'")
+                .And.InnerException.InstanceOf<ScriptEngineException>());
         }
 
         const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";
@@ -1665,9 +1698,11 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("600056", null, "invalid jump destination")]
     [TestCase(null, 2, "out of gas")]
     [TestCase("5b5f600056", null, "stack limit reached 1024 (1023)", 100_000UL)]
-    // A revert reason that reads as an exception name is kept as is: revert(Error("OutOfGas")).
+    [TestCase("5f5ffd", null, "execution reverted", 100_000UL)]
+    [TestCase("602a5f5360015ffd", null, "execution reverted", 100_000UL)]
+    // The decoded reason must not replace the VM error, even when it names another exception.
     [TestCase("6308c379a0600052602060205260086040527f4f75744f664761730000000000000000000000000000000000000000000000006060526064601cfd",
-        null, "OutOfGas", 100_000UL)]
+        null, "execution reverted", 100_000UL)]
     public void Failed_transaction_reports_geth_error_text_in_ctx_error(string? code, int? precompile, string expected, ulong gasLimit = 21050UL)
     {
         const string errorTracer = @"{
@@ -1691,6 +1726,27 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         using GethLikeTxTrace trace = tracer.BuildResult().First();
         AssertResult(trace, expected);
+    }
+
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID")]
+    [TestCase(Instruction.JUMP, "invalid jump destination")]
+    public void Child_revert_does_not_replace_the_root_halt_in_ctx_error(Instruction halt, string expected)
+    {
+        const string errorTracer = """
+            {
+                errors: [],
+                enter: function(frame) { },
+                exit: function(frame) { this.errors.push(frame.getError()); },
+                fault: function(log) { },
+                result: function(ctx) { return [ctx.error, this.errors]; }
+            }
+            """;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString("5f5ffd"), Spec);
+        byte[] code = Prepare.EvmCode.Call(TestItem.AddressC, 10000).Op(Instruction.POP).PushData(0).Op(halt).Done;
+        using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(GetTracer(errorTracer), code, MainnetSpecProvider.CancunActivation);
+        using GethLikeTxTrace trace = tracer.BuildResult().First();
+        AssertResult(trace, new object[] { expected, new[] { "execution reverted" } });
     }
 
     [Test]
@@ -2416,7 +2472,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            if (before == "trace timeout")
+                Assert.That(failure, Is.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
+            else
+                Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
         }
     }
@@ -2439,7 +2498,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         });
         // On a slow runner the timeout can expire during the warm-up; the hook then refuses to start, as it should.
         try { for (int i = 0; i < 200; i++) tracer.SetOperationStack(default); }
-        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception)) { }
+        catch (GethTraceDeadlineException) { }
         bool expired = WaitForInterrupt(engine);
         armed = true;
 
@@ -2448,7 +2507,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         {
             Assert.That(expired, Is.True);
             Assert.That(busy, Is.False);
-            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            Assert.That(failure, Is.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
         }
     }
 
@@ -2525,7 +2584,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Stopwatch elapsed = Stopwatch.StartNew();
         if (busyResult)
         {
-            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
         }
         else

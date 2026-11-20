@@ -32,7 +32,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         _writeBatch = writeBatch;
         _enableDoubleWriteCheck = enableDoubleWriteCheck;
         _addressHash = addressHash;
-        _adapter = new SnapUpperBoundAdapter(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash, enableDoubleWriteCheck));
+        _adapter = new SnapUpperBoundAdapter(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash, enableDoubleWriteCheck), boundWholePath: true);
         _tree = new StorageTree(_adapter, logManager);
     }
 
@@ -53,8 +53,9 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         ISnapTree<PathWithStorageSlot>.DoBulkSetAndUpdateRootHash(_tree, entries);
     }
 
-    public void Commit(ValueHash256 upperBound)
+    public void Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
+        _adapter.LowerBound = lowerBound;
         _adapter.UpperBound = upperBound;
 
         if (_pendingEntries is not null)

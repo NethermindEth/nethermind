@@ -69,7 +69,7 @@ internal static class HostedStorageDownload
         using MemDb db = new();
         PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, logs);
         (AddRangeResult result, bool more, _, _) = SnapProviderHelper.AddStorageRange(
-            factory, account, slots, start, ValueKeccak.MaxValue, response.Proofs);
+            factory, account, slots, start, runStart: start, limitHash: ValueKeccak.MaxValue, proofs: response.Proofs);
         if (result != AddRangeResult.OK)
             throw new InvalidDataException("Execution peer returned an invalid hosted storage range proof.");
 

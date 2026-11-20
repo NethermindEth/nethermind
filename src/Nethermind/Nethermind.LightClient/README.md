@@ -188,6 +188,11 @@ stops startup rather than silently reusing an identity with an older sequence.
 Recovery must preserve the last published ENR sequence. If that cannot be
 established, remove the whole networking directory to create a new identity.
 
+Older builds could place the database for a plain relative `--data-dir`
+under `<executable-dir>/<data-dir>/cl/<chain-id>/network/<data-dir>/cl/<chain-id>/network`.
+To retain that identity, stop the client and move the entire RocksDB directory
+to `<data-dir>/cl/<chain-id>/network` before restarting.
+
 Signed beacon peer ENRs are cached separately in
 `<data-dir>/cl/<chain-id>/discovery`, with at most 512 records and a 2 MiB file
 limit. The client snapshots discovery every 30 seconds and at shutdown. On

@@ -499,7 +499,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     throw new InvalidDataException("Execution peer returned an unexpected or duplicate storage trie node.");
             }
             return result;
-        }, cancellationToken, static peer => peer.CanGetTrieNodes(), maxParallelSuppliers: 1);
+        }, cancellationToken, static peer => peer.CanGetTrieNodes(), hedge: false);
     }
 
     private async Task<HostedStorageSnapshot> DownloadStorageAsync(
@@ -561,7 +561,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         PeerInfo? current = pool.GetPeer(peer.Node);
                         return (verified, current is not null && ReferenceEquals(current.SyncPeer, peer) ? current : null);
                     }, token, peer => (pinned is null || ReferenceEquals(pinned.SyncPeer, peer))
-                        && peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _), maxParallelSuppliers: 1);
+                        && peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _), hedge: false);
                 if (pinned is null)
                 {
                     if (suppliers.RemoveWhere(previous => !ReferenceEquals(pool.GetPeer(previous.SyncPeer.Node), previous)) != 0
@@ -640,8 +640,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         if (hasSlots)
         {
             PatriciaSnapTrieFactory factory = new(nodes, NullDb.Instance, logs);
-            if (SnapProviderHelper.AddStorageRange(factory, new(accountPath, account.ToStruct()), response.PathsAndSlots[0],
-                    slotPath, slotPath.IncrementPath(), response.Proofs).result != AddRangeResult.OK)
+            if (SnapProviderHelper.ReconstructStorageProofNodes(factory, new(accountPath, account.ToStruct()),
+                    response.PathsAndSlots[0], slotPath, slotPath.IncrementPath(), response.Proofs) != AddRangeResult.OK)
                 throw new InvalidDataException("Could not reconstruct the verified storage path.");
         }
         byte[][] witness = CollectProof(db, nodes, account.StorageRoot, slotPath, response.Proofs);
@@ -1296,9 +1296,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
         string failureMessage = "No execution peer supplied authenticated block data.", HeaderPrefetch? prefetch = null,
-        int maxParallelSuppliers = 2) =>
+        bool hedge = true) =>
         RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage,
-            prefetch: prefetch, maxParallelSuppliers: maxParallelSuppliers);
+            prefetch: prefetch, hedge: hedge);
 
     private Task<T> RequestAsync<T>(Func<ISnapSyncPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         string operation = "proof") =>
@@ -1309,8 +1309,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private async Task<T> RequestFromPeersAsync<TPeer, T>(AllocationContexts context, Func<ISyncPeer, TPeer?> selectPeer,
         Func<TPeer, CancellationToken, Task<T>> request, CancellationToken cancellationToken,
         Func<ISyncPeer, bool>? canServe, string failureMessage, string? operation = null,
-        HeaderPrefetch? prefetch = null, int maxParallelSuppliers = 2) where TPeer : class
+        HeaderPrefetch? prefetch = null, bool hedge = true) where TPeer : class
     {
+        int maxParallelSuppliers = hedge ? 2 : 1;
         bool trace = _logger.IsDebug;
         using Activity? diagnostic = trace
             ? new Activity("LightClientPeerRequest").SetIdFormat(ActivityIdFormat.W3C).Start() : null;
