@@ -65,6 +65,7 @@ public partial class TracedAccessWorldState : IGuestSlotStore
 
         if (_generatingBlockAccessList is not null)
         {
+            AssertCurrentStorageValue(in storageCell, in current);
             if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
                 _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
             _generatingBlockAccessList.AddStorageChange(in storageCell, in current, in newValue);
