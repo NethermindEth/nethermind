@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -25,7 +26,10 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
         private readonly IPoSSwitcher _poSSwitcher;
+        private readonly Lock _headerSyncLock = new();
         private BlockHeader? _currentBeaconPivot;
+
+        Lock? IBeaconPivot.HeaderSyncLock => _headerSyncLock;
 
         private BlockHeader? CurrentBeaconPivot
         {
@@ -95,41 +99,53 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
         public void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false)
         {
-            bool beaconPivotExists = BeaconPivotExists();
-            if (blockHeader is not null)
+            if (blockHeader is null) return;
+
+            lock (_headerSyncLock)
             {
-                if (beaconPivotExists && updateOnlyIfNull)
-                {
-                    return;
-                }
-
-                if (updateOnlyIfNull)
-                {
-                    if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
-                }
-
-                if (beaconPivotExists && blockHeader.Hash == PivotHash)
-                {
-                    return;
-                }
-
-                blockHeader.TotalDifficulty ??= _poSSwitcher.FinalTotalDifficulty;
-
-                // BeaconHeaderSync actually starts from the parent of the pivot. So we need to manually insert
-                // the pivot itself here.
-                _blockTree.Insert(blockHeader,
-                    BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
-                CurrentBeaconPivot = blockHeader;
-                _blockTree.LowestInsertedBeaconHeader = blockHeader;
-                ShouldForceStartNewSync = false;
-                if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
+                SetPivot(blockHeader, updateOnlyIfNull);
             }
+        }
+
+        private void SetPivot(BlockHeader blockHeader, bool updateOnlyIfNull)
+        {
+            bool beaconPivotExists = BeaconPivotExists();
+            if (beaconPivotExists && updateOnlyIfNull)
+            {
+                return;
+            }
+
+            if (updateOnlyIfNull)
+            {
+                if (_logger.IsInfo) _logger.Info($"BeaconPivot was null. Setting beacon pivot to {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
+            }
+
+            if (beaconPivotExists && blockHeader.Hash == PivotHash)
+            {
+                return;
+            }
+
+            blockHeader.TotalDifficulty ??= _poSSwitcher.FinalTotalDifficulty;
+
+            // BeaconHeaderSync starts from the parent of the pivot, so insert the pivot here.
+            _blockTree.Insert(blockHeader,
+                BlockTreeInsertHeaderOptions.BeaconHeaderInsert | BlockTreeInsertHeaderOptions.TotalDifficultyNotNeeded);
+            CurrentBeaconPivot = blockHeader;
+            if (_blockTree.LowestInsertedBeaconHeader?.Hash != blockHeader.Hash)
+            {
+                _blockTree.LowestInsertedBeaconHeader = blockHeader;
+            }
+            ShouldForceStartNewSync = false;
+            if (_logger.IsInfo) _logger.Info($"New beacon pivot: {blockHeader.ToString(BlockHeader.Format.FullHashAndNumber)}");
         }
 
         public void RemoveBeaconPivot()
         {
-            if (_logger.IsInfo) _logger.Info($"Removing beacon pivot, previous pivot: {_currentBeaconPivot}");
-            CurrentBeaconPivot = null;
+            lock (_headerSyncLock)
+            {
+                if (_logger.IsInfo) _logger.Info($"Removing beacon pivot, previous pivot: {_currentBeaconPivot}");
+                CurrentBeaconPivot = null;
+            }
         }
 
         public bool BeaconPivotExists() => CurrentBeaconPivot is not null;
@@ -157,6 +173,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
     public interface IBeaconPivot : IPivot
     {
+        internal Lock? HeaderSyncLock => null;
+
         void EnsurePivot(BlockHeader? blockHeader, bool updateOnlyIfNull = false);
 
         void RemoveBeaconPivot();

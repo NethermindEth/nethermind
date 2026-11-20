@@ -392,8 +392,9 @@ public class BeaconHeadersSyncTests
         Assert.That(second, Is.Null);
     }
 
-    [Test]
-    public async Task When_pivot_moves_down_the_feed_requests_the_new_parent()
+    [TestCase(90UL)]
+    [TestCase(100UL)]
+    public async Task When_pivot_changes_the_feed_discards_outstanding_old_branch_responses(ulong selectedHeight)
     {
         Context ctx = new()
         {
@@ -407,19 +408,26 @@ public class BeaconHeadersSyncTests
         };
         ctx.SetupRemoteBlockTreeOfLength(111);
         const uint high = 100;
-        const uint low = 90;
         ctx.BeaconSync.InitBeaconHeaderSync(ctx.RemoteBlockTree.FindHeader(high)!);
         ctx.Feed.InitializeFeed();
 
-        using (HeadersSyncBatch? first = await ctx.Feed.PrepareRequest())
+        using HeadersSyncBatch? oldRequest = await ctx.Feed.PrepareRequest();
+        Assert.That(oldRequest?.EndNumber, Is.EqualTo(high - 1));
+
+        BlockHeader selected = Build.A.BlockHeader.WithNumber(selectedHeight).WithParentHash(TestItem.KeccakB).TestObject;
+        ctx.BeaconSync.InitBeaconHeaderSync(selected);
+
+        Hash256 oldStart = ctx.RemoteBlockTree.FindHeader(oldRequest!.StartNumber)!.GetOrCalculateHash();
+        oldRequest.Response = ctx.RemoteBlockTree.FindHeaders(oldStart, oldRequest.RequestSize, 0, false)!;
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(oldRequest);
+        using (Assert.EnterMultipleScope())
         {
-            Assert.That(first?.EndNumber, Is.EqualTo(high - 1));
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.Ignored));
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(selected.Hash));
         }
 
-        ctx.BeaconSync.InitBeaconHeaderSync(ctx.RemoteBlockTree.FindHeader(low)!);
-
         using HeadersSyncBatch? second = await ctx.Feed.PrepareRequest();
-        Assert.That(second?.EndNumber, Is.EqualTo(low - 1));
+        Assert.That(second?.EndNumber, Is.EqualTo(selectedHeight - 1));
     }
 
     [Test]

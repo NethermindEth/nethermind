@@ -40,8 +40,10 @@ public sealed class BeaconHeadersSyncFeed(
     private readonly IPoSSwitcher _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     private readonly IInvalidChainTracker _invalidChainTracker = invalidChainTracker;
     private readonly IPivot _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
+    private readonly Lock _pivotLock = (pivot as IBeaconPivot)?.HeaderSyncLock ?? new();
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconHeadersSyncFeed>();
     private bool _chainMerged;
+    private Hash256? _pivotStartHash;
 
     protected override ulong HeadersDestinationNumber => _pivot.PivotDestinationNumber;
 
@@ -81,7 +83,8 @@ public sealed class BeaconHeadersSyncFeed(
 
         // First, we assume pivot
         _pivotNumber = ExpectedPivotNumber;
-        _expectedNextHeader = new NextHeader(ExpectedPivotHash, _poSSwitcher.FinalTotalDifficulty);
+        _pivotStartHash = ExpectedPivotHash;
+        _expectedNextHeader = new NextHeader(_pivotStartHash, _poSSwitcher.FinalTotalDifficulty);
 
         ulong startNumber = _pivotNumber;
 
@@ -109,13 +112,36 @@ public sealed class BeaconHeadersSyncFeed(
     }
     public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
     {
-        if (_pivotNumber != ExpectedPivotNumber)
+        lock (_pivotLock)
         {
-            // Pivot changed during the sync. Need to reset the states
-            InitializeFeed();
+            ResetForChangedPivot();
+            return base.PrepareRequest(cancellationToken);
         }
+    }
 
-        return base.PrepareRequest(cancellationToken);
+    public override SyncResponseHandlingResult HandleResponse(HeadersSyncBatch? batch, PeerInfo? peer = null)
+    {
+        lock (_pivotLock)
+        {
+            ResetForChangedPivot();
+            return base.HandleResponse(batch, peer!);
+        }
+    }
+
+    public override void InitializeFeed()
+    {
+        lock (_pivotLock)
+        {
+            base.InitializeFeed();
+        }
+    }
+
+    private void ResetForChangedPivot()
+    {
+        if (_pivotNumber != ExpectedPivotNumber || _pivotStartHash != ExpectedPivotHash)
+        {
+            base.InitializeFeed();
+        }
     }
 
     protected override int InsertHeaders(HeadersSyncBatch batch)
