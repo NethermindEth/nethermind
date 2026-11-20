@@ -246,7 +246,7 @@ public class WebSocketExtensionsTests
         services.AddSingleton(manager);
         services.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
         ApplicationBuilder app = new(services.BuildServiceProvider());
-        app.UseWebSocketsModules();
+        app.UseWebSocketsModules(CancellationToken.None);
 
         IHttpWebSocketFeature webSocketFeature = Substitute.For<IHttpWebSocketFeature>();
         webSocketFeature.IsWebSocketRequest.Returns(true);
@@ -282,7 +282,7 @@ public class WebSocketExtensionsTests
         services.AddSingleton(manager);
         services.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)));
         ApplicationBuilder app = new(services.BuildServiceProvider());
-        app.UseWebSocketsModules();
+        app.UseWebSocketsModules(CancellationToken.None);
 
         IHttpWebSocketFeature webSocketFeature = Substitute.For<IHttpWebSocketFeature>();
         webSocketFeature.IsWebSocketRequest.Returns(true);
