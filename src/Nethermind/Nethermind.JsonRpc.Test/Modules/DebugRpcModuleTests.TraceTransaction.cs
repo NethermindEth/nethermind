@@ -39,6 +39,43 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public partial class DebugRpcModuleTests
 {
     [Test]
+    public async Task Debug_single_trace_javascript_callback_errors_keep_their_message(
+        [Values("debug_traceCall", "debug_traceTransaction")] string method,
+        [Values("setup", "step", "fault", "enter", "exit", "result")] string callback, [Values] bool mux)
+    {
+        using Context context = await Context.Create();
+        byte[] code = callback is "enter" or "exit"
+            ? Prepare.EvmCode.Call(TestItem.AddressC, 50_000).Op(Instruction.STOP).Done
+            : Prepare.EvmCode.Op(callback == "fault" ? Instruction.INVALID : Instruction.STOP).Done;
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA)).WithCode(code).WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        await context.Blockchain.AddBlock(transaction);
+        string tracer = "{fault:function(){" + (callback == "fault" ? "throw Error('kaboom');" : "")
+            + "},setup:function(){" + (callback == "setup" ? "throw Error('kaboom');" : "")
+            + "},step:function(){" + (callback == "step" ? "throw Error('kaboom');" : "")
+            + "},enter:function(){" + (callback == "enter" ? "throw Error('kaboom');" : "")
+            + "},exit:function(){" + (callback == "exit" ? "throw Error('kaboom');" : "")
+            + "},result:function(){" + (callback == "result" ? "throw Error('kaboom');" : "return {};") + "}}";
+        object options = mux
+            ? new { tracer = "muxTracer", tracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [tracer] = new { } }) }
+            : new { tracer };
+        object[] parameters = method == "debug_traceCall"
+            ? [new { from = TestItem.AddressA.ToString(), data = "0x" + Convert.ToHexString(code), gas = "0x186a0" }, "latest", options]
+            : [transaction.Hash!, options];
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, method, parameters);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["result"], Is.Null, response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(callback == "setup"
+                ? "Error: kaboom" : $"Error: kaboom in server-side tracer function '{callback}'"), response);
+            Assert.That(json["error"]?["data"], Is.Null, response);
+        }
+    }
+
+    [Test]
     public async Task Debug_traceTransaction_missing_body_returns_top_level_error(
         [Values] bool streamMode, [Values("5s", "bad")] string timeout)
     {

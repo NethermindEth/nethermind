@@ -1516,7 +1516,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
         using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
         {
-            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.TypeOf<InvalidDataException>()
+                .With.Message.EqualTo("Error: result failed in server-side tracer function 'result'")
+                .And.InnerException.InstanceOf<ScriptEngineException>());
         }
 
         const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";
