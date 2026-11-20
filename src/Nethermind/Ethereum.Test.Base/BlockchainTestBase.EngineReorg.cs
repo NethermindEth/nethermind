@@ -252,12 +252,9 @@ public abstract partial class BlockchainTestBase
             bool build = step.TryGetProperty("payloadAttributes", out JsonElement attributes);
             RpcResult response = await Call($"engine_forkchoiceUpdatedV{ParseInt(step.GetProperty("version"))}",
                 $"[{state},{(build ? attributes.GetRawText() : "null")}]");
-            if (!response.IsError)
-            {
-                _build = OptionalString(response.Result, "payloadId") is { } payloadId
-                    ? (payloadId, build ? attributes : null)
-                    : null;
-            }
+            _build = !response.IsError && OptionalString(response.Result, "payloadId") is { } payloadId
+                ? (payloadId, build ? attributes : null)
+                : null;
 
             await FollowOutcome(step, response, response.IsError ? default : response.Result.GetProperty("payloadStatus"), head, where, path);
         }
