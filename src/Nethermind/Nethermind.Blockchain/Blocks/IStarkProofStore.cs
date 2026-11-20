@@ -32,6 +32,8 @@ public interface IStarkProofStore
 
 public static class StarkProofStoreExtensions
 {
+    private static readonly BlockDecoder Decoder = new();
+
     /// <summary>Returns <paramref name="block"/> carrying the stored proof its header commits to.</summary>
     /// <returns>A copy carrying the stored proof, leaving the block store's cached instance without it; otherwise
     /// <paramref name="block"/> itself, which lacks a committed proof only when it is not available.</returns>
@@ -58,13 +60,12 @@ public static class StarkProofStoreExtensions
 
     /// <summary>Returns <paramref name="block"/> with the <see cref="Block.EncodedSize"/> it has with its proof, leaving the proof unread.</summary>
     /// <remarks>For a hashes-only block, whose transactions are not there to recompute the size from. A block without a stored
-    /// size, as a cached or pending one is, has its proof joined instead, so the size computed from its body includes it.</remarks>
+    /// size, as a cached or pending one is, carries its transactions, so its proofless size is computed from its body.</remarks>
     public static Block WithProofSize(this IStarkProofStore proofStore, Block block)
     {
-        if (!CommitsToMissingProof(block)) return block;
-        if (block.EncodedSize is not { } storedSize) return proofStore.WithProof(block);
-        if (proofStore.GetEncodedLength(block.Number, block.Hash!) is not { } proofLength) return block;
+        if (!CommitsToMissingProof(block) || proofStore.GetEncodedLength(block.Number, block.Hash!) is not { } proofLength) return block;
 
+        int storedSize = block.EncodedSize ?? Decoder.GetLength(block, RlpBehaviors.None);
         Block withSize = block.WithReplacedBody(block.Body);
         withSize.EncodedSize = SizeWithProof(storedSize, proofLength);
         return withSize;
