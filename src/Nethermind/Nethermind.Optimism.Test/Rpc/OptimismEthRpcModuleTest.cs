@@ -186,6 +186,28 @@ public class OptimismEthRpcModuleTest
         Assert.That(serialized, Is.EqualTo(expected));
     }
 
+    [TestCase("0x", TestName = "Empty raw transaction is rejected without forwarding")]
+    [TestCase("0x1234", TestName = "Raw transaction that is not RLP is rejected without forwarding")]
+    public async Task Send_raw_transaction_rejects_invalid_rlp_without_forwarding(string rawTransaction)
+    {
+        IJsonRpcClient sequencer = Substitute.For<IJsonRpcClient>();
+
+        TestRpcBlockchain rpcBlockchain = await TestRpcBlockchain
+            .ForTest(sealEngineType: SealEngineType.Optimism)
+            .WithOptimismEthRpcModule(
+                sequencerRpcClient: sequencer,
+                accountStateProvider: Substitute.For<IAccountStateProvider>(),
+                ecdsa: Substitute.For<IEthereumEcdsa>(),
+                sealer: Substitute.For<ITxSealer>(),
+                opSpecHelper: Substitute.For<IOptimismSpecHelper>())
+            .Build();
+
+        string serialized = await rpcBlockchain.TestEthRpc("eth_sendRawTransaction", rawTransaction);
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32000,"message":"Invalid RLP."},"id":67}"""));
+        await sequencer.DidNotReceive().Post(Arg.Any<string>(), Arg.Any<object?[]>());
+    }
+
     [Test]
     public async Task Send_transaction_without_a_sender_it_can_recover_reports_an_unknown_account()
     {
