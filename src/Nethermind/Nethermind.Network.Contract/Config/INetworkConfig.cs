@@ -91,7 +91,7 @@ public interface INetworkConfig : IConfig
     int P2PPort { get; set; }
 
     /// <summary>The UDP port for browser WebTransport. Defaults to 0 (disabled).</summary>
-    [ConfigItem(Description = "UDP port for experimental browser WebTransport. Use a different UDP port from discovery. Requires the nethermind-webtransport companion executable.", DefaultValue = "0")]
+    [ConfigItem(Description = "UDP port for experimental browser WebTransport. Use a different UDP port from discovery. Requires platform QUIC support.", DefaultValue = "0")]
     int WebTransportPort { get; set; }
 
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "2000")]

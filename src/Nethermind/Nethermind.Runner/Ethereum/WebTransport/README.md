@@ -3,12 +3,9 @@
 Nethermind can accept signed Ethereum transactions over the experimental `webtx/1`
 protocol on HTTP/3. The listener is disabled by default.
 
-Build the companion with Go 1.25 or later from this directory and place the executable
-next to `nethermind`. Use `nethermind-webtransport.exe` on Windows.
-
-```sh
-go build -o nethermind-webtransport .
-```
+The WebTransport server runs in Nethermind and uses the platform MsQuic library.
+Windows requires a QUIC-capable .NET runtime. Linux requires `libmsquic` 2.5 or later.
+See the [.NET QUIC platform requirements](https://learn.microsoft.com/en-us/dotnet/fundamentals/networking/quic/quic-overview).
 
 Start Nethermind with `--Network.WebTransportPort 30304` and allow inbound UDP on
 that port. The P2P TCP and discovery UDP ports both default to 30303. QUIC can
@@ -26,7 +23,9 @@ restart creates a fresh certificate pair and requires an immediate refresh.
 ## Wire protocol
 
 Use a browser that supports the WebTransport `protocols` and `serverCertificateHashes`
-options. From a trusted or verified ENR, select an IP and its matching QUIC port and
+options and the HTTP/3 WebTransport draft-02 negotiation. Leave `allowPooling`
+disabled. The listener serves one WebTransport session per QUIC connection.
+From a trusted or verified ENR, select an IP and its matching QUIC port and
 connect to `https://<ip>:<port>/devp2p`. Supply each 32-byte `qh` pin as a
 `{ algorithm: "sha-256", value: pin }` entry, and offer the desired capability and
 `ENR-key-proof-v1=<hex nonce>` in `protocols`. Generate a fresh random 32-byte nonce

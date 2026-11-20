@@ -3,15 +3,15 @@
 
 using System;
 using System.Buffers;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
-using System.Text.Json;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api.Steps;
@@ -40,7 +40,7 @@ internal sealed class BrowserWebTransport(
     ILogManager logManager) : IStep, IStoppableService, IAsyncDisposable
 {
     private const int WorkerCount = 16;
-    private const int TokenLength = 32;
+    private static readonly TimeSpan _certificateRotation = TimeSpan.FromDays(7);
     private readonly BrowserProtocol _protocol = new(ecdsa, nodeKey, txPool);
     private readonly ILogger _logger = logManager.GetClassLogger<BrowserWebTransport>();
     private readonly CancellationTokenSource _shutdown = new();
@@ -49,8 +49,9 @@ internal sealed class BrowserWebTransport(
     private long _peerCacheTimestamp;
     private Task? _runTask;
 
-    public async Task Execute(CancellationToken cancellationToken)
+    public Task Execute(CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         int port = config.WebTransportPort;
         if (port <= 0 || port > ushort.MaxValue)
             throw new InvalidOperationException("Network.WebTransportPort must be a UDP port between 1 and 65535, or 0 to disable it.");
@@ -59,17 +60,21 @@ internal sealed class BrowserWebTransport(
 
         IPAddress address = listenerState.RlpxAddress ?? listenerState.DiscoveryAddress ?? listenerState.PreferredAddress;
         if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
-        TaskCompletionSource ready = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        _runTask = RunAsync(new IPEndPoint(address, port), ready, _shutdown.Token);
+        IPEndPoint endpoint = new(address, port);
+        BrowserCertificates certificates = new();
+        MsQuicListener listener;
         try
         {
-            await ready.Task.WaitAsync(TimeSpan.FromSeconds(10), cancellationToken);
+            listener = MsQuicListener.Listen(endpoint, certificates.Current);
         }
         catch
         {
-            await StopAsync();
+            certificates.Dispose();
             throw;
         }
+
+        _runTask = RunAsync(listener, endpoint, certificates, _shutdown.Token);
+        return Task.CompletedTask;
     }
 
     public async Task StopAsync()
@@ -92,126 +97,78 @@ internal sealed class BrowserWebTransport(
         }
     }
 
-    private async Task RunAsync(IPEndPoint endpoint, TaskCompletionSource ready, CancellationToken cancellationToken)
+    private async Task RunAsync(MsQuicListener listener, IPEndPoint endpoint, BrowserCertificates certificates, CancellationToken cancellationToken)
     {
-        string executable = OperatingSystem.IsWindows() ? "nethermind-webtransport.exe" : "nethermind-webtransport";
-        string executablePath = Path.Combine(AppContext.BaseDirectory, executable);
-        using TcpListener backend = new(IPAddress.Loopback, 0);
-        using Process companion = new()
-        {
-            StartInfo = new ProcessStartInfo(executablePath)
-            {
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-            },
-        };
-        using CancellationTokenSource workersCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Task workers = Task.CompletedTask;
-        bool started = false;
+        using BrowserCertificates ownedCertificates = certificates;
+        await using MsQuicListener ownedListener = listener;
+        using CancellationTokenSource lifetime = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+
+        PublishBinding(endpoint, certificates);
+        if (_logger.IsInfo) _logger.Info($"Browser WebTransport listening on UDP {endpoint:hide}.");
+
+        Task[] workers = new Task[WorkerCount + 1];
+        for (int i = 0; i < WorkerCount; i++)
+            workers[i] = ServeAsync(listener, lifetime.Token);
+        workers[^1] = RotateCertificatesAsync(listener, endpoint, certificates, lifetime.Token);
+
         try
         {
-            if (!File.Exists(executablePath))
-                throw new FileNotFoundException($"The WebTransport companion must be installed next to Nethermind as {executable}.", executablePath);
-
-            backend.Start(WorkerCount);
-            started = companion.Start();
-            byte[] token = RandomNumberGenerator.GetBytes(TokenLength);
-            string settings = JsonSerializer.Serialize(new
-            {
-                listen = endpoint.ToString(),
-                backend = backend.LocalEndpoint.ToString(),
-                token = Convert.ToHexString(token),
-            });
-            await companion.StandardInput.WriteLineAsync(settings.AsMemory(), cancellationToken);
-            await companion.StandardInput.FlushAsync(cancellationToken);
-
-            string? update = await companion.StandardOutput.ReadLineAsync(cancellationToken)
-                ?? throw new IOException($"The WebTransport companion exited before binding UDP {endpoint}.");
-            PublishBinding(endpoint, update);
-            Task[] backendWorkers = new Task[WorkerCount];
-            for (int i = 0; i < backendWorkers.Length; i++)
-                backendWorkers[i] = ServeBackendAsync(backend, token, workersCancellation.Token);
-            workers = Task.WhenAll(backendWorkers);
-            if (_logger.IsInfo) _logger.Info($"Browser WebTransport listening on UDP {endpoint:hide}.");
-            ready.SetResult();
-
-            while ((update = await companion.StandardOutput.ReadLineAsync(cancellationToken)) is not null)
-                PublishBinding(endpoint, update);
-            cancellationToken.ThrowIfCancellationRequested();
-            throw new IOException("The WebTransport companion stopped unexpectedly.");
+            Task completed = await Task.WhenAny(workers);
+            await completed;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            ready.TrySetCanceled(cancellationToken);
         }
         catch (Exception exception)
         {
-            if (!ready.TrySetException(exception) && !cancellationToken.IsCancellationRequested && _logger.IsError)
-                _logger.Error("Browser WebTransport stopped.", exception);
+            if (_logger.IsError) _logger.Error("Browser WebTransport stopped.", exception);
         }
         finally
         {
-            listenerState.SetWebTransport(null);
-            await workersCancellation.CancelAsync();
-            if (started)
-                await StopCompanionAsync(companion);
-            await workers;
-        }
-    }
-
-    private void PublishBinding(IPEndPoint expected, string update)
-    {
-        using JsonDocument message = JsonDocument.Parse(update);
-        JsonElement root = message.RootElement;
-        if (!IPEndPoint.TryParse(root.GetProperty("address").GetString()!, out IPEndPoint? bound) || !bound.Equals(expected))
-            throw new InvalidDataException("The WebTransport companion reported a different bind endpoint.");
-        string? hashes = root.GetProperty("hashes").GetString();
-        if (hashes is not { Length: 128 })
-            throw new InvalidDataException("The WebTransport companion did not report two SHA-256 certificate hashes.");
-        listenerState.SetWebTransport(new(bound.Address, bound.Port, Convert.FromHexString(hashes)));
-    }
-
-    private static async Task StopCompanionAsync(Process companion)
-    {
-        companion.StandardInput.Close();
-        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(3));
-        try
-        {
-            await companion.WaitForExitAsync(timeout.Token);
-        }
-        catch (OperationCanceledException)
-        {
+            await lifetime.CancelAsync();
             try
             {
-                companion.Kill();
+                await Task.WhenAll(workers);
             }
-            catch (InvalidOperationException) when (companion.HasExited)
+            catch (OperationCanceledException) when (lifetime.IsCancellationRequested)
             {
-                // The process exited after the timeout but before Kill.
             }
-            await companion.WaitForExitAsync();
+            catch (Exception exception)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Browser WebTransport worker stopped: {exception.Message}");
+            }
+            finally
+            {
+                listenerState.SetWebTransport(null);
+            }
         }
     }
 
-    private async Task ServeBackendAsync(TcpListener listener, byte[] token, CancellationToken cancellationToken)
+    private async Task RotateCertificatesAsync(MsQuicListener listener, IPEndPoint endpoint, BrowserCertificates certificates, CancellationToken cancellationToken)
+    {
+        using PeriodicTimer timer = new(_certificateRotation, TimeProvider.System);
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            certificates.Rotate(listener);
+            PublishBinding(endpoint, certificates);
+        }
+    }
+
+    private void PublishBinding(IPEndPoint endpoint, BrowserCertificates certificates) =>
+        listenerState.SetWebTransport(new(endpoint.Address, endpoint.Port, certificates.GetHashes()));
+
+    private async Task ServeAsync(MsQuicListener listener, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            await using MsQuicConnection connection = await listener.AcceptConnectionAsync(cancellationToken);
             try
             {
-                using TcpClient client = await listener.AcceptTcpClientAsync(cancellationToken);
-                client.NoDelay = true;
                 using CancellationTokenSource deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 deadline.CancelAfter(TimeSpan.FromSeconds(12));
-                await ServeSessionAsync(client.GetStream(), token, deadline.Token);
+                await Http3WebTransport.ServeAsync(connection, BrowserFrames.ParseOffer, ExchangeAsync, deadline.Token);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception exception) when (exception is IOException or SocketException or OperationCanceledException or RlpReaderException)
+            catch (Exception exception) when (exception is IOException or InvalidDataException or SocketException or OperationCanceledException or RlpReaderException or ChannelClosedException)
             {
                 if (_logger.IsTrace) _logger.Trace($"Browser WebTransport request ended: {exception.Message}");
             }
@@ -222,41 +179,18 @@ internal sealed class BrowserWebTransport(
         }
     }
 
-    private async Task ServeSessionAsync(NetworkStream stream, byte[] token, CancellationToken cancellationToken)
+    private async Task ExchangeAsync(Stream stream, byte mode, byte[] nonce, CancellationToken cancellationToken)
     {
-        byte[] prelude = new byte[TokenLength + 1 + BrowserProtocol.NonceLength];
-        await stream.ReadExactlyAsync(prelude, cancellationToken);
-        if (!CryptographicOperations.FixedTimeEquals(token, prelude.AsSpan(0, TokenLength)))
-            return;
-        byte mode = prelude[TokenLength];
-        if (mode is not (BrowserProtocol.TxMode or BrowserProtocol.DiscoveryMode))
-            return;
-
-        byte[] lengthPrefix = new byte[sizeof(int)];
-        await WriteBlockAsync(stream, lengthPrefix, _protocol.CreateHandshake(mode, prelude.AsSpan(TokenLength + 1)), cancellationToken);
-        await stream.ReadExactlyAsync(lengthPrefix, cancellationToken);
-        int length = BinaryPrimitives.ReadInt32BigEndian(lengthPrefix);
-        byte[] result;
-        if (mode == BrowserProtocol.TxMode)
+        await stream.WriteAsync(_protocol.CreateHandshake(mode, nonce), cancellationToken);
+        (IMemoryOwner<byte> owner, int length) = await BrowserFrames.ReadRequestAsync(stream, mode, cancellationToken);
+        using (owner)
         {
-            if (length is <= 0 or > BrowserProtocol.MaxSubmitSize)
-                return;
-            using IMemoryOwner<byte> buffer = MemoryPool<byte>.Shared.Rent(length);
-            Memory<byte> payload = buffer.Memory[..length];
-            await stream.ReadExactlyAsync(payload, cancellationToken);
-            result = _protocol.Submit(payload.Span, cancellationToken);
-        }
-        else
-        {
-            if (length != 1)
-                return;
-            await stream.ReadExactlyAsync(lengthPrefix.AsMemory(0, 1), cancellationToken);
-            if (lengthPrefix[0] != 0xc0)
-                return;
-            result = await GetPeersAsync(cancellationToken);
-        }
+            byte[] result = mode == BrowserProtocol.TxMode
+                ? _protocol.Submit(owner.Memory.Span[..length], cancellationToken)
+                : await GetPeersAsync(cancellationToken);
 
-        await WriteBlockAsync(stream, lengthPrefix, result, cancellationToken);
+            await BrowserFrames.WriteResponseAsync(stream, result, cancellationToken);
+        }
     }
 
     private async ValueTask<byte[]> GetPeersAsync(CancellationToken cancellationToken)
@@ -313,10 +247,71 @@ internal sealed class BrowserWebTransport(
                                           (!ip.IsLoopbackOrPrivateOrLinkLocal || allowLocalRecords && IPAddress.IsLoopback(ip));
     }
 
-    private static async ValueTask WriteBlockAsync(NetworkStream stream, byte[] prefix, byte[] payload, CancellationToken cancellationToken)
+    private sealed class BrowserCertificates : IDisposable
     {
-        BinaryPrimitives.WriteInt32BigEndian(prefix, payload.Length);
-        await stream.WriteAsync(prefix, cancellationToken);
-        await stream.WriteAsync(payload, cancellationToken);
+        private static readonly TimeSpan _validity = TimeSpan.FromDays(14);
+        private X509Certificate2 _next;
+
+        public BrowserCertificates()
+        {
+            DateTimeOffset start = TimeProvider.System.GetUtcNow().AddMinutes(-1);
+            Current = Create(start);
+            try
+            {
+                _next = Create(start + _certificateRotation);
+            }
+            catch
+            {
+                Current.Dispose();
+                throw;
+            }
+        }
+
+        public X509Certificate2 Current { get; private set; }
+
+        public byte[] GetHashes()
+        {
+            byte[] result = new byte[2 * SHA256.HashSizeInBytes];
+            SHA256.HashData(Current.RawDataMemory.Span, result);
+            SHA256.HashData(_next.RawDataMemory.Span, result.AsSpan(SHA256.HashSizeInBytes));
+            return result;
+        }
+
+        public void Rotate(MsQuicListener listener)
+        {
+            DateTimeOffset now = TimeProvider.System.GetUtcNow();
+            if (now < _next.NotBefore.ToUniversalTime() || now >= _next.NotAfter.ToUniversalTime())
+                throw new InvalidOperationException("The next WebTransport certificate is outside its validity window.");
+
+            X509Certificate2 following = Create(now + _certificateRotation - TimeSpan.FromMinutes(1));
+            try
+            {
+                listener.UpdateCertificate(_next);
+            }
+            catch
+            {
+                following.Dispose();
+                throw;
+            }
+
+            Current.Dispose();
+            Current = _next;
+            _next = following;
+        }
+
+        public void Dispose()
+        {
+            _next.Dispose();
+            Current.Dispose();
+        }
+
+        private static X509Certificate2 Create(DateTimeOffset start)
+        {
+            using ECDsa key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+            CertificateRequest request = new("CN=devp2p", key, HashAlgorithmName.SHA256);
+            request.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, critical: true));
+            request.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension([new("1.3.6.1.5.5.7.3.1")], critical: false));
+            return request.CreateSelfSigned(start, start + _validity);
+        }
     }
 }
