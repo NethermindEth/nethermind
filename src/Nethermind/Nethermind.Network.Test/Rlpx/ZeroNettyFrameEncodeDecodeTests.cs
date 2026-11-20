@@ -62,9 +62,11 @@ public class ZeroNettyFrameEncodeDecodeTests
         EmbeddedChannel expectedChannel = new(expectedSplitter);
         CombinedEncoder actual = new(new FrameCipher(actualSecrets.AesSecret), actualMac);
         IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
-        context.Allocator.Returns(PooledByteBufferAllocator.Default);
-        // Random content does not compress, so Snappy needs more room than the framed size the output gets.
-        byte[] packet = new byte[6 * 1024];
+        // Exactly the size asked for: a pooled allocator rounds it up, which can leave room for Snappy by chance.
+        context.Allocator.Returns(UnpooledByteBufferAllocator.Default);
+        // A 15-byte packet takes 80 bytes with Snappy, one more than its framed size: its compressed payload of 17 bytes
+        // takes the longest padding.
+        byte[] packet = new byte[15];
         new Random(7).NextBytes(packet);
         packet[0] = 2;
         try

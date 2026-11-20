@@ -590,12 +590,13 @@ public class ZeroNettyFrameMergerTests
     [Test]
     public void Accepts_a_fresh_packet_after_storing_a_chunk_fails()
     {
-        // The in-progress packet cannot grow, so storing the second chunk fails after the merger has accepted it.
+        // The in-progress packet cannot grow, so storing the second of three chunks fails after the merger has accepted
+        // it and while the packet is still in progress.
         IByteBufferAllocator allocator = Substitute.For<IByteBufferAllocator>();
         allocator.Buffer(Arg.Any<int>(), Arg.Any<int>()).Returns(call => Unpooled.Buffer(call.ArgAt<int>(0), call.ArgAt<int>(0)));
         ZeroFrameMergerTestWrapper wrapper = new(allocator);
 
-        using DisposableByteBuffer frames = BuildFrames(2).AsDisposable();
+        using DisposableByteBuffer frames = BuildFrames(3).AsDisposable();
         Assert.That(() => wrapper.Decode(frames), Throws.Exception);
 
         using DisposableByteBuffer recoveryInput = BuildFrames(1).AsDisposable();
