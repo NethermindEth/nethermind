@@ -153,7 +153,7 @@ public class NativeBlockValidationTests
         return witnesses;
     }
 
-    private static BlockValidator CreateValidator()
+    private static RecursiveStarkBlockValidator CreateValidator()
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(true);
@@ -161,12 +161,10 @@ public class NativeBlockValidationTests
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
-        return new BlockValidator(
-            Always.Valid,
-            Always.Valid,
-            Always.Valid,
+        return new RecursiveStarkBlockValidator(
+            new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance),
+            NativeLeanProofVerifier.Instance,
             specProvider,
-            LimboLogs.Instance,
-            NativeLeanProofVerifier.Instance);
+            LimboLogs.Instance);
     }
 }
