@@ -97,9 +97,9 @@ public class BlockHeader
     public ulong? ExcessBlobGas { get; set; }
     public ulong? SlotNumber { get; set; }
 
-    /// <summary>EIP-8288 commitments to the body proof and the block's transaction dependencies.</summary>
+    /// <summary>EIP-8288 header fields <c>dependency_proof_hash</c> and <c>block_deps_hash</c>.</summary>
     public RecursiveStarkCommitment? RecursiveStark { get; set; }
-    public bool HasBody => RecursiveStark is not null || (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
+    public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
                            || (BlockAccessListHash is not null && BlockAccessListHash != Keccak.OfAnEmptySequenceRlp);
@@ -157,7 +157,7 @@ public class BlockHeader
         if (RecursiveStark is not null)
         {
             builder.AppendLine($"{indent}BlockDepsHash: {RecursiveStark.BlockDepsHash}");
-            builder.AppendLine($"{indent}StarkProofHash: {RecursiveStark.StarkProofHash}");
+            builder.AppendLine($"{indent}DependencyProofHash: {RecursiveStark.DependencyProofHash}");
         }
 
         return builder.ToString();

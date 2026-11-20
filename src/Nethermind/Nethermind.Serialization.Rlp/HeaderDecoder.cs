@@ -86,9 +86,9 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Position = position;
             if (position != headerCheck)
             {
-                Hash256 starkProofHash = decoderContext.DecodeKeccak() ?? throw new RlpException("Missing EIP-8288 proof hash.");
+                Hash256 dependencyProofHash = decoderContext.DecodeKeccak() ?? throw new RlpException("Missing EIP-8288 dependency proof hash.");
                 Hash256 blockDepsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
-                blockHeader.RecursiveStark = new RecursiveStarkCommitment(starkProofHash, blockDepsHash);
+                blockHeader.RecursiveStark = new RecursiveStarkCommitment(dependencyProofHash, blockDepsHash);
                 position = decoderContext.Position;
             }
 
@@ -185,7 +185,7 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[8])
             {
                 RecursiveStarkCommitment recursiveStark = header.RecursiveStark!;
-                writer.Encode(recursiveStark.StarkProofHash);
+                writer.Encode(recursiveStark.DependencyProofHash);
                 writer.Encode(recursiveStark.BlockDepsHash);
             }
         }
@@ -246,7 +246,7 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[8])
             {
                 RecursiveStarkCommitment recursiveStark = item.RecursiveStark!;
-                contentLength += Rlp.LengthOf(recursiveStark.StarkProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash);
+                contentLength += Rlp.LengthOf(recursiveStark.DependencyProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash);
             }
 
             return contentLength;

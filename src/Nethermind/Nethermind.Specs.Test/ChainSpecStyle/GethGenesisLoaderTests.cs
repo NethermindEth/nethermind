@@ -656,7 +656,7 @@ public class GethGenesisLoaderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(genesis.Header.RecursiveStark?.StarkProofHash, Is.EqualTo(activation == 0 ? Keccak.OfAnEmptyString : null));
+            Assert.That(genesis.Header.RecursiveStark?.DependencyProofHash, Is.EqualTo(activation == 0 ? Keccak.OfAnEmptyString : null));
             Assert.That(genesis.Header.RecursiveStark?.BlockDepsHash,
                 Is.EqualTo(activation == 0 ? new Hash256(Eip8288Dependencies.ComputeDepsHash([])) : null));
             Assert.That(genesis.StarkProof, Is.EqualTo(activation == 0 ? Array.Empty<byte>() : null));

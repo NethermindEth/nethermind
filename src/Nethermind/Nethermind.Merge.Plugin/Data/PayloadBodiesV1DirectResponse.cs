@@ -48,7 +48,7 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
     IEnumerator<ExecutionPayloadBodyV1Result?> IEnumerable<ExecutionPayloadBodyV1Result?>.GetEnumerator() => GetEnumerator();
     IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-    internal static PayloadBody CreatePayloadBody(byte[] blockRlp, byte[]? starkProof = null) => new(blockRlp, starkProof);
+    internal static PayloadBody CreatePayloadBody(byte[] blockRlp, byte[]? dependencyProof = null) => new(blockRlp, dependencyProof);
 
     public struct Enumerator(PayloadBodiesV1DirectResponse response) : IEnumerator<ExecutionPayloadBodyV1Result?>
     {
@@ -74,11 +74,11 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
 
             if (item.SourceTransactions is { } sourceTransactions)
             {
-                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, sourceTransactions, item.Withdrawals, starkProof: item.StarkProof);
+                PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, sourceTransactions, item.Withdrawals, dependencyProof: item.DependencyProof);
                 return;
             }
 
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals, starkProof: item.StarkProof);
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, item.EncodedTransactions, item.Withdrawals, dependencyProof: item.DependencyProof);
         }
     }
 
@@ -97,15 +97,15 @@ public sealed class PayloadBodiesV1DirectResponse : IStreamableResult, IReadOnly
         }
     }
 
-    internal readonly struct PayloadBody(byte[] blockRlp, byte[]? starkProof)
+    internal readonly struct PayloadBody(byte[] blockRlp, byte[]? dependencyProof)
     {
         public void WriteTo(PipeWriter writer) =>
-            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, starkProof: starkProof);
+            PayloadBodiesDirectResponseWriter.WritePayloadBody(writer, blockRlp, dependencyProof: dependencyProof);
 
         public ExecutionPayloadBodyV1Result ToResult()
         {
             (byte[][] transactions, Withdrawal[]? withdrawals) = PayloadBodiesDirectResponseWriter.DecodePayloadBody(blockRlp);
-            ExecutionPayloadBodyV1Result result = new([], withdrawals, starkProof);
+            ExecutionPayloadBodyV1Result result = new([], withdrawals, dependencyProof);
             result.Transactions = transactions;
             return result;
         }
@@ -136,11 +136,11 @@ internal static class PayloadBodiesDirectResponseWriter
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList = null,
         bool includeBlockAccessList = false,
-        byte[]? starkProof = null)
+        byte[]? dependencyProof = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, starkProof);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, dependencyProof);
     }
 
     public static void WritePayloadBody(
@@ -149,11 +149,11 @@ internal static class PayloadBodiesDirectResponseWriter
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList = null,
         bool includeBlockAccessList = false,
-        byte[]? starkProof = null)
+        byte[]? dependencyProof = null)
     {
         writer.Write("{\"transactions\":"u8);
         WriteTransactions(writer, transactions);
-        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, starkProof);
+        WritePayloadBodySuffix(writer, withdrawals, blockAccessList, includeBlockAccessList, dependencyProof);
     }
 
     public static void WritePayloadBody(
@@ -161,7 +161,7 @@ internal static class PayloadBodiesDirectResponseWriter
         byte[] blockRlp,
         MemoryManager<byte>? blockAccessList = null,
         bool includeBlockAccessList = false,
-        byte[]? starkProof = null)
+        byte[]? dependencyProof = null)
     {
         RlpReader ctx = new(blockRlp);
         int blockEnd = ctx.ReadSequenceLength() + ctx.Position;
@@ -174,7 +174,7 @@ internal static class PayloadBodiesDirectResponseWriter
         ctx.SkipItem(); // uncles
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawalsFromBlockRlp(writer, ref ctx, blockEnd);
-        if (starkProof is not null) WriteStarkProof(writer, starkProof);
+        if (dependencyProof is not null) WriteDependencyProof(writer, dependencyProof);
 
         WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
@@ -185,18 +185,18 @@ internal static class PayloadBodiesDirectResponseWriter
         Withdrawal[]? withdrawals,
         MemoryManager<byte>? blockAccessList,
         bool includeBlockAccessList,
-        byte[]? starkProof)
+        byte[]? dependencyProof)
     {
         writer.Write(",\"withdrawals\":"u8);
         WriteWithdrawals(writer, withdrawals);
-        if (starkProof is not null) WriteStarkProof(writer, starkProof);
+        if (dependencyProof is not null) WriteDependencyProof(writer, dependencyProof);
         WriteBlockAccessList(writer, blockAccessList, includeBlockAccessList);
         writer.Write("}"u8);
     }
 
-    private static void WriteStarkProof(IBufferWriter<byte> writer, ReadOnlySpan<byte> proof)
+    private static void WriteDependencyProof(IBufferWriter<byte> writer, ReadOnlySpan<byte> proof)
     {
-        writer.Write(",\"starkProof\":"u8);
+        writer.Write(",\"dependencyProof\":"u8);
         HexWriter.WriteHexString(writer, proof, chunked: true);
     }
 

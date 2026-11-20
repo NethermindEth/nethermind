@@ -38,28 +38,23 @@ internal static class PayloadBodiesHandlerHelper
     private static PayloadBodyV1? CreatePayloadBodyV1(IBlockStore blockStore, IStarkProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash)
     {
         byte[]? blockRlp = blockStore.GetRlp(blockNumber, blockHash);
-        return blockRlp is null || !TryGetStarkProof(proofStore, header, blockNumber, blockHash, out byte[]? starkProof)
-            ? null
-            : PayloadBodiesV1DirectResponse.CreatePayloadBody(blockRlp, starkProof);
+        return blockRlp is null ? null : PayloadBodiesV1DirectResponse.CreatePayloadBody(blockRlp, GetDependencyProof(proofStore, header, blockNumber, blockHash));
     }
 
     private static PayloadBodyV2? CreatePayloadBodyV2(IBlockStore blockStore, IBlockAccessListStore balStore, IStarkProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash)
     {
         byte[]? blockRlp = blockStore.GetRlp(blockNumber, blockHash);
-        if (blockRlp is null || !TryGetStarkProof(proofStore, header, blockNumber, blockHash, out byte[]? starkProof))
+        if (blockRlp is null)
         {
             return null;
         }
 
         MemoryManager<byte>? blockAccessList = balStore.GetRlp(blockNumber, blockHash);
-        return PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, blockAccessList, starkProof);
+        return PayloadBodiesV2DirectResponse.CreatePayloadBody(blockRlp, blockAccessList, GetDependencyProof(proofStore, header, blockNumber, blockHash));
     }
 
-    /// <summary>Reads the EIP-8288 proof the block store keeps apart from the body.</summary>
-    /// <returns><c>false</c> when the header commits to a proof that is not stored, so the body is not available.</returns>
-    private static bool TryGetStarkProof(IStarkProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash, out byte[]? starkProof)
-    {
-        starkProof = header.RecursiveStark is null ? null : proofStore.Get(blockNumber, blockHash);
-        return header.RecursiveStark is null || starkProof is not null;
-    }
+    /// <summary>Reads the EIP-8288 <c>dependencyProof</c> the EL keeps apart from the body.</summary>
+    /// <returns><c>null</c> before the fork and when the proof is not available, as when pruned; the body is still served.</returns>
+    private static byte[]? GetDependencyProof(IStarkProofStore proofStore, BlockHeader header, ulong blockNumber, Hash256 blockHash) =>
+        header.RecursiveStark is null ? null : proofStore.Get(blockNumber, blockHash);
 }

@@ -64,8 +64,8 @@ public class Eip8288BlockProductionTests
         }
     }
 
-    // EIP-7934 counts the body's stark_proof, which production attaches only after packing: a body that will carry a proof
-    // keeps room for the largest admissible one, so packing to the transaction byte budget still yields a block within the cap.
+    // The CL payload carries the dependency_proof, which production attaches only after packing: a block that will carry a proof
+    // keeps room for the largest admissible one, so packing to the transaction byte budget still yields a payload within the cap.
     [Test]
     public void Packing_to_the_byte_budget_leaves_room_for_the_largest_stark_proof([Values] bool carriesProof)
     {
@@ -90,7 +90,10 @@ public class Eip8288BlockProductionTests
             included.Add(filler);
             block.TxByteLength += filler.GetLength(false);
         }
-        Block produced = new(block.Header, new BlockBody([.. included], [], null, carriesProof ? new byte[Eip8288Constants.MaxAggregateProofBytes] : []));
+        Block produced = new(block.Header, new BlockBody([.. included], [], null))
+        {
+            StarkProof = carriesProof ? new byte[Eip8288Constants.MaxAggregateProofBytes] : []
+        };
 
         using (Assert.EnterMultipleScope())
         {

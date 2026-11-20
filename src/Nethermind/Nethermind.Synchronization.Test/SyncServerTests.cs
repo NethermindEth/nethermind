@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -24,7 +23,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Int256;
@@ -32,7 +30,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
@@ -92,29 +89,6 @@ public class SyncServerTests
         Context ctx = new();
         ctx.SyncServer.Find(TestItem.KeccakA);
         ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
-    }
-
-    [Test]
-    public void Serves_a_stored_body_with_its_proof_joined_back([Values] bool proofStored)
-    {
-        Context ctx = new();
-        Block block = Build.A.Block.WithNumber(1).WithWithdrawals(0).TestObject;
-        block.StarkProof = new byte[320 * 1024];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
-        block.Header.Hash = block.Header.CalculateHash();
-        byte[] receivedBody = new BlockBodyDecoder().EncodeAsBytes(block.Body);
-        Block stored = new(block.Header, new BlockBody(block.Transactions, block.Uncles, block.Withdrawals));
-        ctx.BlockTree.FindBlock(block.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(stored);
-        ctx.StarkProofStore.Get(block.Number, block.Hash!).Returns(proofStored ? block.StarkProof : null);
-
-        Block? served = ctx.SyncServer.Find(block.Hash!);
-
-        using (Assert.EnterMultipleScope())
-        {
-            // A body without the proof its header commits to is not this block's body, so it is not served.
-            Assert.That(served is null ? null : new BlockBodyDecoder().EncodeAsBytes(served.Body), proofStored ? Is.EqualTo(receivedBody) : Is.Null);
-            Assert.That(stored.StarkProof, Is.Null, "the stored instance stays without the proof");
-        }
     }
 
     [TestCase(true, true, true)]
@@ -228,7 +202,6 @@ public class SyncServerTests
             localBlockTree,
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
-            Substitute.For<IStarkProofStore>(),
             blockValidator,
             Always.Valid,
             ctx.PeerPool,
@@ -436,7 +409,6 @@ public class SyncServerTests
             poSSwitcher,
             localBlockTree,
             new BlockCacheService(),
-            Substitute.For<IStarkProofStore>(),
             LimboLogs.Instance);
         InvalidHeaderInterceptor headerValidatorWithInterceptor = new(
             mergeHeaderValidator,
@@ -456,7 +428,6 @@ public class SyncServerTests
             localBlockTree,
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
-            Substitute.For<IStarkProofStore>(),
             blockValidator,
             sealEngine,
             ctx.PeerPool,
@@ -744,7 +715,6 @@ public class SyncServerTests
             blockTree,
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
-            Substitute.For<IStarkProofStore>(),
             Always.Valid,
             Always.Valid,
             Substitute.For<ISyncPeerPool>(),
@@ -883,7 +853,6 @@ public class SyncServerTests
             localBlockTree,
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
-            Substitute.For<IStarkProofStore>(),
             Always.Valid,
             Always.Valid,
             ctx.PeerPool,
@@ -1033,7 +1002,6 @@ public class SyncServerTests
             blockTree,
             NullReceiptStorage.Instance,
             Substitute.For<IBlockAccessListStore>(),
-            Substitute.For<IStarkProofStore>(),
             Always.Valid,
             Always.Valid,
             peerPool,
@@ -1141,7 +1109,6 @@ public class SyncServerTests
                 BlockTree,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
-                StarkProofStore,
                 Always.Valid,
                 Always.Valid,
                 PeerPool,
@@ -1155,7 +1122,6 @@ public class SyncServerTests
         }
 
         public IBlockTree BlockTree { get; }
-        public IStarkProofStore StarkProofStore { get; } = Substitute.For<IStarkProofStore>();
         public IHistoryPruner HistoryPruner { get; }
         public ISyncPointers SyncPointers { get; }
         public IWorldStateManager WorldStateManager { get; }
@@ -1178,7 +1144,6 @@ public class SyncServerTests
                 localBlockTree,
                 NullReceiptStorage.Instance,
                 Substitute.For<IBlockAccessListStore>(),
-                StarkProofStore,
                 blockValidator ?? Always.Valid,
                 sealValidator ?? Always.Valid,
                 PeerPool,
@@ -1196,7 +1161,6 @@ public class SyncServerTests
                 BlockTree,
                 NullReceiptStorage.Instance,
                 blockAccessListStore,
-                StarkProofStore,
                 Always.Valid,
                 Always.Valid,
                 PeerPool,

@@ -4,7 +4,6 @@
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -12,7 +11,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -330,7 +328,7 @@ public class BeaconHeadersSyncTests
     {
         Context ctx = new();
         IInvalidChainTracker invalidChainTracker = new InvalidChainTracker.InvalidChainTracker(ctx.PoSSwitcher,
-            ctx.BlockTree, ctx.BlockCacheService, new StarkProofStore(new TestMemDb()), LimboLogs.Instance);
+            ctx.BlockTree, ctx.BlockCacheService, LimboLogs.Instance);
         ctx.InvalidChainTracker = invalidChainTracker;
 
         BlockTree syncedBlockTree = Build.A.BlockTree().OfChainLength(100, splitVariant: (int)BlockHeaderBuilder.DefaultDifficulty).TestObject;
