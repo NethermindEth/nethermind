@@ -1205,7 +1205,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That((int?)buffered["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), buffered.ToString());
             Assert.That((int?)streamed["error"]?["code"], Is.EqualTo((int?)buffered["error"]?["code"]), streamed.ToString());
-            Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("Cannot parse 'bad'"));
+            Assert.That((string?)streamed["error"]?["message"], Does.Contain("Cannot convert").And.Not.Contain("time: invalid duration \"bad\""));
         }
     }
 
@@ -1263,7 +1263,7 @@ public partial class DebugRpcModuleTests
             {
                 Assert.That((int?)response["error"]?["code"], Is.EqualTo(expectedCode), response.ToString());
                 Assert.That(response["result"], Is.Null);
-                Assert.That(response.ToString(), Does.Not.Contain("Cannot parse 'bad'"));
+                Assert.That(response.ToString(), Does.Not.Contain("time: invalid duration \"bad\""));
             }
         }
     }
@@ -1434,25 +1434,25 @@ public partial class DebugRpcModuleTests
             ("decode", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
             ("genesis", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "genesis is not traceable"),
             ("empty", "bad", null, noop, null, raw, null, null),
-            ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "bad", null, noop, null, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
             ("nonempty", "bad", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
             ("nonempty", "5s", null, "prestateTracer", invalidConfig, raw, ErrorCodes.InvalidInput, "Cannot convert"),
             ("nonempty", "5s", null, noop, null, raw, null, null),
-            ("nonempty", "bad", null, "callTracer", nullConfig, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "bad", null, "callTracer", nullConfig, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
             ("nonempty", "5s", null, "callTracer", nullConfig, raw, null, null),
             ("nonempty", 7, null, noop, null, raw, ErrorCodes.InvalidParams, null),
             ("nonempty", new string('x', 65), null, noop, null, raw, ErrorCodes.InvalidParams, null),
             ("nonempty", "bad", null, noop, null, "debug_traceTransactionInBlockByHash", ErrorCodes.InvalidParams, null),
-            ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
-            ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
+            ("nonempty", "bad", false, null, null, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
+            ("nonempty", "bad", true, null, null, raw, ErrorCodes.InvalidInput, "time: invalid duration"),
             ("nonempty", "5s", false, null, null, raw, null, null),
             ("nonempty", "5s", true, null, null, raw, null, null),
-            ("empty", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
-            ("empty", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
-            ("unmatched", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
-            ("unmatched", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
-            ("decode", "bad", false, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1"),
-            ("decode", "bad", true, null, null, raw, ErrorCodes.InvalidParams, "invalid argument 1")
+            ("empty", "bad", false, null, null, raw, null, null),
+            ("empty", "bad", true, null, null, raw, null, null),
+            ("unmatched", "bad", false, null, null, raw, null, null),
+            ("unmatched", "bad", true, null, null, raw, null, null),
+            ("decode", "bad", false, null, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock"),
+            ("decode", "bad", true, null, null, raw, ErrorCodes.InvalidInput, "could not decode block: rlp: too few elements for types.extblock")
         ];
         int index = 0;
         foreach ((string selection, object timeout, bool? streaming, string? tracer, string? config, string method, int? code, string? diagnostic) in cases)
@@ -1803,7 +1803,7 @@ public partial class DebugRpcModuleTests
             JArray traces = (JArray)json["result"]!;
             Assert.That(traces, Has.Count.EqualTo(block.Transactions.Length));
             foreach (JToken trace in traces)
-                Assert.That((string?)trace["error"], Does.Contain($"Cannot parse '{timeout}' as a duration"), response);
+                Assert.That((string?)trace["error"], Does.Contain($"time: invalid duration \"{timeout}\""), response);
         }
         else if (valid)
         {
@@ -1813,22 +1813,13 @@ public partial class DebugRpcModuleTests
             for (int i = 0; i < traces.Count; i++)
                 Assert.That((string?)traces[i]["txHash"], Is.EqualTo(block.Transactions[i].Hash!.ToString()), response);
         }
-        else if (method == "debug_traceBlock")
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
-                Assert.That(json["result"], Is.Null, response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo("invalid argument 1"), response);
-            }
-        }
         else
         {
             using (Assert.EnterMultipleScope())
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
                 Assert.That(json["result"], Is.Null, response);
-                Assert.That((string?)json["error"]?["message"], Does.Contain($"Cannot parse '{timeout}' as a duration"), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain($"time: invalid duration \"{timeout}\""), response);
             }
         }
     }
@@ -3810,13 +3801,16 @@ public partial class DebugRpcModuleTests
         Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32000));
     }
 
-    [TestCase("debug_traceBlock", -32602)]
+    [TestCase("debug_traceBlock", -32000)]
     [TestCase("debug_traceBlockByNumber", -32000)]
     [TestCase("debug_traceBlockByHash", -32000)]
+    [TestCase("debug_traceBadBlock", -32000)]
     public async Task Debug_traceBlock_routes_reject_malformed_timeout_before_stream_commit(string method, int expectedCode)
     {
         using Context context = await Context.Create();
         await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        if (method == "debug_traceBadBlock")
+            context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(context.Blockchain.BlockTree.Head!);
         object? argument = method switch
         {
             "debug_traceBlock" => Rlp.Encode(context.Blockchain.BlockTree.Head).ToHexString(true),
@@ -3830,6 +3824,7 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(document.RootElement.TryGetProperty("result", out _), Is.False);
             Assert.That(document.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expectedCode));
+            Assert.That(document.RootElement.GetProperty("error").GetProperty("message").GetString(), Is.EqualTo("time: invalid duration \"bad\""));
         }
     }
 
