@@ -18,14 +18,20 @@ try
     var knownFails = File.ReadAllLines(Path.Combine(scripts, "known-failing-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);
     var knownFlaky = File.ReadAllLines(Path.Combine(scripts, "known-flaky-hive-tests.txt")).ToHashSet(StringComparer.Ordinal);
     var results = new List<(string Name, bool Passed, bool Terminated)>();
+    var realCases = 0;
+    var emptySuites = new List<string>();
+    var unfinishedWrappers = new List<string>();
+    // Each simulator run writes one log next to the suite files, and each suite file names its simulator's log.
+    var simulatorLogs = new SortedSet<string>(StringComparer.Ordinal);
+    var simulatorsWithCases = new HashSet<string>(StringComparer.Ordinal);
     foreach (var argument in args)
     {
         var path = Path.GetFullPath(argument, Environment.CurrentDirectory);
         var directory = Path.GetDirectoryName(path)!;
-        var files = Directory.Exists(directory)
-            ? Directory.GetFiles(directory, Path.GetFileName(path)).Order(StringComparer.Ordinal)
-            : Enumerable.Empty<string>();
-        foreach (var file in files)
+        if (!Directory.Exists(directory))
+            continue;
+        simulatorLogs.UnionWith(Directory.GetFiles(directory, "*-simulator-*.log").Select(log => Path.GetFileName(log)));
+        foreach (var file in Directory.GetFiles(directory, Path.GetFileName(path)).Order(StringComparer.Ordinal))
         {
             try
             {
@@ -43,18 +49,33 @@ try
                     _ => null
                 };
                 var suiteResults = new List<(string Name, bool Passed, bool Terminated)>();
+                var suiteCases = 0;
                 foreach (var test in entries)
                 {
+                    var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
                     if (!test.TryGetProperty("summaryResult", out var summary) || summary.ValueKind == JsonValueKind.Null ||
                         !summary.TryGetProperty("pass", out var passed) ||
                         passed.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    {
+                        // Without the wrapper's result the tool's exit is unknown, and so is whether its sub-tests all ran.
+                        if (name == wrapper)
+                            unfinishedWrappers.Add($"Suite '{suite}' has no result for '{wrapper}'.");
                         continue;
-                    var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
+                    }
                     // Hive sets "timeout" only on a case it ended itself: at its time limit, on an interrupt or when the simulator exits.
                     var terminated = summary.TryGetProperty("timeout", out var timeout) && timeout.ValueKind == JsonValueKind.True;
+                    // Count on the raw name, before the prefix below, so that no launch case passes for a real one.
+                    if (name != launchTest && name != wrapper)
+                        suiteCases++;
                     // Sync suites reuse case names, so retain their suite prefix to distinguish failures.
                     suiteResults.Add((suite is "snapsync" or "sync" ? $"{suite}/{name}" : name, passed.GetBoolean(), terminated));
                 }
+                // A suite that launched the client and stopped, or ran nothing, must fail even next to suites with results.
+                realCases += suiteCases;
+                if (suiteCases == 0)
+                    emptySuites.Add(suite ?? Path.GetFileName(file));
+                else if (document.RootElement.TryGetProperty("simLog", out var simLog) && simLog.ValueKind == JsonValueKind.String)
+                    simulatorsWithCases.Add(simLog.GetString()!);
                 // Drop the failed wrapper only when a failed sub-test explains it and Hive did not end it: a tool that
                 // crashes or hangs after passing sub-tests, or that Hive stops, must still fail the job.
                 if (wrapper is not null && suiteResults.Any(result => result.Name != wrapper && !result.Passed))
@@ -95,16 +116,23 @@ try
         }
     }
 
-    // A simulator can launch the client and stop before running any real cases.
-    if (!results.Any(result => result.Name != launchTest))
-    {
-        Console.WriteLine("Hive ran no test cases.");
-        return 1;
-    }
-
     Console.WriteLine($"\n  Unexpected passes: {unexpectedPasses}");
     Console.WriteLine($"  Unexpected fails: {unexpectedFails}");
-    return unexpectedPasses + unexpectedFails > 0 ? 1 : 0;
+
+    // A simulator can launch the client and stop before running any real cases, or write no suite file at all.
+    var problems = new List<string>();
+    if (realCases == 0)
+        problems.Add("Hive ran no test cases.");
+    else
+        problems.AddRange(emptySuites.Select(suite => $"Suite '{suite}' ran no test cases."));
+    problems.AddRange(unfinishedWrappers);
+    problems.AddRange(simulatorLogs.Where(log => !simulatorsWithCases.Contains(log))
+        .Select(log => $"Simulator log '{log}' has no suite with test cases."));
+    if (problems.Count > 0)
+        Console.WriteLine();
+    foreach (var problem in problems)
+        Console.WriteLine(problem);
+    return unexpectedPasses + unexpectedFails > 0 || problems.Count > 0 ? 1 : 0;
 }
 catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException or KeyNotFoundException or ArgumentException)
 {

@@ -109,6 +109,26 @@ try
         // A failed sub-test in another file, of the same suite, explains nothing, whichever file is read first.
         new("eth_launch_sibling_read_after", [new("eth", [Failed(launch), Passed("test_a")], "a.json"), new("eth", [Failed(failing)], "b.json")], 1, ["Unexpected fails: 1"]),
         new("eth_launch_sibling_read_before", [new("eth", [Failed(failing)], "a.json"), new("eth", [Failed(launch), Passed("test_a")], "b.json")], 1, ["Unexpected fails: 1"]),
+        // Every suite file needs a case other than its launch case or devp2p wrapper, whatever the other suites ran.
+        new("launch_only_next_to_results", [new("engine", [Passed(launch)]), new("rpc-compat", [Passed("test_a")])], 1, ["Suite 'engine' ran no test cases.", "Unexpected fails: 0"]),
+        new("empty_suite_next_to_results", [new("engine", []), new("rpc-compat", [Passed("test_a")])], 1, ["Suite 'engine' ran no test cases."]),
+        new("pending_only_next_to_results", [new("engine", [new("test_b", null, false)]), new("rpc-compat", [Passed("test_a")])], 1, ["Suite 'engine' ran no test cases."]),
+        new("same_suite_empty_and_valid", [new("engine", [], "a.json"), new("engine", [Passed("test_a")], "b.json")], 1, ["Suite 'engine' ran no test cases."]),
+        // As in a real job, where file names start with a timestamp: the suite without cases comes after the results.
+        new("launch_only_after_results", [new("rpc-compat", [Passed("test_a")], "1-a.json"), new("engine", [Passed(launch)], "2-b.json")], 1, ["Suite 'engine' ran no test cases."]),
+        new("sync_launch_only", [new("sync", [Passed(launch)]), new("rpc-compat", [Passed("test_a")])], 1, ["Suite 'sync' ran no test cases."]),
+        new("discv4_wrapper_only", [new("discv4", [Passed("nethermind")]), new("eth", [Passed(launch), Passed("test_a")])], 1, ["Suite 'discv4' ran no test cases."]),
+        new("nethermind_case_outside_discovery", [new("engine", [Passed("nethermind")])], 0, ["Unexpected fails: 0"]),
+        new("suites_all_with_cases", [new("discv5", [Passed("nethermind"), Passed("test_b")]), new("eth", [Passed(launch), Passed("test_a")])], 0, ["Passed 4:", "Unexpected fails: 0"]),
+        // A devp2p wrapper without a result leaves the tool's outcome unknown, even next to an explaining failure.
+        new("eth_launch_pending", [new("eth", [new(launch, null, false), Passed("test_a")])], 1, ["Suite 'eth' has no result for 'client launch (nethermind)'."]),
+        new("discv5_wrapper_pending_next_to_known", [new("discv5", [new("nethermind", null, false), Failed(failing)])], 1, ["Suite 'discv5' has no result for 'nethermind'.", "Unexpected fails: 0"]),
+        // Every simulator log must be named by a suite file with cases.
+        new("simulator_without_suites", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log")], 1, ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
+        new("simulator_with_launch_only", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("graphql", [Passed(launch)], SimLog: "2-simulator-b.log")], 1, ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
+        new("first_simulator_without_suites", [new("engine", [Passed("test_a")], SimLog: "2-simulator-b.log")], 1, ["Simulator log '1-simulator-a.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
+        new("simulators_all_reported", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("rpc-compat", [Passed("test_a")], SimLog: "2-simulator-b.log")], 0, ["Unexpected fails: 0"], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
+        new("simulator_shared_by_suites", [new("discv4", [Passed("nethermind"), Passed("test_b")], SimLog: "1-simulator-a.log"), new("eth", [Passed(launch), Passed("test_a")], SimLog: "1-simulator-a.log")], 0, ["Unexpected fails: 0"], Logs: ["1-simulator-a.log"]),
     })
     {
         var directory = Directory.CreateTempSubdirectory("hive-results-tests-");
