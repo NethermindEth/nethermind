@@ -5,7 +5,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
-using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL;
@@ -19,10 +18,10 @@ namespace Nethermind.Optimism.Test;
 
 public class OptimismRollupConfigTests
 {
-    private const string ResourcePrefix = "Nethermind.Config.chainspec.";
+    private const string ResourcePrefix = "Nethermind.Specs.chainspec.";
 
     private static string[] EmbeddedChainSpecs() =>
-        typeof(IConfig).Assembly.GetManifestResourceNames()
+        typeof(ChainSpecFileLoader).Assembly.GetManifestResourceNames()
             .Where(static name => name.StartsWith(ResourcePrefix, StringComparison.Ordinal))
             .Where(static name =>
                 name.EndsWith(".json", StringComparison.Ordinal) ||
@@ -42,7 +41,7 @@ public class OptimismRollupConfigTests
         int optimismChainSpecCount = 0;
         foreach (string resourceName in EmbeddedChainSpecs())
         {
-            using Stream stream = typeof(IConfig).Assembly.GetManifestResourceStream(resourceName)
+            using Stream stream = typeof(ChainSpecFileLoader).Assembly.GetManifestResourceStream(resourceName)
                 ?? throw new InvalidOperationException($"Embedded chain spec {resourceName} was not found.");
             RollupConfigInputLoader inputLoader = new(serializer);
             ChainSpec chainSpec = resourceName.EndsWith(".zst", StringComparison.Ordinal)

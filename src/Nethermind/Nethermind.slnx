@@ -165,6 +165,7 @@
   <Project Path="Nethermind.Merge.AuRa/Nethermind.Merge.AuRa.csproj" />
   <Project Path="Nethermind.Monitoring/Nethermind.Monitoring.csproj" />
   <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
+  <Project Path="Nethermind.Network.Core/Nethermind.Network.Core.csproj" />
   <Project Path="Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
   <Project Path="Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
   <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
