@@ -192,12 +192,13 @@ public class ConfigProvider : IConfigProvider
                             {
                                 propertyInfo.SetValue(config, value);
                             }
-                            catch (Exception e)
+                            catch (TargetInvocationException e) when (e.InnerException is IExceptionWithExitCode and Exception setterError)
                             {
                                 // A setter's own configuration error keeps its exit code, which the wrapper below would hide.
-                                if (e is TargetInvocationException { InnerException: IExceptionWithExitCode and Exception setterError })
-                                    ExceptionDispatchInfo.Capture(setterError).Throw();
-
+                                ExceptionDispatchInfo.Throw(setterError);
+                            }
+                            catch (Exception e)
+                            {
                                 throw new InvalidOperationException($"Cannot set value of {category}.{name}", e);
                             }
 
