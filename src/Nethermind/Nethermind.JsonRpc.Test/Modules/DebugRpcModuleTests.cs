@@ -2423,7 +2423,8 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(json["error"], Is.Null, response);
             Assert.That((bool?)json["result"]?["failed"], Is.False, response);
-            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x"), response);
+            // The identity precompile at 0x04 echoes its input, since an override without code keeps it.
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo(address.EndsWith('4') ? "0x1234" : "0x"), response);
             Assert.That(json["result"]?["structLogs"], Is.Empty, response);
         }
     }
