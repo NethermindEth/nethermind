@@ -644,11 +644,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             return blockFinder;
         }
 
-        /// <remarks>
-        /// The first caller is held in its scan. The others start after it, and the scan is released once each of them has
-        /// read the head and then waits or has finished, so each has missed the cache before the first scan publishes:
-        /// they wait on the estimate's lock, or without one each runs a scan of its own.
-        /// </remarks>
         [Test]
         public void Estimate_ConcurrentMissesOnANewHead_ShareOneScan([Values] bool priorityFee)
         {
@@ -673,13 +668,11 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(scan.Scans, Is.EqualTo(1), "one scan for every caller");
                 Assert.That(scan.HeadReads, Is.EqualTo(4), "each caller reads the head once");
                 Assert.That(scan.CachedForNewHead(priorityFee), Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
+                Assert.That(scan.Finish(), Is.Zero, "callers still running");
             }
         }
 
-        /// <remarks>
-        /// While a scan is held, calls that do not need it complete: the other estimate on its own cold cache, a cache hit and
-        /// a call without a head. A lock shared by the two estimates, or taken before the head or cache checks, holds them up.
-        /// </remarks>
+        /// <remarks>A lock shared by the two estimates, or taken before the head or cache check, would hold these calls up.</remarks>
         [Test]
         public void Estimate_WhileAScanIsHeld_CallsThatDoNotNeedItComplete([Values] bool priorityFee)
         {
@@ -702,13 +695,10 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(noHead, Is.EqualTo(priorityFee ? EthGasPriceConstants.FallbackMaxPriorityFeePerGas : HeldScan.PreviousPrice(false)), "no head");
                 Assert.That(first.Wait(), Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
                 Assert.That(scan.Scans, Is.EqualTo(2), "one scan per estimate");
+                Assert.That(scan.Finish(), Is.Zero, "callers still running");
             }
         }
 
-        /// <remarks>
-        /// The held scan throws. Its caller gets the exception, and a caller that waited for it scans again, while the
-        /// previous price stays cached until that scan publishes.
-        /// </remarks>
         [Test]
         public void Estimate_ScanThrows_WaitingCallerScansAgain([Values] bool priorityFee)
         {
@@ -733,15 +723,12 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(cacheDuringRetry?.LastPrice, Is.EqualTo(HeldScan.PreviousPrice(priorityFee)), "the failed scan replaced the previous price");
                 Assert.That(cacheDuringRetry?.TryGetPrice(scan.NewHead.Hash!, out _), Is.False, "the failed scan published a price");
                 Assert.That(scan.CachedForNewHead(priorityFee), Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
+                Assert.That(scan.Finish(), Is.Zero, "callers still running");
             }
         }
 
-        /// <summary>
-        /// An oracle on a new head at number 0 whose one legacy transaction pays 20 gwei over a 10 gwei London base fee, so a
-        /// scan is one <c>FindBlock</c> call and estimates a 20 gwei gas price and a 10 gwei tip. Both caches still hold the
-        /// price of a previous head at the same number. The first <c>FindBlock</c> call waits for <c>Release</c>; later
-        /// ones return at once.
-        /// </summary>
+        /// <summary>An oracle on a new head whose one-block scan estimates a 20 gwei gas price and a 10 gwei tip, with both caches
+        /// holding a previous head's price; the first <c>FindBlock</c> call waits for <c>Release</c>, later ones do not.</summary>
         private sealed class HeldScan : IDisposable
         {
             private static readonly TimeSpan Guard = TimeSpan.FromSeconds(10);
@@ -789,7 +776,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             public bool WaitUntilScanHeld() => _scanHeld.Wait(Guard);
 
-            /// <summary>Waits until every caller has read the head and then waits, on a lock or an event, or has finished.</summary>
+            /// <summary>The scan is released only after this: every caller has read the head and is blocked or finished.</summary>
             public bool WaitUntilAllParked() => SpinWait.SpinUntil(() => HeadReads >= _callers.Count && _callers.All(static caller => caller.IsParked), Guard);
 
             public void SetHead(Block? head) => Volatile.Write(ref _head, head);
@@ -797,11 +784,17 @@ namespace Nethermind.JsonRpc.Test.Modules
             public PriceCache Cache(bool priorityFee) => priorityFee ? Oracle._maxPriorityFeePerGasEstimation : Oracle._gasPriceEstimation;
             public UInt256? CachedForNewHead(bool priorityFee) => Cache(priorityFee).TryGetPrice(NewHead.Hash!, out UInt256? price) ? price : null;
 
-            public void Dispose()
+            /// <returns>How many callers are still running once the scan is released and each one is joined.</returns>
+            public int Finish()
             {
                 Release();
-                // Only once every caller has finished, so none waits on a disposed event.
-                if (_callers.Count(static caller => !caller.Join()) == 0)
+                return _callers.Count(static caller => !caller.Join());
+            }
+
+            // The tests assert Finish; here the events are disposed only once every caller has finished.
+            public void Dispose()
+            {
+                if (Finish() == 0)
                 {
                     _scanHeld.Dispose();
                     _release.Dispose();
@@ -825,7 +818,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return FirstScanFailure is null ? NewHead : throw FirstScanFailure;
             }
 
-            /// <summary>One estimate on a thread of its own, whose state tells whether it waits.</summary>
             public sealed class Caller
             {
                 private readonly Thread _thread;
