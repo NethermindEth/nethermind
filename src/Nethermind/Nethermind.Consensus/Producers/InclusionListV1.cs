@@ -119,7 +119,7 @@ public sealed class InclusionListV1
                 ? TxsDecoder.DecodeTxs(transactions, skipErrors: true).Transactions : null;
             block.InclusionLists = null;
         }
-        block.InclusionListProofInput = null;
+        block.LeanProduction.InclusionListProofInput = null;
     }
 
     /// <summary>Copies the lists, so later changes to the caller's buffers cannot alter a retained input.</summary>

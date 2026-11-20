@@ -70,7 +70,7 @@ public class InclusionListTxSourceTests
             Assert.That(block.InclusionLists, Has.Count.EqualTo(1));
             Assert.That(block.InclusionLists[0].Transactions, Is.EqualTo(block.InclusionListTransactions));
             Assert.That(block.InclusionLists[0].StarkProof, Is.EqualTo(new byte[] { 1 }));
-            Assert.That(block.InclusionListProofInput, Is.Null);
+            Assert.That(block.LeanProduction.InclusionListProofInput, Is.Null);
         }
     }
 
@@ -90,7 +90,7 @@ public class InclusionListTxSourceTests
         {
             InclusionListTransactions = [transaction],
             InclusionLists = [new CommitteeInclusionList([transaction])],
-            InclusionListProofInput = new AggregationInput()
+            LeanProduction = { InclusionListProofInput = new AggregationInput() }
         };
 
         source.ApplyInclusionList(block, attributes);
@@ -99,7 +99,7 @@ public class InclusionListTxSourceTests
         {
             Assert.That(block.InclusionListTransactions?.Length ?? 0, Is.EqualTo(mode == "absent" ? 0 : 1));
             Assert.That(block.InclusionLists?.Count ?? 0, Is.EqualTo(mode == "counted" ? 1 : 0));
-            Assert.That(block.InclusionListProofInput, Is.Null);
+            Assert.That(block.LeanProduction.InclusionListProofInput, Is.Null);
         }
     }
 
@@ -134,7 +134,7 @@ public class InclusionListTxSourceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(nextBuild.InclusionListTransactions, Is.SameAs(firstBuild.InclusionListTransactions));
-            Assert.That(nextBuild.InclusionListProofInput, Is.SameAs(firstBuild.InclusionListProofInput));
+            Assert.That(nextBuild.LeanProduction.InclusionListProofInput, Is.SameAs(firstBuild.LeanProduction.InclusionListProofInput));
         }
         source.Set(list, spec, attributes.InclusionLists);
         // The registered build owns its snapshot even if the caller mutates the encoded list.
@@ -187,8 +187,8 @@ public class InclusionListTxSourceTests
             Assert.That(GetTransactions(source, attributes).Select(static tx => tx.Nonce), Is.EqualTo(new ulong[] { 1 }));
             Assert.That(block.InclusionListTransactions, Has.Length.EqualTo(2));
             Assert.That(block.InclusionLists, Has.Count.EqualTo(2));
-            Assert.That(block.InclusionListProofInput!.RecursiveProofs, Has.Count.EqualTo(1));
-            Assert.That(block.InclusionListProofInput.RecursiveProofs[0].InnerDeps, Is.EqualTo(wrapperDeps), "the whole superset; the block discards the surplus");
+            Assert.That(block.LeanProduction.InclusionListProofInput!.RecursiveProofs, Has.Count.EqualTo(1));
+            Assert.That(block.LeanProduction.InclusionListProofInput.RecursiveProofs[0].InnerDeps, Is.EqualTo(wrapperDeps), "the whole superset; the block discards the surplus");
             Assert.That(verifier.VerificationCalls, Is.EqualTo(1));
         }
     }

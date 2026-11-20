@@ -30,7 +30,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -45,11 +44,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 {
     protected override void Load(ContainerBuilder builder)
     {
-        builder.AddSingleton<ILeanProofVerifier, Nethermind.Crypto.NativeLeanProofVerifier>()
-            .AddDecorator<ILeanProofVerifier, ProductionProofCache>()
-            .AddSingleton<LeanProofStore>(static _ => new LeanProofStore(FrameTxSigHash.ComputeValue))
-            .AddSingleton<ProofWrapperService>()
-            .AddSingleton<InclusionListProofService>();
+        builder.AddModule(new Eip8288Module());
 
         builder
             // Validators
@@ -103,8 +98,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()
-            .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig, LeanProofStore>((specProvider, blocksConfig, proofs) =>
-                new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes, leanProofStore: proofs))
+            .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
+                new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
             .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
 
