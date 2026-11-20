@@ -611,11 +611,11 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DebugRequest(JsonRpcRequest request, JsonRpcContext context) =>
-        _logger.Debug($"JSON RPC request {request.Method}{DescribeRemoteAddress(context)}");
+        _logger.Debug($"JSON RPC request {request.MethodForLogging}{DescribeRemoteAddress(context)}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void DebugBatchRequest(JsonRpcRequest request, JsonRpcContext context, int requestIndex, int requestCount) =>
-        _logger.Debug($"JSON RPC batch request {requestIndex}/{requestCount} {request.Method}{DescribeRemoteAddress(context)}");
+        _logger.Debug($"JSON RPC batch request {requestIndex}/{requestCount} {request.MethodForLogging}{DescribeRemoteAddress(context)}");
 
     /// <summary>Runs one JSON-RPC batch: size limit, then decode-dispatch-write per item, then close the array.</summary>
     /// <remarks>

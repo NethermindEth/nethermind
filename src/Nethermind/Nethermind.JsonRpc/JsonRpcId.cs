@@ -284,7 +284,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Null => "null",
             JsonRpcIdKind.Long => _longValue.ToString(CultureInfo.InvariantCulture),
             JsonRpcIdKind.Decimal => _decimalValue.ToString(CultureInfo.InvariantCulture),
-            JsonRpcIdKind.String => JsonEncodedText.Encode(GetStringValue()).ToString(),
+            JsonRpcIdKind.String => JsonRpcRequest.EncodeLogText(GetStringValue()),
             JsonRpcIdKind.Number => Encoding.UTF8.GetString(_rawValue!),
             _ => string.Empty
         };
