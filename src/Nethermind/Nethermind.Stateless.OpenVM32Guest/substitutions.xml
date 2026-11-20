@@ -28,6 +28,11 @@
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Stateless.Executor">
+    <type fullname="Nethermind.Stateless.Execution.IO.TrustedInput">
+      <method signature="System.Boolean get_PlaceStateNodesInInput()" body="stub" value="true" />
+    </type>
+  </assembly>
   <assembly fullname="Nethermind.Serialization.Ssz">
     <!-- Merkleization hashes pairs with the three-operand zkvm_sha256_compress of OpenVM's runtime. -->
     <type fullname="Nethermind.Serialization.Ssz.Merkleization.OpenVmSha256Flag">
