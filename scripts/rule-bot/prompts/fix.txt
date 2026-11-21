@@ -1,0 +1,15 @@
+You fix every listed hit of the build rules {{IDS}} in the Nethermind repository in the current directory.
+
+Hits (rule, file:line:column, message):
+
+{{HITS}}
+
+Rules for the fix:
+1. Each change must keep behaviour the same. Remove a member or assignment only if nothing reads it, including reflection, serialization, DI, and public API of a library project; if a site cannot be fixed without changing behaviour, leave it and list it.
+2. Change only the listed files. Do not touch .github, .agents, scripts, or any *.md file.
+3. No code comments. No suppressions (#pragma, SuppressMessage) unless the site is listed as unfixable.
+4. After editing, run for each of these solutions: {{SOLUTIONS}}
+   dotnet build <solution> -c Release -p:TreatWarningsAsErrors=false -p:EnforceCodeStyleInBuild=true
+   and repeat until none of {{IDS}} is reported in production code.
+
+Finally write {{RESULT}} as JSON: {"fixed": N, "unfixable": [{"site": "file:line", "reason": "..."}]}.
