@@ -109,6 +109,36 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        public void Value_less_precompile_call_deletes_only_an_existing_empty_account(
+            [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction instruction,
+            [Values(false, true)] bool exists,
+            [Values(false, true)] bool empty)
+        {
+            Address precompile = IdentityPrecompile.Address;
+            if (exists)
+            {
+                TestState.CreateAccount(precompile, UInt256.Zero);
+                if (!empty) TestState.IncrementNonce(precompile, 1);
+            }
+
+            byte[] code = instruction == Instruction.CALL
+                ? Prepare.EvmCode.Call(precompile, 50_000).Done
+                : Prepare.EvmCode.StaticCall(precompile, 50_000).Done;
+            (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code, value: 0);
+
+            TransactionResult result = _processor.Execute(
+                transaction,
+                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
+                NullTxTracer.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(TestState.AccountExists(precompile), Is.EqualTo(exists && !empty));
+            }
+        }
+
+        [Test]
         public void Nested_halt_preserves_ripemd_empty_account_deletion([Values(Instruction.INVALID, Instruction.REVERT)] Instruction halt)
         {
             Address child = TestItem.AddressC;
