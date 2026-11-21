@@ -61,9 +61,11 @@ public class SimulateTxExecutor<TTrace>(
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
+                        if (blockStateCall.Calls[i] is not { } rpcCall)
+                            return "Simulated calls must not be null.";
                         TransactionForRpc callTransactionModel = readLoneBlobFeeCapAsAbsent
-                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(blockStateCall.Calls[i])
-                            : blockStateCall.Calls[i];
+                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(rpcCall)
+                            : rpcCall;
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
@@ -119,6 +121,12 @@ public class SimulateTxExecutor<TTrace>(
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
+
+        foreach (BlockStateCall<TransactionForRpc>? block in call.BlockStateCalls)
+        {
+            if (block is null)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated blocks must not be null.", ErrorCodes.InvalidParams);
+        }
 
         string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
         if (callsLimitError is not null)

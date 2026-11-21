@@ -83,8 +83,9 @@ public static class StateOverridesExtensions
     {
         void ApplyState(Dictionary<UInt256, Hash256> diff)
         {
-            foreach ((UInt256 index, Hash256 value) in diff)
+            foreach ((UInt256 index, Hash256? value) in diff)
             {
+                if (value is null) throw new ArgumentException("Storage override values must not be null.");
                 stateProvider.Set(new StorageCell(address, index), value.ToUInt256());
             }
         }
