@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 
 namespace Nethermind.Api.Steps;
 
@@ -14,4 +15,6 @@ public sealed record StepTarget(Type StepBaseType);
 /// Registered from the command line, where only the name is known; the name is matched against
 /// <see cref="StepInfo.Command"/> once the steps have been resolved.
 /// </remarks>
-public sealed record StepCommandSelection(string Name);
+/// <param name="Name">The command name.</param>
+/// <param name="Arguments">The positional arguments following the command name, for the selected step to read.</param>
+public sealed record StepCommandSelection(string Name, IReadOnlyList<string> Arguments);
