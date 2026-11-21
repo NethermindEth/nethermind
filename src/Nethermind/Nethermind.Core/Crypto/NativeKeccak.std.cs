@@ -30,9 +30,13 @@ internal static unsafe class NativeKeccak
         if (!NativeLibrary.TryLoad(LibraryName, typeof(NativeKeccak).Assembly, null, out nint handle))
             return null;
 
-        return NativeLibrary.TryGetExport(handle, ExportName, out nint export)
-            ? (delegate* unmanaged<ulong*, byte*, nuint, void>)export
-            : null;
+        if (!NativeLibrary.TryGetExport(handle, ExportName, out nint export))
+        {
+            NativeLibrary.Free(handle);
+            return null;
+        }
+
+        return (delegate* unmanaged<ulong*, byte*, nuint, void>)export;
     }
 
     /// <summary>Absorbs <paramref name="blocks"/> rate blocks of <paramref name="input"/> into <paramref name="state"/>.</summary>
