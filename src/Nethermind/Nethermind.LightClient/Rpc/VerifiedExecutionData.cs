@@ -47,7 +47,6 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
     internal async Task<JsonElement> GetBlockTransactionCountAsync(BlockHeader header, CancellationToken cancellationToken)
     {
         Block block = await source.GetBlockAsync(header, cancellationToken);
-        Index(block);
         return JsonSerializer.SerializeToElement($"0x{block.Transactions.Length:x}");
     }
 
@@ -208,7 +207,9 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         for (int i = 0; i < block.Transactions.Length; i++)
         {
             Transaction transaction = block.Transactions[i];
-            if (transaction.Hash != hash) continue;
+            if ((transaction.Hash ??= transaction.CalculateHash()) != hash) continue;
+            // The block's index outlives the entry of a transaction nobody looked up, so a found one is located again.
+            _transactionIndex.Set(hash, block.Header, 512);
             if (receipt)
             {
                 TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
@@ -233,6 +234,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
 
     private void Index(Block block)
     {
+        if (_transactionIndex.TryGetValue((block.Hash!, "transactions"), out HashSet<Hash256>? _)) return;
         HashSet<Hash256> hashes = [];
         for (int i = 0; i < block.Transactions.Length; i++)
         {
