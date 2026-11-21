@@ -91,8 +91,15 @@ internal class XdcTracingTests
     [Test]
     public async Task Replay_runs_in_the_xdc_block_execution_context()
     {
-        // Stores PREVRANDAO, which XDC defines as the hash of the block number, in the slot 0 of a new contract.
-        byte[] initCode = Prepare.EvmCode.Op(Instruction.PREVRANDAO).PushData(0).Op(Instruction.SSTORE).Done;
+        // XDC enables BLOBBASEFEE without blob gas in the headers and defines it as zero.
+        _blockchain.ChangeReleaseSpec(static spec => spec.IsEip4844Enabled = true);
+
+        // Stores PREVRANDAO, which XDC defines as the hash of the block number, in the slot 0 of a new contract,
+        // and BLOBBASEFEE + 1 in the slot 1.
+        byte[] initCode = Prepare.EvmCode
+            .Op(Instruction.PREVRANDAO).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.BLOBBASEFEE).PushData(1).Op(Instruction.ADD).PushData(1).Op(Instruction.SSTORE)
+            .Done;
         Transaction create = _blockchain.CreateTransactionBuilder().WithCode(initCode).WithGasLimit(100_000).WithNonce(0)
             .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         Transaction transfer = _blockchain.CreateTransactionBuilder().To(TestItem.AddressC).WithNonce(1)
@@ -103,10 +110,11 @@ internal class XdcTracingTests
 
         Address contract = ContractAddress.From(TestItem.AddressB, 0);
         string prevRandao = Keccak.Compute(block.Number.ToBigEndianByteArrayWithoutLeadingZeros()).ToString();
+        const string one = "0x0000000000000000000000000000000000000000000000000000000000000001";
 
         string replay = await Request("trace_replayTransaction", $"""["{create.Hash}",["stateDiff"]]""");
         string before = await Request("debug_storageRangeAt", $"""["{block.Hash}",{createIndex},"{contract}","0x",1]""");
-        string after = await Request("debug_storageRangeAt", $"""["{block.Hash}",{createIndex + 1},"{contract}","0x",1]""");
+        string after = await Request("debug_storageRangeAt", $"""["{block.Hash}",{createIndex + 1},"{contract}","0x",2]""");
 
         JToken replayJson = JToken.Parse(replay);
         JToken beforeJson = JToken.Parse(before);
@@ -117,6 +125,7 @@ internal class XdcTracingTests
         {
             Assert.That(replayJson["error"], Is.Null, replay);
             Assert.That((string?)contractDiff?["storage"]?[Hash256.Zero.ToString()]?["+"], Is.EqualTo(prevRandao), replay);
+            Assert.That((string?)contractDiff?["storage"]?[one]?["+"], Is.EqualTo(one), replay);
 
             // Empty storage serializes as null; the contract does not exist before the transaction creating it.
             Assert.That(beforeJson["error"], Is.Null, before);
@@ -124,7 +133,7 @@ internal class XdcTracingTests
 
             Assert.That(afterJson["error"], Is.Null, after);
             Assert.That(((JObject?)afterJson["result"]?["storage"])?.Properties().Select(static slot => (string?)slot.Value["value"]),
-                Is.EqualTo(new[] { prevRandao }), after);
+                Is.EquivalentTo(new[] { prevRandao, one }), after);
         }
     }
 
