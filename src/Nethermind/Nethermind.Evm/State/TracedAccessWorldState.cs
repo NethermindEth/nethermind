@@ -202,11 +202,18 @@ public partial class TracedAccessWorldState(IWorldState state, bool parallel) : 
             return;
         }
 
+        RecordStorageWrite(_generatingBlockAccessList, in storageCell, in currentValue, in newValue);
+        State.Set(in storageCell, in newValue, in currentValue);
+    }
+
+    /// <summary>Records a storage write in the block access list, seeding the slot's value from before a clear in the transaction.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void RecordStorageWrite(BlockAccessListAtIndex generatingBlockAccessList, in StorageCell storageCell, in UInt256 currentValue, in UInt256 newValue)
+    {
         AssertCurrentStorageValue(in storageCell, in currentValue);
         if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
-            _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
-        _generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
-        State.Set(in storageCell, in newValue, in currentValue);
+            generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
+        generatingBlockAccessList.AddStorageChange(in storageCell, in currentValue, in newValue);
     }
 
     [Conditional("DEBUG")]

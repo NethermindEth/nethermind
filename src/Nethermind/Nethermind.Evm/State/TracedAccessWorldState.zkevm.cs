@@ -15,28 +15,13 @@ namespace Nethermind.Evm.State;
 /// </remarks>
 public partial class TracedAccessWorldState : IGuestSlotStore
 {
-    private IGuestSlotStore? _slots;
-    private bool _slotsResolved;
-
-    private IGuestSlotStore? Slots
-    {
-        get
-        {
-            if (!_slotsResolved)
-            {
-                // Resolved once: a type test against an interface walks the type's interfaces.
-                _slots = parallel ? null : State as IGuestSlotStore;
-                _slotsResolved = true;
-            }
-
-            return _slots;
-        }
-    }
+    // Resolved once: a type test against an interface walks the type's interfaces.
+    private readonly IGuestSlotStore? _slots = parallel ? null : state as IGuestSlotStore;
 
     /// <remarks>Transient storage is not in the block access list, so the read records nothing.</remarks>
     void IGuestSlotStore.ReadTransient(Address address, in UInt256 index, out UInt256 value)
     {
-        IGuestSlotStore? slots = Slots;
+        IGuestSlotStore? slots = _slots;
         if (slots is null)
             GetTransientState(new StorageCell(address, in index), out value);
         else
@@ -45,7 +30,7 @@ public partial class TracedAccessWorldState : IGuestSlotStore
 
     int IGuestSlotStore.ReadForStore(in StorageCell storageCell, out UInt256 current, out UInt256 original)
     {
-        IGuestSlotStore? slots = Slots;
+        IGuestSlotStore? slots = _slots;
         if (slots is null)
         {
             Get(in storageCell, out current);
@@ -81,13 +66,7 @@ public partial class TracedAccessWorldState : IGuestSlotStore
             return;
         }
 
-        if (_generatingBlockAccessList is not null)
-        {
-            if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
-                _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
-            _generatingBlockAccessList.AddStorageChange(in storageCell, in current, in newValue);
-        }
-
+        if (_generatingBlockAccessList is not null) RecordStorageWrite(_generatingBlockAccessList, in storageCell, in current, in newValue);
         _slots!.WriteAt(slot, in storageCell, in current, in newValue);
     }
 }
