@@ -93,9 +93,10 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     /// <param name="gasAfter">The gas left after the opcode.</param>
     /// <param name="executionCost">The execution gas cost that the VM reported for the opcode, if any.</param>
     /// <remarks>
-    /// EIP-8037: an SSTORE that restores a slot gives back to the gas left the state gas that an earlier SSTORE took
-    /// from it, so the gas left can drop by less than the execution gas cost, or grow. The step then reports its
-    /// execution gas cost. Execution gas always comes from the gas left, so no other step drops by less.
+    /// EIP-8037: a step that refills state gas gives back to the gas left state gas that an earlier step took from it,
+    /// so the gas left can drop by less than the execution gas cost, or grow. The step then reports its execution gas
+    /// cost. Examples are an SSTORE that restores a slot, and a SELFDESTRUCT that empties the balance of an account
+    /// that the same transaction created.
     /// </remarks>
     protected static ulong GetGasCost(ulong gasBefore, ulong gasAfter, ulong? executionCost)
     {
@@ -236,8 +237,9 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
 
     /// <summary>Whether an entry shows the refund counter after its opcode rather than before it.</summary>
     /// <remarks>
-    /// The struct logger shows the counter before the opcode, as execution-apis specifies. Geth's EIP-3155 traces
-    /// sample it after the opcode's dynamic gas, which includes the opcode's own refund changes.
+    /// The struct logger shows the counter before the opcode, as execution-apis specifies. Geth samples it after the
+    /// opcode's dynamic gas, which includes the opcode's own refund changes, in its EIP-3155 traces and also in its
+    /// struct logger. The struct logger differs from Geth here on purpose.
     /// </remarks>
     protected virtual bool ReportsRefundAfterOperation => false;
 

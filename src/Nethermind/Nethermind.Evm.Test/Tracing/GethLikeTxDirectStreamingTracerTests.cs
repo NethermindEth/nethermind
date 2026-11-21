@@ -82,7 +82,11 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     [Test]
     public void Streams_refund_counter_before_a_failing_sstore()
     {
-        StructLog sstore = StreamLogs(ChildClearOutOfGasCode(), GethTraceOptions.Default).Single(static l => l.Op == "SSTORE");
+        (Block block, Transaction transaction) = PrepareChildClearOutOfGasTx();
+
+        StructLog sstore = StreamLogs(GethTraceOptions.Default,
+            tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+            transaction).Single(static l => l.Op == "SSTORE");
 
         using (Assert.EnterMultipleScope())
         {

@@ -66,18 +66,23 @@ public abstract class GethLikeTracerTestsBase : VirtualMachineTestsBase
         SetClearSetSlotCode(),
         blockGasLimit: 2 * Eip7825Constants.DefaultTxGasLimitCap);
 
-    /// <summary>Child frame runs out of gas on an SSTORE that would clear a slot.</summary>
-    protected byte[] ChildClearOutOfGasCode()
+    /// <summary>Prepares a Cancun transaction whose child frame runs out of gas on an SSTORE that would clear a slot.</summary>
+    /// <remarks>
+    /// Cancun, not the fixture's default fork: the legacy SSTORE path does not report its cost early, so on it the
+    /// attempted refund never reaches the failing step.
+    /// </remarks>
+    protected (Block block, Transaction transaction) PrepareChildClearOutOfGasTx()
     {
         TestState.CreateAccount(TestItem.AddressC, 1.Ether);
         TestState.Set(new StorageCell(TestItem.AddressC, 0), (UInt256)1);
         TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.PersistData("0x0", HexZero).Done, Spec);
         TestState.Commit(Spec);
 
-        return Prepare.EvmCode
+        byte[] code = Prepare.EvmCode
             .Call(TestItem.AddressC, 2400)
             .Op(Instruction.STOP)
             .Done;
+        return PrepareTx(MainnetSpecProvider.CancunActivation, 100000UL, code);
     }
 
     /// <summary>Parent frame clears a slot, then calls a child that reverts.</summary>

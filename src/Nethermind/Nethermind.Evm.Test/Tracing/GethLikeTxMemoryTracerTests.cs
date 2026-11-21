@@ -693,7 +693,10 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     [Test]
     public void Failing_sstore_reports_refund_counter_before_it()
     {
-        GethLikeTxTrace trace = ExecuteAndTrace(ChildClearOutOfGasCode());
+        (Block block, Transaction transaction) = PrepareChildClearOutOfGasTx();
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
 
         GethTxTraceEntry sstore = trace.Entries.Single(e => e.Opcode == "SSTORE");
 
