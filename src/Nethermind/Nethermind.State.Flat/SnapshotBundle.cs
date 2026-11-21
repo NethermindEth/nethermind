@@ -56,6 +56,7 @@ public sealed class SnapshotBundle : IDisposable
 
     internal SnapshotPooledList _snapshots;
     private readonly INodeRecordBuffer? _nodeRecordBuffer;
+    private readonly bool _ownsNodeRecordBuffer;
     private bool _isDisposed;
     private readonly IResourcePool _resourcePool;
 
@@ -67,17 +68,22 @@ public sealed class SnapshotBundle : IDisposable
 
     /// <param name="filterInMemorySlotReads">Serve slot reads with
     /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
+    /// <param name="privateNodeRecords">Write the trie nodes of this bundle to an <see cref="OverlayNodeRecordBuffer"/> over
+    /// <paramref name="nodeRecordBuffer"/>, freed with the bundle, instead of to <paramref name="nodeRecordBuffer"/> itself;
+    /// for bundles whose snapshots never reach the snapshot repository.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         INodeRecordBuffer? nodeRecordBuffer,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
         SnapshotPooledList? snapshots = null,
-        bool filterInMemorySlotReads = false)
+        bool filterInMemorySlotReads = false,
+        bool privateNodeRecords = false)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
-        _nodeRecordBuffer = nodeRecordBuffer;
+        _ownsNodeRecordBuffer = privateNodeRecords && nodeRecordBuffer is not null;
+        _nodeRecordBuffer = _ownsNodeRecordBuffer ? new OverlayNodeRecordBuffer(nodeRecordBuffer!) : nodeRecordBuffer;
         _resourcePool = resourcePool;
         _usage = usage;
         // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
@@ -577,6 +583,8 @@ public sealed class SnapshotBundle : IDisposable
         _resourcePool.ReturnSnapshotContent(_usage, _currentPooledContent);
         _transientResource.ReleaseLease();
         _readOnlySnapshotBundle.Dispose();
+        // The scope's pins and the snapshots' pins keep the private records readable until they are released.
+        if (_ownsNodeRecordBuffer) _nodeRecordBuffer!.Dispose();
 
         Metrics.ActiveSnapshotBundle--;
     }
