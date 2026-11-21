@@ -328,7 +328,8 @@ jobs:
           IDS: ${{ needs.propose.outputs.ids }}
           SOLUTIONS: ${{ needs.propose.outputs.rebuild }}
         run: |
-          export RULE_BOT_DENY="$(python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" deny-tools)"
+          RULE_BOT_DENY=$(python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" deny-tools)
+          export RULE_BOT_DENY
           bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/fix.txt" "Read,Glob,Grep,Edit(src/**/*.cs),Edit(tools/**/*.cs),Bash(dotnet build:*)" \
             "IDS=$IDS" "HITS=$DATA/fix-hits.txt" "SOLUTIONS=$SOLUTIONS" "RESULT=$DATA/fix-result.json" > "$DATA/fix-llm.log" 2>&1 || true
           git diff --stat
