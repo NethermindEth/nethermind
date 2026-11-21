@@ -94,7 +94,8 @@ public class ReorgTests
             new EthereumCodeInfoRepository(stateProvider),
             LimboLogs.Instance);
 
-        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, specProvider, LimboLogs.Instance));
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, specProvider, LimboLogs.Instance),
+        ExecutionRequestsOptions.Default);
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,

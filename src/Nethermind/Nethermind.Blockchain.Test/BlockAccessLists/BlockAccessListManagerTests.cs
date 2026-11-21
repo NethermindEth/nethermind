@@ -13,6 +13,7 @@ using NUnit.Framework;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.BlockAccessLists;
@@ -54,6 +55,7 @@ public class BlockAccessListManagerTests
             Substitute.For<IWithdrawalProcessorFactory>(),
             new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance,
                 transactionProcessorFactory: transactionProcessorFactory),
+            ExecutionRequestsOptions.Default,
             // Enables parallel execution (and thus BAL read warmup), mirroring the production DI path.
             readOnlyTxProcessingEnvFactory: ParentReaderEnvFactory);
 

@@ -1,0 +1,8 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+ARG SKIP_CONSENSUS_LAYER_CALLS
+ARG PROFILE=rollup0
+ENV EEZ_PROFILE=${PROFILE}
+ENV EEZ_SKIP_CONSENSUS_LAYER_CALLS=${SKIP_CONSENSUS_LAYER_CALLS}
+COPY start-follower.sh /nethermind/start-follower.sh
+ENTRYPOINT ["/bin/sh", "/nethermind/start-follower.sh"]

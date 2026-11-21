@@ -1,0 +1,41 @@
+{
+  "repository": "eez-association/eez-rollup0",
+  "revision": "bf80de50fff74a549f1c34e07dbf66a9d27a28d3",
+  "core_revision": "143d87e62cade98bfc122d612638dcaaf1c85633",
+  "pull_request": 234,
+  "files": {
+    "rollup0-transcripts.json": "a00465079d9f66bea6fa800deea933cc13e06356135c286bc2175cae32384872",
+    "rollup0-limits-transcripts.json": "d6ceade76db82b1e733fa0c9c9d47f7803f95243f7b8bd7be71ad13f8c57a78c"
+  },
+  "upstream_files": {
+    "rollup0-transcripts.json": "fd0bbbb47a21b487452a0a08145ad6066314ce627e0d6c13f3fdaf2a88676dbf",
+    "rollup0-limits-transcripts.json": "57e0fcb1a9bf5755380eebec27a821c23ba6e69e66e5ce50ef20711ab62e3572"
+  },
+  "profile": "rollup0-calldata",
+  "profile_expectations": [
+    {
+      "file": "rollup0-transcripts.json",
+      "case": "finalize-boundaries",
+      "step": 38,
+      "reason": "The authenticated profile requires exactly one empty proof slot; it rejects a missing slot with INVALID_ARGUMENT. This existing profile assertion differs from the upstream conditional profile."
+    },
+    {
+      "file": "rollup0-limits-transcripts.json",
+      "case": "block-quota",
+      "step": 38,
+      "reason": "The authenticated profile charges proved block 80 while it remains retained, so block 82 exceeds its aggregate quota (RESOURCE_EXHAUSTED). The conditional profile excludes proved block 80 from the next window quota and validates block 82."
+    },
+    {
+      "file": "rollup0-limits-transcripts.json",
+      "case": "payload-quota",
+      "step": 38,
+      "reason": "The authenticated profile charges proved block 80 while it remains retained, so block 82 exceeds its aggregate quota (RESOURCE_EXHAUSTED). The conditional profile excludes proved block 80 from the next window quota and validates block 82."
+    },
+    {
+      "file": "rollup0-limits-transcripts.json",
+      "case": "witness-quota",
+      "step": 38,
+      "reason": "The authenticated profile charges proved block 80 while it remains retained, so block 82 exceeds its aggregate quota (RESOURCE_EXHAUSTED). The conditional profile excludes proved block 80 from the next window quota and validates block 82."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "repository": "eez-association/eez-rollup0",
+  "revision": "61a3cb95285a248e3689882dc43776016387adb1",
+  "core_revision": "143d87e62cade98bfc122d612638dcaaf1c85633",
+  "pull_request": 234,
+  "files": {
+    "rollup0-transcripts.json": "62f99b5c4b536b57340c2ae80e5233e8f63367202759553951695dede3933c91",
+    "rollup0-limits-transcripts.json": "57e0fcb1a9bf5755380eebec27a821c23ba6e69e66e5ce50ef20711ab62e3572"
+  },
+  "source": "public-main"
+}
