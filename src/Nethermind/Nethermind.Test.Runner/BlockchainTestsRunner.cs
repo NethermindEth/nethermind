@@ -97,6 +97,67 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
         return testResults;
     }
 
+    /// <summary>Runs the tests of <paramref name="group"/> that the filter selects, and reports each result.</summary>
+    /// <remarks>
+    /// Tests are parsed one at a time as they run. A test that cannot be loaded is reported as failed, and a group whose
+    /// client cannot start fails each of its tests.
+    /// </remarks>
+    internal async Task<List<EthereumTestResult>> RunEngineXGroupAsync(EngineXGroup group)
+    {
+        List<EthereumTestResult> loadFailures = [];
+        List<(string Name, string? ForkName)> started = [];
+        List<EthereumTestResult> results = [];
+        using IEnumerator<BlockchainTest> tests = LoadEngineXTests(group, loadFailures, started).GetEnumerator();
+        if (tests.MoveNext())
+        {
+            BlockchainTest first = tests.Current;
+            try
+            {
+                results.AddRange(await RunEngineXGroup(EngineXFixtures.CreateGroupTest(group, first), Remaining(first, tests)));
+            }
+            catch (Exception ex)
+            {
+                while (tests.MoveNext())
+                {
+                }
+
+                results.Clear();
+                foreach ((string name, string? forkName) in started)
+                    results.Add(new EthereumTestResult(name, forkName, $"pre-allocation group {group.PreHash}: {ex}") { Rejections = [] });
+            }
+        }
+
+        results.AddRange(loadFailures);
+        foreach (EthereumTestResult result in results)
+            ReportResult(result);
+        return results;
+
+        static IEnumerable<BlockchainTest> Remaining(BlockchainTest first, IEnumerator<BlockchainTest> rest)
+        {
+            yield return first;
+            while (rest.MoveNext())
+                yield return rest.Current;
+        }
+    }
+
+    private IEnumerable<BlockchainTest> LoadEngineXTests(EngineXGroup group, List<EthereumTestResult> loadFailures, List<(string Name, string? ForkName)> started)
+    {
+        foreach (EngineXTestRef testRef in group.Tests)
+        {
+            foreach (EthereumTest loadedTest in EngineXFixtures.LoadTests(testRef))
+            {
+                if (loadedTest is FailedToLoadTest)
+                    loadFailures.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure) { Rejections = [] });
+                else if (loadedTest is BlockchainTest test && (_filterRegex is null || test.Name is null || _filterRegex.IsMatch(test.Name)))
+                {
+                    test.ChainId = _chainId;
+                    started.Add((test.FixtureId ?? test.Name, test.ForkName));
+                    yield return test;
+                }
+            }
+        }
+    }
+
     public async Task<EthereumTestResult> RunSingleTestAsync(BlockchainTest test)
     {
         test.ChainId = _chainId;

@@ -60,6 +60,12 @@ public abstract class BlockchainTestBase
     private static readonly EthereumJsonSerializer _rpcErrorDataSerializer = new();
     private const int _genesisProcessingTimeoutMs = 30000;
     private static readonly TimeSpan EngineProcessingTimeout = TimeSpan.FromMinutes(10);
+    // Each blockchain_tests_engine_x test reorgs back to genesis, which needs the state of a group's longest test
+    // chain kept, 257 blocks for the BLOCKHASH tests; past the default retention the client answers SYNCING.
+    private const ulong EngineXReorgDepth = 1024;
+    // Every test's chain stays below the reorg depth, so a client never persists or prunes a block and keeps the
+    // state of every test it ran; a group starts a new client after this many payloads to bound that memory.
+    private const int EngineXPayloadsPerClient = 512;
 
     /// <summary>
     /// Override to force parallel or sequential BAL execution in tests.
@@ -212,89 +218,9 @@ public abstract class BlockchainTestBase
             await KzgPolynomialCommitments.InitializeAsync();
         }
 
-        // Per-test fresh instance bound to this test's specProvider. Tests run with
-        // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
-        IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
-        IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-        bool isPostMerge = IsPostMergeSpec(test.Network);
-        if (isPostMerge)
-        {
-            rewardCalculator = NoBlockRewards.Instance;
-            specProvider.UpdateMergeTransitionInfo(0, 0);
-        }
-
-        IConfigProvider configProvider = new ConfigProvider();
-        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
-        flatDbConfig.Enabled = UseFlatDb;
-        // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
-        // and a fire-and-forget background convert from one test can race another test's files. Long finality is
-        // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
-        flatDbConfig.EnableLongFinality = false;
-        IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
-        ApplyPreWarming(blocksConfig, PreWarmingOverride);
-        if (ParallelExecutionOverride.HasValue)
-        {
-            blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
-        }
-
-        if (ParallelExecutionBatchReadOverride.HasValue)
-        {
-            blocksConfig.ParallelExecutionBatchRead = ParallelExecutionBatchReadOverride.Value;
-        }
-
-        if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
-        {
-            mergeConfig.NewPayloadBlockProcessingTimeout = (int)EngineProcessingTimeout.TotalMilliseconds;
-        }
-
-        ILogManager componentLogManager = ComponentLogManagerOverride ?? _logManager;
-
-        ContainerBuilder containerBuilder = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(configProvider))
-            .AddSingleton(specProvider)
-            .AddSingleton(componentLogManager)
-            .AddSingleton(rewardCalculator)
-            .AddSingleton<IDifficultyCalculator>(difficultyCalculator)
-            // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
-            // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
-            .AddSingleton<ISealValidator>(new DifficultyOnlySealValidator(difficultyCalculator))
-            .AddSingleton<ITxPool>(NullTxPool.Instance)
-            .AddSingleton<IWitnessGeneratingBlockProcessingEnvFactory, WitnessGeneratingBlockProcessingEnvFactory>();
-
-        // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
-        // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
-        // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
-        // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
-        // A total-difficulty transition needs it too: CreateSpecProvider relies on its PoSSwitcher.
-        bool isTotalDifficultyTransition = test.TransitionTerminalTotalDifficulty is not null;
-        if (isEngineTest || isPostMerge || isTotalDifficultyTransition)
-        {
-            containerBuilder.AddModule(new TestMergeModule());
-        }
-
         // Why each block that had a list in the fixture was given none; filled before any block is suggested.
         Dictionary<Hash256, string> undeliveredAccessLists = [];
-        SequentialRetryReport? retryReport = null;
-        if (BlockAccessListExecutionObserver is { } executionReport)
-        {
-            SequentialRetryReport report = new(new UndeliveredAccessListObserver(executionReport, undeliveredAccessLists));
-            retryReport = report;
-            containerBuilder
-                .AddDecorator<IBlockAccessListManager>((_, manager) =>
-                {
-                    if (manager is BlockAccessListManager blockAccessListManager) blockAccessListManager.ExecutionObserver = report;
-                    return manager;
-                })
-                .AddDecorator<IBlockProcessor>((_, processor) => report.Decorate(processor));
-        }
-
-        // Seed the optional test tracer into the main processor via the BlockchainProcessor constructor.
-        if (tracer is not null)
-        {
-            containerBuilder.AddSingleton<IBlockTracer>(tracer);
-        }
-
-        await using IContainer container = containerBuilder.Build();
+        await using IContainer container = CreateContainerBuilder(test, specProvider, isEngineTest, tracer, undeliveredAccessLists, out SequentialRetryReport? retryReport).Build();
 
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
@@ -311,55 +237,7 @@ public abstract class BlockchainTestBase
             string lastPayloadStatus = "";
             string? lastValidationError = null;
             string? asyncBlockError = null;
-            // Genesis processing
-            using (stateProvider.BeginScope(null))
-            {
-                InitializeTestState(test, stateProvider, specProvider);
-
-                stopwatch?.Start();
-
-                test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-
-                RlpReader genesisReader = new(test.GenesisRlp);
-                Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
-                Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
-
-                using ManualResetEvent genesisProcessed = new(false);
-                EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
-                {
-                    if (args.Block.Number == 0)
-                    {
-                        Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
-                        genesisProcessed.Set();
-                    }
-                };
-                EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
-                {
-                    if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
-                    {
-                        Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
-                        genesisProcessed.Set();
-                    }
-                };
-
-                blockTree.NewHeadBlock += onNewHeadBlock;
-                blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
-
-                try
-                {
-                    blockTree.SuggestBlock(genesisBlock);
-                    Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
-                        "Timed out waiting for genesis block processing.");
-                    parentHeader = genesisBlock.Header;
-                }
-                finally
-                {
-                    blockTree.NewHeadBlock -= onNewHeadBlock;
-                    blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
-                }
-
-                genesisBlock.DisposeAccountChanges();
-            }
+            parentHeader = ProcessGenesis(test, specProvider, stateProvider, blockchainProcessor, blockTree, blockDecoder, stopwatch);
 
             List<string> engineWitnessDifferences = [];
             if (test.Blocks is not null)
@@ -380,9 +258,7 @@ public abstract class BlockchainTestBase
             else if (test.EngineNewPayloads is not null)
             {
                 // engine test — route through JsonRpcService for realistic deserialization
-                IJsonRpcService rpcService = container.Resolve<IJsonRpcService>();
-                JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
-                JsonRpcContext rpcContext = new(RpcEndpoint.Http, url: engineUrl);
+                (IJsonRpcService rpcService, JsonRpcContext rpcContext) = CreateEngineRpc(container);
                 Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, blockchainProcessingQueue, parentHeader.Hash!, engineWitnessDifferences, rejectionRecorder, MatchExpectedExceptions);
                 lastPayloadStatus = payloadResult.Data ?? "";
                 lastValidationError = payloadResult.Error;
@@ -453,6 +329,288 @@ public abstract class BlockchainTestBase
         {
             await blockchainProcessingQueue.StopAsync(true);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Runs the tests of one <c>blockchain_tests_engine_x</c> pre-allocation group, in order, on shared clients.
+    /// </summary>
+    /// <param name="group">The group's client setup, from <see cref="EngineXFixtures.CreateGroupTest"/>.</param>
+    /// <param name="tests">The group's tests; each is checked against the group's allocation with its post-state diff applied.</param>
+    /// <returns>A result per test; a failing test does not stop the ones after it.</returns>
+    /// <remarks>
+    /// Every test starts with a forkchoice update to genesis and builds its own chain from there, so the client reorgs
+    /// between tests. Forkchoice updates leave safe and finalized at zero: a finalized block from one test would keep
+    /// the next test from reorging below it. A large group runs on several clients in turn, see <see cref="EngineXPayloadsPerClient"/>.
+    /// </remarks>
+    protected async Task<List<EthereumTestResult>> RunEngineXGroup(BlockchainTest group, IEnumerable<BlockchainTest> tests)
+    {
+        if (group.Network!.IsEip4844Enabled || group.NetworkAfterTransition?.IsEip4844Enabled is true)
+        {
+            await KzgPolynomialCommitments.InitializeAsync();
+        }
+
+        Dictionary<Hash256, string> firstRejections = [];
+        List<EthereumTestResult> results = [];
+        using IEnumerator<BlockchainTest> pending = tests.GetEnumerator();
+        bool testsLeft = pending.MoveNext();
+        while (testsLeft)
+        {
+            testsLeft = await RunEngineXTestsOnClient(group, pending, firstRejections, results);
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Starts a client for <paramref name="group"/> and runs tests on it from the current one of <paramref name="pending"/>,
+    /// until it has taken <see cref="EngineXPayloadsPerClient"/> payloads or no test is left.
+    /// </summary>
+    /// <returns>Whether tests are left for another client.</returns>
+    private async Task<bool> RunEngineXTestsOnClient(BlockchainTest group, IEnumerator<BlockchainTest> pending,
+        Dictionary<Hash256, string> firstRejections, List<EthereumTestResult> results)
+    {
+        ISpecProvider specProvider = CreateSpecProvider(group);
+        await using IContainer container = CreateContainerBuilder(group, specProvider, isEngineTest: true, tracer: null, [], out _, EngineXReorgDepth).Build();
+        IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
+        IWorldState stateProvider = mainBlockProcessingContext.WorldState;
+        IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
+        blockchainProcessingQueue.Start();
+
+        try
+        {
+            Hash256 genesisHash = ProcessGenesis(group, specProvider, stateProvider,
+                (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor, blockTree, container.Resolve<BlockDecoder>(), null).Hash!;
+            (IJsonRpcService rpcService, JsonRpcContext rpcContext) = CreateEngineRpc(container);
+
+            int payloads = 0;
+            do
+            {
+                BlockchainTest test = pending.Current;
+                results.Add(await RunEngineXTest(test, group.Pre!, genesisHash, rpcService, rpcContext, blockchainProcessingQueue, blockTree, stateProvider, preWarmer, firstRejections));
+                payloads += test.EngineNewPayloads?.Length ?? 0;
+                if (!pending.MoveNext())
+                    return false;
+            }
+            while (payloads < EngineXPayloadsPerClient);
+
+            return true;
+        }
+        finally
+        {
+            await blockchainProcessingQueue.StopAsync(true);
+        }
+    }
+
+    private async Task<EthereumTestResult> RunEngineXTest(BlockchainTest test, Dictionary<Address, AccountState> pre, Hash256 genesisHash,
+        IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, IBlockTree blockTree, IWorldState stateProvider,
+        IBlockCachePreWarmer? preWarmer, Dictionary<Hash256, string> firstRejections)
+    {
+        string name = test.FixtureId ?? test.Name;
+        if (test.LoadFailure is not null)
+            return new EthereumTestResult(name, test.LoadFailure) { Rejections = [] };
+
+        List<BlockRejection> rejections = [];
+        // NUnit keeps each failed assertion in the current context and reports it again with every later failure,
+        // so one failing test of the group would fail all the tests after it.
+        using NUnit.Framework.Internal.TestExecutionContext.IsolatedContext isolatedContext = new();
+        try
+        {
+            Result<string> payloadResult = await RunNewPayloads(test.EngineNewPayloads, rpcService, rpcContext, processingQueue, genesisHash, [],
+                new RejectionRecorder(rejections), MatchExpectedExceptions, finalizeHeads: false, firstRejections);
+            test.Pre = pre;
+            test.PostState = ApplyStateDiff(pre, test.PostStateDiff);
+            // Joins any prewarming still in flight, as RunTest does before its state check.
+            preWarmer?.ClearCaches();
+
+            Block headBlock = blockTree.RetrieveHeadBlock()!;
+            List<string> differences;
+            using (stateProvider.BeginScope(headBlock.Header))
+            {
+                differences = RunAssertions(test, headBlock, stateProvider);
+            }
+
+            bool testPassed = differences.Count == 0;
+            return new EthereumTestResult(name, test.ForkName, testPassed)
+            {
+                LastBlockHash = headBlock.Hash,
+                LastPayloadStatus = string.IsNullOrEmpty(payloadResult.Data) ? null : payloadResult.Data,
+                Rejections = rejections,
+                Error = testPassed ? payloadResult.Error : string.Join("; ", differences),
+            };
+        }
+        catch (Exception e)
+        {
+            return new EthereumTestResult(name, test.ForkName, e.ToString()) { Rejections = rejections };
+        }
+    }
+
+    private static Dictionary<Address, AccountState> ApplyStateDiff(Dictionary<Address, AccountState> pre, Dictionary<Address, AccountState?>? diff)
+    {
+        Dictionary<Address, AccountState> post = pre.ToDictionary();
+        foreach ((Address address, AccountState? account) in diff ?? [])
+        {
+            if (account is null)
+                post.Remove(address);
+            else
+                post[address] = account;
+        }
+
+        return post;
+    }
+
+    private static (IJsonRpcService RpcService, JsonRpcContext RpcContext) CreateEngineRpc(IContainer container)
+    {
+        JsonRpcUrl engineUrl = new(Uri.UriSchemeHttp, "localhost", 8551, RpcEndpoint.Http, true, ["engine"]);
+        return (container.Resolve<IJsonRpcService>(), new JsonRpcContext(RpcEndpoint.Http, url: engineUrl));
+    }
+
+    /// <param name="reorgDepth">How many states back from the head the client must keep, when more than its default.</param>
+    private ContainerBuilder CreateContainerBuilder(BlockchainTest test, ISpecProvider specProvider, bool isEngineTest, ITestBlockTracer? tracer,
+        Dictionary<Hash256, string> undeliveredAccessLists, out SequentialRetryReport? retryReport, ulong? reorgDepth = null)
+    {
+        // Per-test fresh instance bound to this test's specProvider. Tests run with
+        // [Parallelizable(ParallelScope.All)] so anything shared-mutable across tests would race.
+        IDifficultyCalculator difficultyCalculator = new EthashDifficultyCalculator(specProvider);
+        IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
+        bool isPostMerge = IsPostMergeSpec(test.Network);
+        if (isPostMerge)
+        {
+            rewardCalculator = NoBlockRewards.Instance;
+            specProvider.UpdateMergeTransitionInfo(0, 0);
+        }
+
+        IConfigProvider configProvider = new ConfigProvider();
+        IFlatDbConfig flatDbConfig = configProvider.GetConfig<IFlatDbConfig>();
+        flatDbConfig.Enabled = UseFlatDb;
+        // The persisted-snapshot tier writes arena/blob files under a BaseDbPath shared by every test in the run,
+        // and a fire-and-forget background convert from one test can race another test's files. Long finality is
+        // irrelevant at EF-test chain lengths, so keep the on-disk tier off.
+        flatDbConfig.EnableLongFinality = false;
+        if (reorgDepth is { } depth)
+        {
+            flatDbConfig.MinReorgDepth = depth;
+            flatDbConfig.MaxReorgDepth = depth;
+            configProvider.GetConfig<IPruningConfig>().PruningBoundary = depth;
+        }
+
+        IBlocksConfig blocksConfig = configProvider.GetConfig<IBlocksConfig>();
+        ApplyPreWarming(blocksConfig, PreWarmingOverride);
+        if (ParallelExecutionOverride.HasValue)
+        {
+            blocksConfig.ParallelExecution = ParallelExecutionOverride.Value;
+        }
+
+        if (ParallelExecutionBatchReadOverride.HasValue)
+        {
+            blocksConfig.ParallelExecutionBatchRead = ParallelExecutionBatchReadOverride.Value;
+        }
+
+        if (isEngineTest && configProvider.GetConfig<IMergeConfig>() is MergeConfig mergeConfig)
+        {
+            mergeConfig.NewPayloadBlockProcessingTimeout = (int)EngineProcessingTimeout.TotalMilliseconds;
+        }
+
+        ILogManager componentLogManager = ComponentLogManagerOverride ?? _logManager;
+
+        ContainerBuilder containerBuilder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configProvider))
+            .AddSingleton(specProvider)
+            .AddSingleton(componentLogManager)
+            .AddSingleton(rewardCalculator)
+            .AddSingleton<IDifficultyCalculator>(difficultyCalculator)
+            // Replace NullSealEngine with a validator that enforces pre-Merge Ethash difficulty
+            // matching, so legacy invalid-block fixtures (wrongDifficulty_*) are actually rejected.
+            .AddSingleton<ISealValidator>(new DifficultyOnlySealValidator(difficultyCalculator))
+            .AddSingleton<ITxPool>(NullTxPool.Instance)
+            .AddSingleton<IWitnessGeneratingBlockProcessingEnvFactory, WitnessGeneratingBlockProcessingEnvFactory>();
+
+        // Wire in the merge module for any post-Merge test (engine API flow OR post-Paris
+        // RLP-fed blockchain test). The merge module decorates IHeaderValidator with the
+        // EIP-3675 post-Merge field rules (difficulty=0, nonce=0, empty UnclesHash) which the
+        // base HeaderValidator does not enforce, and which legacy invalid-block fixtures rely on.
+        // A total-difficulty transition needs it too: CreateSpecProvider relies on its PoSSwitcher.
+        bool isTotalDifficultyTransition = test.TransitionTerminalTotalDifficulty is not null;
+        if (isEngineTest || isPostMerge || isTotalDifficultyTransition)
+        {
+            containerBuilder.AddModule(new TestMergeModule());
+        }
+
+        retryReport = null;
+        if (BlockAccessListExecutionObserver is { } executionReport)
+        {
+            SequentialRetryReport report = new(new UndeliveredAccessListObserver(executionReport, undeliveredAccessLists));
+            retryReport = report;
+            containerBuilder
+                .AddDecorator<IBlockAccessListManager>((_, manager) =>
+                {
+                    if (manager is BlockAccessListManager blockAccessListManager) blockAccessListManager.ExecutionObserver = report;
+                    return manager;
+                })
+                .AddDecorator<IBlockProcessor>((_, processor) => report.Decorate(processor));
+        }
+
+        // Seed the optional test tracer into the main processor via the BlockchainProcessor constructor.
+        if (tracer is not null)
+        {
+            containerBuilder.AddSingleton<IBlockTracer>(tracer);
+        }
+
+        return containerBuilder;
+    }
+
+    private static BlockHeader ProcessGenesis(BlockchainTest test, ISpecProvider specProvider, IWorldState stateProvider,
+        BlockchainProcessor blockchainProcessor, IBlockTree blockTree, BlockDecoder blockDecoder, Stopwatch? stopwatch)
+    {
+        using (stateProvider.BeginScope(null))
+        {
+            InitializeTestState(test, stateProvider, specProvider);
+
+            stopwatch?.Start();
+
+            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
+
+            RlpReader genesisReader = new(test.GenesisRlp);
+            Block genesisBlock = blockDecoder.DecodeComplete(ref genesisReader);
+            Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
+
+            using ManualResetEvent genesisProcessed = new(false);
+            EventHandler<BlockEventArgs> onNewHeadBlock = (_, args) =>
+            {
+                if (args.Block.Number == 0)
+                {
+                    Assert.That(stateProvider.HasStateForBlock(genesisBlock.Header), Is.True);
+                    genesisProcessed.Set();
+                }
+            };
+            EventHandler<BlockRemovedEventArgs> onGenesisBlockRemoved = (_, args) =>
+            {
+                if (args.ProcessingResult != ProcessingResult.Success && args.BlockHash == genesisBlock.Header.Hash)
+                {
+                    Assert.Fail($"Failed to process genesis block: {args.Message ?? args.Exception?.ToString()}");
+                    genesisProcessed.Set();
+                }
+            };
+
+            blockTree.NewHeadBlock += onNewHeadBlock;
+            blockchainProcessor.BlockRemoved += onGenesisBlockRemoved;
+
+            try
+            {
+                blockTree.SuggestBlock(genesisBlock);
+                Assert.That(genesisProcessed.WaitOne(_genesisProcessingTimeoutMs), Is.True,
+                    "Timed out waiting for genesis block processing.");
+            }
+            finally
+            {
+                blockTree.NewHeadBlock -= onNewHeadBlock;
+                blockchainProcessor.BlockRemoved -= onGenesisBlockRemoved;
+            }
+
+            genesisBlock.DisposeAccountChanges();
+            return genesisBlock.Header;
         }
     }
 
@@ -540,18 +698,20 @@ public abstract class BlockchainTestBase
     /// Replays the test's engine payloads through the JSON-RPC service.
     /// </summary>
     /// <param name="witnessDifferences">Collector for zkEVM witness mismatches found while driving engine_newPayloadWithWitnessV*.</param>
+    /// <param name="finalizeHeads">Whether each forkchoice update also finalizes its head.</param>
+    /// <param name="firstRejections">The client's first validation error per rejected block, shared by the tests of one client.</param>
     /// <returns>
     /// The last payload status in <see cref="Result{TData}.Data"/>; when the last INVALID payload
     /// carried a validation error, that error in <see cref="Result{TData}.Error"/> (an expected
     /// rejection does not fail the test, so the status is still populated).
     /// </returns>
-    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, Hash256 initialHeadHash, List<string> witnessDifferences, RejectionRecorder rejectionRecorder, bool matchExpectedExceptions)
+    private static async Task<Result<string>> RunNewPayloads(TestEngineNewPayloadsJson[]? newPayloads, IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, Hash256 initialHeadHash, List<string> witnessDifferences, RejectionRecorder rejectionRecorder, bool matchExpectedExceptions, bool finalizeHeads = true, Dictionary<Hash256, string>? firstRejections = null)
     {
         if (newPayloads is null || newPayloads.Length == 0) return Result<string>.Success("");
 
         if (!int.TryParse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString(), out int initialFcuVersion))
             throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{newPayloads[0].ForkChoiceUpdatedVersion}'");
-        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString()));
+        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString(), finalizeHeads));
 
         string lastStatus = "";
         string? lastValidationError = null;
@@ -616,12 +776,13 @@ public abstract class BlockchainTestBase
                             CompareWitnesses(blockHash, enginePayload.ExecutionWitness!, witnessResult.ExecutionWitness, witnessDifferences);
                         }
 
-                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
+                        await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash, finalizeHeads);
                     }
                 }
                 else
                 {
                     PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
+                    UseFirstRejection(payloadStatus, enginePayload, firstRejections);
                     RecordInvalidPayload(rejectionRecorder, payloadIndex, enginePayload, payloadStatus);
                     AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, matchExpectedExceptions, enginePayload.InclusionListSatisfied);
                     lastStatus = payloadStatus.Status;
@@ -632,7 +793,7 @@ public abstract class BlockchainTestBase
                     if (payloadStatus.Status is PayloadStatus.Valid or PayloadStatus.InclusionListUnsatisfied)
                     {
                         Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
-                        JsonRpcResponse fcuResponse = await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash);
+                        JsonRpcResponse fcuResponse = await MoveHeadToCommitted(rpcService, rpcContext, processingQueue, fcuVersion, blockHash, finalizeHeads);
                         AssertFcuInclusionListSatisfied(fcuResponse, enginePayload, fcuVersion);
                     }
                 }
@@ -641,6 +802,22 @@ public abstract class BlockchainTestBase
         return lastValidationError is null
             ? Result<string>.Success(lastStatus)
             : Result<string>.Fail(lastValidationError, lastStatus);
+    }
+
+    /// <summary>
+    /// Gives an INVALID payload whose block the client rejected before the validation error of that first rejection.
+    /// </summary>
+    /// <remarks>
+    /// A client answers a block it already rejected from its invalid-block cache, with an error that names the cache
+    /// rather than the rule the block breaks.
+    /// </remarks>
+    private static void UseFirstRejection(PayloadStatusV1 payloadStatus, TestEngineNewPayloadsJson enginePayload, Dictionary<Hash256, string>? firstRejections)
+    {
+        if (firstRejections is null || payloadStatus.Status != PayloadStatus.Invalid || payloadStatus.ValidationError is null) return;
+
+        Hash256 blockHash = new(enginePayload.Params[0].GetProperty("blockHash").GetString()!);
+        if (!firstRejections.TryAdd(blockHash, payloadStatus.ValidationError))
+            payloadStatus.ValidationError = firstRejections[blockHash];
     }
 
     /// <summary>
@@ -938,18 +1115,22 @@ public abstract class BlockchainTestBase
         return await rpcService.SendRequestAsync(request, context);
     }
 
-    private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash) =>
-        SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{blockHash}}","finalizedBlockHash":"{{blockHash}}"},null]""");
+    /// <param name="finalize">Whether the head also becomes the safe and finalized block; otherwise both stay zero.</param>
+    private static Task<JsonRpcResponse> SendFcu(IJsonRpcService rpcService, JsonRpcContext context, int fcuVersion, string blockHash, bool finalize)
+    {
+        string finalizedHash = finalize ? blockHash : Keccak.Zero.ToString();
+        return SendRpc(rpcService, context, "engine_forkchoiceUpdatedV" + fcuVersion, $$"""[{"headBlockHash":"{{blockHash}}","safeBlockHash":"{{finalizedHash}}","finalizedBlockHash":"{{finalizedHash}}"},null]""");
+    }
 
     /// <summary>
     /// VALID arrives before the block is committed, and forkchoice gives a committing head only a short wait before
     /// answering SYNCING; a slow commit on a loaded runner must not leave the head on the parent, so the head moves
     /// once the block has left the queue and anything but VALID fails here rather than as a post-state diff.
     /// </summary>
-    private static async Task<JsonRpcResponse> MoveHeadToCommitted(IJsonRpcService rpcService, JsonRpcContext context, IBlockProcessingQueue processingQueue, int fcuVersion, Hash256 blockHash)
+    private static async Task<JsonRpcResponse> MoveHeadToCommitted(IJsonRpcService rpcService, JsonRpcContext context, IBlockProcessingQueue processingQueue, int fcuVersion, Hash256 blockHash, bool finalize)
     {
         await processingQueue.WaitUntilRemovedAsync(blockHash).AsTask().WaitAsync(EngineProcessingTimeout);
-        JsonRpcResponse response = await SendFcu(rpcService, context, fcuVersion, blockHash.ToString());
+        JsonRpcResponse response = await SendFcu(rpcService, context, fcuVersion, blockHash.ToString(), finalize);
         AssertRpcSuccess(response);
         string? status = response switch
         {

@@ -7,6 +7,7 @@ using System.CommandLine;
 using System.CommandLine.Help;
 using System.CommandLine.Invocation;
 using System.IO;
+using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -44,6 +45,9 @@ internal class Program
 
         public static Option<bool> EngineTest { get; } =
             new("--engineTest", "-e") { Description = "Run as engine test (blockchain_test_engine fixtures)." };
+
+        public static Option<bool> EngineXTest { get; } =
+            new("--engineXTest") { Description = "Run as engine X test (blockchain_test_engine_x fixtures: the tests of each pre-allocation group in turn on one client)." };
 
         public static Option<bool> TxTest { get; } =
             new("--txTest") { Description = "Run as transaction test (transaction_tests fixtures: raw tx decoding + validation)." };
@@ -121,6 +125,7 @@ internal class Program
             Options.StateTest,
             Options.BlockTest,
             Options.EngineTest,
+            Options.EngineXTest,
             Options.TxTest,
             Options.ZkEvmTest,
             Options.TraceAlways,
@@ -197,13 +202,14 @@ internal class Program
         bool isStateTest = parseResult.GetValue(Options.StateTest);
         bool isBlockTest = parseResult.GetValue(Options.BlockTest) || command == Options.BlockTest;
         bool isEngineTest = parseResult.GetValue(Options.EngineTest) || command == Options.EngineTest;
+        bool isEngineXTest = parseResult.GetValue(Options.EngineXTest);
         bool isTxTest = parseResult.GetValue(Options.TxTest);
         bool isZkEvmTest = parseResult.GetValue(Options.ZkEvmTest);
 
-        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
+        int testTypeCount = (isStateTest ? 1 : 0) + (isBlockTest ? 1 : 0) + (isEngineTest ? 1 : 0) + (isEngineXTest ? 1 : 0) + (isTxTest ? 1 : 0) + (isZkEvmTest ? 1 : 0);
         if (testTypeCount != 1)
         {
-            Console.Error.WriteLine("Please specify one of: blocktest, enginetest, --stateTest, --blockTest, --engineTest, --txTest, or --zkevmTest");
+            Console.Error.WriteLine("Please specify one of: blocktest, enginetest, --stateTest, --blockTest, --engineTest, --engineXTest, --txTest, or --zkevmTest");
             return 1;
         }
 
@@ -252,7 +258,7 @@ internal class Program
         int exitCode = 0;
         while (inputs.Count > 0)
         {
-            List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest);
+            List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest || isEngineXTest);
             if (files is null)
             {
                 // Each stdin line is its own batch, so a bad path fails only its line and the session reads on.
@@ -261,7 +267,7 @@ internal class Program
                 files = [];
             }
 
-            if (isEngineTest || isBlockTest)
+            if (isEngineTest || isBlockTest || isEngineXTest)
             {
                 // Compiled once and shared by the per-file runner instances.
                 Regex? filterRegex = filter is not null ? new Regex($"^({filter})", RegexOptions.Compiled) : null;
@@ -279,7 +285,9 @@ internal class Program
                     MatchExpectedExceptions: parseResult.GetValue(Options.MatchExceptions),
                     PreWarming: preWarming,
                     BlockAccessListExecutionObserver: balReport && !trace ? new BlockAccessListExecutionReport(Console.Error) : null);
-                (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers);
+                (List<EthereumTestResult> results, bool allFilesLoaded) = isEngineXTest
+                    ? await RunEngineXTestFiles(files, runnerOptions, workers)
+                    : await RunBlockTestFiles(files, runnerOptions, workers);
                 resultsOut.Write(_serializer.Serialize(results, true));
                 if (!allFilesLoaded) exitCode = IncompleteInputExitCode;
             }
@@ -382,7 +390,9 @@ internal class Program
         {
             foreach (string file in Directory.GetFiles(path, "*.json", SearchOption.AllDirectories))
             {
-                if (!file.Contains("/.meta/") && !file.Contains("\\.meta\\"))
+                // blockchain_tests_engine_x pre-allocation groups are read through the tests that name them.
+                if (!file.Contains("/.meta/") && !file.Contains("\\.meta\\")
+                    && !file.Contains($"/{EngineXFixtures.PreAllocDirectory}/") && !file.Contains($"\\{EngineXFixtures.PreAllocDirectory}\\"))
                     result.Add(file);
             }
 
@@ -394,17 +404,12 @@ internal class Program
         return result;
     }
 
-    /// <summary>Runs every file's block or engine tests.</summary>
-    /// <returns>The results, and whether every file could be loaded; one that could not is reported on stderr instead.</returns>
-    private static async Task<(List<EthereumTestResult> Results, bool AllFilesLoaded)> RunBlockTestFiles(
-        List<string> files, BlockchainTestsRunnerOptions baseOptions, int workers)
+    /// <summary>Counts finished tests, returning the count to report when <c>forceReport</c> is set, a minute has passed or a hundred more have finished.</summary>
+    private static Func<bool, string?> CreateProgressUpdate()
     {
-        await KzgPolynomialCommitments.InitializeAsync();
-        int effectiveWorkers = baseOptions.Trace ? 1 : workers;
-        int unloadedFiles = 0;
         int completedTests = 0;
         long lastProgressReportTicks = DateTime.UtcNow.Ticks;
-        string? UpdateProgress(bool forceReport)
+        return forceReport =>
         {
             int completed = Interlocked.Increment(ref completedTests);
             long nowTicks = DateTime.UtcNow.Ticks;
@@ -416,7 +421,43 @@ internal class Program
             }
 
             return null;
+        };
+    }
+
+    /// <summary>Runs the tests of each <c>blockchain_tests_engine_x</c> pre-allocation group in the files, a client per group.</summary>
+    /// <returns>The results, and whether every file could be loaded; one that could not is reported on stderr instead.</returns>
+    /// <remarks>A group whose tests a chunk splits runs the chunk's share of them on its own client.</remarks>
+    private static async Task<(List<EthereumTestResult> Results, bool AllFilesLoaded)> RunEngineXTestFiles(
+        List<string> files, BlockchainTestsRunnerOptions baseOptions, int workers)
+    {
+        await KzgPolynomialCommitments.InitializeAsync();
+        Func<bool, string?> updateProgress = CreateProgressUpdate();
+        (List<EngineXGroup> groups, List<FailedToLoadTest> failures) = EngineXFixtures.Index(files);
+        foreach (FailedToLoadTest failure in failures)
+        {
+            if (!baseOptions.Trace)
+                Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {updateProgress(true)} {failure.Name} - {failure.LoadFailure}");
         }
+
+        BlockchainTestsRunnerOptions runnerOptions = baseOptions with { ProgressUpdateFactory = updateProgress };
+        List<EthereumTestResult>[] resultsByGroup = new List<EthereumTestResult>[groups.Count];
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, groups.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = baseOptions.Trace ? 1 : workers },
+            async (index, _) => resultsByGroup[index] = await new BlockchainTestsRunner(runnerOptions).RunEngineXGroupAsync(groups[index]));
+
+        return ([.. resultsByGroup.SelectMany(static results => results)], failures.Count == 0);
+    }
+
+    /// <summary>Runs every file's block or engine tests.</summary>
+    /// <returns>The results, and whether every file could be loaded; one that could not is reported on stderr instead.</returns>
+    private static async Task<(List<EthereumTestResult> Results, bool AllFilesLoaded)> RunBlockTestFiles(
+        List<string> files, BlockchainTestsRunnerOptions baseOptions, int workers)
+    {
+        await KzgPolynomialCommitments.InitializeAsync();
+        int effectiveWorkers = baseOptions.Trace ? 1 : workers;
+        int unloadedFiles = 0;
+        Func<bool, string?> UpdateProgress = CreateProgressUpdate();
 
         void WriteFileExceptionStatus(string file, Exception ex)
         {
