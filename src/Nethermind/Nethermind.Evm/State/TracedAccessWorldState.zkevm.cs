@@ -15,18 +15,11 @@ namespace Nethermind.Evm.State;
 /// </remarks>
 public partial class TracedAccessWorldState : IGuestSlotStore
 {
-    private IGuestSlotStore? _slots;
-    private bool _slotsResolved;
+    // Resolved once: a type test against an interface walks the type's interfaces.
+    private readonly IGuestSlotStore? _slots = parallel ? null : state as IGuestSlotStore;
 
     int IGuestSlotStore.ReadForStore(in StorageCell storageCell, out UInt256 current, out UInt256 original)
     {
-        if (!_slotsResolved)
-        {
-            // Resolved once: a type test against an interface walks the type's interfaces.
-            _slots = parallel ? null : State as IGuestSlotStore;
-            _slotsResolved = true;
-        }
-
         IGuestSlotStore? slots = _slots;
         if (slots is null)
         {
@@ -63,14 +56,7 @@ public partial class TracedAccessWorldState : IGuestSlotStore
             return;
         }
 
-        if (_generatingBlockAccessList is not null)
-        {
-            AssertCurrentStorageValue(in storageCell, in current);
-            if (State.TryGetStorageBeforeClear(in storageCell, out UInt256 beforeClear))
-                _generatingBlockAccessList.RecordReadAndGet(storageCell.Address).SeedPreTxStorage(in storageCell.Index, in beforeClear);
-            _generatingBlockAccessList.AddStorageChange(in storageCell, in current, in newValue);
-        }
-
+        if (_generatingBlockAccessList is not null) RecordStorageWrite(_generatingBlockAccessList, in storageCell, in current, in newValue);
         _slots!.WriteAt(slot, in storageCell, in current, in newValue);
     }
 }
