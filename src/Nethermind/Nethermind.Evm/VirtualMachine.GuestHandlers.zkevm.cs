@@ -2875,7 +2875,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
                 IWorldState worldState = vm.WorldState;
                 // The guest's own world state reads the value, the original and the write through one lookup of the slot.
-                IGuestSlotStore? slots = worldState as IGuestSlotStore;
+                IGuestSlotStore? slots = vm.GuestSlots;
                 int slot = 0;
                 UInt256 currentValue, originalValue;
                 if (slots is not null)
@@ -3013,8 +3013,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 VirtualMachine<TGasPolicy> vm = state.Vm;
                 ref UInt256 slot = ref Unsafe.As<byte, UInt256>(ref SlotBelow(ref sp, 1));
-                StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in slot);
-                vm.WorldState.GetTransientState(in storageCell, out slot);
+                IGuestSlotStore? slots = vm.GuestSlots;
+                if (slots is not null)
+                {
+                    slots.ReadTransient(vm.VmState.Env.ExecutingAccount, in slot, out slot);
+                }
+                else
+                {
+                    StorageCell storageCell = new(vm.VmState.Env.ExecutingAccount, in slot);
+                    vm.WorldState.GetTransientState(in storageCell, out slot);
+                }
                 // Reloaded rather than held across the call, where each would take a callee-saved register.
                 handlers = state.OpcodeHandlers;
                 code = ref stack.Code;
