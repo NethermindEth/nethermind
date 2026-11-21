@@ -261,6 +261,7 @@ public partial class DebugRpcModuleTests
             if (!clock.Enabled) return inner.Execute(transaction, tracer);
             clock.Calls++;
             if (clock.Expiry != "after") clock.Advance(transaction.Nonce);
+            if (transaction.Nonce == clock.Target) clock.TargetCancelled = tracer.IsCancelled;
             TransactionResult result = inner.Execute(transaction, tracer);
             if (clock.Expiry == "after") clock.Advance(transaction.Nonce);
             return result;
@@ -289,6 +290,7 @@ public partial class DebugRpcModuleTests
         internal string Expiry = "reset";
         internal Action? Cancel;
         internal int Calls;
+        internal bool? TargetCancelled;
         internal List<ExecutionTimer> Timers { get; } = [];
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() => _timestamp;

@@ -33,6 +33,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
@@ -764,6 +765,60 @@ public partial class DebugRpcModuleTests
         Assert.That(clock.Timers, Has.All.Property(nameof(ExecutionTimer.Disposed)).True);
     }
 
+    [Test]
+    public async Task Debug_traceCall_javascript_deadline_cancels_execution(
+        [Values("javascript", "mux", "nested-mux", "native", "native-mux", "shadowed-mux")] string kind, [Values] bool indexed) =>
+        await AssertJavaScriptCallCancellation(kind, indexed, bundle: false);
+
+    [Test]
+    public async Task Debug_traceCallMany_keeps_its_existing_deadline_policy([Values("javascript", "mux", "native")] string kind) =>
+        await AssertJavaScriptCallCancellation(kind, indexed: false, bundle: true);
+
+    private static async Task AssertJavaScriptCallCancellation(string kind, bool indexed, bool bundle)
+    {
+        DeadlineExecution clock = new() { Expiry = "before" };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        clock.Target = nonce + (indexed ? 1UL : 3UL);
+        clock.Enabled = true;
+        const string script = "{fault:function(){},result:function(){return {};}}";
+        object config = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { } };
+        if (kind == "nested-mux") config = new Dictionary<string, object> { ["muxTracer"] = config };
+        if (kind == "native-mux") config = new Dictionary<string, object> { ["callTracer"] = new { } };
+        if (kind == "shadowed-mux") config = JsonSerializer.Deserialize<JsonElement>(
+            "{\"muxTracer\":" + JsonSerializer.Serialize(config) + ",\"muxTracer\":{\"callTracer\":{}}}");
+        bool javascript = kind is "javascript" or "mux" or "nested-mux";
+        string tracer = kind == "native" ? "callTracer" : kind == "javascript" ? script : "muxTracer";
+        Dictionary<string, object> options = new() { ["tracer"] = tracer, ["timeout"] = "1s", ["streamMode"] = false };
+        if (kind is "mux" or "nested-mux" or "native-mux" or "shadowed-mux") options["tracerConfig"] = config;
+        if (indexed) options["txIndex"] = "0x1";
+        object call = new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), nonce = $"0x{clock.Target:x}", gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+            bundle ? "debug_traceCallMany" : "debug_traceCall",
+            bundle ? new[] { new { transactions = new[] { call } } } : call, block.Hash!, options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.TargetCancelled, Is.EqualTo(javascript && !bundle), response);
+            if (bundle)
+            {
+                Assert.That((json["result"] as JArray)?.Count, Is.EqualTo(1), response);
+                if (javascript) Assert.That((bool?)json["result"]?[0]?[0]?["failed"], Is.True, response);
+            }
+            if (!javascript || bundle)
+                Assert.That(json["error"], Is.Null, response);
+            else
+            {
+                Assert.That(json["result"], Is.Null, response);
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+            }
+        }
+        Assert.That(clock.Timers, Has.All.Property(nameof(ExecutionTimer.Disposed)).True);
+    }
+
     private static GethLikeJavaScriptTxTracer CreateDeadlineJavaScriptTracer(
         Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script,
         GethTraceDeadlineScope? scope = null, int timeoutSeconds = 1, CancellationToken external = default) =>
@@ -1025,6 +1080,11 @@ public partial class DebugRpcModuleTests
     private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock, bool noBaseFee = false)
     {
         IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
+        module.debug_traceCallMany(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
+            inner.debug_traceCallMany(call.Arg<TransactionBundle[]>(), call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }, call.Arg<CancellationToken>()));
+        module.debug_traceCall(Arg.Any<TransactionForRpc>(), Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
+            inner.debug_traceCall(call.Arg<TransactionForRpc>(), call.Arg<BlockParameter>(),
+                call.Arg<GethTraceOptions>() with { DeadlineClock = clock }, call.Arg<CancellationToken>()));
         module.debug_traceTransaction(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
             inner.debug_traceTransaction(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }, call.Arg<CancellationToken>()));
         module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
