@@ -242,7 +242,7 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
-        GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
+        GethTraceOptions effective = (WithOpcodeStepLimit(options) ?? GethTraceOptions.Default) with
         {
             NoBaseFee = !call.ShouldSetBaseFee()
         };
