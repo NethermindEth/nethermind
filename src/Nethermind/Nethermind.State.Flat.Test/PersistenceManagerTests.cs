@@ -1165,6 +1165,27 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void DetermineSnapshotAction_FullPersistedTierChunk_PersistsWithoutWaiting()
+    {
+        StateId boundary = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(boundary.StateRoot.Bytes));
+        PersistBase(Block0, boundary);
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) =
+            _persistenceManager.DetermineSnapshotAction(CreateStateId(90));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist?.To, Is.EqualTo(boundary));
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+        }
+
+        persistedToPersist?.Dispose();
+    }
+
+    [Test]
     public void DetermineSnapshotAction_UnfinalizedBelowBackstop_ReturnsNull()
     {
         // Unfinalized (finalized at 10, persisted at 0 — not in range for the CompactSize=16
