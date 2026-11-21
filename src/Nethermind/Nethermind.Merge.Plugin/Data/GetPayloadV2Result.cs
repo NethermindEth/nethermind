@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -11,7 +12,8 @@ public class GetPayloadV2Result<TVersionedExecutionPayload>(Block block, UInt256
 {
     private TVersionedExecutionPayload? _executionPayload;
 
-    protected internal Block Block { get; } = block;
+    [JsonIgnore]
+    public Block Block { get; } = block;
 
     public UInt256 BlockValue { get; } = blockFees;
 

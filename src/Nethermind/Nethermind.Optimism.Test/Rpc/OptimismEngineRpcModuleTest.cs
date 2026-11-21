@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin;
@@ -23,6 +24,22 @@ namespace Nethermind.Optimism.Test.Rpc;
 [Parallelizable(ParallelScope.All)]
 public class OptimismEngineRpcModuleTest
 {
+    [TestCase(3)]
+    [TestCase(4)]
+    public void GetPayload_serializes_the_Optimism_withdrawals_root(int version)
+    {
+        Hash256 root = Keccak.OfAnEmptyString;
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithWithdrawalsRoot(root).TestObject).TestObject;
+        BlobsBundleV1 blobs = new(block);
+        OptimismGetPayloadV3Result result = version == 3
+            ? new OptimismGetPayloadV3Result(new GetPayloadV3Result(block, 0, blobs, shouldOverrideBuilder: false))
+            : new OptimismGetPayloadV4Result(new GetPayloadV4Result(block, 0, blobs, [], shouldOverrideBuilder: false));
+
+        JObject json = JObject.Parse(new EthereumJsonSerializer().Serialize(result));
+
+        Assert.That((string?)json["executionPayload"]?["withdrawalsRoot"], Is.EqualTo(root.ToString()));
+    }
+
     private static IEnumerable<(OptimismProtocolVersion, OptimismSuperchainSignal, bool behindRecommended, bool behindRequired)> SignalSuperchainV1Cases()
     {
         yield return (

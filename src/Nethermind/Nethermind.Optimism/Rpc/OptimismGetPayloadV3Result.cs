@@ -10,11 +10,11 @@ namespace Nethermind.Optimism.Rpc;
 public class OptimismGetPayloadV3Result(GetPayloadV3Result<ExecutionPayloadV3> result)
 {
     public UInt256 BlockValue { get; } = result.BlockValue;
-    public ExecutionPayloadV3 ExecutionPayload { get; } = result.ExecutionPayload;
+    public OptimismExecutionPayloadV3 ExecutionPayload { get; } = OptimismExecutionPayloadV3.Create(result.Block);
 
     public BlobsBundleV1 BlobsBundle { get; } = result.BlobsBundle;
 
-    public Hash256 ParentBeaconBlockRoot { get; set; } = result.ExecutionPayload.ParentBeaconBlockRoot!;
+    public Hash256 ParentBeaconBlockRoot { get; set; } = result.Block.ParentBeaconBlockRoot!;
 
     public bool ShouldOverrideBuilder { get; } = result.ShouldOverrideBuilder;
 
