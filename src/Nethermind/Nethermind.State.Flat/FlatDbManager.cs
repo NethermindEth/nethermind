@@ -546,7 +546,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId persistedState = _persistenceManager.GetCurrentPersistedStateId();
         if (stateId == persistedState) return true;
         // The signed order places the PreGenesis and Sync sentinels before block zero.
-        return (long)stateId.BlockNumber > (long)persistedState.BlockNumber && _snapshotRepository.HasState(stateId);
+        if ((long)stateId.BlockNumber <= (long)persistedState.BlockNumber) return false;
+        // Persistence publishes its new state before removing the in-memory snapshot.
+        return _snapshotRepository.HasState(stateId) || _persistenceManager.GetCurrentPersistedStateId() == stateId;
     }
 
     public void DropStateNotReachableFrom(in StateId head)

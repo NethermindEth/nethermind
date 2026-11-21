@@ -677,6 +677,22 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task HasStateForBlock_accepts_a_state_persisted_during_snapshot_lookup()
+    {
+        StateId persisted = CreateStateId(5, rootByte: 5);
+        StateId requested = CreateStateId(6, rootByte: 6);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(_ => persisted);
+        _snapshotRepository.HasState(requested).Returns(_ =>
+        {
+            persisted = requested;
+            return false;
+        });
+        await using FlatDbManager manager = CreateManager();
+
+        Assert.That(manager.HasStateForBlock(requested), Is.True);
+    }
+
+    [Test]
     public async Task GatherReadOnlySnapshotBundle_at_or_above_floor_still_serves_history()
     {
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
