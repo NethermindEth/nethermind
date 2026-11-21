@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -46,7 +47,7 @@ public class SimulateTxExecutor<TTrace>(
             foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
             {
                 // As in Geth, a block's state overrides are validated before its calls.
-                if (StateOverrideValidation.GetStorageConflictError(blockStateCall.StateOverrides) is { } storageError)
+                if (StateOverrideValidation.GetStorageError(blockStateCall.StateOverrides) is { } storageError)
                     return storageError;
 
                 TransactionWithSourceDetails[]? calls = null;
@@ -61,11 +62,9 @@ public class SimulateTxExecutor<TTrace>(
 
                     for (int i = 0; i < blockStateCall.Calls.Length; i++)
                     {
-                        if (blockStateCall.Calls[i] is not { } rpcCall)
-                            return "Simulated calls must not be null.";
                         TransactionForRpc callTransactionModel = readLoneBlobFeeCapAsAbsent
-                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(rpcCall)
-                            : rpcCall;
+                            ? BlobTransactionForRpc.WithLoneBlobFeeCapOmitted(blockStateCall.Calls[i])
+                            : blockStateCall.Calls[i];
                         LegacyTransactionForRpc? asLegacy = callTransactionModel as LegacyTransactionForRpc;
                         bool hadGasLimitInRequest = asLegacy?.Gas is not null;
                         bool hadNonceInRequest = asLegacy?.Nonce is not null;
@@ -131,6 +130,15 @@ public class SimulateTxExecutor<TTrace>(
         string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
         if (callsLimitError is not null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
+
+        foreach (BlockStateCall<TransactionForRpc> block in call.BlockStateCalls)
+        {
+            if (block.Calls is { } calls && Array.IndexOf(calls, null) >= 0)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated calls must not be null.", ErrorCodes.InvalidParams);
+        }
+
+        if (StateOverrideValidation.GetStorageError(stateOverride) is { } storageError)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(storageError, ErrorCodes.InvalidInput);
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 

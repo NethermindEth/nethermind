@@ -123,7 +123,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (headerSearch.IsError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(headerSearch);
 
-            if (StateOverrideValidation.GetStorageConflictError(stateOverride) is { } storageError)
+            if (StateOverrideValidation.GetStorageError(stateOverride) is { } storageError)
                 return ResultWrapper<ParityTxTraceFromReplay>.Fail(storageError, ErrorCodes.InvalidInput);
 
             Result<Transaction> txResult = ToCallTransaction(call, headerSearch.Object!);

@@ -12,36 +12,43 @@ namespace Nethermind.JsonRpc.Modules;
 internal static class StateOverrideValidation
 {
     /// <summary>
-    /// Returns the error for an account override that sets both <c>state</c> and <c>stateDiff</c>, or
-    /// <see langword="null"/> if it sets at most one of them.
+    /// Returns the error for conflicting storage fields or a missing storage value.
     /// </summary>
-    public static string? GetStorageConflictError(Address address, AccountOverride? accountOverride) =>
-        accountOverride is { State: not null, StateDiff: not null }
-            ? $"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'"
+    public static string? GetStorageError(Address address, AccountOverride? accountOverride)
+    {
+        if (accountOverride is { State: not null, StateDiff: not null })
+            return $"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'";
+
+        return accountOverride?.State?.ContainsValue(null!) == true || accountOverride?.StateDiff?.ContainsValue(null!) == true
+            ? "Storage override values must not be null."
             : null;
+    }
 
     /// <summary>
-    /// Returns the storage conflict error of the lowest conflicting address in <paramref name="overrides"/>, or
-    /// <see langword="null"/> if no account override sets both <c>state</c> and <c>stateDiff</c>.
+    /// Returns the storage error for the lowest invalid address in <paramref name="overrides"/>.
     /// </summary>
     /// <remarks>Geth applies overrides in ascending address order and stops at the first conflict.</remarks>
-    public static string? GetStorageConflictError(Dictionary<Address, AccountOverride>? overrides)
+    public static string? GetStorageError(Dictionary<Address, AccountOverride>? overrides)
     {
         if (overrides is null) return null;
 
         Address? lowest = null;
+        string? error = null;
         foreach ((Address address, AccountOverride? accountOverride) in overrides)
         {
-            if (accountOverride is { State: not null, StateDiff: not null } && (lowest is null || address.CompareTo(lowest) < 0))
+            if ((lowest is null || address.CompareTo(lowest) < 0) && GetStorageError(address, accountOverride) is { } storageError)
+            {
                 lowest = address;
+                error = storageError;
+            }
         }
 
-        return lowest is null ? null : GetStorageConflictError(lowest, overrides[lowest]);
+        return error;
     }
 
     /// <summary>
     /// Returns the error of the lowest address in <paramref name="overrides"/> with an invalid precompile move or a
-    /// storage conflict, or <see langword="null"/> if there is none.
+    /// invalid storage override, or <see langword="null"/> if there is none.
     /// </summary>
     /// <remarks>Geth applies overrides in ascending address order and checks the move of an account before its storage.</remarks>
     public static string? GetError(Dictionary<Address, AccountOverride>? overrides, IReleaseSpec spec)
@@ -57,7 +64,7 @@ internal static class StateOverrideValidation
                 && StateOverridesExtensions.GetPrecompileMoveError(address, destination, spec.IsPrecompile(address), overrides) is { } moveError)
                 return moveError;
 
-            if (GetStorageConflictError(address, accountOverride) is { } storageError)
+            if (GetStorageError(address, accountOverride) is { } storageError)
                 return storageError;
         }
 
