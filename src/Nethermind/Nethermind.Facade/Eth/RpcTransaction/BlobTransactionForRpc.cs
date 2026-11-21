@@ -105,6 +105,13 @@ public class BlobTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<
         base.GetTraceCallUnsupportedField(spec)
         ?? (!spec.IsEip4844Enabled && (MaxFeePerBlobGas is not null || BlobVersionedHashes is not null) ? "blob" : null);
 
+    // Geth's message precheck reports an empty hash list after the fee and fork checks that conversion would skip.
+    internal override string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) =>
+        BlobVersionedHashes is { Length: 0 }
+            ? GetTraceCallPrecheckError(GetTraceCallUnsupportedField(spec), spec, baseFee)
+                ?? RpcTransactionErrors.DebugTrace(TxErrorMessages.BlobTxMissingBlobVersionedHashes)
+            : base.GetTraceCallForkError(spec, baseFee);
+
     internal override string? GetTraceCallRecipientError() =>
         To is null && BlobVersionedHashes is not null ? TxErrorMessages.TxMissingTo : null;
 

@@ -66,12 +66,19 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
         return tx;
     }
 
+    // Geth defaults an omitted fee cap to zero, so a tip alone fails its tip check before the base fee check,
+    // and its call defaults reject a blob or setcode call without a recipient before conversion's field checks.
     internal override string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) =>
-        !spec.IsEip1559Enabled && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null)
+        (spec.IsEip1559Enabled
+            ? OmitsTraceCallFeeCap && MaxPriorityFeePerGas.IsPositive()
+            : MaxFeePerGas is not null || MaxPriorityFeePerGas is not null)
+        || GetTraceCallRecipientError() is not null
             ? GetTraceCallPrecheckError(GetTraceCallUnsupportedField(spec), spec, baseFee)
             : base.GetTraceCallForkError(spec, baseFee);
 
-    internal override string GetTraceCallPrecheckError(string? unsupported, IReleaseSpec spec, UInt256 baseFee)
+    internal virtual bool OmitsTraceCallFeeCap => MaxFeePerGas is null;
+
+    internal override string? GetTraceCallPrecheckError(string? unsupported, IReleaseSpec spec, UInt256 baseFee)
     {
         if (GasPrice is not null && (MaxFeePerGas is not null || MaxPriorityFeePerGas is not null))
             return RpcTransactionErrors.GasPriceInEip1559;
