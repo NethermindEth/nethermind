@@ -1229,11 +1229,13 @@ public static partial class EvmInstructions
 
         // Prepare the topics array by popping the corresponding number of words from the stack.
         Hash256[] topics = topicsCount == 0 ? [] : new Hash256[topicsCount];
+        // Written through the data reference: an element store to a reference array checks its type at run time.
+        ref Hash256 topicsStart = ref MemoryMarshal.GetArrayDataReference(topics);
         for (int i = 0; i < topics.Length; i++)
         {
             if (!stack.PopWord256(out Span<byte> topic)) return TopicStackUnderflow(ref stack, i);
             // Topic 0 is the event signature, which repeats across logs, so its instance is shared.
-            topics[i] = i == 0 ? LogTopicCache.Get(topic) : new Hash256(topic);
+            Unsafe.Add(ref topicsStart, i) = i == 0 ? LogTopicCache.Get(topic) : new Hash256(topic);
         }
 
         // Create a new log entry with the executing account, log data, and topics.
