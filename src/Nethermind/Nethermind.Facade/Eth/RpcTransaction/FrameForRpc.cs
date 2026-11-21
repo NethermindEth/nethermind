@@ -22,7 +22,7 @@ public class FrameForRpc
 
     /// <summary>The frame's flag byte: bits 0-1 carry the approval scope
     /// (<see cref="FrameFlags.ApprovePayment"/> | <see cref="FrameFlags.ApproveExecution"/>), bit 2 is
-    /// <see cref="FrameFlags.AtomicBatch"/>.</summary>
+    /// <see cref="FrameFlags.AtomicBatch"/>, bit 3 is <see cref="FrameFlags.AssertExempt"/> (EIP-7906).</summary>
     /// <remarks>Raw for the same reason as <see cref="Mode"/>.</remarks>
     [JsonConverter(typeof(ByteConverter))]
     public byte Flags { get; set; }
