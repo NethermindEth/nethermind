@@ -3275,7 +3275,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// Entered from <see cref="ExecuteDataCopyIntoWritten{TSource}"/> alone, which has checked the stack holds the three
         /// operands, each below 2^32. A copy of a word or more with at most a word of zeros clears
-        /// its last word with four stores before the source's bytes go over it, with no call. Kept apart from
+        /// its last word before the source's bytes go over it. Kept apart from
         /// <see cref="ExecuteDataCopyIntoWritten{TSource}"/>, where its registers would cost every copy the source holds.
         /// Every other case runs <see cref="ExecuteDataCopy{TSource}"/>.
         /// </remarks>
@@ -3433,16 +3433,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
-        /// <summary>Zeroes the last 32 of the <paramref name="size"/> bytes at <paramref name="range"/>, with four stores.</summary>
+        /// <summary>Zeroes the last 32 of the <paramref name="size"/> bytes at <paramref name="range"/>.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static void ClearLastWord(ref byte range, ulong size)
-        {
-            ref byte lastWord = ref Unsafe.Add(ref range, (nint)(size - EvmStack.WordSize));
-            Unsafe.WriteUnaligned(ref lastWord, 0UL);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref lastWord, sizeof(ulong)), 0UL);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref lastWord, 2 * sizeof(ulong)), 0UL);
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref lastWord, 3 * sizeof(ulong)), 0UL);
-        }
+        private static void ClearLastWord(ref byte range, ulong size) =>
+            MemoryMarshal.CreateSpan(ref Unsafe.Add(ref range, (nint)(size - EvmStack.WordSize)), EvmStack.WordSize).Clear();
 
         /// <summary>
         /// Copies <paramref name="length"/> bytes of <paramref name="source"/> from <paramref name="from"/> into memory at
