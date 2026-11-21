@@ -428,6 +428,18 @@ public class SnapshotRepositoryTests
     }
 
     [Test]
+    public void AssembleSnapshots_persisted_edge_must_reach_the_database_state()
+    {
+        StateId older = CreateStateId(2);
+        StateId database = CreateStateId(3);
+        _tier.ConvertToPersistedBase(CreateSnapshot(CreateStateId(0), older)).Dispose();
+
+        using AssembledSnapshotResult result = _repository.AssembleSnapshots(older, database, 4);
+
+        Assert.That(result.SnapshotCount, Is.Zero);
+    }
+
+    [Test]
     public void AssembleSnapshots_InMemoryOvershoot_Rejected()
     {
         StateId s2 = CreateStateId(2);

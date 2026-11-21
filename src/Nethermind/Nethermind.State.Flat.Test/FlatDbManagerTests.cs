@@ -657,6 +657,26 @@ public class FlatDbManagerTests
     }
 
     [Test]
+    public async Task HasStateForBlock_requires_the_current_state_or_a_newer_snapshot()
+    {
+        StateId persisted = CreateStateId(5, rootByte: 5);
+        StateId sibling = CreateStateId(5, rootByte: 6);
+        StateId older = CreateStateId(4, rootByte: 4);
+        StateId newer = CreateStateId(6, rootByte: 7);
+        _persistenceManager.GetCurrentPersistedStateId().Returns(persisted);
+        _snapshotRepository.HasState(Arg.Any<StateId>()).Returns(true);
+        await using FlatDbManager manager = CreateManager();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.HasStateForBlock(persisted), Is.True);
+            Assert.That(manager.HasStateForBlock(sibling), Is.False);
+            Assert.That(manager.HasStateForBlock(older), Is.False);
+            Assert.That(manager.HasStateForBlock(newer), Is.True);
+        }
+    }
+
+    [Test]
     public async Task GatherReadOnlySnapshotBundle_at_or_above_floor_still_serves_history()
     {
         _persistenceManager.GetCurrentPersistedStateId().Returns(CreateStateId(HistoryBarrier));
