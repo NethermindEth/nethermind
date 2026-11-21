@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -60,7 +61,7 @@ public class XdcModule : Module
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
-            .AddSingleton<IBlockValidationModule, XdcBlockValidationModule>()
+            .AddKeyedScoped<BlockProcessor, XdcTransactionTraceBlockProcessor>(TransactionTraceModule.BlockProcessorKey)
 
             .Add<StartXdcBlockProducer>()
             .AddSingleton<XdcBlockProducerFactory>()
@@ -208,14 +209,4 @@ public class XdcModule : Module
         IXdcReleaseSpec spec = (XdcReleaseSpec)specProvider.GetFinalSpec();
         return new MasternodeVotingContract(spec.MasternodeVotingContract, readOnlyTxProcessingEnv);
     }
-
-    /// <summary>
-    /// Keeps <see cref="XdcBlockProcessor"/> in the validation and RPC tracing environments.
-    /// </summary>
-    /// <remarks>
-    /// It does not support the transaction trace prefix, so the tracing environments do not swap the processor for
-    /// the generic one, which would replay XDC blocks with a plain <see cref="BlockHeader"/> and without the XDC block
-    /// execution context.
-    /// </remarks>
-    private sealed class XdcBlockValidationModule : Module, IBlockValidationModule;
 }

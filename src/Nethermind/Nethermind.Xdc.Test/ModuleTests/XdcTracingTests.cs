@@ -7,8 +7,10 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -23,8 +25,9 @@ using NUnit.Framework;
 namespace Nethermind.Xdc.Test.ModuleTests;
 
 /// <summary>
-/// The tracing environments must replay XDC blocks with <see cref="XdcBlockProcessor"/>: the generic processor turns the
-/// header into a plain <see cref="BlockHeader"/>, which <see cref="XdcTransactionProcessor"/> cannot run a transaction on.
+/// The tracing environments must replay XDC blocks with <see cref="XdcTransactionTraceBlockProcessor"/>: the generic
+/// processor turns the header into a plain <see cref="BlockHeader"/>, which <see cref="XdcTransactionProcessor"/> cannot
+/// run a transaction on, and does not run it in the XDC block execution context.
 /// </summary>
 [TestFixture]
 internal class XdcTracingTests
@@ -82,6 +85,46 @@ internal class XdcTracingTests
                 .SingleOrDefault(account => string.Equals(account.Name, TestItem.AddressB.ToString(), StringComparison.OrdinalIgnoreCase))?.Value;
             string balance = _blockchain.StateReader.GetBalance(block.Header, TestItem.AddressB).ToHexString(skipLeadingZeros: true);
             Assert.That((string?)senderDiff?["balance"]?["*"]?["to"], Is.EqualTo(balance), response);
+        }
+    }
+
+    [Test]
+    public async Task Replay_runs_in_the_xdc_block_execution_context()
+    {
+        // Stores PREVRANDAO, which XDC defines as the hash of the block number, in the slot 0 of a new contract.
+        byte[] initCode = Prepare.EvmCode.Op(Instruction.PREVRANDAO).PushData(0).Op(Instruction.SSTORE).Done;
+        Transaction create = _blockchain.CreateTransactionBuilder().WithCode(initCode).WithGasLimit(100_000).WithNonce(0)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction transfer = _blockchain.CreateTransactionBuilder().To(TestItem.AddressC).WithNonce(1)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await _blockchain.AddBlock(create, transfer);
+        int createIndex = Array.FindIndex(block.Transactions, tx => tx.Hash == create.Hash);
+        Assert.That(Array.FindIndex(block.Transactions, tx => tx.Hash == transfer.Hash), Is.GreaterThan(createIndex).And.GreaterThan(-1));
+
+        Address contract = ContractAddress.From(TestItem.AddressB, 0);
+        string prevRandao = Keccak.Compute(block.Number.ToBigEndianByteArrayWithoutLeadingZeros()).ToString();
+
+        string replay = await Request("trace_replayTransaction", $"""["{create.Hash}",["stateDiff"]]""");
+        string before = await Request("debug_storageRangeAt", $"""["{block.Hash}",{createIndex},"{contract}","0x",1]""");
+        string after = await Request("debug_storageRangeAt", $"""["{block.Hash}",{createIndex + 1},"{contract}","0x",1]""");
+
+        JToken replayJson = JToken.Parse(replay);
+        JToken beforeJson = JToken.Parse(before);
+        JToken afterJson = JToken.Parse(after);
+        JToken? contractDiff = ((JObject?)replayJson["result"]?["stateDiff"])?.Properties()
+            .SingleOrDefault(account => string.Equals(account.Name, contract.ToString(), StringComparison.OrdinalIgnoreCase))?.Value;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayJson["error"], Is.Null, replay);
+            Assert.That((string?)contractDiff?["storage"]?[Hash256.Zero.ToString()]?["+"], Is.EqualTo(prevRandao), replay);
+
+            // Empty storage serializes as null; the contract does not exist before the transaction creating it.
+            Assert.That(beforeJson["error"], Is.Null, before);
+            Assert.That(beforeJson["result"]?["storage"]?.Type, Is.EqualTo(JTokenType.Null), before);
+
+            Assert.That(afterJson["error"], Is.Null, after);
+            Assert.That(((JObject?)afterJson["result"]?["storage"])?.Properties().Select(static slot => (string?)slot.Value["value"]),
+                Is.EqualTo(new[] { prevRandao }), after);
         }
     }
 
