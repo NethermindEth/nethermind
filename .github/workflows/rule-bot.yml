@@ -327,8 +327,8 @@ jobs:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           IDS: ${{ needs.propose.outputs.ids }}
           SOLUTIONS: ${{ needs.propose.outputs.rebuild }}
-          RULE_BOT_DENY: Edit(src/Nethermind/Nethermind.Analyzers/**),Write(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Write(src/Nethermind/Nethermind.Analyzers.Test/**),Edit(src/Nethermind/Nethermind.Test.Analyzers/**),Write(src/Nethermind/Nethermind.Test.Analyzers/**),Edit(src/Nethermind/Nethermind.Test.Analyzers.CodeFixes/**),Write(src/Nethermind/Nethermind.Test.Analyzers.CodeFixes/**),Edit(src/Nethermind/Nethermind.Serialization.JsonGenerator/**),Write(src/Nethermind/Nethermind.Serialization.JsonGenerator/**),Edit(src/Nethermind/Nethermind.Serialization.SszGenerator/**),Write(src/Nethermind/Nethermind.Serialization.SszGenerator/**),Edit(src/Nethermind/Nethermind.Serialization.FluentRlp.Generator/**),Write(src/Nethermind/Nethermind.Serialization.FluentRlp.Generator/**),Edit(src/Nethermind/Nethermind.JsonRpc.SourceGenerator/**),Write(src/Nethermind/Nethermind.JsonRpc.SourceGenerator/**),Edit(src/Nethermind/Nethermind.JsonRpc.SourceGenerator.Build/**),Write(src/Nethermind/Nethermind.JsonRpc.SourceGenerator.Build/**),Edit(src/Nethermind/Nethermind.BeaconChain.Generators/**),Write(src/Nethermind/Nethermind.BeaconChain.Generators/**)
         run: |
+          export RULE_BOT_DENY="$(python3 "$RUNNER_TEMP/rule-bot/rule_bot.py" deny-tools)"
           bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/fix.txt" "Read,Glob,Grep,Edit(src/**/*.cs),Edit(tools/**/*.cs),Bash(dotnet build:*)" \
             "IDS=$IDS" "HITS=$DATA/fix-hits.txt" "SOLUTIONS=$SOLUTIONS" "RESULT=$DATA/fix-result.json" > "$DATA/fix-llm.log" 2>&1 || true
           git diff --stat

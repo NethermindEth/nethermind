@@ -132,6 +132,13 @@ class Guard(unittest.TestCase):
             self.assertTrue(rb.check_paths([("M", path)], [], None, {path}), path)
             self.assertTrue(rb.check_paths([("M", path)], [], "NETH012", {path}), path)
 
+    def test_deny_tools_cover_every_denied_prefix(self):
+        tools = rb.fix_deny_tools().split(",")
+        for prefix in rb.FIX_DENIED_PREFIXES:
+            self.assertIn(f"Edit({prefix}**)", tools)
+            self.assertIn(f"Write({prefix}**)", tools)
+        self.assertEqual(len(tools), 2 * len(rb.FIX_DENIED_PREFIXES))
+
     def test_route_b_cannot_change_existing_analyzers(self):
         existing = "src/Nethermind/Nethermind.Analyzers/EmptyCatchBlockAnalyzer.cs"
         for st in ("M", "D"):

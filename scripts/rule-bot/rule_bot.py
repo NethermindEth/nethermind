@@ -366,6 +366,10 @@ def solutions_cmd(args):
             f.write(f"solutions={json.dumps(s)}\n")
 
 
+def fix_deny_tools():
+    return ",".join(f"{t}({p}**)" for p in FIX_DENIED_PREFIXES for t in ("Edit", "Write"))
+
+
 def hits(args):
     ids = set(args.ids.split(","))
     found, logs = [], sorted(glob.glob(os.path.join(args.logs, "**", "*.log"), recursive=True))
@@ -768,6 +772,7 @@ def main(argv=None):
     s = sub.add_parser("body"); s.add_argument("--data", required=True); s.add_argument("--head"); s.add_argument("--out", required=True); s.set_defaults(fn=body)
     s = sub.add_parser("solutions"); s.add_argument("--workflows", default=".github/workflows"); s.add_argument("--github-output"); s.set_defaults(fn=solutions_cmd)
     s = sub.add_parser("package"); s.add_argument("--data", required=True); s.add_argument("--github-output"); s.set_defaults(fn=package_cmd)
+    s = sub.add_parser("deny-tools"); s.set_defaults(fn=lambda a: print(fix_deny_tools()))
     s = sub.add_parser("tried"); s.add_argument("--state", required=True); s.add_argument("--cluster", nargs="+", required=True); s.set_defaults(fn=record_route_b)
     a = ap.parse_args(argv)
     a.fn(a)
