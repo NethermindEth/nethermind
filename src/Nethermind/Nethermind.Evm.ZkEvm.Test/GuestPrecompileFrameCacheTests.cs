@@ -18,7 +18,10 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
 
-/// <summary>A precompile the guest runs inline takes its frame from the per-depth frame cache, not the shared pool.</summary>
+/// <summary>
+/// A precompile the guest runs inline in a frame takes it from the per-depth frame cache, not the shared pool; a value-less
+/// CALL or STATICCALL takes no frame at all.
+/// </summary>
 public class GuestPrecompileFrameCacheTests
 {
     private static readonly IReleaseSpec Fork = Osaka.Instance;
@@ -30,7 +33,7 @@ public class GuestPrecompileFrameCacheTests
     public void Inline_precompile_calls_reuse_the_cached_frame([Values] bool outOfGas)
     {
         PrecompileVirtualMachine vm = new();
-        byte[] code = [.. CallIdentity(outOfGas), .. CallIdentity(outOfGas)];
+        byte[] code = [.. CallIdentity(Instruction.DELEGATECALL, outOfGas), .. CallIdentity(Instruction.DELEGATECALL, outOfGas)];
 
         vm.Call(code);
         VmState<EthereumGasPolicy>? first = vm.FrameCache[1];
@@ -43,14 +46,28 @@ public class GuestPrecompileFrameCacheTests
         }
     }
 
-    /// <param name="outOfGas">Forwards 1 gas, so identity fails and its frame is released on the hard-failure exit.</param>
-    private static byte[] CallIdentity(bool outOfGas)
+    [Test]
+    public void Value_less_precompile_calls_take_no_frame(
+        [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction op,
+        [Values] bool outOfGas)
+    {
+        PrecompileVirtualMachine vm = new();
+
+        vm.Call([.. CallIdentity(op, outOfGas), .. CallIdentity(op, outOfGas)]);
+
+        Assert.That(vm.FrameCache[1], Is.Null);
+    }
+
+    /// <param name="op">The call; a CALL moves no value.</param>
+    /// <param name="outOfGas">Forwards 1 gas, so identity fails and a frame it took is released on the hard-failure exit.</param>
+    private static byte[] CallIdentity(Instruction op, bool outOfGas)
     {
         byte[] gas = outOfGas ? [(byte)Instruction.PUSH1, 1] : [(byte)Instruction.GAS];
         return
         [
-            (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
-            (byte)Instruction.PUSH20, .. Identity.Bytes, .. gas, (byte)Instruction.CALL, (byte)Instruction.POP
+            (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0,
+            .. op == Instruction.CALL ? (byte[])[(byte)Instruction.PUSH0] : [],
+            (byte)Instruction.PUSH20, .. Identity.Bytes, .. gas, (byte)op, (byte)Instruction.POP
         ];
     }
 
