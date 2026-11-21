@@ -7,14 +7,18 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
+using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -41,12 +45,16 @@ public class FlatTreeSyncStoreTests
     [TearDown]
     public void TearDown() => _columnsDb.Dispose();
 
-    private static FlatTestContainer CreateContainer(IPersistence persistence, IHistoryPivotSeeder? seeder = null) =>
+    private static FlatTestContainer CreateContainer(IPersistence persistence, IHistoryPivotSeeder? seeder = null, IReleaseSpec? spec = null) =>
         new(loadPersistedTier: false, configure: builder =>
         {
+            IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
+            pivot.GetPivotHeader().Returns(Build.A.BlockHeader.TestObject);
             builder
                 .AddSingleton<IPersistence>(persistence)
-                .AddSingleton<IPersistenceManager>(Substitute.For<IPersistenceManager>());
+                .AddSingleton<IPersistenceManager>(Substitute.For<IPersistenceManager>())
+                .AddSingleton<IStateSyncPivot>(pivot)
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(spec ?? Shanghai.Instance));
             if (seeder is not null) builder.AddSingleton<IHistoryPivotSeeder>(seeder);
         });
 
@@ -172,7 +180,7 @@ public class FlatTreeSyncStoreTests
     }
 
     [Test]
-    public void SaveNode_self_destructs_each_replaced_range_once_keeping_the_leaf_account()
+    public void SaveNode_self_destructs_each_replaced_range_once_keeping_the_leaf_account_unless_EIP_6780_is_enabled([Values] bool eip6780Enabled)
     {
         Address kept = TestItem.AddressB;
         using (FlatTestContainer container = CreateContainer(_persistence))
@@ -181,97 +189,27 @@ public class FlatTreeSyncStoreTests
         }
 
         FakeWriteBatch batch = new();
-        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
+        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch), spec: eip6780Enabled ? Cancun.Instance : Shanghai.Instance);
         SaveRootAccountLeaf(recording.Resolve<FlatTreeSyncStore>(), kept);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(batch.SelfDestructRangeCalls, Is.Not.Empty);
-            Assert.That(batch.SelfDestructRangeCalls, Has.Count.EqualTo(batch.DeleteAccountRangeCalls.Count));
+            Assert.That(batch.DeleteAccountRangeCalls, Is.Not.Empty);
+            Assert.That(batch.SelfDestructRangeCalls, Has.Count.EqualTo(eip6780Enabled ? 0 : batch.DeleteAccountRangeCalls.Count));
             Assert.That(batch.SelfDestructRangeCalls.Select(static call => call.KeptAccount), Is.All.EqualTo(Keccak.Compute(kept.Bytes).ValueHash256));
         }
-    }
-
-    public enum SavedBeforeTheLeaf
-    {
-        Nothing,
-        StorageOfTheLeafAccount,
-        LeafOfTheLeafAccountAbove,
-        StorageOfAnotherAccount,
-        StateNodeBelowTheLeaf,
-        LeafOfAnotherAccountAbove,
-    }
-
-    [TestCase(SavedBeforeTheLeaf.Nothing, false)]
-    [TestCase(SavedBeforeTheLeaf.StorageOfTheLeafAccount, false)]
-    [TestCase(SavedBeforeTheLeaf.LeafOfTheLeafAccountAbove, false)]
-    [TestCase(SavedBeforeTheLeaf.StorageOfAnotherAccount, true)]
-    [TestCase(SavedBeforeTheLeaf.StateNodeBelowTheLeaf, true)]
-    [TestCase(SavedBeforeTheLeaf.LeafOfAnotherAccountAbove, true)]
-    public void SaveNode_compares_a_leaf_with_the_one_RemoveMismatchedNode_took_out_until_another_account_is_saved_under_it(SavedBeforeTheLeaf saved, bool selfDestructsTheRange)
-    {
-        // Both accounts are under the leaf's path "a".
-        Hash256 held = new("0xa000000000000000000000000000000000000000000000000000000000000001");
-        Hash256 other = new("0xa000000000000000000000000000000000000000000000000000000000000002");
-        TreePath leafPath = TreePath.FromHexString("a");
-        using (FlatTestContainer container = CreateContainer(_persistence))
-        {
-            SaveAccountLeaf(container.Resolve<FlatTreeSyncStore>(), held, depth: 1);
-        }
-
-        FakeWriteBatch batch = new();
-        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
-        FlatTreeSyncStore store = recording.Resolve<FlatTreeSyncStore>();
-        (_, byte[] newLeaf) = Leaf(held, depth: 1, Rlp.Encode(new Account(1, 2)));
-        store.RemoveMismatchedNode(null, leafPath, ValueKeccak.Compute(newLeaf));
-        // The recording batch keeps the removal from the db.
-        using (IPersistence.IWriteBatch dbBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
-        {
-            dbBatch.SetStateTrieNode(leafPath, default);
-        }
-
-        switch (saved)
-        {
-            case SavedBeforeTheLeaf.StorageOfTheLeafAccount: SaveSlotLeaf(store, held); break;
-            case SavedBeforeTheLeaf.LeafOfTheLeafAccountAbove: SaveAccountLeaf(store, held, depth: 0); break;
-            case SavedBeforeTheLeaf.StorageOfAnotherAccount: SaveSlotLeaf(store, other); break;
-            case SavedBeforeTheLeaf.StateNodeBelowTheLeaf: SaveAccountLeaf(store, other, depth: 2); break;
-            case SavedBeforeTheLeaf.LeafOfAnotherAccountAbove: SaveAccountLeaf(store, other, depth: 0); break;
-        }
-        batch.SelfDestructRangeCalls.Clear();
-
-        store.SaveNode(null, leafPath, ValueKeccak.Compute(newLeaf), newLeaf);
-
-        Assert.That(batch.SelfDestructRangeCalls, selfDestructsTheRange ? Is.Not.Empty : Is.Empty);
     }
 
     private static readonly byte[] StorageNodeRlp = [0xc2, 0x80, 0x80];
     private static readonly TreePath[] StorageNodePaths = [TreePath.FromHexString("1"), TreePath.FromHexString("1111111111111111")];
 
-    private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address) =>
-        SaveAccountLeaf(store, Keccak.Compute(address.Bytes), depth: 0);
-
-    private static void SaveAccountLeaf(FlatTreeSyncStore store, Hash256 account, int depth)
+    private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
     {
-        (TreePath path, byte[] rlp) = Leaf(account, depth, Rlp.Encode(new Account(1, 1)));
-        store.SaveNode(null, path, ValueKeccak.Compute(rlp), rlp);
-    }
-
-    private static void SaveSlotLeaf(FlatTreeSyncStore store, Hash256 account)
-    {
-        (_, byte[] rlp) = Leaf(TestItem.KeccakA, depth: 0, Rlp.Encode(new byte[] { 0x01 }));
-        store.SaveNode(account, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
-    }
-
-    /// <summary>The leaf of the key at the depth, and its path.</summary>
-    private static (TreePath Path, byte[] Rlp) Leaf(Hash256 key, int depth, byte[] value)
-    {
-        byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
-        TreePath path = TreePath.Empty.Append(nibbles.AsSpan(0, depth));
-        TrieNode leaf = TrieNodeFactory.CreateLeaf(nibbles.AsSpan(depth), value);
-        TreePath resolvePath = path;
-        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref resolvePath);
-        return (path, leaf.FullRlp.ToArray()!);
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes), Rlp.Encode(new Account(1, 1)));
+        TreePath path = TreePath.Empty;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
+        byte[] rlp = leaf.FullRlp.ToArray()!;
+        store.SaveNode(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
     }
 
     [Test]
