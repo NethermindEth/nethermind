@@ -588,25 +588,30 @@ public class GuestOpcodeHandlerTests
     /// A ZK_EVM test process cannot run the zkVM's keccak, so the range's bytes are memoized with a stand-in digest
     /// first: hashing any other bytes misses the memo and reaches the precompile, which throws. That leaves out the
     /// empty range, whose digest the guest takes from a constant hashed on first use. Memory holds 64 initialized
-    /// bytes, so a range may end on that boundary or run past it, which grows memory through the shared handler.
+    /// bytes, so a range may end on that boundary or run past it, which grows memory through the shared handler. A second
+    /// hash of the range takes a 32- or 64-byte input's digest from the memo the first one filled.
     /// </remarks>
     [Test]
-    public void Keccak256_leaves_the_digest_of_its_range([Values(8, 32, 33, 64)] int length, [Values(0, 5, 32)] int offset)
+    public void Keccak256_leaves_the_digest_of_its_range([Values(8, 32, 33, 64)] int length, [Values(0, 5, 32)] int offset, [Values] bool twice)
     {
         byte[] memory = [.. WordA, .. WordB, .. new byte[32]];
         byte[] digest = Enumerable.Range(0, 32).Select(b => (byte)(0x80 + b + length + offset)).ToArray();
         KeccakCache.WriteMemo(memory.AsSpan(offset, length), new ValueHash256(digest));
         ulong hashGas = GasCostOf.Sha3 + GasCostOf.Sha3Word * (ulong)((length + 31) / 32);
+        // The digests go above the furthest range end, 96, so the second hash reads the bytes the first one did.
+        byte[] hashAgain = twice ? [PUSH1, (byte)length, PUSH1, (byte)offset, KECCAK256, PUSH1, 128, MSTORE] : [];
 
         AssertSucceedsOnExactlyItsGas(
             Code([
                 PUSH32, .. WordA, PUSH1, 0, MSTORE,
                 PUSH32, .. WordB, PUSH1, 32, MSTORE,
                 PUSH1, (byte)length, PUSH1, (byte)offset, KECCAK256,
-                PUSH1, 64, MSTORE,
+                PUSH1, 96, MSTORE,
+                .. hashAgain,
                 STOP]),
-            (3 + 3 + 3) + (3 + 3 + 3) + (3 + 3 + hashGas) + (3 + 3) + MemoryCost(3),
-            [.. WordA, .. WordB, .. digest],
+            (3 + 3 + 3) + (3 + 3 + 3) + (3 + 3 + hashGas) + (3 + 3) +
+            (twice ? (3 + 3 + hashGas) + (3 + 3) + MemoryCost(5) : MemoryCost(4)),
+            [.. WordA, .. WordB, .. new byte[32], .. digest, .. twice ? digest : []],
             []);
     }
 
