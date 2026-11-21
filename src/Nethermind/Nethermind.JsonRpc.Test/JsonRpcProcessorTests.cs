@@ -2430,6 +2430,92 @@ public class JsonRpcProcessorTests
 
     private static string BuildNestedArrayParams(int depth) => new string('[', depth) + new string(']', depth);
 
+    [Test]
+    public async Task Transport_batch_budgets_bound_execution_and_error_envelopes(
+        [Values(RequestTransport.HttpMemory, RequestTransport.WsSegmentedPipe)] RequestTransport transport)
+    {
+        int calls = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            calls++;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        string body = CreateBatchRequest(Enumerable.Range(1, 8).Select(id => CreateRequest(id.ToString(), "eth_chainId")).ToArray());
+        JsonRpcContext context = new(RpcEndpoint.Http) { BatchLimits = new(2, 4) };
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig
+        {
+            MaxBatchSize = int.MaxValue,
+            BatchProcessingConcurrency = 8,
+        }), Encoding.UTF8.GetBytes(body), transport, context: context);
+        List<JsonRpcResponse> items = AssertOnlyResult(result).BatchItems!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(2));
+            Assert.That(items, Has.Count.EqualTo(5));
+            Assert.That(items.Take(4).Select(item => item.Id), Is.EqualTo(Enumerable.Range(1, 4).Select(id => new JsonRpcId(id))));
+            Assert.That(items.Skip(2).Cast<JsonRpcErrorResponse>().Select(item => item.Error!.Code), Is.All.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(items[^1].Id.IsNull, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Transport_batch_budget_suppresses_notification_tail_but_answers_later_request(
+        [Values(RequestTransport.HttpMemory, RequestTransport.WsSegmentedPipe)] RequestTransport transport,
+        [Values] bool requestAtEnd)
+    {
+        int calls = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            calls++;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        string notification = """{"jsonrpc":"2.0","method":"eth_chainId"}""";
+        string body = CreateBatchRequest(Enumerable.Repeat(notification, 8)
+            .Concat(requestAtEnd ? [CreateRequest("99", "eth_chainId")] : Array.Empty<string>()).ToArray());
+        JsonRpcContext context = new(RpcEndpoint.Http) { BatchLimits = new(2, 4) };
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = int.MaxValue }),
+            Encoding.UTF8.GetBytes(body), transport, context: context);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(2));
+            if (!requestAtEnd) Assert.That(result, Is.Empty);
+            else
+            {
+                JsonRpcResponse response = AssertOnlyResult(result).BatchItems!.Single();
+                Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
+                Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+            }
+        }
+    }
+
+    [Test]
+    public async Task Sink_can_end_batch_before_an_unanswerable_item_is_executed(
+        [Values(RequestTransport.HttpMemory, RequestTransport.WsSegmentedPipe)] RequestTransport transport)
+    {
+        int calls = 0;
+        bool disposed = false;
+        JsonRpcErrorResponse final = new(() => disposed = true)
+        {
+            Id = JsonRpcId.Null,
+            Error = new Error { Code = ErrorCodes.LimitExceeded, Message = "No response capacity remains." },
+        };
+        CollectingJsonRpcResponseSink sink = new() { BatchLimit = _ => calls == 1 ? final : null };
+        IJsonRpcService service = CreateService(request =>
+        {
+            calls++;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessor(service),
+            Encoding.UTF8.GetBytes(CreateBatchRequest(CreateRequest("1", "eth_chainId"), CreateRequest("2", "eth_chainId"))),
+            transport, sink, context: new(RpcEndpoint.Http) { BatchLimits = new(32, 128) });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(1));
+            Assert.That(AssertOnlyResult(result).BatchItems, Has.Count.EqualTo(2));
+            Assert.That(disposed, Is.True);
+        }
+    }
+
     private sealed class CollectingJsonRpcResponseSink : IJsonRpcResponseSink
     {
         private CollectedJsonRpcResult? _currentBatch;
@@ -2440,6 +2526,8 @@ public class JsonRpcProcessorTests
         public Action? OnEndBatch { get; init; }
         public Action<JsonRpcResponse>? OnBatchItemWrite { get; init; }
         public int StopAfterBatchItems { get; init; } = int.MaxValue;
+        public Func<JsonRpcRequest?, JsonRpcErrorResponse?>? BatchLimit { get; init; }
+        public JsonRpcErrorResponse? GetBatchLimitResponse(JsonRpcRequest? request) => BatchLimit?.Invoke(request);
         public long BytesWritten { get; private set; }
         public bool StopRequested { get; private set; }
 
