@@ -525,7 +525,7 @@ namespace Nethermind.Core.Test.Crypto
                 Assert.That(recoveredDirectly, Is.EqualTo(TestItem.PrivateKeyA.Address), "the signing hash under test");
                 Assert.That(missed, Is.EqualTo(TestItem.PrivateKeyA.Address));
                 Assert.That(miss, Is.EqualTo(ecdsaRecovery), "a miss");
-                Assert.That(ecdsa.Recoveries, Is.LessThan(lookups), "lookups served from the cache");
+                Assert.That(ecdsa.Recoveries, Is.LessThan(lookups / 2), "lookups served from the cache");
                 Assert.That(hits, Is.EqualTo(ecdsa.Recoveries * ecdsaRecovery), "cache hits");
             }
 
