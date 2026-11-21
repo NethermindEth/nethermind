@@ -26,16 +26,21 @@
 
   <PropertyGroup>
     <NativeKeccakDir>$(MSBuildThisFileDirectory)..\..\native\nmkeccak\</NativeKeccakDir>
-    <NativeKeccakOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', '$(Configuration)', 'libnmkeccak.so'))</NativeKeccakOutput>
     <NativeKeccakSupported Condition="'$(EnableZkEvm)' != 'true' And $([MSBuild]::IsOSPlatform('Linux')) And '$([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture)' == 'X64' And ('$(RuntimeIdentifier)' == '' Or '$(RuntimeIdentifier)' == 'linux-x64')">true</NativeKeccakSupported>
   </PropertyGroup>
 
-  <Target Name="BuildNativeKeccak" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'" Inputs="$(NativeKeccakDir)nmkeccak.c;$(NativeKeccakDir)build.sh;@(NativeKeccakSource)" Outputs="$(NativeKeccakOutput)">
+  <Target Name="ResolveNativeKeccakPaths" Condition="'$(NativeKeccakSupported)' == 'true'">
+    <PropertyGroup>
+      <NativeKeccakOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'libnmkeccak.so'))</NativeKeccakOutput>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="BuildNativeKeccak" DependsOnTargets="ResolveNativeKeccakPaths" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'" Inputs="$(NativeKeccakDir)nmkeccak.c;$(NativeKeccakDir)build.sh;@(NativeKeccakSource)" Outputs="$(NativeKeccakOutput)">
     <Delete Files="$(NativeKeccakOutput)" />
     <Exec Command="command -v &quot;${CC:-gcc}&quot;" IgnoreExitCode="true" StandardOutputImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="GccExitCode" />
     </Exec>
-    <Exec Condition="'$(GccExitCode)' == '0'" Command="sh &quot;$(NativeKeccakDir)build.sh&quot; &quot;$(NativeKeccakOutput)&quot;" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
+    <Exec Condition="'$(GccExitCode)' == '0'" Command="sh &quot;$(NativeKeccakDir)build.sh&quot; &quot;$(NativeKeccakOutput).$$.tmp&quot; &amp;&amp; mv -f &quot;$(NativeKeccakOutput).$$.tmp&quot; &quot;$(NativeKeccakOutput)&quot; || { rm -f &quot;$(NativeKeccakOutput).$$.tmp&quot;; exit 1; }" IgnoreExitCode="true" IgnoreStandardErrorWarningFormat="true">
       <Output TaskParameter="ExitCode" PropertyName="NativeKeccakExitCode" />
     </Exec>
     <Warning Condition="'$(GccExitCode)' != '0' And '$(CC)' != '' And ('$(TARGETARCH)' == '' Or '$(TARGETARCH)' == 'amd64')" Text="libnmkeccak.so was not built (no C compiler found); Keccak-256 uses the C# absorb." />
@@ -48,9 +53,11 @@
     </ItemGroup>
   </Target>
 
-  <ItemGroup>
-    <FileWrites Include="$(NativeKeccakOutput)" />
-  </ItemGroup>
+  <Target Name="TrackNativeKeccakFileWrites" AfterTargets="BuildNativeKeccak" Condition="'$(NativeKeccakSupported)' == 'true'">
+    <ItemGroup>
+      <FileWrites Include="$(NativeKeccakOutput)" />
+    </ItemGroup>
+  </Target>
 
   <ItemGroup>
     <NativeKeccakSource Include="$(NativeKeccakDir)xkcp\*" />
