@@ -164,8 +164,10 @@ public sealed class NodeRecordProvider(
 
         IPAddress? rlpxAddress = listenerState.RlpxAddress;
         IPAddress? discoveryAddress = listenerState.DiscoveryAddress;
-        bool advertiseV4 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetwork);
-        bool advertiseV6 = SupportsEveryBoundListener(rlpxAddress, discoveryAddress, AddressFamily.InterNetworkV6);
+        NetworkListenerState.WebTransportBinding? webTransport = listenerState.WebTransport;
+        IPAddress? addressForEnr = rlpxAddress ?? discoveryAddress ?? webTransport?.Address;
+        bool advertiseV4 = SupportsEveryBoundListener(addressForEnr, discoveryAddress, AddressFamily.InterNetwork);
+        bool advertiseV6 = SupportsEveryBoundListener(addressForEnr, discoveryAddress, AddressFamily.InterNetworkV6);
 
         return new LocalNodeRecordState(
             advertiseV4 ? ip.ExternalIpV4 : null,
@@ -174,12 +176,12 @@ public sealed class NodeRecordProvider(
             advertiseV6 ? ip.ExternalIpV6 : null,
             currentForkId,
             snapAdvertisement.ServesSnap,
-            snapAdvertisement.ServesSnap2);
+            snapAdvertisement.ServesSnap2,
+            webTransport);
     }
 
-    private static bool SupportsEveryBoundListener(IPAddress? rlpxAddress, IPAddress? discoveryAddress, AddressFamily family)
-        => (rlpxAddress is not null || discoveryAddress is not null) &&
-           (rlpxAddress is null || DiscoveryAddressSupport.SupportsFamily(rlpxAddress, family)) &&
+    private static bool SupportsEveryBoundListener(IPAddress? firstAddress, IPAddress? discoveryAddress, AddressFamily family)
+        => firstAddress is not null && DiscoveryAddressSupport.SupportsFamily(firstAddress, family) &&
            (discoveryAddress is null || DiscoveryAddressSupport.SupportsFamily(discoveryAddress, family));
 
     private void LogEndpointIssues(IIPResolver.NethermindIp ip, LocalNodeRecordState state)
@@ -227,6 +229,14 @@ public sealed class NodeRecordProvider(
         }
         selfNodeRecord.SetEntry(new SecP256k1Entry(nodeKey.CompressedPublicKey));
         if (state.ServesSnap) selfNodeRecord.SetEntry(state.ServesSnap2 ? new SnapEntry(1, 2) : new SnapEntry());
+        if (state.WebTransport is { } webTransport)
+        {
+            bool servesV4 = state.ExternalIpV4 is not null && DiscoveryAddressSupport.SupportsFamily(webTransport.Address, AddressFamily.InterNetwork);
+            bool servesV6 = state.ExternalIpV6 is not null && DiscoveryAddressSupport.SupportsFamily(webTransport.Address, AddressFamily.InterNetworkV6);
+            if (servesV4) selfNodeRecord.SetEntry(new QuicPortEntry(webTransport.Port));
+            if (servesV6) selfNodeRecord.SetEntry(new QuicPortEntry(webTransport.Port, ipv6: true));
+            if (servesV4 || servesV6) selfNodeRecord.SetEntry(new QuicCertificateHashesEntry(webTransport.CertificateHashes));
+        }
         selfNodeRecord.EnrSequence = sequence;
         _enrSigner.Sign(selfNodeRecord);
         if (!_enrSigner.Verify(selfNodeRecord))
@@ -252,5 +262,6 @@ public sealed class NodeRecordProvider(
         IPAddress? ExternalIpV6,
         NetworkForkId ForkId,
         bool ServesSnap,
-        bool ServesSnap2);
+        bool ServesSnap2,
+        NetworkListenerState.WebTransportBinding? WebTransport);
 }

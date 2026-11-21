@@ -195,6 +195,15 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                         nodeRecord.SetEntry(new Udp6Entry(udpPort));
                         break;
                     }
+                case 4 when key.SequenceEqual("quic"u8):
+                    nodeRecord.SetEntry(ReadQuicEntry(ref fields, EnrContentKey.Quic));
+                    break;
+                case 5 when key.SequenceEqual("quic6"u8):
+                    nodeRecord.SetEntry(ReadQuicEntry(ref fields, EnrContentKey.Quic6));
+                    break;
+                case 2 when key.SequenceEqual("qh"u8):
+                    nodeRecord.SetEntry(ReadQuicEntry(ref fields, EnrContentKey.QuicCertificateHashes));
+                    break;
                 case 9 when key.SequenceEqual(EnrContentKey.SecP256k1U8):
                     ReadOnlySpan<byte> keyBytes = fields.DecodeByteArraySpan();
                     CompressedPublicKey reportedKey = new(keyBytes);
@@ -220,6 +229,23 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         nodeRecord.OriginalRlp = recordRlp.ToArray();
 
         return nodeRecord;
+    }
+
+    private static EnrContentEntry ReadQuicEntry(ref RlpReader fields, string key)
+    {
+        ReadOnlySpan<byte> bytes = fields.ReadEncodedItem();
+        RlpReader value = new(bytes);
+        try
+        {
+            return key == EnrContentKey.QuicCertificateHashes
+                ? new QuicCertificateHashesEntry(value.DecodeByteArraySpan().ToArray())
+                : new QuicPortEntry(value.DecodePositiveInt(), ipv6: key == EnrContentKey.Quic6);
+        }
+        catch (RlpReaderException)
+        {
+            // An unknown QUIC value is still part of the signed ENR.
+            return new UnknownEntry(key, bytes.ToArray());
+        }
     }
 
     /// <summary>

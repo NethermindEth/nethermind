@@ -109,14 +109,17 @@ public class DiscoveryModule(IInitConfig initConfig, INetworkConfig networkConfi
         // Discovery app
         // Needed regardless if used or not because of StopAsync in runner.
         // The DiscV4/5 is in CompositeDiscoveryApp.
+        if (initConfig.DiscoveryEnabled || networkConfig.WebTransportPort != 0)
+        {
+            builder.AddSingleton<INodeRecordProvider, NodeRecordProvider>().AddSingleton<SnapEnrAdvertisement>();
+        }
+
         if (!initConfig.DiscoveryEnabled)
             builder.AddSingleton<IDiscoveryApp, NullDiscoveryApp>();
         else
         {
             builder
                 .AddSingleton<IDiscoveryApp, CompositeDiscoveryApp>()
-                .AddSingleton<INodeRecordProvider, NodeRecordProvider>()
-                .AddSingleton<SnapEnrAdvertisement>()
 
                 .AddNetworkStorage(DbNames.DiscoveryNodes, DbNames.DiscoveryNodes)
                 .AddNetworkStorage(DbNames.DiscoveryV5Nodes, DbNames.DiscoveryV5Nodes)

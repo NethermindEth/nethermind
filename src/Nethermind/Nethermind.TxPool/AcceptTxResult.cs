@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core;
 using Nethermind.Core.Messages;
 
 namespace Nethermind.TxPool
@@ -228,6 +229,9 @@ namespace Nethermind.TxPool
         /// </summary>
         public static readonly AcceptTxResult PaymasterWidthUnmet = new(TxPoolErrorMessages.PaymasterWidthUnmet);
 
+        /// <summary>The node has no local transaction pool for this submission.</summary>
+        public static readonly AcceptTxResult PoolUnavailable = new("transaction pool unavailable");
+
         /// <summary>
         /// Declares a result distinct from every other declared result.
         /// </summary>
@@ -240,20 +244,26 @@ namespace Nethermind.TxPool
         {
         }
 
-        private AcceptTxResult(int id, string code, string? message)
+        private AcceptTxResult(int id, string code, string? message, TxValidationError txError = TxValidationError.None)
         {
             Id = id;
+            TxError = txError;
             Code = code;
             Message = message;
         }
 
         private int Id { get; }
+
+        /// <summary>A specific validation reason carried by the admission result.</summary>
+        public TxValidationError TxError { get; }
+
         private string Code { get; }
         private string? Message { get; }
 
         public static implicit operator bool(AcceptTxResult result) => result.Id == Accepted.Id;
         public static implicit operator AcceptTxResult(bool result) => result ? Accepted : Invalid;
-        public AcceptTxResult WithMessage(string message) => new(Id, Code, message);
+        public AcceptTxResult WithMessage(string message) => new(Id, Code, message, TxError);
+        internal AcceptTxResult WithValidationError(ValidationResult result) => new(Id, Code, result.ToString(), result.TxError);
         public static bool operator ==(AcceptTxResult a, AcceptTxResult b) => a.Equals(b);
         public static bool operator !=(AcceptTxResult a, AcceptTxResult b) => !(a == b);
         public override bool Equals(object? obj) => obj is AcceptTxResult result && Equals(result);

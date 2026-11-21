@@ -1,0 +1,14 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.Core;
+
+/// <summary>A specific reason reported by transaction validation.</summary>
+public enum TxValidationError : byte
+{
+    None,
+    NonceCapExceeded,
+    PriorityFeeAboveFeeCap,
+    IntrinsicGas,
+    GasLimitCapExceeded
+}

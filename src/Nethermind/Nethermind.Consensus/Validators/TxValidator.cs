@@ -170,6 +170,7 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
 public sealed class IntrinsicGasTxValidator : ITxValidator
 {
     public static readonly IntrinsicGasTxValidator Instance = new();
+    private static readonly ValidationResult _intrinsicGasTooLow = new(TxErrorMessages.IntrinsicGasTooLow, TxValidationError.IntrinsicGas);
     private IntrinsicGasTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
@@ -193,12 +194,14 @@ public sealed class IntrinsicGasTxValidator : ITxValidator
         if (releaseSpec.IsEip8037Enabled && intrinsicGas.ExceedsCap(Eip7825Constants.DefaultTxGasLimitCap, out ulong execution, out ulong floor))
         {
             return (options & TxValidationOptions.SkipErrorDetails) != 0
-                ? TxErrorMessages.IntrinsicGasTooLow
-                : TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap);
+                ? _intrinsicGasTooLow
+                : new ValidationResult(
+                    TxErrorMessages.TxIntrinsicGasExceedsCap(execution, floor, Eip7825Constants.DefaultTxGasLimitCap),
+                    TxValidationError.IntrinsicGas);
         }
 
         return transaction.GasLimit < intrinsicGas.MinRequiredGasLimit
-            ? TxErrorMessages.IntrinsicGasTooLow
+            ? _intrinsicGasTooLow
             : ValidationResult.Success;
     }
 }
@@ -244,13 +247,14 @@ public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
 public sealed class GasFieldsTxValidator : ITxValidator
 {
     public static readonly GasFieldsTxValidator Instance = new();
+    private static readonly ValidationResult _priorityFeeAboveFeeCap = new(TxErrorMessages.InvalidMaxPriorityFeePerGas, TxValidationError.PriorityFeeAboveFeeCap);
     private GasFieldsTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
+        transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? _priorityFeeAboveFeeCap : ValidationResult.Success;
 }
 
 /// <summary>EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
@@ -671,8 +675,9 @@ public sealed class GasLimitCapTxValidator : ITxValidator
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         ulong gasLimitCap = releaseSpec.GetTxGasLimitCap();
-        return transaction.GasLimit > gasLimitCap ?
-            TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap) : ValidationResult.Success;
+        return transaction.GasLimit > gasLimitCap
+            ? new ValidationResult(TxErrorMessages.TxGasLimitCapExceeded(transaction.GasLimit, gasLimitCap), TxValidationError.GasLimitCapExceeded)
+            : ValidationResult.Success;
     }
 }
 
@@ -682,11 +687,12 @@ public sealed class GasLimitCapTxValidator : ITxValidator
 public sealed class NonceCapTxValidator : ITxValidator
 {
     public static readonly NonceCapTxValidator Instance = new();
+    private static readonly ValidationResult _nonceCapExceeded = new(TxErrorMessages.NonceTooHigh, TxValidationError.NonceCapExceeded);
     private NonceCapTxValidator() { }
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
         IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.Nonce < ulong.MaxValue || KeyedNonceManager.UsesKeyedNonce(transaction) ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;
+        transaction.Nonce < ulong.MaxValue || KeyedNonceManager.UsesKeyedNonce(transaction) ? ValidationResult.Success : _nonceCapExceeded;
 }

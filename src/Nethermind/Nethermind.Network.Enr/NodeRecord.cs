@@ -156,6 +156,23 @@ public class NodeRecord
     public bool TryGetTcpEndpoint(AddressFamily addressFamily, [MaybeNullWhen(false)] out IPEndPoint endpoint)
         => TryGetEndpoint(EnrContentKey.Tcp, EnrContentKey.Tcp6, addressFamily, out endpoint);
 
+    /// <summary>Gets a QUIC endpoint with certificate pins for the given address family.</summary>
+    public bool TryGetQuicEndpoint(AddressFamily addressFamily, [NotNullWhen(true)] out IPEndPoint? endpoint)
+    {
+        string key = addressFamily == AddressFamily.InterNetworkV6 ? EnrContentKey.Quic6 : EnrContentKey.Quic;
+        if (Entries.TryGetValue(EnrContentKey.QuicCertificateHashes, out EnrContentEntry? hashes) &&
+            hashes is QuicCertificateHashesEntry { Value.Length: 32 or 64 } &&
+            Entries.TryGetValue(key, out EnrContentEntry? port) && port is QuicPortEntry &&
+            TryGetEndpoint(key, key, addressFamily, out endpoint) && !endpoint.Address.Equals(IPAddress.Any) &&
+            !endpoint.Address.Equals(IPAddress.IPv6Any))
+        {
+            return true;
+        }
+
+        endpoint = null;
+        return false;
+    }
+
     private bool TryGetEndpoint(string ipv4PortKey, string ipv6PortKey, [MaybeNullWhen(false)] out IPEndPoint endpoint)
     {
         if (TryGetEndpoint(ipv4PortKey, ipv6PortKey, AddressFamily.InterNetwork, out endpoint))
