@@ -1503,23 +1503,29 @@ public partial class VirtualMachine<TGasPolicy>(
 
         IReleaseSpec spec = BlockExecutionContext.Spec;
 
-        bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
-
-        // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
-        // An additional issue was found in Parity,
-        // where the Parity client incorrectly failed
-        // to revert empty account deletions in a more limited set of contexts
-        // involving out-of-gas calls to precompiled contracts;
-        // the new Geth behavior matches Parity's,
-        // and empty accounts will cease to be a source of concern in general
-        // in about one week once the state clearing process finishes.
-        if (!wasCreated &&
-            transferValue.IsZero &&
-            Eip158.IsActive &&
-            state.Env.ExecutingAccount.Equals(Ripemd160Address) &&
-            _worldState.IsDeadAccount(Ripemd160Address))
+        // Under EIP-158 a zero credit only matters to an existing empty account, which it touches: an absent one it creates
+        // would be deleted with the transaction, and a non-empty one it leaves as it is.
+        if (!Eip158.IsActive || !transferValue.IsZero ||
+            (_worldState.AccountExists(state.Env.ExecutingAccount) && _worldState.IsDeadAccount(state.Env.ExecutingAccount)))
         {
-            _shouldRestoreRipemdTouch = true;
+            bool wasCreated = _worldState.AddToBalanceAndCreateIfNotExists(state.Env.ExecutingAccount, in transferValue, spec);
+
+            // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
+            // An additional issue was found in Parity,
+            // where the Parity client incorrectly failed
+            // to revert empty account deletions in a more limited set of contexts
+            // involving out-of-gas calls to precompiled contracts;
+            // the new Geth behavior matches Parity's,
+            // and empty accounts will cease to be a source of concern in general
+            // in about one week once the state clearing process finishes.
+            if (!wasCreated &&
+                transferValue.IsZero &&
+                Eip158.IsActive &&
+                state.Env.ExecutingAccount.Equals(Ripemd160Address) &&
+                _worldState.IsDeadAccount(Ripemd160Address))
+            {
+                _shouldRestoreRipemdTouch = true;
+            }
         }
 
         // The policy reads the precompile's own base/data cost (with the overflow guard inside).
