@@ -94,7 +94,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         : base(block, tx, parityTraceTypes, spec)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(flushIntervalEntries);
 
         _writer = writer;
         _pipeWriter = pipeWriter;

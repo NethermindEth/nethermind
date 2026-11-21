@@ -157,8 +157,7 @@ public class GethStyleTracer(
     private static Block CreateCallReplay(Block block, Transaction call, ulong index)
     {
         if (block.IsGenesis) throw new GenesisNotTraceableException();
-        if (index >= (ulong)Math.Max(block.Transactions.Length, 1))
-            throw new ArgumentOutOfRangeException(nameof(index));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, (ulong)Math.Max(block.Transactions.Length, 1));
 
         Transaction[] transactions = new Transaction[(int)index + 1];
         block.Transactions.AsSpan(0, (int)index).CopyTo(transactions);
