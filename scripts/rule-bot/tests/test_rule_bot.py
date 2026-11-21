@@ -324,7 +324,7 @@ class RouteB(unittest.TestCase):
             open(os.path.join(d, UNSHIPPED), "w").write("NETH011 | Usage | Warning | x\n")
             today = next(datetime.date(2026, 11, 20) + datetime.timedelta(days=n) for n in range(21)
                          if rb.rotate([1, 2, 3], datetime.date(2026, 11, 20) + datetime.timedelta(days=n))[0] == 1)
-            bot = json.dumps([dict(number=5, state="CLOSED", headRefName=f"rule-bot/{b[2]}-neth011-1", createdAt=f"{today}T00:00:00Z")])
+            bot = json.dumps([dict(number=5, state="CLOSED", headRefName=f"rule-bot/{b[2]}-neth011-1", createdAt=f"{today}T00:00:00Z", closedAt=f"{today}T00:00:00Z")])
             real = rb.gh
             rb.gh = lambda *a, **k: bot if "--label" in a else "[]"
             try:
@@ -332,9 +332,63 @@ class RouteB(unittest.TestCase):
             finally:
                 rb.gh = real
             p = rb.load(os.path.join(d, "plan.json"))
-            self.assertEqual([q["cluster"] for q in p["route_b_queue"]], [b[0], b[3], b[4]])
+            self.assertEqual([q["cluster"] for q in p["route_b_queue"]], [b[0]])
             self.assertEqual(p["route_b"], b[0])
             self.assertEqual(p["route_b_id"], "NETH012")
+
+    def test_plan_tries_one_cluster_per_week_and_each_once_per_cycle(self):
+        routes = rb.load(os.path.join(rb.HERE, "routes.json"))
+        b = sorted(k for k, r in routes.items() if r["route"] == "B")[:3]
+        picked = []
+        for n in range(6):
+            with tempfile.TemporaryDirectory() as d:
+                rb.save(os.path.join(d, "gates.json"), {k: dict(prs=50, **{"pass": True}) for k in b})
+                rb.save(os.path.join(d, "catalog.json"), {})
+                os.makedirs(os.path.join(d, os.path.dirname(UNSHIPPED)))
+                open(os.path.join(d, UNSHIPPED), "w").write("NETH011 | Usage | Warning | x\n")
+                today = datetime.date(2026, 11, 20) + datetime.timedelta(days=7 * n)
+                rb.plan(argparse.Namespace(data=d, repo=d, offline=True, github_output=None, today=today.isoformat()))
+                p = rb.load(os.path.join(d, "plan.json"))
+                self.assertEqual(len(p["route_b_queue"]), 1)
+                picked.append(p["route_b"])
+        self.assertEqual(sorted(picked[:3]), sorted(b))
+        self.assertEqual(picked[3:], picked[:3])
+
+    def test_rejected_route_a_ids_cool_down(self):
+        routes = {"unused": dict(route="A", ids=["IDE0051", "IDE0052"]), "unusedx": dict(route="A", ids=["IDE0060"]),
+                  "sleep": dict(route="B", ids=[])}
+        today = datetime.date(2026, 11, 20)
+        prs = [dict(number=1, state="CLOSED", headRefName="rule-bot/unused-ide0051-99", closedAt="2026-11-01T00:00:00Z"),
+               dict(number=2, state="MERGED", headRefName="rule-bot/unused-ide0052-98", closedAt="2026-11-01T00:00:00Z"),
+               dict(number=3, state="CLOSED", headRefName="rule-bot/unusedx-ide0060-97", closedAt="2026-08-01T00:00:00Z"),
+               dict(number=4, state="OPEN", headRefName="rule-bot/unused-ide0052-96", closedAt=None),
+               dict(number=5, state="CLOSED", headRefName="rule-bot/sleep-neth012-95", closedAt="2026-11-01T00:00:00Z")]
+        self.assertEqual(rb.rejected_ids(prs, routes, today), {"IDE0051": 1})
+
+    def test_plan_and_propose_skip_a_rejected_rule(self):
+        routes = rb.load(os.path.join(rb.HERE, "routes.json"))
+        k = next(k for k, r in routes.items() if r["route"] == "A" and len(r["ids"]) > 1)
+        first, rest = routes[k]["ids"][0], routes[k]["ids"][1:]
+        bot = json.dumps([dict(number=42, state="CLOSED", headRefName=f"rule-bot/{k}-{first.lower()}-1",
+                               createdAt="2026-10-01T00:00:00Z", closedAt="2026-11-10T00:00:00Z")])
+        with tempfile.TemporaryDirectory() as d:
+            rb.save(os.path.join(d, "gates.json"), {k: dict(prs=50, **{"pass": True})})
+            rb.save(os.path.join(d, "catalog.json"), {})
+            real = rb.gh
+            rb.gh = lambda *a, **kw: bot if "--label" in a and "all" in a else "[]"
+            try:
+                rb.plan(argparse.Namespace(data=d, repo=d, offline=False, github_output=None, today="2026-11-20"))
+                p = rb.load(os.path.join(d, "plan.json"))
+                self.assertEqual(p["measure_ids"], rest)
+                self.assertEqual(p["rejected_ids"], {first: 42})
+                rb.save(os.path.join(d, "hits.json"), dict(counts={i: dict(prod=10, test=0) for i in routes[k]["ids"]}))
+                rb.propose(argparse.Namespace(data=d, offline=False, github_output=None))
+            finally:
+                rb.gh = real
+            c = rb.load(os.path.join(d, "candidates.json"))
+            v = {x["id"]: x["verdict"] for x in c["decisions"]}
+            self.assertTrue(v[first].startswith("skip: rule-bot PR #42 closed without merge"))
+            self.assertTrue(all(first not in pk["ids"] for pk in c["packages"]))
 
     def test_plan_attempts_no_analyzer_while_a_bot_pr_is_open(self):
         routes = rb.load(os.path.join(rb.HERE, "routes.json"))

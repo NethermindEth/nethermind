@@ -23,7 +23,7 @@ SAMPLE_SIZE = 20
 SAMPLE_MIN_TRUE = 18
 BOT_LABEL = "rule-bot"
 COOLDOWN_DAYS = 56
-ROUTE_B_TRIES = 3
+ROUTE_B_TRIES = 1
 UNSHIPPED = "src/Nethermind/Nethermind.Analyzers/AnalyzerReleases.Unshipped.md"
 EDITORCONFIG = ".editorconfig"
 OVERLAY_SECTIONS = {"[*.cs]": "warning", "[src/Nethermind/{*Test*,*Benchmark*}/**.cs]": "none", "[tools/*/{*Test*,*Benchmark*}/**.cs]": "none"}
@@ -257,6 +257,18 @@ def recently_tried(bot_prs, clusters, today):
             for k in clusters if pr["headRefName"].startswith(f"rule-bot/{k}-")}
 
 
+def rejected_ids(bot_prs, routes, today):
+    out = {}
+    for pr in bot_prs:
+        if pr["state"] != "CLOSED" or (today - datetime.date.fromisoformat(pr["closedAt"][:10])).days >= COOLDOWN_DAYS:
+            continue
+        for k, r in routes.items():
+            if r["route"] == "A" and pr["headRefName"].startswith(f"rule-bot/{k}-"):
+                tokens = set(pr["headRefName"][len(f"rule-bot/{k}-"):].split("-"))
+                out.update({i: pr["number"] for i in r["ids"] if i.lower() in tokens})
+    return out
+
+
 def rotate(queue, today):
     k = today.toordinal() // 7 % len(queue) if queue else 0
     return queue[k:] + queue[:k]
@@ -268,15 +280,16 @@ def plan(args):
     routes = load(os.path.join(HERE, "routes.json"))
     today = today_of(args)
     bot_prs = [] if args.offline else json.loads(gh("pr", "list", "-R", REPO, "--state", "all", "--label", BOT_LABEL,
-                                                     "--json", "number,state,headRefName,createdAt", "--limit", "100"))
+                                                     "--json", "number,state,headRefName,createdAt,closedAt", "--limit", "100"))
     tried = recently_tried(bot_prs, routes, today)
+    rejected = rejected_ids(bot_prs, routes, today)
     measure, queue = [], []
     for k, st in sorted(g.items(), key=lambda x: -x[1]["prs"]):
         r = routes.get(k, dict(route="?", ids=[]))
         if not st["pass"]:
             continue
         if r["route"] == "A":
-            measure += [i for i in r["ids"] if i not in measure and not cat.get(i, {}).get("enforced")]
+            measure += [i for i in r["ids"] if i not in measure and i not in rejected and not cat.get(i, {}).get("enforced")]
         elif r["route"] == "B" and k not in tried:
             queue.append(k)
     bot_open = [pr for pr in bot_prs if pr["state"] == "OPEN"]
@@ -289,12 +302,14 @@ def plan(args):
     if not args.offline:
         for pr in json.loads(gh("pr", "list", "-R", REPO, "--state", "open", "--search", "NETH0 in:title", "--json", "title", "--limit", "50")):
             reserved |= {int(x) for x in re.findall(r"NETH(\d{3})", pr["title"])}
-    out = dict(measure_ids=measure, route_b=route_b, route_b_id=next_neth_id(neth_ids(args.repo), reserved) if route_b else None,
+    out = dict(measure_ids=measure, rejected_ids=rejected, route_b=route_b, route_b_id=next_neth_id(neth_ids(args.repo), reserved) if route_b else None,
                route_b_queue=[dict(cluster=k, why=routes[k]["why"]) for k in queue])
     save(os.path.join(args.data, "plan.json"), out)
     with open(os.path.join(args.data, "measure_ids.txt"), "w") as f:
         f.write("\n".join(measure) + "\n")
     print(f"plan: route A ids to measure: {' '.join(measure) or 'none'}")
+    if rejected:
+        print(f"plan: route A ids cooling down after a closed rule-bot PR: {' '.join(f'{i} (#{n})' for i, n in sorted(rejected.items()))}")
     print(f"plan: route B clusters to try: {' '.join(queue) or 'none'} {out['route_b_id'] or ''}")
     if args.github_output:
         with open(args.github_output, "a") as f:
@@ -455,6 +470,8 @@ def propose(args):
         for i in r["ids"]:
             c = counts.get(i, {}).get("prod", 0)
             v = verdict(c, cat.get(i, {}).get("enforced"))
+            if i in pl.get("rejected_ids", {}):
+                v = f"skip: rule-bot PR #{pl['rejected_ids'][i]} closed without merge in the last {COOLDOWN_DAYS} days"
             decisions.append(dict(cluster=k, id=i, route="A", prod=c, test=counts.get(i, {}).get("test", 0), verdict=v))
             if v == "propose":
                 ok.append(i)
