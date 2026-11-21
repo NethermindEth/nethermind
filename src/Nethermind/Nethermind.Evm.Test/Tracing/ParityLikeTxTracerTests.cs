@@ -1887,6 +1887,28 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(tracer2.IsTracingRewards, Is.True);
     }
 
+    [Test]
+    public void Sstore_that_refills_state_gas_reports_zero_cost_on_Amsterdam()
+    {
+        byte[] code = Prepare.EvmCode
+            .PersistData("0x1", "0x1")
+            .PersistData("0x1", HexZero)
+            .PersistData("0x1", "0x1")
+            .Op(Instruction.STOP)
+            .Done;
+
+        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.AmsterdamActivation, 500_000, code);
+
+        ParityVmOperationTrace restore = trace.VmTrace!.Operations.Single(static o => o.Pc == 9);
+        ParityVmOperationTrace previous = trace.VmTrace.Operations.Single(static o => o.Pc == 7);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restore.Cost, Is.Zero);
+            Assert.That(restore.Used, Is.GreaterThan(previous.Used), "the restoring SSTORE grows the gas left");
+        }
+    }
+
     private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);

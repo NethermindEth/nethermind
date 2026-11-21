@@ -397,7 +397,8 @@ public partial class ParityLikeTxTracer : TxTracer
         {
             _gasAlreadySetForCurrentOp = true;
 
-            _currentOperation.Cost -= (_treatGasParityStyle ? 0UL : gas);
+            // EIP-8037: a state gas refill (e.g. an SSTORE that restores a slot) can grow the gas left; the cost is then 0.
+            if (!_treatGasParityStyle) _currentOperation.Cost = _currentOperation.Cost > gas ? _currentOperation.Cost - gas : 0;
             _currentOperation.Push = _currentPushList.ToArray();
             _currentOperation.Used = gas;
 
