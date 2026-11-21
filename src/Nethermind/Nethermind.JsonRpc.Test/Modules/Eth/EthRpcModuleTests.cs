@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -556,6 +557,30 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_uninstallFilter", "0");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":false,\"id\":67}"));
+    }
+
+    [Test]
+    public async Task Eth_new_filter_over_client_limit_returns_limit_exceeded_only_to_that_client(
+        [Values("eth_newBlockFilter", "eth_newPendingTransactionFilter")] string method)
+    {
+        using Context ctx = await Context.Create(configurer: builder => builder.AddDecorator<IJsonRpcConfig>((_, config) =>
+        {
+            config.MaxFiltersPerClient = 1;
+            return config;
+        }));
+        JsonRpcContext client = new(RpcEndpoint.Http) { RemoteAddress = IPAddress.Parse("10.0.0.1") };
+        JsonRpcContext otherClient = new(RpcEndpoint.Http) { RemoteAddress = IPAddress.Parse("10.0.0.2") };
+
+        string first = await RpcTest.TestSerializedRequest(ctx.Test.EthRpcModule, client, method);
+        string overLimit = await RpcTest.TestSerializedRequest(ctx.Test.EthRpcModule, client, method);
+        string other = await RpcTest.TestSerializedRequest(ctx.Test.EthRpcModule, otherClient, method);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Does.Contain("\"result\""));
+            Assert.That(overLimit, Does.Contain($"\"code\":{ErrorCodes.LimitExceeded}"));
+            Assert.That(other, Does.Contain("\"result\""));
+        }
     }
 
     [Test]

@@ -251,4 +251,76 @@ public class FilterStoreTests
 
         timer.Received(1).Enabled = true;
     }
+
+    [Test]
+    public void Owner_cannot_save_more_filters_than_the_limit_while_others_can()
+    {
+        object? currentOwner = "first";
+        using FilterStore store = new(new TimerFactory(), maxFiltersPerOwner: 2, ownerResolver: () => currentOwner);
+
+        store.SaveFilter(store.CreateBlockFilter());
+        store.SaveFilter(store.CreatePendingTransactionFilter());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.Throws<FilterLimitExceededException>(() => store.SaveFilter(store.CreateBlockFilter()));
+            Assert.That(store.FilterExists(2), Is.False, "the rejected filter is not stored");
+
+            currentOwner = "second";
+            Assert.DoesNotThrow(() => store.SaveFilter(store.CreateBlockFilter()));
+        }
+    }
+
+    [Test]
+    public void Removing_a_filter_frees_a_slot_for_its_owner([Values] bool removeStale)
+    {
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        using FilterStore store = new(timerFactory, maxFiltersPerOwner: 1, ownerResolver: static () => "owner");
+        BlockFilter filter = store.CreateBlockFilter();
+        store.SaveFilter(filter);
+        Assert.Throws<FilterLimitExceededException>(() => store.SaveFilter(store.CreateBlockFilter()));
+
+        if (removeStale)
+        {
+            filter.LastUsed = DateTimeOffset.UtcNow.AddDays(-1);
+            timer.Elapsed += Raise.Event();
+        }
+        else
+        {
+            store.RemoveFilter(filter.Id);
+        }
+
+        Assert.DoesNotThrow(() => store.SaveFilter(store.CreateBlockFilter()));
+    }
+
+    [Test]
+    public void Removing_a_filter_twice_frees_only_one_slot()
+    {
+        using FilterStore store = new(new TimerFactory(), maxFiltersPerOwner: 2, ownerResolver: static () => "owner");
+        BlockFilter first = store.CreateBlockFilter();
+        store.SaveFilter(first);
+        store.SaveFilter(store.CreateBlockFilter());
+
+        store.RemoveFilter(first.Id);
+        store.RemoveFilter(first.Id);
+        store.SaveFilter(store.CreateBlockFilter());
+
+        Assert.Throws<FilterLimitExceededException>(() => store.SaveFilter(store.CreateBlockFilter()));
+    }
+
+    [TestCase(0, true)]
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    public void Filters_are_not_limited_when_limit_is_disabled_or_owner_is_unknown(int maxFiltersPerOwner, bool hasOwner)
+    {
+        using FilterStore store = new(new TimerFactory(), maxFiltersPerOwner: maxFiltersPerOwner,
+            ownerResolver: () => hasOwner ? "owner" : null);
+
+        Assert.DoesNotThrow(() =>
+        {
+            for (int i = 0; i < 5; i++) store.SaveFilter(store.CreateBlockFilter());
+        });
+    }
 }

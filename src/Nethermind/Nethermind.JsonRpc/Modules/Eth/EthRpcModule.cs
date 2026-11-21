@@ -1059,20 +1059,41 @@ public partial class EthRpcModule(
     {
         BlockParameter fromBlock = filter.FromBlock;
         BlockParameter toBlock = filter.ToBlock;
-        int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        try
+        {
+            int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
+            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        }
+        catch (FilterLimitExceededException e)
+        {
+            return ResultWrapper<UInt256?>.Fail(e.Message, ErrorCodes.LimitExceeded);
+        }
     }
 
     public ResultWrapper<UInt256?> eth_newBlockFilter()
     {
-        int filterId = _blockchainBridge.NewBlockFilter();
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        try
+        {
+            int filterId = _blockchainBridge.NewBlockFilter();
+            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        }
+        catch (FilterLimitExceededException e)
+        {
+            return ResultWrapper<UInt256?>.Fail(e.Message, ErrorCodes.LimitExceeded);
+        }
     }
 
     public ResultWrapper<UInt256?> eth_newPendingTransactionFilter()
     {
-        int filterId = _blockchainBridge.NewPendingTransactionFilter();
-        return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        try
+        {
+            int filterId = _blockchainBridge.NewPendingTransactionFilter();
+            return ResultWrapper<UInt256?>.Success((UInt256)filterId);
+        }
+        catch (FilterLimitExceededException e)
+        {
+            return ResultWrapper<UInt256?>.Fail(e.Message, ErrorCodes.LimitExceeded);
+        }
     }
 
     public ResultWrapper<bool?> eth_uninstallFilter(UInt256 filterId)
