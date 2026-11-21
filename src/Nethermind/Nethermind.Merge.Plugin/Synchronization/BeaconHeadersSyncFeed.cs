@@ -110,12 +110,12 @@ public sealed class BeaconHeadersSyncFeed(
         FallAsleep();
         PostFinishCleanUp();
     }
-    public override Task<HeadersSyncBatch?> PrepareRequest(CancellationToken cancellationToken = default)
+    protected override HeadersSyncBatch? PrepareRequest(int? requestSize, CancellationToken cancellationToken, out bool needsRequestSize)
     {
         lock (_pivotLock)
         {
             ResetForChangedPivot();
-            return base.PrepareRequest(cancellationToken);
+            return base.PrepareRequest(requestSize, cancellationToken, out needsRequestSize);
         }
     }
 

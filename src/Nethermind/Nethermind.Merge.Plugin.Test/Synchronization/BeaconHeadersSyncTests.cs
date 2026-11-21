@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
@@ -19,11 +21,13 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Stats;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
@@ -390,6 +394,62 @@ public class BeaconHeadersSyncTests
 
         using HeadersSyncBatch? second = await feed.PrepareRequest();
         Assert.That(second, Is.Null);
+    }
+
+    [Test]
+    public async Task Prepare_request_uses_replacement_pivot_after_peer_sizing()
+    {
+        Context ctx = new() { SyncConfig = new SyncConfig { FastSync = true } };
+        ctx.SetupRemoteBlockTreeOfLength(111);
+        const ulong height = 100;
+        Lock pivotLock = ctx.BeaconPivot.HeaderSyncLock!;
+        TaskCompletionSource<int?> size = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ctx.PeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+            .Returns(_ => Task.FromResult<int?>(8), _ =>
+            {
+                started.TrySetResult();
+                return size.Task;
+            });
+
+        ctx.BeaconSync.InitBeaconHeaderSync(ctx.RemoteBlockTree.FindHeader(height)!);
+        ctx.Feed.InitializeFeed();
+        using HeadersSyncBatch? first = await ctx.Feed.PrepareRequest();
+        Assert.That(first?.EndNumber, Is.EqualTo(height - 1));
+
+        Task<HeadersSyncBatch?> pending = Task.Run(() => ctx.Feed.PrepareRequest());
+        TimeSpan timeout = TimeSpan.FromSeconds(5);
+        bool pivotLockAvailable = false;
+        ulong? replacementEnd;
+        try
+        {
+            await started.Task.WaitAsync(timeout);
+            if (pivotLock.TryEnter())
+            {
+                pivotLockAvailable = true;
+                try
+                {
+                    BlockHeader replacement = Build.A.BlockHeader.WithNumber(height).WithParentHash(TestItem.KeccakB).TestObject;
+                    ctx.BeaconSync.InitBeaconHeaderSync(replacement);
+                }
+                finally
+                {
+                    pivotLock.Exit();
+                }
+            }
+        }
+        finally
+        {
+            size.TrySetResult(8);
+            using HeadersSyncBatch? replacement = await pending.WaitAsync(timeout);
+            replacementEnd = replacement?.EndNumber;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pivotLockAvailable, Is.True);
+            Assert.That(replacementEnd, Is.EqualTo(height - 1));
+        }
     }
 
     [TestCase(90UL)]
