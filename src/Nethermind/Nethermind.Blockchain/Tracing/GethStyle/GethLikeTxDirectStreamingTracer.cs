@@ -183,6 +183,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer, ITraceOp
         if (_hasPendingOpcode)
         {
             _pendingGasCost = gasCost;
+            // The remaining gas report is skipped once the cost is set, so sample the refund here as Geth does after its gas calculation.
+            _pendingRefund = CurrentRefund;
             _gasCostAlreadySet = true;
             _gasCostReported = true;
         }

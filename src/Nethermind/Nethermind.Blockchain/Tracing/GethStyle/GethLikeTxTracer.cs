@@ -176,6 +176,8 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         if (CurrentTraceEntry is not null)
         {
             CurrentTraceEntry.GasCost = gasCost;
+            // The remaining gas report is skipped once the cost is set, so sample the refund here as Geth does after its gas calculation.
+            CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
             _gasCostReportedForCurrentOp = true;
         }
