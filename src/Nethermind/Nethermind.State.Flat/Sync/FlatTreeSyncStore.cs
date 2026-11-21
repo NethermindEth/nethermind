@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,10 @@ public class FlatTreeSyncStore(
     // For flat, one cannot continue syncing after finalization as it will corrupt existing state.
     private bool _wasFinalized = false;
 
+    // The state leaves that RemoveMismatchedNode took out, by path, which SaveNode compares a new node at the path with.
+    // Without one, SaveNode deletes the whole range of the new node, which for a leaf reads all storage of its account.
+    private readonly ConcurrentDictionary<TreePath, TrieNode> _removedLeaves = new();
+
     internal readonly record struct DeletionRange(ValueHash256 From, ValueHash256 To);
 
     public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => HashStoredNode(address, path) == hash;
@@ -36,7 +41,12 @@ public class FlatTreeSyncStore(
 
         using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
         // A null span deletes the key.
-        if (address is null) writeBatch.SetStateTrieNode(path, default);
+        if (address is null)
+        {
+            using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
+            if (ReadExistingNode(reader, null, path) is { IsLeaf: true } leaf) _removedLeaves[path] = leaf;
+            writeBatch.SetStateTrieNode(path, default);
+        }
         else writeBatch.SetStorageTrieNode(address, path, default);
     }
 
@@ -66,6 +76,8 @@ public class FlatTreeSyncStore(
 
         if (address is null)
         {
+            if (_removedLeaves.TryRemove(path, out TrieNode? removedLeaf)) existingNode ??= removedLeaf;
+            ForgetRemovedLeavesAbove(path, exceptAccount: null);
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
             writeBatch.SetStateTrieNode(path, data);
@@ -73,10 +85,27 @@ public class FlatTreeSyncStore(
         }
         else
         {
+            ForgetRemovedLeavesAbove(new TreePath(address.ValueHash256, 64), exceptAccount: address.ValueHash256);
             RequestStorageDeletion(writeBatch, address, path, node, existingNode);
 
             writeBatch.SetStorageTrieNode(address, path, data);
             FlatEntryWriter.WriteStorageFlatEntries(writeBatch, address, path, node);
+        }
+    }
+
+    /// <summary>
+    /// Forgets the removed leaves above the path, where a node other than the storage of the leaf account is saved: a
+    /// round that moved on to another root can save other accounts there before the leaf is saved again, so the leaf no
+    /// longer stands for all the path holds. The storage of the leaf account is saved before the leaf, and kept by it.
+    /// </summary>
+    private void ForgetRemovedLeavesAbove(in TreePath path, ValueHash256? exceptAccount)
+    {
+        if (_removedLeaves.IsEmpty) return;
+        for (int length = 0; length < path.Length; length++)
+        {
+            TreePath ancestor = path.Truncate(length);
+            if (_removedLeaves.TryGetValue(ancestor, out TrieNode? leaf) && ancestor.Append(leaf.Key).ToLowerBoundPath() != exceptAccount)
+                _removedLeaves.TryRemove(ancestor, out _);
         }
     }
 

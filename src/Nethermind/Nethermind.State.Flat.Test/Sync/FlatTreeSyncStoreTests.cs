@@ -192,16 +192,68 @@ public class FlatTreeSyncStoreTests
         }
     }
 
+    public enum SavedBeforeTheLeaf { Nothing, StorageOfTheLeafAccount, StorageOfAnotherAccount, StateNodeBelowTheLeaf }
+
+    [TestCase(SavedBeforeTheLeaf.Nothing, false)]
+    [TestCase(SavedBeforeTheLeaf.StorageOfTheLeafAccount, false)]
+    [TestCase(SavedBeforeTheLeaf.StorageOfAnotherAccount, true)]
+    [TestCase(SavedBeforeTheLeaf.StateNodeBelowTheLeaf, true)]
+    public void SaveNode_compares_a_leaf_with_the_one_RemoveMismatchedNode_took_out_until_another_account_is_saved_under_it(SavedBeforeTheLeaf saved, bool selfDestructsTheRange)
+    {
+        Address held = TestItem.AddressA;
+        Address other = TestItem.AddressB;
+        using (FlatTestContainer container = CreateContainer(_persistence))
+        {
+            SaveRootAccountLeaf(container.Resolve<FlatTreeSyncStore>(), held);
+        }
+
+        FakeWriteBatch batch = new();
+        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
+        FlatTreeSyncStore store = recording.Resolve<FlatTreeSyncStore>();
+        (_, byte[] newLeaf) = Leaf(Keccak.Compute(held.Bytes), depth: 0, Rlp.Encode(new Account(1, 2)));
+        store.RemoveMismatchedNode(null, TreePath.Empty, ValueKeccak.Compute(newLeaf));
+        // The recording batch keeps the removal from the db.
+        using (IPersistence.IWriteBatch dbBatch = _persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL))
+        {
+            dbBatch.SetStateTrieNode(TreePath.Empty, default);
+        }
+
+        if (saved is SavedBeforeTheLeaf.StorageOfTheLeafAccount or SavedBeforeTheLeaf.StorageOfAnotherAccount)
+        {
+            (_, byte[] slotLeaf) = Leaf(TestItem.KeccakA, depth: 0, Rlp.Encode(new byte[] { 0x01 }));
+            Address owner = saved == SavedBeforeTheLeaf.StorageOfTheLeafAccount ? held : other;
+            store.SaveNode(Keccak.Compute(owner.Bytes), TreePath.Empty, ValueKeccak.Compute(slotLeaf), slotLeaf);
+        }
+        else if (saved == SavedBeforeTheLeaf.StateNodeBelowTheLeaf)
+        {
+            (TreePath otherPath, byte[] otherLeaf) = Leaf(Keccak.Compute(other.Bytes), depth: 1, Rlp.Encode(new Account(1, 1)));
+            store.SaveNode(null, otherPath, ValueKeccak.Compute(otherLeaf), otherLeaf);
+        }
+        batch.SelfDestructRangeCalls.Clear();
+
+        store.SaveNode(null, TreePath.Empty, ValueKeccak.Compute(newLeaf), newLeaf);
+
+        Assert.That(batch.SelfDestructRangeCalls, selfDestructsTheRange ? Is.Not.Empty : Is.Empty);
+    }
+
     private static readonly byte[] StorageNodeRlp = [0xc2, 0x80, 0x80];
     private static readonly TreePath[] StorageNodePaths = [TreePath.FromHexString("1"), TreePath.FromHexString("1111111111111111")];
 
     private static void SaveRootAccountLeaf(FlatTreeSyncStore store, Address address)
     {
-        TrieNode leaf = TrieNodeFactory.CreateLeaf(Nibbles.BytesToNibbleBytes(Keccak.Compute(address.Bytes).Bytes), Rlp.Encode(new Account(1, 1)));
-        TreePath path = TreePath.Empty;
-        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref path);
-        byte[] rlp = leaf.FullRlp.ToArray()!;
+        (_, byte[] rlp) = Leaf(Keccak.Compute(address.Bytes), depth: 0, Rlp.Encode(new Account(1, 1)));
         store.SaveNode(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp);
+    }
+
+    /// <summary>The leaf of the key at the depth, and its path.</summary>
+    private static (TreePath Path, byte[] Rlp) Leaf(Hash256 key, int depth, byte[] value)
+    {
+        byte[] nibbles = Nibbles.BytesToNibbleBytes(key.Bytes);
+        TreePath path = TreePath.Empty.Append(nibbles.AsSpan(0, depth));
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(nibbles.AsSpan(depth), value);
+        TreePath resolvePath = path;
+        leaf.ResolveKey(NullTrieNodeResolver.Instance, ref resolvePath);
+        return (path, leaf.FullRlp.ToArray()!);
     }
 
     [Test]
