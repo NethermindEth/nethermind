@@ -3574,13 +3574,33 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head--;
                         // The memo keys on the bytes as memory holds them, which in swizzled memory name the input only
                         // from a group boundary.
-                        if ((!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0) &&
-                            TryReadWordKeccakMemo(ref data, length, ref lengthLimbs))
+                        ulong* entry = (!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0)
+                            ? WordKeccakMemoEntryFor(ref data, length)
+                            : null;
+                        if (entry is not null)
                         {
-                            sp = ref Moved(ref sp, -1);
-                            ip = ref Unsafe.Add(ref ip, 1);
-                            nint memoized = NextHandler(handlers, ref ip);
-                            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
+                            if (TryReadWordKeccakMemo(entry, ref data, length, ref lengthLimbs))
+                            {
+                                sp = ref Moved(ref sp, -1);
+                                ip = ref Unsafe.Add(ref ip, 1);
+                                nint memoized = NextHandler(handlers, ref ip);
+                                return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
+                            }
+
+                            // The input goes in now, while it is at hand; the length that makes the entry valid goes in with the digest.
+                            ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
+                            entry[12] = 0;
+                            entry[0] = key;
+                            entry[1] = Unsafe.Add(ref key, 1);
+                            entry[2] = Unsafe.Add(ref key, 2);
+                            entry[3] = Unsafe.Add(ref key, 3);
+                            if (length == 64)
+                            {
+                                entry[4] = Unsafe.Add(ref key, 4);
+                                entry[5] = Unsafe.Add(ref key, 5);
+                                entry[6] = Unsafe.Add(ref key, 6);
+                                entry[7] = Unsafe.Add(ref key, 7);
+                            }
                         }
 
                         // Tested past the memo, which no empty range hits, and beside the call every other range takes.
@@ -3615,8 +3635,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         Unsafe.Add(ref hash, 1) = limb1;
                         Unsafe.Add(ref hash, 2) = limb2;
                         Unsafe.Add(ref hash, 3) = limb3;
-                        if (!EvmPooledMemory.IsSwizzled || (offset & (sizeof(uint) - 1)) == 0)
-                            WriteWordKeccakMemo(ref state.Memory.GetActiveInitializedRange(offset, length), length, ref hash);
+                        if (entry is not null)
+                        {
+                            entry[8] = limb0;
+                            entry[9] = limb1;
+                            entry[10] = limb2;
+                            entry[11] = limb3;
+                            entry[12] = length;
+                        }
+
                         ip = ref Unsafe.Add(ref ip, 1);
                         nint next = NextHandler(handlers, ref ip);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
@@ -3675,16 +3702,31 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </remarks>
         private static ulong* s_wordKeccakMemo;
 
-        /// <summary>Copies the memoized digest of the <paramref name="length"/> bytes at <paramref name="data"/> to <paramref name="slot"/> when there is one.</summary>
+        /// <summary>
+        /// The entry of <see cref="s_wordKeccakMemo"/> that holds the digest of the <paramref name="length"/> bytes at
+        /// <paramref name="data"/>, or null for an input the memo does not take.
+        /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static bool TryReadWordKeccakMemo(ref byte data, ulong length, ref ulong slot)
+        private static ulong* WordKeccakMemoEntryFor(ref byte data, ulong length)
         {
-            ulong* memo = s_wordKeccakMemo;
-            if (memo is null || (length != 32 && length != 64) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
-                return false;
+            if ((length != 32 && length != 64) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
+                return null;
 
+            ulong* memo = s_wordKeccakMemo;
+            if (memo is null)
+                memo = AllocateWordKeccakMemo();
+            return WordKeccakMemoEntry(memo, ref Unsafe.As<byte, ulong>(ref data), length);
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static ulong* AllocateWordKeccakMemo() =>
+            s_wordKeccakMemo = (ulong*)NativeMemory.AllocZeroed((nuint)((1 << WordKeccakMemoBits) * WordKeccakMemoEntryLongs * sizeof(ulong)));
+
+        /// <summary>Copies the digest <paramref name="entry"/> holds for the <paramref name="length"/> bytes at <paramref name="data"/> to <paramref name="slot"/> when it holds one.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryReadWordKeccakMemo(ulong* entry, ref byte data, ulong length, ref ulong slot)
+        {
             ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
-            ulong* entry = WordKeccakMemoEntry(memo, ref key, length);
             if (entry[12] != length) return false;
             ulong difference = (entry[0] ^ key) | (entry[1] ^ Unsafe.Add(ref key, 1)) | (entry[2] ^ Unsafe.Add(ref key, 2)) | (entry[3] ^ Unsafe.Add(ref key, 3));
             if (length == 64)
@@ -3696,23 +3738,6 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             Unsafe.Add(ref slot, 2) = entry[10];
             Unsafe.Add(ref slot, 3) = entry[11];
             return true;
-        }
-
-        /// <summary>Memoizes <paramref name="digest"/>, in limb layout, as the digest of the <paramref name="length"/> bytes at <paramref name="data"/>.</summary>
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void WriteWordKeccakMemo(ref byte data, ulong length, ref ulong digest)
-        {
-            if ((length != 32 && length != 64) || Unsafe.IsNullRef(ref data) || ((nuint)Unsafe.AsPointer(ref data) & (nuint)(sizeof(ulong) - 1)) != 0)
-                return;
-
-            ulong* memo = s_wordKeccakMemo;
-            if (memo is null)
-                s_wordKeccakMemo = memo = (ulong*)NativeMemory.AllocZeroed((nuint)((1 << WordKeccakMemoBits) * WordKeccakMemoEntryLongs * sizeof(ulong)));
-            ref ulong key = ref Unsafe.As<byte, ulong>(ref data);
-            ulong* entry = WordKeccakMemoEntry(memo, ref key, length);
-            for (int i = 0; i < (int)(length >> 3); i++) entry[i] = Unsafe.Add(ref key, i);
-            for (int i = 0; i < 4; i++) entry[8 + i] = Unsafe.Add(ref digest, i);
-            entry[12] = length;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
