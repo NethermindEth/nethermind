@@ -21,7 +21,7 @@ public partial class RollupXGenesisTests
     [
         "bare", "missing-alloc", "unknown-top", "unknown-config", "rollup-extension", "chain-missing", "chain-zero", "chain-string",
         "gnosis", "chiado", "dao-flag", "merge-flag", "unknown-blob", "blob-missing", "blob-zero", "blob-target", "blob-string",
-        "duplicate-updates", "number", "parent", "engine-field", "duplicate-account", "duplicate-slot"
+        "duplicate-updates", "reversed-blob-forks", "reversed-header-forks", "number", "parent", "engine-field", "duplicate-account", "duplicate-slot"
     ];
 
     [Test]
@@ -100,7 +100,7 @@ public partial class RollupXGenesisTests
     public void Profile_FutureBlockForkOrForeignChain_RejectsBootstrap([Values("block", "chain")] string field)
     {
         JsonObject document = L1Document();
-        if (field == "block") document["config"]!["muirGlacierBlock"] = 10;
+        if (field == "block") document["config"]!["mergeNetsplitBlock"] = 10;
         else document["config"]!["chainId"] = 1338;
         NativeL1Rules rules = NativeL1Rules.LoadEthereum(L1Bytes(document));
         NativeGenesisSnapshot l2 = NativeGenesisSnapshot.Load(File.ReadAllBytes(StatelessFixtures.PathOf(L1Capture, "l2-genesis.json")));
@@ -129,6 +129,7 @@ public partial class RollupXGenesisTests
         document["timestamp"] = "0x0";
         JsonObject config = document["config"]!.AsObject();
         config["londonBlock"] = 10;
+        config["mergeNetsplitBlock"] = 10;
         config["shanghaiTime"] = 100;
         config["cancunTime"] = 200;
         config["pragueTime"] = 300;
@@ -137,7 +138,7 @@ public partial class RollupXGenesisTests
         Assert.That(rules.Headers, Is.EqualTo(new NativeL1HeaderRules(10, 100, 200, 300, null)));
     }
 
-    [TestCase(2000000010UL, 2000000000UL, 2000000000UL)]
+    [TestCase(2000000000UL, 2000000000UL, 2000000000UL)]
     [TestCase(2000000000UL, null, 2000000000UL)]
     [TestCase(null, 2000000000UL, 2000000000UL)]
     public void LoadEthereum_UnsupportedHeaderForks_CheckEachCoordinate(ulong? amsterdam, ulong? bogota, ulong earliest)
@@ -175,13 +176,13 @@ public partial class RollupXGenesisTests
     }
 
     [Test]
-    public void LoadEthereum_BlobSchedule_SortsByTimestampRatherThanForkName()
+    public void LoadEthereum_BlobSchedule_AppliesForksInActivationOrderRegardlessOfJsonOrder()
     {
         JsonObject document = L1Document();
         JsonObject config = document["config"]!.AsObject();
-        config["bpo1Time"] = 2000000010;
-        config["bpo2Time"] = 2000000000;
-        config["blobSchedule"] = new JsonObject { ["bpo1"] = Blob(8, 12, 2222223), ["bpo2"] = Blob(7, 11, 2222222) };
+        config["bpo2Time"] = 2000000010;
+        config["bpo1Time"] = 2000000000;
+        config["blobSchedule"] = new JsonObject { ["bpo2"] = Blob(8, 12, 2222223), ["bpo1"] = Blob(7, 11, 2222222) };
         NativeL1Rules rules = NativeL1Rules.LoadEthereum(L1Bytes(document));
         using (Assert.EnterMultipleScope())
         {
@@ -267,6 +268,14 @@ public partial class RollupXGenesisTests
             case "duplicate-updates":
                 config["bpo1Time"] = 2000000000; config["bpo2Time"] = 2000000000;
                 config["blobSchedule"] = new JsonObject { ["bpo1"] = Blob(7, 11, 1), ["bpo2"] = Blob(8, 12, 2) };
+                break;
+            case "reversed-blob-forks":
+                config["bpo1Time"] = 2000000010;
+                config["bpo2Time"] = 2000000000;
+                break;
+            case "reversed-header-forks":
+                config["amsterdamTime"] = 2000000010;
+                config["bogotaTime"] = 2000000000;
                 break;
             case "number": document["number"] = "0x1"; break;
             case "parent": document["parentHash"] = ReferenceHash.ToString(); break;
