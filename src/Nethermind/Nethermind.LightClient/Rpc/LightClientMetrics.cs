@@ -15,7 +15,7 @@ internal sealed class LightClientMetrics
     private static readonly string[] Methods =
     [
         "eth_chainId", "net_version", "web3_clientVersion", "eth_accounts", "net_listening", "eth_blockNumber", "eth_syncing",
-        "eth_getBalance", "eth_getTransactionCount", "eth_getStorageAt", "eth_getCode", "eth_getProof", "eth_call", "eth_estimateGas",
+        "eth_getBalance", "eth_getTransactionCount", "eth_getStorageAt", "eth_getCode", "eth_getProof", "eth_call", "eth_estimateGas", "eth_simulateV1",
         "eth_getBlockByNumber", "eth_getBlockByHash", "eth_getBlockTransactionCountByNumber", "eth_getBlockTransactionCountByHash",
         "eth_getTransactionByBlockNumberAndIndex", "eth_getTransactionByBlockHashAndIndex", "eth_getTransactionByHash",
         "eth_getTransactionReceipt", "eth_getBlockReceipts", "eth_getLogs", "eth_feeHistory", "eth_gasPrice",

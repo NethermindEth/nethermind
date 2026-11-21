@@ -390,6 +390,7 @@ Nethermind SendPolicy plugin. Without the option, submissions are relayed as bef
 | `eth_getProof` | Standard [EIP-1186](https://eips.ethereum.org/EIPS/eip-1186) account and storage path witnesses, reconstructed from verified SNAP ranges and verified again before export |
 | `eth_call` | Local Nethermind EVM execution over proof-backed selected state; no execution RPC |
 | `eth_estimateGas` | Local Nethermind gas estimator over the same proof-backed selected state |
+| `eth_simulateV1` | Local Nethermind block simulation over the same proof-backed selected state |
 | `eth_getBlockByNumber`, `eth_getBlockByHash` | Authenticated execution header, transaction root, withdrawals root and block body |
 | `eth_getBlockTransactionCountByNumber`, `eth_getBlockTransactionCountByHash` | Transaction count from the authenticated block body |
 | `eth_getTransactionByBlockNumberAndIndex`, `eth_getTransactionByBlockHashAndIndex` | Transaction from the authenticated block body |
@@ -525,6 +526,15 @@ execution/state limits through local replay; explicitly supplied limits determin
 the fixed frame gas reservation. State overrides, pending state and
 `eth_createAccessList` are unavailable.
 
+`eth_simulateV1` accepts the standard simulation payload and an optional authenticated selector,
+and runs Nethermind's block processor with the same simulation rules as a full node over the same
+proof-backed state. Each simulated block sees the changes of the blocks before it, including
+state and block overrides, `traceTransfers` and `validation`. `BLOCKHASH` also resolves the
+blocks simulated earlier in the request. Because every new state item costs a peer round trip,
+a request is limited to 16 blocks, 64 calls and 10 million gas in total, with the same deadline,
+fetch-round limit and four-way concurrency as calls. The light client holds no state trie, so a
+simulated block reports the base block's `stateRoot`, and its `hash` is computed from that root.
+
 `eth_getProof` accepts at most 64 storage keys. The returned account/storage
 witnesses can be verified independently against the selected header's state root;
 SNAP range witnesses are not returned as if they were path proofs.
@@ -587,7 +597,7 @@ remaining items are not executed. Notifications still produce no response, and i
 envelopes retain their standard errors. Oversized results fail explicitly rather
 than returning incomplete data.
 Normal HTTP requests, batches and WebSocket messages have a 64 KiB body limit.
-A single HTTP `eth_sendRawTransaction`, `eth_call` or `eth_estimateGas` request may
+A single HTTP `eth_sendRawTransaction`, `eth_call`, `eth_estimateGas` or `eth_simulateV1` request may
 use up to 4 MiB plus 64 KiB of JSON text, so permitted contract-initcode inputs
 fit. Submitted raw envelopes/sidecars are limited to 2 MiB; at most four such large
 requests run concurrently. Peer responses and proof nodes have separate size limits.

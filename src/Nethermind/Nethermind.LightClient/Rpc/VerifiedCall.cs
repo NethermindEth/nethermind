@@ -25,28 +25,15 @@ using Nethermind.TxPool;
 namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
-internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null) : IDisposable
+internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
+    ulong? secondsPerSlot = null) : IDisposable
 {
     private const ulong GasCap = 10_000_000;
     private const int CodeCacheCapacity = 256;
     private readonly VerifiedMemoryCache _cache = new();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ICodeCache _codeCache = new StaticCodeCache(CodeCacheCapacity);
-    private readonly IContainer _processing = new ContainerBuilder()
-        .AddModule(new TransactionProcessingModule(initialAccountCapacity: 32))
-        .AddSingleton<ISpecProvider>(specs)
-        .AddSingleton<ILogManager>(logs)
-        .AddScoped<IWorldStateScopeProvider, ILifetimeScope>(static scope =>
-        {
-            ExecutionState context = (ExecutionState)scope.Tag;
-            return new CallState(context.Head, context.Cache);
-        })
-        .AddScoped<IBlockhashProvider, ILifetimeScope>(static scope =>
-        {
-            ExecutionState context = (ExecutionState)scope.Tag;
-            return new VerifiedBlockhashes(context.Head, context.Cache);
-        })
-        .AddScoped<ICodeCache, ILifetimeScope>(static scope => ((ExecutionState)scope.Tag).CodeCache)
+    private readonly IContainer _processing = CreateExecutionBuilder(specs, logs)
         .AddScoped<SingleCallRequestState>()
         .BindScoped<IBlobBaseFeeOverrideProvider, SingleCallRequestState>()
         .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
@@ -199,7 +186,25 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
     private ILifetimeScope CreateExecutionScope(VerifiedHead head, ICodeCache? codeCache = null) =>
         _processing.BeginLifetimeScope(new ExecutionState(head, _cache, codeCache ?? _codeCache));
 
-    private sealed record ExecutionState(VerifiedHead Head, VerifiedMemoryCache Cache, ICodeCache CodeCache);
+    private static ContainerBuilder CreateExecutionBuilder(ISpecProvider specs, ILogManager logs) => new ContainerBuilder()
+        .AddModule(new TransactionProcessingModule(initialAccountCapacity: 32))
+        .AddSingleton<ISpecProvider>(specs)
+        .AddSingleton<ILogManager>(logs)
+        .AddScoped<IWorldStateScopeProvider, ILifetimeScope>(static scope =>
+        {
+            ExecutionState context = (ExecutionState)scope.Tag;
+            return new CallState(context.Head, context.Cache);
+        })
+        .AddScoped<IBlockhashProvider, ILifetimeScope>(static scope =>
+        {
+            ExecutionState context = (ExecutionState)scope.Tag;
+            return new VerifiedBlockhashes(context.Head, context.Cache, context.SimulatedHashes);
+        })
+        .AddScoped<ICodeCache, ILifetimeScope>(static scope => ((ExecutionState)scope.Tag).CodeCache);
+
+    /// <param name="SimulatedHashes">The hashes of the blocks simulated so far on top of <paramref name="Head"/>, by number.</param>
+    private sealed record ExecutionState(VerifiedHead Head, VerifiedMemoryCache Cache, ICodeCache CodeCache,
+        IReadOnlyDictionary<ulong, Hash256>? SimulatedHashes = null);
 
     private async Task<string> ExecuteCoreAsync(VerifiedHead head, TransactionForRpc model, bool estimateGas, bool trace, CancellationToken token)
     {
@@ -383,6 +388,7 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
     public void Dispose()
     {
         _processing.Dispose();
+        _simulation.Dispose();
         _slots.Dispose();
         _cache.Dispose();
     }
@@ -413,15 +419,27 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             return scope is not null;
         }
 
+        /// <remarks>
+        /// Committed writes stay in the scope, over the authenticated state, so blocks simulated in one scope see the
+        /// earlier blocks' changes. The scope never rehashes, so its root stays the authenticated base root and storage
+        /// roots are not authoritative.
+        /// </remarks>
         private sealed class Scope(VerifiedHead head, VerifiedMemoryCache cache) : IWorldStateScopeProvider.IScope, IWorldStateScopeProvider.ICodeDb
         {
             private readonly Dictionary<ValueHash256, byte[]> _newCode = [];
             private readonly HashSet<Address> _accounts = [];
+            private readonly Dictionary<Address, Account?> _writtenAccounts = [];
+            private readonly Dictionary<Address, WrittenStorage> _writtenStorage = [];
             public Hash256 RootHash => head.StateRoot;
+            public bool StorageRootsAreAuthoritative => false;
             public IWorldStateScopeProvider.ICodeDb CodeDb => this;
             public Account? Get(Address address)
             {
                 _accounts.Add(address);
+                return _writtenAccounts.TryGetValue(address, out Account? written) ? written : GetAuthenticated(address);
+            }
+            private Account? GetAuthenticated(Address address)
+            {
                 if (!cache.TryGetValue((head.StateRoot, address), out Account? account))
                     throw new MissingCallState(MissingKind.Account) { Address = address };
                 return account == Account.TotallyEmpty ? null : account;
@@ -429,8 +447,11 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             public void HintGet(Address address, Account? account) { }
             public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
             {
-                Account? account = Get(address);
-                return new Storage(address, account?.StorageRoot ?? Keccak.EmptyTreeHash, cache);
+                _accounts.Add(address);
+                _writtenStorage.TryGetValue(address, out WrittenStorage? written);
+                // Slots the scope has not written still read the authenticated storage, unless the scope cleared it.
+                Hash256 root = written?.Cleared == true ? Keccak.EmptyTreeHash : GetAuthenticated(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+                return new Storage(address, root, cache, written);
             }
             public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
             {
@@ -439,19 +460,54 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
                 throw new MissingCallState(MissingKind.Code) { CodeHash = codeHash, KnownAccounts = [.. _accounts] };
             }
             public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => new CodeSetter(_newCode);
-            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch();
+            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) => new WriteBatch(this);
             public void UpdateRootHash() { }
             public void Commit(ulong blockNumber) { }
             public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null) => Task.CompletedTask;
             public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => throw new NotSupportedException();
             public void Dispose() { }
+
+            private void ClearStorage(Address address) => _writtenStorage[address] = new WrittenStorage { Cleared = true };
+
+            private sealed class WriteBatch(Scope scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
+            {
+                public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
+                public void Set(Address key, Account? account)
+                {
+                    scope._writtenAccounts[key] = account;
+                    if (account is null) scope.ClearStorage(key);
+                    OnAccountUpdated?.Invoke(this, new(key, account));
+                }
+                public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
+                    new StorageWriteBatch(scope, key);
+                public void Dispose() { }
+            }
+
+            private sealed class StorageWriteBatch(Scope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
+            {
+                public void Set(in UInt256 index, in UInt256 value)
+                {
+                    if (!scope._writtenStorage.TryGetValue(address, out WrittenStorage? written))
+                        scope._writtenStorage[address] = written = new();
+                    written.Slots[index] = value;
+                }
+                public void Clear() => scope.ClearStorage(address);
+                public void Dispose() { }
+            }
         }
 
-        private sealed class Storage(Address address, Hash256 root, VerifiedMemoryCache cache) : IWorldStateScopeProvider.IStorageTree
+        private sealed class WrittenStorage
+        {
+            public bool Cleared { get; init; }
+            public Dictionary<UInt256, UInt256> Slots { get; } = [];
+        }
+
+        private sealed class Storage(Address address, Hash256 root, VerifiedMemoryCache cache, WrittenStorage? written = null) : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => root;
             public void Get(in UInt256 index, out UInt256 value)
             {
+                if (written is not null && written.Slots.TryGetValue(index, out value)) return;
                 if (root == Keccak.EmptyTreeHash) { value = UInt256.Zero; return; }
                 if (!cache.TryGetValue((root, address, index), out value))
                     throw new MissingCallState(MissingKind.Storage) { Address = address, Slot = index };
@@ -464,24 +520,10 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             public void Set(in ValueHash256 codeHash, ReadOnlySpan<byte> bytes) => code[codeHash] = bytes.ToArray();
             public void Dispose() { }
         }
-
-        private sealed class WriteBatch : IWorldStateScopeProvider.IWorldStateWriteBatch
-        {
-            public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
-            public void Set(Address key, Account? account) => OnAccountUpdated?.Invoke(this, new(key, account));
-            public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) => new StorageWriteBatch();
-            public void Dispose() { }
-        }
-
-        private sealed class StorageWriteBatch : IWorldStateScopeProvider.IStorageWriteBatch
-        {
-            public void Set(in UInt256 index, in UInt256 value) { }
-            public void Clear() { }
-            public void Dispose() { }
-        }
     }
 
-    private sealed class VerifiedBlockhashes(VerifiedHead head, VerifiedMemoryCache cache) : IBlockhashProvider
+    private sealed class VerifiedBlockhashes(VerifiedHead head, VerifiedMemoryCache cache,
+        IReadOnlyDictionary<ulong, Hash256>? simulated) : IBlockhashProvider
     {
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)
         {
@@ -489,6 +531,11 @@ internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvide
             ulong depth = currentBlock.Number - number;
             if (depth > 256) return null;
             if (depth == 1) return currentBlock.ParentHash;
+            if (simulated is not null)
+            {
+                if (number > head.Number) return simulated[number];
+                if (number == head.Number) return head.BlockHash;
+            }
             if (cache.TryGetValue((head.BlockHash, "ancestors"), out (ulong First, Hash256[] Hashes) ancestors)
                 && number >= ancestors.First && number - ancestors.First < (ulong)ancestors.Hashes.Length)
                 return ancestors.Hashes[number - ancestors.First];

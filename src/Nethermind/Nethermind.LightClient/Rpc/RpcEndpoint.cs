@@ -129,7 +129,7 @@ internal static class RpcEndpoint
             JsonElement request = document.RootElement;
             return request.ValueKind == JsonValueKind.Object && request.TryGetProperty("method", out JsonElement method)
                 && method.ValueKind == JsonValueKind.String && (method.ValueEquals("eth_sendRawTransaction")
-                    || method.ValueEquals("eth_call") || method.ValueEquals("eth_estimateGas"));
+                    || method.ValueEquals("eth_call") || method.ValueEquals("eth_estimateGas") || method.ValueEquals("eth_simulateV1"));
         }
         catch (JsonException) { return true; }
         catch (InvalidOperationException) { return false; }
