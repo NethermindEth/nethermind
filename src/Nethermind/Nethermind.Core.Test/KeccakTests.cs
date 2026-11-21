@@ -99,6 +99,14 @@ namespace Nethermind.Core.Test
             Assert.That(actual, Is.EqualTo(expected));
         }
 
+        [TestCase(NativeKeccak.MinBlocks - 1, true, false)]
+        [TestCase(NativeKeccak.MinBlocks, true, true)]
+        [TestCase(NativeKeccak.MinBlocks + 1, true, true)]
+        [TestCase(NativeKeccak.MinBlocks, false, false)]
+        [TestCase(10_000, false, false)]
+        public void Absorb_dispatch_uses_native_only_at_threshold_when_available(int blocks, bool nativeAvailable, bool expected) =>
+            Assert.That(KeccakHash.UseNativeAbsorb(blocks, nativeAvailable), Is.EqualTo(expected));
+
         [Test]
         public void Empty_byte_array()
         {
