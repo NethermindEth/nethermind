@@ -129,6 +129,44 @@ public class EthSimulateTestsBlocksAndTransactions
     private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
     private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
 
+    [TestCase("null", "Simulated blocks must not be null.")]
+    [TestCase("""{"calls":[null]}""", "Simulated calls must not be null.")]
+    public async Task Simulate_rejects_null_entries(string blockStateCall, string expectedMessage)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+
+        string response = await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson(blockStateCall), "latest");
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidParams), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo(expectedMessage), response);
+        }
+    }
+
+    [Test]
+    public async Task Rpc_rejects_null_storage_override_values([Values("state", "stateDiff")] string field, [Values] bool simulate)
+    {
+        using TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        string stateOverrides = $$"""
+            {"0xc100000000000000000000000000000000000000": {"{{field}}": {"{{Hash256.Zero}}": null} } }
+            """;
+
+        string response = simulate
+            ? await chain.TestEthRpc("eth_simulateV1", SimulatePayloadJson("{\"stateOverrides\":" + stateOverrides + "}"), "latest")
+            : await chain.TestEthRpc("eth_call", ParseJson("""{"to":"0xc100000000000000000000000000000000000000"}"""), "latest", ParseJson(stateOverrides));
+
+        using JsonDocument document = JsonDocument.Parse(response);
+        JsonElement error = document.RootElement.GetProperty("error");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That(error.GetProperty("message").GetString(), Is.EqualTo("Storage override values must not be null."), response);
+        }
+    }
+
     [TestCase("{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides in a block without calls")]
     [TestCase("{" + ConflictingStorage + "," + Calls + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides")]
     [TestCase("{" + ConflictingStorage + "," + MixedFeeCalls + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides before the calls of their block")]
