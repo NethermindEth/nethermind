@@ -108,7 +108,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     private static void AddTransferLogCore<Eip7708>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
         where Eip7708 : struct, IFlag
     {
-        if (Eip7708.IsActive && state.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
+        // The value is tested first: a value-less frame, the common one, then skips resolving its two addresses.
+        if (Eip7708.IsActive && !state.Env.Value.IsZero && state.ExecutionType is not (ExecutionType.DELEGATECALL or ExecutionType.CALLCODE))
             vm.AddTransferLog<Eip7708>(state.From, state.To, in state.Env.Value);
     }
 
