@@ -21,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
-using Nethermind.Stats;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.FastBlocks;
@@ -31,6 +30,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
+using PeerRequestType = Nethermind.Stats.RequestType;
 
 namespace Nethermind.Merge.Plugin.Test.Synchronization;
 
@@ -405,7 +405,7 @@ public class BeaconHeadersSyncTests
         Lock pivotLock = ctx.BeaconPivot.HeaderSyncLock!;
         TaskCompletionSource<int?> size = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource started = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        ctx.PeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+        ctx.PeerPool.EstimateRequestLimit(PeerRequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
             .Returns(_ => Task.FromResult<int?>(8), _ =>
             {
                 started.TrySetResult();
