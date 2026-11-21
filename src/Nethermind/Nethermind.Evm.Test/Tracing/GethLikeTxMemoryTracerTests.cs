@@ -257,7 +257,6 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
     internal static readonly ulong[] StackUnderflowGasAfterIntrinsic = [GasCostOf.VeryLow - 1, 100000UL];
 
     [Test]
-    [Todo("Verify the exact error string in Geth")]
     public void Can_trace_stack_overflow_failure()
     {
         byte[] code = Prepare.EvmCode
@@ -268,11 +267,8 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             .Done;
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(trace.Failed, Is.EqualTo(true));
-            Assert.That(trace.Entries.Last().Error, Is.EqualTo("StackOverflow"));
-        }
+        Assert.That(trace.Failed, Is.EqualTo(true));
+        AssertFailedStep(TraceStructLogs(code, Activation), "PUSH1", "stack limit reached 1024 (1023)");
     }
 
     [Test]
@@ -900,6 +896,80 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
                 Assert.That(sstores[^1].GetProperty("error").GetString(), Is.EqualTo(expectedError), $"{tracerName}: failed SSTORE error");
                 Assert.That(sstores[^1].TryGetProperty("storage", out _), Is.False, $"{tracerName}: failed SSTORE storage");
                 Assert.That(sstores[..^1].All(static e => e.TryGetProperty("storage", out _)), Is.True, $"{tracerName}: successful SSTORE storage");
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Geth rejects LOG and TSTORE while executing them, a fault its struct logger does not record. Other writes fail
+    /// in their gas function, which Geth reports as running out of gas.
+    /// </remarks>
+    [TestCase("5f5f5f5f60015f5af1", "CALL", "out of gas: write protection")]
+    [TestCase("5f5f5ff0", "CREATE", "out of gas: write protection")]
+    [TestCase("5f5f5f5ff5", "CREATE2", "out of gas: write protection")]
+    [TestCase("5fff", "SELFDESTRUCT", "out of gas: write protection")]
+    [TestCase("6001600055", "SSTORE", "out of gas: write protection")]
+    [TestCase("5f5f5f5fa2", "LOG2", null)]
+    [TestCase("600160005d", "TSTORE", null)]
+    public void Static_context_write_step_error(string calleeCode, string expectedOpcode, string? expectedError)
+    {
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, Bytes.FromHexString(calleeCode), Spec);
+        TestState.Commit(Spec);
+        byte[] code = Prepare.EvmCode.StaticCall(TestItem.AddressC, 50000).Op(Instruction.STOP).Done;
+
+        AssertFailedStep(TraceStructLogs(code, MainnetSpecProvider.CancunActivation), expectedOpcode, expectedError, depth: 2);
+    }
+
+    /// <remarks>Geth names opcodes regardless of fork, but has no name for the draft opcodes only Nethermind implements.</remarks>
+    [TestCase(0xb0, "opcode 0xb0 not defined")]
+    [TestCase(0xfc, "opcode 0xfc not defined")]
+    [TestCase(0x1e, "CLZ")]
+    public void Undefined_opcode_step_name(byte opcode, string expectedName) =>
+        AssertFailedStep(TraceStructLogs([opcode], MainnetSpecProvider.CancunActivation), expectedName, null);
+
+    /// <remarks>Geth prices memory up to 0x1FFFFFFFE0 bytes, beyond Nethermind's allocation cap, before running out of gas.</remarks>
+    [TestCase("63ffffffff51", "MLOAD", 35184775266310UL)]
+    [TestCase("5f63ffffffff52", "MSTORE", 35184775266310UL)]
+    [TestCase("602063fffffffff3", "RETURN", 35184775266307UL)]
+    public void Huge_memory_expansion_step_gas_cost(string code, string expectedOpcode, ulong expectedGasCost) =>
+        AssertFailedStep(TraceStructLogs(Bytes.FromHexString(code), MainnetSpecProvider.CancunActivation), expectedOpcode, "out of gas", expectedGasCost: expectedGasCost);
+
+    /// <remarks>Geth checks the depth these opcodes' immediates select while executing them, a fault its struct logger does not record.</remarks>
+    [TestCase("e680", "DUPN")]
+    [TestCase("e780", "SWAPN")]
+    [TestCase("e89d", "EXCHANGE")]
+    public void Immediate_stack_underflow_has_no_step_error(string code, string expectedOpcode) =>
+        AssertFailedStep(TraceStructLogs(Bytes.FromHexString(code), MainnetSpecProvider.AmsterdamActivation), expectedOpcode, null,
+            expectedGasCost: GasCostOf.VeryLow);
+
+    /// <summary>Traces <paramref name="code"/> with the in-memory and the streaming struct logger.</summary>
+    private (string Tracer, JsonElement[] Entries)[] TraceStructLogs(byte[] code, ForkActivation activation)
+    {
+        (Block block, Transaction transaction) = PrepareTx(activation, 100000UL, code);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        using JsonDocument inMemory = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+
+        return [
+            ("in-memory", [.. inMemory.RootElement.GetProperty("structLogs").EnumerateArray().Select(static e => e.Clone())]),
+            ("streaming", ExecuteStreamingTracerEntries(code, activation))];
+    }
+
+    /// <summary>Asserts the last step at <paramref name="depth"/>, the one that halted its frame, in each tracer's output.</summary>
+    private static void AssertFailedStep((string Tracer, JsonElement[] Entries)[] traces, string expectedOpcode, string? expectedError,
+        int depth = 1, ulong? expectedGasCost = null)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach ((string tracer, JsonElement[] entries) in traces)
+            {
+                JsonElement step = entries.Last(e => e.GetProperty("depth").GetInt32() == depth);
+                Assert.That(step.GetProperty("op").GetString(), Is.EqualTo(expectedOpcode), $"{tracer}: op");
+                Assert.That(step.TryGetProperty("error", out JsonElement error) ? error.GetString() : null, Is.EqualTo(expectedError), $"{tracer}: error");
+                if (expectedGasCost is not null)
+                    Assert.That(step.GetProperty("gasCost").GetUInt64(), Is.EqualTo(expectedGasCost), $"{tracer}: gasCost");
             }
         }
     }

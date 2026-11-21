@@ -55,9 +55,15 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     }
 
     // Geth's struct logger subscribes to OnOpcode, but not to post-execution OnFault.
-    protected static bool IsExecutionFault(EvmExceptionType error) => error is
-        EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or
-        EvmExceptionType.AccessViolation;
+    protected static bool IsExecutionFault(EvmExceptionType error, Instruction opcode) => error switch
+    {
+        EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or EvmExceptionType.AccessViolation => true,
+        // Geth rejects LOG and TSTORE while executing them; other writes fail in their gas function.
+        EvmExceptionType.StaticCallViolation => opcode is >= Instruction.LOG0 and <= Instruction.LOG4 or Instruction.TSTORE,
+        // Geth checks the depth these opcodes' immediates select while executing them.
+        EvmExceptionType.StackUnderflow => opcode is Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE,
+        _ => false
+    };
 
     // Geth reports a failed depth or balance precheck only in the rejected action's exit, not on its opcode.
     protected static bool IsRejectedActionPrecheck(EvmExceptionType error) => error is
@@ -67,14 +73,15 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     {
         EvmExceptionType.None => null,
         EvmExceptionType.BadInstruction => "BadInstruction",
-        EvmExceptionType.StackOverflow => "StackOverflow",
+        // No opcode grows the stack by more than one word, so only a full stack overflows, against a limit of 1023.
+        EvmExceptionType.StackOverflow => "stack limit reached 1024 (1023)",
         EvmExceptionType.StackUnderflow => "StackUnderflow",
         EvmExceptionType.OutOfGas => "out of gas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
         EvmExceptionType.AccessViolation => "AccessViolation",
         EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
         EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
-        EvmExceptionType.StaticCallViolation => "StaticCallViolation",
+        EvmExceptionType.StaticCallViolation => "out of gas: write protection",
         _ => "Error"
     };
 

@@ -5,18 +5,21 @@ using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
+public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>, ITxTracer
 {
     private readonly Transaction? _transaction;
     private readonly long _limit;
     private readonly long _stepLimit;
     private long _resultSize;
     private int _storageUpdates;
+    private Instruction _opcode;
+    private bool _actionOnlyDetailReported;
 
     private bool LimitReached => (_limit != 0 && _resultSize > _limit)
         || (_stepLimit > 0 && Trace.Entries.Count >= _stepLimit);
@@ -36,6 +39,8 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         if (LimitReached) return;
+        _opcode = opcode;
+        _actionOnlyDetailReported = false;
         base.StartOperation(pc, opcode, gas, in env);
         if (LimitReached)
             CurrentTraceEntry = null;
@@ -59,10 +64,24 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             return;
         }
         if (error == EvmExceptionType.BadInstruction && CurrentTraceEntry is not null)
+        {
             CurrentTraceEntry.GasCost = 0;
-        if (error == EvmExceptionType.StaticCallViolation && CurrentTraceEntry?.Opcode == "SSTORE")
-            CurrentTraceEntry.Error = "out of gas: write protection";
-        if (!IsExecutionFault(error)) base.ReportOperationError(error);
+            if (_actionOnlyDetailReported)
+                CurrentTraceEntry.Opcode = OpcodeJsonNames.GetUndefinedName(_opcode);
+        }
+        if (!IsExecutionFault(error, _opcode)) base.ReportOperationError(error);
+    }
+
+    /// <remarks>
+    /// Only the handler for opcodes the active fork does not define sends an action-only detail on a step that fails as a
+    /// bad instruction; defined opcodes that fail as one, and code deposit errors, do not.
+    /// </remarks>
+    void ITxTracer.ReportActionErrorDetails(string error, bool actionOnly)
+    {
+        if (actionOnly)
+            _actionOnlyDetailReported = true;
+        else
+            ReportActionErrorDetails(error);
     }
 
     public override GethLikeTxTrace BuildResult()
