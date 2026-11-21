@@ -3541,12 +3541,13 @@ public class TraceRpcModuleTests
                 .With.Message.Contains("intrinsic gas too low"));
     }
 
-    [Test]
-    public async Task TraceCallMany_rejects_a_null_transaction()
+    [TestCase("[null]")]
+    [TestCase("""[[null,["trace"]]]""")]
+    public async Task TraceCallMany_rejects_null_entries(string json)
     {
         using Context context = new();
         await context.Build();
-        using JsonDocument calls = JsonDocument.Parse("""[[null,["trace"]]]""");
+        using JsonDocument calls = JsonDocument.Parse(json);
 
         string response = await RpcTest.TestSerializedRequest(context.TraceRpcModule, "trace_callMany", calls.RootElement, "latest");
 
