@@ -31,6 +31,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
@@ -1334,23 +1335,92 @@ public class SnapProviderTests
         }
     }
 
-    /// <summary>Heals the state at the pivot with trie nodes, answering each request from <paramref name="source"/>.</summary>
-    private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source)
+    /// <summary>
+    /// Healing saves a node once all its children are, so the round at the second root saves the leaf it changed at
+    /// storage path <c>1c</c> while the parent at <c>1</c> still waits for the leaf it changed under <c>1d</c>, and the
+    /// pivot moves on then. The last root has the subtree at <c>1</c> of the first root back, with a slot outside of it
+    /// changed. The flat store keeps one node per path, so it still has the node at <c>1</c> of the first root, now over
+    /// the leaf of the second root at <c>1c</c>; healing at the last root has to go down to that leaf rather than stop at
+    /// the node at <c>1</c> as found saved.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_after_a_round_abandoned_before_saving_a_parent_heals_to_the_last_root()
     {
-        TreeSync treeSync = new(new MemDb(), new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance),
-            Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
-        treeSync.ResetStateRootToBestSuggested();
-        PeerInfo peer = new(Substitute.For<ISyncPeer>());
-        while (!treeSync.IsSyncRoundFinished())
-        {
-            StateSyncBatch? batch = await treeSync.PrepareRequest();
-            Assert.That(batch?.RequestedNodes, Is.Not.Null.And.Not.Empty, "healing stalled before the root was saved");
+        // The round at the first root takes requests 0 to 4: the state root, the storage root, the nodes at 1 and 2, at
+        // 1c and 1d, and the leaves under 1d. The one at the second root saves the leaf at 1c with request 8.
+        const int abandonAfterRequest = 8;
 
-            ArrayPoolList<byte[]> responses = [with(batch!.RequestedNodes!.Count)];
-            foreach (StateSyncItem item in batch.RequestedNodes) responses.Add(source.GetTrieStore(item.Address).LoadRlp(item.Path, item.Hash)!);
-            batch.Responses = new ByteArrayListAdapter(responses);
-            Assert.That(treeSync.HandleResponse(batch, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        Hash256 owner = TestItem.KeccakA;
+        StorageTree storage = new(sourceStore.GetTrieStore(owner), LimboLogs.Instance);
+        ValueHash256 leafSlot = new("0x1c00000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 deeperSlot = new("0x1d00000000000000000000000000000000000000000000000000000000000000");
+        storage.Set(new ValueHash256("0x1d10000000000000000000000000000000000000000000000000000000000000"), [1]);
+        ValueHash256 counterSlot = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        BlockHeader[] headers = [CommitSource(1, value: 1), CommitSource(2, value: 2), CommitSource(3, value: 1)];
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore, afterRequest: request =>
+        {
+            if (request == abandonAfterRequest) pivot.Header = headers[^1];
+        });
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
         }
+
+        BlockHeader CommitSource(ulong blockNumber, byte value)
+        {
+            storage.Set(leafSlot, [value]);
+            storage.Set(deeperSlot, [value]);
+            storage.Set(counterSlot, [(byte)blockNumber]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
+    /// Heals the state at the pivot with trie nodes, answering each request from <paramref name="source"/>, a round at
+    /// each pivot until one can finalize.
+    /// </summary>
+    /// <param name="afterRequest">Called with the number of each request once it is answered.</param>
+    private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source, Action<int>? afterRequest = null)
+    {
+        TreeSync treeSync = new(new MemDb(), new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), pivot, MainnetSpecProvider.Instance, LimboLogs.Instance),
+            Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        int request = 0;
+        BlockHeader? roundPivot;
+        do
+        {
+            roundPivot = treeSync.ResetStateRootToBestSuggested();
+            while (!treeSync.IsSyncRoundFinished())
+            {
+                StateSyncBatch? batch = await treeSync.PrepareRequest();
+                Assert.That(batch?.RequestedNodes, Is.Not.Null.And.Not.Empty, "healing stalled before the root was saved");
+
+                ArrayPoolList<byte[]> responses = [with(batch!.RequestedNodes!.Count)];
+                foreach (StateSyncItem item in batch.RequestedNodes) responses.Add(source.GetTrieStore(item.Address).LoadRlp(item.Path, item.Hash)!);
+                batch.Responses = new ByteArrayListAdapter(responses);
+                Assert.That(treeSync.HandleResponse(batch, peer), Is.EqualTo(SyncResponseHandlingResult.OK));
+                afterRequest?.Invoke(request++);
+            }
+        }
+        while (!treeSync.CanFinalize(roundPivot!));
     }
 
     public enum HealingStop { DuringReassembly, AfterChunk, AfterRound, AwaitingFinalPivot }
