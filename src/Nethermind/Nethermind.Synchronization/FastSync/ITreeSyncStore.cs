@@ -21,14 +21,6 @@ public interface ITreeSyncStore
     bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash);
 
     /// <summary>
-    /// Remove the trie node stored at the path when it is not the node with the hash, leaving its subtree in place.
-    /// </summary>
-    /// <remarks>
-    /// For a store keyed by path only, which keeps the node of an earlier root at the path until another is saved there.
-    /// </remarks>
-    void RemoveMismatchedNode(Hash256? address, in TreePath path, in ValueHash256 hash);
-
-    /// <summary>
     /// Save a trie node to storage.
     /// </summary>
     /// <param name="address">Storage address for storage tries, null for state trie.</param>

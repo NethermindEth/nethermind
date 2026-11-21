@@ -27,29 +27,16 @@ public class FlatTreeSyncStore(
 
     internal readonly record struct DeletionRange(ValueHash256 From, ValueHash256 To);
 
-    public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => HashStoredNode(address, path) == hash;
-
-    public void RemoveMismatchedNode(Hash256? address, in TreePath path, in ValueHash256 hash)
-    {
-        if (_wasFinalized) throw new InvalidOperationException("Db was finalized");
-        if (HashStoredNode(address, path) is not { } storedHash || storedHash == hash) return;
-
-        using IPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
-        // A null span deletes the key.
-        if (address is null) writeBatch.SetStateTrieNode(path, default);
-        else writeBatch.SetStorageTrieNode(address, path, default);
-    }
-
-    /// <summary>Rehashes the node stored at the path, if any.</summary>
-    private ValueHash256? HashStoredNode(Hash256? address, in TreePath path)
+    public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
 
+        // Rehash and verify
         ValueHash256 computedHash = default;
         bool found = address is null
             ? reader.TryLoadStateRlp(path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash))
             : reader.TryLoadStorageRlp(address, path, ReadFlags.None, static (data, result) => result[0] = ValueKeccak.Compute(data), new Span<ValueHash256>(ref computedHash));
-        return found ? computedHash : null;
+        return found && computedHash == hash;
     }
 
     public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data)

@@ -589,7 +589,6 @@ namespace Nethermind.Synchronization.Test.FastSync
         private class TrackingTreeSyncStore(ITreeSyncStore inner, List<ValueHash256> clearedAddresses) : ITreeSyncStore
         {
             public bool NodeExists(Hash256? address, in TreePath path, in ValueHash256 hash) => inner.NodeExists(address, path, hash);
-            public void RemoveMismatchedNode(Hash256? address, in TreePath path, in ValueHash256 hash) => inner.RemoveMismatchedNode(address, path, hash);
             public void SaveNode(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data) => inner.SaveNode(address, path, hash, data);
             public void EnsureStorageEmpty(in ValueHash256 address) { clearedAddresses.Add(address); inner.EnsureStorageEmpty(address); }
             public void FinalizeSync(BlockHeader pivotHeader) => inner.FinalizeSync(pivotHeader);
