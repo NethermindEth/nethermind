@@ -1360,14 +1360,16 @@ public class JsonRpcServiceTests
             .Returns(ModuleResolution.Unknown);
         JsonRpcService service = new(provider, new OneLoggerLogManager(new(logger)), new JsonRpcConfig(), _gcKeeper);
         using JsonDocument parameters = JsonDocument.Parse($"[\"{secret}\"]");
-        JsonRpcRequest request = new() { Id = 67, Method = "unknown_method", Params = parameters.RootElement };
+        JsonRpcRequest request = new() { Id = 67, Method = "unknown\tmethod", Params = parameters.RootElement };
 
         using JsonRpcResponse response = await service.SendRequestAsync(request, _context);
 
         string log = logger.LogList.Single(line => line.Contains("Validation error when handling request"));
+        string errorLog = logger.LogList.Single(line => line.StartsWith("Sending error response", StringComparison.Ordinal));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(log, Does.Contain("unknown_method").And.Contain("67"));
+            Assert.That(log, Does.Contain(@"unknown\tmethod").And.Contain("67"));
+            Assert.That(errorLog, Does.Contain(@"unknown\tmethod").And.Contain("67"));
             Assert.That(log, Does.Not.Contain(secret));
         }
     }
