@@ -10,7 +10,15 @@ ENV CI=true
 
 WORKDIR /nethermind
 
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+    { apt-get update --snapshot 20261119T000000Z && apt-get install -y --no-install-recommends gcc-15 libc6-dev; } \
+      || echo "warning: gcc-15 install failed, libnmkeccak.so will not be built"; \
+    rm -rf /var/lib/apt/lists/*; \
+  fi
+ENV CC=gcc-15
+
 COPY src/Nethermind src/Nethermind
+COPY src/native src/native
 COPY Directory.*.props .
 COPY Directory.Build.targets .
 COPY global.json .

@@ -12,11 +12,19 @@ ARG TARGETARCH
 
 WORKDIR /nethermind
 
+RUN if [ "$TARGETARCH" = "amd64" ] && [ "$(uname -m)" = "x86_64" ]; then \
+    { apt-get update --snapshot 20261119T000000Z && apt-get install -y --no-install-recommends gcc-15 libc6-dev; } \
+      || echo "warning: gcc-15 install failed, libnmkeccak.so will not be built"; \
+    rm -rf /var/lib/apt/lists/*; \
+  fi
+ENV CC=gcc-15
+
 COPY global.json nuget.config Directory.Build.props Directory.Build.targets Directory.Packages.props ./
 COPY --parents src/Nethermind/**/*.csproj src/Nethermind/Directory.Build.props src/Nethermind/Directory.Build.targets src/Nethermind/Nethermind.Runner/packages.lock.json ./
 RUN cd src/Nethermind/Nethermind.Runner && dotnet restore --locked-mode
 
 COPY src/Nethermind src/Nethermind
+COPY src/native src/native
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
   cd src/Nethermind/Nethermind.Runner && \

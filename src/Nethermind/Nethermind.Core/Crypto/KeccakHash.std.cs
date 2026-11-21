@@ -57,7 +57,10 @@ public sealed partial class KeccakHash
             return AbsorbFullBlocks(state, stateBytes, input, roundSize);
 
         int blocks = input.Length / HASH_DATA_AREA;
-        AbsorbBlocksScalar(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(input), blocks);
+        if (blocks >= NativeKeccak.MinBlocks && NativeKeccak.IsAvailable)
+            NativeKeccak.Absorb(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(input), blocks);
+        else
+            AbsorbBlocksScalar(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(input), blocks);
         input = input[(blocks * HASH_DATA_AREA)..];
         AbsorbTail(stateBytes, input);
         return input;

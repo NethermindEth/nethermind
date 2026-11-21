@@ -69,6 +69,37 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
+        public void Native_absorb_matches_managed_permutation([Values(16, 17, 32, 10_000)] int blocks)
+        {
+            bool nativeRequired = OperatingSystem.IsLinux() && Avx2.IsSupported && Bmi1.X64.IsSupported && Bmi2.X64.IsSupported
+                && Environment.GetEnvironmentVariable("CI") == "true";
+            if (nativeRequired)
+                Assert.That(NativeKeccak.IsAvailable, Is.True);
+            else
+                Assume.That(NativeKeccak.IsAvailable);
+
+            const int rateBytes = 136;
+            byte[] input = new byte[blocks * rateBytes];
+            new Random(blocks).NextBytes(input);
+
+            ulong[] expected = new ulong[25];
+            for (int block = 0; block < blocks; block++)
+            {
+                for (int lane = 0; lane < rateBytes / sizeof(ulong); lane++)
+                {
+                    expected[lane] ^= BinaryPrimitives.ReadUInt64LittleEndian(input.AsSpan(block * rateBytes + lane * sizeof(ulong)));
+                }
+
+                KeccakHash.KeccakF1600Scalar(ref expected[0]);
+            }
+
+            ulong[] actual = new ulong[25];
+            NativeKeccak.Absorb(ref actual[0], ref input[0], blocks);
+
+            Assert.That(actual, Is.EqualTo(expected));
+        }
+
+        [Test]
         public void Empty_byte_array()
         {
             string result = Keccak.Compute([]).ToString();
