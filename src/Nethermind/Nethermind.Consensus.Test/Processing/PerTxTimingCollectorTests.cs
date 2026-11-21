@@ -78,6 +78,21 @@ public class PerTxTimingCollectorTests
         }
     }
 
+    [Test]
+    public void Clearing_executor_releases_timing_reference_before_collector_snapshot()
+    {
+        Block block = Build.A.Block.TestObject.WithReplacedBody(new BlockBody([Build.A.Transaction.TestObject], []));
+        BlockProcessor.BlockValidationTransactionsExecutor executor = new(Substitute.For<ITransactionProcessorAdapter>(), Substitute.For<IWorldState>());
+        executor.SetupTxTimingMetrics(block);
+        Assert.That(executor.StartTxTimer(), Is.GreaterThan(0L));
+
+        executor.ClearTransactionProcessedEvents();
+
+        using (ArrayPoolList<long> snapshot = PerTxTimingCollector.Snapshot())
+            Assert.That(snapshot, Has.Count.EqualTo(1));
+        Assert.That(executor.StartTxTimer(), Is.Zero);
+    }
+
     private static void ExecuteTransactions(int count)
     {
         Transaction[] transactions = new Transaction[count];
