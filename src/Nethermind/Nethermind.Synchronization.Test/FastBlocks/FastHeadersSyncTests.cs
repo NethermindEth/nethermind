@@ -1647,6 +1647,121 @@ public class FastHeadersSyncTests
         return feed.IsFinished;
     }
 
+    // After a restart with only the sync pivot header stored, a Disconnected -> FastHeaders change initializes the feed again
+    // on the sync mode selector thread, which must not block in InitializeFeed behind the dispatcher's PrepareRequest.
+    [Test]
+    public async Task Restart_with_only_the_pivot_inserted_does_not_block_a_sync_mode_change()
+    {
+        (HeadersSyncFeed feed, IBlockTree remote, _) = CreateFeedRestartedAtPivot(CreateFeed);
+        using HeadersSyncFeed __ = feed;
+        using CancellationTokenSource dispatcherStop = new();
+        feed.SyncModeSelectorOnChanged(SyncMode.FastHeaders | SyncMode.StateNodes);
+
+        using (HeadersSyncBatch batch = (await feed.PrepareRequest())!)
+        {
+            AnswerFrom(remote, batch, new PeerInfo(Substitute.For<ISyncPeer>()));
+            feed.HandleResponse(batch);
+        }
+
+        // The dispatcher keeps asking for work, as SyncDispatcher does.
+        Task dispatcher = Task.Factory.StartNew(async () =>
+        {
+            while (!dispatcherStop.IsCancellationRequested)
+            {
+                using HeadersSyncBatch? batch = await feed.PrepareRequest(dispatcherStop.Token);
+                await Task.Delay(10);
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+        await Task.Delay(500);
+
+        Task modeChange = Task.Factory.StartNew(() =>
+        {
+            feed.SyncModeSelectorOnChanged(SyncMode.Disconnected);
+            feed.SyncModeSelectorOnChanged(SyncMode.FastHeaders | SyncMode.StateNodes);
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        bool returned = await Task.WhenAny(modeChange, Task.Delay(TimeSpan.FromSeconds(5))) == modeChange;
+        dispatcherStop.Cancel(); // Also releases a PrepareRequest still looping, so the test cannot hang.
+        try { await Task.WhenAll(modeChange, dispatcher).WaitAsync(TimeSpan.FromSeconds(10)); } catch (OperationCanceledException) { }
+
+        Assert.That(returned, Is.True, "the sync mode change blocked in InitializeFeed");
+    }
+
+    // A dependency at lowest inserted - 1 that can never connect, with the memory budget full, must not keep PrepareRequest
+    // looping while it holds the reset read lock.
+    [Test]
+    public async Task PrepareRequest_returns_when_a_dependency_cannot_connect()
+    {
+        (HeadersSyncFeed feed, IBlockTree remote, BlockHeader pivot) = CreateFeedRestartedAtPivot(
+            static (builder, syncConfig) => new FeedExpectingThePivotAgain(builder, syncConfig));
+        using HeadersSyncFeed _ = feed;
+        using CancellationTokenSource loopStop = new();
+        feed.InitializeFeed();
+
+        using (HeadersSyncBatch batch = (await feed.PrepareRequest())!)
+        {
+            Assert.That(batch.EndNumber, Is.EqualTo(pivot.Number - 1));
+            AnswerFrom(remote, batch, new PeerInfo(Substitute.For<ISyncPeer>()));
+            feed.HandleResponse(batch);
+        }
+
+        Task<HeadersSyncBatch?> next = Task.Factory.StartNew(() => feed.PrepareRequest(loopStop.Token), CancellationToken.None,
+            TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+        bool returned = await Task.WhenAny(next, Task.Delay(TimeSpan.FromSeconds(5))) == next;
+        loopStop.Cancel(); // Releases a PrepareRequest still looping, so the test cannot hang.
+        try { using HeadersSyncBatch? __ = await next.WaitAsync(TimeSpan.FromSeconds(10)); } catch (OperationCanceledException) { }
+
+        Assert.That(returned, Is.True, "PrepareRequest kept looping on the dependency at pivot - 1");
+    }
+
+    /// <summary>
+    /// Stores only the sync pivot header, then creates a block tree over the same databases, as after a restart.
+    /// Any queued dependency fills the memory budget.
+    /// </summary>
+    private static (HeadersSyncFeed Feed, IBlockTree Remote, BlockHeader Pivot) CreateFeedRestartedAtPivot(
+        Func<BlockTreeBuilder, TestSyncConfig, HeadersSyncFeed> createFeed)
+    {
+        IBlockTree remoteBlockTree = Build.A.BlockTree().WithPostMergeRules().OfHeadersOnly.OfChainLength(1001).TestObject;
+        BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = pivot.Number,
+            PivotHash = pivot.Hash!.ToString(),
+            PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
+            FastHeadersMemoryBudget = 1,
+        };
+
+        Func<BlockTreeBuilder> createBuilderOverSharedDbs = SharedDbsBlockTreeBuilderFactory(syncConfig);
+        BlockTree treeBeforeRestart = createBuilderOverSharedDbs().TestObject;
+        Assert.That(treeBeforeRestart.Insert(pivot), Is.EqualTo(AddBlockResult.Added));
+        treeBeforeRestart.SyncPivot = (pivot.Number, pivot.Hash!);
+        treeBeforeRestart.LowestInsertedHeader = pivot;
+
+        BlockTreeBuilder builderAfterRestart = createBuilderOverSharedDbs();
+        Assert.That(builderAfterRestart.TestObject.LowestInsertedHeader?.Number, Is.EqualTo(pivot.Number));
+        return (createFeed(builderAfterRestart, syncConfig), remoteBlockTree, pivot);
+    }
+
+    private static HeadersSyncFeed CreateFeed(BlockTreeBuilder builder, TestSyncConfig syncConfig) =>
+        CreateFeed(builder, syncConfig, Substitute.For<IPoSSwitcher>());
+
+    /// <summary>
+    /// Keeps expecting the pivot itself after the restart, so the batch below the pivot is kept as a dependency that never connects.
+    /// </summary>
+    private sealed class FeedExpectingThePivotAgain(BlockTreeBuilder builder, TestSyncConfig syncConfig) : HeadersSyncFeed(
+        builder.TestObject, Substitute.For<ISyncPeerPool>(), syncConfig, new NullSyncReport(), Substitute.For<IPoSSwitcher>(),
+        LimboLogs.Instance, builder.ChainLevelInfoRepository, builder.HeaderStore)
+    {
+        protected override void ResetPivot()
+        {
+            // Without a lowest inserted header, the reset expects the pivot and requests it again.
+            BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
+            _blockTree.LowestInsertedHeader = null;
+            base.ResetPivot();
+            _blockTree.LowestInsertedHeader = lowestInserted;
+        }
+    }
+
     private static Func<BlockTreeBuilder> SharedDbsBlockTreeBuilderFactory(TestSyncConfig syncConfig)
     {
         TestMemDb blocksDb = new();
