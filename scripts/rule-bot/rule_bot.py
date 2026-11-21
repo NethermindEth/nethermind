@@ -74,7 +74,10 @@ def api(*args):
         if p.returncode == 0:
             return json.loads(p.stdout)
         if p.stdout.startswith('{"data":{'):
-            return json.loads(p.stdout)
+            data = json.loads(p.stdout)
+            if data.get("errors"):
+                print(f"collect: partial GraphQL response: {json.dumps(data['errors'])[:300]}", file=sys.stderr)
+            return data
         time.sleep(20 * (attempt + 1))
     raise SystemExit(f"collect: GitHub API failed: {' '.join(args[:3])}")
 
@@ -130,15 +133,17 @@ def collect(args):
         for key, pr in data["data"]["repository"].items():
             if not pr:
                 continue
-            threads, page = {}, pr["reviewThreads"]
+            threads, conn = {}, pr["reviewThreads"]
             while True:
-                threads.update({str(c["databaseId"]): [t["isResolved"], t["isOutdated"]] for t in page["nodes"] for c in t["comments"]["nodes"]})
-                if not page["pageInfo"]["hasNextPage"]:
+                threads.update({str(c["databaseId"]): [t["isResolved"], t["isOutdated"]] for t in conn["nodes"] for c in t["comments"]["nodes"]})
+                if not conn["pageInfo"]["hasNextPage"]:
                     break
                 more = api("graphql", "-f", f"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ pullRequest(number:{key[1:]}) {{ "
-                           f"reviewThreads(first:100, after:\"{page['pageInfo']['endCursor']}\") {{ {THREAD_NODES} }} }} }} }}")
+                           f"reviewThreads(first:100, after:\"{conn['pageInfo']['endCursor']}\") {{ {THREAD_NODES} }} }} }} }}")
                 queries += 1
-                page = more["data"]["repository"]["pullRequest"]["reviewThreads"]
+                if not more["data"]["repository"]["pullRequest"]:
+                    raise SystemExit(f"collect: review threads of PR {key[1:]} missing in the follow-up page")
+                conn = more["data"]["repository"]["pullRequest"]["reviewThreads"]
             prs[key[1:]] = dict(author=login(pr), threads=threads)
     save(os.path.join(args.data, "comments.json"), dict(since=since, comments=sorted(comments.values(), key=lambda c: c["id"])))
     save(os.path.join(args.data, "prs.json"), prs)

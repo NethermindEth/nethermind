@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: LGPL-3.0-only
 
 import argparse
+import contextlib
 import datetime
+import io
 import json
 import os
 import sys
@@ -137,6 +139,50 @@ class Window(unittest.TestCase):
         finally:
             rb.api = real
         self.assertEqual(prs["7"]["threads"], {"1": [False, False], "2": [True, True]})
+
+    def collect_with(self, api):
+        real = rb.api
+        rb.api = api
+        try:
+            with tempfile.TemporaryDirectory() as d, contextlib.redirect_stdout(io.StringIO()) as out:
+                rb.collect(argparse.Namespace(data=d, days=180, today="2026-11-21"))
+        finally:
+            rb.api = real
+        return out.getvalue()
+
+    def test_collect_summary_prints_the_rest_page_count(self):
+        def api(*a):
+            if a[0] != "graphql":
+                return [comment(1, 7)]
+            return dict(data=dict(repository=dict(p7=dict(author=dict(login="author"), reviewThreads=dict(
+                pageInfo=dict(hasNextPage=False, endCursor=None), nodes=[])))))
+
+        self.assertIn(", 1 REST pages, ", self.collect_with(api))
+
+    def test_collect_fails_clearly_when_a_follow_up_thread_page_is_missing(self):
+        def api(*a):
+            if a[0] != "graphql":
+                return [comment(1, 7)] if "page=1" in a else []
+            if "after:" in a[-1]:
+                return dict(data=dict(repository=dict(pullRequest=None)))
+            return dict(data=dict(repository=dict(p7=dict(author=dict(login="author"), reviewThreads=dict(
+                pageInfo=dict(hasNextPage=True, endCursor="c1"), nodes=[])))))
+
+        with self.assertRaises(SystemExit) as raised:
+            self.collect_with(api)
+        self.assertIn("PR 7", str(raised.exception))
+
+    def test_api_reports_errors_of_a_partial_graphql_response(self):
+        body = '{"data":{"repository":{"p1":null}},"errors":[{"message":"boom"}]}'
+        real = rb.subprocess.run
+        rb.subprocess.run = lambda *a, **k: argparse.Namespace(returncode=1, stdout=body, stderr="gone")
+        try:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                data = rb.api("graphql")
+        finally:
+            rb.subprocess.run = real
+        self.assertEqual(data["data"]["repository"], dict(p1=None))
+        self.assertIn("boom", err.getvalue())
 
     def test_findings_rebuild_threads_and_skip_the_pr_author(self):
         cs = [rb.slim(comment(1, 7)), rb.slim(comment(2, 7, author="author", reply_to=1, created="2026-11-02T00:00:00Z", body="Good catch, fixed")),
