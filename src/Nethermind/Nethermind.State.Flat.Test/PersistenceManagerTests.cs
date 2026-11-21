@@ -1133,6 +1133,37 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
+    [TestCase(0ul, 90ul, false)]
+    [TestCase(0ul, 96ul, true)]
+    [TestCase(4ul, 90ul, true)]
+    public void DetermineSnapshotAction_PartialPersistedTierChunk_WaitsOneWindowForFullChunk(ulong baseBlock, ulong latestBlock, bool expectPersist)
+    {
+        StateId boundary = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(16);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(boundary.StateRoot.Bytes));
+        StateId persistedBase = baseBlock == 0 ? Block0 : CreateStateId(baseBlock);
+        if (baseBlock != 0)
+        {
+            _persistence.CreateReader().CurrentState.Returns(persistedBase);
+            _persistenceManager.ResetPersistedStateId();
+        }
+        StateId middle = CreateStateId(8);
+        PersistBase(persistedBase, middle);
+        PersistBase(middle, boundary);
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) =
+            _persistenceManager.DetermineSnapshotAction(CreateStateId(latestBlock));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist?.To, expectPersist ? Is.EqualTo(middle) : Is.Null);
+            Assert.That(toPersist, Is.Null);
+            Assert.That(toConvert, Is.Null);
+        }
+
+        persistedToPersist?.Dispose();
+    }
+
     [Test]
     public void DetermineSnapshotAction_UnfinalizedBelowBackstop_ReturnsNull()
     {
