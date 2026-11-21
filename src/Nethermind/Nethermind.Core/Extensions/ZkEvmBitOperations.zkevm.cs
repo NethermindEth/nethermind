@@ -36,14 +36,14 @@ public static partial class ZkEvmBitOperations
     /// <remarks>
     /// Without Zbb the bytes are gathered most significant first. The zkVMs without Zbb other than OpenVM also reject
     /// misaligned accesses, so an unaligned load would be gathered byte by byte anyway; gathering in big-endian order
-    /// drops the reversal on top of it. OpenVM takes a misaligned load at the cost of an aligned one, so there one
-    /// load and <see cref="Bswap64"/> cost less than the gather.
+    /// drops the reversal on top of it. OpenVM, but for its RV32 line, takes a misaligned load at the cost of an aligned
+    /// one, so there one load and <see cref="Bswap64"/> cost less than the gather.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong ReadUInt64BigEndian(ref byte source)
     {
         if (HasByteReverse) return BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref source));
-        if (OpenVmFlag.IsActive) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
+        if (OpenVmFlag.IsActive && !OpenVm32Flag.IsActive) return Bswap64(Unsafe.ReadUnaligned<ulong>(ref source));
         if (IntPtr.Size == sizeof(uint))
         {
             // On a 32-bit guest each half is a register: gathered as two 32-bit words, the joining shift is free.
@@ -142,7 +142,7 @@ public static partial class ZkEvmBitOperations
 
         // A 32-bit guest swaps each half, which then trade places for free, with `or`: a 64-bit addition there is
         // a carry chain of four instructions.
-        if (AirbenderFlag.IsActive)
+        if (IntPtr.Size == sizeof(uint))
             return ((ulong)Swap32((uint)x, (uint)m8) << 32) | Swap32((uint)(x >> 32), (uint)m8);
 
         // Addition rather than disjunction: the prover charges `or` 60 units against `add`'s 15.5, and

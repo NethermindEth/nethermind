@@ -38,6 +38,7 @@
   <Project Path="Nethermind.Stateless.AirbenderGuest/Nethermind.Stateless.AirbenderGuest.csproj" />
   <Project Path="Nethermind.Stateless.Executor/Nethermind.Stateless.Executor.csproj" />
   <Project Path="Nethermind.Stateless.OpenVMGuest/Nethermind.Stateless.OpenVMGuest.csproj" />
+  <Project Path="Nethermind.Stateless.OpenVM32Guest/Nethermind.Stateless.OpenVM32Guest.csproj" />
   <Project Path="Nethermind.Stateless.Sp1Guest/Nethermind.Stateless.Sp1Guest.csproj" />
   <Project Path="Nethermind.Stateless.ZiskGuest/Nethermind.Stateless.ZiskGuest.csproj" />
 </Solution>

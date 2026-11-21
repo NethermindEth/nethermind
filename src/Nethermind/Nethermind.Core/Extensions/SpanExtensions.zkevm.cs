@@ -119,10 +119,10 @@ namespace Nethermind.Core.Extensions
         internal static ulong FinalizeAddressSum(ulong addressSum) => FinalizeSum(addressSum);
 
         /// <summary>A lane of a slot index, a <see cref="UInt256"/> and so word aligned.</summary>
-        /// <remarks>Airbender reads it as two plain words: an unaligned read there tests alignment per word.</remarks>
+        /// <remarks>Airbender and OpenVM's RV32 line read it as two plain words: an unaligned read there is tested or expanded per word.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong ReadIndexLane(ref byte lane) =>
-            AirbenderFlag.IsActive ? Unsafe.As<byte, ulong>(ref lane) : Unsafe.ReadUnaligned<ulong>(ref lane);
+            AirbenderFlag.IsActive || OpenVm32Flag.IsActive ? Unsafe.As<byte, ulong>(ref lane) : Unsafe.ReadUnaligned<ulong>(ref lane);
 
         /// <summary>Hashes a 32-byte slot index of the address whose <see cref="SumAddressWords"/> is given.</summary>
         /// <remarks>
@@ -217,12 +217,12 @@ namespace Nethermind.Core.Extensions
         /// sum invariant under permuting them.
         /// </remarks>
         /// <remarks>
-        /// Airbender computes the same lanes as 32-bit values: there the masks are free and the product of two of them
-        /// one widening multiply, where the masked 64-bit form adds with carries and multiplies all four halves.
+        /// A 32-bit guest computes the same lanes as 32-bit values: there the masks are free and the product of two of
+        /// them one widening multiply, where the masked 64-bit form adds with carries and multiplies all four halves.
         /// </remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static ulong MixLanes(ulong word, ulong key, ulong mask)
-            => AirbenderFlag.IsActive
+            => IntPtr.Size == sizeof(uint)
                 ? Math.BigMul((uint)word + (uint)key, (uint)(word >> 32) + (uint)(key >> 32))
                 : ((word + key) & mask) * (((word >> 32) + (key >> 32)) & mask);
 

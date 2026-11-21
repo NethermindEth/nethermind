@@ -7,6 +7,8 @@ namespace Nethermind.Stateless.Execution.IO;
 
 public static partial class TrustedInput
 {
+    private static partial byte[][] ReadStateNodes(ReadOnlySpan<byte> data) => ReadItems(data, StateNodesList, 0);
+
     private static partial byte[] Item(ReadOnlySpan<byte> data, int start, int length) => data.Slice(start, length).ToArray();
 
     private static partial ReadOnlyMemory<byte> Code(ReadOnlySpan<byte> data, int start, int length) =>
