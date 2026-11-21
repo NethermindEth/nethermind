@@ -17,6 +17,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Cpu;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
@@ -31,6 +32,7 @@ using Nethermind.Evm;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs;
 
@@ -261,28 +263,8 @@ public class BlockAccessListManagerTests
     [Test]
     public async Task Parallel_execution_matches_sequential_execution_for_transactions_sharing_accounts_and_slots()
     {
-        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
-            .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = true)
-            .WithGenesisPostProcessor((genesis, state, specProvider) =>
-            {
-                // The transaction count scales with the core count, so the default 4M gas limit can't fit them all on many-core machines.
-                genesis.Header.GasLimit = 1_000_000_000;
-                state.CreateAccount(Counter, UInt256.Zero);
-                state.InsertCode(Counter, ReadAndIncrement, specProvider.GenesisSpec);
-                state.Set(new StorageCell(Counter, UInt256.Zero), InitialCount);
-                state.Set(new StorageCell(Counter, UInt256.One), ReadOnlyValue);
-            }));
-
-        // More transactions than pooled processors, so processors take later transactions and reuse their readers.
-        int txCount = 2 * Environment.ProcessorCount + 2;
-        Transaction[] transactions = new Transaction[txCount];
-        for (int i = 0; i < txCount; i++)
-        {
-            PrivateKey sender = i % 2 == 0 ? TestItem.PrivateKeyB : TestItem.PrivateKeyC;
-            ulong nonce = (ulong)(i / 2);
-            transactions[i] = i % 3 == 2 ? Transfer(sender, nonce) : Call(sender, nonce);
-        }
+        using BasicTestBlockchain chain = await CreateCounterChain();
+        Transaction[] transactions = SharedAccountTransactions();
         int calls = transactions.Count(static tx => tx.To == Counter);
 
         Block block = await chain.AddBlock(transactions);
@@ -325,6 +307,91 @@ public class BlockAccessListManagerTests
                 suggested, options, NullBlockTracer.Instance, spec, CancellationToken.None);
             return (processed, receipts, balManager.ParallelExecutionEnabled);
         }
+    }
+
+    [Test]
+    public async Task Parallel_validation_rejects_a_surplus_change_while_later_workers_mark_the_account()
+    {
+        using BasicTestBlockchain chain = await CreateCounterChain();
+        // Transfers from the third transaction on credit Recipient, so their workers mark it in the generated
+        // account bitmap while the validator is still checking earlier rows.
+        Block block = await chain.AddBlock(SharedAccountTransactions());
+        BlockHeader parent = chain.BlockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!;
+        ReadOnlyBlockAccessList bal = chain.Container.Resolve<IBlockAccessListStore>().Get(block.Number, block.Hash!)
+            ?? throw new AssertionException($"block {block.Number} has no stored block access list");
+        ReadOnlyBlockAccessList withSurplus = WithSurplusBalanceChange(bal, Recipient, index: 1);
+        IReleaseSpec spec = chain.SpecProvider.GetSpec(block.Header);
+
+        // Without concurrent writers, row 1 is rejected for the change Recipient declares there, and the reason must
+        // not depend on whether a later worker has already marked Recipient.
+        string expected = $"surplus changes for {Recipient} at index 1";
+        using (Assert.EnterMultipleScope())
+        {
+            // The sequential path rebuilds the list and rejects it on its hash rather than per row.
+            Assert.That(Rejection(ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceSequentialBlockAccessList), Is.Not.Null);
+            // The race needs a worker to mark Recipient between the validator's reads, so give it several chances.
+            for (int run = 0; run < 20; run++)
+            {
+                Assert.That(Rejection(ProcessingOptions.ReadOnlyChain), Does.Contain(expected), $"parallel run {run}");
+            }
+        }
+
+        string? Rejection(ProcessingOptions options)
+        {
+            BlockHeader header = block.Header.Clone();
+            header.BlockAccessListHash = Keccak.Compute(Rlp.Encode(withSurplus));
+            header.Hash = header.CalculateHash();
+            Block suggested = block.WithReplacedHeader(header);
+            suggested.BlockAccessList = withSurplus;
+            using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+            try
+            {
+                chain.BlockProcessor.ProcessOne(suggested, options, NullBlockTracer.Instance, spec, CancellationToken.None);
+                return null;
+            }
+            catch (Exception exception)
+            {
+                return exception.GetBaseException().Message;
+            }
+        }
+    }
+
+    private static ReadOnlyBlockAccessList WithSurplusBalanceChange(ReadOnlyBlockAccessList bal, Address address, uint index)
+    {
+        ReadOnlyAccountChanges[] accounts = bal.AccountChanges.ToArray();
+        int i = Array.FindIndex(accounts, a => a.Address == address);
+        ReadOnlyAccountChanges account = accounts[i];
+        accounts[i] = new ReadOnlyAccountChanges(account.Address, account.StorageChanges, account.StorageReads,
+            [new BalanceChange(index, UInt256.One), .. account.BalanceChanges], account.NonceChanges, account.CodeChanges);
+        return new ReadOnlyBlockAccessList(accounts, bal.ItemCount + 1);
+    }
+
+    private static Task<BasicTestBlockchain> CreateCounterChain() => BasicTestBlockchain.Create(builder => builder
+        .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
+        .Intercept<IBlocksConfig>(blocksConfig => blocksConfig.ParallelExecution = true)
+        .WithGenesisPostProcessor((genesis, state, specProvider) =>
+        {
+            // The transaction count scales with the core count, so the default 4M gas limit can't fit them all on many-core machines.
+            genesis.Header.GasLimit = 1_000_000_000;
+            state.CreateAccount(Counter, UInt256.Zero);
+            state.InsertCode(Counter, ReadAndIncrement, specProvider.GenesisSpec);
+            state.Set(new StorageCell(Counter, UInt256.Zero), InitialCount);
+            state.Set(new StorageCell(Counter, UInt256.One), ReadOnlyValue);
+        }));
+
+    /// <summary>Calls to <see cref="Counter"/> and transfers to <see cref="Recipient"/> from two alternating senders.</summary>
+    /// <remarks>More transactions than pooled processors, so processors take later transactions and reuse their readers.</remarks>
+    private static Transaction[] SharedAccountTransactions()
+    {
+        int txCount = 2 * Environment.ProcessorCount + 2;
+        Transaction[] transactions = new Transaction[txCount];
+        for (int i = 0; i < txCount; i++)
+        {
+            PrivateKey sender = i % 2 == 0 ? TestItem.PrivateKeyB : TestItem.PrivateKeyC;
+            ulong nonce = (ulong)(i / 2);
+            transactions[i] = i % 3 == 2 ? Transfer(sender, nonce) : Call(sender, nonce);
+        }
+        return transactions;
     }
 
     private static (byte StatusCode, ulong GasUsed, ulong GasUsedTotal)[] Summarize(TxReceipt[] receipts) =>

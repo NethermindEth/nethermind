@@ -173,6 +173,7 @@ public partial class BlockAccessListManager(
                 _suggestedChargeableStorageReads = (ulong)suggested.TotalStorageReads - SystemContractStorageReads(suggested);
             }
             _gasRemaining = suggestedBlock.GasUsed;
+            PrepareSlicePrecompute(suggestedBlock.Transactions.Length);
         }
 
         _balWarmupTask = StartBalReadWarmup(suggestedBlock);
@@ -305,6 +306,7 @@ public partial class BlockAccessListManager(
             // still merges per-tx slots into the target in order, preserving incremental
             // validation semantics.
             _parallelTxProcessorWithWorldStateManager!.Value.Return(balIndex);
+            PrecomputeSliceValidation(balIndex);
         }
     }
 
