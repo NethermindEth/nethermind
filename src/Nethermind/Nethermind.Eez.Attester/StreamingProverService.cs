@@ -16,6 +16,11 @@ internal sealed class StreamingProverService(StreamingIdentity identity, Streami
     }
 
     public override Task ProveStream(IAsyncStreamReader<ClientFrame> requestStream, IServerStreamWriter<ServerFrame> responseStream,
-        ServerCallContext context) => transport.Run(requestStream, responseStream, identity.Authenticate(context), context.CancellationToken,
+        ServerCallContext context)
+    {
+        string owner = identity.Authenticate(context);
+        StreamingIdentity.RequireMatchingValidationIdentity(context.RequestHeaders, capabilities?.RequiredStreamIdentity);
+        return transport.Run(requestStream, responseStream, owner, context.CancellationToken,
             context.Method == StreamingServiceMethods.Rollup0Path ? "prove.v1" : "prove.v2");
+    }
 }

@@ -147,7 +147,8 @@ internal sealed class StreamingRuntime : IDisposable
             }
             return new StreamingRuntime(settings, certificate, identity, l1, l2, registry,
                 nativeProfile is null ? new StreamingBlockExecutor(specs, rules, logs) : new StreamingBlockExecutor(nativeProfile, logs),
-                finalize, pipeline.Context.RollupId, native, new StreamingCapabilities(nativeProfile is null ? null : native!.Identity, options));
+                finalize, pipeline.Context.RollupId, native, new StreamingCapabilities(nativeProfile is null ? null : native!.Identity, options,
+                    chainRules?.NativeFormat is NativeSystemTxFormat.ContractV7));
         }
         catch (Exception exception)
         {

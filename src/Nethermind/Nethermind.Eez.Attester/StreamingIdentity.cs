@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.AspNetCore.Http;
 
@@ -12,6 +13,8 @@ namespace Nethermind.Eez.Attester;
 
 internal sealed class StreamingIdentity
 {
+    internal const string ValidationIdentityHeader = "eez-validation-identity-bin";
+
     private readonly HashSet<string> _certificates = [with(StringComparer.Ordinal)];
 
     internal StreamingIdentity(IEnumerable<X509Certificate2> trustedCertificates)
@@ -31,6 +34,16 @@ internal sealed class StreamingIdentity
     {
         if (!authenticatedTls || !IsTrusted(certificate, now)) throw Error();
         return certificate!.GetCertHashString(HashAlgorithmName.SHA256);
+    }
+
+    internal static void RequireMatchingValidationIdentity(Metadata headers, ByteString? expectedIdentity)
+    {
+        if (expectedIdentity is null) return;
+
+        Metadata.Entry received = headers.Get(ValidationIdentityHeader)
+            ?? throw new RpcException(new Status(StatusCode.FailedPrecondition, "offline validation identity metadata is required"));
+        if (!received.ValueBytes.AsSpan().SequenceEqual(expectedIdentity.Span))
+            throw new RpcException(new Status(StatusCode.FailedPrecondition, "validation identity mismatch"));
     }
 
     internal bool IsTrusted(X509Certificate2? certificate, DateTimeOffset now) =>

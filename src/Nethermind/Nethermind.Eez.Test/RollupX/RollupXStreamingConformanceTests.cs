@@ -62,7 +62,7 @@ public partial class RollupXStreamingConformanceTests
                 Assert.That(capabilities.MaxWindowBlocks, Is.EqualTo(scenario.GetProperty("server_profile").GetProperty("max_window_blocks").GetUInt64()));
             }
         }
-        await Replay(client, scenario, attester);
+        await Replay(client, scenario, attester, validationIdentity: server.ExpectedValidationIdentity);
         await server.Admission.WaitUntilIdle();
     }
 
@@ -74,7 +74,8 @@ public partial class RollupXStreamingConformanceTests
         await using RollupXStreamingServer server = await RollupXStreamingServer.StartProduction(DirectoryPath, document.RootElement);
         using GrpcChannel channel = server.Channel();
         Address attester = new(document.RootElement.GetProperty("oracle").GetProperty("attester").GetString()!);
-        await Replay(new ProverV2.ProverClient(channel), document.RootElement, attester);
+        await Replay(new ProverV2.ProverClient(channel), document.RootElement, attester,
+            validationIdentity: server.ExpectedValidationIdentity);
         await server.Admission.WaitUntilIdle();
     }
 
@@ -252,7 +253,7 @@ public partial class RollupXStreamingConformanceTests
     }
 
     private static async Task Replay(ProverV2.ProverClient client, JsonElement scenario, Address attester,
-        Action<SettlementInput>? mutate = null, StatusCode? rejectedProof = null)
+        Action<SettlementInput>? mutate = null, StatusCode? rejectedProof = null, ByteString? validationIdentity = null)
     {
         Dictionary<int, AsyncDuplexStreamingCall<ClientFrame, ServerFrame>> streams = [];
         Dictionary<ByteString, ByteString> sessions = [];
@@ -263,7 +264,11 @@ public partial class RollupXStreamingConformanceTests
         int index = 0;
         AsyncDuplexStreamingCall<ClientFrame, ServerFrame> Open(int transport)
         {
-            AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = client.ProveStream(new CallOptions(deadline: DateTime.UtcNow.AddMinutes(2)));
+            Metadata? headers = validationIdentity is null ? null : new Metadata
+            {
+                { StreamingIdentity.ValidationIdentityHeader, validationIdentity.ToByteArray() }
+            };
+            AsyncDuplexStreamingCall<ClientFrame, ServerFrame> call = client.ProveStream(new CallOptions(headers, deadline: DateTime.UtcNow.AddMinutes(2)));
             streams.Add(transport, call);
             return call;
         }

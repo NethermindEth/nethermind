@@ -8,8 +8,10 @@ using Nethermind.Eez.Prove.V2;
 
 namespace Nethermind.Eez.Attester;
 
-internal sealed class StreamingCapabilities(ByteString? identity, AttesterOptions options)
+internal sealed class StreamingCapabilities(ByteString? identity, AttesterOptions options, bool requireStreamIdentity)
 {
+    internal ByteString? RequiredStreamIdentity => requireStreamIdentity ? identity : null;
+
     internal CapabilitiesResponse Read()
     {
         if (identity is null) throw new RpcException(new Status(StatusCode.Unimplemented, "capabilities unavailable"));

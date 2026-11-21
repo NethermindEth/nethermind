@@ -4,6 +4,7 @@
 using System;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Google.Protobuf;
 using Grpc.Core;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Eez.Attester;
@@ -15,6 +16,29 @@ public class StreamingIdentityTests
 {
     private static readonly DateTimeOffset Now = new(2026, 10, 14, 0, 0, 0, TimeSpan.Zero);
     private X509Certificate2 _trusted = null!;
+    [TestCase(0, false, StatusCode.FailedPrecondition)]
+    [TestCase(31, false, StatusCode.FailedPrecondition)]
+    [TestCase(32, false, StatusCode.FailedPrecondition)]
+    [TestCase(32, true, StatusCode.OK)]
+    public void Offline_profile_requires_its_exact_validation_identity(int headerLength, bool match, StatusCode expectedStatus)
+    {
+        byte[] expected = new byte[32];
+        expected[0] = 1;
+        Metadata headers = [];
+        if (headerLength > 0)
+            headers.Add(StreamingIdentity.ValidationIdentityHeader, match ? expected : new byte[headerLength]);
+
+        Action validate = () => StreamingIdentity.RequireMatchingValidationIdentity(headers, ByteString.CopyFrom(expected));
+        if (expectedStatus is StatusCode.OK)
+            Assert.That(validate, Throws.Nothing);
+        else
+            Assert.That(validate, Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.StatusCode)).EqualTo(expectedStatus));
+    }
+
+    [Test]
+    public void Historical_profile_accepts_streams_without_validation_identity_metadata() =>
+        Assert.That(() => StreamingIdentity.RequireMatchingValidationIdentity([], null), Throws.Nothing);
+
     private StreamingIdentity _identity = null!;
 
     [SetUp]
