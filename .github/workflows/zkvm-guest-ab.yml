@@ -1,0 +1,714 @@
+name: zkVM guest A/B
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_ref:
+        description: Base branch or full commit SHA on a NethermindEth/nethermind branch
+        type: string
+        default: master
+      head_ref:
+        description: Head branch or full commit SHA on a NethermindEth/nethermind branch
+        type: string
+        required: true
+      bflat_image:
+        description: bflat RISC-V64 image pinned by digest (empty = the Makefile pin of each arm)
+        type: string
+        default: ''
+      bflat_riscv32_image:
+        description: bflat RISC-V32 image for Airbender, pinned by digest (empty = the Makefile pin of each arm)
+        type: string
+        default: ''
+      extlib:
+        description: Candidate runtime packages, <guest>=run:<run id> or <guest>=<release asset URL>, comma-separated
+        type: string
+        default: ''
+      codegenopt:
+        description: bflat --codegenopt values, Name=Value, comma-separated, at most 8
+        type: string
+        default: ''
+      candidate_arm:
+        description: Arms that take bflat_image, bflat_riscv32_image, extlib and codegenopt (head = test them against the base at the same commit)
+        type: choice
+        options:
+          - both
+          - head
+        default: both
+      guests:
+        description: Guests to measure
+        type: string
+        default: zisk,sp1,openvm,airbender
+      formats:
+        description: Guest input formats to measure
+        type: string
+        default: ssz,trusted
+  workflow_call:
+    inputs:
+      base_ref:
+        type: string
+        default: master
+      head_ref:
+        type: string
+        required: true
+      bflat_image:
+        type: string
+        default: ''
+      bflat_riscv32_image:
+        type: string
+        default: ''
+      extlib:
+        type: string
+        default: ''
+      codegenopt:
+        type: string
+        default: ''
+      candidate_arm:
+        type: string
+        default: both
+      guests:
+        type: string
+        default: zisk,sp1,openvm,airbender
+      formats:
+        type: string
+        default: ssz,trusted
+      tools_ref:
+        description: NethermindEth/nethermind ref of the A/B scripts, used only when job.workflow_sha is not set (empty = master)
+        type: string
+        default: ''
+
+# A dispatch for the same ref and base/head pair waits for the previous one.
+# The fixed prefix keeps the group apart from the caller's own group under workflow_call, where
+# github.workflow and github.ref are the caller's.
+concurrency:
+  group: zkvm-guest-ab-${{ github.ref }}-${{ inputs.base_ref || 'master' }}-${{ inputs.head_ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  # The scripts measure both arms, so they come from this workflow's revision, not from either arm.
+  # A called workflow sees the caller in github.*, so the checkouts read job.workflow_* first.
+  TOOLS_REF: ${{ inputs.tools_ref || (github.repository == 'NethermindEth/nethermind' && github.sha) || 'master' }}
+  OPENVM_RUNNER_SHA: 3ff11ea29497a1dbeb1eb5c563b31022f285c688
+
+jobs:
+  resolve:
+    name: Resolve inputs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      base_sha: ${{ steps.resolve.outputs.base_sha }}
+      head_sha: ${{ steps.resolve.outputs.head_sha }}
+      guests: ${{ steps.resolve.outputs.guests }}
+      formats: ${{ steps.resolve.outputs.formats }}
+      candidate_arm: ${{ steps.resolve.outputs.candidate_arm }}
+      keys: ${{ steps.resolve.outputs.keys }}
+      openvm: ${{ steps.resolve.outputs.openvm }}
+      base_build_matrix: ${{ steps.resolve.outputs.base_build_matrix }}
+      head_build_matrix: ${{ steps.resolve.outputs.head_build_matrix }}
+      measure_matrix: ${{ steps.resolve.outputs.measure_matrix }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Validate and resolve
+        id: resolve
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
+          HEAD_REF: ${{ inputs.head_ref }}
+          BFLAT_IMAGE: ${{ inputs.bflat_image }}
+          BFLAT_RISCV32_IMAGE: ${{ inputs.bflat_riscv32_image }}
+          EXTLIB: ${{ inputs.extlib }}
+          CODEGENOPT: ${{ inputs.codegenopt }}
+          CANDIDATE_ARM: ${{ inputs.candidate_arm }}
+          GUESTS: ${{ inputs.guests }}
+          FORMATS: ${{ inputs.formats }}
+          GH_TOKEN: ${{ github.token }}
+        run: dotnet run --file .github/zkvm-ab/resolve.cs
+
+      - name: Upload candidate packages
+        if: steps.resolve.outputs.candidate == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkab-candidate
+          path: ${{ runner.temp }}/candidate
+          if-no-files-found: error
+          retention-days: 3
+
+  inputs:
+    name: Inputs
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Cache key
+        id: key
+        env:
+          BASE_SHA: ${{ needs.resolve.outputs.base_sha }}
+          FORMATS: ${{ needs.resolve.outputs.formats }}
+          SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/inputs.cs') }}
+        run: echo "key=zkab-inputs-$BASE_SHA-${FORMATS//,/-}-$SCRIPT_HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Look up inputs
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: zkab-inputs
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+
+      - name: Check out base
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ needs.resolve.outputs.base_sha }}
+          path: base
+          persist-credentials: false
+
+      - name: Set up .NET
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Set up base .NET
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: ./.github/actions/setup-dotnet
+        with:
+          global-json-file: base/global.json
+
+      - name: Download and convert
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          FORMATS: ${{ needs.resolve.outputs.formats }}
+        run: dotnet run --file .github/zkvm-ab/inputs.cs -- base zkab-inputs "$FORMATS"
+
+      - name: Save inputs
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: zkab-inputs
+          key: ${{ steps.key.outputs.key }}
+
+  openvm-runner:
+    name: OpenVM cost runner
+    needs: resolve
+    if: needs.resolve.outputs.openvm == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      key: ${{ steps.key.outputs.key }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Cache key
+        id: key
+        env:
+          SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/openvm-cost-main.rs', '.github/zkvm-ab/build-openvm-runner.sh') }}
+        run: echo "key=zkab-openvm-cost-$OPENVM_RUNNER_SHA-$SCRIPT_HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Look up runner
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: openvm-cost.tar.gz
+          key: ${{ steps.key.outputs.key }}
+          lookup-only: true
+
+      - name: Check out bflat-openvm
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/bflat-openvm
+          ref: ${{ env.OPENVM_RUNNER_SHA }}
+          path: bflat-openvm
+          persist-credentials: false
+
+      - name: Build runner
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          .github/zkvm-ab/build-openvm-runner.sh bflat-openvm openvm-cost.tar.gz
+
+      - name: Save runner
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: openvm-cost.tar.gz
+          key: ${{ steps.key.outputs.key }}
+
+  # No head code runs before seal-base finishes: a job step can read the runtime token from the
+  # runner and write cache entries or replace artifacts of this run, so every base cache save and
+  # base artifact comes first, and the summary checks the base rows against the seal
+  build-base:
+    name: Build ${{ matrix.vm }} base
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.base_build_matrix) }}
+    env:
+      EXTLIB_PATH: ${{ matrix.extlib }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Check out base global.json
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ matrix.sha }}
+          path: sdk
+          sparse-checkout: global.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Set up base .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          global-json-file: sdk/global.json
+
+      - name: .NET SDK version
+        id: sdk
+        working-directory: sdk
+        run: echo "version=$(dotnet --version)" >> "$GITHUB_OUTPUT"
+
+      # The emulators are deterministic and the key covers every input of the base build
+      - name: Restore base binaries
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: zkab-elf
+          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.cs') }}
+
+      - name: Check out base
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ matrix.sha }}
+          path: arm
+          persist-credentials: false
+
+      - name: Free disk
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+
+      - name: Download candidate packages
+        if: steps.cache.outputs.cache-hit != 'true' && env.EXTLIB_PATH != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: zkab-candidate
+          path: ${{ runner.temp }}/candidate
+
+      - name: Build guest
+        if: steps.cache.outputs.cache-hit != 'true'
+        env:
+          FORMATS: ${{ needs.resolve.outputs.formats }}
+          BFLAT_IMAGE: ${{ matrix.image }}
+          BFLAT_FLAGS: ${{ matrix.flags }}
+          CANDIDATE_DIR: ${{ runner.temp }}/candidate
+          VM: ${{ matrix.vm }}
+          PROJECT: ${{ matrix.project }}
+        run: dotnet run --file .github/zkvm-ab/build.cs -- "$VM" "$PROJECT" arm zkab-elf
+
+      - name: Save base binaries
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: zkab-elf
+          key: zkab-elf-${{ matrix.vm }}-${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}-sdk${{ steps.sdk.outputs.version }}-${{ hashFiles('.github/zkvm-ab/build.cs') }}
+
+      - name: Upload guest binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkab-elf-${{ matrix.vm }}-base
+          path: zkab-elf
+          if-no-files-found: error
+          retention-days: 3
+
+  measure-base:
+    name: Measure ${{ matrix.vm }} ${{ matrix.format }} base
+    needs: [resolve, inputs, openvm-runner, build-base]
+    # A failed build or OpenVM runner fails only the legs of its guest
+    if: ${{ !cancelled() && needs.inputs.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.measure_matrix) }}
+    env:
+      VM: ${{ matrix.vm }}
+      FORMAT: ${{ matrix.format }}
+      GUEST: src/Nethermind/${{ matrix.project }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Download base binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: zkab-elf-${{ matrix.vm }}-base
+          path: ${{ runner.temp }}/base-elf
+
+      - name: Cache key
+        id: key
+        env:
+          BUILD_KEY: ${{ fromJSON(needs.resolve.outputs.keys)[matrix.vm] }}
+          SCRIPT_HASH: ${{ hashFiles('.github/zkvm-ab/*.sh', '.github/zkvm-ab/*.rs', '.github/zkvm-ab/inputs.cs', '.github/zkvm-ab/build.cs', '.github/zkvm-ab/measure.cs', 'scripts/ci/script-process.helpers.cs') }}
+        run: |
+          set -euo pipefail
+          elf_hash="$(cd "$RUNNER_TEMP/base-elf" && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | cut -c1-64)"
+          echo "key=zkab-result-$VM-$FORMAT-$BUILD_KEY-$elf_hash-$OPENVM_RUNNER_SHA-$SCRIPT_HASH" >> "$GITHUB_OUTPUT"
+
+      - name: Restore base results
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: zkab-base
+          key: ${{ steps.key.outputs.key }}
+
+      - name: Check out base
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ needs.resolve.outputs.base_sha }}
+          path: base
+          persist-credentials: false
+          sparse-checkout: |
+            src/Nethermind/Nethermind.Stateless.Guest
+            src/Nethermind/Nethermind.Stateless.ZiskGuest
+            src/Nethermind/${{ matrix.project }}
+
+      - name: Place base binaries
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: mkdir -p "base/$GUEST/bin" && cp -R "$RUNNER_TEMP/base-elf/." "base/$GUEST/bin/"
+
+      - name: Restore inputs
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: zkab-inputs
+          key: ${{ needs.inputs.outputs.key }}
+          fail-on-cache-miss: true
+
+      - name: Restore OpenVM cost runner
+        if: steps.cache.outputs.cache-hit != 'true' && matrix.vm == 'openvm'
+        uses: actions/cache/restore@v5
+        with:
+          path: openvm-cost.tar.gz
+          key: ${{ needs.openvm-runner.outputs.key }}
+          fail-on-cache-miss: true
+
+      - name: Load OpenVM cost runner
+        if: steps.cache.outputs.cache-hit != 'true' && matrix.vm == 'openvm'
+        run: gunzip -c openvm-cost.tar.gz | docker load
+
+      - name: Set up the script SDK
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Measure base
+        id: measure
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          mkdir -p zkab-base
+          : > zkab-base/results.tsv
+          dotnet run --file .github/zkvm-ab/measure.cs -- "$VM" "$FORMAT" base "base/$GUEST" zkab-inputs zkab-base/results.tsv
+          expected=$(awk -F'\t' -v f="$FORMAT" '$1 == f' zkab-inputs/expected.tsv | wc -l)
+          if [ "$(wc -l < zkab-base/results.tsv)" = "$expected" ] && \
+            [ -z "$(awk -F'\t' '$8 != "OK" || $5 == "-"' zkab-base/results.tsv)" ]; then
+            echo "base_ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Save base results
+        if: steps.cache.outputs.cache-hit != 'true' && steps.measure.outputs.base_ok == 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: zkab-base
+          key: ${{ steps.key.outputs.key }}
+
+      - name: Upload base results
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkab-base-${{ matrix.vm }}-${{ matrix.format }}
+          path: zkab-base
+          if-no-files-found: error
+          retention-days: 7
+
+  seal-base:
+    name: Seal base results
+    needs: [resolve, measure-base]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      sums: ${{ steps.seal.outputs.sums }}
+    steps:
+      - name: Download base results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: zkab-base-*
+          path: base
+
+      # A job output cannot change after its job ends, unlike an artifact
+      - name: Seal
+        id: seal
+        run: |
+          set -euo pipefail
+          mkdir -p base
+          {
+            echo 'sums<<ZKAB_SUMS'
+            find base -type f -print0 | LC_ALL=C sort -z | xargs -0 -r sha256sum
+            echo ZKAB_SUMS
+          } >> "$GITHUB_OUTPUT"
+
+  build-head:
+    name: Build ${{ matrix.vm }} head
+    needs: [resolve, seal-base]
+    if: ${{ !cancelled() && needs.seal-base.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.head_build_matrix) }}
+    env:
+      EXTLIB_PATH: ${{ matrix.extlib }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Check out head
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ matrix.sha }}
+          path: arm
+          persist-credentials: false
+
+      - name: Free disk
+        run: sudo rm -rf /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Set up head .NET
+        uses: ./.github/actions/setup-dotnet
+        with:
+          global-json-file: arm/global.json
+
+      - name: Download candidate packages
+        if: env.EXTLIB_PATH != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: zkab-candidate
+          path: ${{ runner.temp }}/candidate
+
+      - name: Build guest
+        env:
+          FORMATS: ${{ needs.resolve.outputs.formats }}
+          BFLAT_IMAGE: ${{ matrix.image }}
+          BFLAT_FLAGS: ${{ matrix.flags }}
+          CANDIDATE_DIR: ${{ runner.temp }}/candidate
+          VM: ${{ matrix.vm }}
+          PROJECT: ${{ matrix.project }}
+        run: dotnet run --file .github/zkvm-ab/build.cs -- "$VM" "$PROJECT" arm zkab-elf
+
+      - name: Upload guest binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkab-elf-${{ matrix.vm }}-head
+          path: zkab-elf
+          if-no-files-found: error
+          retention-days: 3
+
+  measure-head:
+    name: Measure ${{ matrix.vm }} ${{ matrix.format }} head
+    needs: [resolve, inputs, openvm-runner, build-head]
+    # A failed build or OpenVM runner fails only the legs of its guest
+    if: ${{ !cancelled() && needs.inputs.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.resolve.outputs.measure_matrix) }}
+    env:
+      VM: ${{ matrix.vm }}
+      FORMAT: ${{ matrix.format }}
+      GUEST: src/Nethermind/${{ matrix.project }}
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Restore inputs
+        uses: actions/cache/restore@v5
+        with:
+          path: zkab-inputs
+          key: ${{ needs.inputs.outputs.key }}
+          fail-on-cache-miss: true
+
+      - name: Restore OpenVM cost runner
+        if: matrix.vm == 'openvm'
+        uses: actions/cache/restore@v5
+        with:
+          path: openvm-cost.tar.gz
+          key: ${{ needs.openvm-runner.outputs.key }}
+          fail-on-cache-miss: true
+
+      - name: Load OpenVM cost runner
+        if: matrix.vm == 'openvm'
+        run: gunzip -c openvm-cost.tar.gz | docker load
+
+      - name: Check out head
+        uses: actions/checkout@v7
+        with:
+          repository: NethermindEth/nethermind
+          ref: ${{ needs.resolve.outputs.head_sha }}
+          path: head
+          persist-credentials: false
+          sparse-checkout: |
+            src/Nethermind/Nethermind.Stateless.Guest
+            src/Nethermind/Nethermind.Stateless.ZiskGuest
+            src/Nethermind/${{ matrix.project }}
+
+      - name: Download head binaries
+        uses: actions/download-artifact@v8
+        with:
+          name: zkab-elf-${{ matrix.vm }}-head
+          path: head/${{ env.GUEST }}/bin
+
+      - name: Set up the script SDK
+        uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: Measure head
+        run: |
+          set -euo pipefail
+          mkdir -p zkab-results
+          dotnet run --file .github/zkvm-ab/measure.cs -- "$VM" "$FORMAT" head "head/$GUEST" zkab-inputs zkab-results/head.tsv
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkab-results-${{ matrix.vm }}-${{ matrix.format }}
+          path: zkab-results
+          if-no-files-found: error
+          retention-days: 7
+
+  summary:
+    name: Summary
+    needs: [resolve, seal-base, measure-head]
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out scripts
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository || 'NethermindEth/nethermind' }}
+          ref: ${{ job.workflow_sha || env.TOOLS_REF }}
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Download base results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: zkab-base-*
+          path: base
+
+      - name: Download head results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: zkab-results-*
+          path: head
+
+      - name: Check base results
+        env:
+          BASE_SUMS: ${{ needs.seal-base.outputs.sums }}
+        run: |
+          set -euo pipefail
+          mkdir -p base
+          find base -type f | LC_ALL=C sort > "$RUNNER_TEMP/found"
+          printf '%s' "$BASE_SUMS" | sed -n 's/^[0-9a-f]\{64\}  //p' | LC_ALL=C sort > "$RUNNER_TEMP/sealed"
+          if ! cmp -s "$RUNNER_TEMP/found" "$RUNNER_TEMP/sealed" || \
+            { [ -n "$BASE_SUMS" ] && ! printf '%s\n' "$BASE_SUMS" | sha256sum --quiet --strict -c -; }; then
+            echo "::error::the base results differ from the ones sealed before any head code ran"
+            exit 1
+          fi
+
+      - name: Summarize
+        env:
+          BASE_REF: ${{ inputs.base_ref }}
+          BASE_SHA: ${{ needs.resolve.outputs.base_sha }}
+          HEAD_REF: ${{ inputs.head_ref }}
+          HEAD_SHA: ${{ needs.resolve.outputs.head_sha }}
+          GUESTS: ${{ needs.resolve.outputs.guests }}
+          FORMATS: ${{ needs.resolve.outputs.formats }}
+          BFLAT_IMAGE: ${{ inputs.bflat_image }}
+          BFLAT_RISCV32_IMAGE: ${{ inputs.bflat_riscv32_image }}
+          EXTLIB: ${{ inputs.extlib }}
+          CODEGENOPT: ${{ inputs.codegenopt }}
+          CANDIDATE_ARM: ${{ needs.resolve.outputs.candidate_arm }}
+        run: |
+          mkdir -p zkvm-ab-summary
+          rc=0
+          dotnet run --file .github/zkvm-ab/summary.cs -- base head zkvm-ab-summary/summary.md zkvm-ab-summary/summary.json || rc=$?
+          cat zkvm-ab-summary/summary.md >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+
+      - name: Upload summary
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkvm-ab-summary
+          path: zkvm-ab-summary
+          if-no-files-found: error
+          retention-days: 30

@@ -221,3 +221,4 @@ jobs:
         run: |
           dotnet run --file scripts/ci/run-script-tests.cs -- --check scripts
           dotnet run --file scripts/ci/run-script-tests.cs -- --check .github/actions
+          dotnet run --file scripts/ci/run-script-tests.cs -- --check .github/zkvm-ab
