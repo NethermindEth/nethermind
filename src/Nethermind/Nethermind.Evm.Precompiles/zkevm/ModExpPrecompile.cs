@@ -37,7 +37,8 @@ public partial class ModExpPrecompile
         ReadOnlySpan<byte> modulus = inputSpan.SliceWithZeroPaddingEmptyOnError(modulusStart, modulusLength);
         byte[] result = new byte[modulusLength];
 
-        if (modulus.IsEmpty || modulus.IndexOfAnyExcept((byte)0) < 0)
+        int modulusHead = modulus.IndexOfAnyExcept((byte)0);
+        if (modulusHead < 0)
             return result;
 
         ReadOnlySpan<byte> @base = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
@@ -45,7 +46,7 @@ public partial class ModExpPrecompile
 
         // An empty base or exponent gives 0 or 1 (EIP-198: 0^0 = 1), where ZisK's routine runs the whole ladder. Only
         // the lengths are tested: a scan for zero bytes costs more than it saves on the common inputs.
-        if (baseLength == 0 || expLength == 0)
+        if (baseLength == 0 || expLength == 0 || IsModulus(@base, modulus[modulusHead..]))
         {
             if (exp.IsZero() && (modulus[^1] != 1 || !modulus[..^1].IsZero()))
                 result[^1] = 1;
@@ -61,5 +62,21 @@ public partial class ModExpPrecompile
             Accelerators.ModExp(@base, exp, modulus, result);
 
         return result;
+    }
+
+    /// <summary>Whether the base equals the modulus, so that it is 0 modulo it as an empty base is.</summary>
+    /// <remarks>
+    /// ZisK's routine does not reduce the base before its ladder, so it squares the modulus through every bit of the
+    /// exponent. The test stops at the first byte that rules it out.
+    /// </remarks>
+    /// <param name="modulus">The modulus without its leading zeros.</param>
+    private static bool IsModulus(ReadOnlySpan<byte> @base, ReadOnlySpan<byte> modulus)
+    {
+        int padding = @base.Length - modulus.Length;
+        return padding >= 0 &&
+            @base[0] == (padding == 0 ? modulus[0] : 0) &&
+            @base[^1] == modulus[^1] &&
+            @base[..padding].IndexOfAnyExcept((byte)0) < 0 &&
+            @base.EndsWith(modulus);
     }
 }
