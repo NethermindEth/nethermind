@@ -77,7 +77,9 @@ public class FlatTreeSyncStore(
         if (address is null)
         {
             if (_removedLeaves.TryRemove(path, out TrieNode? removedLeaf)) existingNode ??= removedLeaf;
-            ForgetRemovedLeavesAbove(path, exceptAccount: null);
+            // A leaf writes its account at its full path, which can be under a removed leaf below the node.
+            TreePath written = node.IsLeaf ? path.Append(node.Key) : path;
+            ForgetRemovedLeavesAbove(written, exceptAccount: node.IsLeaf ? written.Path : null);
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
             writeBatch.SetStateTrieNode(path, data);
@@ -94,7 +96,7 @@ public class FlatTreeSyncStore(
     }
 
     /// <summary>
-    /// Forgets the removed leaves above the path, where a node other than the storage of the leaf account is saved: a
+    /// Forgets the removed leaves above the path, where something other than the account of the leaf is written: a
     /// round that moved on to another root can save other accounts there before the leaf is saved again, so the leaf no
     /// longer stands for all the path holds. The storage of the leaf account is saved before the leaf, and kept by it.
     /// </summary>
@@ -285,6 +287,7 @@ public class FlatTreeSyncStore(
     public void FinalizeSync(BlockHeader pivotHeader)
     {
         if (Interlocked.CompareExchange(ref _wasFinalized, true, false)) throw new InvalidOperationException("Db was finalized");
+        _removedLeaves.Clear();
 
         using IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync);
         StateId from = reader.CurrentState;
