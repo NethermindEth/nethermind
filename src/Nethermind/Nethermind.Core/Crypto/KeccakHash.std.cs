@@ -40,7 +40,7 @@ public sealed partial class KeccakHash
         return family >= Zen5Family;
     }
 
-    internal static bool UseNativeAbsorb(int blocks, bool nativeAvailable) => nativeAvailable && blocks >= NativeKeccak.MinBlocks;
+    internal static bool UseNativeAbsorb(int blocks) => blocks >= NativeKeccak.MinBlocks && NativeKeccak.IsAvailable;
 
     /// <inheritdoc cref="KeccakHash.InitializeState" />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -59,7 +59,7 @@ public sealed partial class KeccakHash
             return AbsorbFullBlocks(state, stateBytes, input, roundSize);
 
         int blocks = input.Length / HASH_DATA_AREA;
-        if (UseNativeAbsorb(blocks, NativeKeccak.IsAvailable))
+        if (UseNativeAbsorb(blocks))
             NativeKeccak.Absorb(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(input), blocks);
         else
             AbsorbBlocksScalar(ref MemoryMarshal.GetReference(state), ref MemoryMarshal.GetReference(input), blocks);
