@@ -1686,50 +1686,113 @@ public class FastHeadersSyncTests
         Assert.That(returned, Is.True, "the sync mode change blocked in InitializeFeed");
     }
 
-    // A dependency at lowest inserted - 1 that can never connect, with the memory budget full, must not keep PrepareRequest
-    // looping while it holds the reset read lock.
+    // With the memory budget full, a pass that connects a dependency must not end the loop: PrepareRequest keeps inserting
+    // the dependencies that connect before it requests more headers.
     [Test]
-    public async Task PrepareRequest_returns_when_a_dependency_cannot_connect()
+    public async Task PrepareRequest_inserts_every_dependency_that_connects_before_requesting_more()
     {
-        (HeadersSyncFeed feed, IBlockTree remote, BlockHeader pivot) = CreateFeedRestartedAtPivot(
-            static (builder, syncConfig) => new FeedExpectingThePivotAgain(builder, syncConfig));
-        using HeadersSyncFeed _ = feed;
-        using CancellationTokenSource loopStop = new();
+        IBlockTree remote = Build.A.BlockTree().WithPostMergeRules().OfHeadersOnly.OfChainLength(5001).TestObject;
+        BlockHeader pivot = remote.FindHeader(5000, BlockTreeLookupOptions.None)!;
+        TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
+        syncConfig.FastHeadersMemoryBudget = 1;
+        BlockTreeBuilder builder = Build.A.BlockTree().WithoutSettingHead.WithSyncConfig(syncConfig);
+        builder.TestObject.SyncPivot = (pivot.Number, pivot.Hash!);
+        using HeadersSyncFeed feed = CreateFeed(builder, syncConfig);
         feed.InitializeFeed();
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
 
-        using (HeadersSyncBatch batch = (await feed.PrepareRequest())!)
+        using HeadersSyncBatch top = (await feed.PrepareRequest())!;
+        List<HeadersSyncBatch> lower = [];
+        for (int i = 0; i < 10; i++) lower.Add((await feed.PrepareRequest())!);
+        foreach (HeadersSyncBatch batch in lower)
         {
-            Assert.That(batch.EndNumber, Is.EqualTo(pivot.Number - 1));
-            AnswerFrom(remote, batch, new PeerInfo(Substitute.For<ISyncPeer>()));
+            AnswerFrom(remote, batch, peer);
             feed.HandleResponse(batch);
         }
+        Assert.That(Dependencies(feed).Count, Is.EqualTo(lower.Count));
+        AnswerFrom(remote, top, peer);
+        feed.HandleResponse(top);
 
-        Task<HeadersSyncBatch?> next = Task.Factory.StartNew(() => feed.PrepareRequest(loopStop.Token), CancellationToken.None,
-            TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
-        bool returned = await Task.WhenAny(next, Task.Delay(TimeSpan.FromSeconds(5))) == next;
-        loopStop.Cancel(); // Releases a PrepareRequest still looping, so the test cannot hang.
-        try { using HeadersSyncBatch? __ = await next.WaitAsync(TimeSpan.FromSeconds(10)); } catch (OperationCanceledException) { }
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        using HeadersSyncBatch? next = await Task.Run(() => feed.PrepareRequest(timeout.Token)).WaitAsync(timeout.Token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(next?.EndNumber, Is.EqualTo(lower[^1].StartNumber - 1), "the next request continues below the dependencies");
+            Assert.That(builder.TestObject.LowestInsertedHeader?.Number, Is.EqualTo(lower[^1].StartNumber));
+            Assert.That(Dependencies(feed).Count, Is.Zero);
+        }
+    }
 
-        Assert.That(returned, Is.True, "PrepareRequest kept looping on the dependency at pivot - 1");
+    // A dependency at lowest inserted - 1 that never connects, with the memory budget full, must not keep PrepareRequest
+    // looping while it holds the reset read lock. Each call makes a bounded number of attempts and returns, and the
+    // dependency is still handled once the expected header is right again.
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task PrepareRequest_returns_on_a_dependency_that_cannot_connect(bool reinitialize)
+    {
+        (FeedExpectingThePivotAgain feed, IBlockTree remote, BlockHeader pivot) = CreateFeedRestartedAtPivot(
+            static (builder, syncConfig) => new FeedExpectingThePivotAgain(builder, syncConfig));
+        using FeedExpectingThePivotAgain _ = feed;
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        feed.InitializeFeed();
+
+        using HeadersSyncBatch first = (await feed.PrepareRequest())!;
+        Assert.That(first.EndNumber, Is.EqualTo(pivot.Number - 1));
+        AnswerFrom(remote, first, peer);
+        feed.HandleResponse(first);
+        Assert.That(Dependencies(feed).Count, Is.EqualTo(1));
+
+        int attemptsBefore = feed.InsertAttempts;
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        for (int i = 0; i < 8; i++)
+        {
+            using HeadersSyncBatch? next = await Task.Run(() => feed.PrepareRequest(timeout.Token)).WaitAsync(timeout.Token);
+            Assert.That(next, Is.Null);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            // At the full budget, each call tries the dependency four times.
+            Assert.That(feed.InsertAttempts - attemptsBefore, Is.EqualTo(8 * 4), "insert attempts");
+            Assert.That(feed.LowestInsertedNumber, Is.EqualTo(pivot.Number));
+            Assert.That(Dependencies(feed).Count, Is.EqualTo(1));
+        }
+
+        feed.ExpectsThePivot = false;
+        if (reinitialize)
+        {
+            await Task.Run(feed.InitializeFeed).WaitAsync(timeout.Token);
+            Assert.That(Dependencies(feed).Count, Is.Zero, "the reset drops the dependency");
+            using HeadersSyncBatch again = (await feed.PrepareRequest())!;
+            Assert.That(again.EndNumber, Is.EqualTo(pivot.Number - 1));
+            AnswerFrom(remote, again, peer);
+            feed.HandleResponse(again);
+        }
+        else
+        {
+            feed.ExpectTheParentOfTheLowestInsertedHeader();
+            using HeadersSyncBatch? next = await feed.PrepareRequest();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(next, Is.Not.Null);
+                Assert.That(Dependencies(feed).Count, Is.Zero, "the dependency connects to the expected header");
+            }
+        }
+
+        Assert.That(feed.LowestInsertedNumber, Is.EqualTo(first.StartNumber));
     }
 
     /// <summary>
     /// Stores only the sync pivot header, then creates a block tree over the same databases, as after a restart.
     /// Any queued dependency fills the memory budget.
     /// </summary>
-    private static (HeadersSyncFeed Feed, IBlockTree Remote, BlockHeader Pivot) CreateFeedRestartedAtPivot(
-        Func<BlockTreeBuilder, TestSyncConfig, HeadersSyncFeed> createFeed)
+    private static (TFeed Feed, IBlockTree Remote, BlockHeader Pivot) CreateFeedRestartedAtPivot<TFeed>(
+        Func<BlockTreeBuilder, TestSyncConfig, TFeed> createFeed) where TFeed : HeadersSyncFeed
     {
         IBlockTree remoteBlockTree = Build.A.BlockTree().WithPostMergeRules().OfHeadersOnly.OfChainLength(1001).TestObject;
         BlockHeader pivot = remoteBlockTree.FindHeader(1000, BlockTreeLookupOptions.None)!;
-        TestSyncConfig syncConfig = new()
-        {
-            FastSync = true,
-            PivotNumber = pivot.Number,
-            PivotHash = pivot.Hash!.ToString(),
-            PivotTotalDifficulty = pivot.TotalDifficulty.ToString()!,
-            FastHeadersMemoryBudget = 1,
-        };
+        TestSyncConfig syncConfig = CreatePivotSyncConfig(pivot);
+        syncConfig.FastHeadersMemoryBudget = 1;
 
         Func<BlockTreeBuilder> createBuilderOverSharedDbs = SharedDbsBlockTreeBuilderFactory(syncConfig);
         BlockTree treeBeforeRestart = createBuilderOverSharedDbs().TestObject;
@@ -1746,19 +1809,28 @@ public class FastHeadersSyncTests
         CreateFeed(builder, syncConfig, Substitute.For<IPoSSwitcher>());
 
     /// <summary>
-    /// Keeps expecting the pivot itself after the restart, so the batch below the pivot is kept as a dependency that never connects.
+    /// Keeps expecting the pivot after a reset, so the batch below the pivot stays a dependency that never connects.
     /// </summary>
     private sealed class FeedExpectingThePivotAgain(BlockTreeBuilder builder, TestSyncConfig syncConfig) : HeadersSyncFeed(
         builder.TestObject, Substitute.For<ISyncPeerPool>(), syncConfig, new NullSyncReport(), Substitute.For<IPoSSwitcher>(),
         LimboLogs.Instance, builder.ChainLevelInfoRepository, builder.HeaderStore)
     {
+        public bool ExpectsThePivot { get; set; } = true;
+        public int InsertAttempts { get; private set; }
+        public ulong? LowestInsertedNumber => _blockTree.LowestInsertedHeader?.Number;
+
+        public void ExpectTheParentOfTheLowestInsertedHeader() => SetExpectedNextHeaderToParent(_blockTree.LowestInsertedHeader!);
+
         protected override void ResetPivot()
         {
-            // Without a lowest inserted header, the reset expects the pivot and requests it again.
-            BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            _blockTree.LowestInsertedHeader = null;
             base.ResetPivot();
-            _blockTree.LowestInsertedHeader = lowestInserted;
+            if (ExpectsThePivot) _expectedNextHeader = new NextHeader(_blockTree.SyncPivot.BlockHash, null);
+        }
+
+        protected override int InsertHeaders(HeadersSyncBatch batch)
+        {
+            InsertAttempts++;
+            return base.InsertHeaders(batch);
         }
     }
 
