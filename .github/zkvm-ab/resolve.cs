@@ -103,7 +103,7 @@ try
     var extlibs = new Dictionary<string, (string Key, string Path)>();
     if (extlib.Replace(" ", "").Replace(",", "").Length > 0)
     {
-        var fetch = await ScriptProcess.Run(".github/zkvm-ab/fetch-extlib.sh", [extlib, Path.Combine(Env("RUNNER_TEMP"), "candidate")], CancellationToken.None);
+        var fetch = await ScriptProcess.Run("dotnet", ["run", "--file", ".github/zkvm-ab/fetch-extlib.cs", "--", extlib, Path.Combine(Env("RUNNER_TEMP"), "candidate")], CancellationToken.None);
         Console.Error.Write(fetch.Error);
         if (fetch.Code != 0)
             return fetch.Code;
