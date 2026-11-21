@@ -3457,7 +3457,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             else if (EvmPooledMemory.IsSwizzled)
                 SwizzledMemory.Write(ref range, source.Slice((int)from, (int)length));
             else
-                Bytes.Copy(source.Slice((int)from, (int)length), MemoryMarshal.CreateSpan(ref range, (int)length));
+                // Every caller has checked that the source holds the bytes and the range takes them.
+                Bytes.Memmove(Unsafe.AsPointer(ref range), Unsafe.AsPointer(ref Unsafe.Add(ref MemoryMarshal.GetReference(source), (nint)from)), length);
         }
 
         /// <summary>The bytes a copy to memory reads, as <see cref="ExecuteDataCopy{TSource}"/> runs it.</summary>
