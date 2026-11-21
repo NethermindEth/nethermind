@@ -112,10 +112,7 @@ namespace Nethermind.Network
             if (_syncPeers.TryRemove(session.SessionId, out SyncPeerProtocolHandlerBase? removed) && removed is not null)
             {
                 _syncPool.RemovePeer(removed);
-                if (removed.Node?.Id is not null)
-                {
-                    _txPool.RemovePeer(removed.Node.Id);
-                }
+                if (removed.IncludeInTxPool) _txPool.RemovePeer(removed);
             }
         }
 
@@ -263,6 +260,7 @@ namespace Nethermind.Network
         private void OnP2PProtocolInitialized(ISession session, P2PProtocolHandler handler, P2PProtocolInitializedEventArgs args)
         {
             if (!RunBasicChecks(session, Protocol.P2P, handler.ProtocolVersion)) return;
+            _peerManager.OnHelloReceived(session);
             if (!_protocolValidator.ValidateOrDisconnect(Protocol.P2P, session, args)) return;
 
             if (session.Direction == ConnectionDirection.In) session.Node.Port = args.ListenPort;

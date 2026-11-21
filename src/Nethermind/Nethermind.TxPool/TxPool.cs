@@ -1700,6 +1700,12 @@ namespace Nethermind.TxPool
             }
         }
 
+        public void RemovePeer(ITxPoolPeer peer)
+        {
+            if (_broadcaster.RemovePeer(peer) && _logger.IsTrace)
+                _logger.Trace($"Removed a peer from TX pool: {peer.Id}");
+        }
+
         public bool AcceptTxWhenNotSynced { get; set; }
         public bool SupportsBlobs { get; }
         public long PendingTransactionsAdded => Volatile.Read(ref _pendingTransactionsAdded);

@@ -71,7 +71,9 @@ namespace Nethermind.Network
         private bool _isStopping; // guarded by _sessionLock
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        // Admission state and the pending count are guarded by _sessionLock.
+        private readonly Dictionary<ISession, AdmissionState> _sessions = [with(ReferenceEqualityComparer.Instance)];
+        private int _incomingSessionsAwaitingHello;
         private readonly HashSet<Guid> _authenticatedSessions = [];
         internal const int MaxInboundCandidatesPerIp = 16;
         private readonly int _outgoingConnectParallelism;
@@ -290,9 +292,9 @@ namespace Nethermind.Network
                 _peerPool.PeerRemoved -= PeerPoolOnPeerRemoved;
                 _rlpxHost.SessionCreated -= RlpxHostOnSessionCreated;
                 _rlpxHost.SessionDisconnected -= _onSessionDisconnected;
-                foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
+                foreach (ISession session in _sessions.Keys)
                 {
-                    ToggleSessionEventListeners(kvp.Value, false);
+                    ToggleSessionEventListeners(session, false);
                 }
 
                 _sessions.Clear();
@@ -302,6 +304,7 @@ namespace Nethermind.Network
                 _pendingCapacityDisconnects.Clear();
                 _inboundCandidates.Clear();
                 _inboundCandidatesPerIp.Clear();
+                _incomingSessionsAwaitingHello = 0;
             }
 
             _cancellationTokenSource.Cancel();
@@ -894,16 +897,16 @@ namespace Nethermind.Network
             bool isOutgoing;
             lock (_sessionLock)
             {
-                if (_isStopping)
+                if (_isStopping || session.IsClosing)
                 {
                     return;
                 }
 
-                _sessions.TryAdd(session.SessionId, session);
+                isOutgoing = session.Direction == ConnectionDirection.Out;
+                if (!_sessions.TryAdd(session, isOutgoing ? AdmissionState.Accepted : AdmissionState.AwaitingHandshake)) return;
                 ToggleSessionEventListeners(session, true);
 
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.Created);
-                isOutgoing = session.Direction == ConnectionDirection.Out;
             }
 
             // ProcessOutgoingConnection may call MarkDisconnected/InitiateDisconnect,
@@ -1163,6 +1166,17 @@ namespace Nethermind.Network
             lock (_sessionLock)
             {
                 if (_isStopping || !HasOpenSession(session)) return;
+                if (session.Direction == ConnectionDirection.In)
+                {
+                    // A session that connected before Start was never tracked; it is admitted on its Hello as before.
+                    if (_sessions.TryGetValue(session, out AdmissionState state))
+                    {
+                        if (state != AdmissionState.AwaitingHello) return;
+                        _incomingSessionsAwaitingHello--;
+                    }
+                    _sessions[session] = AdmissionState.Accepted;
+                    CopyPrivilegedFlags(session);
+                }
                 if (!_authenticatedSessions.Add(session.SessionId)) return;
                 if (session.Direction == ConnectionDirection.In)
                 {
@@ -1191,14 +1205,30 @@ namespace Nethermind.Network
             if (victim is not null) DisconnectCapacityVictim(victim);
         }
 
-        private void ProcessIncomingConnection(ISession session)
+        public void OnHelloReceived(ISession session)
         {
-            if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
+            if (session.Direction != ConnectionDirection.In) return;
+            lock (_sessionLock)
             {
-                // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
+                if (!_sessions.TryGetValue(session, out AdmissionState state) || state != AdmissionState.AwaitingHello) return;
+                CopyPrivilegedFlags(session);
+            }
+        }
+
+        // Only after the Hello: it arrives over frames keyed to the claimed identity, so the remote holds that key.
+        // A key claimed in the AUTH alone must not grant the disconnect exemptions of static and trusted peers.
+        private void CopyPrivilegedFlags(ISession session)
+        {
+            if (_peerPool.TryGet(session.Node.Id, out Peer? existingPeer))
+            {
                 session.Node.IsStatic = existingPeer.Node.IsStatic;
                 session.Node.IsTrusted = existingPeer.Node.IsTrusted;
             }
+        }
+
+        private void ProcessIncomingConnection(ISession session)
+        {
+            _peerPool.TryGet(session.Node.Id, out Peer? existingPeer);
 
             if (_logger.IsTrace) TraceProcessingIncoming();
 
@@ -1563,9 +1593,11 @@ namespace Nethermind.Network
                 try
                 {
                     ToggleSessionEventListeners(session, false);
-                    _sessions.TryRemove(session.SessionId, out _);
                     _inboundAdmissionOrder.Remove(session.SessionId);
                     bool authenticatedInbound = _authenticatedSessions.Remove(session.SessionId);
+                    if (!_sessions.Remove(session, out AdmissionState state)) return;
+                    if (state == AdmissionState.AwaitingHello) _incomingSessionsAwaitingHello--;
+                    if (state != AdmissionState.Accepted) return;
                     if (session.Direction == ConnectionDirection.In && !authenticatedInbound) return;
                     if (_isStopping)
                     {
@@ -1643,26 +1675,45 @@ namespace Nethermind.Network
             ISession session = (ISession)sender;
             lock (_sessionLock)
             {
-                if (_isStopping)
+                if (!_sessions.TryGetValue(session, out AdmissionState state))
                 {
                     return;
                 }
 
+                if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeCompleted);
+
                 if (session.Direction == ConnectionDirection.In)
                 {
+                    if (state != AdmissionState.AwaitingHandshake) return;
+
                     // AUTH names a key but does not prove possession until an authenticated frame arrives.
-                    if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer existingPeer) &&
-                        (IsAuthenticatedOpenSession(existingPeer.InSession) || IsAuthenticatedOpenSession(existingPeer.OutSession)))
+                    if (_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer activePeer) &&
+                        (IsAuthenticatedOpenSession(activePeer.InSession) || IsAuthenticatedOpenSession(activePeer.OutSession)))
                     {
                         session.MarkDisconnected(DisconnectReason.SessionAlreadyExist, DisconnectType.Local, "unauthenticated identity conflict");
+                        return;
                     }
+
+                    bool isPrivileged = _peerPool.TryGet(session.Node.Id, out Peer? existingPeer)
+                        && (existingPeer.Node.IsStatic || existingPeer.Node.IsTrusted);
+
+                    // A privileged id may exceed the cap with one pending session, so false claims of it stay bounded.
+                    // The session itself gets the flags only once its Hello arrives (OnHelloReceived), as the AUTH alone does not prove the key.
+                    if (_incomingSessionsAwaitingHello >= (long)MaxActivePeers + MaxActivePeerMargin
+                        && (!isPrivileged || IsAwaitingHello(session.Node.Id)))
+                    {
+                        session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, "pending inbound handshakes");
+                        return;
+                    }
+
+                    _incomingSessionsAwaitingHello++;
+                    _sessions[session] = AdmissionState.AwaitingHello;
+
                     return;
                 }
 
                 //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer
                 ManageNewRemoteNodeId(session);
-
-                if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeCompleted);
 
                 if (!_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
                 {
@@ -1684,6 +1735,16 @@ namespace Nethermind.Network
         private bool IsAuthenticatedOpenSession(ISession? session)
             => HasOpenSession(session) && _authenticatedSessions.Contains(session!.SessionId);
 
+        private bool IsAwaitingHello(PublicKey nodeId)
+        {
+            foreach ((ISession session, AdmissionState state) in _sessions)
+            {
+                if (state == AdmissionState.AwaitingHello && session.Node.Id == nodeId) return true;
+            }
+
+            return false;
+        }
+
         private void ManageNewRemoteNodeId(ISession session)
         {
             if (session.ObsoleteRemoteNodeId is null)
@@ -1700,6 +1761,14 @@ namespace Nethermind.Network
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceRemoteNodeIdUpdated()
                 => _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId:hide}, new: {session.RemoteNodeId:hide}, new peer not present in candidate collection");
+        }
+
+        // An incoming AUTH claims an identity. Only the authenticated Hello establishes it for peer accounting.
+        private enum AdmissionState
+        {
+            AwaitingHandshake,
+            AwaitingHello,
+            Accepted
         }
 
         private enum SessionLifecycleTraceEvent

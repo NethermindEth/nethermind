@@ -3204,6 +3204,17 @@ namespace Nethermind.TxPool.Test
             Assert.That(txPoolPeer.BatchCount(sendFullTx: false), Is.Zero);
         }
 
+        [Test]
+        public void should_keep_notifying_peer_after_another_connection_with_its_id_is_removed()
+        {
+            _txPool = CreatePool();
+            RecordingTxPoolPeer registered = new(TestItem.PublicKeyA);
+            _txPool.AddPeer(registered);
+            _txPool.RemovePeer(new RecordingTxPoolPeer(TestItem.PublicKeyA));
+            _ = AddTransactionToPool();
+            Assert.That(() => registered.BatchCount(sendFullTx: true), Is.Not.Zero.After(500, 10));
+        }
+
         [TestCase(true, TestName = "should_send_to_peers_full_newly_added_local_tx")]
         [TestCase(false, TestName = "should_not_send_to_peers_full_newly_added_external_tx")]
         public void should_handle_sending_newly_added_tx_to_peers(bool isLocal)

@@ -69,6 +69,10 @@ namespace Nethermind.TxPool
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out Transaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+
+        /// <summary>Removes the gossip registration owned by this peer connection.</summary>
+        void RemovePeer(ITxPoolPeer peer);
+
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         /// <summary>Defers a tracked request after local admission refuses to send it.</summary>
         /// <remarks>The default returns false; implementations without retry tracking do not retain unsent requests.</remarks>

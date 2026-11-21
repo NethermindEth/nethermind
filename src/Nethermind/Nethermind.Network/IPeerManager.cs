@@ -17,5 +17,8 @@ namespace Nethermind.Network
         int ConnectedPeersCount { get; }
 
         void OnP2PProtocolInitialized(ISession session);
+
+        /// <summary>Called once an incoming session's Hello proves the remote holds its claimed key, before the Hello is validated.</summary>
+        void OnHelloReceived(ISession session);
     }
 }
