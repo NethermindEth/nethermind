@@ -519,7 +519,7 @@ public class AdminModuleTests
         Assert.That(expectedResult, Is.EqualTo(serialized), $"a {expectedType} event must serialize with type '{expectedType}'");
     }
 
-    // An inbound session raises its message events with its node only once something has read it.
+    // A session raises its message events without a node while its remote id, host or port is unknown.
     [TestCase(true, TestName = "PeerEvents_OnMsgReceivedWithoutNode_SendsNothing")]
     [TestCase(false, TestName = "PeerEvents_OnMsgDeliveredWithoutNode_SendsNothing")]
     public void PeerEventsSubscription_OnMessageEventWithoutNode_DoesNotThrowAndSendsNothing(bool isReceived)

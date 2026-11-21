@@ -51,8 +51,6 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _stateDbLock = new();
         private readonly ReaderWriterLockSlim _codeDbLock = new();
 
-        private long _handleWatch = new();
-
         private Hash256 _rootNode = Keccak.EmptyTreeHash;
         private int _rootSaved;
 
@@ -305,9 +303,7 @@ namespace Nethermind.Synchronization.FastSync
                                 $"Handle watch {elapsedTime:N0}, DB reads {_data.DbChecks - _data.LastDbReads}, ratio {(decimal)elapsedTime / Math.Max(1, _data.DbChecks - _data.LastDbReads)}");
                     }
 
-                    Interlocked.Add(ref _handleWatch, (long)Stopwatch.GetElapsedTime(startTime).TotalMilliseconds);
                     _data.LastDbReads = _data.DbChecks;
-                    _data.AverageTimeInHandler = _handleWatch / (decimal)_data.ProcessedRequestsCount;
 
                     Interlocked.Add(ref _data.HandledNodesCount, nonEmptyResponses);
                     return result;
