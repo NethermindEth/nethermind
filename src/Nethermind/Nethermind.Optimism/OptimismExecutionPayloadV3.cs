@@ -20,7 +20,7 @@ public class OptimismExecutionPayloadV3 : ExecutionPayloadV3, IExecutionPayloadF
     public new static OptimismExecutionPayloadV3 Create(Block block)
     {
         OptimismExecutionPayloadV3 payload = Create<OptimismExecutionPayloadV3>(block);
-        payload.WithdrawalsRoot = block.WithdrawalsRoot;
+        payload.WithdrawalsRoot = block.WithdrawalsRoot is { } root && root != Keccak.EmptyTreeHash ? root : null;
         return payload;
     }
 
