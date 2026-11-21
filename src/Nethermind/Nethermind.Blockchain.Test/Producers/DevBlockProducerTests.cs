@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -23,10 +24,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -66,6 +69,56 @@ public class DevBlockProducerTests
         Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "1");
         Assert.That(blockTree.Head!.Number, Is.EqualTo(1));
         Assert.That(blockTree.Head.ParentBeaconBlockRoot, Is.EqualTo(Hash256.Zero));
+    }
+
+    private static IEnumerable<TestCaseData> WithdrawalsCases()
+    {
+        yield return new TestCaseData(London.Instance, London.Instance, null, null)
+            .SetName("Produced block has no withdrawals before Shanghai");
+        yield return new TestCaseData(Shanghai.Instance, Shanghai.Instance, null, Array.Empty<Withdrawal>())
+            .SetName("Produced block has empty withdrawals on Shanghai");
+        yield return new TestCaseData(London.Instance, Shanghai.Instance, null, Array.Empty<Withdrawal>())
+            .SetName("Produced block has empty withdrawals on the first Shanghai block");
+        yield return new TestCaseData(Shanghai.Instance, Shanghai.Instance, new[] { TestItem.WithdrawalA_1Eth }, new[] { TestItem.WithdrawalA_1Eth })
+            .SetName("Produced block keeps supplied withdrawals");
+    }
+
+    [TestCaseSource(nameof(WithdrawalsCases)), MaxTime(Timeout.MaxTestTime)]
+    public async Task Produced_block_has_the_withdrawals_its_fork_requires(IReleaseSpec parentSpec, IReleaseSpec childSpec, Withdrawal[]? supplied, Withdrawal[]? expected)
+    {
+        TestSpecProvider specProvider = new(parentSpec) { NextForkSpec = childSpec, ForkOnBlockNumber = 1 };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddSingleton<IBlockValidator>(Always.Valid)
+            .AddSingleton<IBlockProducerTxSourceFactory, EmptyTxSourceFactory>()
+            .AddScoped<IBlockProducerFactory, TestBlockProcessingModule.AutoBlockProducerFactory<DevBlockProducer>>()
+            .Build();
+
+        IBlockTree blockTree = container.Resolve<IBlockTree>();
+        AutoResetEvent autoResetEvent = new(false);
+        blockTree.NewHeadBlock += (_, _) => autoResetEvent.Set();
+
+        container.Resolve<IMainProcessingContext>().BlockProcessingQueue.Start();
+        container.Resolve<IBlockProducerRunner>().Start();
+
+        blockTree.SuggestBlock(Build.A.Block.Genesis.TestObject);
+        Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "genesis");
+
+        BlockHeader parent = blockTree.Head!.Header;
+        PayloadAttributes? payloadAttributes = supplied is null ? null : new PayloadAttributes { Timestamp = parent.Timestamp + 1, Withdrawals = supplied };
+        Block? block = await container.Resolve<IManualBlockProductionTrigger>().BuildBlock(payloadAttributes: payloadAttributes);
+        Assert.That(block, Is.Not.Null, "produced");
+        BlockValidator blockValidator = new(container.Resolve<ITxValidator>(), container.Resolve<IHeaderValidator>(),
+            container.Resolve<IUnclesValidator>(), specProvider, LimboLogs.Instance);
+        Assert.That(autoResetEvent.WaitOne(NewHeadWaitMs), Is.True, "1");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Withdrawals, Is.EqualTo(expected));
+            Assert.That(block.Header.WithdrawalsRoot, Is.EqualTo(expected is null ? null : WithdrawalTrie.CalculateRoot(expected)));
+            Assert.That(BlockValidator.ValidateWithdrawalsHashMatches(block, out _), Is.True, "body matches the header");
+            Assert.That(blockValidator.ValidateSuggestedBlock(block, parent, out string? error), Is.True, error);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -153,7 +206,8 @@ public class DevBlockProducerTests
                 // The default test override returns a new spec instance per head, which the pool treats as a fork:
                 // the revalidation it queues runs after TxPoolHeadChanged and drops a gapped tx submitted meanwhile.
                 // One stable instance keeps the pool from revalidating. EIP-3607 is off so AddressA, which has code, can send.
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(London.Instance) { IsEip3607Enabled = false }) { AllowTestChainOverride = false })
+                // Shanghai, so the blocks that include transactions also get the empty withdrawals list.
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(new OverridableReleaseSpec(Shanghai.Instance) { IsEip3607Enabled = false }) { AllowTestChainOverride = false })
                 .AddSingleton<IGenesisPostProcessor>(new FunctionalGenesisPostProcessor(genesis => genesis.Header.BaseFeePerGas = genesisBaseFee))
                 .ConfigureTestConfiguration(conf => conf.SuggestGenesisOnStart = false));
 

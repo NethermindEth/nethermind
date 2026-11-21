@@ -216,7 +216,16 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            if (lowestInserted is not null && lowestInserted.Number < _pivotNumber)
+            if (lowestInserted is not null && lowestInserted.Number == _pivotNumber && lowestInserted.Hash != nextHeaderHash)
+            {
+                // A lowest inserted header at the pivot height that is not the pivot does not belong to this sync,
+                // so start from the pivot again.
+                _blockTree.LowestInsertedHeader = null;
+                lowestInserted = null;
+            }
+
+            // `<=`: when only the pivot is inserted, resume from its parent rather than requesting the pivot again.
+            if (lowestInserted is not null && lowestInserted.Number <= _pivotNumber)
             {
                 if (lowestInserted.TotalDifficulty is null)
                 {
@@ -846,7 +855,13 @@ namespace Nethermind.Synchronization.FastBlocks
                 bool isFirst = i == response.Length - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
-                    if (!ValidateFirstHeader(header, i)) break;
+                    if (!ValidateFirstHeader(header, i, out bool isStored)) break;
+                    if (isStored)
+                    {
+                        // The next header is then validated as the first one.
+                        skippedAtTheEnd++;
+                        continue;
+                    }
                 }
                 else
                 {
@@ -955,8 +970,9 @@ namespace Nethermind.Synchronization.FastBlocks
             return added;
 
             // Well, its the last in the batch, but first processed.
-            bool ValidateFirstHeader(BlockHeader header, int headerIndex)
+            bool ValidateFirstHeader(BlockHeader header, int headerIndex, out bool isStored)
             {
+                isStored = false;
                 BlockHeader lowestInserted = LowestInsertedBlockHeader;
                 // response does not carry expected data
                 if (header.Number == lowestInserted?.Number && header.Hash != lowestInserted?.Hash)
@@ -970,7 +986,8 @@ namespace Nethermind.Synchronization.FastBlocks
                             "first hash inconsistent with request");
                     }
 
-                    return true;
+                    // Nothing from this response is inserted; the range is requested again.
+                    return false;
                 }
 
                 // response needs to be cached until predecessors arrive
@@ -996,18 +1013,15 @@ namespace Nethermind.Synchronization.FastBlocks
                         return false;
                     }
 
-                    if (header.Number == LowestInsertedBlockHeader?.Number)
+                    // The lowest inserted header itself, as a different hash is rejected above. It is already stored, so count
+                    // it and validate the rest of the response from its parent. This must stay after the expected hash check:
+                    // a header that is expected next is inserted as usual.
+                    if (header.Number == lowestInserted?.Number)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"{batch} - ended up IGNORED - different branch");
-                        if (batch.ResponseSourcePeer is not null)
-                        {
-                            _syncPeerPool.ReportBreachOfProtocol(
-                                batch.ResponseSourcePeer,
-                                DisconnectReason.HeaderBatchOnDifferentBranch,
-                                "headers - different branch");
-                        }
-
-                        return false;
+                        if (_logger.IsDebug) _logger.Debug($"{batch} - ends at the lowest inserted header {header.Number}, already stored");
+                        addedEarliest = addedLast = header.Number;
+                        isStored = true;
+                        return true;
                     }
 
                     if (_dependencies.ContainsKey(header.Number))

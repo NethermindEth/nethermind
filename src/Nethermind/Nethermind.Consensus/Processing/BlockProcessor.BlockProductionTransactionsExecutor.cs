@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -103,6 +104,13 @@ namespace Nethermind.Consensus.Processing
                             blockToProduce.TxByteLength += currentTx.GetLength();
                         }
                     }
+                }
+
+                if (blockToProduce?.RequiredTransactions is { } required &&
+                    (includedTx.Count < required.Length || !includedTx.AsSpan()[..required.Length].SequenceEqual(required)))
+                {
+                    token.ThrowIfCancellationRequested();
+                    throw new InvalidBlockException(block, "Could not include all required payload transactions in order.");
                 }
 
                 block.Header.TxRoot = TxTrie.CalculateRoot(includedTx.AsSpan());

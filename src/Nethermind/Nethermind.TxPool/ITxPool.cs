@@ -69,6 +69,10 @@ namespace Nethermind.TxPool
             GetPendingLightBlobTransactionsBySender().TryGetValue(address, out MempoolTransaction[]? txs) ? txs : [];
         void AddPeer(ITxPoolPeer peer);
         void RemovePeer(PublicKey nodeId);
+
+        /// <summary>Removes the gossip registration owned by this peer connection.</summary>
+        void RemovePeer(ITxPoolPeer peer);
+
         AnnounceResult NotifyAboutTx(in ValueHash256 txhash, IMessageHandler<PooledTransactionRequestMessage> retryHandler);
         AcceptTxResult SubmitTx(MempoolTransaction tx, TxHandlingOptions handlingOptions);
         /// <summary>

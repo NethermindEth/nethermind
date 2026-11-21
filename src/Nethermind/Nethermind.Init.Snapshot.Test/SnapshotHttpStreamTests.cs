@@ -277,7 +277,7 @@ public class SnapshotHttpStreamTests
         SnapshotRemoteInfo remoteInfo = await client.ProbeAsync(_server.Url, cancellationToken);
         await using SnapshotHttpStream stream = new(client, _server.Url, remoteInfo, settings, LimboLogs.Instance, cancellationToken);
         using MemoryStream delivered = new();
-        await Task.Run(() => stream.CopyTo(delivered));
+        await Task.Run(() => stream.CopyTo(delivered), cancellationToken);
         byte[] hash = (await stream.FinishAsync(cancellationToken))!;
         return (delivered.ToArray(), hash);
     }

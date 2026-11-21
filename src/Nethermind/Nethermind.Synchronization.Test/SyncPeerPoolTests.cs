@@ -120,7 +120,7 @@ public class SyncPeerPoolTests
 
             if (_headerResponseTime.HasValue)
             {
-                await Task.Delay(_headerResponseTime.Value);
+                await Task.Delay(_headerResponseTime.Value, CancellationToken.None);
             }
 
             IsInitialized = true;
