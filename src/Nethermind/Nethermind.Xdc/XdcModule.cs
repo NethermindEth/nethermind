@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Container;
@@ -60,6 +61,7 @@ public class XdcModule : Module
 
             .AddDecorator<IGenesisBuilder, XdcGenesisBuilder>()
             .AddScoped<IBlockProcessor, XdcBlockProcessor>()
+            .AddKeyedScoped<BlockProcessor, XdcTransactionTraceBlockProcessor>(TransactionTraceModule.BlockProcessorKey)
 
             .Add<StartXdcBlockProducer>()
             .AddSingleton<XdcBlockProducerFactory>()
