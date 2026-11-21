@@ -41,6 +41,7 @@ public class PerTableDbConfig : IRocksDbConfig
 #endif
     }
 
+#if DEBUG
     private void EnsureConfigIsAvailable(string propertyName)
     {
         Type type = typeof(IDbConfig);
@@ -53,6 +54,7 @@ public class PerTableDbConfig : IRocksDbConfig
             }
         }
     }
+#endif
 
     public ulong? WriteBufferSize => ReadConfig<ulong?>(nameof(WriteBufferSize));
     public ulong? WriteBufferNumber => ReadConfig<ulong?>(nameof(WriteBufferNumber));

@@ -95,6 +95,9 @@ csharp_style_var_elsewhere = false:error
 
 # Coding convention
 dotnet_diagnostic.IDE0005.severity = warning
+dotnet_diagnostic.IDE0051.severity = warning
+dotnet_diagnostic.IDE0052.severity = warning
+dotnet_diagnostic.IDE0059.severity = warning
 dotnet_diagnostic.IDE0130.severity = warning
 dotnet_diagnostic.IDE0041.severity = error
 dotnet_diagnostic.IDE0100.severity = warning
@@ -192,3 +195,17 @@ dotnet_diagnostic.IDE0130.severity = none
 # usings are required in Merge.Plugin (ImplicitUsings disabled), so suppress the false positive.
 [src/Nethermind/Nethermind.Merge.Plugin/Data/{ExecutionPayload,ExecutionPayloadV4,IExecutionPayloadParams,PayloadTransactionCountGuard}.cs]
 dotnet_diagnostic.IDE0005.severity = none
+
+[src/Nethermind/{*Test*,*Benchmark*}/**.cs]
+dotnet_diagnostic.IDE0051.severity = none
+dotnet_diagnostic.IDE0052.severity = none
+dotnet_diagnostic.IDE0059.severity = none
+
+[tools/*/{*Test*,*Benchmark*}/**.cs]
+dotnet_diagnostic.IDE0051.severity = none
+dotnet_diagnostic.IDE0052.severity = none
+dotnet_diagnostic.IDE0059.severity = none
+
+# IDE0051: [GeneratedRegex] partial methods in file-based apps are reported unused although called.
+[scripts/rpc-bench/run-json-bench.cs]
+dotnet_diagnostic.IDE0051.severity = none

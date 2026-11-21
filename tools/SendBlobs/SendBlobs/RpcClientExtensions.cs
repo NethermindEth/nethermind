@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -59,9 +60,11 @@ internal static class RpcClientExtensions
 
         public async Task<BlockModel<Hash256>?> GetBlockByNumberAsync(object blockNumberOrTag, bool fullTxObjects) => await PostWithRetryNullable<BlockModel<Hash256>>(rpcClient, nameof(IEthRpcModule.eth_getBlockByNumber), blockNumberOrTag, fullTxObjects);
 
+        [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Called from the members of this extension block; the analyzer does not see those calls.")]
         private async Task<T> PostWithRetry<T>(string method, params object?[]? parameters) =>
             (await PostWithRetryNullable<T>(rpcClient, method, parameters: parameters)) ?? throw new RpcException($"RPC call '{method}' returned null or empty response.");
 
+        [SuppressMessage("CodeQuality", "IDE0051:Remove unused private members", Justification = "Called from the members of this extension block; the analyzer does not see those calls.")]
         private async Task<T?> PostWithRetryNullable<T>(string method, params object?[]? parameters)
         {
             Exception? lastException = null;

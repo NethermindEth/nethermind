@@ -96,7 +96,6 @@ public class ProxyServer
             _httpClient,
             blockDataFetcher,
             payloadAttributesGenerator,
-            _messageQueue,
             _payloadTracker,
             config,
             logManager);
@@ -119,9 +118,7 @@ public class ProxyServer
             logManager);
 
         _getPayloadHandler = new GetPayloadHandler(
-            config,
             _requestForwarder,
-            _payloadTracker,
             logManager);
 
         _defaultRequestHandler = new DefaultRequestHandler(

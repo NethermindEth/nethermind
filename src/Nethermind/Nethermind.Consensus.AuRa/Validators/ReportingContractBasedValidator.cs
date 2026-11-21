@@ -11,7 +11,6 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
@@ -31,7 +30,6 @@ namespace Nethermind.Consensus.AuRa.Validators
         private readonly ITxSender _posdaoTxSender;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly Cache _cache;
-        private readonly ISpecProvider _specProvider;
         private readonly ITxSender _nonPosdaoTxSender;
         private readonly ILogger _logger;
 
@@ -44,7 +42,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             IBlocksConfig blocksConfig,
             IReadOnlyStateProvider stateProvider,
             Cache cache,
-            ISpecProvider specProvider,
             IGasPriceOracle gasPriceOracle,
             ILogManager logManager)
         {
@@ -54,7 +51,6 @@ namespace Nethermind.Consensus.AuRa.Validators
             _posdaoTxSender = txSender ?? throw new ArgumentNullException(nameof(txSender));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _cache = cache ?? throw new ArgumentNullException(nameof(cache));
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _nonPosdaoTxSender = new TxGasPriceSender(txSender, gasPriceOracle);
             _persistentReports = cache.PersistentReports;
             _logger = logManager?.GetClassLogger<ReportingContractBasedValidator>() ?? throw new ArgumentNullException(nameof(logManager));

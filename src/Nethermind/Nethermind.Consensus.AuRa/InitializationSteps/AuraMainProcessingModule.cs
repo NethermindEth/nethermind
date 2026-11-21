@@ -44,7 +44,6 @@ public class AuraMainProcessingModule(
                 api.Config<IBlocksConfig>(),
                 api.LogManager,
                 api.EngineSigner,
-                api.SpecProvider,
                 gasPriceOracle,
                 api.ReportingContractValidatorCache,
                 chainSpecAuRa.PosdaoTransition)

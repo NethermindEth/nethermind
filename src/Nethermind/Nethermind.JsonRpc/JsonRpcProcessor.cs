@@ -419,7 +419,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
         long startTime,
         CancellationToken cancellationToken)
     {
-        JsonRpcRequest? directRequest = null;
+        JsonRpcRequest? directRequest;
         ReadOnlyMemory<byte> batchBody = default;
         int batchCount = 0;
         bool isBatch = false;

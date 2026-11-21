@@ -876,7 +876,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 if (progressStatus.OnCompletedPartition())
                 {
-                    _largeStorageProgress.Remove(pathWithAccount.Path, out LargeProgressStatus value);
+                    _largeStorageProgress.Remove(pathWithAccount.Path, out _);
                 }
             }
         }

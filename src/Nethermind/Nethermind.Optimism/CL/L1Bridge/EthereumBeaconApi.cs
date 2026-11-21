@@ -6,7 +6,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -16,16 +15,14 @@ public class EthereumBeaconApi : IBeaconApi
 {
     private readonly HttpClient _client;
     private readonly IJsonSerializer _jsonSerializer;
-    private readonly IEthereumEcdsa _ecdsa;
     private readonly ILogger _logger;
 
     private const int BeaconApiRetryDelayMilliseconds = 1000;
 
-    public EthereumBeaconApi(Uri beaconApiUri, IJsonSerializer jsonSerializer, IEthereumEcdsa ecdsa, ILogManager logManager)
+    public EthereumBeaconApi(Uri beaconApiUri, IJsonSerializer jsonSerializer, ILogManager logManager)
     {
         _client = new HttpClient { BaseAddress = beaconApiUri };
         _jsonSerializer = jsonSerializer;
-        _ecdsa = ecdsa;
         _logger = logManager.GetClassLogger<EthereumBeaconApi>();
     }
 

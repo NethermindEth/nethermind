@@ -6,7 +6,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Contracts
@@ -14,10 +13,8 @@ namespace Nethermind.Consensus.AuRa.Contracts
     /// <summary>Version four of the contract. Created to adjust EIP1559 changes.</summary>
     public sealed class TransactionPermissionContractV4(
         Address contractAddress,
-        IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-        ISpecProvider specProvider) : TransactionPermissionContract(contractAddress, readOnlyTxProcessorSource)
+        IReadOnlyTxProcessorSource readOnlyTxProcessorSource) : TransactionPermissionContract(contractAddress, readOnlyTxProcessorSource)
     {
-        private readonly ISpecProvider _specProvider = specProvider;
         private static readonly UInt256 Four = 4;
         internal static readonly ContractFunction<(Address, Address, UInt256, UInt256, UInt256, UInt256, byte[]), (uint, bool)> AllowedTxTypesFunction =
             new AbiSignature("allowedTxTypes")

@@ -18,7 +18,6 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Evm.State;
 using Nethermind.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -39,7 +38,6 @@ namespace Nethermind.Clique.Test
             CliqueBlockProducer producer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
-                Substitute.For<IWorldState>(),
                 Substitute.For<ITimestamper>(),
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),

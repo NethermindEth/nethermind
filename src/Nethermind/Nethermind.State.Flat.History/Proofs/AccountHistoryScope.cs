@@ -4,7 +4,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Flat.History.Proofs;
@@ -16,8 +15,6 @@ internal sealed class AccountHistoryScope(
     CommitmentDepthPolicy policy)
     : TrieHistoryScope(rows, rowFormat, commitments, policy)
 {
-    private static readonly AccountDecoder Decoder = new();
-
     public override bool HasCommitmentRows(int depth) => depth <= Policy.AccountCheckpointDepth && !Policy.IsComposedAccountDepth(depth);
 
     public override bool IsComposed(int depth) => Policy.IsComposedAccountDepth(depth);

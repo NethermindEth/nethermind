@@ -218,7 +218,6 @@ namespace Nethermind.AuRa.Test.Validators
                     new BlocksConfig(),
                     stateProvider,
                     cache ?? new ReportingContractBasedValidator.Cache(),
-                    specProvider,
                     Substitute.For<IGasPriceOracle>(),
                     LimboLogs.Instance);
             }

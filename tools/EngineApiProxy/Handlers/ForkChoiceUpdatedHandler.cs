@@ -237,12 +237,9 @@ public class ForkChoiceUpdatedHandler : IDisposable
     {
         _logger.Debug("Processing merged FCU flow");
 
-        string headBlockHashStr = string.Empty;
-        string payloadId = string.Empty;
-
         try
         {
-            headBlockHashStr = ExtractHeadBlockHash(request);
+            string headBlockHashStr = ExtractHeadBlockHash(request);
             if (string.IsNullOrEmpty(headBlockHashStr))
             {
                 _logger.Warn("Could not extract head block hash in merged mode, forwarding request as-is");
@@ -252,7 +249,7 @@ public class ForkChoiceUpdatedHandler : IDisposable
             _logger.Info($"Starting merged validation flow for head block: {headBlockHashStr}");
 
             // 1. Get payload ID but don't validate yet
-            payloadId = await _requestOrchestrator.GetPayloadID(request, headBlockHashStr, true);
+            string payloadId = await _requestOrchestrator.GetPayloadID(request, headBlockHashStr, true);
 
             if (string.IsNullOrEmpty(payloadId))
             {

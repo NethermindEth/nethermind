@@ -20,7 +20,6 @@ namespace Nethermind.Network
     public class SessionMonitor : ISessionMonitor
     {
         private PeriodicTimer _pingTimer;
-        private Task _pingTimerTask;
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
@@ -162,7 +161,7 @@ namespace Nethermind.Network
 
             _cancellationTokenSource = new CancellationTokenSource();
             _pingTimer = new PeriodicTimer(_pingInterval);
-            _pingTimerTask = SendPingMessagesAsync();
+            _ = SendPingMessagesAsync();
         }
 
         private void StopPingTimer()

@@ -49,11 +49,9 @@ namespace Nethermind.Consensus.AuRa.Contracts
 
         private static TransactionPermissionContractV4 CreateV4(
             Address contractAddress,
-            IReadOnlyTxProcessorSource readOnlyTxProcessorSource,
-            ISpecProvider specProvider) => new(
+            IReadOnlyTxProcessorSource readOnlyTxProcessorSource) => new(
                 contractAddress,
-                readOnlyTxProcessorSource,
-                specProvider);
+                readOnlyTxProcessorSource);
 
 
         private static Dictionary<UInt256, ITransactionPermissionContract> CreateAllVersions(
@@ -84,8 +82,7 @@ namespace Nethermind.Consensus.AuRa.Contracts
                     4,
                     CreateV4(
                         contractAddress,
-                        readOnlyTxProcessorSource,
-                        specProvider)
+                        readOnlyTxProcessorSource)
                 },
             };
     }

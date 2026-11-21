@@ -427,7 +427,7 @@ public class ReceiptsEventPayloadCacheTests
         {
             CollectingClient client = new(expectedMessages);
             TransactionHashesFilter? filter = hashes is null ? null : new() { TransactionHashes = [.. hashes.Select(static h => h.ValueHash256)] };
-            return Track(client, new TransactionReceiptsSubscription(client, Monitor, _blockTree, MainnetSpecProvider.Instance, NullLogManager.Instance, ReceiptPayloads, filter));
+            return Track(client, new TransactionReceiptsSubscription(client, Monitor, MainnetSpecProvider.Instance, NullLogManager.Instance, ReceiptPayloads, filter));
         }
 
         private (CollectingClient, Subscription) Track(CollectingClient client, Subscription subscription)

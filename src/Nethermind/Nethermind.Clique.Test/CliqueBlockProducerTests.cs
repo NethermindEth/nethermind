@@ -134,7 +134,6 @@ public class CliqueBlockProducerTests
 
             IBlockProducerEnvFactory envFactory = container.Resolve<IBlockProducerEnvFactory>();
             IBlockProducerEnv producerEnv = envFactory.CreatePersistent();
-            IWorldState minerStateProvider = producerEnv.ReadOnlyStateProvider;
 
             if (withGenesisAlreadyProcessed)
             {
@@ -144,7 +143,6 @@ public class CliqueBlockProducerTests
             CliqueBlockProducer blockProducer = new(
                 producerEnv.TxSource,
                 producerEnv.ChainProcessor,
-                minerStateProvider,
                 _timestamper,
                 new CryptoRandom(),
                 snapshotManager,

@@ -169,7 +169,7 @@ public sealed class FlatStateActivationPolicy(
             && syncConfig.FastSync
             && !syncConfig.SnapSync
             && !migrating
-            && !(flatDbConfig.ImportFromPruningTrieState && (patriciaHasData ??= HasAnyKey(patriciaStateDb.Value))))
+            && !(flatDbConfig.ImportFromPruningTrieState && (patriciaHasData ?? HasAnyKey(patriciaStateDb.Value))))
         {
             // TreeSync holes only form during state sync. An already-synced flat node can keep serving.
             if (existingFlat)

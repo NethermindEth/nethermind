@@ -489,7 +489,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private HeadersSyncBatch? ProcessPersistedHeadersOrBuildNewBatch(int requestSize, CancellationToken cancellationToken, out bool retryPending)
         {
             retryPending = false;
-            HeadersSyncBatch? batch = null;
+            HeadersSyncBatch? batch;
             do
             {
                 batch = BuildNewBatch(requestSize);

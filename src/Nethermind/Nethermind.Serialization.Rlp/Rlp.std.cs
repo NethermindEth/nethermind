@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -25,6 +26,7 @@ public partial class Rlp
     // A field initializer rather than a static constructor keeps the type beforefieldinit, so static methods
     // that read no static field (e.g. LengthOf) need no type initialization check on every call. Declared after
     // every other initialized static field: registration constructs decoders, which may read them.
+    [SuppressMessage("CodeQuality", "IDE0052:Remove unread private member", Justification = "The initializer registers the default decoders.")]
     private static readonly bool _defaultDecodersRegistered = RegisterDefaultDecoders();
 
     /// <summary>Writes <paramref name="hash"/> to the 32 bytes at <paramref name="destination"/>.</summary>

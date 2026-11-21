@@ -10,11 +10,10 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Ethash
 {
-    internal class HintBasedCache(Func<uint, IEthashDataSet> createDataSet, ILogManager logManager)
+    internal class HintBasedCache(Func<uint, IEthashDataSet> createDataSet)
     {
         private readonly Dictionary<Guid, HashSet<uint>> _epochsPerGuid = [];
         private readonly Dictionary<uint, int> _epochRefs = [];
@@ -32,7 +31,6 @@ namespace Nethermind.Consensus.Ethash
         public int CachedEpochsCount => _cachedEpochsCount;
 
         private readonly Func<uint, IEthashDataSet> _createDataSet = createDataSet;
-        private readonly ILogger _logger = logManager?.GetClassLogger<HintBasedCache>() ?? throw new ArgumentNullException(nameof(logManager));
 
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Hint(Guid guid, ulong start, ulong end)

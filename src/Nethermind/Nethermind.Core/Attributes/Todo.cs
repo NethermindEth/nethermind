@@ -8,17 +8,17 @@ namespace Nethermind.Core.Attributes
     [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
     public class TodoAttribute : Attribute
     {
-        private readonly string? _issueLink;
-        private readonly string _comment;
-        private readonly Improve _improve;
+        public string? IssueLink { get; }
+        public string Comment { get; }
+        public Improve Improve { get; }
 
-        public TodoAttribute(string comment) => _comment = comment;
+        public TodoAttribute(string comment) => Comment = comment;
 
         public TodoAttribute(Improve improve, string comment, string issueLink = MissingIssueLinkMessage)
         {
-            _improve = improve;
-            _issueLink = issueLink;
-            _comment = comment;
+            Improve = improve;
+            IssueLink = issueLink;
+            Comment = comment;
         }
 
         public const string MissingIssueLinkMessage = "No issue created or link missing";

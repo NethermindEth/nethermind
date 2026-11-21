@@ -9,6 +9,6 @@ namespace Nethermind.Core.Attributes
     [method: Todo(Improve.Security, "In config file add a switch for secured context and if set then throw an exception whenever this attribute is loaded?")]
     public class DoNotUseInSecuredContext(string comment) : Attribute
     {
-        private readonly string _comment = comment;
+        public string Comment { get; } = comment;
     }
 }
