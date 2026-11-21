@@ -779,11 +779,11 @@ public partial class EthRpcModule(
                 return ResultWrapper<Hash256>.Success(txHash);
 
             // A rejected transaction is the caller's error, so it is logged like a request error rather than a warning
-            // per request. Syncing is the node's state, not the caller's fault, so it keeps its warning.
+            // per request. A result that reports the node's state rather than the transaction keeps its warning.
             return acceptTxResult.Equals(AcceptTxResult.SignFailed)
                 ? ResultWrapper<Hash256>.Fail("authentication needed: password or unlock", ErrorCodes.AccountLocked)
                 : ResultWrapper<Hash256>.Fail(acceptTxResult?.ToString() ?? string.Empty, ErrorCodes.TransactionRejected,
-                    isRequestError: !acceptTxResult.Equals(AcceptTxResult.Syncing));
+                    isRequestError: acceptTxResult is { } rejection && !IsNodeState(rejection));
         }
         catch (Exception e)
         {
@@ -791,6 +791,10 @@ public partial class EthRpcModule(
             return ResultWrapper<Hash256>.Fail(e.Message, ErrorCodes.TransactionRejected);
         }
     }
+
+    /// <summary>Whether a rejection reports this node's state, so it is not the caller's fault.</summary>
+    private static bool IsNodeState(AcceptTxResult rejection) =>
+        rejection.Equals(AcceptTxResult.Syncing) || rejection.Equals(AcceptTxResult.FrameSimulationDeferred);
 
     public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, CancellationToken cancellationToken = default) =>
         ExecuteWithFrameGas(new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
