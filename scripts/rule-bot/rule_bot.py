@@ -44,7 +44,8 @@ SEVERITY = re.compile(r"^\s*dotnet_diagnostic\.([A-Z]+\d+)\.severity\s*=\s*(\w+)
 
 WINDOW_DAYS = 180
 PAGE = 100
-THREAD_FIELDS = "author { login } reviewThreads(first:100) { nodes { isResolved isOutdated comments(first:1) { nodes { databaseId } } } }"
+THREAD_NODES = "pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated comments(first:1) { nodes { databaseId } } }"
+THREAD_FIELDS = f"author {{ login }} reviewThreads(first:100) {{ {THREAD_NODES} }}"
 
 
 def load(path, default=None):
@@ -127,9 +128,18 @@ def collect(args):
         data = api("graphql", "-f", f"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ {q} }} }}")
         queries += 1
         for key, pr in data["data"]["repository"].items():
-            if pr:
-                prs[key[1:]] = dict(author=login(pr), threads={str(c["databaseId"]): [t["isResolved"], t["isOutdated"]]
-                                                               for t in pr["reviewThreads"]["nodes"] for c in t["comments"]["nodes"]})
+            if not pr:
+                continue
+            threads, page = {}, pr["reviewThreads"]
+            while True:
+                threads.update({str(c["databaseId"]): [t["isResolved"], t["isOutdated"]] for t in page["nodes"] for c in t["comments"]["nodes"]})
+                if not page["pageInfo"]["hasNextPage"]:
+                    break
+                more = api("graphql", "-f", f"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ pullRequest(number:{key[1:]}) {{ "
+                           f"reviewThreads(first:100, after:\"{page['pageInfo']['endCursor']}\") {{ {THREAD_NODES} }} }} }} }}")
+                queries += 1
+                page = more["data"]["repository"]["pullRequest"]["reviewThreads"]
+            prs[key[1:]] = dict(author=login(pr), threads=threads)
     save(os.path.join(args.data, "comments.json"), dict(since=since, comments=sorted(comments.values(), key=lambda c: c["id"])))
     save(os.path.join(args.data, "prs.json"), prs)
     print(f"collect: {len(comments)} inline review comments since {since}, {page} REST pages, "

@@ -95,7 +95,7 @@ class Window(unittest.TestCase):
         def api(*a):
             calls.append(a)
             if a[0] == "graphql":
-                return dict(data=dict(repository=dict(p7=dict(author=dict(login="author"), reviewThreads=dict(nodes=[
+                return dict(data=dict(repository=dict(p7=dict(author=dict(login="author"), reviewThreads=dict(pageInfo=dict(hasNextPage=False, endCursor=None), nodes=[
                     dict(isResolved=True, isOutdated=False, comments=dict(nodes=[dict(databaseId=0)]))])))))
             return pages[int(next(x for x in a if x.startswith("page="))[5:])]
 
@@ -113,6 +113,30 @@ class Window(unittest.TestCase):
         self.assertEqual(sum(a[0] != "graphql" for a in calls), 2)
         self.assertEqual(list(prs), ["7"])
         self.assertEqual(prs["7"]["threads"]["0"], [True, False])
+
+    def test_collect_follows_review_thread_pages(self):
+        def thread(id, resolved, outdated):
+            return dict(isResolved=resolved, isOutdated=outdated, comments=dict(nodes=[dict(databaseId=id)]))
+
+        def api(*a):
+            if a[0] != "graphql":
+                return [comment(1, 7), comment(2, 7)] if "page=1" in a else []
+            if "after:" in a[-1]:
+                self.assertIn('after:"c1"', a[-1])
+                return dict(data=dict(repository=dict(pullRequest=dict(reviewThreads=dict(
+                    pageInfo=dict(hasNextPage=False, endCursor=None), nodes=[thread(2, True, True)])))))
+            return dict(data=dict(repository=dict(p7=dict(author=dict(login="author"), reviewThreads=dict(
+                pageInfo=dict(hasNextPage=True, endCursor="c1"), nodes=[thread(1, False, False)])))))
+
+        real = rb.api
+        rb.api = api
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                rb.collect(argparse.Namespace(data=d, days=180, today="2026-11-21"))
+                prs = rb.load(os.path.join(d, "prs.json"))
+        finally:
+            rb.api = real
+        self.assertEqual(prs["7"]["threads"], {"1": [False, False], "2": [True, True]})
 
     def test_findings_rebuild_threads_and_skip_the_pr_author(self):
         cs = [rb.slim(comment(1, 7)), rb.slim(comment(2, 7, author="author", reply_to=1, created="2026-11-02T00:00:00Z", body="Good catch, fixed")),
