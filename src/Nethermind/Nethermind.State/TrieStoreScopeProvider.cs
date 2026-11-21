@@ -257,7 +257,11 @@ public partial class TrieStoreScopeProvider(
                     sink.OnStorageRead(in cell, in value);
                 }
             }
-            catch (MissingTrieNodeException) { }
+            catch (MissingTrieNodeException e)
+            {
+                ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
+                if (logger.IsTrace) logger.Trace($"BAL warmup of {address} stopped on a missing trie node: {e.Message}");
+            }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;

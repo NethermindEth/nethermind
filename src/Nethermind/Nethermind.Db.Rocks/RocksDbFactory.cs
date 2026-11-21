@@ -255,9 +255,10 @@ public class RocksDbFactory : IDbFactory
                 DateTime creationTime = File.GetCreationTimeUtc(fullPath);
                 fileMetadataEntries.Add((liveFileMetadata.FileMetadata, creationTime));
             }
-            catch (IOException)
+            catch (IOException e)
             {
                 // Maybe the file is gone or something. We ignore it.
+                if (_logger.IsDebug) _logger.Debug($"Skipping warmup of {fullPath}: {e.Message}");
             }
         }
 
@@ -299,6 +300,7 @@ public class RocksDbFactory : IDbFactory
             catch (FileNotFoundException)
             {
                 // Happens sometimes. We do nothing here.
+                if (_logger.IsDebug) _logger.Debug($"Skipping warmup of {fullPath}: the file no longer exists");
             }
             catch (IOException e)
             {

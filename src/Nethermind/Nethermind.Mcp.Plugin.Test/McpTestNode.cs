@@ -26,7 +26,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Wallet;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
@@ -56,8 +55,6 @@ internal sealed class McpTestNode : IAsyncDisposable
     public McpHost Host => Chain.Container.Resolve<McpHost>();
 
     public Uri Endpoint => Host.Endpoint ?? throw new InvalidOperationException("The MCP host is not running.");
-
-    private static readonly Lock WalletLock = new();
 
     /// <summary>Creates the chain, and starts the MCP listener on an ephemeral loopback port unless <paramref name="start"/> is false.</summary>
     /// <param name="configure">Adjusts the MCP config; it starts as enabled on port 0.</param>
@@ -106,13 +103,6 @@ internal sealed class McpTestNode : IAsyncDisposable
                 });
             configureContainer?.Invoke(builder);
         });
-
-        // DevWallet's constructor mutates a static key seed, so concurrent test nodes creating it race and the eth module
-        // fails to activate; creating the singleton up front, one node at a time, keeps parallel fixtures deterministic.
-        lock (WalletLock)
-        {
-            chain.Container.Resolve<IWallet>();
-        }
 
         McpTestNode node = new(chain, config, tokenFile);
         if (start)

@@ -142,7 +142,7 @@ public partial class ColumnBackfillTests
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + 33 * spec.SecondsPerSlot)).UtcDateTime);
         SlotClock clock = new(spec, time);
         DataColumnSidecarPool pool = new(store: store, clock: clock);
-        await pool.SeedCompletelyServableFloor(32);
+        await pool.SeedCompletelyServableFloor(32, token);
         PubkeyCache pubkeys = new();
         pubkeys.Build(gloas.PostState.Validators!);
         BlockImporterFactory factory = new(spec, store, pubkeys, new SignedGloasChain.EnvelopeEngine(),

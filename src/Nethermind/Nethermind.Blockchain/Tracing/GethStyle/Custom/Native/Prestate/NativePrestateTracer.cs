@@ -318,29 +318,32 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
             case Instruction.TCREATE:
                 if (stackLen >= 4)
                 {
+                    int offset = stack.Peek(1).ReadEthInt32();
+                    int length = stack.Peek(2).ReadEthInt32();
+                    ReadOnlySpan<byte> initCode;
                     try
                     {
-                        int offset = stack.Peek(1).ReadEthInt32();
-                        int length = stack.Peek(2).ReadEthInt32();
-                        ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
-                        ReadOnlySpan<byte> salt = stack.Peek(3);
-                        address = _op == Instruction.TCREATE
-                            ? ContractAddress.FromTransientCreate(_executingAccount!, salt, initCode)
-                            : ContractAddress.From(_executingAccount!, salt, initCode);
-                        LookupAccount(address);
-                        if (_diffMode)
-                            _createdAccounts.Add(address);
-                        if (_op == Instruction.TCREATE)
-                            (_transientCreates ??= []).Add(address);
+                        initCode = _memoryTrace.Slice(offset, length);
                     }
-                    catch
+                    catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
                     {
                         /*
                          * The init code cannot be read: an offset or length that does not fit, or a slice
                          * past the traced memory's 1 MiB padding limit (as in geth). The account is then not
                          * looked up; StartOperation resets the state for the next operation
                          */
+                        break;
                     }
+
+                    ReadOnlySpan<byte> salt = stack.Peek(3);
+                    address = _op == Instruction.TCREATE
+                        ? ContractAddress.FromTransientCreate(_executingAccount!, salt, initCode)
+                        : ContractAddress.From(_executingAccount!, salt, initCode);
+                    LookupAccount(address);
+                    if (_diffMode)
+                        _createdAccounts.Add(address);
+                    if (_op == Instruction.TCREATE)
+                        (_transientCreates ??= []).Add(address);
                 }
                 break;
             case Instruction.CREATE:

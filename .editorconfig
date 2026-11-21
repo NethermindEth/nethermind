@@ -109,6 +109,7 @@ dotnet_diagnostic.CA1507.severity = warning
 dotnet_diagnostic.CA1510.severity = warning
 dotnet_diagnostic.CA1513.severity = warning
 dotnet_diagnostic.CA2208.severity = suggestion
+dotnet_diagnostic.CA2016.severity = error
 dotnet_diagnostic.NETH002.severity = error
 dotnet_diagnostic.NETH006.severity = error
 dotnet_diagnostic.NETH008.severity = error
@@ -127,6 +128,9 @@ dotnet_diagnostic.IDE0150.severity = warning
 dotnet_diagnostic.IDE0270.severity = warning
 dotnet_diagnostic.IDE1005.severity = warning
 dotnet_diagnostic.IDE0028.severity = warning
+
+[scripts/**.cs]
+dotnet_diagnostic.CA2016.severity = suggestion
 
 # IDE0130: JSON converters intentionally exposed under Nethermind.Serialization.Json
 # despite living in Nethermind.Core to avoid a circular project reference.

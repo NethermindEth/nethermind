@@ -8,6 +8,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -26,11 +27,7 @@ public partial class BlockProcessor
         protected IWorldState _stateProvider = stateProvider;
         protected ITransactionProcessedEventHandler? _transactionProcessedEventHandler = transactionProcessedEventHandler;
 
-        // Set once per block in SetupTxTimingMetrics on the block-processing thread, then read by
-        // parallel workers in StartTxTimer/StopTxTimer. Not volatile: visibility relies on the same
-        // ParallelUnbalancedWork.For join barrier that PerTxTimingCollector depends on. See
-        // PerTxTimingCollector's <remarks> for the full threading contract.
-        private bool _enableTxTimingMetrics;
+        private ArrayPoolList<long>? _txTimings;
 
         public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);
 
@@ -83,27 +80,23 @@ public partial class BlockProcessor
             // Compile-time switch: when ExecutionMetricsFlag.IsActive folds to false the JIT
             // elides the entire setup path (and the StartTxTimer/StopTxTimer bodies below).
             if (!ExecutionMetricsFlag.IsActive) return;
-            _enableTxTimingMetrics = PerTxTimingCollector.IsEnabled;
-            if (_enableTxTimingMetrics)
-            {
-                PerTxTimingCollector.Prepare(block.Transactions.Length);
-            }
+            _txTimings = PerTxTimingCollector.Prepare(block.Transactions.Length);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public long StartTxTimer()
         {
             if (!ExecutionMetricsFlag.IsActive) return 0;
-            return _enableTxTimingMetrics ? Stopwatch.GetTimestamp() : 0;
+            return _txTimings is not null ? Stopwatch.GetTimestamp() : 0;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void StopTxTimer(int i, long txStart)
         {
             if (!ExecutionMetricsFlag.IsActive) return;
-            if (_enableTxTimingMetrics)
+            if (_txTimings is { } timings)
             {
-                PerTxTimingCollector.Record(i, Stopwatch.GetElapsedTime(txStart).Ticks);
+                PerTxTimingCollector.Record(timings, i, Stopwatch.GetElapsedTime(txStart).Ticks);
             }
         }
 
