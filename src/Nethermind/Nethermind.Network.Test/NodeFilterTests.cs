@@ -254,6 +254,16 @@ public class NodeFilterTests
         Assert.That(filter, Is.SameAs(NodeFilter.AcceptAll));
     }
 
+    [Test]
+    public void Create_keeps_recent_connections_when_no_outbound_peers_are_configured()
+    {
+        NodeFilter filter = NodeFilter.Create(0, filterEnabled: true, subnetBucketing: false, currentIp: null);
+        IPAddress address = IPAddress.Parse("192.0.2.1");
+
+        Assert.That(filter.TryAccept(address), Is.True);
+        Assert.That(filter.TryAccept(address), Is.False);
+    }
+
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
     [TestCase("::1", true, Description = "IPv6 loopback")]
     [TestCase("10.0.0.1", true, Description = "RFC1918 10.x")]
