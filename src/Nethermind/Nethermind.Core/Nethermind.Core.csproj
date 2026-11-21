@@ -32,10 +32,15 @@
   <Target Name="ResolveNativeKeccakPaths" Condition="'$(NativeKeccakSupported)' == 'true'">
     <PropertyGroup>
       <NativeKeccakOutput>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'libnmkeccak.so'))</NativeKeccakOutput>
+      <NativeKeccakCompilerStamp>$([MSBuild]::NormalizePath('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'libnmkeccak.compiler'))</NativeKeccakCompilerStamp>
     </PropertyGroup>
+    <Exec Command="&quot;${CC:-gcc}&quot; --version" IgnoreExitCode="true" StandardOutputImportance="low" StandardErrorImportance="low" ConsoleToMSBuild="true">
+      <Output TaskParameter="ConsoleOutput" ItemName="NativeKeccakCompilerIdentity" />
+    </Exec>
+    <WriteLinesToFile File="$(NativeKeccakCompilerStamp)" Lines="$(CC);@(NativeKeccakCompilerIdentity)" Overwrite="true" WriteOnlyWhenDifferent="true" />
   </Target>
 
-  <Target Name="BuildNativeKeccak" DependsOnTargets="ResolveNativeKeccakPaths" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'" Inputs="$(NativeKeccakDir)nmkeccak.c;$(NativeKeccakDir)build.sh;@(NativeKeccakSource)" Outputs="$(NativeKeccakOutput)">
+  <Target Name="BuildNativeKeccak" DependsOnTargets="ResolveNativeKeccakPaths" BeforeTargets="AssignTargetPaths" Condition="'$(NativeKeccakSupported)' == 'true'" Inputs="$(NativeKeccakDir)nmkeccak.c;$(NativeKeccakDir)build.sh;$(NativeKeccakCompilerStamp);@(NativeKeccakSource)" Outputs="$(NativeKeccakOutput)">
     <Delete Files="$(NativeKeccakOutput)" />
     <Exec Command="command -v &quot;${CC:-gcc}&quot;" IgnoreExitCode="true" StandardOutputImportance="low">
       <Output TaskParameter="ExitCode" PropertyName="GccExitCode" />
@@ -55,7 +60,7 @@
 
   <Target Name="TrackNativeKeccakFileWrites" AfterTargets="BuildNativeKeccak" Condition="'$(NativeKeccakSupported)' == 'true'">
     <ItemGroup>
-      <FileWrites Include="$(NativeKeccakOutput)" />
+      <FileWrites Include="$(NativeKeccakOutput);$(NativeKeccakCompilerStamp)" />
     </ItemGroup>
   </Target>
 
