@@ -98,7 +98,7 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     /// cost. Examples are an SSTORE that restores a slot, and a SELFDESTRUCT that empties the balance of an account
     /// that the same transaction created.
     /// </remarks>
-    protected static ulong GetGasCost(ulong gasBefore, ulong gasAfter, ulong? executionCost)
+    internal static ulong GetGasCost(ulong gasBefore, ulong gasAfter, ulong? executionCost)
     {
         ulong executionGas = executionCost ?? 0;
         return gasAfter <= gasBefore && gasBefore - gasAfter >= executionGas ? gasBefore - gasAfter : executionGas;

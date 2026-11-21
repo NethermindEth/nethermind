@@ -1888,25 +1888,15 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Sstore_that_refills_state_gas_reports_zero_cost_on_Amsterdam()
+    public void Sstore_that_refills_state_gas_reports_its_execution_cost_on_Amsterdam([Values] bool reservoirFunded)
     {
-        byte[] code = Prepare.EvmCode
-            .PersistData("0x1", "0x1")
-            .PersistData("0x1", HexZero)
-            .PersistData("0x1", "0x1")
-            .Op(Instruction.STOP)
-            .Done;
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.VmTrace);
 
-        (ParityLikeTxTrace trace, _, _) = ExecuteAndTraceParityCall(MainnetSpecProvider.AmsterdamActivation, 500_000, code);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
-        ParityVmOperationTrace restore = trace.VmTrace!.Operations.Single(static o => o.Pc == 9);
-        ParityVmOperationTrace previous = trace.VmTrace.Operations.Single(static o => o.Pc == 7);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(restore.Cost, Is.Zero);
-            Assert.That(restore.Used, Is.GreaterThan(previous.Used), "the restoring SSTORE grows the gas left");
-        }
+        ParityVmOperationTrace restore = tracer.BuildResult().VmTrace!.Operations.Single(static o => o.Pc == 9);
+        Assert.That(restore.Cost, Is.EqualTo(Eip8038Constants.WarmAccess));
     }
 
     private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
