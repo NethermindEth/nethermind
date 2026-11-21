@@ -22,4 +22,8 @@ public interface IGuestSlotStore
     /// <param name="current">The value <see cref="ReadForStore"/> read.</param>
     /// <param name="newValue">The value to write.</param>
     void WriteAt(int slot, in StorageCell storageCell, in UInt256 current, in UInt256 newValue);
+
+    /// <summary>Reads the transient storage of <paramref name="address"/> at <paramref name="index"/>, as <see cref="IWorldState.GetTransientState"/> does.</summary>
+    /// <remarks>Builds the storage cell, which hashes it, only when the store holds any value: TLOAD of an empty store reads zero.</remarks>
+    void ReadTransient(Address address, in UInt256 index, out UInt256 value);
 }

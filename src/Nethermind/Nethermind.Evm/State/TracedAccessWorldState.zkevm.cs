@@ -18,16 +18,34 @@ public partial class TracedAccessWorldState : IGuestSlotStore
     private IGuestSlotStore? _slots;
     private bool _slotsResolved;
 
+    private IGuestSlotStore? Slots
+    {
+        get
+        {
+            if (!_slotsResolved)
+            {
+                // Resolved once: a type test against an interface walks the type's interfaces.
+                _slots = parallel ? null : State as IGuestSlotStore;
+                _slotsResolved = true;
+            }
+
+            return _slots;
+        }
+    }
+
+    /// <remarks>Transient storage is not in the block access list, so the read records nothing.</remarks>
+    void IGuestSlotStore.ReadTransient(Address address, in UInt256 index, out UInt256 value)
+    {
+        IGuestSlotStore? slots = Slots;
+        if (slots is null)
+            GetTransientState(new StorageCell(address, in index), out value);
+        else
+            slots.ReadTransient(address, in index, out value);
+    }
+
     int IGuestSlotStore.ReadForStore(in StorageCell storageCell, out UInt256 current, out UInt256 original)
     {
-        if (!_slotsResolved)
-        {
-            // Resolved once: a type test against an interface walks the type's interfaces.
-            _slots = parallel ? null : State as IGuestSlotStore;
-            _slotsResolved = true;
-        }
-
-        IGuestSlotStore? slots = _slots;
+        IGuestSlotStore? slots = Slots;
         if (slots is null)
         {
             Get(in storageCell, out current);
