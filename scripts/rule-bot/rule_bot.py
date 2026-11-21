@@ -29,6 +29,11 @@ EDITORCONFIG = ".editorconfig"
 OVERLAY_SECTIONS = {"[*.cs]": "warning", "[src/Nethermind/{*Test*,*Benchmark*}/**.cs]": "none", "[tools/*/{*Test*,*Benchmark*}/**.cs]": "none"}
 GUARDED_PREFIXES = (".github/", ".agents/", "scripts/")
 ANALYZER_DIRS = ("src/Nethermind/Nethermind.Analyzers/", "src/Nethermind/Nethermind.Analyzers.Test/")
+FIX_ROOTS = ("src/", "tools/")
+FIX_DENIED_PREFIXES = tuple(f"src/Nethermind/{p}/" for p in (
+    "Nethermind.Analyzers", "Nethermind.Analyzers.Test", "Nethermind.Test.Analyzers", "Nethermind.Test.Analyzers.CodeFixes",
+    "Nethermind.Serialization.JsonGenerator", "Nethermind.Serialization.SszGenerator", "Nethermind.Serialization.FluentRlp.Generator",
+    "Nethermind.JsonRpc.SourceGenerator", "Nethermind.JsonRpc.SourceGenerator.Build", "Nethermind.BeaconChain.Generators"))
 TRUSTED_ASSOCIATIONS = {"OWNER", "MEMBER", "COLLABORATOR"}
 BOTS = {"claude", "copilot-pull-request-reviewer", "github-actions", "coderabbitai", "gemini-code-assist", "cursor",
         "chatgpt-codex-connector", "dependabot", "codecov"}
@@ -274,6 +279,10 @@ def plan(args):
             measure += [i for i in r["ids"] if i not in measure and not cat.get(i, {}).get("enforced")]
         elif r["route"] == "B" and not recently_tried(history, k, today):
             queue.append(k)
+    bot_open = [] if args.offline else json.loads(gh("pr", "list", "-R", REPO, "--state", "open", "--label", BOT_LABEL, "--json", "number"))
+    if bot_open:
+        print(f"plan: no analyzer attempted, bot PR already open: #{bot_open[0]['number']}")
+        queue = []
     queue = queue[:ROUTE_B_TRIES]
     route_b = queue[0] if queue else None
     reserved = set()
@@ -502,6 +511,10 @@ def overlay_only(diff, ids=()):
     return True
 
 
+def fix_allowed(path):
+    return path.startswith(FIX_ROOTS) and not path.startswith(FIX_DENIED_PREFIXES) and scope(path) == "prod"
+
+
 def check_paths(changes, unshipped_diff, new_id, fix_files=(), editorconfig_diff=(), ids=()):
     bad = []
     for status, path in changes:
@@ -515,7 +528,7 @@ def check_paths(changes, unshipped_diff, new_id, fix_files=(), editorconfig_diff
                 bad.append(f"{path}: only the rule overlay may be appended")
         elif not path.endswith(".cs") or path.startswith(GUARDED_PREFIXES):
             bad.append(f"{path}: outside the paths the bot may change")
-        elif not (new_id and status == "A" and path.startswith(ANALYZER_DIRS)) and not (status == "M" and path in fix_files):
+        elif not (new_id and status == "A" and path.startswith(ANALYZER_DIRS)) and not (status == "M" and path in fix_files and fix_allowed(path)):
             bad.append(f"{path}: not a file with a listed hit{' or a new file under the analyzer projects' if new_id else ''}")
     return bad
 

@@ -126,6 +126,12 @@ class Guard(unittest.TestCase):
         self.assertTrue(rb.check_paths([("M", "src/Nethermind/Nethermind.Core/B.cs")], [], None, {self.hit}))
         self.assertTrue(rb.check_paths([("A", self.hit)], [], None, {self.hit}))
 
+    def test_listed_hit_outside_the_fix_policy_fails(self):
+        for path in (rb.FIX_DENIED_PREFIXES[0] + "EmptyCatchBlockAnalyzer.cs", "src/Nethermind/Nethermind.Core.Test/A.cs",
+                     "tools/Tool/Tool.Test/A.cs", "eng/A.cs", "src/Nethermind/Nethermind.Serialization.SszGenerator/G.cs"):
+            self.assertTrue(rb.check_paths([("M", path)], [], None, {path}), path)
+            self.assertTrue(rb.check_paths([("M", path)], [], "NETH012", {path}), path)
+
     def test_route_b_cannot_change_existing_analyzers(self):
         existing = "src/Nethermind/Nethermind.Analyzers/EmptyCatchBlockAnalyzer.cs"
         for st in ("M", "D"):
@@ -259,6 +265,25 @@ class RouteB(unittest.TestCase):
             self.assertEqual([q["cluster"] for q in p["route_b_queue"]], [b[0], b[3], b[4]])
             self.assertEqual(p["route_b"], b[0])
             self.assertEqual(p["route_b_id"], "NETH012")
+
+    def test_plan_attempts_no_analyzer_while_a_bot_pr_is_open(self):
+        routes = rb.load(os.path.join(rb.HERE, "routes.json"))
+        b = sorted(k for k, r in routes.items() if r["route"] == "B")[:2]
+        for open_prs, expected in (('[{"number": 7}]', None), ("[]", b[0])):
+            with tempfile.TemporaryDirectory() as d:
+                rb.save(os.path.join(d, "gates.json"), {k: dict(prs=50, **{"pass": True}) for k in b})
+                rb.save(os.path.join(d, "catalog.json"), {})
+                os.makedirs(os.path.join(d, os.path.dirname(UNSHIPPED)))
+                open(os.path.join(d, UNSHIPPED), "w").write("NETH011 | Usage | Warning | x\n")
+                real = rb.gh
+                rb.gh = lambda *a, **k: open_prs if "--label" in a else "[]"
+                try:
+                    rb.plan(argparse.Namespace(data=d, state=d, repo=d, offline=False, github_output=None))
+                finally:
+                    rb.gh = real
+                p = rb.load(os.path.join(d, "plan.json"))
+                self.assertEqual(p["route_b"], expected)
+                self.assertEqual(bool(p["route_b_queue"]), expected is not None)
 
     def test_strip_initialize_block(self):
         src = "class A { public override void Initialize(AnalysisContext context) { context.Register(x => { Go(); }); } void B() { } }"
