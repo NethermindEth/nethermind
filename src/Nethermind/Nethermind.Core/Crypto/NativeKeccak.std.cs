@@ -14,7 +14,7 @@ internal static unsafe class NativeKeccak
     private const string LibraryName = "nmkeccak";
     private const string ExportName = "nm_keccak_absorb";
 
-    /// <summary>Fewest rate blocks for which the native absorb is faster than the managed one; below it the call overhead dominates.</summary>
+    /// <summary>The configured number of rate blocks from which the native absorb is used instead of the managed one.</summary>
     public const int MinBlocks = 16;
 
     private static readonly delegate* unmanaged<ulong*, byte*, nuint, void> _absorb = Resolve();
