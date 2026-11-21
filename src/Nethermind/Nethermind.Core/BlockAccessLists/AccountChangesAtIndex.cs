@@ -38,9 +38,10 @@ public class AccountChangesAtIndex(Address address)
     // reads them in place.
     private readonly List<StorageSlot> _storageSlots = [];
     private readonly Dictionary<UInt256, int> _storageSlotIndex = [with(UInt256Comparer.GetOptimized())];
-    // The record GetOrAddSlot last resolved: a contract writing one slot again and again skips the index. Checked by key,
-    // so an index left over from before a reset can only miss. The key's low limb sits beside it, so a different slot,
-    // which almost always differs there, misses without reading the list.
+    // The record GetOrAddSlot last resolved: a contract writing one slot again and again skips the index. A hit needs the
+    // full key to match. An index left over from before a reset meets the emptied list and fails the bounds check, and
+    // that first miss overwrites it. The key's low limb sits beside it, so a different slot, which almost always differs
+    // there, misses without reading the list.
     private int _lastSlot = -1;
     private ulong _lastSlotLowLimb;
     private int _storageChangeCount;
