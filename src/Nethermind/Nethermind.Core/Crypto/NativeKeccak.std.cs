@@ -35,6 +35,10 @@ internal static unsafe class NativeKeccak
             : null;
     }
 
+    /// <summary>Absorbs <paramref name="blocks"/> rate blocks of <paramref name="input"/> into <paramref name="state"/>.</summary>
+    /// <remarks>The native call reads and writes through raw pointers and checks nothing. The caller must ensure that
+    /// <paramref name="state"/> is the first of 25 writable lanes and that <paramref name="input"/> is the first of at least
+    /// <c>blocks * 136</c> readable bytes. <see cref="IsAvailable"/> must be <see langword="true"/>.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Absorb(ref ulong state, ref byte input, int blocks)
     {
