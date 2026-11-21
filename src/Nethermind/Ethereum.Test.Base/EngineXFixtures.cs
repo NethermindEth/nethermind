@@ -46,14 +46,20 @@ public static class EngineXFixtures
                 string preAllocDirectory = FindPreAllocDirectory(fileDirectory, preAllocDirectories)
                     ?? throw new DirectoryNotFoundException($"No {PreAllocDirectory} directory above {file}.");
 
-                foreach ((string preHash, EngineXTestRef testRef) in ScanFile(file))
+                List<(string PreHash, EngineXTestRef Ref)> tests = ScanFile(file);
+                // Every group is checked before any test is added, so a file with a missing group runs none of its tests.
+                foreach ((string preHash, _) in tests)
+                {
+                    string preAllocFile = Path.Combine(preAllocDirectory, preHash + ".json");
+                    if (!groups.ContainsKey(preHash) && !File.Exists(preAllocFile))
+                        throw new FileNotFoundException($"Pre-allocation group {preHash} not found.", preAllocFile);
+                }
+
+                foreach ((string preHash, EngineXTestRef testRef) in tests)
                 {
                     if (!groups.TryGetValue(preHash, out (string PreAllocFile, List<EngineXTestRef> Tests) group))
                     {
-                        string preAllocFile = Path.Combine(preAllocDirectory, preHash + ".json");
-                        if (!File.Exists(preAllocFile))
-                            throw new FileNotFoundException($"Pre-allocation group {preHash} not found.", preAllocFile);
-                        group = (preAllocFile, []);
+                        group = (Path.Combine(preAllocDirectory, preHash + ".json"), []);
                         groups[preHash] = group;
                         order.Add(preHash);
                     }

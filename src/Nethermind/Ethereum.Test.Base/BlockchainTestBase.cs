@@ -63,6 +63,9 @@ public abstract class BlockchainTestBase
     // Each blockchain_tests_engine_x test reorgs back to genesis, which needs the state of a group's longest test
     // chain kept, 257 blocks for the BLOCKHASH tests; past the default retention the client answers SYNCING.
     private const ulong EngineXReorgDepth = 1024;
+    // Every test's chain stays below the reorg depth, so a client never persists or prunes a block and keeps the
+    // state of every test it ran; a group starts a new client after this many payloads to bound that memory.
+    private const int EngineXPayloadsPerClient = 512;
 
     /// <summary>
     /// Override to force parallel or sequential BAL execution in tests.
@@ -330,7 +333,7 @@ public abstract class BlockchainTestBase
     }
 
     /// <summary>
-    /// Runs the tests of one <c>blockchain_tests_engine_x</c> pre-allocation group, in order, on one client.
+    /// Runs the tests of one <c>blockchain_tests_engine_x</c> pre-allocation group, in order, on shared clients.
     /// </summary>
     /// <param name="group">The group's client setup, from <see cref="EngineXFixtures.CreateGroupTest"/>.</param>
     /// <param name="tests">The group's tests; each is checked against the group's allocation with its post-state diff applied.</param>
@@ -338,21 +341,42 @@ public abstract class BlockchainTestBase
     /// <remarks>
     /// Every test starts with a forkchoice update to genesis and builds its own chain from there, so the client reorgs
     /// between tests. Forkchoice updates leave safe and finalized at zero: a finalized block from one test would keep
-    /// the next test from reorging below it.
+    /// the next test from reorging below it. A large group runs on several clients in turn, see <see cref="EngineXPayloadsPerClient"/>.
     /// </remarks>
     protected async Task<List<EthereumTestResult>> RunEngineXGroup(BlockchainTest group, IEnumerable<BlockchainTest> tests)
     {
-        ISpecProvider specProvider = CreateSpecProvider(group);
         if (group.Network!.IsEip4844Enabled || group.NetworkAfterTransition?.IsEip4844Enabled is true)
         {
             await KzgPolynomialCommitments.InitializeAsync();
         }
 
+        Dictionary<Hash256, string> firstRejections = [];
+        List<EthereumTestResult> results = [];
+        using IEnumerator<BlockchainTest> pending = tests.GetEnumerator();
+        bool testsLeft = pending.MoveNext();
+        while (testsLeft)
+        {
+            testsLeft = await RunEngineXTestsOnClient(group, pending, firstRejections, results);
+        }
+
+        return results;
+    }
+
+    /// <summary>
+    /// Starts a client for <paramref name="group"/> and runs tests on it from the current one of <paramref name="pending"/>,
+    /// until it has taken <see cref="EngineXPayloadsPerClient"/> payloads or no test is left.
+    /// </summary>
+    /// <returns>Whether tests are left for another client.</returns>
+    private async Task<bool> RunEngineXTestsOnClient(BlockchainTest group, IEnumerator<BlockchainTest> pending,
+        Dictionary<Hash256, string> firstRejections, List<EthereumTestResult> results)
+    {
+        ISpecProvider specProvider = CreateSpecProvider(group);
         await using IContainer container = CreateContainerBuilder(group, specProvider, isEngineTest: true, tracer: null, [], out _, EngineXReorgDepth).Build();
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
         IWorldState stateProvider = mainBlockProcessingContext.WorldState;
         IBlockProcessingQueue blockchainProcessingQueue = mainBlockProcessingContext.BlockProcessingQueue;
         IBlockTree blockTree = container.Resolve<IBlockTree>();
+        IBlockCachePreWarmer? preWarmer = container.Resolve<MainProcessingContext>().LifetimeScope.ResolveOptional<IBlockCachePreWarmer>();
         blockchainProcessingQueue.Start();
 
         try
@@ -361,14 +385,18 @@ public abstract class BlockchainTestBase
                 (BlockchainProcessor)mainBlockProcessingContext.BlockchainProcessor, blockTree, container.Resolve<BlockDecoder>(), null).Hash!;
             (IJsonRpcService rpcService, JsonRpcContext rpcContext) = CreateEngineRpc(container);
 
-            Dictionary<Hash256, string> firstRejections = [];
-            List<EthereumTestResult> results = [];
-            foreach (BlockchainTest test in tests)
+            int payloads = 0;
+            do
             {
-                results.Add(await RunEngineXTest(test, group.Pre!, genesisHash, rpcService, rpcContext, blockchainProcessingQueue, blockTree, stateProvider, firstRejections));
+                BlockchainTest test = pending.Current;
+                results.Add(await RunEngineXTest(test, group.Pre!, genesisHash, rpcService, rpcContext, blockchainProcessingQueue, blockTree, stateProvider, preWarmer, firstRejections));
+                payloads += test.EngineNewPayloads?.Length ?? 0;
+                if (!pending.MoveNext())
+                    return false;
             }
+            while (payloads < EngineXPayloadsPerClient);
 
-            return results;
+            return true;
         }
         finally
         {
@@ -378,7 +406,7 @@ public abstract class BlockchainTestBase
 
     private async Task<EthereumTestResult> RunEngineXTest(BlockchainTest test, Dictionary<Address, AccountState> pre, Hash256 genesisHash,
         IJsonRpcService rpcService, JsonRpcContext rpcContext, IBlockProcessingQueue processingQueue, IBlockTree blockTree, IWorldState stateProvider,
-        Dictionary<Hash256, string> firstRejections)
+        IBlockCachePreWarmer? preWarmer, Dictionary<Hash256, string> firstRejections)
     {
         string name = test.FixtureId ?? test.Name;
         if (test.LoadFailure is not null)
@@ -394,6 +422,8 @@ public abstract class BlockchainTestBase
                 new RejectionRecorder(rejections), MatchExpectedExceptions, finalizeHeads: false, firstRejections);
             test.Pre = pre;
             test.PostState = ApplyStateDiff(pre, test.PostStateDiff);
+            // Joins any prewarming still in flight, as RunTest does before its state check.
+            preWarmer?.ClearCaches();
 
             Block headBlock = blockTree.RetrieveHeadBlock()!;
             List<string> differences;
@@ -752,8 +782,8 @@ public abstract class BlockchainTestBase
                 else
                 {
                     PayloadStatusV1 payloadStatus = GetPayloadStatus(npResponse, newPayloadVersion);
-                    RecordInvalidPayload(rejectionRecorder, payloadIndex, enginePayload, payloadStatus);
                     UseFirstRejection(payloadStatus, enginePayload, firstRejections);
+                    RecordInvalidPayload(rejectionRecorder, payloadIndex, enginePayload, payloadStatus);
                     AssertPayloadStatus(payloadStatus, validationError, newPayloadVersion, matchExpectedExceptions, enginePayload.InclusionListSatisfied);
                     lastStatus = payloadStatus.Status;
                     if (payloadStatus.ValidationError is not null)

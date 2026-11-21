@@ -51,13 +51,15 @@ public class EngineXFixturesTests
     {
         WritePreAlloc("0x01");
         string good = WriteFixture("a.json", ("a1", "0x01"));
-        string missing = WriteFixture("b.json", ("b1", "0x03"));
+        // b1 belongs to a group that exists, but its file fails as a whole and none of its tests run.
+        string missing = WriteFixture("b.json", ("b1", "0x01"), ("b2", "0x03"));
 
         (List<EngineXGroup> groups, List<FailedToLoadTest> failures) = EngineXFixtures.Index([good, missing]);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(groups.Select(static group => group.PreHash), Is.EqualTo(new[] { "0x01" }));
+            Assert.That(groups[0].Tests.Select(static test => test.File), Is.EqualTo(new[] { good }));
             Assert.That(failures.Select(static failure => failure.Name), Is.EqualTo(new[] { missing }));
         }
     }
