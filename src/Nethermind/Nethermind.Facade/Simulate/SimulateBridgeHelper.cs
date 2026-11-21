@@ -16,16 +16,19 @@ using Nethermind.State;
 using Nethermind.State.Proofs;
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Transaction = Nethermind.Core.Transaction;
 
+[assembly: InternalsVisibleTo("Nethermind.LightClient")]
+
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider specProvider)
 {
-    private const ProcessingOptions SimulateProcessingOptions =
+    internal const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
         | ProcessingOptions.IgnoreParentNotOnMainChain
         | ProcessingOptions.StoreReceipts;
@@ -36,7 +39,7 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     /// still be missing for the EIP-7702 authority check and EIP-8037 NEW_ACCOUNT charging, and the transaction
     /// processor creates a missing sender itself.
     /// </remarks>
-    private static void PrepareState(
+    internal static void PrepareState(
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
         IWorldState stateProvider,
         IOverridableCodeInfoRepository codeInfoRepository,
@@ -174,13 +177,13 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     /// field follows. This runs before the block joins the simulated chain, so BLOCKHASH and the parent hash of the next
     /// simulated block see the same hash.
     /// </remarks>
-    private static void EncodeZeroBaseFee(Block block)
+    internal static void EncodeZeroBaseFee(Block block)
     {
         block.Header.Hash = block.Header.CalculateHash(RlpBehaviors.Eip1559Header);
         block.EncodedSize = (Rlp.GetDecoder<Block>() ?? new BlockDecoder()).GetLength(block, RlpBehaviors.Eip1559Header);
     }
 
-    private BlockBody AssembleBody(
+    internal BlockBody AssembleBody(
         TransactionWithSourceDetails[] calls,
         Withdrawal[]? withdrawalOverrides,
         IReleaseSpec spec)

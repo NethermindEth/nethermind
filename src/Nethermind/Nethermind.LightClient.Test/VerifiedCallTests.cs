@@ -12,6 +12,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
 using Nethermind.Specs;
@@ -1167,6 +1168,109 @@ public class VerifiedCallTests
             Assert.That(entries.Any(entry => entry.Contains("phase=completion outcome=completed")), Is.True);
             Assert.That(Activity.Current, Is.SameAs(parent));
         }
+    }
+
+    [Test]
+    public async Task Simulate_chains_state_and_block_hashes_across_simulated_blocks([Values("shanghai", "prague", "amsterdam")] string fork)
+    {
+        // An empty call returns slot 0; any other call stores its first word there.
+        byte[] code = [0x36, 0x15, 0x60, 0x0c, 0x57, 0x60, 0x00, 0x35, 0x60, 0x00, 0x55, 0x00, 0x5b, 0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
+        // Returns BLOCKHASH(NUMBER - 2).
+        const string blockhashReader = "0x43600290034060005260206000f3";
+        Address sender = new("0x00000000000000000000000000000000000000c1");
+        Address recipient = new("0x00000000000000000000000000000000000000c2");
+        Address reader = new("0x00000000000000000000000000000000000000b0");
+        FakeSource source = new(code);
+        if (fork != "shanghai")
+        {
+            source.ExtraContracts[Eip7002Constants.WithdrawalRequestPredeployAddress] = [0x00];
+            source.ExtraContracts[Eip7251Constants.ConsolidationRequestPredeployAddress] = [0x00];
+        }
+        if (fork == "amsterdam")
+        {
+            source.ExtraContracts[Eip8282Constants.BuilderDepositRequestPredeployAddress] = [0x00];
+            source.ExtraContracts[Eip8282Constants.BuilderExitRequestPredeployAddress] = [0x00];
+        }
+        SingleReleaseSpecProvider spec = new(fork switch { "prague" => Prague.Instance, "amsterdam" => Amsterdam.Instance, _ => Shanghai.Instance }, 1, 1);
+        using VerifiedCall call = new(source, spec, NullLogManager.Instance);
+        using VerifiedRpc rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
+        object payload = new
+        {
+            blockStateCalls = new object[]
+            {
+                new
+                {
+                    stateOverrides = new Dictionary<string, object>
+                    {
+                        [sender.ToString()] = new { balance = "0xde0b6b3a7640000" },
+                        [reader.ToString()] = new { code = blockhashReader },
+                    },
+                    calls = new object[]
+                    {
+                        new { from = sender.ToString(), to = Contract.ToString(), input = "0x" + new string('0', 63) + "7" },
+                        new { from = sender.ToString(), to = recipient.ToString(), value = "0x5" },
+                    },
+                },
+                new { calls = new object[] { new { from = sender.ToString(), to = Contract.ToString() }, new { from = sender.ToString(), to = reader.ToString() } } },
+                new { calls = new object[] { new { from = sender.ToString(), to = reader.ToString() } } },
+            },
+            traceTransfers = true,
+        };
+
+        JsonElement blocks = (JsonElement)await rpc.InvokeAsync("eth_simulateV1", JsonSerializer.SerializeToElement(new[] { payload }), CancellationToken.None);
+
+        string Word(ulong value) => "0x" + value.ToString("x64");
+        string Hash(int block) => blocks[block].GetProperty("hash").GetString()!;
+        JsonElement Call(int block, int index) => blocks[block].GetProperty("calls")[index];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.GetArrayLength(), Is.EqualTo(3));
+            Assert.That(blocks[0].GetProperty("number").GetString(), Is.EqualTo($"0x{source.Head.Number + 1:x}"));
+            Assert.That(blocks[0].GetProperty("parentHash").GetString(), Is.EqualTo(source.Head.BlockHash.ToString()));
+            Assert.That(blocks[1].GetProperty("parentHash").GetString(), Is.EqualTo(Hash(0)));
+            Assert.That(blocks[2].GetProperty("parentHash").GetString(), Is.EqualTo(Hash(1)));
+            Assert.That(Call(0, 0).GetProperty("status").GetString(), Is.EqualTo("0x1"));
+            // From EIP-7708 the EVM logs value transfers itself, from the system address, instead of the simulator.
+            Assert.That(Call(0, 1).GetProperty("logs")[0].GetProperty("address").GetString(),
+                Is.EqualTo((fork == "amsterdam" ? TransferLog.Sender : TransferLog.Erc20Sender).ToString()));
+            // The fake source serves 42 for every authenticated slot, so 7 can only come from the first block's write.
+            Assert.That(Call(1, 0).GetProperty("returnData").GetString(), Is.EqualTo(Word(7)));
+            Assert.That(Call(1, 1).GetProperty("returnData").GetString(), Is.EqualTo(source.Head.BlockHash.ToString()));
+            Assert.That(Call(2, 0).GetProperty("returnData").GetString(), Is.EqualTo(Hash(0)));
+            // From Prague the request contracts run their shared code at the end of each block.
+            Assert.That(source.CodeFetches, Is.EqualTo(fork == "shanghai" ? 1 : 2));
+        }
+    }
+
+    [TestCase("empty", ErrorCodes.InvalidParams)]
+    [TestCase("too-many-blocks", ErrorCodes.ClientLimitExceededError)]
+    [TestCase("blocks-out-of-order", ErrorCodes.InvalidInputBlocksOutOfOrder)]
+    [TestCase("malformed", ErrorCodes.InvalidParams)]
+    public async Task Simulate_rejects_invalid_requests_with_the_simulate_error_codes(string scenario, int expectedCode)
+    {
+        FakeSource source = new([0x00]);
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using VerifiedCall call = new(source, spec, NullLogManager.Instance);
+        using VerifiedRpc rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
+        object payload = scenario switch
+        {
+            "empty" => new { blockStateCalls = Array.Empty<object>() },
+            "too-many-blocks" => new { blockStateCalls = Enumerable.Repeat(new { calls = Array.Empty<object>() }, 17).ToArray() },
+            "blocks-out-of-order" => new
+            {
+                blockStateCalls = new object[]
+                {
+                    new { blockOverrides = new { number = $"0x{source.Head.Number + 2:x}" } },
+                    new { blockOverrides = new { number = $"0x{source.Head.Number + 1:x}" } },
+                },
+            },
+            _ => new { blockStateCalls = "not an array" },
+        };
+
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
+            await rpc.InvokeAsync("eth_simulateV1", JsonSerializer.SerializeToElement(new[] { payload }), CancellationToken.None));
+
+        Assert.That(error!.Code, Is.EqualTo(expectedCode));
     }
 
     private static ILogManager DiagnosticLogs(bool debug, ConcurrentQueue<string> entries)

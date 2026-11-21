@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -32,6 +33,7 @@ internal interface IVerifiedEthRpcModule : IRpcModule
     Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ConverterType = typeof(VerifiedRpcParameterConverters.StrictDataConverter))] byte[] transaction);
     Task<ResultWrapper<string>> eth_call(TransactionForRpc transaction, JsonElement? blockParameter = null);
     Task<ResultWrapper<string>> eth_estimateGas(TransactionForRpc transaction, JsonElement? blockParameter = null);
+    Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null);
     Task<ResultWrapper<JsonElement>> eth_feeHistory([JsonRpcParameter(ConverterType = typeof(VerifiedRpcParameterConverters.StrictQuantityConverter))] UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles);
     Task<ResultWrapper<JsonElement>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects);
     Task<ResultWrapper<JsonElement>> eth_getBlockByHash([JsonRpcParameter(ConverterType = typeof(VerifiedRpcParameterConverters.StrictHashConverter))] Hash256 blockHash, bool returnFullTransactionObjects);

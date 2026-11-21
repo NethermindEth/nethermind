@@ -11,6 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 using Nethermind.Int256;
@@ -84,6 +85,16 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
         (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined
             ? (await LatestHeadAsync(cancellationToken), false) : await ResolveStateHeadAsync(block, cancellationToken);
         try { return await calls.ExecuteAsync(head, transaction, estimateGas, cancellationToken); }
+        finally { if (historical) _historicalStateRequests.Release(); }
+    }
+
+    internal async Task<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> SimulateAsync(JsonElement payload, JsonElement block,
+        CancellationToken cancellationToken)
+    {
+        if (calls is null) throw new RpcException(-32601, "Method is not supported by the verified RPC.");
+        (VerifiedHead head, bool historical) = block.ValueKind == JsonValueKind.Undefined
+            ? (await LatestHeadAsync(cancellationToken), false) : await ResolveStateHeadAsync(block, cancellationToken);
+        try { return await calls.SimulateAsync(head, payload, cancellationToken); }
         finally { if (historical) _historicalStateRequests.Release(); }
     }
 

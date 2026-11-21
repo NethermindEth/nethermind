@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -41,6 +42,8 @@ internal sealed class VerifiedEthRpcModule(VerifiedRpcService service, ILogManag
         Execute((rpc, token) => rpc.CallAsync(transaction, blockParameter ?? default, false, token));
     public Task<ResultWrapper<string>> eth_estimateGas(TransactionForRpc transaction, JsonElement? blockParameter = null) =>
         Execute((rpc, token) => rpc.CallAsync(transaction, blockParameter ?? default, true, token));
+    public Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null) =>
+        Execute((rpc, token) => rpc.SimulateAsync(payload, blockParameter ?? default, token));
     public Task<ResultWrapper<JsonElement>> eth_feeHistory(UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles) =>
         Execute((rpc, token) => rpc.GetFeeHistoryAsync(blockCount, newestBlock, rewardPercentiles, token));
     public Task<ResultWrapper<JsonElement>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects) =>
