@@ -1340,10 +1340,11 @@ public class GuestDispatchDifferentialTests
     /// Memory starts empty, holds one word at 0, or holds words up to 0x120, so a copy lands inside the initialized
     /// memory, past it with a gap, or at the end of the inline backing. Each copy also runs one and three gas short of
     /// its need, which puts the end of the gas inside its word and expansion charges. An MLOAD at 0x100 or 0x400 grows
-    /// the memory and initializes it past its new size, so a destination there still owes its expansion.
+    /// the memory and initializes it past its new size, so a destination there still owes its expansion. Memory written
+    /// with 0xff up to 0x120 shows the zeros a copy past its source must leave.
     /// </remarks>
     [Test]
-    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2, 3, 4)] int memory)
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2, 3, 4, 5)] int memory)
     {
         byte[] data = new byte[40];
         for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
@@ -1353,7 +1354,8 @@ public class GuestDispatchDifferentialTests
             1 => [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE],
             2 => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
             3 => [(byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
-            _ => [(byte)Instruction.PUSH2, 0x04, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
+            4 => [(byte)Instruction.PUSH2, 0x04, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
+            _ => [.. Enumerable.Range(0, 9).SelectMany(static word => (byte[])[(byte)Instruction.PUSH0, (byte)Instruction.NOT, (byte)Instruction.PUSH2, (byte)(word * 0x20 >> 8), (byte)(word * 0x20), (byte)Instruction.MSTORE])],
         };
         UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
         UInt256[] sources = [0, 5, 39, 40, 41, 0x100, UInt256.One << 32, UInt256.One << 64];
