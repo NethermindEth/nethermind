@@ -1004,14 +1004,15 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     /// canonical consensus-client/execution-client version-mismatch signal and -32602 means the CL sent a payload
     /// this node could not bind, both of which are the operator's problem and have to stay visible at default level.
     /// <para>
-    /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller, and
-    /// <see cref="Error.OperatorActionable"/> overrides the code: -32601 also carries "namespace X is disabled for
-    /// this URL", which is a statement about this node's configuration.
+    /// Server-side codes (-32603, -32000, timeouts) keep WARN for every caller unless <see cref="Error.RequestError"/>
+    /// marks the error as the request's fault (a rejected transaction), and <see cref="Error.OperatorActionable"/>
+    /// overrides the code: -32601 also carries "namespace X is disabled for this URL", which is a statement about this
+    /// node's configuration.
     /// </para>
     /// </remarks>
     private static bool IsDemotableRequestError(Error responseError, JsonRpcContext context) =>
         !context.IsAuthenticated
-        && ErrorCodes.IsRequestError(responseError.Code)
+        && (ErrorCodes.IsRequestError(responseError.Code) || responseError.RequestError)
         && !responseError.OperatorActionable;
 
     private JsonRpcResult.Entry CreateSingleRequestEntry(JsonRpcRequest request, JsonRpcResponse response, JsonRpcContext context, long startTime)

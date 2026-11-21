@@ -211,7 +211,8 @@ public class OptimismEthRpcModule(
             }
         }
 
-        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it.
+        // Relay the sequencer's rejection (nonce too low, underpriced, ...) so wallets can act on it. It keeps its WARN:
+        // a sequencer also answers -32000 for its own failures, so the code does not tell them apart from rejections.
         if (forwarded?.Error is { } error)
         {
             return ResultWrapper<Hash256>.Fail(error.Message ?? "Sequencer rejected the transaction", error.Code);
