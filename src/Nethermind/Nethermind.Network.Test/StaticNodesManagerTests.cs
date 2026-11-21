@@ -1,9 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Test.IO;
@@ -96,6 +99,16 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
+        public async Task contains_node_tracks_membership()
+        {
+            Assert.That(_staticNodesManager.ContainsNode(Enode.NodeId), Is.False);
+            await _staticNodesManager.AddAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsNode(Enode.NodeId), Is.True);
+            await _staticNodesManager.RemoveAsync(Enode, false);
+            Assert.That(_staticNodesManager.ContainsNode(Enode.NodeId), Is.False);
+        }
+
+        [Test]
         public async Task init_loaded_nodes_are_emitted_with_static_flag()
         {
             await _staticNodesManager.InitAsync();
@@ -140,6 +153,31 @@ namespace Nethermind.Network.Test
             _staticNodesManager = new StaticNodesManager(tempFile.Path, LimboLogs.Instance);
             await _staticNodesManager.InitAsync();
             Assert.That(_staticNodesManager.Nodes.Count(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void contains_node_defaults_to_the_nodes_projection_for_external_implementations()
+        {
+            // An out-of-tree manager predates ContainsNode and therefore implements only the other members.
+            IStaticNodesManager externalManager = new NodesOnlyStaticNodesManager(Enode);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(externalManager.ContainsNode(Enode.NodeId), Is.True);
+                Assert.That(externalManager.ContainsNode(SameIpEnode.NodeId), Is.False);
+            }
+        }
+
+        private sealed class NodesOnlyStaticNodesManager(NetworkNode node) : IStaticNodesManager
+        {
+            public IEnumerable<NetworkNode> Nodes => [node];
+            public Task InitAsync() => Task.CompletedTask;
+            public Task<bool> AddAsync(NetworkNode node, bool updateFile = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public Task<bool> RemoveAsync(NetworkNode node, bool updateFile = true, CancellationToken cancellationToken = default) => throw new NotSupportedException();
+            public bool IsStatic(NetworkNode node) => false;
+            public bool ContainsIp(IPAddress ip) => false;
+            public IAsyncEnumerable<Node> DiscoverNodes(CancellationToken cancellationToken) => throw new NotSupportedException();
+            public event EventHandler<NodeEventArgs>? NodeRemoved { add { } remove { } }
         }
     }
 }

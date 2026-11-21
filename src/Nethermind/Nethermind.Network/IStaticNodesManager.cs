@@ -2,10 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network;
 
@@ -21,6 +23,10 @@ public interface IStaticNodesManager : INodeSource
     /// <returns><see langword="true"/> when the node was removed; <see langword="false"/> when it was not present.</returns>
     Task<bool> RemoveAsync(NetworkNode node, bool updateFile = true, CancellationToken cancellationToken = default);
     bool IsStatic(NetworkNode node);
+
+    /// <summary>Returns <see langword="true"/> when the managed set currently holds <paramref name="nodeId"/>, whatever endpoint it was added with.</summary>
+    /// <remarks>The default scans <see cref="Nodes"/>, so implementations that keep an index should override it.</remarks>
+    bool ContainsNode(PublicKey nodeId) => Nodes.Any(node => node.NodeId.Equals(nodeId));
 
     bool ContainsIp(IPAddress ip);
 }

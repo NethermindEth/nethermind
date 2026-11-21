@@ -26,8 +26,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
         [SetUp]
         public void Setup()
         {
-            _handler = new(K, IPAddress.Any);
             _farAddress = new(IPAddress.Parse("192.168.1.1"), 30303);
+            _handler = new(K, IPAddress.Any, _farAddress);
             _expirationTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 60; // 60 seconds in the future
         }
 
@@ -86,7 +86,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
         [Test]
         public async Task When_ResponseContainsUnsupportedFamilies_ThenTheyDoNotConsumeLimit()
         {
-            NeighbourMsgHandler handler = new(K, IPAddress.Parse("2001:db8::1"));
+            NeighbourMsgHandler handler = new(K, IPAddress.Parse("2001:db8::1"), _farAddress);
             Node[] mixedNodes =
             [
                 .. CreateNodes(8),
@@ -108,6 +108,30 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia.Handlers
                 Assert.That(Array.TrueForAll(response, node =>
                     node.DiscoveryAddress.Address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6), Is.True);
             }
+        }
+
+        [Test]
+        public void When_ResponseComesFromAnotherEndpoint_ThenItIsIgnored()
+        {
+            NeighborsMsg msg = new(_farAddress, _expirationTime, CreateNodes(8));
+            msg.FarAddress = new IPEndPoint(IPAddress.Parse("198.51.100.7"), 30303);
+
+#pragma warning disable NUnit2045 // Message handling changes completion state used by subsequent assertions or messages.
+            Assert.That(_handler.Handle(msg), Is.False);
+#pragma warning restore NUnit2045
+            Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.False);
+        }
+
+        [Test]
+        public void When_ResponseHasNoSourceEndpoint_ThenItIsIgnored()
+        {
+            NeighborsMsg msg = new(_farAddress, _expirationTime, CreateNodes(8));
+            msg.FarAddress = null;
+
+#pragma warning disable NUnit2045 // Message handling changes completion state used by subsequent assertions or messages.
+            Assert.That(_handler.Handle(msg), Is.False);
+#pragma warning restore NUnit2045
+            Assert.That(_handler.TaskCompletionSource.Task.IsCompleted, Is.False);
         }
 
         private static IEnumerable<TestCaseData> TimeoutCases()

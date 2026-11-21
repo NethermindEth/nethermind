@@ -69,4 +69,29 @@ public class KademliaConfig<TNode>
     /// acquire a lock that callers can hold while entering that routing table (which would invert the lock order).
     /// </remarks>
     public Func<TNode, TNode, TNode>? MergeOnRefresh { get; set; }
+
+    /// <summary>
+    /// Validates a node taken from a bucket's replacement cache before it is promoted into the bucket.
+    /// </summary>
+    /// <remarks>
+    /// The function runs while the routing table is locked. The merge contract applies here too: it must return
+    /// promptly, must not throw, must not perform I/O or mutate the routing table that invoked it, and must not
+    /// acquire a lock that callers can hold while entering that routing table (which would invert the lock order).
+    /// Returning <see langword="false"/> discards the cached entry.
+    /// </remarks>
+    public Func<TNode, bool>? CanPromoteReplacement { get; set; }
+
+    /// <summary>
+    /// Decides whether a node which answered a refresh ping may still renew its bucket entry.
+    /// </summary>
+    /// <remarks>
+    /// Read on every successful refresh ping rather than captured at construction, because discovery installs it
+    /// after the tracker exists. It runs on a thread-pool task with no cancellation token, and is expected to both
+    /// decide and record the admission, like the inbound-message gate; discovery therefore passes the address
+    /// filter's admission rather than a pure predicate. The function must return promptly, must not throw, must not
+    /// perform I/O or mutate the routing table. Returning <see langword="false"/> rejects the refresh while its
+    /// eviction is still pending; an incoming message from the node can clear that pending refresh first, in which
+    /// case the entry is not evicted. <see langword="null"/> allows the refresh.
+    /// </remarks>
+    public Func<TNode, bool>? CanRefreshNode { get; set; }
 }

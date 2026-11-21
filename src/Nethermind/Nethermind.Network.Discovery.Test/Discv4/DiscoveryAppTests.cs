@@ -19,6 +19,7 @@ using Nethermind.Kademlia;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv4;
+using Nethermind.Network.Discovery.Discv4.Kademlia;
 using Nethermind.Network.Enr;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
@@ -227,6 +228,34 @@ public class DiscoveryAppTests
     }
 
     [Test]
+    public void Should_apply_identity_check_to_the_fallback_enr([Values] bool matchingIdentity)
+    {
+        NodeRecord record = TestEnrBuilder.BuildSigned(
+            matchingIdentity ? TestItem.PrivateKeyA : TestItem.PrivateKeyB,
+            IPAddress.Parse("192.0.2.1"),
+            tcpPort: 30303,
+            udpPort: 30304);
+        NetworkNode persistedNode = new(new Enode(TestItem.PublicKeyA, IPAddress.Parse("2001:db8::1"), 30303, 30304))
+        {
+            FallbackEnr = record
+        };
+
+        Node? restoredNode = DiscoveryApp.RestorePersistedNode(persistedNode, IPAddress.Parse("198.51.100.1"));
+
+        Assert.That(restoredNode is not null, Is.EqualTo(matchingIdentity));
+        if (restoredNode is not null)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restoredNode.Host, Is.EqualTo("192.0.2.1"));
+                Assert.That(restoredNode.Port, Is.EqualTo(30303));
+                Assert.That(restoredNode.DiscoveryPort, Is.EqualTo(30304));
+                Assert.That(restoredNode.Enr?.ToString(), Is.EqualTo(record.ToString()));
+            }
+        }
+    }
+
+    [Test]
     public void Should_ignore_configured_enr_without_udp_endpoint()
     {
         NodeRecord enr = TestEnrBuilder.BuildSigned(TestItem.PrivateKeyA, IPAddress.Parse("8.8.8.8"), tcpPort: 30303, udpPort: null);
@@ -287,6 +316,87 @@ public class DiscoveryAppTests
             node.DiscoveryAddress.Address.Equals(IPAddress.Parse("2001:4860:4860::8888"))));
         kademlia.DidNotReceive().AddOrRefresh(Arg.Any<Node>());
     }
+
+    [TestCase("203.0.113.50", true, true, false, TestName = "AddNodeToDiscovery: same IP, filter on")]
+    [TestCase("203.0.113.51", true, true, false, TestName = "AddNodeToDiscovery: same /24, bucketing on")]
+    [TestCase("203.0.113.51", false, true, true, TestName = "AddNodeToDiscovery: same /24, bucketing off")]
+    [TestCase("203.0.113.51", true, false, true, TestName = "AddNodeToDiscovery: filter off")]
+    [TestCase("203.0.114.51", true, true, true, TestName = "AddNodeToDiscovery: different /24")]
+    public async Task AddNodeToDiscovery_applies_configured_filter(
+        string secondIp,
+        bool subnetBucketing,
+        bool filterEnabled,
+        bool expectSecondAccepted)
+    {
+        await using IContainer container = CreateDiscoveryAppContainer(filterEnabled, subnetBucketing, out NetworkListenerState listenerState);
+        listenerState.SetDiscoveryAddress(IPAddress.Any);
+        await using DiscoveryApp app = container.Resolve<DiscoveryApp>();
+        IRoutingTable<Node, ValueHash256> routingTable = app.ResolveDiscv4Service<IRoutingTable<Node, ValueHash256>>();
+
+        Node first = CreateNode(TestItem.PublicKeyA, "203.0.113.50");
+        Node second = CreateNode(TestItem.PublicKeyB, secondIp);
+
+        app.AddNodeToDiscovery(first);
+        app.AddNodeToDiscovery(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(routingTable.TryGet(first.Id.Hash.ValueHash256, out _), Is.True);
+            Assert.That(routingTable.TryGet(second.Id.Hash.ValueHash256, out _), Is.EqualTo(expectSecondAccepted));
+        }
+    }
+
+    [Test]
+    public async Task Discv4_scope_resolves_the_admission_gated_adapter()
+    {
+        await using IContainer container = CreateDiscoveryAppContainer(
+            filterEnabled: true,
+            subnetBucketing: true,
+            out NetworkListenerState _);
+        await using DiscoveryApp app = container.Resolve<DiscoveryApp>();
+
+        IKademliaAdapter adapter = app.ResolveDiscv4Service<IKademliaAdapter>();
+
+        Assert.That(adapter, Is.InstanceOf<AdmissionGatedKademliaAdapter>());
+    }
+
+    private static IContainer CreateDiscoveryAppContainer(
+        bool filterEnabled,
+        bool subnetBucketing,
+        out NetworkListenerState listenerState)
+    {
+        NetworkConfig networkConfig = new()
+        {
+            ExternalIp = "8.8.8.8",
+            LocalIp = "0.0.0.0",
+            FilterDiscoveryNodesByRecentIp = filterEnabled,
+            FilterDiscoveryNodesBySameSubnet = subnetBucketing,
+        };
+        DiscoveryConfig discoveryConfig = new();
+        IIPResolver ipResolver = new FixedIpResolver(networkConfig);
+        listenerState = new NetworkListenerState(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
+
+        InitConfig initConfig = new() { DiscoveryEnabled = true, DiagnosticMode = DiagnosticMode.MemDb };
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new DiscoveryModule(initConfig, networkConfig));
+        builder.RegisterInstance(initConfig).As<IInitConfig>();
+        builder.RegisterInstance(new ChainSpec());
+        builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
+        builder.RegisterInstance(networkConfig).As<INetworkConfig>();
+        builder.RegisterInstance(discoveryConfig).As<IDiscoveryConfig>();
+        builder.RegisterInstance(ipResolver).As<IIPResolver>();
+        builder.RegisterInstance(listenerState);
+        builder.RegisterInstance(new ProcessExitSource(CancellationToken.None)).As<IProcessExitSource>();
+        builder.RegisterInstance<IEcdsa>(new EthereumEcdsa(0));
+        builder.RegisterInstance(Timestamper.Default).As<ITimestamper>();
+        builder.RegisterInstance(Substitute.For<IForkInfo>());
+        builder.RegisterInstance(Substitute.For<INodeRecordProvider>());
+        builder.RegisterInstance(Substitute.For<INodeStatsManager>());
+        builder.RegisterInstance(new Enode(TestItem.PrivateKeyF.PublicKey, IPAddress.Parse("8.8.8.8"), 30303, 30303)).As<IEnode>();
+        return builder.Build();
+    }
+
+    private static Node CreateNode(PublicKey id, string host) => new(id, host, 30303, 30303);
 
     private static NodeRecord CreateAsymmetricDualStackRecord() =>
         TestEnrBuilder.BuildSigned(

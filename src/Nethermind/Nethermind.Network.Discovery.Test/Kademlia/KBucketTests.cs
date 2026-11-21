@@ -91,6 +91,22 @@ public class KBucketTests
     }
 
     [Test]
+    public void RemoveAndReplace_should_skip_replacements_rejected_by_admission()
+    {
+        (KBucket<int, int> bucket, int[] toAdd) = BuildFullBucket();
+
+        const int rejected = 9;
+        bucket.RemoveAndReplace(toAdd[0], node => node != rejected);
+
+        int[] expected = [.. toAdd[1..5], toAdd[8]];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bucket.GetAll().ToHashSet(), Is.EquivalentTo(expected.ToHashSet()));
+            Assert.That(bucket.GetAllWithHash().ToHashSet(), Is.EquivalentTo(expected.Select(static it => (it, it)).ToHashSet()));
+        }
+    }
+
+    [Test]
     public void Replacement_cache_should_not_scale_with_large_bucket_size()
     {
         const int bucketSize = KBucket<int, int>.DefaultReplacementCacheSize * 2;

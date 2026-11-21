@@ -30,6 +30,7 @@ public class KademliaAdapter(
     Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
     IDiscoveryConfig discoveryConfig,
     KademliaConfig<Node> kademliaConfig,
+    PeerCandidateReservations peerCandidateReservations,
     INodeRecordProvider nodeRecordProvider,
     IIPResolver ipResolver,
     INodeStatsManager nodeStatsManager,
@@ -40,6 +41,35 @@ public class KademliaAdapter(
     NetworkListenerState listenerState
 ) : KademliaAdapterBase("discv4", logManager.GetClassLogger<KademliaAdapter>(), listenerState), IKademliaAdapter
 {
+    /// <summary>
+    /// Builds an adapter that shares the peer-candidate reservations of every other component wired to
+    /// <paramref name="kademliaConfig"/>, as the injectable constructor does.
+    /// </summary>
+    /// <remarks>
+    /// Retained so subclasses compiled against the pre-existing constructor keep loading, and so they still
+    /// release into the same store the admission gate releases from. The store is derived from
+    /// <paramref name="kademliaConfig"/>, which must be the instance the container wires.
+    /// </remarks>
+    public KademliaAdapter(
+        Lazy<IKademlia<PublicKey, Node>> kademlia,
+        IRoutingTable<Node, ValueHash256> routingTable,
+        Lazy<INodeHealthTracker<Node>> nodeHealthTracker,
+        IDiscoveryConfig discoveryConfig,
+        KademliaConfig<Node> kademliaConfig,
+        INodeRecordProvider nodeRecordProvider,
+        IIPResolver ipResolver,
+        INodeStatsManager nodeStatsManager,
+        ITimestamper timestamper,
+        IProcessExitSource processExitSource,
+        IEcdsa ecdsa,
+        ILogManager logManager,
+        NetworkListenerState listenerState)
+        : this(kademlia, routingTable, nodeHealthTracker, discoveryConfig, kademliaConfig,
+            PeerCandidateReservations.For(kademliaConfig), nodeRecordProvider, ipResolver, nodeStatsManager,
+            timestamper, processExitSource, ecdsa, logManager, listenerState)
+    {
+    }
+
     private const int MaxNodesPerNeighborsMsg = 12;
     private const int PeerCandidateChannelCapacity = 64;
 
@@ -52,8 +82,7 @@ public class KademliaAdapter(
     private readonly RateLimiter _outboundRateLimiter = new(Math.Max(1, discoveryConfig.MaxOutgoingMessagePerSecond / 2));
     private readonly RateLimiter _responseRateLimiter = new(Math.Max(1, discoveryConfig.MaxOutgoingMessagePerSecond / 2));
     private readonly NodeRecordSigner _nodeRecordSigner = new(ecdsa);
-    private readonly RecentNodeFilter<Hash256> _recentPeerCandidates = new(
-        RecentNodeFilter.GetLimit(kademliaConfig.KSize, ValueHash256KademliaDistance.Instance.MaxDistance, PeerCandidateChannelCapacity));
+    private readonly PeerCandidateReservations _peerCandidateReservations = peerCandidateReservations;
     private readonly Channel<Node> _peerCandidates = Channel.CreateBounded<Node>(new BoundedChannelOptions(PeerCandidateChannelCapacity)
     {
         SingleReader = true,
@@ -340,7 +369,7 @@ public class KademliaAdapter(
             KademliaAdapter adapter = state.Adapter;
             FindNodeMsg msg = new(state.Receiver.DiscoveryAddress, adapter.CalculateExpirationTime(), state.Target.Bytes);
 
-            return adapter.CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(state.BucketSize, adapter.LocalIp), state.Receiver, state.Session, msg, adapter._findNeighbourTimeout, token);
+            return adapter.CallAndWaitForResponse(MsgType.Neighbors, new NeighbourMsgHandler(state.BucketSize, adapter.LocalIp, state.Receiver.DiscoveryAddress), state.Receiver, state.Session, msg, adapter._findNeighbourTimeout, token);
         }, token);
 
         token.ThrowIfCancellationRequested();
@@ -414,7 +443,7 @@ public class KademliaAdapter(
             KademliaAdapter adapter = state.Adapter;
             EnrRequestMsg msg = new(state.Receiver.DiscoveryAddress, adapter.CalculateExpirationTime());
 
-            return adapter.CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg), state.Receiver, state.Session, msg, adapter._requestEnrTimeout, token);
+            return adapter.CallAndWaitForResponse(MsgType.EnrResponse, new EnrResponseHandler(msg, state.Receiver.DiscoveryAddress), state.Receiver, state.Session, msg, adapter._requestEnrTimeout, token);
         }, token);
 
         return response.HasResponse ? response.Value : null;
@@ -525,7 +554,7 @@ public class KademliaAdapter(
     private void PublishNode(Node node, NodeSession session, PingMsg? signedPing, ulong? advertisedEnrSequence)
     {
         IPEndPoint discoveryEndpoint = node.DiscoveryAddress;
-        if (_recentPeerCandidates.Contains(node.IdHash) || !session.HasEndpointBond(discoveryEndpoint))
+        if (_peerCandidateReservations.Contains(node.IdHash) || !session.HasEndpointBond(discoveryEndpoint))
         {
             return;
         }
@@ -594,14 +623,14 @@ public class KademliaAdapter(
     private void PublishPeerCandidate(Node node)
     {
         Hash256 nodeId = node.IdHash;
-        if (!_recentPeerCandidates.TryReserve(nodeId))
+        if (!_peerCandidateReservations.TryReserve(nodeId))
         {
             return;
         }
 
         if (!_peerCandidates.Writer.TryWrite(node))
         {
-            _recentPeerCandidates.Release(nodeId);
+            _peerCandidateReservations.Release(nodeId);
         }
     }
 

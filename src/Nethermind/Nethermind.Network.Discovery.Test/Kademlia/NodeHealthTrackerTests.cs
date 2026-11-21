@@ -21,7 +21,8 @@ public class NodeHealthTrackerTests
         int? toRefresh = null,
         int failureThreshold = 5,
         TimeSpan? refreshPingTimeout = null,
-        IKademliaMessageSender<int, int>? sender = null)
+        IKademliaMessageSender<int, int>? sender = null,
+        Func<int, bool>? canRefreshNode = null)
     {
         RoutingTableStub routing = new() { ToRefresh = toRefresh };
         sender ??= Substitute.For<IKademliaMessageSender<int, int>>();
@@ -29,6 +30,7 @@ public class NodeHealthTrackerTests
         {
             CurrentNodeId = Self,
             NodeRequestFailureThreshold = failureThreshold,
+            CanRefreshNode = canRefreshNode,
         };
         if (refreshPingTimeout is { } timeout) config.RefreshPingTimeout = timeout;
 
@@ -69,7 +71,31 @@ public class NodeHealthTrackerTests
 
         tracker.OnIncomingMessageFrom(Remote);
 
-        await AssertEventuallyAsync(() => routing.RemoveCalls.Contains(Stale), token);
+        await AsyncTestHelpers.AssertEventuallyAsync(() => routing.RemoveCalls.Contains(Stale), token);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task TryRefresh_ShouldClearFailureCount_WhenNodeIsEvicted(CancellationToken token)
+    {
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
+        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(false);
+
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(
+            toRefresh: Stale,
+            failureThreshold: 2,
+            sender: sender);
+
+        tracker.OnRequestFailed(Stale);
+        tracker.OnIncomingMessageFrom(Remote);
+        await AsyncTestHelpers.AssertEventuallyAsync(() => routing.RemoveCalls.Contains(Stale), token);
+
+        tracker.OnRequestFailed(Stale);
+        tracker.OnRequestFailed(Stale);
+        Assert.That(routing.RemoveCalls, Has.Count.EqualTo(1));
+
+        tracker.OnRequestFailed(Stale);
+        Assert.That(routing.RemoveCalls, Has.Count.EqualTo(2));
     }
 
     [Test]
@@ -85,8 +111,60 @@ public class NodeHealthTrackerTests
 
         tracker.OnIncomingMessageFrom(Remote);
 
-        await AssertEventuallyAsync(() => routing.HasAddedNode(Stale), token);
+        await AsyncTestHelpers.AssertEventuallyAsync(() => routing.HasAddedNode(Stale), token);
         Assert.That(routing.RemoveCalls, Does.Not.Contain(Stale));
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task TryRefresh_ShouldRemoveNode_WhenRefreshIsNotAdmitted(CancellationToken token)
+    {
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
+        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(true);
+
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(
+            toRefresh: Stale,
+            sender: sender,
+            canRefreshNode: _ => false);
+
+        tracker.OnIncomingMessageFrom(Remote);
+
+        await AsyncTestHelpers.AssertEventuallyAsync(() => routing.RemoveCalls.Contains(Stale), token);
+        Assert.That(routing.HasAddedNode(Stale), Is.False);
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task TryRefresh_ShouldKeepNode_WhenRefreshIsAdmitted(CancellationToken token)
+    {
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
+        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(true);
+
+        (NodeHealthTracker<int, int, int> tracker, RoutingTableStub routing, _) = CreateTracker(
+            toRefresh: Stale,
+            sender: sender,
+            canRefreshNode: _ => true);
+
+        tracker.OnIncomingMessageFrom(Remote);
+
+        await AsyncTestHelpers.AssertEventuallyAsync(() => routing.HasAddedNode(Stale), token);
+        Assert.That(routing.RemoveCalls, Does.Not.Contain(Stale));
+    }
+
+    [Test]
+    [CancelAfter(10000)]
+    public async Task TryRefresh_ShouldUseAdmissionAssignedAfterConstruction(CancellationToken token)
+    {
+        RoutingTableStub routing = new() { ToRefresh = Stale };
+        IKademliaMessageSender<int, int> sender = Substitute.For<IKademliaMessageSender<int, int>>();
+        sender.Ping(Stale, Arg.Any<CancellationToken>()).Returns(true);
+        KademliaConfig<int> config = new() { CurrentNodeId = Self };
+        NodeHealthTracker<int, int, int> tracker = new(config, routing, IntNodeHashProvider.Instance, sender);
+        config.CanRefreshNode = _ => false;
+
+        tracker.OnIncomingMessageFrom(Remote);
+
+        await AsyncTestHelpers.AssertEventuallyAsync(() => routing.RemoveCalls.Contains(Stale), token);
     }
 
     [TestCase(false)]
@@ -145,16 +223,6 @@ public class NodeHealthTrackerTests
 
         Assert.That(routing.RemoveCalls, Has.Count.EqualTo(1));
         Assert.That(routing.RemoveCalls[0], Is.EqualTo(Remote));
-    }
-
-    private static async Task AssertEventuallyAsync(Func<bool> condition, CancellationToken token)
-    {
-        for (int i = 0; i < 50; i++)
-        {
-            if (condition()) return;
-            await Task.Delay(50, token);
-        }
-        Assert.Fail("Condition not met within timeout.");
     }
 
     private sealed class RoutingTableStub : IRoutingTable<int, int>
