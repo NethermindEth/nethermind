@@ -27,6 +27,7 @@
 /src/Nethermind/Nethermind.JsonRpc @LukaszRozmej @benaadams @smartprogrammer93 @svlachakis
 /src/Nethermind/Nethermind.Merge.Plugin @LukaszRozmej @MarekM25 @flcl42 @benaadams @Marchhill
 /src/Nethermind/Nethermind.Merkleization @ak88 @Marchhill @smartprogrammer93 @flcl42
+/src/Nethermind/Nethermind.Network.Core @LukaszRozmej @flcl42 @asdacap @marcindsobczak
 /src/Nethermind/Nethermind.Network.Discovery @LukaszRozmej @flcl42 @asdacap
 /src/Nethermind/Nethermind.Network @LukaszRozmej @flcl42 @asdacap @marcindsobczak
 /src/Nethermind/Nethermind.Optimism @emlautarom1

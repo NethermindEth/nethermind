@@ -6,7 +6,6 @@ using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Metric;
-using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
@@ -50,32 +49,6 @@ namespace Nethermind.Network
         [CounterMetric]
         [Description("Number of sync-serve requests dropped because the peer had too many requests in flight.")]
         public static long SyncServeRequestsDroppedOverPeerLimit;
-
-        [CounterMetric]
-        [Description("Number of bytes sent through Discovery (UDP).")]
-        public static long DiscoveryBytesSent;
-
-        [CounterMetric]
-        [Description("Number of bytes received through Discovery (UDP).")]
-        public static long DiscoveryBytesReceived;
-
-        [CounterMetric]
-        [Description("Number of sent discovery message")]
-        [DetailedMetric]
-        [KeyIsLabel("message_type")]
-        public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesSent { get; } = new();
-
-        [CounterMetric]
-        [Description("Number of sent discovery messages by protocol")]
-        [DetailedMetric]
-        [KeyIsLabel("protocol", "message_type")]
-        public static NonBlocking.ConcurrentDictionary<DiscoveryMessageKey, long> DiscoveryMessagesSentByProtocol { get; } = new();
-
-        [CounterMetric]
-        [Description("Number of sent discovery message")]
-        [DetailedMetric]
-        [KeyIsLabel("message_type")]
-        public static NonBlocking.ConcurrentDictionary<MsgType, long> DiscoveryMessagesReceived { get; } = new();
 
         [GaugeMetric]
         //EIP-2159: Common Prometheus Metrics Names for Clients

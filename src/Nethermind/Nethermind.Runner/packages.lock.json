@@ -1004,6 +1004,7 @@
           "Nethermind.Crypto": "[2.3.0-preview, )",
           "Nethermind.DotNetty.Handlers": "[0.8.0.11, )",
           "Nethermind.Network.Contract": "[2.3.0-preview, )",
+          "Nethermind.Network.Core": "[2.3.0-preview, )",
           "Nethermind.Network.Enr": "[2.3.0-preview, )",
           "Nethermind.Network.Stats": "[2.3.0-preview, )",
           "Nethermind.Synchronization": "[2.3.0-preview, )",
@@ -1016,16 +1017,26 @@
           "Nethermind.Config": "[2.3.0-preview, )"
         }
       },
+      "nethermind.network.core": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Config": "[2.3.0-preview, )",
+          "Nethermind.Core": "[2.3.0-preview, )",
+          "Nethermind.DotNetty.Transport": "[0.8.0.11, )",
+          "Nethermind.Logging": "[2.3.0-preview, )",
+          "Nethermind.Network.Contract": "[2.3.0-preview, )",
+          "Nethermind.Network.Enr": "[2.3.0-preview, )",
+          "Nethermind.Network.Stats": "[2.3.0-preview, )"
+        }
+      },
       "nethermind.network.discovery": {
         "type": "Project",
         "dependencies": {
           "Collections.Pooled": "[1.0.82, )",
-          "Nethermind.Api": "[2.3.0-preview, )",
           "Nethermind.Crypto": "[2.3.0-preview, )",
-          "Nethermind.Facade": "[2.3.0-preview, )",
           "Nethermind.Kademlia": "[2.3.0-preview, )",
           "Nethermind.Logging.Microsoft": "[2.3.0-preview, )",
-          "Nethermind.Network": "[2.3.0-preview, )",
+          "Nethermind.Network.Core": "[2.3.0-preview, )",
           "Nethermind.Network.Enr": "[2.3.0-preview, )"
         }
       },

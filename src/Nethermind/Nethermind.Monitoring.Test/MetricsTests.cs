@@ -494,6 +494,7 @@ public class MetricsTests
             typeof(JsonRpc.Metrics),
             typeof(Db.Metrics),
             typeof(Network.Metrics),
+            typeof(Network.Discovery.Metrics),
             typeof(Init.Metrics),
             typeof(Synchronization.Metrics),
             typeof(Trie.Metrics),

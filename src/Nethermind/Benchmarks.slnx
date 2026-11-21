@@ -32,6 +32,7 @@
     <Project Path="Nethermind.Logging/Nethermind.Logging.csproj" />
     <Project Path="Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <Project Path="Nethermind.Network.Contract/Nethermind.Network.Contract.csproj" />
+    <Project Path="Nethermind.Network.Core/Nethermind.Network.Core.csproj" />
     <Project Path="Nethermind.Network.Discovery/Nethermind.Network.Discovery.csproj" />
     <Project Path="Nethermind.Network.Dns/Nethermind.Network.Dns.csproj" />
     <Project Path="Nethermind.Network.Enr/Nethermind.Network.Enr.csproj" />
