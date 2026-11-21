@@ -1,30 +1,102 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using NSubstitute;
 using NUnit.Framework;
-
-#nullable enable
 
 namespace Nethermind.Consensus.Test.Processing;
 
 /// <summary>
-/// Exercises <see cref="PerTxTimingCollector"/>'s shared-static contract under the same kind of
+/// Exercises <see cref="PerTxTimingCollector"/>'s buffer handoff under the same kind of
 /// parallel write pattern <see cref="BlockProcessor.ParallelBlockValidationTransactionsExecutor"/>
 /// produces: many worker threads call <see cref="PerTxTimingCollector.Record"/> after
 /// <see cref="PerTxTimingCollector.Prepare"/>, and the block-processing thread that called
 /// <see cref="PerTxTimingCollector.Snapshot"/> after the join sees every recorded value.
 /// </summary>
 [TestFixture]
+[NonParallelizable]
 public class PerTxTimingCollectorTests
 {
+    private bool _previousProcessingThread;
+
     [SetUp]
-    public void Setup() => PerTxTimingCollector.SetEnabled(true);
+    public void Setup()
+    {
+        _previousProcessingThread = ProcessingThread.IsBlockProcessingThread;
+        ProcessingThread.IsBlockProcessingThread = true;
+        PerTxTimingCollector.SetEnabled(true);
+    }
 
     [TearDown]
-    public void TearDown() => PerTxTimingCollector.SetEnabled(false);
+    public void TearDown()
+    {
+        PerTxTimingCollector.DiscardPending();
+        PerTxTimingCollector.SetEnabled(false);
+        ProcessingThread.IsBlockProcessingThread = _previousProcessingThread;
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Transaction_executor_keeps_timings_with_its_processing_loop(bool secondProcessingLoop)
+    {
+        ExecuteTransactions(2);
+        long[] other = Task.Factory.StartNew(() =>
+        {
+            ProcessingThread.IsBlockProcessingThread = secondProcessingLoop;
+            try
+            {
+                ExecuteTransactions(1);
+                using ArrayPoolList<long> timings = PerTxTimingCollector.Snapshot();
+                return timings?.AsSpan().ToArray();
+            }
+            finally
+            {
+                PerTxTimingCollector.DiscardPending();
+                ProcessingThread.IsBlockProcessingThread = false;
+            }
+        }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).GetAwaiter().GetResult();
+
+        using ArrayPoolList<long> snapshot = PerTxTimingCollector.Snapshot();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot, Has.Count.EqualTo(2).And.All.GreaterThan(0L));
+            if (secondProcessingLoop)
+                Assert.That(other, Has.Length.EqualTo(1).And.All.GreaterThan(0L));
+            else
+                Assert.That(other, Is.Null);
+        }
+    }
+
+    private static void ExecuteTransactions(int count)
+    {
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < count; i++)
+            transactions[i] = Build.A.Transaction.TestObject;
+        Block block = Build.A.Block.TestObject.WithReplacedBody(new BlockBody(transactions, []));
+        ITransactionProcessorAdapter adapter = Substitute.For<ITransactionProcessorAdapter>();
+        adapter.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>())
+            .Returns(_ =>
+            {
+                Thread.SpinWait(10_000);
+                return TransactionResult.Ok;
+            });
+        BlockProcessor.BlockValidationTransactionsExecutor executor = new(adapter, Substitute.For<IWorldState>());
+        using BlockReceiptsTracer receipts = new();
+        receipts.SetOtherTracer(NullBlockTracer.Instance);
+        receipts.StartNewBlockTrace(block);
+        executor.ProcessTransactions(block, ProcessingOptions.None, receipts, CancellationToken.None);
+    }
 
     [Test]
     public void Parallel_workers_recording_concurrently_are_all_visible_in_snapshot()
@@ -34,22 +106,13 @@ public class PerTxTimingCollectorTests
         // contract relies on), then Snapshot on the calling thread reads the result.
         const int txCount = 512;
 
-        PerTxTimingCollector.Prepare(txCount);
+        ArrayPoolList<long> timings = PerTxTimingCollector.Prepare(txCount);
 
         // Each worker writes a unique non-zero value into its slot. Using `i + 1` so we can later
         // tell a stale-zero slot apart from one that was correctly written by the worker.
-        ParallelUnbalancedWork.For(
-            0,
-            txCount,
-            ParallelUnbalancedWork.DefaultOptions,
-            txCount,
-            static (i, _) =>
-            {
-                PerTxTimingCollector.Record(i, i + 1L);
-                return 0;
-            });
+        ParallelUnbalancedWork.For(0, txCount, i => PerTxTimingCollector.Record(timings, i, i + 1L));
 
-        using ArrayPoolList<long>? snapshot = PerTxTimingCollector.Snapshot();
+        using ArrayPoolList<long> snapshot = PerTxTimingCollector.Snapshot();
 
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot!.Count, Is.EqualTo(txCount));
@@ -67,7 +130,7 @@ public class PerTxTimingCollectorTests
         // null is reserved for the disabled-collector path tested below.
         PerTxTimingCollector.Prepare(8);
 
-        using ArrayPoolList<long>? snapshot = PerTxTimingCollector.Snapshot();
+        using ArrayPoolList<long> snapshot = PerTxTimingCollector.Snapshot();
 
         Assert.That(snapshot, Is.Not.Null);
         using (Assert.EnterMultipleScope())
@@ -83,7 +146,7 @@ public class PerTxTimingCollectorTests
         PerTxTimingCollector.SetEnabled(false);
         PerTxTimingCollector.Prepare(4);
 
-        ArrayPoolList<long>? snapshot = PerTxTimingCollector.Snapshot();
+        ArrayPoolList<long> snapshot = PerTxTimingCollector.Snapshot();
 
         Assert.That(snapshot, Is.Null);
     }
@@ -93,14 +156,14 @@ public class PerTxTimingCollectorTests
     {
         // First block: Prepare → Record → Snapshot hands off. Next Prepare must give us a fresh
         // list; the previous handoff must not be mutated by subsequent Record calls.
-        PerTxTimingCollector.Prepare(2);
-        PerTxTimingCollector.Record(0, 100L);
-        PerTxTimingCollector.Record(1, 200L);
-        using ArrayPoolList<long>? first = PerTxTimingCollector.Snapshot();
+        ArrayPoolList<long> firstTimings = PerTxTimingCollector.Prepare(2);
+        PerTxTimingCollector.Record(firstTimings, 0, 100L);
+        PerTxTimingCollector.Record(firstTimings, 1, 200L);
+        using ArrayPoolList<long> first = PerTxTimingCollector.Snapshot();
 
-        PerTxTimingCollector.Prepare(2);
-        PerTxTimingCollector.Record(0, 999L);
-        using ArrayPoolList<long>? second = PerTxTimingCollector.Snapshot();
+        ArrayPoolList<long> secondTimings = PerTxTimingCollector.Prepare(2);
+        PerTxTimingCollector.Record(secondTimings, 0, 999L);
+        using ArrayPoolList<long> second = PerTxTimingCollector.Snapshot();
 
         Assert.That(first, Is.Not.Null);
         using (Assert.EnterMultipleScope())
@@ -123,11 +186,11 @@ public class PerTxTimingCollectorTests
         // Defensive guard in the parallel executor: if for any reason a worker computes an index
         // beyond the prepared range, the collector no-ops rather than throwing — the test contract
         // here keeps that property stable so the executor can rely on it.
-        PerTxTimingCollector.Prepare(4);
-        PerTxTimingCollector.Record(99, 42L);
-        PerTxTimingCollector.Record(-1, 42L);
+        ArrayPoolList<long> timings = PerTxTimingCollector.Prepare(4);
+        PerTxTimingCollector.Record(timings, 99, 42L);
+        PerTxTimingCollector.Record(timings, -1, 42L);
 
-        using ArrayPoolList<long>? snapshot = PerTxTimingCollector.Snapshot();
+        using ArrayPoolList<long> snapshot = PerTxTimingCollector.Snapshot();
         Assert.That(snapshot, Is.Not.Null);
         Assert.That(snapshot!.AsSpan().ToArray(), Is.All.EqualTo(0L));
     }
