@@ -8,12 +8,10 @@ jq -n --arg i "$id" --arg c "$(jq -r '.route_b_queue[0].cluster' "$data/plan.jso
 
 attempt() {
   local cluster=$1 why=$2
-  jq --arg c "$cluster" '[.clusters[$c].samples[]?]' "$here/baseline.json" > "$data/route-b-examples.json"
-  jq --arg c "$cluster" '.[$c].new_examples // []' "$data/gates.json" > "$data/route-b-new-examples.json"
-  jq -s 'add' "$data/route-b-examples.json" "$data/route-b-new-examples.json" > "$data/route-b-all-examples.json"
+  jq --arg c "$cluster" '.[$c].examples // []' "$data/gates.json" > "$data/route-b-examples.json"
   rm -f "$data/analyzer-result.json"
   "$here/llm.sh" "$here/prompts/analyzer.txt" "Read,Glob,Grep,Edit(src/Nethermind/Nethermind.Analyzers/**),Write(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Write(src/Nethermind/Nethermind.Analyzers.Test/**),Write($data/analyzer-result.json),Bash(dotnet build:*),Bash(dotnet test:*)" \
-    "ID=$id" "CLUSTER=$cluster" "WHY=$why" "EXAMPLES=$data/route-b-all-examples.json" "RESULT=$data/analyzer-result.json" > "$data/analyzer-llm-$cluster.log" 2>&1
+    "ID=$id" "CLUSTER=$cluster" "WHY=$why" "EXAMPLES=$data/route-b-examples.json" "RESULT=$data/analyzer-result.json" > "$data/analyzer-llm-$cluster.log" 2>&1
   echo "route-b: $cluster generation exit $?"
   local test_class analyzer skip
   test_class=$(jq -r '.test_class // empty' "$data/analyzer-result.json" 2>/dev/null)

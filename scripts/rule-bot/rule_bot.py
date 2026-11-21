@@ -42,23 +42,9 @@ REBUT = re.compile(r"\b(not (an issue|needed|applicable|relevant|true|correct)|f
 DIAG = re.compile(r"^(?P<path>[^\s(][^(]*)\((?P<line>\d+),(?P<col>\d+)\): (?P<sev>warning|error) (?P<id>[A-Z]+\d+): (?P<msg>.*?)(?: \[(?P<proj>[^\]]+)\])?$")
 SEVERITY = re.compile(r"^\s*dotnet_diagnostic\.([A-Z]+\d+)\.severity\s*=\s*(\w+)", re.M)
 
-GRAPHQL = """
-query($q:String!, $after:String) {
-  rateLimit { remaining resetAt }
-  search(query:$q, type:ISSUE, first:25, after:$after) {
-    issueCount
-    pageInfo { hasNextPage endCursor }
-    nodes { ... on PullRequest {
-      number updatedAt mergedAt
-      author { login }
-      reviewThreads(first:100) { nodes {
-        isResolved isOutdated path line originalLine
-        comments(first:15) { nodes { author { login } authorAssociation body url createdAt } }
-      } }
-    } }
-  }
-}
-"""
+WINDOW_DAYS = 180
+PAGE = 100
+THREAD_FIELDS = "author { login } reviewThreads(first:100) { nodes { isResolved isOutdated comments(first:1) { nodes { databaseId } } } }"
 
 
 def load(path, default=None):
@@ -81,6 +67,17 @@ def gh(*args, check=True):
     return p.stdout
 
 
+def api(*args):
+    for attempt in range(5):
+        p = subprocess.run(["gh", "api", *args], capture_output=True, text=True)
+        if p.returncode == 0:
+            return json.loads(p.stdout)
+        if p.stdout.startswith('{"data":{'):
+            return json.loads(p.stdout)
+        time.sleep(20 * (attempt + 1))
+    raise SystemExit(f"collect: GitHub API failed: {' '.join(args[:3])}")
+
+
 def login(node):
     return (node.get("author") or {}).get("login") or "ghost"
 
@@ -89,51 +86,54 @@ def is_bot(name):
     return name in BOTS or name.endswith("[bot]")
 
 
-def windows(since, today, days=6):
-    while since <= today:
-        until = min(since + datetime.timedelta(days=days), today)
-        yield since, until
-        since = until + datetime.timedelta(days=1)
+def today_of(args):
+    return datetime.date.fromisoformat(args.today) if getattr(args, "today", None) else datetime.datetime.now(datetime.timezone.utc).date()
+
+
+def slim(c):
+    return dict(id=c["id"], pr=int(c["pull_request_url"].rsplit("/", 1)[1]), author=(c.get("user") or {}).get("login") or "ghost",
+                bot=(c.get("user") or {}).get("type") == "Bot", association=c.get("author_association"), reply_to=c.get("in_reply_to_id"),
+                path=c["path"], line=c.get("line") or c.get("original_line"), created=c["created_at"], body=c["body"], url=c["html_url"])
+
+
+def in_window(comments, since):
+    out = {}
+    for c in comments:
+        if c["created_at"][:10] >= since:
+            out.setdefault(c["id"], slim(c))
+    return out
+
+
+def matched_prs(comments, patterns):
+    return sorted({c["pr"] for c in comments.values() if not c["reply_to"] and any(rx.search(c["body"][:400]) for rx in patterns)})
 
 
 def collect(args):
-    state_file = os.path.join(args.state, "collect_state.json")
-    baseline = load(os.path.join(HERE, "baseline.json"))
-    first = datetime.date.fromisoformat(baseline["until"]) + datetime.timedelta(days=1)
-    state = load(state_file, {"since": first.isoformat()})
-    raw = os.path.join(args.state, "raw")
-    os.makedirs(raw, exist_ok=True)
-    today = datetime.date.fromisoformat(args.today) if args.today else datetime.datetime.now(datetime.timezone.utc).date()
-    for since, until in windows(datetime.date.fromisoformat(state["since"]), today):
-        tag = f"{since}_{until}"
-        for stale in glob.glob(f"{raw}/{tag}_*.json"):
-            os.remove(stale)
-        after, page = None, 0
-        while True:
-            call = ["api", "graphql", "-f", f"query={GRAPHQL}", "-f", f"q=repo:{REPO} is:pr updated:{since}..{until}"]
-            if after:
-                call += ["-f", f"after={after}"]
-            data = None
-            for attempt in range(5):
-                p = subprocess.run(["gh", *call], capture_output=True, text=True)
-                if p.returncode == 0:
-                    data = json.loads(p.stdout)
-                    break
-                time.sleep(20 * (attempt + 1))
-            if data is None:
-                raise SystemExit(f"collect: GitHub API failed for {tag}")
-            save(f"{raw}/{tag}_{page:03d}.json", data)
-            s = data["data"]["search"]
-            if s["issueCount"] > 1000:
-                raise SystemExit(f"collect: {tag} has {s['issueCount']} PRs, over the 1000 search cap")
-            print(f"collect: {tag} page {page} PRs {len(s['nodes'])}/{s['issueCount']}")
-            if not s["pageInfo"]["hasNextPage"]:
-                break
-            after, page = s["pageInfo"]["endCursor"], page + 1
-        state["since"] = until.isoformat()
-    state["last_run"] = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-    save(state_file, state)
-    print(f"collect: next run starts at {state['since']}")
+    started, since = time.monotonic(), (today_of(args) - datetime.timedelta(days=args.days)).isoformat()
+    comments, page = {}, 0
+    while True:
+        page += 1
+        batch = api("-X", "GET", f"repos/{REPO}/pulls/comments", "-f", f"since={since}T00:00:00Z", "-f", "sort=created",
+                    "-f", "direction=asc", "-f", f"per_page={PAGE}", "-f", f"page={page}")
+        for k, c in in_window(batch, since).items():
+            comments.setdefault(k, c)
+        if len(batch) < PAGE:
+            break
+    patterns = [re.compile(v, re.I) for v in load(os.path.join(HERE, "clusters.json")).values()]
+    numbers, prs, queries = matched_prs(comments, patterns), {}, 0
+    for i in range(0, len(numbers), 25):
+        q = " ".join(f"p{n}: pullRequest(number:{n}) {{ {THREAD_FIELDS} }}" for n in numbers[i:i + 25])
+        owner, name = REPO.split("/")
+        data = api("graphql", "-f", f"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ {q} }} }}")
+        queries += 1
+        for key, pr in data["data"]["repository"].items():
+            if pr:
+                prs[key[1:]] = dict(author=login(pr), threads={str(c["databaseId"]): [t["isResolved"], t["isOutdated"]]
+                                                               for t in pr["reviewThreads"]["nodes"] for c in t["comments"]["nodes"]})
+    save(os.path.join(args.data, "comments.json"), dict(since=since, comments=sorted(comments.values(), key=lambda c: c["id"])))
+    save(os.path.join(args.data, "prs.json"), prs)
+    print(f"collect: {len(comments)} inline review comments since {since}, {page} REST pages, "
+          f"{len(numbers)} PRs with a matching comment in {queries} GraphQL queries, {time.monotonic() - started:.0f}s")
 
 
 def classify(thread, pr_author):
@@ -147,70 +147,63 @@ def classify(thread, pr_author):
     return "likely" if thread["isResolved"] else "unknown"
 
 
-def findings_from(prs, after):
-    for pr in prs.values():
-        author = login(pr)
-        for t in pr["reviewThreads"]["nodes"]:
-            cs = t["comments"]["nodes"]
-            if not cs or login(cs[0]) == author or cs[0]["createdAt"][:10] <= after:
-                continue
-            first = cs[0]
-            yield dict(pr=pr["number"], author=login(first), bot=is_bot(login(first)), path=t["path"],
-                       line=t["line"] or t["originalLine"], created=first["createdAt"], body=first["body"],
-                       url=first["url"], association=first.get("authorAssociation"), valid=classify(t, author))
+def findings_from(comments, prs):
+    replies = {}
+    for c in sorted(comments, key=lambda c: c["created"]):
+        if c["reply_to"]:
+            replies.setdefault(c["reply_to"], []).append(c)
+    for root in comments:
+        pr = prs.get(str(root["pr"]))
+        if root["reply_to"] or not pr or root["author"] == pr["author"]:
+            continue
+        resolved, outdated = pr["threads"].get(str(root["id"]), [False, False])
+        nodes = [dict(author=dict(login=c["author"]), body=c["body"]) for c in [root] + replies.get(root["id"], [])]
+        thread = dict(isResolved=resolved, isOutdated=outdated, comments=dict(nodes=nodes))
+        yield dict(pr=root["pr"], author=root["author"], bot=root["bot"] or is_bot(root["author"]), path=root["path"], line=root["line"],
+                   created=root["created"], body=root["body"], url=root["url"], association=root["association"],
+                   valid=classify(thread, pr["author"]))
 
 
 def findings(args):
-    prs = {}
-    for fn in sorted(glob.glob(os.path.join(args.state, "raw", "*.json"))):
-        for n in load(fn)["data"]["search"]["nodes"]:
-            if n and "number" in n and (n["number"] not in prs or n["updatedAt"] >= prs[n["number"]]["updatedAt"]):
-                prs[n["number"]] = n
-    until = load(os.path.join(HERE, "baseline.json"))["until"]
-    rows = list(findings_from(prs, until))
+    c = load(os.path.join(args.data, "comments.json"))
+    rows = list(findings_from(c["comments"], load(os.path.join(args.data, "prs.json"))))
     with open(os.path.join(args.data, "findings.jsonl"), "w") as f:
         for r in rows:
             f.write(json.dumps(r) + "\n")
-    print(f"findings: {len(prs)} PRs, {len(rows)} new inline review comments after {until}")
+    print(f"findings: {len(rows)} review threads opened since {c['since']} on PRs with a matching comment")
 
 
 def counted_valid(r):
     return r["valid"] == "valid" if r["bot"] else r["valid"] in ("valid", "likely")
 
 
-def cluster_stats(rows):
-    return dict(n=len(rows), prs=len({r["pr"] for r in rows}), commenters=len({r["author"] for r in rows}),
-                human=sum(not r["bot"] for r in rows), valid=sum(counted_valid(r) for r in rows))
-
-
-def gate_cluster(base, new_rows):
-    d = cluster_stats(new_rows)
-    prs = set(base.get("pr_set", [])) | {r["pr"] for r in new_rows}
-    authors = set(base.get("author_set", [])) | {r["author"] for r in new_rows}
-    st = dict(n=base["n"] + d["n"], prs=len(prs), commenters=len(authors),
-              human=base["human"] + d["human"], valid=base["valid"] + d["valid"], new=d)
+def gate_cluster(rows):
+    st = dict(n=len(rows), prs=len({r["pr"] for r in rows}), commenters=len({r["author"] for r in rows}),
+              human=sum(not r["bot"] for r in rows), valid=sum(counted_valid(r) for r in rows))
     st["validity"] = round(st["valid"] / st["n"], 2) if st["n"] else 0.0
     st["fails"] = [g for g, t in GATES.items() if st[g] < t]
     st["pass"] = not st["fails"]
     return st
 
 
+def trusted_examples(rows, k=5):
+    return [dict(url=r["url"], author=r["author"], path=r["path"], line=r["line"], body=r["body"][:500])
+            for r in rows if counted_valid(r) and not r["bot"] and r.get("association") in TRUSTED_ASSOCIATIONS][:k]
+
+
 def gates(args):
-    baseline = load(os.path.join(HERE, "baseline.json"))
     patterns = {k: re.compile(v, re.I) for k, v in load(os.path.join(HERE, "clusters.json")).items()}
     path = os.path.join(args.data, "findings.jsonl")
     rows = [json.loads(l) for l in open(path)] if os.path.exists(path) else []
     out = {}
     for k, rx in patterns.items():
         mine = [r for r in rows if rx.search(r["body"][:400])]
-        base = baseline["clusters"].get(k, dict(n=0, valid=0, human=0))
-        out[k] = gate_cluster(base, mine)
-        out[k]["new_examples"] = [dict(url=r["url"], author=r["author"], path=r["path"], line=r["line"], body=r["body"][:500])
-                                  for r in mine if counted_valid(r) and not r["bot"] and r.get("association") in TRUSTED_ASSOCIATIONS][:5]
+        out[k] = gate_cluster(mine)
+        out[k]["examples"] = trusted_examples(mine)
     save(os.path.join(args.data, "gates.json"), out)
     for k, s in sorted(out.items(), key=lambda x: -x[1]["prs"]):
         print(f"gates: {k:11s} PRs {s['prs']:4d} commenters {s['commenters']:3d} human {s['human']:4d} "
-              f"validity {s['validity']:.2f} (+{s['new']['n']} new) {'PASS' if s['pass'] else 'FAIL ' + ','.join(s['fails'])}")
+              f"validity {s['validity']:.2f} {'PASS' if s['pass'] else 'FAIL ' + ','.join(s['fails'])}")
 
 
 def editorconfig_rules(text):
@@ -259,17 +252,24 @@ def next_neth_id(taken, reserved):
     return f"NETH{n:03d}"
 
 
-def recently_tried(history, cluster, today):
-    t = history.get(cluster)
-    return bool(t) and (today - datetime.date.fromisoformat(t)).days < COOLDOWN_DAYS
+def recently_tried(bot_prs, clusters, today):
+    return {k for pr in bot_prs if (today - datetime.date.fromisoformat(pr["createdAt"][:10])).days < COOLDOWN_DAYS
+            for k in clusters if pr["headRefName"].startswith(f"rule-bot/{k}-")}
+
+
+def rotate(queue, today):
+    k = today.toordinal() // 7 % len(queue) if queue else 0
+    return queue[k:] + queue[:k]
 
 
 def plan(args):
     g = load(os.path.join(args.data, "gates.json"))
     cat = load(os.path.join(args.data, "catalog.json"))
     routes = load(os.path.join(HERE, "routes.json"))
-    history = load(os.path.join(args.state, "route_b_history.json"), {})
-    today = datetime.datetime.now(datetime.timezone.utc).date()
+    today = today_of(args)
+    bot_prs = [] if args.offline else json.loads(gh("pr", "list", "-R", REPO, "--state", "all", "--label", BOT_LABEL,
+                                                     "--json", "number,state,headRefName,createdAt", "--limit", "100"))
+    tried = recently_tried(bot_prs, routes, today)
     measure, queue = [], []
     for k, st in sorted(g.items(), key=lambda x: -x[1]["prs"]):
         r = routes.get(k, dict(route="?", ids=[]))
@@ -277,13 +277,13 @@ def plan(args):
             continue
         if r["route"] == "A":
             measure += [i for i in r["ids"] if i not in measure and not cat.get(i, {}).get("enforced")]
-        elif r["route"] == "B" and not recently_tried(history, k, today):
+        elif r["route"] == "B" and k not in tried:
             queue.append(k)
-    bot_open = [] if args.offline else json.loads(gh("pr", "list", "-R", REPO, "--state", "open", "--label", BOT_LABEL, "--json", "number"))
+    bot_open = [pr for pr in bot_prs if pr["state"] == "OPEN"]
     if bot_open:
         print(f"plan: no analyzer attempted, bot PR already open: #{bot_open[0]['number']}")
         queue = []
-    queue = queue[:ROUTE_B_TRIES]
+    queue = rotate(queue, today)[:ROUTE_B_TRIES]
     route_b = queue[0] if queue else None
     reserved = set()
     if not args.offline:
@@ -683,15 +683,8 @@ def red(args):
     sys.exit(0 if ok else 1)
 
 
-def examples(cluster, gates_data, baseline, k=3):
-    ex = [(e["url"], e["author"]) for e in gates_data.get(cluster, {}).get("new_examples", [])]
-    ex += [(e[0], e[1]) for e in baseline["clusters"].get(cluster, {}).get("ex", [])]
-    out, seen = [], set()
-    for url, author in ex:
-        if url not in seen:
-            out.append((url, author))
-            seen.add(url)
-    return out[:k]
+def examples(gate, k=3):
+    return [(e["url"], e["author"]) for e in gate.get("examples", [])][:k]
 
 
 def body(args):
@@ -699,7 +692,6 @@ def body(args):
     p = c["chosen"]
     g = load(os.path.join(args.data, "gates.json"))[p["cluster"]]
     rb = load(os.path.join(args.data, "route_b.json"), {})
-    baseline = load(os.path.join(HERE, "baseline.json"))
     head = args.head or "master"
     ids = ", ".join(f"`{i}`" for i in p["ids"])
     L = []
@@ -708,9 +700,9 @@ def body(args):
     else:
         L += [f"Adds analyzer `{p['ids'][0]}` ({routes_why(p['cluster'])}) and fixes the existing hits. No code fix provider is shipped.", ""]
     L += ["## Why", "",
-          f"Reviewers keep asking for this by hand: {g['n']} review comments on {g['prs']} PRs from {g['commenters']} people "
+          f"Reviewers keep asking for this by hand: in the last {WINDOW_DAYS} days {g['n']} review comments on {g['prs']} PRs from {g['commenters']} people "
           f"({g['human']} by humans) match this pattern; {round(g['validity'] * 100)}% were accepted as valid. Examples:", ""]
-    L += [f"- {u} ({a})" for u, a in examples(p["cluster"], g, baseline)]
+    L += [f"- {u} ({a})" for u, a in examples(g)]
     L += ["", "## Hits", "", f"Full Release build of every CI solution on `{head}` with the rule at warning ({', '.join(f'`{s}`' for s in hits_solutions(args.data))}):", ""]
     L += [f"- Production code: {p['prod']}, all fixed in this PR."]
     L += [f"- Tests and benchmarks: {p['test']}, excluded through `.editorconfig` sections." if p["test"] else "- Tests and benchmarks: 0."]
@@ -739,22 +731,15 @@ def routes_why(cluster):
     return load(os.path.join(HERE, "routes.json")).get(cluster, {}).get("why", cluster)
 
 
-def record_route_b(args):
-    path = os.path.join(args.state, "route_b_history.json")
-    h = load(path, {})
-    for c in args.cluster:
-        h[c] = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
-    save(path, h)
-
-
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="rule_bot")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("collect"); s.add_argument("--state", required=True); s.add_argument("--today"); s.set_defaults(fn=collect)
-    s = sub.add_parser("findings"); s.add_argument("--state", required=True); s.add_argument("--data", required=True); s.set_defaults(fn=findings)
+    s = sub.add_parser("collect"); s.add_argument("--data", required=True); s.add_argument("--days", type=int, default=WINDOW_DAYS); s.add_argument("--today")
+    s.set_defaults(fn=collect)
+    s = sub.add_parser("findings"); s.add_argument("--data", required=True); s.set_defaults(fn=findings)
     s = sub.add_parser("gates"); s.add_argument("--data", required=True); s.set_defaults(fn=gates)
     s = sub.add_parser("catalog"); s.add_argument("--repo", default="."); s.add_argument("--sdk", required=True); s.add_argument("--data", required=True); s.set_defaults(fn=catalog)
-    s = sub.add_parser("plan"); s.add_argument("--repo", default="."); s.add_argument("--data", required=True); s.add_argument("--state", required=True)
+    s = sub.add_parser("plan"); s.add_argument("--repo", default="."); s.add_argument("--data", required=True); s.add_argument("--today")
     s.add_argument("--offline", action="store_true"); s.add_argument("--github-output"); s.set_defaults(fn=plan)
     s = sub.add_parser("overlay"); s.add_argument("--repo", default="."); s.add_argument("--ids", required=True); s.add_argument("--extra", nargs="*")
     s.add_argument("--exclude-tests", action="store_true"); s.set_defaults(fn=apply_overlay)
@@ -773,7 +758,6 @@ def main(argv=None):
     s = sub.add_parser("solutions"); s.add_argument("--workflows", default=".github/workflows"); s.add_argument("--github-output"); s.set_defaults(fn=solutions_cmd)
     s = sub.add_parser("package"); s.add_argument("--data", required=True); s.add_argument("--github-output"); s.set_defaults(fn=package_cmd)
     s = sub.add_parser("deny-tools"); s.set_defaults(fn=lambda a: print(fix_deny_tools()))
-    s = sub.add_parser("tried"); s.add_argument("--state", required=True); s.add_argument("--cluster", nargs="+", required=True); s.set_defaults(fn=record_route_b)
     a = ap.parse_args(argv)
     a.fn(a)
 

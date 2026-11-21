@@ -19,7 +19,6 @@ concurrency:
 
 env:
   DATA: ${{ github.workspace }}/rule-bot/data
-  STATE: ${{ github.workspace }}/rule-bot/state
   LOGS: ${{ github.workspace }}/rule-bot/logs
   DRY_RUN: ${{ inputs.dry_run || 'false' }}
 
@@ -40,20 +39,21 @@ jobs:
       - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 
-      - name: Restore collection state
-        uses: actions/cache/restore@v5
+      - name: Create GitHub app token
+        id: gh-app
+        uses: actions/create-github-app-token@v3
         with:
-          path: rule-bot/state
-          key: rule-bot-state-${{ github.run_id }}
-          restore-keys: rule-bot-state-
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          permission-pull-requests: read
 
-      - name: Collect review threads since the last run
+      - name: Collect review comments from the last 180 days
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.gh-app.outputs.token }}
         run: |
-          mkdir -p "$DATA" "$STATE"
-          python3 scripts/rule-bot/rule_bot.py collect --state "$STATE"
-          python3 scripts/rule-bot/rule_bot.py findings --state "$STATE" --data "$DATA"
+          mkdir -p "$DATA"
+          python3 scripts/rule-bot/rule_bot.py collect --data "$DATA"
+          python3 scripts/rule-bot/rule_bot.py findings --data "$DATA"
           python3 scripts/rule-bot/rule_bot.py gates --data "$DATA"
           python3 scripts/rule-bot/rule_bot.py catalog --sdk "$DOTNET_ROOT/sdk/$(dotnet --version)" --data "$DATA"
 
@@ -61,7 +61,7 @@ jobs:
         id: plan
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/rule-bot/rule_bot.py plan --data "$DATA" --state "$STATE" --github-output "$GITHUB_OUTPUT"
+        run: python3 scripts/rule-bot/rule_bot.py plan --data "$DATA" --github-output "$GITHUB_OUTPUT"
 
       - name: List CI solutions
         id: solutions
@@ -72,12 +72,6 @@ jobs:
         with:
           name: rule-bot-data
           path: rule-bot/data
-
-      - name: Upload state
-        uses: actions/upload-artifact@v7
-        with:
-          name: rule-bot-state
-          path: rule-bot/state
 
   route-b:
     name: Write a new analyzer
@@ -426,39 +420,3 @@ jobs:
           git push "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$branch"
           gh label create rule-bot --color 5319E7 --description "Opened by the review rule bot" 2>/dev/null || true
           gh pr create -B master -H "$branch" -t "$title" -F "$RUNNER_TEMP/rule-bot-result/body.md" -l rule-bot
-
-  save-state:
-    name: Save collection state
-    needs: [plan, route-b, propose]
-    if: always() && needs.plan.result == 'success'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Download state
-        uses: actions/download-artifact@v8
-        with:
-          name: rule-bot-state
-          path: rule-bot/state
-
-      - name: Download analyzer
-        if: needs.route-b.result == 'success' && inputs.dry_run != true
-        uses: actions/download-artifact@v8
-        with:
-          name: rule-bot-route-b
-          path: rule-bot/data
-
-      - name: Record the analyzer attempts
-        if: needs.route-b.result == 'success' && inputs.dry_run != true
-        run: |
-          mapfile -t clusters < <(jq -r '.attempts[].cluster' "$DATA/route_b.json")
-          [ "${#clusters[@]}" -eq 0 ] || python3 scripts/rule-bot/rule_bot.py tried --state "$STATE" --cluster "${clusters[@]}"
-
-      - name: Save state
-        uses: actions/cache/save@v5
-        with:
-          path: rule-bot/state
-          key: rule-bot-state-${{ github.run_id }}

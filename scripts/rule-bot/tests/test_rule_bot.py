@@ -3,6 +3,7 @@
 
 import argparse
 import datetime
+import json
 import os
 import sys
 import tempfile
@@ -34,32 +35,91 @@ class Classify(unittest.TestCase):
 
 
 class Gates(unittest.TestCase):
-    base = dict(n=20, valid=14, human=4, pr_set=list(range(8)), author_set=["x", "y"])
-
     def row(self, pr, author, bot=False, valid="valid"):
         return dict(pr=pr, author=author, bot=bot, valid=valid)
 
-    def test_new_rows_lift_cluster_over_gates(self):
-        st = rb.gate_cluster(self.base, [self.row(100, "a"), self.row(101, "b")])
+    def test_cluster_over_gates_passes(self):
+        rows = [self.row(n, a) for n in range(10) for a in "ab"] + [self.row(10, "c")]
+        st = rb.gate_cluster(rows)
         self.assertTrue(st["pass"], st["fails"])
 
     def test_bot_resolved_only_is_not_valid(self):
-        st = rb.gate_cluster(dict(n=0, valid=0, human=0), [self.row(1, "claude[bot]", bot=True, valid="likely")])
+        st = rb.gate_cluster([self.row(1, "claude[bot]", bot=True, valid="likely")])
         self.assertEqual(st["valid"], 0)
 
-    def test_baseline_prs_and_commenters_are_not_counted_twice(self):
-        base = dict(self.base, pr_set=list(range(7)) + [100], author_set=["a", "x"])
-        st = rb.gate_cluster(base, [self.row(100, "a"), self.row(101, "a"), self.row(102, "b")])
-        self.assertEqual((st["prs"], st["commenters"], st["n"]), (10, 3, 23))
+    def test_prs_and_commenters_are_distinct(self):
+        st = rb.gate_cluster([self.row(100, "a"), self.row(100, "a"), self.row(101, "a"), self.row(102, "b")])
+        self.assertEqual((st["prs"], st["commenters"], st["n"]), (3, 2, 4))
 
-    def test_two_people_in_both_periods_fail_the_commenter_gate(self):
-        base = dict(self.base, author_set=["a", "b"])
-        st = rb.gate_cluster(base, [self.row(100, "a"), self.row(101, "b")])
+    def test_two_commenters_fail_the_commenter_gate(self):
+        st = rb.gate_cluster([self.row(n, "ab"[n % 2]) for n in range(12)])
         self.assertIn("commenters", st["fails"])
 
     def test_missing_humans_fails(self):
-        st = rb.gate_cluster(dict(self.base, pr_set=list(range(20)), author_set=list("abcde"), human=1), [])
+        st = rb.gate_cluster([self.row(n, a, bot=n > 0) for n, a in enumerate("abcdefghijklmnopqrst")])
         self.assertIn("human", st["fails"])
+
+    def test_examples_come_from_trusted_human_rows(self):
+        rows = [dict(self.row(1, "a"), association="MEMBER", url="u1", path="p", line=1, body="b"),
+                dict(self.row(2, "claude[bot]", bot=True), association="NONE", url="u2", path="p", line=1, body="b"),
+                dict(self.row(3, "c"), association="CONTRIBUTOR", url="u3", path="p", line=1, body="b"),
+                dict(self.row(4, "d", valid="invalid"), association="MEMBER", url="u4", path="p", line=1, body="b")]
+        self.assertEqual([e["url"] for e in rb.trusted_examples(rows)], ["u1"])
+        self.assertEqual(rb.examples(dict(examples=rb.trusted_examples(rows))), [("u1", "a")])
+
+
+def comment(id, pr, author="reviewer", created="2026-11-01T00:00:00Z", reply_to=None, body="unused field", bot=False):
+    return dict(id=id, pull_request_url=f"https://api.github.com/repos/{rb.REPO}/pulls/{pr}", user=dict(login=author, type="Bot" if bot else "User"),
+                author_association="MEMBER", in_reply_to_id=reply_to, path="a.cs", line=1, created_at=created, body=body,
+                html_url=f"https://github.com/{rb.REPO}/pull/{pr}#discussion_r{id}")
+
+
+class Window(unittest.TestCase):
+    def test_api_keeps_partial_graphql_data(self):
+        real = rb.subprocess.run
+        rb.subprocess.run = lambda *a, **k: argparse.Namespace(returncode=1, stdout='{"data":{"repository":{"p1":null}}}', stderr="gone")
+        try:
+            self.assertEqual(rb.api("graphql"), dict(data=dict(repository=dict(p1=None))))
+        finally:
+            rb.subprocess.run = real
+
+    def test_in_window_drops_older_comments_and_dedupes(self):
+        out = rb.in_window([comment(1, 5, created="2026-05-01T00:00:00Z"), comment(2, 5), comment(2, 5, body="edited")], "2026-05-25")
+        self.assertEqual(list(out), [2])
+        self.assertEqual(out[2]["body"], "unused field")
+
+    def test_collect_pages_until_short_page_and_counts_each_comment_once(self):
+        pages = {1: [comment(n, 7) for n in range(100)], 2: [comment(99, 7), comment(100, 8, body="never mind")]}
+        calls = []
+
+        def api(*a):
+            calls.append(a)
+            if a[0] == "graphql":
+                return dict(data=dict(repository=dict(p7=dict(author=dict(login="author"), reviewThreads=dict(nodes=[
+                    dict(isResolved=True, isOutdated=False, comments=dict(nodes=[dict(databaseId=0)]))])))))
+            return pages[int(next(x for x in a if x.startswith("page="))[5:])]
+
+        real = rb.api
+        rb.api = api
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                rb.collect(argparse.Namespace(data=d, days=180, today="2026-11-21"))
+                c = rb.load(os.path.join(d, "comments.json"))
+                prs = rb.load(os.path.join(d, "prs.json"))
+        finally:
+            rb.api = real
+        self.assertEqual(c["since"], "2026-05-25")
+        self.assertEqual(len(c["comments"]), 101)
+        self.assertEqual(sum(a[0] != "graphql" for a in calls), 2)
+        self.assertEqual(list(prs), ["7"])
+        self.assertEqual(prs["7"]["threads"]["0"], [True, False])
+
+    def test_findings_rebuild_threads_and_skip_the_pr_author(self):
+        cs = [rb.slim(comment(1, 7)), rb.slim(comment(2, 7, author="author", reply_to=1, created="2026-11-02T00:00:00Z", body="Good catch, fixed")),
+              rb.slim(comment(3, 7, author="author")), rb.slim(comment(4, 8)), rb.slim(comment(5, 7, author="claude[bot]", bot=True))]
+        prs = {"7": dict(author="author", threads={"5": [True, False]})}
+        rows = list(rb.findings_from(cs, prs))
+        self.assertEqual([(r["url"][-2:], r["valid"], r["bot"]) for r in rows], [("r1", "valid", False), ("r5", "likely", True)])
 
 
 class Catalog(unittest.TestCase):
@@ -235,27 +295,23 @@ class Guard(unittest.TestCase):
                 rb.test_argv(bad)
 
 
-class Baseline(unittest.TestCase):
-    def test_route_b_clusters_have_trusted_samples(self):
-        baseline = rb.load(os.path.join(os.path.dirname(rb.__file__), "baseline.json"))
-        routes = rb.load(os.path.join(os.path.dirname(rb.__file__), "routes.json"))
-        for k, r in routes.items():
-            if r["route"] == "B":
-                samples = baseline["clusters"][k].get("samples", [])
-                self.assertTrue(samples, k)
-                self.assertTrue(all(s["body"] and not rb.is_bot(s["author"]) for s in samples), k)
-
-
 class RouteB(unittest.TestCase):
     def test_next_id_skips_reserved(self):
         self.assertEqual(rb.next_neth_id({1, 2, 10, 11}, {9}), "NETH012")
         self.assertEqual(rb.next_neth_id({11}, {12}), "NETH013")
 
-    def test_cooldown(self):
+    def test_tried_comes_from_bot_pull_requests(self):
         today = datetime.date(2026, 11, 20)
-        self.assertTrue(rb.recently_tried({"linq": "2026-11-01"}, "linq", today))
-        self.assertFalse(rb.recently_tried({"linq": "2026-09-01"}, "linq", today))
-        self.assertFalse(rb.recently_tried({}, "linq", today))
+        prs = [dict(headRefName="rule-bot/linq-neth012-1", createdAt="2026-11-01T00:00:00Z"),
+               dict(headRefName="rule-bot/sleep-neth013-2", createdAt="2026-09-01T00:00:00Z"),
+               dict(headRefName="rule-bot/nullforg-neth014-3", createdAt="2026-11-01T00:00:00Z")]
+        self.assertEqual(rb.recently_tried(prs, ["linq", "sleep", "null", "nullforg"], today), {"linq", "nullforg"})
+
+    def test_rotation_moves_weekly(self):
+        q = ["a", "b", "c"]
+        day = datetime.date(2026, 11, 20)
+        weeks = {tuple(rb.rotate(q, day + datetime.timedelta(days=7 * n))) for n in range(3)}
+        self.assertEqual(len(weeks), 3)
 
     def test_plan_queues_passing_clusters_outside_cooldown(self):
         with tempfile.TemporaryDirectory() as d:
@@ -264,10 +320,17 @@ class RouteB(unittest.TestCase):
             gates = {k: dict(prs=50 - n, **{"pass": n != 1}) for n, k in enumerate(b)}
             rb.save(os.path.join(d, "gates.json"), gates)
             rb.save(os.path.join(d, "catalog.json"), {})
-            rb.save(os.path.join(d, "route_b_history.json"), {b[2]: datetime.date.today().isoformat()})
             os.makedirs(os.path.join(d, os.path.dirname(UNSHIPPED)))
             open(os.path.join(d, UNSHIPPED), "w").write("NETH011 | Usage | Warning | x\n")
-            rb.plan(argparse.Namespace(data=d, state=d, repo=d, offline=True, github_output=None))
+            today = next(datetime.date(2026, 11, 20) + datetime.timedelta(days=n) for n in range(21)
+                         if rb.rotate([1, 2, 3], datetime.date(2026, 11, 20) + datetime.timedelta(days=n))[0] == 1)
+            bot = json.dumps([dict(number=5, state="CLOSED", headRefName=f"rule-bot/{b[2]}-neth011-1", createdAt=f"{today}T00:00:00Z")])
+            real = rb.gh
+            rb.gh = lambda *a, **k: bot if "--label" in a else "[]"
+            try:
+                rb.plan(argparse.Namespace(data=d, repo=d, offline=False, github_output=None, today=today.isoformat()))
+            finally:
+                rb.gh = real
             p = rb.load(os.path.join(d, "plan.json"))
             self.assertEqual([q["cluster"] for q in p["route_b_queue"]], [b[0], b[3], b[4]])
             self.assertEqual(p["route_b"], b[0])
@@ -276,7 +339,7 @@ class RouteB(unittest.TestCase):
     def test_plan_attempts_no_analyzer_while_a_bot_pr_is_open(self):
         routes = rb.load(os.path.join(rb.HERE, "routes.json"))
         b = sorted(k for k, r in routes.items() if r["route"] == "B")[:2]
-        for open_prs, expected in (('[{"number": 7}]', None), ("[]", b[0])):
+        for open_prs, expected in (('[{"number": 7, "state": "OPEN", "headRefName": "rule-bot/x-1", "createdAt": "2020-01-01T00:00:00Z"}]', None), ("[]", b[0])):
             with tempfile.TemporaryDirectory() as d:
                 rb.save(os.path.join(d, "gates.json"), {k: dict(prs=50, **{"pass": True}) for k in b})
                 rb.save(os.path.join(d, "catalog.json"), {})
@@ -285,7 +348,7 @@ class RouteB(unittest.TestCase):
                 real = rb.gh
                 rb.gh = lambda *a, **k: open_prs if "--label" in a else "[]"
                 try:
-                    rb.plan(argparse.Namespace(data=d, state=d, repo=d, offline=False, github_output=None))
+                    rb.plan(argparse.Namespace(data=d, repo=d, offline=False, github_output=None, today="2026-11-12"))
                 finally:
                     rb.gh = real
                 p = rb.load(os.path.join(d, "plan.json"))
