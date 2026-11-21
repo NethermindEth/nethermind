@@ -44,7 +44,7 @@ public class GuestStorageOriginalsTests
     }
 
     /// <remarks>Keccak is a zkVM syscall the host cannot load, so the backend must never hash.</remarks>
-    private static IWorldStateScopeProvider HashFreeScopeProvider()
+    internal static IWorldStateScopeProvider HashFreeScopeProvider()
     {
         IWorldStateScopeProvider.IScope scope = Substitute.For<IWorldStateScopeProvider.IScope>();
         IWorldStateScopeProvider scopeProvider = Substitute.For<IWorldStateScopeProvider>();
