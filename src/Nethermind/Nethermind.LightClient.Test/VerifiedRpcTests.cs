@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Reflection;
 using System.Text.Json;
 using System.Threading.Channels;
 using Nethermind.Core;
@@ -1801,6 +1802,34 @@ public class VerifiedRpcTests
             Assert.That(projected.GetProperty("logsBloom").GetString(), Is.EqualTo(spec.IsEip7668Enabled ? "0x" : "0x" + authenticatedBloom));
             Assert.That(receipt.Bloom, Is.EqualTo(authenticatedBloom));
             Assert.That(receipt.Bloom.Matches(AccountAddress.Bytes), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Warm_block_reads_reuse_the_transaction_index()
+    {
+        using Provider provider = ReceiptProjectionProvider();
+        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
+        VerifiedMemoryCache index = (VerifiedMemoryCache)typeof(VerifiedExecutionData)
+            .GetField("_transactionIndex", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(data)!;
+        object key = (provider.Header.Hash!, "transactions");
+        Hash256 hash = provider.Transactions[1].Hash!;
+
+        await data.GetBlockTransactionCountAsync(provider.Header, CancellationToken.None);
+        bool indexedByCount = index.TryGetValue(key, out HashSet<Hash256>? _);
+        await data.GetBlockAsync(provider.Header, false, CancellationToken.None);
+        index.TryGetValue(key, out HashSet<Hash256>? first);
+        await data.GetBlockAsync(provider.Header, false, CancellationToken.None);
+        await data.FindTransactionAsync(provider.Header, hash, receipt: false, CancellationToken.None);
+        index.TryGetValue(key, out HashSet<Hash256>? reused);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(indexedByCount, Is.False);
+            Assert.That(first, Is.Not.Null);
+            Assert.That(reused, Is.SameAs(first));
+            Assert.That(data.TryLocateTransaction(hash, out BlockHeader? located), Is.True);
+            Assert.That(located!.Hash, Is.EqualTo(provider.Header.Hash));
         }
     }
 
