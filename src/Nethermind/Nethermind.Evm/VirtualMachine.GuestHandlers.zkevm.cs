@@ -3233,10 +3233,112 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
                     }
                 }
+
+                // A copy of a word or more that ends at most a word past a zero-extending source, as a moving offset reads the
+                // end of the input: its last word is cleared and the bytes the source holds go over it. For a copy the source
+                // holds the difference wraps.
+                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0 &&
+                    size >= EvmStack.WordSize && from + size - (ulong)source.Length - 1 < EvmStack.WordSize && Covers(gas, cost))
+                {
+                    ref byte range = ref AlignedMemory(ref state).TryGetWrittenRange(target, size);
+                    if (!Unsafe.IsNullRef(ref range))
+                    {
+                        gas -= (nuint)cost;
+                        ClearLastWord(ref range, size);
+                        uint copied = (uint)((ulong)source.Length - from);
+                        if (copied != 0)
+                            CopyFromSource<TSource>(ref range, source, from, copied);
+
+                        head -= 3;
+                        sp = ref Moved(ref sp, -3);
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint next = NextHandler(handlers, ref ip);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+                    }
+                }
+
+                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0)
+                {
+                    nint pastSource = Entry(&ExecuteDataCopyPastSource<TSource>);
+                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, pastSource);
+                }
             }
 
             nint general = Entry(&ExecuteDataCopy<TSource>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+        }
+
+        /// <summary>
+        /// CALLDATACOPY or CODECOPY, as <typeparamref name="TSource"/> sources it, of bytes that run past the source into
+        /// memory already written: the bytes the source holds, then zeros.
+        /// </summary>
+        /// <remarks>
+        /// Entered from <see cref="ExecuteDataCopyIntoWritten{TSource}"/> alone, which has checked the stack holds the three
+        /// operands, each below 2^32. A copy of a word or more with at most a word of zeros clears
+        /// its last word with four stores before the source's bytes go over it, with no call. Kept apart from
+        /// <see cref="ExecuteDataCopyIntoWritten{TSource}"/>, where its registers would cost every copy the source holds.
+        /// Every other case runs <see cref="ExecuteDataCopy{TSource}"/>.
+        /// </remarks>
+        [SkipLocalsInit]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static EvmExceptionType ExecuteDataCopyPastSource<TSource>(
+            ref EvmStack stack,
+            nuint gas,
+            ref DispatchState state,
+            ref byte ip,
+            nint head,
+            nint* handlers,
+            ref byte code,
+            ref byte sp)
+            where TSource : struct, ICopySource
+        {
+            ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotBelow(ref sp, 1));
+            ulong size = Unsafe.Subtract(ref destination, 2 * LimbsPerWord);
+            ulong from = Unsafe.Subtract(ref destination, LimbsPerWord);
+            ulong target = destination;
+            ReadOnlySpan<byte> source = TSource.Read(ref stack, ref state);
+            ulong cost = VeryLowGasCost.GasCost + GasCostOf.Memory * ((size + (EvmStack.WordSize - 1)) >> 5);
+            if (size == 0 && Covers(gas, cost))
+            {
+                gas -= (nuint)cost;
+                goto Dispatch;
+            }
+
+            ref byte range = ref size != 0 && Covers(gas, cost) ? ref AlignedMemory(ref state).TryGetWrittenRange(target, size) : ref Unsafe.NullRef<byte>();
+            if (!Unsafe.IsNullRef(ref range))
+            {
+                gas -= (nuint)cost;
+                uint copied = from < (ulong)source.Length ? (uint)Math.Min(size, (ulong)source.Length - from) : 0;
+                uint zeros = (uint)size - copied;
+                if (size >= EvmStack.WordSize && zeros <= EvmStack.WordSize)
+                {
+                    ClearLastWord(ref range, size);
+                    if (copied != 0)
+                        CopyFromSource<TSource>(ref range, source, from, copied);
+                }
+                else
+                {
+                    if (copied != 0)
+                        CopyFromSource<TSource>(ref range, source, from, copied);
+                    Unsafe.InitBlockUnaligned(ref Unsafe.Add(ref range, copied), 0, zeros);
+                    // Reloaded rather than held across the call, where each would take a callee-saved register.
+                    handlers = state.OpcodeHandlers;
+                    code = ref stack.Code;
+                    sp = ref SlotAt(ref stack.Bottom, head);
+                }
+
+                goto Dispatch;
+            }
+
+            nint general = Entry(&ExecuteDataCopy<TSource>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, general);
+
+        Dispatch:
+            head -= 3;
+            sp = ref Moved(ref sp, -3);
+            ip = ref Unsafe.Add(ref ip, 1);
+            nint next = NextHandler(handlers, ref ip);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
         }
 
         /// <summary>
@@ -3329,6 +3431,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ip = ref Unsafe.Add(ref ip, 1);
             nint next = NextHandler(handlers, ref ip);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, next);
+        }
+
+        /// <summary>Zeroes the last 32 of the <paramref name="size"/> bytes at <paramref name="range"/>, with four stores.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void ClearLastWord(ref byte range, ulong size)
+        {
+            ref byte lastWord = ref Unsafe.Add(ref range, (nint)(size - EvmStack.WordSize));
+            Unsafe.WriteUnaligned(ref lastWord, 0UL);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref lastWord, sizeof(ulong)), 0UL);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref lastWord, 2 * sizeof(ulong)), 0UL);
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref lastWord, 3 * sizeof(ulong)), 0UL);
         }
 
         /// <summary>
