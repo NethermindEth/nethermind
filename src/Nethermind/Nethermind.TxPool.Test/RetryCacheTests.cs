@@ -1566,11 +1566,12 @@ public class RetryCacheTests
     [Test]
     public async Task Announced_OverflowResourceIsTrackedOnceAnnouncerHasFreeSlot()
     {
+        ManualTimeProvider timeProvider = new();
         using CancellationTokenSource cancellationTokenSource = new();
         RetryCache<ResourceRequestMessage, ResourceId> cache = new(
             TestLogManager.Instance,
-            TimeProvider.System,
-            timeoutMs: AssertTimeoutMs,
+            timeProvider,
+            timeoutMs: CacheTimeoutMs,
             token: cancellationTokenSource.Token,
             maxPendingResourcesPerHandler: 1,
             overflowRequestLimit: 1);
@@ -1578,12 +1579,13 @@ public class RetryCacheTests
         try
         {
             TestHandler source = new();
+            TestHandler other = new();
             cache.Announced(1, source);
             AnnounceResult overflow = cache.Announced(2, source);
             cache.Received(1);
 
             AnnounceResult sameHandler = cache.Announced(2, source);
-            AnnounceResult otherHandler = cache.Announced(2, new TestHandler());
+            AnnounceResult otherHandler = cache.Announced(2, other);
 
             using (Assert.EnterMultipleScope())
             {
@@ -1592,6 +1594,16 @@ public class RetryCacheTests
                 Assert.That(otherHandler, Is.EqualTo(AnnounceResult.Delayed));
                 Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
                 Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            }
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            Assert.That(() => source.HandleMessageCallCount + other.HandleMessageCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
+
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => source.HandleMessageCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
+                Assert.That(() => other.HandleMessageCallCount, Is.EqualTo(1).After(AssertTimeoutMs, 10));
             }
         }
         finally
