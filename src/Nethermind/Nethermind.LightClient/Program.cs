@@ -28,6 +28,25 @@ using RpcEndpoint = Nethermind.LightClient.Rpc.RpcEndpoint;
 using RpcTransport = Nethermind.JsonRpc.Modules.RpcEndpoint;
 using WebHost = Nethermind.JsonRpc.Hosting.WebHost;
 
+if (args is ["--health-check"])
+{
+    using HttpClient client = new(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false })
+    {
+        Timeout = TimeSpan.FromSeconds(4),
+    };
+    try
+    {
+        using HttpResponseMessage response = await client.GetAsync("http://127.0.0.1:8545/status", HttpCompletionOption.ResponseHeadersRead);
+        Environment.ExitCode = response.IsSuccessStatusCode ? 0 : 1;
+    }
+    catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException)
+    {
+        Console.Error.WriteLine(exception.Message);
+        Environment.ExitCode = 1;
+    }
+    return;
+}
+
 LightClientHost.ConfigureNetworkBuffers();
 
 if (Array.Exists(args, static arg => arg is "--help" or "-h"))

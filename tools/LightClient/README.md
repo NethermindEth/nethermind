@@ -206,10 +206,9 @@ ownership. For an existing root-owned default volume:
 ```sh
 docker compose stop light-client
 docker volume inspect nethermind-light-client_light-client-data
-docker run --rm --user 0 --entrypoint /bin/sh \
+docker run --rm --user 0 \
   -v nethermind-light-client_light-client-data:/data \
-  nethermindeth/nethermind:light-client-1.0.1 \
-  -c 'chown -R 1654:1654 /data && chmod 700 /data'
+  ubuntu:26.04 sh -c 'chown -R 1654:1654 /data && chmod 700 /data'
 docker compose start light-client
 ```
 
@@ -280,7 +279,8 @@ docker buildx build --platform linux/amd64,linux/arm64 \
   --tag your-registry/light-client:1.0.1 --push .
 ```
 
-The runtime includes Microsoft's Linux `libmsquic` package for beacon QUIC.
+The chiseled .NET runtime includes the native libraries for beacon QUIC.
+Docker runs the client and its healthcheck directly.
 The image removes JavaScript tracer scripts, native V8 and its ICU payload, and
 the RPC source-generator build executable. Verified calls and gas estimation
 use Nethermind's EVM and native tracers. Managed ClearScript assemblies remain
@@ -288,8 +288,8 @@ for transitive type references; PDB symbols remain for stack locations and
 profiling diagnostics.
 The client listens on all container interfaces while Compose restricts the host
 RPC mapping to loopback. The image's execution port is explicitly 30303; native
-CLI runs otherwise default to 30307. Additional CLI arguments are appended to the
-entrypoint defaults. For example, run without the monitoring stack:
+CLI runs otherwise default to 30307. CLI arguments override the image's
+environment defaults. For example, run without the monitoring stack:
 
 ```sh
 docker run --rm --name nethermind-lc \

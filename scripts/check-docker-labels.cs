@@ -85,7 +85,8 @@ try
         Console.WriteLine($"Building {dockerfile} as {tag}");
         tags.Add(tag);
         await Run("docker", [.. build], echo: true);
-        var labels = JsonNode.Parse(await Run("docker", ["image", "inspect", "--format", "{{json .Config.Labels}}", tag]));
+        var config = JsonNode.Parse(await Run("docker", ["image", "inspect", "--format", "{{json .Config}}", tag]));
+        var labels = config?["Labels"];
         Console.WriteLine($"Checking the labels of {tag}");
         foreach (var (key, expected) in new[]
         {
@@ -111,16 +112,23 @@ try
             string[] requiredPorts = lightClient
                 ? ["8545/tcp", "30303/tcp", "30303/udp", "9050/tcp", "9050/udp", "9051/udp"]
                 : ["30303/tcp", "30303/udp"];
-            if (JsonNode.Parse(await Run("docker", ["image", "inspect", "--format", "{{json .Config.ExposedPorts}}", tag])) is not JsonObject ports ||
+            if (config?["ExposedPorts"] is not JsonObject ports ||
                 requiredPorts.Any(port => !ports.ContainsKey(port)))
             {
                 Console.Error.WriteLine($"FAIL: {dockerfile} must expose {string.Join(", ", requiredPorts)}");
                 failures++;
             }
         }
+        if (lightClient &&
+            (!JsonNode.DeepEquals(config?["Entrypoint"], JsonNode.Parse("""["./Nethermind.LightClient"]""")) ||
+             !JsonNode.DeepEquals(config?["Healthcheck"]?["Test"], JsonNode.Parse("""["CMD","./Nethermind.LightClient","--health-check"]"""))))
+        {
+            Console.Error.WriteLine($"FAIL: {dockerfile} must launch the client and healthcheck directly");
+            failures++;
+        }
     }
     if (failures > 0) throw new InvalidOperationException($"{failures} image metadata check(s) failed");
-    Console.WriteLine("All image labels and required exposed ports are correct");
+    Console.WriteLine("All image metadata checks passed");
     return 0;
 }
 catch (OperationCanceledException) { return 130; }

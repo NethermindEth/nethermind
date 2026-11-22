@@ -63,7 +63,6 @@ internal static partial class DeploymentTests
                     Require(config["restart"]!.GetValue<string>() == "unless-stopped", $"{service} restart policy changed");
                 }
             }),
-            ("Entrypoint preserves argv and replaces the shell", CheckEntrypointAsync),
             ("Publish trimming preserves EVM dependencies and symbols", CheckTrimmingAsync),
             ("Dashboard queries scope job and network", () =>
             {
@@ -139,18 +138,19 @@ internal static partial class DeploymentTests
         string framework = XDocument.Load(Path.Combine(repository, "Directory.Build.props")).Descendants("TargetFramework").Single().Value;
         Version runtime = Version.Parse(framework["net".Length..]);
         MatchCollection images = BaseImagePattern().Matches(File.ReadAllText(Path.Combine(Deployment, "Dockerfile")));
-        MatchCollection upstreamImages = BaseImagePattern().Matches(File.ReadAllText(Path.Combine(repository, "Dockerfile")));
-        Require(images.Count == 2 && images[0].Groups["kind"].Value == "sdk" && images[1].Groups["kind"].Value == "aspnet",
-            "Both Docker base images must have explicit versions and SHA-256 digest pins");
-        foreach (Match image in images)
+        MatchCollection fullNodeImages = BaseImagePattern().Matches(File.ReadAllText(Path.Combine(repository, "Dockerfile")));
+        Match chiseledRuntime = BaseImagePattern().Matches(File.ReadAllText(Path.Combine(repository, "Dockerfile.chiseled")))
+            .Single(image => image.Groups["kind"].Value == "aspnet");
+        Match[] expectedImages = [.. fullNodeImages.Cast<Match>(), chiseledRuntime];
+        Require(images.Count == expectedImages.Length, "Docker stages must pin the SDK, package installer and chiseled runtime");
+        foreach ((Match image, Match expected) in images.Cast<Match>().Zip(expectedImages))
         {
             string kind = image.Groups["kind"].Value;
             Version version = Version.Parse(image.Groups["version"].Value);
             Require(kind == "sdk" ? version.Major == sdk.Major && version.Minor == sdk.Minor && version >= sdk
                 : version.Major == runtime.Major && version.Minor == runtime.Minor,
                 $"Docker {kind} version {version} does not match the repository SDK or target framework");
-            Match upstream = upstreamImages.Single(candidate => candidate.Groups["kind"].Value == kind);
-            Require(image.Groups["reference"].Value == upstream.Groups["reference"].Value,
+            Require(image.Groups["reference"].Value == expected.Groups["reference"].Value,
                 $"Docker {kind} tag and digest do not match the repository's maintained image pin");
         }
         return Task.CompletedTask;
@@ -204,20 +204,6 @@ internal static partial class DeploymentTests
             ["LC_CHECKPOINT_URL"] = null,
         };
         return ProcessAsync("docker", ["compose", "--env-file", Path.Combine(Deployment, ".env.example"), "-f", Path.Combine(Deployment, "compose.yml"), "config", "--format", "json"], environment: environment);
-    }
-
-    private static async Task CheckEntrypointAsync()
-    {
-        using ScratchDirectory scratch = new();
-        File.Copy(Path.Combine(Deployment, "docker-entrypoint.sh"), Path.Combine(scratch.Path, "docker-entrypoint.sh"));
-        File.WriteAllText(Path.Combine(scratch.Path, "Nethermind.LightClient"), "#!/bin/sh\nprintf \"%s\\n\" \"$@\"\n");
-        ProcessResult chmod = await ProcessAsync(Shell(), ["-c", "chmod +x ./Nethermind.LightClient"], scratch.Path);
-        Require(chmod.Code == 0, chmod.Error);
-        string[] forwarded = ["--network", "sepolia", "--checkpoint", "one argument with spaces"];
-        ProcessResult result = await ProcessAsync(Shell(), ["-c", "trap 'printf \"EXIT_TRAP\\n\"' EXIT; . ./docker-entrypoint.sh \"$@\"; printf \"SHELL_RETURNED\\n\"", "entrypoint-test", .. forwarded], scratch.Path);
-        Require(result.Code == 0, result.Error);
-        string[] expected = ["--urls", "http://0.0.0.0:8545", "--data-dir", "/data", "--beacon-port", "9050", "--beacon-quic-port", "9051", "--execution-port", "30303", .. forwarded];
-        Require(result.Output.Replace("\r\n", "\n").TrimEnd('\n').Split('\n').SequenceEqual(expected), $"Entrypoint changed argv or failed to exec: {result.Output}");
     }
 
     private static async Task CheckTrimmingAsync()
