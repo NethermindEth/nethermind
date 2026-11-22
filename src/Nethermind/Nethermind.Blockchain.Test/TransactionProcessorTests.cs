@@ -291,6 +291,25 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
     }
 
     [Test]
+    public void Call_without_validation_completes_when_the_sender_self_destructs()
+    {
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).TestObject;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _stateProvider.InsertCode(TestItem.AddressA, Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done, spec);
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressA).WithGasPrice(1).WithGasLimit(100_000)
+            .WithSenderAddress(TestItem.AddressA).TestObject;
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.AccountExists(TestItem.AddressA), Is.False);
+        }
+    }
+
+    [Test]
     public void Can_estimate_with_value([Values] bool systemUser)
     {
         ulong gasLimit = 100000ul;
