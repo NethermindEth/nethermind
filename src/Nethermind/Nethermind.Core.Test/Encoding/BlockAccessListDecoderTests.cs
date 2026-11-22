@@ -43,6 +43,10 @@ public class BlockAccessListDecoderTests
         Assert.That(bal.WireHash, Is.EqualTo(new Hash256(ValueKeccak.Compute(bytes))));
     }
 
+    [TestCaseSource(nameof(BlockAccessListTestSource))]
+    public void CountItems_matches_the_item_count_of_the_decoded_list(string rlp, ReadOnlyBlockAccessList expected) =>
+        Assert.That(BlockAccessListDecoder.CountItems(Bytes.FromHexString(rlp)), Is.EqualTo(expected.ItemCount));
+
     // Block processing reuses WireHash as the header commitment of the generated BAL, which holds only
     // if every encoding the decoder accepts is the canonical one.
     [TestCaseSource(nameof(BlockAccessListEncodingFormsSource))]

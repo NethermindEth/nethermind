@@ -6,10 +6,12 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -81,7 +83,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             return true;
         }
 
-        if (!TryDecodeBlockAccessList(encodedBlockAccessList, out blockAccessList, out error))
+        if (!TryDecodeBlockAccessList(encodedBlockAccessList, GasLimit, out blockAccessList, out error))
         {
             return false;
         }
@@ -93,11 +95,20 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
     internal static bool TryDecodeBlockAccessList(
         byte[] encodedBlockAccessList,
+        ulong gasLimit,
         [NotNullWhen(true)] out ReadOnlyBlockAccessList? blockAccessList,
         [NotNullWhen(false)] out string? error)
     {
         try
         {
+            int itemCount = BlockAccessListDecoder.CountItems(encodedBlockAccessList);
+            if (Eip7928Constants.ExceedsItemLimit(itemCount, gasLimit))
+            {
+                blockAccessList = null;
+                error = BlockErrorMessages.BlockAccessListGasLimitExceeded((ulong)itemCount, gasLimit / Eip7928Constants.ItemCost);
+                return false;
+            }
+
             blockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(encodedBlockAccessList)
                 ?? throw new RlpReaderException("Block access list decoded as null.");
             error = null;

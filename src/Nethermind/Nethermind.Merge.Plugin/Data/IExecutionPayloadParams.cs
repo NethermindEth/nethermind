@@ -171,7 +171,7 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
 
                 bool decoded = executionPayload is ExecutionPayloadV4 executionPayloadV4
                     ? executionPayloadV4.TryDecodeBlockAccessList(out _, out error)
-                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out _, out error);
+                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, executionPayload.GasLimit, out _, out error);
                 if (!decoded)
                 {
                     return ValidationResult.Invalid;

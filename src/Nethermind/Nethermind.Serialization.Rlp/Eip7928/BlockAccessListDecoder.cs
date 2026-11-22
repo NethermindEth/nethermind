@@ -54,6 +54,23 @@ public class BlockAccessListDecoder : RlpDecoder<ReadOnlyBlockAccessList>
         return new ReadOnlyBlockAccessList(accountChanges, itemCount, wireHash);
     }
 
+    public static int CountItems(ReadOnlySpan<byte> encodedBlockAccessList)
+    {
+        RlpReader accounts = new RlpReader(encodedBlockAccessList).EnterSequence(out _);
+        int itemCount = 0;
+        while (accounts.HasNext)
+        {
+            RlpReader fields = new RlpReader(accounts.ReadEncodedItem()).EnterSequence(out _);
+            fields.SkipItem();
+            itemCount += 1 + CountSequenceItems(fields.ReadEncodedItem()) + CountSequenceItems(fields.ReadEncodedItem());
+        }
+
+        return itemCount;
+    }
+
+    private static int CountSequenceItems(ReadOnlySpan<byte> encodedSequence) =>
+        new RlpReader(encodedSequence).EnterSequence(out _).CountItems();
+
     private static ReadOnlyAccountChanges[] DecodeAccountChanges<TCanonicalChecks>(ref RlpReader reader) where TCanonicalChecks : struct, IFlag
     {
         RlpBehaviors itemBehaviors = TCanonicalChecks.IsActive ? RlpBehaviors.None : RlpBehaviors.TrustedInput;

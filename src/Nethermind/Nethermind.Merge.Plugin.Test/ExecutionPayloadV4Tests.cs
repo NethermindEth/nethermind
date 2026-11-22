@@ -45,6 +45,34 @@ public class ExecutionPayloadV4Tests
         Assert.That(result.Error, Does.Not.Contain(Environment.NewLine));
     }
 
+    [TestCase(5UL, false)]
+    [TestCase(6UL, true)]
+    public void TryGetBlock_checks_the_block_access_list_item_limit_before_decoding(ulong itemLimit, bool decoded)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(0).TestObject)
+            .TestObject;
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(bal),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = itemLimit * Eip7928Constants.ItemCost,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        Result<Block> result = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.IsError, Is.EqualTo(!decoded));
+            if (!decoded) Assert.That(result.Error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
     [Test]
     public void TryGetBlock_reuses_cached_block_access_list_for_wire_hash()
     {

@@ -390,7 +390,7 @@ public static partial class TrustedInput
         Block block = new(header, decoded.Transactions, [], withdrawals);
         if (encodedBlockAccessList is not null)
         {
-            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
+            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, header.GasLimit, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
                 throw new InvalidOperationException(error);
 
             block.BlockAccessList = blockAccessList;
