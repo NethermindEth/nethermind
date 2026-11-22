@@ -6,10 +6,10 @@ using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL.Derivation;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Optimism.CL;
 
@@ -89,16 +89,21 @@ public class L1BlockInfoBuilder
         };
     }
 
-    public static L1BlockInfo FromL1BlockAndSystemConfig(L1Block block, SystemConfig config, ulong sequenceNumber)
+    public static L1BlockInfo FromL1BlockAndSystemConfig(L1Block block, SystemConfig config, ulong sequenceNumber, ISpecProvider l1SpecProvider)
     {
-        // TODO: fetch BlobBaseFeeUpdateFraction
-        BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, Prague.Instance.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas);
+        ulong timestamp = block.Timestamp.ToUInt64(null);
+        IReleaseSpec l1Spec = l1SpecProvider.GetSpec(ForkActivation.TimestampOnly(timestamp));
+        if (!BlobGasCalculator.TryCalculateFeePerBlobGas(block.ExcessBlobGas!.Value, l1Spec.BlobBaseFeeUpdateFraction, out UInt256 feePerBlobGas))
+        {
+            throw new InvalidOperationException($"Blob base fee of L1 block {block.Number} overflows with excess blob gas {block.ExcessBlobGas}.");
+        }
+
         return new()
         {
             BaseFeeScalar = config.BaseFeeScalar,
             BlobBaseFeeScalar = config.BlobBaseFeeScalar,
             SequenceNumber = sequenceNumber,
-            Timestamp = block.Timestamp.ToUInt64(null),
+            Timestamp = timestamp,
             Number = block.Number,
             BaseFee = block.BaseFeePerGas!.Value,
             BlobBaseFee = feePerBlobGas,

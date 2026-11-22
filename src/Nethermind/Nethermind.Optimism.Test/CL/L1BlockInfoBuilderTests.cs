@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.CL;
@@ -38,4 +39,33 @@ public class L1BlockInfoBuilderTests
             Assert.That(tx.SourceHash, Is.EqualTo(new Hash256("0x0a17e1f9443295ceee6678f1fc70aa6e45d2988cfbe062ec28db9f1e5fcb469d")));
         }
     }
+
+    [TestCase(MainnetSpecProvider.CancunBlockTimestamp, "32594247408339235274")]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp - 1, "32594247408339235274")]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp, "10203738961070")]
+    [TestCase(MainnetSpecProvider.BPO1BlockTimestamp, "63863970")]
+    [TestCase(MainnetSpecProvider.BPO2BlockTimestamp, "375995")]
+    public void FromL1BlockAndSystemConfig_uses_blob_fee_update_fraction_of_l1_block(ulong l1Timestamp, string expectedBlobBaseFee)
+    {
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(
+            CreateL1Block(l1Timestamp, 150_000_000), new SystemConfig(), 0, MainnetSpecProvider.Instance);
+
+        Assert.That(l1BlockInfo.BlobBaseFee, Is.EqualTo(UInt256.Parse(expectedBlobBaseFee)));
+    }
+
+    [Test]
+    public void FromL1BlockAndSystemConfig_throws_when_blob_base_fee_overflows() =>
+        Assert.That(
+            () => L1BlockInfoBuilder.FromL1BlockAndSystemConfig(
+                CreateL1Block(MainnetSpecProvider.BPO2BlockTimestamp, ulong.MaxValue), new SystemConfig(), 0, MainnetSpecProvider.Instance),
+            Throws.InvalidOperationException);
+
+    private static L1Block CreateL1Block(ulong timestamp, ulong excessBlobGas) => new()
+    {
+        Hash = TestItem.KeccakA,
+        Number = 1,
+        Timestamp = timestamp,
+        BaseFeePerGas = 1,
+        ExcessBlobGas = excessBlobGas,
+    };
 }

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.Rpc;
@@ -12,7 +13,8 @@ namespace Nethermind.Optimism.CL.Derivation;
 
 public class PayloadAttributesDeriver(
     ISystemConfigDeriver systemConfigDeriver,
-    DepositTransactionBuilder depositTransactionBuilder
+    DepositTransactionBuilder depositTransactionBuilder,
+    ISpecProvider l1SpecProvider
 ) : IPayloadAttributesDeriver
 {
     public readonly Address SequencerFeeVault = new("0x4200000000000000000000000000000000000011");
@@ -36,7 +38,7 @@ public class PayloadAttributesDeriver(
         }
 
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, systemConfig,
-            batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1);
+            batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1, l1SpecProvider);
 
         Transaction systemTransaction = _depositTransactionBuilder.BuildL1InfoTransaction(l1BlockInfo);
         systemTransaction.Nonce = number + 1;
