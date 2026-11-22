@@ -69,6 +69,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private const int ExecutionRequestLimit = 4;
     private const int ExecutionBulkLimit = ExecutionRequestLimit - 1;
     private const int SnapRequestLimit = 8;
+    // Two concurrent proof RPCs leave SNAP capacity for other state reads.
+    private const int ProofStorageConcurrency = 3;
+    private const string BlockDataUnavailable = "No execution peer supplied authenticated block data.";
+    private const string AncestorChainUnavailable = "No execution peer supplied an authenticated header chain.";
     private const int SlowResponseMilliseconds = 7500;
     private const int PeerFeedbackCapacity = 256;
     private readonly IContainer _services;
@@ -571,21 +575,42 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     public async Task<ExecutionAccountProof> GetProofAsync(VerifiedHead head, Address address, UInt256[] storageKeys,
         CancellationToken cancellationToken)
     {
+        ValueHash256 accountPath = ValueKeccak.Compute(address.Bytes);
         (Account account, byte[][] proof) = await RequestAsync(async (peer, token) =>
         {
-            ValueHash256 path = ValueKeccak.Compute(address.Bytes);
-            using AccountsAndProofs response = await peer.GetAccountRange(new AccountRange(head.StateRoot, path, path.IncrementPath()), token);
+            using AccountsAndProofs response = await peer.GetAccountRange(
+                new AccountRange(head.StateRoot, accountPath, accountPath.IncrementPath()), token);
             return ExportAccountProof(head.StateRoot, address, response, _logManager);
         }, cancellationToken);
         ExecutionStorageProof[] storage = new ExecutionStorageProof[storageKeys.Length];
-        for (int i = 0; i < storage.Length; i++)
+        if (storage.Length > 1 && account.HasStorage)
         {
-            UInt256 key = storageKeys[i];
-            if (!account.HasStorage) { storage[i] = new(key, UInt256.Zero, []); continue; }
-            storage[i] = await RequestAsync(async (peer, token) =>
+            await Parallel.ForAsync(0, storage.Length, new ParallelOptions
             {
-                ValueHash256 accountPath = ValueKeccak.Compute(address.Bytes);
-                ValueHash256 slotPath = ValueKeccak.Compute(key.ToBigEndian());
+                CancellationToken = cancellationToken,
+                MaxDegreeOfParallelism = ProofStorageConcurrency,
+            }, FetchStorageProofAsync);
+        }
+        else
+        {
+            for (int i = 0; i < storage.Length; i++) await FetchStorageProofAsync(i, cancellationToken);
+        }
+        return new(account, proof, storage);
+
+        async ValueTask FetchStorageProofAsync(int index, CancellationToken fetchToken)
+        {
+            UInt256 key = storageKeys[index];
+            if (!account.HasStorage)
+            {
+                storage[index] = new(key, UInt256.Zero, []);
+                return;
+            }
+
+            Span<byte> keyBytes = stackalloc byte[32];
+            key.ToBigEndian(keyBytes);
+            ValueHash256 slotPath = ValueKeccak.Compute(keyBytes);
+            storage[index] = await RequestAsync(async (peer, token) =>
+            {
                 using StorageRange request = new()
                 {
                     RootHash = head.StateRoot,
@@ -595,9 +620,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 };
                 using SlotsAndProofs response = await peer.GetStorageRange(request, token);
                 return ExportStorageProof(account, accountPath, key, response, _logManager);
-            }, cancellationToken);
+            }, fetchToken);
         }
-        return new(account, proof, storage);
     }
 
     internal static (Account Account, byte[][] Proof) ExportAccountProof(Hash256 stateRoot, Address address,
@@ -804,7 +828,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             if (hashes[^1] != head.BlockHash)
                 throw new ExecutionDataUnavailableException("Execution peer's canonical ancestor chain does not reach the selected head.");
             return hashes;
-        }, cancellationToken, failureMessage: "No execution peer supplied an authenticated header chain.");
+        }, cancellationToken, failureMessage: AncestorChainUnavailable);
     }
 
     public async Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken)
@@ -815,6 +839,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         if (header.Number != number)
             throw new RpcException(-32000, "Execution peer returned a header outside the verified chain.");
         return header;
+    }
+
+    public Task<BlockHeader[]> GetRecentHeadersAsync(BlockHeader newest, int count, CancellationToken cancellationToken)
+    {
+        if (count is < 1 or > 257 || newest.Number < (ulong)(count - 1))
+            throw new ArgumentOutOfRangeException(nameof(count));
+        return ReadLinkedHeadersAsync(newest, newest.Number - (ulong)(count - 1), newest.Number,
+            cancellationToken, AncestorChainUnavailable);
     }
 
     public Task<BlockHeader[]> GetLogHeadersAsync(VerifiedHead anchor, VerifiedHead finalized, ulong firstNumber,
@@ -842,7 +874,12 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     }
 
     private Task<BlockHeader[]> FetchLogHeaderPageAsync(BlockHeader cursor, int count, CancellationToken cancellationToken) =>
-        RequestExecutionAsync(AllocationContexts.Headers, (peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token), cancellationToken);
+        FetchLinkedHeaderPageAsync(cursor, count, cancellationToken, BlockDataUnavailable);
+
+    private Task<BlockHeader[]> FetchLinkedHeaderPageAsync(BlockHeader cursor, int count,
+        CancellationToken cancellationToken, string failureMessage) =>
+        RequestExecutionAsync(AllocationContexts.Headers, (peer, token) => ReadLogHeaderPageAsync(peer, cursor, count, token),
+            cancellationToken, failureMessage: failureMessage);
 
     private FinalizedHeaderHistory.PageRequest[] BeginLogHeaderPages(ulong number, int count, CancellationToken cancellationToken)
     {
@@ -1053,12 +1090,18 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         LogHeaderChain.Verify(cursor, anchor.Number, anchor.BlockHash);
         if (cursor.StateRoot != anchor.StateRoot)
             throw new InvalidDataException("Optimistic log anchor has an inconsistent state root.");
+        return await ReadLinkedHeadersAsync(cursor, first, last, cancellationToken, BlockDataUnavailable);
+    }
+
+    private async Task<BlockHeader[]> ReadLinkedHeadersAsync(BlockHeader cursor, ulong first, ulong last,
+        CancellationToken cancellationToken, string failureMessage)
+    {
         BlockHeader[] result = new BlockHeader[checked((int)(last - first + 1))];
         if (cursor.Number <= last) result[checked((int)(cursor.Number - first))] = cursor;
         while (cursor.Number > first)
         {
             int count = (int)Math.Min(FinalizedHeaderHistory.PageSize, cursor.Number - first);
-            BlockHeader[] page = await FetchLogHeaderPageAsync(cursor, count, cancellationToken);
+            BlockHeader[] page = await FetchLinkedHeaderPageAsync(cursor, count, cancellationToken, failureMessage);
             foreach (BlockHeader header in page)
                 if (header.Number <= last) result[checked((int)(header.Number - first))] = header;
             cursor = page[0];
@@ -1291,7 +1334,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     private Task<T> RequestExecutionAsync<T>(AllocationContexts context, Func<ISyncPeer, CancellationToken, Task<T>> request,
         CancellationToken cancellationToken, Func<ISyncPeer, bool>? canServe = null,
-        string failureMessage = "No execution peer supplied authenticated block data.", HeaderPrefetch? prefetch = null,
+        string failureMessage = BlockDataUnavailable, HeaderPrefetch? prefetch = null,
         bool hedge = true) =>
         RequestFromPeersAsync(context, static peer => peer, request, cancellationToken, canServe, failureMessage,
             prefetch: prefetch, hedge: hedge);

@@ -1862,6 +1862,39 @@ public class ConsensusTests
 
     private const ulong PublicationTimestamp = 12345;
 
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Persisted_heads_wake_publication_before_the_retry_tick([Values] bool finalized, CancellationToken token)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        TaskCompletionSource<VerifiedHead> published = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        LightClientHeader next = PublicationHeader(198, 130);
+        harness.Observe = snapshot =>
+        {
+            VerifiedHead? head = finalized ? snapshot.Finalized : snapshot.Latest;
+            if (head is not null && head.BlockHash == next.ExecutionBlockHash) published.TrySetResult(head);
+        };
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await harness.Clock.WaitForTimersAsync(3);
+            if (finalized) harness.Finalized = next;
+            else harness.Optimistic = next;
+            harness.Publisher.NotifyPersistedHeadsChanged();
+
+            VerifiedHead head = await published.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(head, Is.EqualTo(ResolvedPublicationHeader(next).Head));
+                Assert.That(harness.Clock.GetTimestamp(), Is.Zero);
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+    }
+
     private static LightClientHeader PublicationHeader(ulong slot, byte number, byte branch = 0)
     {
         byte[] hash = new byte[32];

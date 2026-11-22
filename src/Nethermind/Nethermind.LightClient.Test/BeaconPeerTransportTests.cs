@@ -2261,6 +2261,41 @@ public class BeaconPeerTransportTests
     }
 
     [Test]
+    [CancelAfter(10_000)]
+    public async Task Bootstrap_retries_when_a_supplier_arrives_or_the_search_interval_expires(
+        [Values("waiting", "in flight", "interval")] string arrival, CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource<LightClientBootstrap> unavailable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        BootstrapSession? pending = arrival == "in flight" ? fixture.Add() : null;
+        if (pending is not null)
+        {
+            pending.Session.DialAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+                .Returns(call => unavailable.Task.WaitAsync(call.Arg<CancellationToken>()));
+        }
+
+        Task<LightClientBootstrap> bootstrap = fixture.BootstrapAsync(stop.Token);
+        try
+        {
+            Assert.That(fixture.Clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(pending is null ? 3 : 5)));
+            BootstrapSession supplier = fixture.Add();
+            supplier.Session.DialAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(fixture.Bootstrap));
+            if (arrival == "interval") fixture.Clock.Expire();
+            else fixture.NotifyPeerAdmitted(supplier.Peer);
+
+            if (pending is not null) unavailable.SetException(BootstrapUnavailable());
+            Assert.That(await bootstrap.WaitAsync(token), Is.SameAs(fixture.Bootstrap));
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await ((Task)bootstrap).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task Bootstrap_absence_releases_its_startup_slot_without_a_peer_fault(
         [Values] bool wrapped, CancellationToken token)
@@ -2613,6 +2648,16 @@ public class BeaconPeerTransportTests
 
         internal BeaconPeerTransport.PeerRequests Requests(string field) =>
             (BeaconPeerTransport.PeerRequests)typeof(BeaconPeerTransport).GetField(field, Flags)!.GetValue(_transport)!;
+
+        internal void NotifyPeerAdmitted(IBeaconSyncPeer peer) =>
+            ((Action<IBeaconSyncPeer>)typeof(PeerManager).GetField(nameof(PeerManager.PeerAdmitted), Flags)!.GetValue(Manager)!).Invoke(peer);
+
+        internal Task<LightClientBootstrap> BootstrapAsync(CancellationToken token) =>
+            _transport.BootstrapAsync(SszRoots.HashTreeRoot(Bootstrap.Header!.Beacon!), (value, _) =>
+            {
+                ValidateBootstrap(value);
+                return Task.CompletedTask;
+            }, token);
 
         internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
             _transport.UpdateAsync(period, validate, token);

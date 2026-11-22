@@ -2708,6 +2708,108 @@ public class RpcBackendTests
         }
     }
 
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Fee_history_overlaps_bodies_and_receipt_windows_in_block_order(CancellationToken token)
+    {
+        const ulong first = 20_000_000;
+        const ulong last = first + 4;
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        LogRangeSource source = new(first, last, transactionGasPrice: number => number)
+        {
+            BeforeBlockRead = (_, requestToken) => release.Task.WaitAsync(requestToken),
+        };
+        using RpcBackend rpc = new(source, () => source.Head(last), 1, specProvider: MainnetSpecProvider.Instance);
+        Task<JsonElement> request = rpc.GetFeeHistoryAsync(5, JsonSerializer.SerializeToElement("finalized"), [50], token);
+        ulong[] initialWindow = [first, first + 1, first + 2, first + 3];
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(source.BodyNumbers, Is.EqualTo(initialWindow));
+                Assert.That(source.ReceiptWindows.SingleOrDefault(), Is.EqualTo(initialWindow));
+                Assert.That(source.ReceiptReads, Is.EqualTo(4));
+                Assert.That(request.IsCompleted, Is.False);
+            }
+            release.SetResult();
+            JsonElement result = await request.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.GetProperty("oldestBlock").GetString(), Is.EqualTo(RpcBackend.Quantity(first)));
+                Assert.That(result.GetProperty("reward").EnumerateArray().Select(row => row[0].GetString()),
+                    Is.EqualTo(new[] { first, first + 1, first + 2, first + 3, last }.Select(number => RpcBackend.Quantity(number))));
+                Assert.That(source.ReceiptWindows.Last(), Is.EqualTo(new[] { last }));
+                Assert.That(source.ReceiptReads, Is.EqualTo(5));
+            }
+        }
+        finally
+        {
+            release.TrySetResult();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Fee_history_stops_and_drains_all_payload_waits([Values("body", "receipts", "caller")] string failure, CancellationToken token)
+    {
+        const ulong first = 20_000_000;
+        const ulong last = first + 4;
+        TaskCompletionSource reject = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int active = 0;
+        LogRangeSource source = new(first, last)
+        {
+            BeforeBlockRead = (number, requestToken) => ReadAsync(number, "body", requestToken),
+            BeforeReceiptRead = (number, requestToken) => ReadAsync(number, "receipts", requestToken),
+        };
+        using RpcBackend rpc = new(source, () => source.Head(last), 1, specProvider: MainnetSpecProvider.Instance);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<JsonElement> request = rpc.GetFeeHistoryAsync(5, JsonSerializer.SerializeToElement("finalized"), [50], caller.Token);
+        try
+        {
+            Assert.That(Volatile.Read(ref active), Is.EqualTo(8));
+            if (failure == "caller")
+            {
+                await caller.CancelAsync();
+                await Assert.ThatAsync(async () => await request, Throws.InstanceOf<OperationCanceledException>());
+            }
+            else
+            {
+                reject.SetResult();
+                await Assert.ThatAsync(async () => await request, Throws.TypeOf<InvalidDataException>().With.Message.EqualTo("Invalid fixture payload."));
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Volatile.Read(ref active), Is.Zero);
+                Assert.That(source.BodyNumbers, Has.Count.EqualTo(4));
+                Assert.That(source.ReceiptReads, Is.EqualTo(4));
+            }
+        }
+        finally
+        {
+            await caller.CancelAsync();
+            reject.TrySetResult();
+            release.TrySetResult();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+
+        async Task ReadAsync(ulong number, string kind, CancellationToken requestToken)
+        {
+            Interlocked.Increment(ref active);
+            try
+            {
+                if (number == first && kind == failure)
+                {
+                    await reject.Task.WaitAsync(requestToken);
+                    throw new InvalidDataException("Invalid fixture payload.");
+                }
+                await release.Task.WaitAsync(requestToken);
+            }
+            finally { Interlocked.Decrement(ref active); }
+        }
+    }
+
     [TestCase("0x0", new double[] { 50 })]
     [TestCase("0x1", new double[] { 51, 50 })]
     [TestCase("0x1", new double[] { -1 })]
@@ -2911,7 +3013,7 @@ public class RpcBackendTests
         internal Block this[ulong number] => _blocks[number];
 
         internal LogRangeSource(ulong first = 300, ulong last = 325, bool signTransactions = false,
-            Func<ulong, bool>? includeLogs = null)
+            Func<ulong, bool>? includeLogs = null, Func<ulong, UInt256>? transactionGasPrice = null)
         {
             using PrivateKey? key = signTransactions ? new("0x0000000000000000000000000000000000000000000000000000000000000001") : null;
             EthereumEcdsa signer = new(1);
@@ -2922,7 +3024,14 @@ public class RpcBackendTests
                 TxReceipt[] receipts = new TxReceipt[2];
                 for (int index = 0; index < 2; index++)
                 {
-                    Transaction transaction = new() { Nonce = (ulong)index, To = AccountAddress, Value = number, GasLimit = 21_000, GasPrice = 1 };
+                    Transaction transaction = new()
+                    {
+                        Nonce = (ulong)index,
+                        To = AccountAddress,
+                        Value = number,
+                        GasLimit = 21_000,
+                        GasPrice = transactionGasPrice?.Invoke(number) ?? UInt256.One,
+                    };
                     if (key is not null) signer.Sign(key, transaction, true);
                     transaction.Hash = transaction.CalculateHash();
                     transactions[index] = transaction;

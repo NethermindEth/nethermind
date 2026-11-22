@@ -23,7 +23,7 @@ namespace Nethermind.LightClient.Rpc;
 internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId,
     IBlockForRpcFactory blockForRpcFactory, SendPolicyRelay? sendPolicy = null) : IDisposable
 {
-    private const int LogPrefetchLimit = 4;
+    private const int ReceiptPrefetchLimit = 4;
     private readonly EthereumEcdsa _ecdsa = new(chainId);
     private readonly BoundedMemoryCache _transactionIndex = new();
 
@@ -82,15 +82,15 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         List<LogEntryForRpc> result = [];
         long payloadBytes = 2;
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        using ArrayPoolList<Task<(BlockHeader Header, Block? Block, TxReceipt[] Receipts)>> pending = new(LogPrefetchLimit);
+        using ArrayPoolList<Task<(BlockHeader Header, Block? Block, TxReceipt[] Receipts)>> pending = new(ReceiptPrefetchLimit);
         try
         {
             int next = 0;
             while (next < headers.Length || pending.Count != 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                using ArrayPoolList<BlockHeader> candidates = new(LogPrefetchLimit - pending.Count);
-                while (next < headers.Length && pending.Count + candidates.Count < LogPrefetchLimit)
+                using ArrayPoolList<BlockHeader> candidates = new(ReceiptPrefetchLimit - pending.Count);
+                while (next < headers.Length && pending.Count + candidates.Count < ReceiptPrefetchLimit)
                 {
                     if (stop.IsCancellationRequested) break;
                     BlockHeader header = headers[next++];
@@ -338,7 +338,6 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         string[] blobFees = new string[headers.Length + 1];
         double[] gasRatios = new double[headers.Length];
         double[] blobRatios = new double[headers.Length];
-        string[][]? rewards = percentiles is null ? null : new string[headers.Length][];
         for (int i = 0; i < headers.Length; i++)
         {
             BlockHeader header = headers[i];
@@ -350,13 +349,6 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                 throw new InvalidDataException("Blob base fee exceeds the supported integer range.");
             blobFees[i] = RpcBackend.Quantity(blobFee);
             blobRatios[i] = spec.GasCosts.MaxBlobGasPerBlock == 0 ? 0 : (header.BlobGasUsed ?? 0) / (double)spec.GasCosts.MaxBlobGasPerBlock;
-            if (rewards is not null)
-            {
-                Block block = await source.GetBlockAsync(header, cancellationToken);
-                Index(block);
-                TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
-                rewards[i] = Rewards(block, receipts, percentiles!);
-            }
         }
         BlockHeader newest = headers[^1];
         IReleaseSpec newestSpec = specProvider.GetSpec(newest);
@@ -366,6 +358,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         if (nextExcess is ulong excess && !BlobGasCalculator.TryCalculateFeePerBlobGas(excess, newestSpec.BlobBaseFeeUpdateFraction, out nextBlobFee))
             throw new InvalidDataException("Blob base fee exceeds the supported integer range.");
         blobFees[^1] = RpcBackend.Quantity(nextBlobFee);
+        string[][]? rewards = percentiles is null ? null : await GetFeeRewardsAsync(headers, percentiles, cancellationToken);
         object result = rewards is null
             ? new
             {
@@ -385,6 +378,46 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                 reward = rewards
             };
         return BoundedJson.ToElement(result);
+    }
+
+    private async Task<string[][]> GetFeeRewardsAsync(BlockHeader[] headers, double[] percentiles, CancellationToken cancellationToken)
+    {
+        string[][] rewards = new string[headers.Length][];
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        for (int offset = 0; offset < headers.Length; offset += ReceiptPrefetchLimit)
+        {
+            int count = Math.Min(ReceiptPrefetchLimit, headers.Length - offset);
+            Task<TxReceipt[]>[] receipts = source.GetReceiptsAsync(headers.AsSpan(offset, count).ToArray(), stop.Token);
+            Task[] pending = new Task[count];
+            for (int i = 0; i < count; i++)
+                pending[i] = FetchAsync(offset + i, receipts[i]);
+            await Task.WhenAll(pending);
+        }
+        return rewards;
+
+        async Task FetchAsync(int index, Task<TxReceipt[]> receipts)
+        {
+            Task<Block>? body = null;
+            try
+            {
+                body = source.GetBlockAsync(headers[index], stop.Token);
+                await await Task.WhenAny(body, receipts);
+                Block block = await body;
+                TxReceipt[] verifiedReceipts = await receipts;
+                Index(block);
+                rewards[index] = Rewards(block, verifiedReceipts, percentiles);
+            }
+            catch
+            {
+                try { await stop.CancelAsync(); }
+                finally
+                {
+                    if (body is not null) await ((Task)body).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                    await ((Task)receipts).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                }
+                throw;
+            }
+        }
     }
 
     private static string[] Rewards(Block block, TxReceipt[] receipts, double[] percentiles)

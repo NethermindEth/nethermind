@@ -20,6 +20,23 @@ internal interface IExecutionStateSource
     Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken);
     Task<ReadOnlyBlockAccessList> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken);
+    async Task<BlockHeader[]> GetRecentHeadersAsync(BlockHeader newest, int count, CancellationToken cancellationToken)
+    {
+        BlockHeader[] headers = new BlockHeader[count];
+        headers[^1] = newest;
+        if (count == 1) return headers;
+        VerifiedHead anchor = new(0, newest.Number, newest.Hash!, newest.StateRoot!);
+        ulong first = newest.Number - (ulong)count + 1;
+        Hash256[] hashes = await GetAncestorHashesAsync(anchor, first, cancellationToken);
+        if (hashes.Length != count || hashes[^1] != newest.Hash) throw new InvalidDataException("Invalid authenticated ancestor chain.");
+        for (int i = 0; i < count - 1; i++)
+        {
+            headers[i] = await GetHeaderByHashAsync(hashes[i], cancellationToken);
+            if (headers[i].Hash != hashes[i] || headers[i].Number != first + (ulong)i)
+                throw new InvalidDataException("An ancestor header differs from the authenticated chain.");
+        }
+        return headers;
+    }
     Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<BlockHeader[]> GetLogHeadersAsync(VerifiedHead anchor, VerifiedHead finalized, ulong firstNumber,
         ulong lastNumber, CancellationToken cancellationToken) =>

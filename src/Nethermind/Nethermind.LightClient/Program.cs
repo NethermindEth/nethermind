@@ -370,10 +370,13 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         {
             LightClientHeader finalized = store.FinalizedHeader;
             LightClientHeader optimistic = store.OptimisticHeader;
+            bool headsChanged = finalized.Beacon!.Slot > persistedFinalized.Beacon!.Slot
+                || optimistic.Beacon!.Slot > persistedOptimistic.Beacon!.Slot;
             Volatile.Write(ref persistedFinalized, finalized);
             Volatile.Write(ref persistedOptimistic, optimistic);
             beacon.PublishVerifiedHeads(finalized, optimistic, checkpoint);
             beacon.NeedsCommitteeSupplier = !store.NextSyncCommitteeKnown;
+            if (headsChanged) publisher.NotifyPersistedHeadsChanged();
         }
 
         async Task SyncAsync(CancellationToken cancellationToken)

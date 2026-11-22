@@ -2080,6 +2080,69 @@ public class TransportTests
     }
 
     [Test]
+    [CancelAfter(10_000)]
+    public async Task Storage_witness_requests_overlap_with_bounded_concurrency([Values] bool cancel, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1, snap1: true);
+        Channel<(ValueHash256 Path, TaskCompletionSource Reply)> started = Channel.CreateUnbounded<(ValueHash256, TaskCompletionSource)>();
+        peers.Ordered[0].BeforeStorageResponse = (range, requestToken) =>
+        {
+            TaskCompletionSource reply = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            started.Writer.TryWrite((range.StartingHash!.Value, reply));
+            return reply.Task.WaitAsync(requestToken);
+        };
+        UInt256[] keys = [2, 1, 3, 1, 4];
+        ValueHash256[] paths = keys.Select(static key => ValueKeccak.Compute(key.ToBigEndian())).ToArray();
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task<ExecutionAccountProof> pending = peers.Transport.GetProofAsync(peers.SnapHead, ExecutionPeers.SnapAddress, keys, stop.Token);
+        try
+        {
+            (ValueHash256 Path, TaskCompletionSource Reply)[] first = new (ValueHash256, TaskCompletionSource)[3];
+            for (int i = 0; i < first.Length; i++) first[i] = await started.Reader.ReadAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.Select(static request => request.Path), Is.EquivalentTo(paths[..3]));
+                Assert.That(started.Reader.TryPeek(out _), Is.False);
+            }
+
+            if (cancel)
+            {
+                await stop.CancelAsync();
+                Assert.That(async () => await pending, Throws.InstanceOf<OperationCanceledException>());
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(started.Reader.TryPeek(out _), Is.False);
+                    Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(1));
+                }
+                return;
+            }
+
+            first.Single(request => request.Path == paths[2]).Reply.SetResult();
+            (ValueHash256 nextPath, TaskCompletionSource nextReply) = await started.Reader.ReadAsync(token);
+            Assert.That(nextPath, Is.EqualTo(paths[3]));
+            nextReply.SetResult();
+            foreach ((_, TaskCompletionSource reply) in first) reply.TrySetResult();
+            (ValueHash256 lastPath, TaskCompletionSource lastReply) = await started.Reader.ReadAsync(token);
+            Assert.That(lastPath, Is.EqualTo(paths[4]));
+            lastReply.SetResult();
+
+            ExecutionAccountProof proof = await pending;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(proof.StorageProofs.Select(static witness => witness.Key), Is.EqualTo(keys));
+                Assert.That(proof.StorageProofs.Select(witness => ExecutionProofVerifier.VerifyStorage(peers.SnapAccount.StorageRoot, witness.Key, witness.Proof)),
+                    Is.EqualTo(new UInt256[] { 0, 42, 0, 42, 0 }));
+                Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(keys.Length + 1));
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await ((Task)pending).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task Cached_receipts_do_not_share_mutable_rpc_metadata([Values] bool headerFirst, CancellationToken token)
     {
@@ -2814,6 +2877,35 @@ public class TransportTests
             Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { (chainLength + pageSize - 1) / pageSize }));
             Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(peers.Counts(AllocationContexts.Headers)[0]));
             Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Fee_history_reuses_verified_headers_from_anchored_page([Values] bool sibling, CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(sibling ? 2 : 1, chainLength: 10);
+        ExecutionPeer supplier = peers.Ordered[^1];
+        if (sibling) peers.Ordered[0].DivergentAncestors = true;
+        using RpcBackend rpc = new(peers.Transport, () => peers.Head, 11155111, specProvider: peers.Transport.SpecProvider);
+
+        JsonElement result = await rpc.GetFeeHistoryAsync(10, JsonSerializer.SerializeToElement("finalized"), [], token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("oldestBlock").GetString(), Is.EqualTo("0x0"));
+            Assert.That(result.GetProperty("gasUsedRatio").GetArrayLength(), Is.EqualTo(10));
+            Assert.That(result.TryGetProperty("reward", out _), Is.False);
+            Assert.That(supplier.ResponsesDisposed, Is.EqualTo(1));
+            Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
+        }
+        await supplier.SyncPeer.Received(1).GetBlockHeaders(0UL, 9, 0, Arg.Any<CancellationToken>());
+        foreach (ExecutionPeer peer in peers.Ordered)
+        {
+            Hash256? initialHash = peer.SyncPeer.HeadHash;
+            await peer.SyncPeer.DidNotReceive().GetHeadBlockHeader(
+                Arg.Is<Hash256?>(hash => hash != peers.Header.Hash && hash != initialHash), Arg.Any<CancellationToken>());
+            peer.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
     }
 
@@ -6118,6 +6210,7 @@ public class TransportTests
     {
         internal ISyncPeer SyncPeer { get; } = Substitute.For<ISyncPeer>();
         internal Func<AllocationContexts, CancellationToken, Task>? BeforeResponse;
+        internal Func<StorageRange, CancellationToken, Task>? BeforeStorageResponse;
         internal ConcurrentDictionary<AllocationContexts, int> Calls { get; } = new();
         internal int ResponsesDisposed;
         internal bool InvalidData;
@@ -6223,10 +6316,13 @@ public class TransportTests
                 });
                 snap.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(async call =>
                 {
-                    await Read(AllocationContexts.Snap, call.ArgAt<CancellationToken>(1));
+                    StorageRange range = call.ArgAt<StorageRange>(0);
+                    CancellationToken token = call.ArgAt<CancellationToken>(1);
+                    await Read(AllocationContexts.Snap, token);
+                    if (BeforeStorageResponse is { } before) await before(range, token);
                     ArrayPoolList<PathWithStorageSlot> slots = [with(1)];
                     ValueHash256 path = ValueKeccak.Compute(((UInt256)1).ToBigEndian());
-                    if (call.ArgAt<StorageRange>(0).StartingHash == path)
+                    if (range.StartingHash == path)
                         slots.Add(new(path, Rlp.Encode(InvalidData ? (UInt256)43 : owner.SnapValue)));
                     return new SlotsAndProofs
                     {

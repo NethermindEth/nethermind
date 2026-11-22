@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Net.Quic;
 using System.Text;
 using Multiformats.Address;
@@ -35,6 +34,7 @@ namespace Nethermind.LightClient;
 internal sealed class BeaconPeerTransport : IAsyncDisposable
 {
     private static readonly TimeSpan PeerRequestTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PeerSearchInterval = TimeSpan.FromSeconds(3);
     private readonly IPResolver _ipResolver;
     private readonly BeaconP2P _p2p;
     private readonly BeaconDiscovery _discovery;
@@ -51,6 +51,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _stop = new();
     private Task? _peerLoop;
+    private TaskCompletionSource? _bootstrapPeerAdmission;
     private bool _needsCommitteeSupplier = true;
 
     internal int PeerCount => _peers.PeerCount;
@@ -112,7 +113,11 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         _peers.PeerAdmitted += peer =>
         {
             if (_peers.TryGetPeer(PeerProviders.Identity(peer.Id), out PeerRecord record) && record.State == PeerConnectionState.Connected)
+            {
                 _providers.Admit(peer, record.Direction);
+                if (Volatile.Read(ref _bootstrapPeerAdmission) is { } admission && _bootstrapRequests.CanRequest<LightClientBootstrap>(peer))
+                    admission.TrySetResult();
+            }
             else if (_logger.IsDebug) _logger.Debug($"Admitted beacon peer {peer.Id} no longer has a connected peer-directory record");
         };
     }
@@ -234,8 +239,11 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>> optimistic, CancellationToken token) =>
         _gossip.Start(_p2p.GetTopic, finality, optimistic, token);
 
-    internal Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken token) =>
-        RequestAsync(_bootstrapRequests, (peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token);
+    internal async Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken token)
+    {
+        try { return await RequestAsync(_bootstrapRequests, (peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token); }
+        finally { Volatile.Write(ref _bootstrapPeerAdmission, null); }
+    }
 
     internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
         RequestAsync(_updateRequests, (peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
@@ -257,21 +265,38 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             return true;
         };
         Func<IBeaconSyncPeer, bool> isEligible = requests.CanRequest<T>;
-        long lastStatus = Stopwatch.GetTimestamp();
+        long lastStatus = _time.GetTimestamp();
         while (true)
         {
             token.ThrowIfCancellationRequested();
+            TaskCompletionSource? admission = null;
+            if (typeof(T) == typeof(LightClientBootstrap))
+            {
+                // Arm before taking the snapshot so a newly admitted peer outside that snapshot can wake the retry.
+                admission = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Volatile.Write(ref _bootstrapPeerAdmission, admission);
+            }
             (T? response, bool sawInapplicable) = await requests.RequestAsync(_peers.GetBestPeers(0, isEligible), request, validateAndAccept, token);
             if (response is not null) return response;
             if (sawInapplicable) throw new IrrelevantLightClientUpdateException();
 
-            if (Stopwatch.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
+            if (_time.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
             {
                 if (_logger.IsInfo) _logger.Info($"Waiting for beacon light-client data; connected peers: {PeerCount}");
-                lastStatus = Stopwatch.GetTimestamp();
+                lastStatus = _time.GetTimestamp();
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(3), token);
+            if (admission is null)
+            {
+                await Task.Delay(PeerSearchInterval, _time, token);
+            }
+            else if (!admission.Task.IsCompleted)
+            {
+                using CancellationTokenSource retry = CancellationTokenSource.CreateLinkedTokenSource(token);
+                Task delay = Task.Delay(PeerSearchInterval, _time, retry.Token);
+                if (await Task.WhenAny(delay, admission.Task) != delay)
+                    await retry.CancelAsync();
+            }
         }
     }
 

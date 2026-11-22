@@ -219,26 +219,8 @@ internal sealed class RpcBackend(IExecutionStateSource execution, Func<VerifiedH
                 ?? throw new RpcException(-32001, "Requested authenticated fee history is unavailable.")
             : await execution.GetHeaderAsync(latest!, cancellationToken);
         blocks = checked((int)Math.Min((ulong)blocks, newest.Number + 1));
-        BlockHeader[] headers = await GetRecentHeadersAsync(newest, blocks, cancellationToken);
+        BlockHeader[] headers = await execution.GetRecentHeadersAsync(newest, blocks, cancellationToken);
         return await _data.GetFeeHistoryAsync(headers, percentiles.Length == 0 ? null : percentiles, cancellationToken);
-    }
-
-    private async Task<BlockHeader[]> GetRecentHeadersAsync(BlockHeader newest, int count, CancellationToken cancellationToken)
-    {
-        BlockHeader[] headers = new BlockHeader[count];
-        headers[^1] = newest;
-        if (count == 1) return headers;
-        VerifiedHead anchor = new(0, newest.Number, newest.Hash!, newest.StateRoot!);
-        ulong first = newest.Number - (ulong)count + 1;
-        Hash256[] hashes = await execution.GetAncestorHashesAsync(anchor, first, cancellationToken);
-        if (hashes.Length != count || hashes[^1] != newest.Hash) throw new InvalidDataException("Invalid authenticated ancestor chain.");
-        for (int i = 0; i < count - 1; i++)
-        {
-            headers[i] = await execution.GetHeaderByHashAsync(hashes[i], cancellationToken);
-            if (headers[i].Hash != hashes[i] || headers[i].Number != first + (ulong)i)
-                throw new InvalidDataException("An ancestor header differs from the authenticated chain.");
-        }
-        return headers;
     }
 
     internal async Task<JsonElement> GetTransactionByHashAsync(Hash256 hash, bool receipt, CancellationToken cancellationToken)
@@ -269,7 +251,7 @@ internal sealed class RpcBackend(IExecutionStateSource execution, Func<VerifiedH
             if (await _data.FindTransactionAsync(header, hash, receipt, cancellationToken) is { } optimistic) return optimistic;
             ulong oldest = Math.Min(latest.Number, finalized.Number > 15 ? finalized.Number - 15 : 0);
             int count = checked((int)Math.Min(257UL, latest.Number - oldest + 1));
-            BlockHeader[] optimisticHeaders = await GetRecentHeadersAsync(header, count, cancellationToken);
+            BlockHeader[] optimisticHeaders = await execution.GetRecentHeadersAsync(header, count, cancellationToken);
             for (int i = optimisticHeaders.Length - 2; i >= 0; i--)
             {
                 visited.Add(optimisticHeaders[i].Hash!);
@@ -278,7 +260,7 @@ internal sealed class RpcBackend(IExecutionStateSource execution, Func<VerifiedH
         }
         BlockHeader newest = await execution.GetHeaderAsync(finalized, cancellationToken);
         if (visited.Add(newest.Hash!) && await _data.FindTransactionAsync(newest, hash, receipt, cancellationToken) is { } current) return current;
-        BlockHeader[] headers = await GetRecentHeadersAsync(newest, checked((int)Math.Min(16UL, finalized.Number + 1)), cancellationToken);
+        BlockHeader[] headers = await execution.GetRecentHeadersAsync(newest, checked((int)Math.Min(16UL, finalized.Number + 1)), cancellationToken);
         for (int i = headers.Length - 2; i >= 0; i--)
             if (visited.Add(headers[i].Hash!) && await _data.FindTransactionAsync(headers[i], hash, receipt, cancellationToken) is { } found) return found;
         return JsonSerializer.SerializeToElement<object?>(null);
