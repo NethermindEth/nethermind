@@ -166,8 +166,10 @@ public class RequestFailureCauseTests
         });
         await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(20));
         using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
+        using CancellationTokenSource retry = CancellationTokenSource.CreateLinkedTokenSource(token);
         RequestTiming timing = new();
         Task<TResponse> pending = request(node, session, stopping.Token, timing);
+        Task<TResponse>? active = null;
         try
         {
             if (!beforeChannelOpen)
@@ -186,7 +188,14 @@ public class RequestFailureCauseTests
             }
             if (beforeChannelOpen)
             {
-                late = protocol.DialAsync(channel, ReqRespTestChannel.Context(), argument!);
+                TRequest abandoned = argument!;
+                if (abandoned is Hash256 root)
+                {
+                    // Bootstrap fan-out supplies the same root to every attempt.
+                    active = request(node, session, retry.Token, new());
+                    Assert.That((object?)argument as Hash256, Is.EqualTo(root).And.Not.SameAs(root));
+                }
+                late = protocol.DialAsync(channel, ReqRespTestChannel.Context(), abandoned);
                 Assert.That(late.IsCompleted, Is.True, "an abandoned attempt is refused before any channel work");
                 await Assert.CatchAsync<OperationCanceledException>(() => late);
                 ReadResult buffered = await channel.Reverse.ReadAsync(1, ReadBlockingMode.DoNotWait, token);
@@ -208,6 +217,11 @@ public class RequestFailureCauseTests
             await channel.AbortAsync();
             if (exchange is not null) await ((Task)exchange).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             if (late is not null) await ((Task)late).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            if (active is not null)
+            {
+                await retry.CancelAsync();
+                await ((Task)active).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            }
         }
 
     }

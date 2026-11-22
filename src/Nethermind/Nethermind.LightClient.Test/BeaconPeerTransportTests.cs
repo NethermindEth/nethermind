@@ -531,37 +531,31 @@ public class BeaconPeerTransportTests
     }
 
     [Test]
-    public void Healthy_gossip_suppliers_are_retained_when_request_suppliers_are_sparse([Values(2UL, 3UL)] ulong gossipLag)
+    public void First_gossip_deliverer_is_retained_while_its_update_is_fresh([Values(10UL, 11UL)] ulong gossipLag)
     {
         ManualDeadlineClock clock = new();
         clock.SetSlot(1);
         BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
         BootstrapPeer[] peers = Enumerable.Range(0, 16).Select(static _ => HintPeer()).ToArray();
-        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        foreach (BootstrapPeer peer in peers.Take(3)) providers.Admit(peer, PeerDirection.Outbound);
         clock.SetSlot(14);
-
-        for (int tick = 0; tick < 4; tick++)
+        foreach (BootstrapPeer peer in peers.Skip(3)) providers.Admit(peer, PeerDirection.Outbound);
+        foreach (BootstrapPeer peer in peers.Take(2))
         {
-            ulong current = ConsensusTests.Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
-            foreach (BootstrapPeer peer in peers.Take(2))
+            providers.RecordValidated(peer, Optimistic(13));
+            LightClientUpdate signed = ConsensusTests.Update(1, 13, 14, 1);
+            providers.RecordValidated(peer, new LightClientFinalityUpdate
             {
-                providers.RecordValidated(peer, Optimistic(current - 1));
-                LightClientUpdate signed = ConsensusTests.Update(1, current - 1, current, 1);
-                providers.RecordValidated(peer, new LightClientFinalityUpdate
-                {
-                    AttestedHeader = signed.AttestedHeader,
-                    FinalizedHeader = signed.FinalizedHeader,
-                    FinalityBranch = signed.FinalityBranch,
-                    SyncAggregate = signed.SyncAggregate,
-                    SignatureSlot = signed.SignatureSlot,
-                });
-            }
-            foreach (BootstrapPeer peer in peers.Skip(2))
-                providers.RecordGossip(new PeerId(BeaconPeerTransport.PeerProviders.Identity(peer.Id)), current - gossipLag);
-
-            Assert.That(providers.Maintain(Connected(peers)).Recycle, gossipLag == 2 ? Is.Null : Is.SameAs(peers[2]));
-            clock.Advance(TimeSpan.FromSeconds(15));
+                AttestedHeader = signed.AttestedHeader,
+                FinalizedHeader = signed.FinalizedHeader,
+                FinalityBranch = signed.FinalityBranch,
+                SyncAggregate = signed.SyncAggregate,
+                SignatureSlot = signed.SignatureSlot,
+            });
         }
+        providers.RecordGossip(new PeerId(BeaconPeerTransport.PeerProviders.Identity(peers[2].Id)), 14 - gossipLag);
+
+        Assert.That(providers.Maintain(Connected(peers)).Recycle, gossipLag == 10 ? Is.Null : Is.SameAs(peers[2]));
     }
 
     [Test]

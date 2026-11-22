@@ -462,7 +462,6 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private const int TargetPeers = 16;
         private const int MinFreshSuppliers = 4;
         private const ulong MaxSupplierLag = 10;
-        private const ulong MaxHealthyGossipLag = 2;
         private static readonly TimeSpan AdmissionGrace = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan Retention = TimeSpan.FromMinutes(10);
@@ -698,7 +697,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     foreach (Supplier supplier in _sessions.Values)
                     {
                         if (!admitted.Contains(Identity(supplier.Peer.Id)) || time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
-                        if (IsFresh(supplier.GossipSlot, MaxHealthyGossipLag)) continue;
+                        if (IsFresh(supplier.GossipSlot)) continue;
                         bool unavailable = needsOptimistic && supplier.FailedProtocols?.ContainsKey(typeof(LightClientOptimisticUpdate)) == true ||
                             needsFinality && supplier.FailedProtocols?.ContainsKey(typeof(LightClientFinalityUpdate)) == true ||
                             needsCommittee && supplier.FailedProtocols?.ContainsKey(typeof(LightClientUpdate)) == true;
@@ -758,10 +757,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         private bool IsCandidate(Supplier supplier) => supplier.CandidateAt is { } candidate && time.GetElapsedTime(candidate) <= Retention;
 
-        private bool IsFresh(ulong? slot, ulong maximumLag = MaxSupplierLag)
+        private bool IsFresh(ulong? slot)
         {
             ulong current = spec.GetSlotAtTime((ulong)Math.Max(0, time.GetUtcNow().ToUnixTimeSeconds()));
-            return slot is { } attested && attested <= current && current - attested <= maximumLag;
+            return slot is { } attested && attested <= current && current - attested <= MaxSupplierLag;
         }
 
         private void Remember(IBeaconSyncPeer peer)
