@@ -17,6 +17,7 @@ The plugin is **disabled by default**; enable it with:
 |-----------|------|---------|-------------|
 | `PortfolioViewer.Enabled` | bool | false | Serve the UI and detection endpoints |
 | `PortfolioViewer.SiblingProbePorts` | string | 8545,8546,8547,8548,8549,8550 | Localhost ports probed to discover sibling nodes for the multi-chain view |
+| `PortfolioViewer.IpfsEnabled` | bool | false | Serve the `/portfolio-ipfs` endpoints, which forward NFT media requests and pins to a local IPFS (Kubo) node |
 
 The page is only served on unauthenticated JSON-RPC ports (never the Engine API port).
 
