@@ -864,6 +864,20 @@ namespace Nethermind.Db.Test
             }
         }
 
+        [Test]
+        public void Open_with_delete_on_start_fails_when_the_old_files_remain()
+        {
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            TestRocksDbFactory factory = new(_rocksdbConfigFactory, new DbConfig(), LimboLogs.Instance, DbPath, fileSystem);
+            DbSettings settings = GetRocksDbSettings(DbPath, "Blocks");
+            settings.DeleteOnStart = true;
+            string fullPath = factory.GetFullDbPath(settings);
+            Directory.CreateDirectory(fullPath);
+            fileSystem.File.Exists(RocksDbInstance.DeletingMarkerPath(fullPath)).Returns(true);
+
+            Assert.That(() => factory.Open(settings, _rocksdbConfigFactory.GetForDatabase("Blocks", null), null), Throws.InstanceOf<IOException>());
+        }
+
         // Background readers can outlive the block that queued them; a read after dispose begins must not reach the closed native DB.
         [Test]
         public void Get_after_dispose_begins_throws_instead_of_reading_the_closed_db([Values] GetPath path)

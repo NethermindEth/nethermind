@@ -19,9 +19,8 @@ namespace Nethermind.Db.Test
         private static readonly string Current = Path.Join(DbPath, "CURRENT");
         private static readonly string Table = Path.Join(DbPath, "000001.sst");
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Delete_keeps_the_marker_when_a_file_cannot_be_deleted(bool canDeleteFolder)
+        [Test]
+        public void Delete_keeps_the_marker_when_a_file_cannot_be_deleted([Values] bool canDeleteFolder)
         {
             IFileSystem fileSystem = CreateFileSystem(out List<string> calls, Table);
 
@@ -30,9 +29,8 @@ namespace Nethermind.Db.Test
             Assert.That(calls, Is.EqualTo(new[] { $"write {Marker}", $"delete {Current}", $"delete {Table}" }));
         }
 
-        [TestCase(true)]
-        [TestCase(false)]
-        public void Delete_removes_the_marker_after_every_file(bool canDeleteFolder)
+        [Test]
+        public void Delete_removes_the_marker_after_every_file([Values] bool canDeleteFolder)
         {
             string lastCall = canDeleteFolder ? $"delete folder {DbPath}" : $"delete {Marker}";
             IFileSystem fileSystem = CreateFileSystem(out List<string> calls, null);
