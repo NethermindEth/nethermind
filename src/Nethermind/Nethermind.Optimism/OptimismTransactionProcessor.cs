@@ -36,6 +36,11 @@ public class OptimismTransactionProcessor(
         }
 
         BlockHeader header = VirtualMachine.BlockExecutionContext.Header;
+        if (tx.IsDeposit() && tx.IsOPSystemTransaction && opSpecHelper.IsRegolith(header))
+        {
+            return TransactionResult.WithDetail(TransactionResult.ErrorType.MalformedTransaction, "system deposit not supported after Regolith");
+        }
+
         IReleaseSpec spec = SpecProvider.GetSpec(header);
         _currentTxL1Cost = null;
         // Matches op-geth, which charges neither the L1 data fee nor the operator fee for eth_call and eth_estimateGas.
@@ -69,6 +74,8 @@ public class OptimismTransactionProcessor(
 
         return result;
     }
+
+    protected override bool UsesSystemTransactionProcessor(Transaction tx) => !tx.IsDeposit() && base.UsesSystemTransactionProcessor(tx);
 
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)

@@ -256,11 +256,13 @@ namespace Nethermind.Evm.TransactionProcessing
         protected virtual SystemTransactionProcessor<TGasPolicy> CreateSystemTransactionProcessor() =>
             new(_blobBaseFeeCalculator, SpecProvider, WorldState, VirtualMachine, _codeInfoRepository, _logManager);
 
+        protected virtual bool UsesSystemTransactionProcessor(Transaction tx) => tx.IsSystem();
+
         private TransactionResult ExecuteCore(Transaction tx, ITxTracer tracer, ExecutionOptions opts)
         {
             if (Logger.IsTrace) Logger.Trace($"Executing tx {tx.Hash}");
             // Warmup keeps real fee/nonce semantics, so it must not route to the system processor.
-            TransactionResult result = tx.IsSystem() || opts == ExecutionOptions.SkipValidation
+            TransactionResult result = UsesSystemTransactionProcessor(tx) || opts == ExecutionOptions.SkipValidation
                 ? GetOrCreateSystemTransactionProcessor().Execute(tx, tracer, opts)
                 : Execute(tx, tracer, opts);
 

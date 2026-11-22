@@ -131,6 +131,40 @@ public class OptimismTransactionProcessorTests
         }
     }
 
+    [TestCase(0UL)]
+    [TestCase(500_000_000_000_000_000UL)]
+    public void System_flagged_deposit_after_Regolith_is_rejected_without_state_changes(ulong value)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0, RegolithTimestamp = 0 }, spec);
+        using ILifetimeScope lifetime = BeginLifetimeScope(container);
+        IWorldState state = lifetime.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithSourceHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(TestItem.AddressB)
+            .WithValue(value)
+            .WithGasLimit(100_000)
+            .WithIsOPSystemTransaction(true)
+            .TestObject;
+        tx.Mint = 1.Ether;
+        BlockHeader header = Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject;
+
+        TransactionResult result = lifetime.Resolve<ITransactionProcessor>()
+            .Execute(tx, new BlockExecutionContext(header, spec), new CallOutputTracer());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(state.AccountExists(TestItem.AddressA), Is.False);
+            Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+            Assert.That(header.GasUsed, Is.Zero);
+        }
+    }
+
     private static IContainer BuildContainer(OptimismChainSpecEngineParameters parameters, IReleaseSpec spec)
     {
         ChainSpec chainSpec = new()
