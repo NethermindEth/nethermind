@@ -310,6 +310,29 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
     }
 
     [Test]
+    public void Call_without_validation_refunds_a_sender_whose_self_destruct_was_reverted()
+    {
+        Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).TestObject;
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        _stateProvider.InsertCode(TestItem.AddressA, Prepare.EvmCode.Op(Instruction.ADDRESS).Op(Instruction.SELFDESTRUCT).Done, spec);
+        _stateProvider.CreateAccount(TestItem.AddressC, UInt256.Zero);
+        _stateProvider.InsertCode(TestItem.AddressC, Prepare.EvmCode.Call(TestItem.AddressA, 50_000).PushData(0).PushData(0).Op(Instruction.REVERT).Done, spec);
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressC).WithGasPrice(1).WithGasLimit(100_000)
+            .WithSenderAddress(TestItem.AddressA).TestObject;
+        CallOutputTracer tracer = new();
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, spec));
+        TransactionResult result = _transactionProcessor.Process(tx, tracer, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.AccountExists(TestItem.AddressA), Is.True);
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressA), Is.EqualTo(AccountBalance - tracer.GasSpent));
+        }
+    }
+
+    [Test]
     public void Can_estimate_with_value([Values] bool systemUser)
     {
         ulong gasLimit = 100000ul;
