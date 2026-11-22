@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics.X86;
@@ -46,6 +47,7 @@ internal static unsafe class NativeKeccak
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Absorb(ref ulong state, ref byte input, int blocks)
     {
+        Debug.Assert(blocks > 0);
         fixed (ulong* s = &state)
         fixed (byte* d = &input)
             _absorb(s, d, (nuint)blocks);
