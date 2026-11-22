@@ -623,7 +623,7 @@ public sealed class RetryCache<TMessage, TResourceId> : IAsyncDisposable
                     return AnnounceResult.RequestRequired;
                 }
 
-                _logger.TraceWarn($"Shared pending {typeof(TResourceId)} overflow capacity is full, suppressing request from {handler}");
+                _logger.TraceWarn($"Shared pending {typeof(TResourceId)} overflow request is already pending or capacity is full, suppressing request from {handler}");
                 return AnnounceResult.Delayed;
             }
 

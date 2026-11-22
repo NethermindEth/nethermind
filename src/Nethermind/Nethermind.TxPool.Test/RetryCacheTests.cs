@@ -1602,6 +1602,45 @@ public class RetryCacheTests
     }
 
     [Test]
+    public async Task Received_AfterOverflowResourceIsTracked_ReleasesLaterAnnouncerSlot()
+    {
+        using CancellationTokenSource cancellationTokenSource = new();
+        RetryCache<ResourceRequestMessage, ResourceId> cache = new(
+            TestLogManager.Instance,
+            TimeProvider.System,
+            timeoutMs: AssertTimeoutMs,
+            token: cancellationTokenSource.Token,
+            maxPendingResourcesPerHandler: 1,
+            overflowRequestLimit: 1);
+
+        try
+        {
+            TestHandler source = new();
+            TestHandler laterAnnouncer = new();
+            cache.Announced(1, source);
+            cache.Announced(2, source);
+            AnnounceResult promoted = cache.Announced(2, laterAnnouncer);
+
+            cache.Received(1);
+            cache.Received(2);
+            AnnounceResult next = cache.Announced(3, laterAnnouncer);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(promoted, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(next, Is.EqualTo(AnnounceResult.RequestRequired));
+                Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
+                Assert.That(cache.OverflowRequestsInUse, Is.Zero);
+            }
+        }
+        finally
+        {
+            await cancellationTokenSource.CancelAsync();
+            await cache.DisposeAsync();
+        }
+    }
+
+    [Test]
     public async Task Announced_OverflowResourceIsRetriedWithLaterAnnouncers()
     {
         ManualTimeProvider timeProvider = new();
