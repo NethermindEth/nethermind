@@ -2003,9 +2003,16 @@ public class RpcBackendTests
     }
 
     [Test]
-    public async Task Negative_authenticated_bloom_skips_execution_data([Values] bool filterTopic)
+    public async Task Negative_authenticated_bloom_skips_execution_data(
+        [Values] bool filterTopic, [Values("present", "missing", "omitted")] string bloom)
     {
         using Provider provider = LogsProvider([new LogEntry(AccountAddress, [], [Keccak.Compute("present topic")])]);
+        provider.Header.Bloom = bloom switch
+        {
+            "missing" => null,
+            "omitted" => Bloom.ZeroLength,
+            _ => provider.Header.Bloom,
+        };
         object filter = filterTopic
             ? new { blockHash = BlockHash.ToString(), topics = new[] { Keccak.Compute("absent topic").ToString() } }
             : new { blockHash = BlockHash.ToString(), address = Address.Zero.ToString() };
@@ -2016,7 +2023,7 @@ public class RpcBackendTests
         {
             Assert.That(logs.GetArrayLength(), Is.Zero);
             Assert.That(provider.BlockFetches, Is.Zero);
-            Assert.That(provider.ReceiptFetches, Is.Zero);
+            Assert.That(provider.ReceiptFetches, Is.EqualTo(bloom == "present" ? 0 : 1));
         }
     }
 
@@ -2053,6 +2060,37 @@ public class RpcBackendTests
             Assert.That(provider.BlockFetches, Is.Zero, "a verified negative filter needs no transaction hashes");
             Assert.That(provider.ReceiptFetches, Is.EqualTo(1));
             Assert.That(provider.Transactions[0].SenderAddress, Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Log_bloom_candidates_preserve_OR_groups_and_topic_positions(
+        [Values("null", "empty", "nested null")] string wildcard)
+    {
+        Hash256 match = Keccak.Compute("matching topic");
+        Hash256 other = Keccak.Compute("other topic");
+        Hash256 absent = Keccak.Compute("absent alternative");
+        using Provider provider = LogsProvider(
+            [new LogEntry(AccountAddress, [1], [other, match]), new LogEntry(AccountAddress, [2], [match, other])],
+            [new LogEntry(Address.Zero, [3], [other, match]), new LogEntry(AccountAddress, [4], [match])]);
+        object? firstTopic = wildcard switch
+        {
+            "null" => null,
+            "empty" => Array.Empty<string>(),
+            _ => new string?[] { absent.ToString(), null },
+        };
+        JsonElement logs = (JsonElement)await provider.Rpc.InvokeAsync("eth_getLogs", Parameters(new
+        {
+            blockHash = BlockHash.ToString(),
+            address = new[] { "0x1111111111111111111111111111111111111111", AccountAddress.ToString() },
+            topics = new[] { firstTopic, new[] { absent.ToString(), match.ToString() } },
+        }), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs.EnumerateArray().Select(log => log.GetProperty("data").GetString()), Is.EqualTo(new[] { "0x01" }));
+            Assert.That(provider.ReceiptFetches, Is.EqualTo(1));
+            Assert.That(provider.BlockFetches, Is.EqualTo(1));
         }
     }
 

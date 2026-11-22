@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
@@ -18,6 +19,25 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
     private TaskCompletionSource _changed = NewSignal();
     private bool _stopping;
     private Task? _dispose;
+
+    internal bool TryGetValue(Hash256 hash, [NotNullWhen(true)] out T? value)
+    {
+        lock (_gate)
+        {
+            ObjectDisposedException.ThrowIf(_stopping, this);
+            _stop.Token.ThrowIfCancellationRequested();
+            return _cache.TryGetValue(hash, out value) && value is not null;
+        }
+    }
+
+    internal void SetVerified(Hash256 hash, T value)
+    {
+        long weight = Math.Max(1024, size(value));
+        lock (_gate)
+        {
+            if (!_stopping) _cache.Set(hash, value, weight);
+        }
+    }
 
     internal async Task<T> GetAsync(Hash256 hash, Func<CancellationToken, Task<T>> fetch, CancellationToken cancellationToken)
     {
@@ -119,11 +139,7 @@ internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stop
         {
             result = await fetch(_stop.Token);
             _stop.Token.ThrowIfCancellationRequested();
-            long weight = Math.Max(1024, size(result));
-            lock (_gate)
-            {
-                if (!_stopping) _cache.Set(hash, result, weight);
-            }
+            SetVerified(hash, result);
         }
         catch (Exception exception)
         {

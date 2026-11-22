@@ -81,6 +81,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
     {
         List<LogEntryForRpc> result = [];
         long payloadBytes = 2;
+        Bloom.BloomExtract[]?[]? bloomFilter = null;
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         using ArrayPoolList<Task<(BlockHeader Header, Block? Block, TxReceipt[] Receipts)>> pending = new(ReceiptPrefetchLimit);
         try
@@ -94,7 +95,9 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                 {
                     if (stop.IsCancellationRequested) break;
                     BlockHeader header = headers[next++];
-                    if (MayContainLogs(header.Bloom, addresses, topics)) candidates.Add(header);
+                    if (header.Bloom is not { IsZeroLength: false } bloom ||
+                        MayContainLogs(bloom, bloomFilter ??= CreateBloomFilter(addresses, topics)))
+                        candidates.Add(header);
                 }
                 if (candidates.Count != 0)
                 {
@@ -520,22 +523,37 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         return true;
     }
 
-    private static bool MayContainLogs(Bloom? bloom, HashSet<Address>? addresses, IReadOnlyList<HashSet<Hash256>?> topics)
+    private static Bloom.BloomExtract[]?[] CreateBloomFilter(HashSet<Address>? addresses, IReadOnlyList<HashSet<Hash256>?> topics)
     {
-        if (bloom is null || bloom.IsZeroLength) return true;
+        int addressGroups = addresses is null ? 0 : 1;
+        int groupCount = addressGroups + topics.Count;
+        if (groupCount == 0) return [];
+        Bloom.BloomExtract[]?[] groups = new Bloom.BloomExtract[]?[groupCount];
         if (addresses is not null)
+            groups[0] = Extracts(addresses, static address => Bloom.GetExtract(address));
+        for (int i = 0; i < topics.Count; i++)
+            if (topics[i] is { } choices)
+                groups[addressGroups + i] = Extracts(choices, static topic => Bloom.GetExtract(topic));
+        return groups;
+
+        static Bloom.BloomExtract[] Extracts<T>(HashSet<T> values, Func<T, Bloom.BloomExtract> extract)
         {
-            bool matches = false;
-            foreach (Address address in addresses)
-                if (bloom.Matches(address.Bytes)) { matches = true; break; }
-            if (!matches) return false;
+            if (values.Count == 0) return [];
+            Bloom.BloomExtract[] result = new Bloom.BloomExtract[values.Count];
+            int index = 0;
+            foreach (T value in values) result[index++] = extract(value);
+            return result;
         }
-        foreach (HashSet<Hash256>? choices in topics)
+    }
+
+    private static bool MayContainLogs(Bloom bloom, Bloom.BloomExtract[]?[] groups)
+    {
+        foreach (Bloom.BloomExtract[]? group in groups)
         {
-            if (choices is null) continue;
+            if (group is null) continue;
             bool matches = false;
-            foreach (Hash256 topic in choices)
-                if (bloom.Matches(topic.Bytes)) { matches = true; break; }
+            foreach (Bloom.BloomExtract extract in group)
+                if (bloom.Matches(extract)) { matches = true; break; }
             if (!matches) return false;
         }
         return true;

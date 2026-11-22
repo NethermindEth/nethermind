@@ -715,9 +715,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     public async Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken)
     {
         BlockHeader header = await GetHeaderByHashAsync(head.BlockHash, cancellationToken);
+        ValidateHead(header, head);
+        return header;
+    }
+
+    private static void ValidateHead(BlockHeader header, VerifiedHead head)
+    {
         if (header.Hash != head.BlockHash || header.Number != head.Number || header.StateRoot != head.StateRoot)
             throw new RpcException(-32000, "Execution header does not match the verified finalized payload.");
-        return header;
     }
 
     private static BlockHeader CopyHeader(BlockHeader header)
@@ -736,6 +741,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         copy.ParentBeaconBlockRoot = CopyHash(header.ParentBeaconBlockRoot);
         copy.RequestsHash = CopyHash(header.RequestsHash);
         copy.BlockAccessListHash = CopyHash(header.BlockAccessListHash);
+        if (copy is AuRaBlockHeader { AuRaSignature: { } signature } aura)
+            aura.AuRaSignature = signature.AsSpan().ToArray();
         return copy;
     }
 
@@ -834,6 +841,14 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     public async Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken)
     {
         if (number == head.Number) return await GetHeaderAsync(head, cancellationToken);
+        if (number > head.Number || head.Number - number > 256) throw new ArgumentOutOfRangeException(nameof(number));
+        cancellationToken.ThrowIfCancellationRequested();
+        if (_headers.TryGetValue(head.BlockHash, out BlockHeader? anchor))
+        {
+            ValidateHead(anchor, head);
+            return (await ReadLinkedHeadersAsync(anchor, number, number, cancellationToken, AncestorChainUnavailable))[0];
+        }
+
         Hash256[] hashes = await GetAncestorHashesAsync(head, number, cancellationToken);
         BlockHeader header = await GetHeaderByHashAsync(hashes[0], cancellationToken);
         if (header.Number != number)
@@ -1096,14 +1111,28 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     private async Task<BlockHeader[]> ReadLinkedHeadersAsync(BlockHeader cursor, ulong first, ulong last,
         CancellationToken cancellationToken, string failureMessage)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         BlockHeader[] result = new BlockHeader[checked((int)(last - first + 1))];
         if (cursor.Number <= last) result[checked((int)(cursor.Number - first))] = cursor;
         while (cursor.Number > first)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (cursor.ParentHash is { } parentHash && _headers.TryGetValue(parentHash, out BlockHeader? parent)
+                && parent.Number == cursor.Number - 1)
+            {
+                cursor = parent;
+                if (cursor.Number <= last) result[checked((int)(cursor.Number - first))] = CopyHeader(cursor);
+                continue;
+            }
+
             int count = (int)Math.Min(FinalizedHeaderHistory.PageSize, cursor.Number - first);
             BlockHeader[] page = await FetchLinkedHeaderPageAsync(cursor, count, cancellationToken, failureMessage);
             foreach (BlockHeader header in page)
+            {
+                BlockHeader retained = CopyHeader(header);
+                _headers.SetVerified(retained.Hash!, retained);
                 if (header.Number <= last) result[checked((int)(header.Number - first))] = header;
+            }
             cursor = page[0];
         }
         return result;

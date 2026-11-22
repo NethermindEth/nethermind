@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
@@ -405,6 +406,31 @@ public class TransportTests
             Assert.That(second.ExtraData, Is.Not.SameAs(first.ExtraData).And.Not.SameAs(original.ExtraData));
             Assert.That(second.Bloom, Is.Not.SameAs(first.Bloom).And.Not.SameAs(original.Bloom));
             Assert.That(second.Bloom!.ReadOnlyBytes.ToArray(), Is.EqualTo(bloom));
+            Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1 }));
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Cached_headers_detach_the_aura_signature(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1);
+        AuRaBlockHeader wire = AuRaBlockHeader.UpgradeFrom(peers.Header);
+        byte[] expected = new byte[65];
+        expected[0] = 1;
+        wire.AuRaSignature = expected.ToArray();
+        Hash256 hash = wire.Hash = new(wire.CalculateHash());
+        peers.Headers[new(hash.ValueHash256)] = wire;
+
+        AuRaBlockHeader first = (AuRaBlockHeader)await peers.Transport.GetHeaderByHashAsync(hash, token);
+        first.AuRaSignature![0] = 2;
+        wire.AuRaSignature[1] = 3;
+
+        AuRaBlockHeader repeated = (AuRaBlockHeader)await peers.Transport.GetHeaderByHashAsync(hash, token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repeated.AuRaSignature, Is.EqualTo(expected));
+            Assert.That(repeated.CalculateHash(), Is.EqualTo(hash.ValueHash256));
             Assert.That(peers.Counts(AllocationContexts.Headers), Is.EqualTo(new[] { 1 }));
         }
     }
@@ -2890,12 +2916,15 @@ public class TransportTests
         using RpcBackend rpc = new(peers.Transport, () => peers.Head, 11155111, specProvider: peers.Transport.SpecProvider);
 
         JsonElement result = await rpc.GetFeeHistoryAsync(10, JsonSerializer.SerializeToElement("finalized"), [], token);
+        JsonElement overlapping = await rpc.GetFeeHistoryAsync(5, JsonSerializer.SerializeToElement("0x8"), [], token);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.GetProperty("oldestBlock").GetString(), Is.EqualTo("0x0"));
             Assert.That(result.GetProperty("gasUsedRatio").GetArrayLength(), Is.EqualTo(10));
             Assert.That(result.TryGetProperty("reward", out _), Is.False);
+            Assert.That(overlapping.GetProperty("oldestBlock").GetString(), Is.EqualTo("0x4"));
+            Assert.That(overlapping.GetProperty("gasUsedRatio").GetArrayLength(), Is.EqualTo(5));
             Assert.That(supplier.ResponsesDisposed, Is.EqualTo(1));
             Assert.That(HistoryCooldowns(peers).Count, Is.Zero);
         }
@@ -2906,6 +2935,44 @@ public class TransportTests
             await peer.SyncPeer.DidNotReceive().GetHeadBlockHeader(
                 Arg.Is<Hash256?>(hash => hash != peers.Header.Hash && hash != initialHash), Arg.Any<CancellationToken>());
             peer.SyncPeer.DidNotReceive().Disconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Cached_ancestor_pages_follow_the_selected_branch_and_detach_returned_headers(CancellationToken token)
+    {
+        await using ExecutionPeers peers = new(1, chainLength: 4);
+        VerifiedHead original = peers.Head;
+        BlockHeader originalHead = await peers.Transport.GetHeaderAsync(original, token);
+        Hash256 expectedParent = new(originalHead.ParentHash!.ValueHash256);
+        BlockHeader[] first = await peers.Transport.GetRecentHeadersAsync(originalHead, 3, token);
+        first[1].Hash!.Bytes[0] ^= 0xff;
+
+        for (int i = 1; i < peers.Chain.Length; i++)
+        {
+            BlockHeader sibling = peers.Chain[i].Clone();
+            sibling.ExtraData = [0x42];
+            sibling.ParentHash = peers.Chain[i - 1].Hash;
+            sibling.Hash = sibling.CalculateHash();
+            peers.Chain[i] = sibling;
+            peers.Headers[new(sibling.Hash.ValueHash256)] = sibling;
+        }
+
+        BlockHeader oldParent = await peers.Transport.GetCanonicalHeaderAsync(original, 2, token);
+        BlockHeader siblingHead = await peers.Transport.GetHeaderAsync(peers.Head, token);
+        BlockHeader[] fork = await peers.Transport.GetRecentHeadersAsync(siblingHead, 3, token);
+        BlockHeader siblingParent = await peers.Transport.GetCanonicalHeaderAsync(peers.Head, 2, token);
+        siblingParent.Hash!.Bytes[0] ^= 0xff;
+        BlockHeader repeated = await peers.Transport.GetHeaderByHashAsync(siblingHead.ParentHash!, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(oldParent.Hash, Is.EqualTo(expectedParent));
+            Assert.That(fork.Select(header => header.Hash), Is.EqualTo(peers.Chain.Skip(1).Select(header => header.Hash)));
+            Assert.That(repeated.Hash, Is.EqualTo(siblingHead.ParentHash));
+            Assert.That(repeated.Hash, Is.Not.EqualTo(expectedParent));
+            Assert.That(peers.Ordered[0].ResponsesDisposed, Is.EqualTo(2));
         }
     }
 
