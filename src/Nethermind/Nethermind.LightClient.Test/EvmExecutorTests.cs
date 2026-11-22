@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.LightClient.Rpc;
@@ -517,6 +518,56 @@ public class EvmExecutorTests
             Assert.That(second, Is.EqualTo(first));
             Assert.That(source.CodeFetches, Is.EqualTo(1));
             Assert.That(source.StorageFetches, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Storage_batches_clear_and_write_without_accessing_the_shared_address_map()
+    {
+        FakeSource source = new([]);
+        using BoundedMemoryCache cache = new();
+        Type callStateType = typeof(EvmExecutor).GetNestedType("CallState", BindingFlags.NonPublic)!;
+        IWorldStateScopeProvider state = (IWorldStateScopeProvider)Activator.CreateInstance(callStateType, source.Head, cache)!;
+        BlockHeader header = await source.GetHeaderAsync(source.Head, CancellationToken.None);
+        Assert.That(state.TryBeginScope(header, new LocalMetrics(), out IWorldStateScopeProvider.IScope? opened), Is.True);
+        using IWorldStateScopeProvider.IScope scope = opened!;
+
+        // The root committer creates the batches on its owning thread before giving each batch to a worker.
+        bool workersApplying = false;
+        IEqualityComparer<Address> comparer = EqualityComparer<Address>.Create(
+            static (left, right) => left == right,
+            address => !workersApplying ? address.GetHashCode() : throw new InvalidOperationException("Storage worker used the shared address map."));
+        FieldInfo map = scope.GetType().GetField("_writtenStorage", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        map.SetValue(scope, Activator.CreateInstance(map.FieldType, comparer));
+        Address updated = Address.Zero;
+        Account account = source.ContractAccount;
+        cache.Set((source.Head.StateRoot, updated), account, 512);
+        cache.Set((account.StorageRoot, updated, UInt256.Zero), (UInt256)42, 512);
+
+        using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(2);
+        using IWorldStateScopeProvider.IStorageWriteBatch cleared = batch.CreateStorageWriteBatch(Contract, 1);
+        using IWorldStateScopeProvider.IStorageWriteBatch written = batch.CreateStorageWriteBatch(updated, 1);
+        cleared.Set(UInt256.Zero, 9);
+        workersApplying = true;
+        await Task.WhenAll(Task.Run(() =>
+        {
+            cleared.Clear();
+            cleared.Set(UInt256.One, 7);
+        }), Task.Run(() => written.Set(UInt256.One, 8)));
+        workersApplying = false;
+
+        IWorldStateScopeProvider.IStorageTree clearedTree = scope.CreateStorageTree(Contract);
+        IWorldStateScopeProvider.IStorageTree updatedTree = scope.CreateStorageTree(updated);
+        clearedTree.Get(UInt256.Zero, out UInt256 clearedValue);
+        clearedTree.Get(UInt256.One, out UInt256 clearedWrite);
+        updatedTree.Get(UInt256.Zero, out UInt256 authenticatedValue);
+        updatedTree.Get(UInt256.One, out UInt256 updatedWrite);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clearedValue, Is.EqualTo(UInt256.Zero));
+            Assert.That(clearedWrite, Is.EqualTo((UInt256)7));
+            Assert.That(authenticatedValue, Is.EqualTo((UInt256)42));
+            Assert.That(updatedWrite, Is.EqualTo((UInt256)8));
         }
     }
 
@@ -1171,7 +1222,8 @@ public class EvmExecutorTests
     }
 
     [Test]
-    public async Task Simulate_chains_state_and_block_hashes_across_simulated_blocks([Values("shanghai", "prague", "amsterdam")] string fork)
+    public async Task Simulate_chains_state_and_block_hashes_across_simulated_blocks(
+        [Values("shanghai", "prague", "amsterdam")] string fork, [Values] bool historical)
     {
         // An empty call returns slot 0; any other call stores its first word there.
         byte[] code = [0x36, 0x15, 0x60, 0x0c, 0x57, 0x60, 0x00, 0x35, 0x60, 0x00, 0x55, 0x00, 0x5b, 0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
@@ -1192,8 +1244,15 @@ public class EvmExecutorTests
             source.ExtraContracts[Eip8282Constants.BuilderExitRequestPredeployAddress] = [0x00];
         }
         SingleReleaseSpecProvider spec = new(fork switch { "prague" => Prague.Instance, "amsterdam" => Amsterdam.Instance, _ => Shanghai.Instance }, 1, 1);
+        VerifiedHead baseHead = source.Head;
+        VerifiedHead finalized = historical
+            ? new(98, baseHead.Number - 64, Keccak.Compute("finalized ancestor"), Keccak.Compute("finalized state"))
+            : baseHead;
+        VerifiedHead latest = historical
+            ? new(101, baseHead.Number + 1, Keccak.Compute("advanced optimistic head"), Keccak.Compute("optimistic state"))
+            : baseHead;
         using EvmExecutor call = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
+        using RpcBackend rpc = new(source, () => finalized, 1, call, spec, () => latest);
         object payload = new
         {
             blockStateCalls = new object[]
@@ -1217,25 +1276,29 @@ public class EvmExecutorTests
             traceTransfers = true,
         };
 
-        JsonElement blocks = (JsonElement)await rpc.InvokeAsync("eth_simulateV1", JsonSerializer.SerializeToElement(new[] { payload }), CancellationToken.None);
+        object[] parameters = historical ? [payload, new { blockNumber = RpcBackend.Quantity(baseHead.Number) }] : [payload];
+        JsonElement blocks = (JsonElement)await rpc.InvokeAsync("eth_simulateV1", JsonSerializer.SerializeToElement(parameters), CancellationToken.None);
 
         string Word(ulong value) => "0x" + value.ToString("x64");
         string Hash(int block) => blocks[block].GetProperty("hash").GetString()!;
         JsonElement Call(int block, int index) => blocks[block].GetProperty("calls")[index];
+        Assert.That(blocks.GetArrayLength(), Is.EqualTo(3));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blocks.GetArrayLength(), Is.EqualTo(3));
-            Assert.That(blocks[0].GetProperty("number").GetString(), Is.EqualTo($"0x{source.Head.Number + 1:x}"));
-            Assert.That(blocks[0].GetProperty("parentHash").GetString(), Is.EqualTo(source.Head.BlockHash.ToString()));
+            Assert.That(source.LastCanonicalAnchor, Is.EqualTo(historical ? latest : null));
+            Assert.That(blocks[0].GetProperty("number").GetString(), Is.EqualTo(RpcBackend.Quantity(baseHead.Number + 1)));
+            Assert.That(blocks[0].GetProperty("parentHash").GetString(), Is.EqualTo(baseHead.BlockHash.ToString()));
+            Assert.That(blocks[0].GetProperty("stateRoot").GetString(), Is.EqualTo(baseHead.StateRoot.ToString()));
             Assert.That(blocks[1].GetProperty("parentHash").GetString(), Is.EqualTo(Hash(0)));
             Assert.That(blocks[2].GetProperty("parentHash").GetString(), Is.EqualTo(Hash(1)));
             Assert.That(Call(0, 0).GetProperty("status").GetString(), Is.EqualTo("0x1"));
             // From EIP-7708 the EVM logs value transfers itself, from the system address, instead of the simulator.
             Assert.That(Call(0, 1).GetProperty("logs")[0].GetProperty("address").GetString(),
                 Is.EqualTo((fork == "amsterdam" ? TransferLog.Sender : TransferLog.Erc20Sender).ToString()));
+            Assert.That(Call(0, 1).GetProperty("logs")[0].GetProperty("blockHash").GetString(), Is.EqualTo(Hash(0)));
             // The fake source serves 42 for every authenticated slot, so 7 can only come from the first block's write.
             Assert.That(Call(1, 0).GetProperty("returnData").GetString(), Is.EqualTo(Word(7)));
-            Assert.That(Call(1, 1).GetProperty("returnData").GetString(), Is.EqualTo(source.Head.BlockHash.ToString()));
+            Assert.That(Call(1, 1).GetProperty("returnData").GetString(), Is.EqualTo(baseHead.BlockHash.ToString()));
             Assert.That(Call(2, 0).GetProperty("returnData").GetString(), Is.EqualTo(Hash(0)));
             // From Prague the request contracts run their shared code at the end of each block.
             Assert.That(source.CodeFetches, Is.EqualTo(fork == "shanghai" ? 1 : 2));
@@ -1243,6 +1306,8 @@ public class EvmExecutorTests
     }
 
     [TestCase("empty", ErrorCodes.InvalidParams)]
+    [TestCase("null-block", ErrorCodes.InvalidParams)]
+    [TestCase("null-call", ErrorCodes.InvalidParams)]
     [TestCase("too-many-blocks", ErrorCodes.ClientLimitExceededError)]
     [TestCase("blocks-out-of-order", ErrorCodes.InvalidInputBlocksOutOfOrder)]
     [TestCase("malformed", ErrorCodes.InvalidParams)]
@@ -1255,6 +1320,8 @@ public class EvmExecutorTests
         object payload = scenario switch
         {
             "empty" => new { blockStateCalls = Array.Empty<object>() },
+            "null-block" => new { blockStateCalls = new object?[] { null } },
+            "null-call" => new { blockStateCalls = new[] { new { calls = new object?[] { null } } } },
             "too-many-blocks" => new { blockStateCalls = Enumerable.Repeat(new { calls = Array.Empty<object>() }, 17).ToArray() },
             "blocks-out-of-order" => new
             {

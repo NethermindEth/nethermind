@@ -452,7 +452,7 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
                 _accounts.Add(address);
                 _writtenStorage.TryGetValue(address, out WrittenStorage? written);
                 // Slots the scope has not written still read the authenticated storage, unless the scope cleared it.
-                Hash256 root = written?.Cleared == true ? Keccak.EmptyTreeHash : GetAuthenticated(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+                Hash256? root = written?.Cleared == true ? null : GetAuthenticated(address)?.StorageRoot;
                 return new Storage(address, root, cache, written);
             }
             public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
@@ -469,7 +469,12 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
             public void ApplyBal(ReadOnlyBlockAccessList bal, CancellationToken cancellationToken) => throw new NotSupportedException();
             public void Dispose() { }
 
-            private void ClearStorage(Address address) => _writtenStorage[address] = new WrittenStorage { Cleared = true };
+            private WrittenStorage GetOrCreateStorage(Address address)
+            {
+                if (!_writtenStorage.TryGetValue(address, out WrittenStorage? written))
+                    _writtenStorage[address] = written = new();
+                return written;
+            }
 
             private sealed class WriteBatch(Scope scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
             {
@@ -477,39 +482,42 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
                 public void Set(Address key, Account? account)
                 {
                     scope._writtenAccounts[key] = account;
-                    if (account is null) scope.ClearStorage(key);
+                    if (account is null) scope.GetOrCreateStorage(key).Clear();
                     OnAccountUpdated?.Invoke(this, new(key, account));
                 }
+                // Root commits create batches serially, then hand each worker a distinct account's storage.
                 public IWorldStateScopeProvider.IStorageWriteBatch CreateStorageWriteBatch(Address key, int estimatedEntries) =>
-                    new StorageWriteBatch(scope, key);
+                    new StorageWriteBatch(scope.GetOrCreateStorage(key));
                 public void Dispose() { }
             }
 
-            private sealed class StorageWriteBatch(Scope scope, Address address) : IWorldStateScopeProvider.IStorageWriteBatch
+            private sealed class StorageWriteBatch(WrittenStorage written) : IWorldStateScopeProvider.IStorageWriteBatch
             {
-                public void Set(in UInt256 index, in UInt256 value)
-                {
-                    if (!scope._writtenStorage.TryGetValue(address, out WrittenStorage? written))
-                        scope._writtenStorage[address] = written = new();
-                    written.Slots[index] = value;
-                }
-                public void Clear() => scope.ClearStorage(address);
+                public void Set(in UInt256 index, in UInt256 value) => written.Slots[index] = value;
+                public void Clear() => written.Clear();
                 public void Dispose() { }
             }
         }
 
         private sealed class WrittenStorage
         {
-            public bool Cleared { get; init; }
+            public bool Cleared { get; private set; }
             public Dictionary<UInt256, UInt256> Slots { get; } = [];
+
+            public void Clear()
+            {
+                Cleared = true;
+                Slots.Clear();
+            }
         }
 
-        private sealed class Storage(Address address, Hash256 root, BoundedMemoryCache cache, WrittenStorage? written = null) : IWorldStateScopeProvider.IStorageTree
+        private sealed class Storage(Address address, Hash256? authenticatedRoot, BoundedMemoryCache cache, WrittenStorage? written) : IWorldStateScopeProvider.IStorageTree
         {
-            public Hash256 RootHash => root;
+            public Hash256 RootHash => written?.Cleared == true ? Keccak.EmptyTreeHash : authenticatedRoot ?? Keccak.EmptyTreeHash;
             public void Get(in UInt256 index, out UInt256 value)
             {
                 if (written is not null && written.Slots.TryGetValue(index, out value)) return;
+                Hash256 root = RootHash;
                 if (root == Keccak.EmptyTreeHash) { value = UInt256.Zero; return; }
                 if (!cache.TryGetValue((root, address, index), out value))
                     throw new MissingCallState(MissingKind.Storage) { Address = address, Slot = index };

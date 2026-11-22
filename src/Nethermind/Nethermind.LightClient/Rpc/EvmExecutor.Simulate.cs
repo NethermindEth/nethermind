@@ -237,11 +237,7 @@ internal sealed partial class EvmExecutor
             request.BlobBaseFeeOverride = spec.IsEip4844Enabled ? blockCall.BlockOverrides?.BlobBaseFee : null;
 
             (Block processed, _) = processor.ProcessOne(block, options, cancellableTracer, spec, token);
-            processed.ExecutionRequests = null;
-            if (spec.IsEip1559Enabled && processed.Header.BaseFeePerGas.IsZero) SimulateBridgeHelper.EncodeZeroBaseFee(processed);
-            state.CommitTree(processed.Number);
-            simulatedHashes[processed.Number] = processed.Hash!;
-            if (tracer is SimulateBlockTracer simulateTracer) simulateTracer.ReapplyBlockHash(processed.Hash!);
+            simulatedHashes[processed.Number] = SimulateBridgeHelper.FinalizeBlock(processed, spec, state, tracer);
 
             blocks.Add(new SimulateBlockResult<TTrace>(processed, payload.ReturnFullTransactionObjects, specs)
             {

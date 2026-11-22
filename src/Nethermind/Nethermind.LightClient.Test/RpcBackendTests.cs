@@ -1810,8 +1810,7 @@ public class RpcBackendTests
     {
         using Provider provider = ReceiptProjectionProvider();
         using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
-        BoundedMemoryCache index = (BoundedMemoryCache)typeof(ExecutionData)
-            .GetField("_transactionIndex", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(data)!;
+        BoundedMemoryCache index = TransactionIndex(data);
         object key = (provider.Header.Hash!, "transactions");
         Hash256 hash = provider.Transactions[1].Hash!;
 
@@ -1832,6 +1831,9 @@ public class RpcBackendTests
             Assert.That(located!.Hash, Is.EqualTo(provider.Header.Hash));
         }
     }
+
+    private static BoundedMemoryCache TransactionIndex(ExecutionData data) =>
+        (BoundedMemoryCache)typeof(ExecutionData).GetField("_transactionIndex", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(data)!;
 
     [Test]
     public async Task A_single_receipt_projects_only_its_sender_and_keeps_block_coordinates(
@@ -2580,6 +2582,48 @@ public class RpcBackendTests
         {
             Assert.That(result.GetProperty(receipt ? "transactionHash" : "hash").GetString(), Is.EqualTo(transaction.Hash.ToString()));
             Assert.That(result.GetProperty("blockHash").GetString(), Is.EqualTo(BlockHash.ToString()));
+        }
+    }
+
+    [Test]
+    public async Task Transaction_lookup_by_index_restores_an_evicted_hash_location([Values] bool receipt)
+    {
+        const ulong blockNumber = 20_000_010;
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        Transaction transaction = new() { GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
+        new EthereumEcdsa(1).Sign(key, transaction);
+        Hash256 hash = transaction.Hash = transaction.CalculateHash();
+        LookupSource source = new(transaction, blockNumber);
+        using RpcBackend rpc = new(source, () => source.Finalized, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Latest);
+        ExecutionData data = (ExecutionData)typeof(RpcBackend).GetField("_data", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(rpc)!;
+        BoundedMemoryCache index = TransactionIndex(data);
+
+        string blockSelector = RpcBackend.Quantity(blockNumber);
+        JsonElement block = (JsonElement)await rpc.InvokeAsync("eth_getBlockByNumber", Parameters(blockSelector, false), CancellationToken.None);
+        Assert.That(data.TryLocateTransaction(hash, out _), Is.True);
+        string blockHash = block.GetProperty("hash").GetString()!;
+        object blockIndexKey = (new Hash256(blockHash), "transactions");
+        Assert.That(index.TryGetValue(blockIndexKey, out HashSet<Hash256>? _), Is.True);
+        // Retain the later block membership entry (1,152 bytes) while evicting the older hash location.
+        index.Set("pressure", 0, BoundedMemoryCache.Capacity - 1_152);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.TryLocateTransaction(hash, out _), Is.False);
+            Assert.That(index.TryGetValue(blockIndexKey, out HashSet<Hash256>? _), Is.True);
+        }
+
+        JsonElement byIndex = (JsonElement)await rpc.InvokeAsync("eth_getTransactionByBlockNumberAndIndex",
+            Parameters(blockSelector, "0x0"), CancellationToken.None);
+        Assert.That(byIndex.GetProperty("hash").GetString(), Is.EqualTo(hash.ToString()));
+
+        // The block is inside the authenticated history but older than the fallback hash scan.
+        JsonElement byHash = (JsonElement)await rpc.InvokeAsync(receipt ? "eth_getTransactionReceipt" : "eth_getTransactionByHash",
+            Parameters(hash.ToString()), CancellationToken.None);
+        Assert.That(byHash.ValueKind, Is.EqualTo(JsonValueKind.Object));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(byHash.GetProperty(receipt ? "transactionHash" : "hash").GetString(), Is.EqualTo(hash.ToString()));
+            Assert.That(byHash.GetProperty("blockHash").GetString(), Is.EqualTo(blockHash));
         }
     }
 

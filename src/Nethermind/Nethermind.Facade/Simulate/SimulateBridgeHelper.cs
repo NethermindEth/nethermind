@@ -142,21 +142,9 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
                     spec,
                     cancellationToken);
 
-                processedBlock.ExecutionRequests = null;
-
-                if (spec.IsEip1559Enabled && processedBlock.Header.BaseFeePerGas.IsZero)
-                {
-                    EncodeZeroBaseFee(processedBlock);
-                }
-
-                stateProvider.CommitTree(processedBlock.Number);
+                Hash256 blockHash = FinalizeBlock(processedBlock, spec, stateProvider, tracer);
                 blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
-                blockTree.UpdateHeadBlock(processedBlock.Hash!);
-
-                if (tracer is SimulateBlockTracer simulateTracer)
-                {
-                    simulateTracer.ReapplyBlockHash(processedBlock.Hash);
-                }
+                blockTree.UpdateHeadBlock(blockHash);
 
                 SimulateBlockResult<TTrace> blockResult = new(processedBlock, payload.ReturnFullTransactionObjects, specProvider)
                 {
@@ -170,17 +158,25 @@ public class SimulateBridgeHelper(IBlocksConfig blocksConfig, ISpecProvider spec
     }
 
     /// <summary>
-    /// Hashes and sizes a block with the zero base fee in its header, as EIP-1559 requires from London.
+    /// Commits the simulated state and returns the block hash shared by the trace and the next block's parent link.
     /// </summary>
     /// <remarks>
-    /// The block processor and the RPC block model use the default encoding, which drops a zero base fee when no later
-    /// field follows. This runs before the block joins the simulated chain, so BLOCKHASH and the parent hash of the next
-    /// simulated block see the same hash.
+    /// The default header encoding drops a zero base fee when no later field follows. Force the EIP-1559 encoding
+    /// before publishing the simulated block's hash.
     /// </remarks>
-    internal static void EncodeZeroBaseFee(Block block)
+    internal static Hash256 FinalizeBlock(Block block, IReleaseSpec spec, IWorldState state, IBlockTracer tracer)
     {
-        block.Header.Hash = block.Header.CalculateHash(RlpBehaviors.Eip1559Header);
-        block.EncodedSize = (Rlp.GetDecoder<Block>() ?? new BlockDecoder()).GetLength(block, RlpBehaviors.Eip1559Header);
+        block.ExecutionRequests = null;
+        if (spec.IsEip1559Enabled && block.Header.BaseFeePerGas.IsZero)
+        {
+            block.Header.Hash = block.Header.CalculateHash(RlpBehaviors.Eip1559Header);
+            block.EncodedSize = (Rlp.GetDecoder<Block>() ?? new BlockDecoder()).GetLength(block, RlpBehaviors.Eip1559Header);
+        }
+
+        state.CommitTree(block.Number);
+        Hash256 hash = block.Hash!;
+        if (tracer is SimulateBlockTracer simulateTracer) simulateTracer.ReapplyBlockHash(hash);
+        return hash;
     }
 
     internal BlockBody AssembleBody(

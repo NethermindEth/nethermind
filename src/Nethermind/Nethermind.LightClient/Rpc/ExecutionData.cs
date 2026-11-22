@@ -58,6 +58,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         Transaction transaction = block.Transactions[index];
         ValidatePayloadBytes(PayloadBytes(transaction));
         RecoverSender(transaction);
+        RefreshTransactionLocation(transaction.Hash ??= transaction.CalculateHash(), block.Header);
         TransactionForRpcContext context = new(chainId, header.Hash!, header.Number, index, header.Timestamp, header.BaseFeePerGas,
             specProvider.GetSpec(header), excessBlobGas: header.ExcessBlobGas);
         return BoundedJson.ToElement(TransactionForRpc.FromTransaction(transaction, context));
@@ -208,8 +209,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         {
             Transaction transaction = block.Transactions[i];
             if ((transaction.Hash ??= transaction.CalculateHash()) != hash) continue;
-            // The block's index outlives the entry of a transaction nobody looked up, so a found one is located again.
-            _transactionIndex.Set(hash, block.Header, 512);
+            RefreshTransactionLocation(hash, block.Header);
             if (receipt)
             {
                 TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
@@ -230,6 +230,13 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                     specProvider.GetSpec(header), excessBlobGas: header.ExcessBlobGas)));
         }
         return null;
+    }
+
+    private void RefreshTransactionLocation(Hash256 hash, BlockHeader header)
+    {
+        // The block's index can outlive an individual transaction's cached location.
+        if (!_transactionIndex.TryGetValue(hash, out BlockHeader? located) || located!.Hash != header.Hash)
+            _transactionIndex.Set(hash, header, 512);
     }
 
     private void Index(Block block)

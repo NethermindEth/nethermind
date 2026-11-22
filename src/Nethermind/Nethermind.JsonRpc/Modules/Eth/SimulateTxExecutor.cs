@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -120,9 +121,21 @@ public class SimulateTxExecutor<TTrace>(
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
 
+        foreach (BlockStateCall<TransactionForRpc>? block in call.BlockStateCalls)
+        {
+            if (block is null)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated blocks must not be null.", ErrorCodes.InvalidParams);
+        }
+
         string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
         if (callsLimitError is not null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
+
+        foreach (BlockStateCall<TransactionForRpc> block in call.BlockStateCalls)
+        {
+            if (block.Calls is { } calls && Array.IndexOf(calls, null) >= 0)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated calls must not be null.", ErrorCodes.InvalidParams);
+        }
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
