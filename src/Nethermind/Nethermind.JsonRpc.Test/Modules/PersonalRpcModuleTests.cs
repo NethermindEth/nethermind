@@ -172,5 +172,18 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(serialized, Does.Contain("\"error\""));
             Assert.That(serialized, Does.Contain("Invalid signature length"));
         }
+
+        [TestCase("00")]
+        [TestCase("01")]
+        [TestCase("1a")]
+        [TestCase("1d")]
+        public async Task Personal_ecRecover_rejects_invalid_recovery_byte(string recoveryByte)
+        {
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
+            string signature = "0xa3f20717a250c2b0b729b7e5becbff67fdaef7e0699da4de7ca5895b02a170a12d887fd3b17bfdce3481f10bea41f45ba9f709d39ce8325427b57afcfc994cee" + recoveryByte;
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_ecRecover", "0xdeadbeaf", signature);
+            Assert.That(serialized, Does.Contain("\"code\":-32602"));
+            Assert.That(serialized, Does.Contain("Invalid signature recovery byte"));
+        }
     }
 }
