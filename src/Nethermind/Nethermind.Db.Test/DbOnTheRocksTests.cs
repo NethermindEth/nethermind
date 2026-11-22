@@ -873,7 +873,10 @@ namespace Nethermind.Db.Test
             settings.DeleteOnStart = true;
             string fullPath = factory.GetFullDbPath(settings);
             Directory.CreateDirectory(fullPath);
-            fileSystem.File.Exists(RocksDbInstance.DeletingMarkerPath(fullPath)).Returns(true);
+            string table = Path.Join(fullPath, "000001.sst");
+            fileSystem.Directory.Exists(fullPath).Returns(true);
+            fileSystem.Directory.EnumerateFiles(fullPath).Returns([table]);
+            fileSystem.File.When(f => f.Delete(table)).Do(static _ => throw new IOException());
 
             Assert.That(() => factory.Open(settings, _rocksdbConfigFactory.GetForDatabase("Blocks", null), null), Throws.InstanceOf<IOException>());
         }

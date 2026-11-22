@@ -24,9 +24,13 @@ namespace Nethermind.Db.Test
         {
             IFileSystem fileSystem = CreateFileSystem(out List<string> calls, Table);
 
-            RocksDbInstance.Delete(DbPath, new DbSettings("name", DbPath) { CanDeleteFolder = canDeleteFolder }, fileSystem, LimboLogs.Instance.GetClassLogger<RocksDbInstanceTests>());
+            bool deleted = RocksDbInstance.Delete(DbPath, new DbSettings("name", DbPath) { CanDeleteFolder = canDeleteFolder }, fileSystem, LimboLogs.Instance.GetClassLogger<RocksDbInstanceTests>());
 
-            Assert.That(calls, Is.EqualTo(new[] { $"write {Marker}", $"delete {Current}", $"delete {Table}" }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deleted, Is.False);
+                Assert.That(calls, Is.EqualTo(new[] { $"write {Marker}", $"delete {Current}", $"delete {Table}" }));
+            }
         }
 
         [Test]
@@ -35,18 +39,41 @@ namespace Nethermind.Db.Test
             string lastCall = canDeleteFolder ? $"delete folder {DbPath}" : $"delete {Marker}";
             IFileSystem fileSystem = CreateFileSystem(out List<string> calls, null);
 
-            RocksDbInstance.Delete(DbPath, new DbSettings("name", DbPath) { CanDeleteFolder = canDeleteFolder }, fileSystem, LimboLogs.Instance.GetClassLogger<RocksDbInstanceTests>());
+            bool deleted = RocksDbInstance.Delete(DbPath, new DbSettings("name", DbPath) { CanDeleteFolder = canDeleteFolder }, fileSystem, LimboLogs.Instance.GetClassLogger<RocksDbInstanceTests>());
 
-            Assert.That(calls, Is.EqualTo(new[] { $"write {Marker}", $"delete {Current}", $"delete {Table}", lastCall }));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deleted, Is.True);
+                Assert.That(calls, Is.EqualTo(new[] { $"write {Marker}", $"delete {Current}", $"delete {Table}", lastCall }));
+            }
         }
 
-        private static IFileSystem CreateFileSystem(out List<string> calls, string? failingFile)
+        [Test]
+        public void Delete_removes_every_file_when_the_marker_cannot_be_written([Values] bool canDeleteFolder)
+        {
+            string lastCall = canDeleteFolder ? $"delete folder {DbPath}" : $"delete {Marker}";
+            IFileSystem fileSystem = CreateFileSystem(out List<string> calls, null, failMarker: true);
+
+            bool deleted = RocksDbInstance.Delete(DbPath, new DbSettings("name", DbPath) { CanDeleteFolder = canDeleteFolder }, fileSystem, LimboLogs.Instance.GetClassLogger<RocksDbInstanceTests>());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(deleted, Is.True);
+                Assert.That(calls, Is.EqualTo(new[] { $"delete {Current}", $"delete {Table}", lastCall }));
+            }
+        }
+
+        private static IFileSystem CreateFileSystem(out List<string> calls, string? failingFile, bool failMarker = false)
         {
             List<string> received = [];
             IFileSystem fileSystem = Substitute.For<IFileSystem>();
             fileSystem.Directory.Exists(DbPath).Returns(true);
             fileSystem.Directory.EnumerateFiles(DbPath).Returns(_ => received.Contains($"write {Marker}") ? new[] { Current, Marker, Table } : new[] { Current, Table });
-            fileSystem.File.When(static f => f.WriteAllText(Arg.Any<string>(), Arg.Any<string>())).Do(c => received.Add($"write {c.ArgAt<string>(0)}"));
+            fileSystem.File.When(static f => f.WriteAllBytes(Arg.Any<string>(), Arg.Any<byte[]>())).Do(c =>
+            {
+                if (failMarker) throw new IOException();
+                received.Add($"write {c.ArgAt<string>(0)}");
+            });
             fileSystem.File.When(static f => f.Delete(Arg.Any<string>())).Do(c =>
             {
                 received.Add($"delete {c.ArgAt<string>(0)}");

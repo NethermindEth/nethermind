@@ -111,8 +111,7 @@ public class RocksDbFactory : IDbFactory
         }
         else if (settings.DeleteOnStart)
         {
-            RocksDbInstance.Delete(fullPath, settings, _fileSystem, _logger);
-            if (_fileSystem.File.Exists(RocksDbInstance.DeletingMarkerPath(fullPath)))
+            if (!RocksDbInstance.Delete(fullPath, settings, _fileSystem, _logger))
             {
                 throw new IOException($"Could not delete the {name} database at {fullPath}.");
             }

@@ -89,14 +89,22 @@ public sealed class RocksDbInstance(
 
     internal static string DeletingMarkerPath(string fullPath) => Path.Join(fullPath, DbSettings.DeletingMarkerFileName);
 
-    internal static void Delete(string fullPath, DbSettings settings, IFileSystem fileSystem, ILogger logger)
+    internal static bool Delete(string fullPath, DbSettings settings, IFileSystem fileSystem, ILogger logger)
     {
         try
         {
             if (fileSystem.Directory.Exists(fullPath))
             {
                 string markerPath = DeletingMarkerPath(fullPath);
-                fileSystem.File.WriteAllText(markerPath, "marker");
+                try
+                {
+                    fileSystem.File.WriteAllBytes(markerPath, Array.Empty<byte>());
+                }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+                {
+                    if (logger.IsWarn) logger.Warn($"Could not mark the {settings.DbName} database for deletion. {e.Message}");
+                }
+
                 foreach (string file in fileSystem.Directory.EnumerateFiles(fullPath))
                 {
                     if (Path.GetFileName(file) != DbSettings.DeletingMarkerFileName)
@@ -115,10 +123,13 @@ public sealed class RocksDbInstance(
                     fileSystem.File.Delete(markerPath);
                 }
             }
+
+            return true;
         }
         catch (Exception e)
         {
             if (logger.IsWarn) logger.Warn($"Could not delete the {settings.DbName} database. {e.Message}");
+            return false;
         }
     }
 
