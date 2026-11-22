@@ -877,6 +877,67 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task Should_build_block_including_inclusion_list_transaction_funded_by_later_entry()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Transaction spend = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
+        Transaction fund = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
+            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        byte[] spendBytes = Rlp.Encode(spend);
+        byte[] fundBytes = Rlp.Encode(fund);
+        byte[][] inclusionList = [spendBytes, fundBytes];
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcu = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
+            BuildBogotaPayloadAttributes(inclusionList: inclusionList));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcu.Data.PayloadId!));
+        ExecutionPayloadV4 payload = payloadResult.Data!.ExecutionPayload;
+
+        Assert.That(payload.Transactions, Is.EqualTo(new[] { fundBytes, spendBytes }));
+
+        ResultWrapper<PayloadStatusV2> verify = await rpc.engine_newPayloadV6(
+            payload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, inclusionList);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verify.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(verify.Data.InclusionListSatisfied, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Should_build_block_including_inclusion_list_transaction_after_pool_fills_nonce_gap()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Transaction tx0 = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction tx1 = Build.A.Transaction
+            .WithNonce(1).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.TxPool.SubmitTx(tx0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(chain.TxPool.SubmitTx(tx1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        }
+
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(tx1)]);
+        await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), payloadAttributes);
+
+        Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { tx0.Hash, tx1.Hash }));
+    }
+
+    [Test]
     public async Task Can_get_inclusion_list()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);

@@ -103,6 +103,37 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
+                if (blockToProduce?.InclusionList is { Length: > 0 } inclusionList)
+                {
+                    consideredTx.Clear();
+                    foreach (Transaction tx in includedTx.AsSpan()) consideredTx.Add(tx);
+
+                    bool added = true;
+                    while (added)
+                    {
+                        added = false;
+                        foreach (Transaction currentTx in inclusionList)
+                        {
+                            if (currentTx.SupportsFrames || consideredTx.Contains(currentTx)) continue;
+
+                            TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget);
+                            if (action == TxAction.Stop)
+                            {
+                                added = false;
+                                break;
+                            }
+
+                            if (action == TxAction.Add)
+                            {
+                                added = true;
+                                consideredTx.Add(currentTx);
+                                includedTx.Add(currentTx);
+                                blockToProduce.TxByteLength += currentTx.GetLength(false);
+                            }
+                        }
+                    }
+                }
+
                 if (blockToProduce?.RequiredTransactions is { } required &&
                     (includedTx.Count < required.Length || !includedTx.AsSpan()[..required.Length].SequenceEqual(required)))
                 {
