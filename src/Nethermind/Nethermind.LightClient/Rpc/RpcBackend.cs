@@ -256,7 +256,10 @@ internal sealed class RpcBackend(IExecutionStateSource execution, Func<VerifiedH
                 BlockHeader canonical = await ResolveIndexedTransactionHeaderAsync(indexed!, cancellationToken);
                 if (await _data.FindTransactionAsync(canonical, hash, receipt, cancellationToken) is { } known) return known;
             }
-            catch (RpcException exception) when (exception.Code == -32001) { }
+            catch (RpcException exception) when (exception.Code == -32001)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
         }
         VerifiedHead finalized = getHead();
         if (getLatestHead?.Invoke() is { } latest)
@@ -503,8 +506,7 @@ internal sealed class RpcBackend(IExecutionStateSource execution, Func<VerifiedH
     {
         internal DataRequest(CancellationToken cancellationToken)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (!ActiveExecutionData.Wait(0))
+            if (!ActiveExecutionData.Wait(0, cancellationToken))
                 throw new RpcException(-32005, "Four verified execution data requests are already active.");
         }
 

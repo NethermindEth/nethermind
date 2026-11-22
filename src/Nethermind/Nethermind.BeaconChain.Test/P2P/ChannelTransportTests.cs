@@ -325,7 +325,7 @@ public class ChannelTransportTests
         {
             await remote.ReadLineAsync().WaitAsync(token);
             await remote.ReadLineAsync().WaitAsync(token);
-            completion.SetCanceled();
+            completion.SetCanceled(CancellationToken.None);
             await remote.AbortAsync();
             await negotiation.WaitAsync(token);
 

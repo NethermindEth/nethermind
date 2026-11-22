@@ -148,7 +148,7 @@ internal sealed class FinalizedHeaderHistory : IAsyncDisposable
                         if (_failure is not null) throw new RpcException(_failureCode, _failure);
                         if (first < Floor(_target!.Number))
                             throw new RpcException(-32001, "Requested log history is outside the retained window.");
-                        _worker = Task.Run(RunAsync);
+                        _worker = Task.Run(RunAsync, CancellationToken.None);
                     }
                     worker = _worker;
                 }
@@ -173,7 +173,7 @@ internal sealed class FinalizedHeaderHistory : IAsyncDisposable
         if (_worker is null || _worker.IsCompleted)
         {
             _failure = null;
-            _worker = Task.Run(RunAsync);
+            _worker = Task.Run(RunAsync, CancellationToken.None);
         }
         Volatile.Write(ref _progress, _progress with
         {

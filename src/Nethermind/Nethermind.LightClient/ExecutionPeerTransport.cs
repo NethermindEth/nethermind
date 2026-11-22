@@ -506,8 +506,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         VerifiedHead head, Address address, Account account, CancellationToken cancellationToken)
     {
         PathWithAccount accountPath = new(ValueKeccak.Compute(address.Bytes), account.ToStruct());
-        HashSet<PeerInfo> suppliers = [];
-        bool completeAttribution = true;
+        PeerInfo? soleSupplier = null;
         ISyncPeerPool pool = _services.Resolve<ISyncPeerPool>();
         try
         {
@@ -515,11 +514,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
         catch (InvalidDataException exception)
         {
-            if (completeAttribution && suppliers.Count == 1)
-            {
-                foreach (PeerInfo supplier in suppliers)
-                    RecordPeerFailure(pool, AllocationContexts.Snap, supplier, exception);
-            }
+            if (soleSupplier is not null)
+                RecordPeerFailure(pool, AllocationContexts.Snap, soleSupplier, exception);
         }
 
         using ArrayPoolList<PeerInfo> candidates = new(pool.PeerCount);
@@ -564,9 +560,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                         && peer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out _), hedge: false);
                 if (pinned is null)
                 {
-                    if (suppliers.RemoveWhere(previous => !ReferenceEquals(pool.GetPeer(previous.SyncPeer.Node), previous)) != 0
-                        || supplier is null) completeAttribution = false;
-                    if (supplier is not null) suppliers.Add(supplier);
+                    // Only the first page can establish sole attribution; a later page can only invalidate it.
+                    if (start == ValueKeccak.Zero) soleSupplier = supplier;
+                    else if (!ReferenceEquals(soleSupplier, supplier)) soleSupplier = null;
                 }
                 return page;
             }, cancellationToken);

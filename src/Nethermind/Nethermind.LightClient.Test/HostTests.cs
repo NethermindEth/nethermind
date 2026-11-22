@@ -128,7 +128,7 @@ public class HostTests
         finally
         {
             if (!child.HasExited) child.Kill(entireProcessTree: true);
-            await child.WaitForExitAsync();
+            await child.WaitForExitAsync(CancellationToken.None);
         }
         Assert.That(child.ExitCode, Is.Zero, $"{await output}\n{await error}");
     }
@@ -1152,7 +1152,7 @@ public class HostTests
         finally
         {
             if (!sender.HasExited) sender.Kill(entireProcessTree: true);
-            await sender.WaitForExitAsync();
+            await sender.WaitForExitAsync(CancellationToken.None);
         }
     }
 }

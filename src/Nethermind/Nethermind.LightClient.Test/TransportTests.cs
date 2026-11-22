@@ -1901,7 +1901,8 @@ public class TransportTests
 
     [Test]
     [CancelAfter(30_000)]
-    public async Task A_hosted_download_does_not_retain_disconnected_suppliers(CancellationToken token)
+    public async Task A_hosted_download_does_not_retain_disconnected_suppliers(
+        [Values] bool leavesBeforeSecondPage, CancellationToken token)
     {
         await using ExecutionPeers peers = new(2, snap1: true);
         HostedPages pages = new(peers);
@@ -1921,8 +1922,12 @@ public class TransportTests
         peers.Ordered[0].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? first);
         first!.GetStorageRange(Arg.Any<StorageRange>(), Arg.Any<CancellationToken>()).Returns(call =>
         {
-            if (call.ArgAt<StorageRange>(0).StartingHash == ValueKeccak.Zero) return Task.FromResult(pages.Response(0));
-            peers.Pool.RemovePeer(peers.Ordered[0].SyncPeer);
+            if (call.ArgAt<StorageRange>(0).StartingHash == ValueKeccak.Zero)
+            {
+                peers.Clock.Advance(TimeSpan.FromMilliseconds(1));
+                return Task.FromResult(pages.Response(0));
+            }
+            if (leavesBeforeSecondPage) peers.Pool.RemovePeer(peers.Ordered[0].SyncPeer);
             return Task.FromException<SlotsAndProofs>(new ExecutionDataUnavailableException("This supplier no longer has the remaining range."));
         });
         peers.Ordered[1].SyncPeer.TryGetSatelliteProtocol<ISnapSyncPeer>(Protocol.Snap, out ISnapSyncPeer? next);
@@ -1930,6 +1935,9 @@ public class TransportTests
         {
             ValueHash256 start = call.ArgAt<StorageRange>(0).StartingHash!.Value;
             int index = start <= paths[1] ? 1 : 2;
+            // Retire the first supplier after this page is accepted and before the third takes its peer snapshot.
+            if (index == 1 && !leavesBeforeSecondPage)
+                peers.Clock.BeforeNextTimer = () => peers.Pool.RemovePeer(peers.Ordered[0].SyncPeer);
             if (index == 2)
             {
                 thirdPage.TrySetResult();
@@ -1944,6 +1952,7 @@ public class TransportTests
         try
         {
             await thirdPage.Task.WaitAsync(token);
+            Assert.That(peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node), Is.Null);
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
             GC.WaitForPendingFinalizers();
             GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
@@ -6272,11 +6281,13 @@ public class TransportTests
         private readonly Lock _lock = new();
         private readonly List<ClockTimer> _timers = [];
         private long _ticks;
+        internal Action? BeforeNextTimer;
         internal int ActiveTimerCount { get { lock (_lock) return _timers.Count; } }
         public override long TimestampFrequency => TimeSpan.TicksPerSecond;
         public override long GetTimestamp() { lock (_lock) return _ticks; }
         public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
         {
+            Interlocked.Exchange(ref BeforeNextTimer, null)?.Invoke();
             ClockTimer timer = new(this, callback, state);
             lock (_lock)
             {

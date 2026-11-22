@@ -2181,7 +2181,7 @@ public class BeaconPeerTransportTests
         BeaconPeerTransport.PeerProviders providers = LearnHints(db, clock, first);
         db.Fail = failWrite;
         db.BeforeSave = () => { entered.SetResult(); release.Wait(token); };
-        Task save = Task.Run(() => providers.FlushHints());
+        Task save = Task.Run(() => providers.FlushHints(), token);
         BootstrapPeer second = sameIdentity
             ? new BootstrapPeer(ConsensusTests.Bootstrap(1, 1), first.Id.Replace("/9000/", "/9001/", StringComparison.Ordinal))
             : HintPeer();
@@ -2230,7 +2230,7 @@ public class BeaconPeerTransportTests
             providers.RecordValidated(first, ConsensusTests.Bootstrap(1, 1));
             TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             db.BeforeSave = () => { db.BeforeSave = null; entered.SetResult(); release.Wait(token); };
-            save = Task.Run(() => providers.FlushHints());
+            save = Task.Run(() => providers.FlushHints(), token);
             typeof(BeaconPeerTransport).GetField("_peerLoop", flags)!.SetValue(transport, save);
             await Task.WhenAny(entered.Task, save).WaitAsync(token);
             if (save.IsCompleted) await save;

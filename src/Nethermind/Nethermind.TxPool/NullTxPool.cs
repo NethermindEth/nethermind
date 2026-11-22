@@ -46,6 +46,8 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId) { }
 
+        public void RemovePeer(ITxPoolPeer peer) { }
+
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
 
         public long GetRemovalGeneration(Address sender) => 0;
