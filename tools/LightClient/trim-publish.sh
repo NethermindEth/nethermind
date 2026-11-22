@@ -9,5 +9,6 @@ test -f "$publish/Nethermind.LightClient.dll"
 # EvmExecutor uses native EVM tracers; the LC exposes no JavaScript debug RPCs.
 # Keep the managed ClearScript assemblies for transitive assembly metadata references.
 find "$publish" -type f -name 'ClearScriptV8.*' -delete
-rm -f -- "$publish/ClearScript.V8.ICUData.dll" "$publish"/Nethermind.JsonRpc.SourceGenerator.Build.*
+rm -f -- "$publish/ClearScript.V8.ICUData.dll" "$publish/Nethermind.JsonRpc.SourceGenerator.Build" \
+    "$publish"/Nethermind.JsonRpc.SourceGenerator.Build.*
 rm -rf -- "$publish/Data/JSTracers"

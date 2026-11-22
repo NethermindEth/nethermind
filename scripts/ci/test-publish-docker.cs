@@ -16,6 +16,7 @@ const string clientProject = "src/Nethermind/Nethermind.LightClient/Nethermind.L
 var clientVersion = ScriptVersion.Read(Path.Combine(root, clientProject));
 var clientTag = $"light-client-{clientVersion}";
 var executionVersion = ScriptVersion.Read(Path.Combine(root, "src/Nethermind/Directory.Build.props"));
+var executionVersionAsClientTag = $"light-client-{executionVersion}";
 try
 {
     foreach (var (project, dockerfile, tag, expected) in new[]
@@ -36,9 +37,10 @@ try
             Rejected(await Publish(clientProject, "tools/LightClient/Dockerfile", tag, reference), $"LC tag isolation {tag}/{reference}");
     foreach (var (dockerfile, project, tag) in new[]
     {
-        ("tools/LightClient/Dockerfile", "src/Nethermind/Directory.Build.props", clientTag),
+        ("tools/LightClient/Dockerfile", "src/Nethermind/Directory.Build.props", executionVersionAsClientTag),
         ("Dockerfile", clientProject, "test"), ("Dockerfile", clientProject, "nightly"),
-        ("Dockerfile", "", clientTag), ("tools/Bootnode/Dockerfile", "", clientTag)
+        ("Dockerfile", "", clientTag), ("tools/Bootnode/Dockerfile", "", clientTag),
+        ("Dockerfile", "", executionVersionAsClientTag)
     })
         Rejected(await Publish(project, dockerfile, tag, "refs/heads/master"), $"product version isolation {dockerfile}/{project}/{tag}");
     var clientPush = await Publish(clientProject, "tools/LightClient/Dockerfile", clientTag, "refs/heads/master", "push");
@@ -49,6 +51,9 @@ try
         ("latest", "refs/heads/release/1.0", "workflow_dispatch", true, false),
         ("performance", "refs/heads/performance", "push", true, false),
         ("", "refs/heads/test/branch", "push", true, false),
+        ("", "refs/heads/light-client-verified-p2p", "push", true, false),
+        ("", "refs/heads/light-client/topic", "push", true, false),
+        ("light-client-verified-p2p", "refs/heads/test", "workflow_dispatch", true, false),
         ("nightly", "refs/heads/master", "schedule", true, false),
         ("master", "refs/heads/master", "push", true, true),
         ("nightly", "refs/heads/test", "workflow_dispatch", false, false),
@@ -57,7 +62,9 @@ try
     })
     {
         var result = await Publish(tag: tag, reference: reference, eventName: eventName);
+        var publishedTag = (tag.Length == 0 ? reference["refs/heads/".Length..] : tag).Replace('/', '-');
         Check((result.Code == 0) == allowed && result.Output.Contains("DOCKER_ARG=--push\n", StringComparison.Ordinal) == allowed &&
+            result.Output.Contains($"DOCKER_ARG=nethermindeth/nethermind:{publishedTag}\n", StringComparison.Ordinal) == allowed &&
             result.Output.Contains("DOCKER_ARG=nethermindeth/nethermind:master-aaaaaaa\n", StringComparison.Ordinal) == masterAlias,
             $"execution tag policy {tag}/{reference}/{eventName}", result);
     }

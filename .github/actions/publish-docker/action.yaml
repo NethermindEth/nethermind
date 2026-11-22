@@ -103,7 +103,8 @@ runs:
           fi
         else
           VERSION_FILE=${VERSION_FILE:-src/Nethermind/Directory.Build.props}
-          if [[ "$tag" == light-client-* ]] || [ "$(realpath -m -- "$VERSION_FILE")" = "$light_client_project" ]; then
+          if [[ "$tag" =~ ^light-client-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
+            [ "$(realpath -m -- "$VERSION_FILE")" = "$light_client_project" ]; then
             echo "::error::Light-client tags and its project version are reserved for tools/LightClient/Dockerfile"
             exit 1
           fi
