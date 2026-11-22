@@ -9,6 +9,7 @@ using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -16,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.BlockAccessLists;
@@ -41,6 +43,34 @@ public class BlockAccessListStoreTests
     }
 
     [Test]
+    public async Task AppendRlps_appends_stored_and_pending_lists_in_order()
+    {
+        TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        BlockAccessListStore store = new(db, null, writer);
+        byte[] storedBal = [0xc1, 0x80];
+        byte[] pendingBal = [0xc2, 0x80, 0x80];
+        store.Insert(7, TestItem.KeccakA, storedBal);
+        Block pendingBlock = BlockWithBal(8, pendingBal);
+        store.InsertFromBlockDeferred(pendingBlock);
+        store.Insert(10, TestItem.KeccakC, Array.Empty<byte>());
+        ulong[] numbers = [8, 9, 7, 10];
+        ValueHash256[] hashes = [pendingBlock.Hash!, TestItem.KeccakB, TestItem.KeccakA, TestItem.KeccakC];
+
+        using ArrayPoolList<byte> lists = new(0);
+        Range?[] ranges = new Range?[hashes.Length];
+        store.AppendRlps(numbers, hashes, lists, ranges);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lists.AsSpan()[ranges[0]!.Value].ToArray(), Is.EqualTo(pendingBal));
+            Assert.That(ranges[1], Is.Null);
+            Assert.That(lists.AsSpan()[ranges[2]!.Value].ToArray(), Is.EqualTo(storedBal));
+            Assert.That(ranges[3], Is.Null, "an empty value reads as missing, as GetRlp reads it");
+        }
+    }
+
+    [Test]
     public void Round_trips_decoded_block_access_list()
     {
         TestMemDb db = new();
@@ -56,7 +86,7 @@ public class BlockAccessListStoreTests
         Assert.That(retrieved, Is.Not.Null);
 
         using MemoryManager<byte>? rlp = store.GetRlp(blockNumber, blockHash);
-        Assert.That(rlp!.Memory, Is.SequenceEqualTo(Rlp.Encode(bal).Bytes));
+        Assert.That(rlp!.Memory, Is.SequenceEqualTo(Rlp.Encode(bal)));
     }
 
     [Test]
@@ -72,9 +102,12 @@ public class BlockAccessListStoreTests
 
         store.Delete(blockNumber, blockHash);
 
-        Assert.That(store.Exists(blockNumber, blockHash), Is.False);
-        Assert.That(store.GetRlp(blockNumber, blockHash), Is.Null);
-        Assert.That(store.Get(blockNumber, blockHash), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Exists(blockNumber, blockHash), Is.False);
+            Assert.That(store.GetRlp(blockNumber, blockHash), Is.Null);
+            Assert.That(store.Get(blockNumber, blockHash), Is.Null);
+        }
     }
 
     [Test]
@@ -93,12 +126,18 @@ public class BlockAccessListStoreTests
         using MemoryManager<byte>? rlpLow = store.GetRlp(1, blockHash);
         using MemoryManager<byte>? rlpHigh = store.GetRlp(2, blockHash);
 
-        Assert.That(rlpLow!.Memory, Is.SequenceEqualTo(balLow));
-        Assert.That(rlpHigh!.Memory, Is.SequenceEqualTo(balHigh));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rlpLow!.Memory, Is.SequenceEqualTo(balLow));
+            Assert.That(rlpHigh!.Memory, Is.SequenceEqualTo(balHigh));
+        }
 
         store.Delete(1, blockHash);
-        Assert.That(store.Exists(1, blockHash), Is.False);
-        Assert.That(store.Exists(2, blockHash), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.Exists(1, blockHash), Is.False);
+            Assert.That(store.Exists(2, blockHash), Is.True);
+        }
     }
 
     [Test]
@@ -114,8 +153,11 @@ public class BlockAccessListStoreTests
         store.Insert(blockNumber, blockHash, encoded);
 
         byte[] expectedKey = Bytes.Concat(blockNumber.ToBigEndianByteArray(), blockHash.BytesToArray());
-        Assert.That(db[expectedKey], Is.EqualTo(encoded));
-        Assert.That(db[blockHash.Bytes], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(db[expectedKey], Is.EqualTo(encoded));
+            Assert.That(db[blockHash.Bytes], Is.Null);
+        }
     }
 
     [Test]
@@ -129,8 +171,11 @@ public class BlockAccessListStoreTests
         Block block = BlockWithBal(5, bal);
         store.InsertFromBlockDeferred(block);
 
-        Assert.That(block.EncodedBlockAccessList, Is.Null, "live BAL freed synchronously");
-        Assert.That(store.Exists(block.Number, block.Hash!), Is.True, "served from the overlay before flush");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.EncodedBlockAccessList, Is.Null, "live BAL freed synchronously");
+            Assert.That(store.Exists(block.Number, block.Hash!), Is.True, "served from the overlay before flush");
+        }
         using (MemoryManager<byte>? pending = store.GetRlp(block.Number, block.Hash!))
         {
             Assert.That(pending!.Memory, Is.SequenceEqualTo(bal));
@@ -141,6 +186,75 @@ public class BlockAccessListStoreTests
         writer.Pump();
 
         Assert.That(ReadDurable(db, block), Is.EqualTo(bal));
+    }
+
+    [Test]
+    public async Task Decoded_bal_is_not_written_again_when_the_store_holds_it([Values] bool deferred)
+    {
+        using TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = CreateStoreContainer(db, writer);
+        IBlockAccessListStore store = container.Resolve<IBlockAccessListStore>();
+        byte[] stored = [0xc1, 0x80];
+        Block block = Build.A.Block.WithNumber(5).WithBlockAccessList(new ReadOnlyBlockAccessList()).TestObject;
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+        store.Insert(block.Number, block.Hash!, stored);
+        Assert.That(db[key], Is.EqualTo(stored), "The existing encoding must be durable before insertion.");
+
+        if (deferred)
+        {
+            store.InsertFromBlockDeferred(block);
+        }
+        else
+        {
+            store.InsertFromBlock(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.QueuedCount, Is.Zero);
+            Assert.That(db[key], Is.EqualTo(stored));
+        }
+    }
+
+    [Test]
+    public async Task Decoded_bal_is_written_when_the_store_does_not_hold_it([Values] bool deferred)
+    {
+        using TestMemDb db = new();
+        await using DeferredBlockDataWriter writer = DeferredWriteTestHelpers.ManualWriter();
+        using IContainer container = CreateStoreContainer(db, writer);
+        IBlockAccessListStore store = container.Resolve<IBlockAccessListStore>();
+        ReadOnlyBlockAccessList bal = new();
+        Block block = Build.A.Block.WithNumber(5).WithBlockAccessList(bal).TestObject;
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+        byte[] encoded = BlockAccessListDecoder.EncodeToBytes(bal);
+        Assert.That(store.Exists(block.Number, block.Hash!), Is.False, "The block must have no stored or pending BAL before insertion.");
+
+        if (deferred)
+        {
+            store.InsertFromBlockDeferred(block);
+        }
+        else
+        {
+            store.InsertFromBlock(block);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(writer.QueuedCount, Is.EqualTo(deferred ? 1 : 0));
+            Assert.That(db[key], Is.EqualTo(deferred ? null : encoded),
+                "The durable database must match the insertion mode before flush.");
+        }
+
+        using (MemoryManager<byte>? pending = store.GetRlp(block.Number, block.Hash!))
+        {
+            Assert.That(pending, Is.Not.Null, "The inserted BAL must be readable before flush.");
+            Assert.That(pending!.Memory, Is.SequenceEqualTo(encoded));
+        }
+
+        writer.Pump();
+
+        Assert.That(db[key], Is.EqualTo(encoded));
     }
 
     [Test]
@@ -183,9 +297,12 @@ public class BlockAccessListStoreTests
 
         barrier.FlushDeferred();
 
-        Assert.That(ReadDurable(db, a), Is.EqualTo(balA));
-        Assert.That(ReadDurable(db, b), Is.EqualTo(balB));
-        Assert.That(db.FlushCount, Is.GreaterThan(0), "BAL WAL was fsynced before state persist");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadDurable(db, a), Is.EqualTo(balA));
+            Assert.That(ReadDurable(db, b), Is.EqualTo(balB));
+            Assert.That(db.FlushCount, Is.GreaterThan(0), "BAL WAL was fsynced before state persist");
+        }
     }
 
     [Test]
@@ -255,6 +372,15 @@ public class BlockAccessListStoreTests
             await deletion.WaitAsync(TimeSpan.FromSeconds(10));
             if (insertion is not null) await insertion.WaitAsync(TimeSpan.FromSeconds(10));
         }
+    }
+
+    private static IContainer CreateStoreContainer(TestMemDb db, DeferredBlockDataWriter writer)
+    {
+        ContainerBuilder builder = new();
+        builder.RegisterModule(new TestNethermindModule());
+        builder.RegisterInstance(db).Keyed<IDb>(DbNames.BlockAccessLists).ExternallyOwned();
+        builder.RegisterInstance(writer).As<IDeferredBlockDataWriter>().ExternallyOwned();
+        return builder.Build();
     }
 
     private sealed class RangeTrackingDb : TestMemDb, IRangeRemovableKeyValueStore

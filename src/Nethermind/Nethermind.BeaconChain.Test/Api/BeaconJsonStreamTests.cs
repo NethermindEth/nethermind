@@ -24,13 +24,17 @@ public class BeaconJsonStreamTests
         }
 
         long written = stream.Writer.BytesCommitted + stream.Writer.BytesPending;
+        ReadResult read;
 
-        // Utf8JsonWriter hands the pipe every full segment it grows out of, so BytesPending alone
-        // stays around one segment; only a checkpoint that counts committed bytes ever flushes.
-        // A flush covers at least one threshold of bytes, so a checkpoint that flushed per element would exceed the upper bound.
-        Assert.That(output.Flushes, Is.InRange(written / ThresholdBytes - 1, written / ThresholdBytes), "one flush per threshold of written bytes");
-        Assert.That(pipe.Reader.TryRead(out ReadResult read), Is.True, "nothing reached the reader: the checkpoint never flushed");
-        Assert.That(read.Buffer.Length, Is.GreaterThanOrEqualTo(ThresholdBytes));
+        using (Assert.EnterMultipleScope())
+        {
+            // Utf8JsonWriter hands the pipe every full segment it grows out of, so BytesPending alone
+            // stays around one segment; only a checkpoint that counts committed bytes ever flushes.
+            // A flush covers at least one threshold of bytes, so a checkpoint that flushed per element would exceed the upper bound.
+            Assert.That(output.Flushes, Is.InRange(written / ThresholdBytes - 1, written / ThresholdBytes), "one flush per threshold of written bytes");
+            Assert.That(pipe.Reader.TryRead(out read), Is.True, "nothing reached the reader: the checkpoint never flushed");
+            Assert.That(read.Buffer.Length, Is.GreaterThanOrEqualTo(ThresholdBytes));
+        }
         pipe.Reader.AdvanceTo(read.Buffer.End);
     }
 

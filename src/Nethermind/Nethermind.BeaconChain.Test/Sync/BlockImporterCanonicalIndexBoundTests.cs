@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Test.Storage;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,16 +29,18 @@ public class BlockImporterCanonicalIndexBoundTests
     [Test]
     public void A_stale_entry_far_above_the_new_head_but_within_the_clock_is_cleared()
     {
-        const ulong staleSlot = 3 * Presets.SlotsPerHistoricalRoot;
+        const ulong staleSlot = 1_000_000;
         UnsignedChain probe = UnsignedChain.Create();
         CanonicalReorgFixture fixture = CanonicalReorgFixture.Create(new ManualTimestamper(TickFinalityFixture.SlotStart(probe.Spec, staleSlot + 10)));
         UnsignedChain.ChainBlock[] chainA = fixture.ImportLongerChainA();
         fixture.Store.ApplyCanonicalIndexChanges([(staleSlot, chainA[0].Root)], staleSlot);
         CanonicalReorgFixture restarted = fixture.Restart();
 
+        long reads = restarted.BlockIndex.ReadsCount;
         restarted.ComputeHead();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(restarted.BlockIndex.ReadsCount - reads, Is.LessThan(100), "sparse tail reconciliation reads populated slots only");
         Assert.That(restarted.Store.TryGetCanonicalRoot(staleSlot, out _), Is.False, "the entry above the new head is still marked canonical");
         Assert.That(restarted.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { restarted.Chain.AnchorRoot, null, null, null }));
     }

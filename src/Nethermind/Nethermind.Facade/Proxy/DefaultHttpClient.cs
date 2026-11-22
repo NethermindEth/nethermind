@@ -12,6 +12,11 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Proxy
 {
+    /// <summary>
+    /// Sends JSON requests, and sends a request again when it fails before a response arrives.
+    /// </summary>
+    /// <param name="retries">The most sends of one request, the first included; below 1 sends once.</param>
+    /// <param name="retryDelayMilliseconds">The wait before sending again; below 0 does not wait.</param>
     public class DefaultHttpClient(
         HttpClient client,
         IJsonSerializer jsonSerializer,
@@ -22,8 +27,8 @@ namespace Nethermind.Facade.Proxy
         private readonly HttpClient _client = client ?? throw new ArgumentNullException(nameof(client));
         private readonly IJsonSerializer _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
         private readonly ILogger _logger = logManager?.GetClassLogger<DefaultHttpClient>() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly int _retries = retries;
-        private readonly int _retryDelayMilliseconds = retryDelayMilliseconds;
+        private readonly int _attempts = Math.Max(1, retries);
+        private readonly int _retryDelayMilliseconds = Math.Max(0, retryDelayMilliseconds);
 
         public Task<T?> GetAsync<T>(string endpoint, CancellationToken cancellationToken = default)
             => ExecuteAsync<T>(Method.Get, endpoint, cancellationToken: cancellationToken);
@@ -35,19 +40,18 @@ namespace Nethermind.Facade.Proxy
         {
             string requestId = Guid.NewGuid().ToString("N");
             string methodType = method.ToString();
-            int currentRetry = 0;
-            do
+            string? content;
+            for (int attempt = 1; ; attempt++)
             {
                 try
                 {
-                    if (currentRetry > 0)
+                    if (attempt > 1)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Retrying ({currentRetry}/{_retries}) sending HTTP {methodType} request to: {endpoint} [id: {requestId}].");
+                        if (_logger.IsTrace) _logger.Trace($"Retrying ({attempt}/{_attempts}) sending HTTP {methodType} request to: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}].");
                     }
 
-                    currentRetry++;
-
-                    return await ProcessRequestAsync<T>(method, endpoint, requestId, payload, cancellationToken);
+                    content = await ProcessRequestAsync(method, endpoint, requestId, payload, cancellationToken);
+                    break;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
@@ -56,25 +60,52 @@ namespace Nethermind.Facade.Proxy
                 }
                 catch (Exception ex)
                 {
-                    if (_logger.IsError) _logger.Error(ex.Message, ex);
-                    if (currentRetry == _retries)
+                    LogFailure(methodType, endpoint, ex);
+                    if (attempt >= _attempts)
                     {
-                        break;
+                        return default;
                     }
 
-                    if (_logger.IsTrace) _logger.Trace($"HTTP {methodType} request to: {endpoint} [id: {requestId}] will be sent again in: {_retryDelayMilliseconds} ms.");
+                    if (_logger.IsTrace) _logger.Trace($"HTTP {methodType} request to: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}] will be sent again in: {_retryDelayMilliseconds} ms.");
                     await Task.Delay(_retryDelayMilliseconds, cancellationToken);
                 }
-            } while (currentRetry <= _retries);
+            }
 
-            return default;
+            if (content is null)
+            {
+                return default;
+            }
+
+            // A body that does not parse is no reason to send again: the same body would come back, and the request, a
+            // submitted block for example, may already have taken effect.
+            try
+            {
+                return _jsonSerializer.Deserialize<T>(content);
+            }
+            catch (Exception ex)
+            {
+                LogFailure(methodType, endpoint, ex);
+                return default;
+            }
         }
 
-        private async Task<T?> ProcessRequestAsync<T>(Method method, string endpoint, string requestId, object? payload = null, CancellationToken cancellationToken = default)
+        private void LogFailure(string methodType, string endpoint, Exception ex)
+        {
+            if (_logger.IsError)
+            {
+                if (SensitiveLogMasking.Enabled)
+                    _logger.Error($"HTTP {methodType} request to {SensitiveLogMasking.SafeUrl(endpoint)} failed: {ex.GetType().Name}");
+                else
+                    _logger.Error(ex.Message, ex);
+            }
+        }
+
+        /// <returns>The body of a successful response, or <see langword="null"/> for any other status.</returns>
+        private async Task<string?> ProcessRequestAsync(Method method, string endpoint, string requestId, object? payload = null, CancellationToken cancellationToken = default)
         {
             string methodType = method.ToString();
             string json = payload is null ? "{}" : _jsonSerializer.Serialize(payload);
-            if (_logger.IsTrace) _logger.Trace($"Sending HTTP {methodType} request to: {endpoint} [id: {requestId}]{(method == Method.Get ? "." : $": {json}")}");
+            if (_logger.IsTrace) _logger.Trace($"Sending HTTP {methodType} request to: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}]{(method == Method.Get ? "." : $": {json}")}");
             long startTime = Stopwatch.GetTimestamp();
             HttpResponseMessage? response = null;
             try
@@ -91,15 +122,13 @@ namespace Nethermind.Facade.Proxy
                         if (_logger.IsError) _logger.Error($"Unsupported HTTP method: {methodType}.");
                         return default;
                 }
-                if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {endpoint} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
+                if (_logger.IsTrace) _logger.Trace($"Received HTTP {methodType} response from: {SensitiveLogMasking.SafeUrl(endpoint)} [id: {requestId}, elapsed: {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0} ms]: {response}");
                 if (!response.IsSuccessStatusCode)
                 {
-                    return default;
+                    return null;
                 }
 
-                string content = await response.Content.ReadAsStringAsync(cancellationToken);
-
-                return _jsonSerializer.Deserialize<T>(content);
+                return await response.Content.ReadAsStringAsync(cancellationToken);
             }
             finally
             {

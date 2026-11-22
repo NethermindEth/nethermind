@@ -32,7 +32,9 @@ public class BeaconChainPluginTests
         Assert.That(container.Resolve<BeaconChainService>(), Is.Not.Null);
         Assert.That(container.Resolve<IColumnsDb<BeaconChainDbColumns>>(), Is.Not.Null);
         Assert.That(container.Resolve<BeaconSyncOrchestrator>(), Is.Not.Null);
-        Assert.That(container.Resolve<BeaconChainSpec>(), Is.SameAs(BeaconChainSpec.Mainnet));
+        BeaconChainSpec spec = container.Resolve<BeaconChainSpec>();
+        Assert.That(spec.GenesisValidatorsRoot, Is.EqualTo(BeaconChainSpec.Mainnet.GenesisValidatorsRoot));
+        Assert.That(spec.Forks.Select(static fork => fork.Epoch), Is.EqualTo(BeaconChainSpec.Mainnet.Forks.Select(static fork => fork.Epoch)));
         Assert.That(new BeaconChainPlugin(new BeaconChainConfig()).Enabled, Is.False);
         Assert.That(new BeaconChainPlugin(new BeaconChainConfig { Enabled = true }).Enabled, Is.True);
     }

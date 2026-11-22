@@ -39,6 +39,7 @@ namespace Nethermind.BeaconChain.ForkChoice;
 /// </remarks>
 public sealed class ForkChoiceRunner
 {
+    internal Action<Hash256, ulong>? PayloadInvalidated { get; set; }
     /// <summary>Percent of the justified balance below which a head is "weak" enough to be overpowered by a proposer re-org; the spec's <c>REORG_HEAD_WEIGHT_THRESHOLD</c>.</summary>
     public const ulong ReorgHeadWeightThresholdPercent = 20;
 
@@ -62,6 +63,8 @@ public sealed class ForkChoiceRunner
     private readonly List<QueuedAttestation> _queuedAttestations = [];
     private readonly Dictionary<CheckpointRef, ForkedBeaconState> _checkpointStates = [];
     private readonly Dictionary<CheckpointRef, JustifiedBalances> _justifiedBalances = [];
+    private readonly Dictionary<Hash256, Hash256?> _finalizedAncestors = [];
+    private CheckpointRef? _ancestryCheckpoint;
 
     private readonly List<(ShufflingKey Key, ForkedBeaconState State)> _voteStates = [];
 
@@ -101,9 +104,13 @@ public sealed class ForkChoiceRunner
 
     /// <summary>specs/bellatrix/optimistic-sync.md: a Gloas payload reported VALID cannot become INVALID.</summary>
     private readonly HashSet<Hash256> _validPayloads = [];
+    private readonly HashSet<Hash256> _validPayloadHashes = [];
+    /// <summary>VALID Gloas roots whose parent payload hashes, and those of their valid ancestors, are indexed.</summary>
+    private readonly HashSet<Hash256> _indexedValidPayloadParents = [];
 
     /// <summary>The slot and proposer of each registered block, for <c>is_proposer_equivocation</c>; pruned by slot, and <see cref="_blockTimeliness"/> keeps the roots it holds, so <c>should_apply_proposer_boost</c> sees both for the same blocks.</summary>
     private readonly Dictionary<Hash256, BlockProposer> _blockProposers = [];
+    private readonly Dictionary<BlockProposer, (int Total, int PtcTimely)> _proposalCounts = [];
 
     /// <summary>Committee shufflings only; safe to share across forks (keyed by decision root). The balance memo is never used through this instance.</summary>
     private readonly EpochCache _committees = new();
@@ -204,7 +211,10 @@ public sealed class ForkChoiceRunner
         IGloasBlockStateProvider gloasStateProvider,
         ILogManager? logManager = null)
         : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock), logManager)
-        => _parentBlockHashes[_bootstrapCheckpoint.Root] = anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
+    {
+        _parentBlockHashes[_bootstrapCheckpoint.Root] = anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
+        IndexValidPayloadAncestors(_bootstrapCheckpoint.Root);
+    }
 
     private ForkChoiceRunner(
         BeaconChainSpec spec,
@@ -241,13 +251,13 @@ public sealed class ForkChoiceRunner
             (head, epoch) => GetBlockSlot(head) / spec.SlotsPerEpoch >= epoch
                 ? GetBlockState(head) : ComputeCheckpointState(new CheckpointRef(epoch, head)));
 
-        _blockProposers[anchor.Root] = new BlockProposer(anchor.BlockSlot, anchor.ProposerIndex);
         if (anchor.IsGloas)
         {
             // specs/gloas/fork-choice.md get_forkchoice_store: block_timeliness={anchor_root: [True, True]}, and [None] * PTC_SIZE votes (#5545).
-            _blockTimeliness[anchor.Root] = new BlockTimeliness(Attestation: true, Ptc: true);
             _ptcVotes[anchor.Root] = new PtcVotes();
         }
+        RecordProposer(anchor.Root, new BlockProposer(anchor.BlockSlot, anchor.ProposerIndex),
+            anchor.IsGloas ? new BlockTimeliness(Attestation: true, Ptc: true) : null);
     }
 
     /// <summary>The fork-independent parts of an anchor that <c>get_forkchoice_store</c> reads.</summary>
@@ -360,13 +370,13 @@ public sealed class ForkChoiceRunner
     public IEnumerable<ProtoNode> EnumerateAncestors(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
     /// <summary>The execution status of <paramref name="blockRoot"/>'s payload, or <c>null</c> when the block is unknown.</summary>
     internal ExecutionStatus? GetBlockExecutionStatus(Hash256 blockRoot) => _protoArray.GetBlockExecutionStatus(blockRoot);
+    internal int PruneThreshold { set => _protoArray.PruneThreshold = value; }
 
     /// <summary>An immutable copy of the store for readers off the import thread; see <see cref="ForkChoiceSnapshot"/>.</summary>
     /// <remarks>O(nodes): the tree is pruned at finalization, so this stays a few hundred entries and is taken on every head computation.</remarks>
     public ForkChoiceSnapshot Snapshot()
     {
         IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
-        HashSet<Hash256> validPayloadHashes = CollectValidGloasPayloadHashes(nodes);
         ForkChoiceSnapshotNode[] copy = new ForkChoiceSnapshotNode[nodes.Count];
         for (int i = 0; i < copy.Length; i++)
         {
@@ -380,31 +390,33 @@ public sealed class ForkChoiceRunner
                 node.Weight,
                 node.ExecutionStatus,
                 node.ExecutionBlockHash,
-                node.IsGloas ? validPayloadHashes.Contains(node.ExecutionBlockHash!) : node.ExecutionStatus == ExecutionStatus.Valid);
+                node.IsGloas ? _validPayloadHashes.Contains(node.ExecutionBlockHash!) : node.ExecutionStatus == ExecutionStatus.Valid);
         }
 
         return new ForkChoiceSnapshot(_store.JustifiedCheckpoint, _store.FinalizedCheckpoint, _store.ProposerBoostRoot, copy);
     }
 
-    /// <summary>The bid <c>block_hash</c> of every Gloas payload known VALID: reported VALID itself, or one a VALID block builds on.</summary>
+    /// <summary>Rebuilds the hashes of Gloas payloads known VALID from the retained blocks and their own payload verdicts.</summary>
     /// <remarks>
     /// specs/bellatrix/optimistic-sync.md: the ancestors of a VALID payload are VALID, and so are their blocks, so the payload each VALID
     /// block builds on covers every execution ancestor. A VALID Gloas block never vouches for its own payload, which a child may have built EMPTY over.
     /// </remarks>
-    private HashSet<Hash256> CollectValidGloasPayloadHashes(IReadOnlyList<ProtoNode> nodes)
+    private void RebuildValidGloasPayloadHashes()
     {
-        HashSet<Hash256> valid = [];
-        foreach (ProtoNode node in nodes)
+        _validPayloadHashes.Clear();
+        _indexedValidPayloadParents.Clear();
+        foreach (ProtoNode node in _protoArray.Nodes)
         {
             if (!node.IsGloas)
                 continue;
             if (_validPayloads.Contains(node.Root))
-                valid.Add(node.ExecutionBlockHash!);
+                _validPayloadHashes.Add(node.ExecutionBlockHash!);
             if (node.ExecutionStatus == ExecutionStatus.Valid && _parentBlockHashes.TryGetValue(node.Root, out Hash256? builtOn))
-                valid.Add(builtOn);
+            {
+                _validPayloadHashes.Add(builtOn);
+                _indexedValidPayloadParents.Add(node.Root);
+            }
         }
-
-        return valid;
     }
 
     /// <summary>
@@ -417,15 +429,16 @@ public sealed class ForkChoiceRunner
     {
         CheckpointRef finalized = _store.FinalizedCheckpoint;
         _protoArray.MaybePrune(finalized.Root);
+        _finalizedAncestors.Clear();
         PruneCheckpointCache(_checkpointStates, finalized.Epoch);
         PruneCheckpointCache(_justifiedBalances, finalized.Epoch);
         PruneProposersAtOrBelowFinalizedSlot(BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch));
-        PruneUnknownRoots(_blockTimeliness, _blockProposers.ContainsKey);
         PruneUnknownRoots(_parentBlockHashes);
         PruneUnknownRoots(_ptcVotes);
         _payloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
         _invalidPayloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
         _validPayloads.RemoveWhere(root => !_protoArray.ContainsBlock(root));
+        RebuildValidGloasPayloadHashes();
     }
 
     /// <summary>
@@ -443,16 +456,35 @@ public sealed class ForkChoiceRunner
 
         if (stale is not null)
         {
-            foreach (Hash256 root in stale) _blockProposers.Remove(root);
+            foreach (Hash256 root in stale) RemoveProposer(root, _blockProposers[root]);
         }
     }
 
-    private void PruneUnknownRoots<TValue>(Dictionary<Hash256, TValue> byRoot, Func<Hash256, bool>? isRetained = null)
+    private void RecordProposer(Hash256 root, BlockProposer proposer, BlockTimeliness? timeliness)
+    {
+        if (_blockProposers.TryGetValue(root, out BlockProposer previous))
+            RemoveProposer(root, previous);
+        _blockProposers[root] = proposer;
+        if (timeliness is BlockTimeliness value) _blockTimeliness[root] = value;
+        (int total, int timely) = _proposalCounts.GetValueOrDefault(proposer);
+        _proposalCounts[proposer] = (total + 1, timely + (timeliness?.Ptc == true ? 1 : 0));
+    }
+
+    private void RemoveProposer(Hash256 root, BlockProposer proposer)
+    {
+        (int total, int timely) = _proposalCounts[proposer];
+        if (_blockTimeliness.Remove(root, out BlockTimeliness timeliness) && timeliness.Ptc) timely--;
+        _blockProposers.Remove(root);
+        if (total == 1) _proposalCounts.Remove(proposer);
+        else _proposalCounts[proposer] = (total - 1, timely);
+    }
+
+    private void PruneUnknownRoots<TValue>(Dictionary<Hash256, TValue> byRoot)
     {
         List<Hash256>? stale = null;
         foreach (Hash256 root in byRoot.Keys)
         {
-            if (!_protoArray.ContainsBlock(root) && isRetained?.Invoke(root) != true) (stale ??= []).Add(root);
+            if (!_protoArray.ContainsBlock(root)) (stale ??= []).Add(root);
         }
 
         if (stale is not null)
@@ -566,7 +598,7 @@ public sealed class ForkChoiceRunner
 
         if (!availability.IsDataAvailable(block, blockRoot, _spec))
             throw new ForkChoiceException($"Block {blockRoot} at slot {block.Slot} does not have all its blob data available");
-        ExtendPubkeys(postState.Validators!);
+        ExtendPubkeys(postState.ValidatorBuffer!.Items);
 
         RegisterBlock(
             block.Slot,
@@ -634,7 +666,7 @@ public sealed class ForkChoiceRunner
                 blockPtcVotes.Add(write);
         }
 
-        ExtendPubkeys(postState.Validators!);
+        ExtendPubkeys(postState.ValidatorBuffer!.Items);
 
         ExecutionPayloadBid bid = block.Body!.SignedExecutionPayloadBid!.Message!;
         RegisterBlock(
@@ -870,10 +902,9 @@ public sealed class ForkChoiceRunner
             _store.FinalizedCheckpoint);
 
         // Recorded only once ProcessBlock returns: a block it refuses must neither hold the slot's boost nor count as its proposal.
-        _blockTimeliness[blockRoot] = timeliness;
+        RecordProposer(blockRoot, new BlockProposer(slot, proposerIndex), timeliness);
         if (isBoosted)
             _store.ProposerBoostRoot = blockRoot;
-        _blockProposers[blockRoot] = new BlockProposer(slot, proposerIndex);
         _lastHeadRoot = null;
     }
 
@@ -1147,7 +1178,7 @@ public sealed class ForkChoiceRunner
             throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} is not a member of committee {committeeIndex} at slot {slot}") { RejectGossip = true };
         RequireCachedKeys(state, [proof.AggregatorIndex]);
         RequireCachedKeys(state, vote.AttestingIndices);
-        if (!SignatureSets.TryGetValidatorKey(_pubkeys, proof.AggregatorIndex, out G1Affine key))
+        if (!SignatureSets.TryGetValidatorKey(_pubkeys, ValidatorsOf(state), proof.AggregatorIndex, out G1Affine key))
             // ethereum/consensus-specs electra/p2p-interface.md: "[REJECT] The selection proof signature is valid".
             throw new ForkChoiceException($"Aggregator {proof.AggregatorIndex} has no valid public key") { RejectGossip = true };
 
@@ -1180,8 +1211,8 @@ public sealed class ForkChoiceRunner
     {
         int count = state switch
         {
-            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!.Length,
-            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!.Length,
+            ForkedBeaconState.OfFulu fulu => fulu.State.ReadOnlyValidators.Length,
+            ForkedBeaconState.OfGloas gloas => gloas.State.ReadOnlyValidators.Length,
             _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
         };
         foreach (ulong index in indices)
@@ -1221,15 +1252,7 @@ public sealed class ForkChoiceRunner
     private bool IsGloasPayloadValid(Hash256 root)
     {
         if (_validPayloads.Contains(root)) return true;
-        Hash256? hash = _protoArray.GetExecutionBlockHash(root);
-        if (hash is null) return false;
-        foreach (ProtoNode node in _protoArray.Nodes)
-        {
-            if (node.IsGloas && ((_validPayloads.Contains(node.Root) && node.ExecutionBlockHash == hash)
-                || (node.ExecutionStatus == ExecutionStatus.Valid && _parentBlockHashes.GetValueOrDefault(node.Root) == hash)))
-                return true;
-        }
-        return false;
+        return _protoArray.GetExecutionBlockHash(root) is { } hash && _validPayloadHashes.Contains(hash);
     }
 
     /// <summary>
@@ -1505,24 +1528,19 @@ public sealed class ForkChoiceRunner
             return false;
 
         ulong slot = _protoArray.GetBlockSlot(boostRoot) ?? throw new ForkChoiceException($"Proposer boost root {boostRoot} is unknown to fork choice");
-        Hash256 parentRoot = _protoArray.GetParentRoot(boostRoot) ?? throw new ForkChoiceException($"Parent of the proposer boost root {boostRoot} is unknown to fork choice");
+        if (_protoArray.GetParentRoot(boostRoot) is not { } parentRoot)
+            return true;
         ulong parentSlot = _protoArray.GetBlockSlot(parentRoot)!.Value;
         if (parentSlot + 1 < slot)
             return true;
         if (!IsHeadWeak(parentRoot, parentSlot, balances))
             return true;
 
-        ulong parentProposer = _blockProposers.TryGetValue(parentRoot, out BlockProposer parent)
-            ? parent.ProposerIndex
-            : throw new ForkChoiceException($"Parent {parentRoot} of the proposer boost root has no recorded proposer");
-        foreach ((Hash256 root, BlockProposer proposer) in _blockProposers)
-        {
-            bool ptcTimely = _blockTimeliness.TryGetValue(root, out BlockTimeliness timeliness) && timeliness.Ptc;
-            if (ptcTimely && proposer.ProposerIndex == parentProposer && proposer.Slot + 1 == slot && root != parentRoot)
-                return false;
-        }
-
-        return true;
+        if (!_blockProposers.TryGetValue(parentRoot, out BlockProposer parent))
+            throw new ForkChoiceException($"Parent {parentRoot} of the proposer boost root has no recorded proposer");
+        BlockProposer previousSlotProposal = new(slot - 1, parent.ProposerIndex);
+        int ownTimely = parent == previousSlotProposal && _blockTimeliness.TryGetValue(parentRoot, out BlockTimeliness timeliness) && timeliness.Ptc ? 1 : 0;
+        return _proposalCounts.GetValueOrDefault(previousSlotProposal).PtcTimely == ownTimely;
     }
 
     /// <summary>Adjusts proto-array weights for Gloas get_weight: remove boost along its PENDING/ancestor payload path when should_apply_proposer_boost is false, and zero previous-slot EMPTY/FULL weights.</summary>
@@ -1577,7 +1595,31 @@ public sealed class ForkChoiceRunner
     }
 
     /// <summary>Marks the payload of <paramref name="blockRoot"/> (and hence of all its ancestors) execution-valid.</summary>
-    public void OnValidExecutionPayload(Hash256 blockRoot) => _protoArray.ProcessExecutionPayloadValidation(blockRoot);
+    public void OnValidExecutionPayload(Hash256 blockRoot)
+    {
+        try
+        {
+            _protoArray.ProcessExecutionPayloadValidation(blockRoot);
+        }
+        finally
+        {
+            // Propagation can promote a prefix before refusing an invalid ancestor; index the resulting statuses too.
+            IndexValidPayloadAncestors(blockRoot);
+        }
+    }
+
+    private void IndexValidPayloadAncestors(Hash256 root)
+    {
+        foreach (ProtoNode node in _protoArray.EnumerateAncestorNodes(root))
+        {
+            if (!node.IsGloas || node.ExecutionStatus != ExecutionStatus.Valid
+                || !_parentBlockHashes.TryGetValue(node.Root, out Hash256? builtOn)
+                || !_indexedValidPayloadParents.Add(node.Root))
+                break;
+
+            _validPayloadHashes.Add(builtOn);
+        }
+    }
 
     /// <summary>
     /// Applies an engine INVALID verdict on the payload <paramref name="payloadHash"/> of the chain ending at <paramref name="chainRoot"/>:
@@ -1646,6 +1688,7 @@ public sealed class ForkChoiceRunner
                 continue;
             _payloads.Remove(node.Root);
             _invalidPayloads.Add(node.Root);
+            PayloadInvalidated?.Invoke(node.Root, node.Slot);
         }
     }
 
@@ -1671,11 +1714,12 @@ public sealed class ForkChoiceRunner
 
             if (carriesPayload && _invalidPayloads.Contains(node.Root))
                 throw new ProtoArrayException($"Invalid execution payload {node.ExecutionBlockHash} became valid");
-            _protoArray.ProcessExecutionPayloadValidation(node.Root);
+            OnValidExecutionPayload(node.Root);
             if (carriesPayload)
             {
                 if (!node.IsGloas) return null;
                 _validPayloads.Add(node.Root);
+                _validPayloadHashes.Add(node.ExecutionBlockHash!);
                 return node.Root;
             }
         }
@@ -1715,6 +1759,7 @@ public sealed class ForkChoiceRunner
             node.ExecutionStatus = ExecutionStatus.Invalid;
             node.BestChild = null;
             node.BestDescendant = null;
+            if (node.IsGloas) PayloadInvalidated?.Invoke(node.Root, node.Slot);
         }
     }
 
@@ -1823,14 +1868,7 @@ public sealed class ForkChoiceRunner
         if (!_blockProposers.TryGetValue(root, out BlockProposer proposer))
             return false;
 
-        int matching = 0;
-        foreach (BlockProposer other in _blockProposers.Values)
-        {
-            if (other == proposer && ++matching > 1)
-                return true;
-        }
-
-        return false;
+        return _proposalCounts[proposer].Total > 1;
     }
 
     /// <summary>
@@ -1845,7 +1883,52 @@ public sealed class ForkChoiceRunner
         parentSlot + 1 == headSlot && headSlot + 1 == proposalSlot;
 
     private Hash256 GetCheckpointBlock(Hash256 root, ulong epoch) =>
-        _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch)) ?? ResolveMissingCheckpointBlock(root, epoch);
+        (epoch == _store.FinalizedCheckpoint.Epoch ? GetFinalizedCheckpointBlock(root)
+            : _protoArray.GetAncestor(root, BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch))) ?? ResolveMissingCheckpointBlock(root, epoch);
+
+    /// <summary>The block's ancestor at the finalized checkpoint, including the trusted startup anchor.</summary>
+    /// <remarks>Paths are cached until finality or pruning changes. Extending a checked path takes constant time; a cold path takes time linear in its uncached ancestors.</remarks>
+    internal Hash256? GetFinalizedCheckpointBlock(Hash256 root)
+    {
+        CheckpointRef finalized = _store.FinalizedCheckpoint;
+        if (_ancestryCheckpoint != finalized)
+        {
+            _finalizedAncestors.Clear();
+            _ancestryCheckpoint = finalized;
+        }
+
+        if (!_protoArray.ContainsBlock(root)) return null;
+
+        ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
+        Hash256 current = root;
+        Hash256? ancestor;
+        while (!_finalizedAncestors.TryGetValue(current, out ancestor))
+        {
+            if (_protoArray.GetBlockSlot(current) <= finalizedSlot)
+            {
+                ancestor = current;
+                break;
+            }
+
+            if (_protoArray.GetParentRoot(current) is not { } parent)
+            {
+                // A mid-epoch startup anchor has no retained ancestor at its checkpoint's start slot.
+                ancestor = finalized == _bootstrapCheckpoint && current == finalized.Root ? current : null;
+                break;
+            }
+
+            current = parent;
+        }
+
+        Hash256 stop = current;
+        current = root;
+        while (_finalizedAncestors.TryAdd(current, ancestor) && current != stop)
+        {
+            current = _protoArray.GetParentRoot(current)!;
+        }
+
+        return ancestor;
+    }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private Hash256 ResolveMissingCheckpointBlock(Hash256 root, ulong epoch)
@@ -2225,8 +2308,8 @@ public sealed class ForkChoiceRunner
 
     private static Validator[] ValidatorsOf(ForkedBeaconState state) => state switch
     {
-        ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
-        ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+        ForkedBeaconState.OfFulu fulu => fulu.State.ValidatorBuffer!.Items,
+        ForkedBeaconState.OfGloas gloas => gloas.State.ValidatorBuffer!.Items,
         _ => throw new NotSupportedException($"Unhandled state {state.GetType().Name}"),
     };
 

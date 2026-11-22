@@ -37,8 +37,11 @@ public class ChannelTransportTests
         Exception? classified = (Exception?)name.Invoke(host, [cause, session, budget, null, TimeSpan.Zero]);
 
         Assert.That(classified, Is.InstanceOf<IOException>());
-        Assert.That(classified, sessionClosed ? Is.TypeOf<PeerSessionClosedException>() : Is.TypeOf<EndOfStreamException>());
-        Assert.That(PeerFailureClassifier.Classify(classified!), Is.EqualTo(sessionClosed ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(classified, sessionClosed ? Is.TypeOf<PeerSessionClosedException>() : Is.TypeOf<EndOfStreamException>());
+            Assert.That(PeerFailureClassifier.Classify(classified!), Is.EqualTo(sessionClosed ? PeerFailureReason.SessionClosed : PeerFailureReason.RequestFailed));
+        }
     }
 
     [Test]
@@ -141,8 +144,11 @@ public class ChannelTransportTests
         try
         {
             Assert.That(async () => await refused.WaitAsync(TimeSpan.FromSeconds(2), token), Throws.TypeOf<ChannelClosedException>());
-            Assert.That(session.Closed.IsCancellationRequested, Is.False);
-            Assert.That(request.IsCancellationRequested, Is.False, "protocol rejection must complete before the caller's deadline");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.Closed.IsCancellationRequested, Is.False);
+                Assert.That(request.IsCancellationRequested, Is.False, "protocol rejection must complete before the caller's deadline");
+            }
         }
         finally
         {
@@ -248,7 +254,8 @@ public class ChannelTransportTests
             else
             {
                 Assert.That(completion.Task.IsFaulted, Is.True, "negotiation rejection must fail the pending request before its caller times out");
-                Assert.That(completion.Task.Exception!.InnerException, Is.TypeOf<ChannelClosedException>());
+                Exception rejection = completion.Task.Exception!.InnerException!;
+                Assert.That(rejection, Is.TypeOf<ChannelClosedException>());
             }
             await context.DidNotReceiveWithAnyArgs().Upgrade(default!, default(IProtocol)!);
         }
@@ -318,7 +325,7 @@ public class ChannelTransportTests
         {
             await remote.ReadLineAsync().WaitAsync(token);
             await remote.ReadLineAsync().WaitAsync(token);
-            completion.SetCanceled();
+            completion.SetCanceled(CancellationToken.None);
             await remote.AbortAsync();
             await negotiation.WaitAsync(token);
 
@@ -378,8 +385,11 @@ public class ChannelTransportTests
     {
         Channel channel = new();
 
-        Assert.That(await channel.Reverse.WriteEofAsync(token), Is.EqualTo(IOResult.Ok));
-        Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended), "the request end reaches the peer");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await channel.Reverse.WriteEofAsync(token), Is.EqualTo(IOResult.Ok));
+            Assert.That((await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token)).Result, Is.EqualTo(IOResult.Ended), "the request end reaches the peer");
+        }
         Task<IOResult> response = channel.WriteAsync(new ReadOnlySequence<byte>([1, 2, 3]), token).AsTask();
         ReadResult received = await channel.Reverse.ReadAsync(3, ReadBlockingMode.WaitAll, token);
 

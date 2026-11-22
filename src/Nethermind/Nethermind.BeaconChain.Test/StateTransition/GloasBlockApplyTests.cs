@@ -6,6 +6,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
@@ -38,6 +39,27 @@ public class GloasBlockApplyTests
         Assert.That(apply, cacheHoldsAnotherBranch
             ? Throws.TypeOf<BeaconStateException>().With.Message.Contains("reused across branches")
             : Throws.Nothing);
+    }
+
+    [Test]
+    public void Aggregate_with_finalized_and_unfinalized_members_uses_its_own_registry([Values] bool siblingKeysCached)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        PubkeyCache canonical = InstallRealValidatorKeys(state);
+        Validator[] validators = state.Validators!;
+        int index = validators.Length - 1;
+        PubkeyCache pubkeys = new();
+        pubkeys.Build(validators[..index]);
+        Validator[] sibling = [.. validators[..index], CreateActiveValidator(new BlsPublicKey(new Bls.P1(ValidatorKey(index + 1)).Compress()))];
+        if (siblingKeysCached) pubkeys.Extend(sibling, index);
+
+        ulong[] indices = [0, (ulong)index];
+        long[] sum = new long[Bls.P1.Sz];
+        long[] expected = new long[Bls.P1.Sz];
+        canonical.SumPublicKeys(indices, expected);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(SignatureSets.TrySumAttestingKeys(pubkeys, validators, indices, sum), Is.True);
+        Assert.That(new Bls.P1(sum).Compress(), Is.EqualTo(new Bls.P1(expected).Compress()));
     }
 
     [TestCase(-1, false, null, TestName = "last_validator_with_a_cached_key_verifies")]

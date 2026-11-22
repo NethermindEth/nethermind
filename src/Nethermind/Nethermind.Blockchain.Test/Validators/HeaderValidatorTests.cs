@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
@@ -15,6 +16,7 @@ using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -122,6 +124,28 @@ public class HeaderValidatorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ValidateHash_reports_calculated_hash([Values(true, false, null)] bool? hashMatches)
+    {
+        BlockHeader header = _block.Header;
+        Hash256 calculatedHash = header.CalculateHash();
+        header.Hash = hashMatches switch
+        {
+            true => calculatedHash,
+            false => TestItem.KeccakA,
+            null => null
+        };
+
+        bool result = HeaderValidator.ValidateHash(header, out Hash256 actualHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(hashMatches is true));
+            Assert.That(actualHash, Is.EqualTo(calculatedHash));
+            Assert.That(HeaderValidator.ValidateHash(header), Is.EqualTo(hashMatches is true));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void When_slot_number_not_greater_than_parent_is_still_valid()
     {
         // Arrange: Same setup as above
@@ -130,7 +154,7 @@ public class HeaderValidatorTests
             new OneLoggerLogManager(new(_testLogger)));
 
         ReadOnlyBlockAccessList emptyBal = new();
-        byte[] emptyEncodedBal = Rlp.Encode(emptyBal).Bytes;
+        byte[] emptyEncodedBal = Rlp.Encode(emptyBal);
         _parentBlock = Build.A.Block
             .WithNumber(5)
             .WithSlotNumber(10)
@@ -471,8 +495,11 @@ public class HeaderValidatorTests
         HeaderValidator sut = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
         _block.Header.Hash = Keccak.Zero;
 
-        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out _), Is.False);
-        Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.True, error);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out _), Is.False);
+            Assert.That(sut.Validate(_block.Header, _parentBlock.Header, false, out string? error, validateHash: false), Is.True, error);
+        }
     }
 
     [Test]
@@ -482,8 +509,36 @@ public class HeaderValidatorTests
 
         bool result = _validator.Validate(_block.Header, Build.A.BlockHeader.WithNonce(999).TestObject, false, out string? error);
 
-        Assert.That(result, Is.False);
-        Assert.That(error, Does.StartWith("Mismatched parent"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Does.StartWith("Mismatched parent"));
+        }
+    }
+
+    [Test]
+    public void Block_number_is_validated_before_the_seal()
+    {
+        ISealValidator sealValidator = Substitute.For<ISealValidator>();
+        sealValidator.ValidateParams(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<bool>()).Returns(true);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton(_blockTree)
+            .AddSingleton(sealValidator)
+            .AddSingleton(_specProvider)
+            .Build();
+        IHeaderValidator validator = container.Resolve<IHeaderValidator>();
+        _block.Header.Number = _parentBlock.Number + 2;
+        _block.Header.Hash = _block.CalculateHash();
+
+        bool result = validator.Validate(_block.Header, _parentBlock.Header, false, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidBlockNumber));
+            sealValidator.DidNotReceiveWithAnyArgs().ValidateParams(default!, default!, default);
+        }
     }
 
     [Test]
@@ -495,8 +550,11 @@ public class HeaderValidatorTests
 
         bool result = _validator.Validate(_block.Header, parentHeader, false, out string? error);
 
-        Assert.That(result, Is.False);
-        Assert.That(parentHeader.SlotNumber, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.False);
+            Assert.That(parentHeader.SlotNumber, Is.Null);
+        }
     }
 
     [Test]

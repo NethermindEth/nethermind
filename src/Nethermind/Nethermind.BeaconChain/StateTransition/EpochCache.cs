@@ -35,6 +35,15 @@ public sealed class EpochCache
     internal BeaconChainSpec ResolveSigningSpec(Hash256 genesisValidatorsRoot) =>
         SigningSpec ?? BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot);
 
+    internal ValidatorPubkeyIndex? RequestRegistry { private get; set; }
+
+    internal void EndImportedRequests()
+    {
+        RequestRegistry = null;
+        _requestValidators = null;
+        _requestIndices.Clear();
+    }
+
     private Validator[]? _requestValidators;
     private readonly Dictionary<BlsPublicKey, int> _requestIndices = [];
 
@@ -65,7 +74,13 @@ public sealed class EpochCache
 
     private void IndexWantedPubkeys(Validator[] validators)
     {
-        if (_requestIndices.Count > 0)
+        if (_requestIndices.Count > 0 && RequestRegistry is { } registry)
+        {
+            registry.Extend(validators);
+            foreach ((BlsPublicKey key, _) in _requestIndices)
+                _requestIndices[key] = registry.Find(validators, key);
+        }
+        else if (_requestIndices.Count > 0)
             for (int i = 0; i < validators.Length; i++)
                 if (_requestIndices.TryGetValue(validators[i].Pubkey, out int index) && index < 0)
                     _requestIndices[validators[i].Pubkey] = i;
@@ -82,8 +97,21 @@ public sealed class EpochCache
     }
 
     private (ulong Epoch, ulong Balance, Hash256 BoundaryRoot)? _totalActiveBalance;
-    private readonly CommitteeCacheLru _committees = new();
+    private readonly CommitteeCacheLru _committees;
     private (SyncCommittee Committee, int[] Indices)? _syncCommitteeIndices;
+
+    public EpochCache() : this(new CommitteeCacheLru()) { }
+
+    private EpochCache(CommitteeCacheLru committees) => _committees = committees;
+
+    // Speculative and committed states run on the same import worker. Shufflings can share an LRU keyed by decision root.
+    internal EpochCache ForSpeculativeImport() => new(_committees)
+    {
+        Hasher = Hasher,
+        SigningSpec = SigningSpec,
+        _totalActiveBalance = _totalActiveBalance,
+        _syncCommitteeIndices = _syncCommitteeIndices,
+    };
 
     /// <summary>Returns the validator index of each member of <paramref name="committee"/>, in committee order.</summary>
     /// <remarks>
@@ -117,7 +145,7 @@ public sealed class EpochCache
         }
 
         BlsPublicKey[] pubkeys = committee.Pubkeys!;
-        Dictionary<BlsPublicKey, int> wanted = new(pubkeys.Length);
+        Dictionary<BlsPublicKey, int> wanted = [with(pubkeys.Length)];
         foreach (BlsPublicKey pubkey in pubkeys)
         {
             wanted.TryAdd(pubkey, -1);
@@ -172,7 +200,7 @@ public sealed class EpochCache
         Hash256 boundaryRoot = GetEpochBoundaryRoot(state.Slot, s => state.GetBlockRootAtSlot(s));
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
-            ulong balance = GetTotalActiveBalance(state.Validators!, epoch);
+            ulong balance = GetTotalActiveBalance(state.ValidatorBuffer!.Items, epoch);
             _totalActiveBalance = cached = (epoch, balance, boundaryRoot);
         }
         else if (cached.BoundaryRoot != boundaryRoot)
@@ -194,7 +222,7 @@ public sealed class EpochCache
         Hash256 boundaryRoot = GetEpochBoundaryRoot(state.Slot, s => state.GetBlockRootAtSlot(s));
         if (_totalActiveBalance is not { } cached || cached.Epoch != epoch)
         {
-            ulong balance = GetTotalActiveBalance(state.Validators!, epoch);
+            ulong balance = GetTotalActiveBalance(state.ValidatorBuffer!.Items, epoch);
             _totalActiveBalance = cached = (epoch, balance, boundaryRoot);
         }
         else if (cached.BoundaryRoot != boundaryRoot)

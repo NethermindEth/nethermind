@@ -5,9 +5,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using NSubstitute;
 using NUnit.Framework;
@@ -67,8 +70,11 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         foreach (Thread t in threads) t.Start();
         foreach (Thread t in threads) t.Join();
 
-        Assert.That(factory.Created, Is.EqualTo(n), "each renter held concurrently forced a distinct env");
-        Assert.That(new HashSet<SimulateReadOnlyBlocksProcessingScope>(scopes), Has.Count.EqualTo(n), "every concurrent renter got an independent scope");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Created, Is.EqualTo(n), "each renter held concurrently forced a distinct env");
+            Assert.That(new HashSet<SimulateReadOnlyBlocksProcessingScope>(scopes), Has.Count.EqualTo(n), "every concurrent renter got an independent scope");
+        }
     }
 
     [Test]
@@ -119,8 +125,29 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
         pool.Begin(null).Dispose();
         pool.Begin(null).Dispose();
 
-        Assert.That(factory.Created, Is.EqualTo(1), "sequential rents reuse the idle env instead of growing");
-        Assert.That(factory.Envs[0].BeginCount, Is.EqualTo(2), "each rent re-begins the env, resetting its temp state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(factory.Created, Is.EqualTo(1), "sequential rents reuse the idle env instead of growing");
+            Assert.That(factory.Envs[0].BeginCount, Is.EqualTo(2), "each rent re-begins the env, resetting its temp state");
+        }
+    }
+
+    [Test]
+    public void Release_ClearsRequestStoresBlockHashesAndCalls()
+    {
+        FakeEnvFactory factory = new();
+        using SimulateReadOnlyBlocksProcessingEnvPool pool = new(factory.Create, maxConcurrent: 1);
+
+        SimulateReadOnlyBlocksProcessingEnvPool.PooledScope scope = pool.Begin(null);
+        scope.Scope.SimulateRequestState.Calls = [new TransactionWithSourceDetails()];
+        scope.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            factory.Envs[0].RequestStore.Received(1).ClearCache();
+            factory.Envs[0].BlockhashCache.Received(1).Clear();
+            Assert.That(factory.Envs[0].RequestState.Calls, Is.Empty);
+        }
     }
 
     private sealed class FakeEnvFactory(bool throwOnBegin = false)
@@ -156,15 +183,20 @@ public class SimulateReadOnlyBlocksProcessingEnvPoolTests
     {
         public bool IsDisposed { get; private set; }
         public int BeginCount { get; private set; }
+        public IClearableCache RequestStore { get; } = Substitute.For<IClearableCache>();
+        public IBlockhashCache BlockhashCache { get; } = Substitute.For<IBlockhashCache>();
+        public SimulateRequestState RequestState { get; } = new();
 
         public SimulateReadOnlyBlocksProcessingScope Begin(BlockHeader? baseBlock)
         {
             BeginCount++;
             if (throwOnBegin) throw new InvalidOperationException("simulated begin failure");
             return new SimulateReadOnlyBlocksProcessingScope(
-                null!, null!, null!, null!, null!, null!,
+                null!, null!, null!, null!, RequestState, null!,
                 Substitute.For<IReadOnlyDbProvider>(),
-                new NoopDisposable());
+                BlockhashCache,
+                new NoopDisposable(),
+                [RequestStore]);
         }
 
         public void Dispose() => IsDisposed = true;

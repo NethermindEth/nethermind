@@ -115,15 +115,17 @@ public sealed class ExecutionPayloadEnvelopeImporter(
             return ExecutionPayloadEnvelopeImportResult.UnknownBlock;
         }
 
-        if (!isDataAvailable(blockRoot, state.LatestExecutionPayloadBid!))
-        {
-            if (_logger.IsTrace) _logger.Trace($"Envelope for beacon block {blockRoot} is waiting for its blob data");
-            return ExecutionPayloadEnvelopeImportResult.DataUnavailable;
-        }
-
         if (!HasSelfBuildProposerKey(signedEnvelope.Message, state))
         {
             return Reject($"envelope for beacon block {blockRoot}: self-build proposer {state.LatestBlockHeader!.ProposerIndex} is not in the validator registry");
+        }
+
+        if (!isDataAvailable(blockRoot, state.LatestExecutionPayloadBid!))
+        {
+            if (!GloasBlockProcessing.VerifyExecutionPayloadEnvelopeSignature(state, signedEnvelope, pubkeys))
+                return Reject($"envelope for beacon block {blockRoot}: invalid signature");
+            if (_logger.IsTrace) _logger.Trace($"Envelope for beacon block {blockRoot} is waiting for its blob data");
+            return ExecutionPayloadEnvelopeImportResult.DataUnavailable;
         }
 
         EnvelopeVerdict verdict = new(engine);
@@ -182,7 +184,7 @@ public sealed class ExecutionPayloadEnvelopeImporter(
             return true;
         }
 
-        Validator[] validators = state.Validators!;
+        Validator[] validators = state.ValidatorBuffer!.Items;
         if (proposerIndex >= (ulong)validators.Length)
         {
             return false;

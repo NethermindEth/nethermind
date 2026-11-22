@@ -40,8 +40,12 @@ public class ExecutionPayloadEnvelopePoolPersistenceTests
         SignedExecutionPayloadEnvelope envelope = BeaconChainStoreEnvelopeTests.Envelope(Base);
         Hash256 root = envelope.Message!.BeaconBlockRoot!;
         pool.Add(root, envelope);
-        Assert.That(pool.TryGet(root, out SignedExecutionPayloadEnvelope? read), Is.True);
-        Assert.That(pool.TryGet(root, out _), Is.True, "repeated reads remain available");
+        SignedExecutionPayloadEnvelope? read;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pool.TryGet(root, out read), Is.True);
+            Assert.That(pool.TryGet(root, out _), Is.True, "repeated reads remain available");
+        }
         return (new(envelope), new(read!));
     }
 

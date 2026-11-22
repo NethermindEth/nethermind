@@ -15,11 +15,16 @@ internal sealed class LightClientMetrics
     private static readonly string[] Methods =
     [
         "eth_chainId", "net_version", "web3_clientVersion", "eth_accounts", "net_listening", "eth_blockNumber", "eth_syncing",
-        "eth_getBalance", "eth_getTransactionCount", "eth_getStorageAt", "eth_getCode", "eth_getProof", "eth_call", "eth_estimateGas",
+        "eth_getBalance", "eth_getTransactionCount", "eth_getStorageAt", "eth_getCode", "eth_getProof", "eth_call", "eth_estimateGas", "eth_simulateV1",
         "eth_getBlockByNumber", "eth_getBlockByHash", "eth_getBlockTransactionCountByNumber", "eth_getBlockTransactionCountByHash",
         "eth_getTransactionByBlockNumberAndIndex", "eth_getTransactionByBlockHashAndIndex", "eth_getTransactionByHash",
         "eth_getTransactionReceipt", "eth_getBlockReceipts", "eth_getLogs", "eth_feeHistory", "eth_gasPrice",
-        "eth_maxPriorityFeePerGas", "eth_blobBaseFee", "eth_sendRawTransaction", "eth_subscribe", "eth_unsubscribe", "other",
+        "eth_maxPriorityFeePerGas", "eth_blobBaseFee", "eth_sendRawTransaction", "eth_subscribe", "eth_unsubscribe",
+        "net_peerCount", "web3_sha3", "eth_createAccessList", "debug_traceCall", "eth_getHeaderByNumber", "eth_getHeaderByHash",
+        "eth_getAccountInfo", "eth_getAccount", "eth_getStorageValues", "eth_getBlockAccessList", "eth_baseFee", "eth_config", "eth_capabilities",
+        "eth_getRawTransactionByHash", "eth_getRawTransactionByBlockNumberAndIndex", "eth_getRawTransactionByBlockHashAndIndex",
+        "eth_newFilter", "eth_newBlockFilter", "eth_newPendingTransactionFilter", "eth_getFilterChanges", "eth_getFilterLogs", "eth_uninstallFilter",
+        "eth_sendRawTransactionSync", "debug_traceTransaction", "other",
     ];
 
     private readonly Func<ClientProgress> _readStatus;
@@ -35,14 +40,14 @@ internal sealed class LightClientMetrics
     private readonly Gauge.Child _beaconPeers;
     private readonly Gauge.Child _executionPeers;
     private readonly Gauge.Child _snapPeers;
-    private readonly Dictionary<string, (Counter.Child[] Requests, Histogram.Child[] Duration)> _rpc = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (Counter.Child[] Requests, Histogram.Child[] Duration)> _rpc = [with(StringComparer.Ordinal)];
     private readonly Counter _http;
 
     internal CollectorRegistry Registry { get; } = PrometheusMetrics.NewCustomRegistry();
 
     internal LightClientMetrics(string network, Func<ClientProgress> readStatus)
     {
-        if (network is not ("mainnet" or "sepolia" or "hoodi")) throw new ArgumentException("Unknown light-client network.", nameof(network));
+        if (network is not ("mainnet" or "sepolia" or "hoodi" or "gnosis")) throw new ArgumentException("Unknown light-client network.", nameof(network));
         _readStatus = readStatus;
         Registry.SetStaticLabels(new Dictionary<string, string> { ["network"] = network });
         MetricFactory factory = PrometheusMetrics.WithCustomRegistry(Registry);

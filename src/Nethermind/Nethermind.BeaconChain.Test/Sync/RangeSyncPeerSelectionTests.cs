@@ -156,6 +156,32 @@ public class RangeSyncPeerSelectionTests
 
     [Test]
     [CancelAfter(30_000)]
+    public async Task Range_recovers_when_the_canonical_chain_skips_the_last_served_slot([Values(true, false, null)] bool? signatureValid, CancellationToken token)
+    {
+        (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 13, 14);
+        ForkedSignedBeaconBlock common = new ForkedSignedBeaconBlock.OfFulu(chain[0]);
+        ForkedSignedBeaconBlock orphan = new ForkedSignedBeaconBlock.OfFulu(TestChain.CreateBlock(12, common.ComputeMessageRoot()));
+        ForkedSignedBeaconBlock[] canonical = [.. chain.Skip(1).Select(static block => new ForkedSignedBeaconBlock.OfFulu(block))];
+        StubPeer first = new("first", 14, (start, _) => start == 11 ? [common, orphan] : canonical);
+        StubPeer second = new("second", 14, (_, _) => canonical);
+        RangeSync sync = new(new StubPool(first, second), LimboLogs.Instance, new DataColumnSidecarPool(), BeaconChainSpec.Mainnet, ClockAtGenesis(BeaconChainSpec.Mainnet))
+        {
+            VerifyBlockSignature = _ => Task.FromResult(signatureValid),
+        };
+        // End the round after both peers have answered from the competing branch, even if the tip stayed stuck.
+        ulong Target() => first.Requests + second.Requests >= 3 ? 0UL : 14UL;
+        List<ForkedSignedBeaconBlock> yielded = await CollectAsync(sync.Run(anchorRoot, AnchorSlot, Target, token));
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(yielded, Is.EqualTo(signatureValid == true ? new[] { common, orphan, canonical[0], canonical[1] } : new[] { common, orphan }));
+        Assert.That(first.Requests, Is.EqualTo(2));
+        Assert.That(second.Requests, Is.EqualTo(1));
+        Assert.That(first.Reports.Concat(second.Reports), Is.EqualTo(signatureValid == false
+            ? new[] { PeerFailureReason.ProtocolViolation, PeerFailureReason.ProtocolViolation } : Array.Empty<PeerFailureReason>()));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
     public async Task A_first_reply_on_another_fork_is_not_blamed_on_its_supplier(CancellationToken token)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12);

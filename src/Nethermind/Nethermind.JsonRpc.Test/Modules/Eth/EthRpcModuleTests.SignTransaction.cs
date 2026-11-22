@@ -180,16 +180,22 @@ public partial class EthRpcModuleTests
             result.Raw,
             RlpBehaviors.AllowUnsigned | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
 
-        Assert.That(decoded.Type, Is.EqualTo(type), "type must round-trip through RLP encode/decode");
-        Assert.That(decoded.GasLimit, Is.EqualTo(0x76c0UL), "gas must round-trip exactly - caller provided it explicitly");
-        Assert.That(decoded.Nonce, Is.EqualTo(0UL), "nonce must round-trip - caller provided it explicitly");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.Type, Is.EqualTo(type), "type must round-trip through RLP encode/decode");
+            Assert.That(decoded.GasLimit, Is.EqualTo(0x76c0UL), "gas must round-trip exactly - caller provided it explicitly");
+            Assert.That(decoded.Nonce, Is.EqualTo(0UL), "nonce must round-trip - caller provided it explicitly");
+        }
 
         Address recovered = new EthereumEcdsa(decoded.ChainId ?? 1).RecoverAddress(decoded)!;
-        Assert.That(recovered, Is.EqualTo(new Address(UnlockedTestAccount)),
-            "signature must recover to the from address - raw is the canonical signed artifact");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(recovered, Is.EqualTo(new Address(UnlockedTestAccount)),
+                "signature must recover to the from address - raw is the canonical signed artifact");
 
-        Assert.That(result.Tx, Is.TypeOf(expectedEchoType),
-            "tx echo must preserve subclass so JSON shape survives for clients that branch on type");
+            Assert.That(result.Tx, Is.TypeOf(expectedEchoType),
+                "tx echo must preserve subclass so JSON shape survives for clients that branch on type");
+        }
     }
 
     private async Task<string> SignTransaction(TransactionForRpc rpcTx)

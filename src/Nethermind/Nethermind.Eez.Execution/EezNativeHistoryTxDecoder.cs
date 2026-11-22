@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Eez.Execution.Settlement.RollupX;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -20,18 +21,18 @@ internal sealed class EezNativeHistoryTxDecoder : BaseTxDecoder
             throw new ArgumentOutOfRangeException(nameof(format));
         _explicitBlocks = format.UsesProxyHistory();
     }
-    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public override void Decode(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, Memory<byte> source, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         NativeHistoryEnvelope envelope = _explicitBlocks ? NativeHistoryEnvelope.DecodeBlocks(transactionSequence) : NativeHistoryEnvelope.Decode(transactionSequence);
         transaction = new NativeHistoryTransaction(envelope);
-        decoderContext.Position = checked(txSequenceStart + transactionSequence.Length);
-        decoderContext.Check(decoderContext.Position);
+        decoderContext.SkipItem();
+        decoderContext.CheckEnd();
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
-            CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
+            CalculateHash(transaction, transactionSequence, source);
     }
 
-    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode(Transaction transaction, ref RlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         NativeHistoryEnvelope envelope = GetEnvelope(transaction, forSigning);
@@ -49,5 +50,5 @@ internal sealed class EezNativeHistoryTxDecoder : BaseTxDecoder
     private NativeHistoryEnvelope GetEnvelope(Transaction transaction, bool forSigning) =>
         !forSigning && transaction is NativeHistoryTransaction history && history.HasWireFields && history.Envelope.HasExplicitBlocks == _explicitBlocks
             ? history.Envelope
-            : throw new RlpException("A dedicated history envelope is required and cannot be signed.");
+            : throw new RlpReaderException("A dedicated history envelope is required and cannot be signed.");
 }

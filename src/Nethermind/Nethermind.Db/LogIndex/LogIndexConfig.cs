@@ -19,9 +19,9 @@ public class LogIndexConfig : ILogIndexConfig
     public int MaxAggregationQueueSize { get; set; } = 16;
     public int MaxSavingQueueSize { get; set; } = 16;
 
-    public int MaxReceiptsParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
-    public int MaxAggregationParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
-    public int MaxCompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 2, 1);
+    public int MaxReceiptsParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 4, 1);
+    public int MaxAggregationParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 4, 1);
+    public int MaxCompressionParallelism { get; set; } = Math.Max(Environment.ProcessorCount / 4, 1);
 
     public int CompressionDistance { get; set; } = 128;
     public int CompactionDistance { get; set; } = 262_144;

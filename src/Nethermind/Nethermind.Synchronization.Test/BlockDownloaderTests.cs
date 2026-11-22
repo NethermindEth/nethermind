@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -23,12 +24,12 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm;
-using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.Peers;
@@ -112,9 +113,12 @@ public partial class BlockDownloaderTests
         syncPeer.ExtendTree(chainLength * 2);
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
-        // full sync does not set main chain, but triggers it processing which eventually set main chain
-        Assert.That(ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader!.Hash!), Is.EqualTo(false));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
+            // full sync does not set main chain, but triggers it processing which eventually set main chain
+            Assert.That(ctx.BlockTree.IsMainChain(ctx.BlockTree.BestSuggestedHeader!.Hash!), Is.EqualTo(false));
+        }
 
         if (enableFastSync)
         {
@@ -360,9 +364,12 @@ public partial class BlockDownloaderTests
         await ctx.FullSyncUntilNoRequest(peerInfo);
 
         Hash256 gapBlockHash = ctx.BlockTree.FindHeader(advancedState, BlockTreeLookupOptions.None)!.Hash!;
-        Assert.That(ctx.BlockTree.IsMainChain(gapBlockHash), Is.True);
-        Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
-        Assert.That(ctx.ReceiptStorage.Count, Is.GreaterThan(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.IsMainChain(gapBlockHash), Is.True);
+            Assert.That(ctx.BlockTree.BestSuggestedHeader!.Number, Is.EqualTo(peerInfo.HeadNumber));
+            Assert.That(ctx.ReceiptStorage.Count, Is.GreaterThan(0));
+        }
     }
 
     [Test]
@@ -558,6 +565,52 @@ public partial class BlockDownloaderTests
         Assert.That(res, Is.Null);
     }
 
+    // The request lists are locals, so the shared pool shows whether they went back: it hands a thread the array that
+    // thread returned last, per size class (the technique of TxTrieTests.Encoding_failure_returns_the_scratch_rental).
+    [Test]
+    public async Task Returns_the_request_lists_to_the_pool_when_assembling_a_request_throws()
+    {
+        IForwardHeaderProvider headerProvider = Substitute.For<IForwardHeaderProvider>();
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IForwardHeaderProvider>(headerProvider));
+        Context ctx = node.Resolve<Context>();
+
+        using IOwnedReadOnlyList<BlockHeader> chain = (await ctx.ResponseBuilder.BuildHeaderResponse(0, 3, Response.AllCorrect))!;
+        // Capacity 100 puts the batch in another size class, so its own return cannot hide the request lists.
+        ArrayPoolList<BlockHeader?> headers = new(100, chain);
+        headerProvider.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader?>?>(headers));
+        int estimates = 0;
+        ctx.PeerPool.EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns<Task<int?>>(_ =>
+            {
+                estimates++;
+                throw new InvalidOperationException("estimate failed");
+            });
+
+        int size = headers.Count;
+        BlockHeader[] headerList = ArrayPool<BlockHeader>.Shared.Rent(size);
+        ArrayPool<BlockHeader>.Shared.Return(headerList);
+        int[] countList = ArrayPool<int>.Shared.Rent(size);
+        ArrayPool<int>.Shared.Return(countList);
+
+        Task<BlocksRequest?> request = ctx.FastSyncFeedComponent.BlockDownloader.PrepareRequest(DownloaderOptions.Insert, 0, CancellationToken.None);
+        bool completedOnThisThread = request.IsCompleted;
+        BlockHeader[] headerListAfter = ArrayPool<BlockHeader>.Shared.Rent(size);
+        int[] countListAfter = ArrayPool<int>.Shared.Rent(size);
+        ArrayPool<BlockHeader>.Shared.Return(headerListAfter);
+        ArrayPool<int>.Shared.Return(countListAfter);
+        BlocksRequest? result = await request;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedOnThisThread, Is.True, "the pool check needs the request to complete on this thread");
+            Assert.That(result, Is.Null);
+            Assert.That(estimates, Is.EqualTo(1), "the first request-limit estimate must be the throw site");
+            Assert.That(headerListAfter, Is.SameAs(headerList), "the first header list was not returned to the pool");
+            Assert.That(countListAfter, Is.SameAs(countList), "the receipt count list was not returned to the pool");
+        }
+    }
+
     [Test]
     public async Task Skit_spawning_request_when_block_processing_queue_is_high()
     {
@@ -701,6 +754,7 @@ public partial class BlockDownloaderTests
             .Returns(ci =>
             {
                 IList<Hash256> blockHashes = ci.ArgAt<IList<Hash256>>(0);
+                int responseLength = Math.Min(minResponseLength, blockHashes.Count);
                 lock (requestedHashes)
                 {
                     blockHashes = blockHashes.Where((hash) =>
@@ -721,9 +775,9 @@ public partial class BlockDownloaderTests
                     .Result
                     .Bodies!;
 
-                if (response.Length < minResponseLength)
+                if (response.Length < responseLength)
                 {
-                    BlockBody?[] nullPaddedResponse = new BlockBody[minResponseLength];
+                    BlockBody?[] nullPaddedResponse = new BlockBody[responseLength];
                     for (int i = 0; i < response.Length; i++)
                     {
                         nullPaddedResponse[i] = response[i];
@@ -851,6 +905,105 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Reports_breach_on_body_that_does_not_decode([Values] bool rlpError)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        // A body whose uncles item is a byte string instead of a sequence, or one whose uncle decode fails otherwise.
+        byte[] malformedBody = rlpError ? [0xc2, 0xc0, 0x80] : ThrowingHeaderDecoder.BodyWithUncle();
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(malformedBody.Length);
+        malformedBody.CopyTo(memory.Memory);
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, [new Range(0, malformedBody.Length)],
+            rlpError ? BlockBodyDecoder.Instance : ThrowingHeaderDecoder.BodyDecoder);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Rejects_more_bodies_than_requested_without_decoding_them([Values] bool lastEntryEmpty)
+    {
+        await using IContainer node = CreateNode();
+        Context ctx = node.Resolve<Context>();
+
+        Response options = Response.AllCorrect | Response.Consistent;
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), options));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(1000UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        BlocksRequest blockRequest = await ctx.Feed.PrepareRequest(default);
+        int present = lastEntryEmpty ? blockRequest.BodiesRequests.Count : blockRequest.BodiesRequests.Count + 1;
+        byte[] body = ThrowingHeaderDecoder.BodyWithUncle();
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(body.Length * (blockRequest.BodiesRequests.Count + 1));
+        Range[] ranges = new Range[blockRequest.BodiesRequests.Count + 1];
+        for (int i = 0; i < present; i++)
+        {
+            body.CopyTo(memory.Memory[(i * body.Length)..]);
+            ranges[i] = new Range(i * body.Length, (i + 1) * body.Length);
+        }
+
+        if (lastEntryEmpty)
+        {
+            memory.Memory.Span[present * body.Length] = Rlp.EmptyListByte;
+            ranges[present] = new Range(present * body.Length, present * body.Length + 1);
+        }
+
+        blockRequest.OwnedBodies = new OwnedBlockBodies(memory, ranges, ThrowingHeaderDecoder.BodyDecoder);
+
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(blockRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "more block bodies received than requested");
+        ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid block bodies received");
+    }
+
+    [Test]
+    public async Task Reports_breach_on_receipts_that_do_not_decode()
+    {
+        await using IContainer node = CreateNode(configProvider: new ConfigProvider(new SyncConfig { FastSync = true, SnapSync = true }));
+        Context ctx = node.Resolve<Context>();
+        SyncPeerMock syncPeer = new(101, withReceipts: true, Response.AllCorrect | Response.WithTransactions);
+        PeerInfo peerInfo = new(syncPeer);
+        ctx.ConfigureBestPeer(peerInfo);
+        ISyncFeed<BlocksRequest> feed = ctx.FastSyncFeedComponent.Feed;
+
+        BlocksRequest bodiesRequest = await feed.PrepareRequest(default);
+        await ctx.FastSyncFeedComponent.Downloader.Dispatch(peerInfo, bodiesRequest, default);
+        feed.HandleResponse(bodiesRequest, peerInfo);
+        BlocksRequest receiptsRequest = await feed.PrepareRequest(default);
+        Assert.That(receiptsRequest.ReceiptsRequests, Is.Not.Empty);
+        // Receipts kept encoded decode on the first read, so a malformed peer reply throws there.
+        IOwnedReadOnlyList<TxReceipt[]?> receipts = Substitute.For<IOwnedReadOnlyList<TxReceipt[]?>>();
+        receipts.Count.Returns(receiptsRequest.ReceiptsRequests.Count);
+        receipts[Arg.Any<int>()].Throws(new RlpReaderException("malformed"));
+        receiptsRequest.Receipts = receipts;
+
+        SyncResponseHandlingResult result = feed.HandleResponse(receiptsRequest, peerInfo);
+
+        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peerInfo, DisconnectReason.ForwardSyncFailed, "invalid receipts received");
+    }
+
+    [Test]
     public async Task Prune_download_requests_map()
     {
         await using IContainer node = CreateNode(builder => builder
@@ -869,15 +1022,21 @@ public partial class BlockDownloaderTests
         IForwardSyncController forwardSyncController = ctx.ForwardSyncController;
 
         ctx.ConfigureBestPeer(syncPeer);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(32));
 
         ctx.ConfigureBestPeer(syncPeer2);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(64));
 
         ctx.ConfigureBestPeer(syncPeer3);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(forwardSyncController.DownloadRequestBufferSize, Is.EqualTo(96));
 
         Assert.That((await forwardSyncController.PrepareRequest(DownloaderOptions.Insert, 0)), Is.Null);
@@ -1058,6 +1217,33 @@ public partial class BlockDownloaderTests
     }
 
     [Test]
+    public async Task Downloaded_blocks_are_validated_without_deriving_the_body_roots_again()
+    {
+        IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
+        blockValidator.ValidateSuggestedBlock(default!, default!, out _, default).ReturnsForAnyArgs(true);
+        blockValidator.ValidateBodyAgainstHeader(default!, default!, out _).ReturnsForAnyArgs(true);
+        await using IContainer node = CreateNode(builder => builder.AddSingleton<IBlockValidator>(blockValidator));
+        Context ctx = node.Resolve<Context>();
+
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
+        syncPeer.GetBlockHeaders(Arg.Any<ulong>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildHeaderResponse(ci.ArgAt<ulong>(0), ci.ArgAt<int>(1), Response.AllCorrect | Response.WithTransactions));
+        syncPeer.GetBlockBodies(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
+            .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
+
+        PeerInfo peerInfo = new(syncPeer);
+        syncPeer.HeadNumber.Returns(2UL);
+        ctx.ConfigureBestPeer(peerInfo);
+
+        Assert.That(await ctx.HandleOneRequest(peerInfo), Is.EqualTo(SyncResponseHandlingResult.OK));
+        using BlocksRequest? followUp = await ctx.FullSyncFeedComponent.Feed.PrepareRequest();
+
+        blockValidator.Received().ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), false);
+        blockValidator.DidNotReceive().ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), true);
+    }
+
+    [Test]
     public async Task Throws_on_receipt_task_exception_when_downloading_receipts()
     {
         await using IContainer node = CreateFastSyncNode(fastSyncLag: 1);
@@ -1120,7 +1306,9 @@ public partial class BlockDownloaderTests
         PeerInfo peerInfo = new(syncPeer);
         ctx.ConfigureBestPeer(peerInfo);
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That((await ctx.HandleFastSyncOneRequest(peerInfo)), Is.EqualTo(SyncResponseHandlingResult.OK));
+#pragma warning restore NUnit2045
 
         Assert.That((await ctx.FastSyncFeedComponent.Feed.PrepareRequest(default)).ReceiptsRequests.Count, Is.GreaterThan(0));
     }
@@ -1549,17 +1737,22 @@ public partial class BlockDownloaderTests
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
 
+        public System.Collections.Concurrent.ConcurrentQueue<ulong> RequestedBodyNumbers { get; } = new();
+
         public async Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             BlockBody[] headers = new BlockBody[blockHashes.Count];
             int i = 0;
             foreach (Hash256 blockHash in blockHashes)
             {
-                headers[i++] = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!.Body;
+                Block block = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!;
+                RequestedBodyNumbers.Enqueue(block.Number);
+                headers[i++] = block.Body;
             }
 
             using BlockBodiesMessage message = new(headers);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
@@ -1580,7 +1773,8 @@ public partial class BlockDownloaderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1596,7 +1790,8 @@ public partial class BlockDownloaderTests
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
-            byte[] messageSerialized = _receiptsSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_receiptsSerializer.GetLength(message)];
+            _receiptsSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 
@@ -1689,7 +1884,8 @@ public partial class BlockDownloaderTests
             }
 
             using BlockHeadersMessage message = new(headers.ToPooledList());
-            byte[] messageSerialized = _headersSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_headersSerializer.GetLength(message)];
+            _headersSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
         }
 
@@ -1746,7 +1942,8 @@ public partial class BlockDownloaderTests
             }
 
             using BlockBodiesMessage message = new(blockBodies);
-            byte[] messageSerialized = _bodiesSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_bodiesSerializer.GetLength(message)];
+            _bodiesSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
         }
 
@@ -1786,7 +1983,8 @@ public partial class BlockDownloaderTests
             }
 
             using ReceiptsMessage message = new(receipts.ToPooledList());
-            byte[] messageSerialized = _receiptsSerializer.Serialize(message);
+            byte[] messageSerialized = new byte[_receiptsSerializer.GetLength(message)];
+            _receiptsSerializer.Serialize(messageSerialized, message);
             return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
         }
 

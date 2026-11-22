@@ -51,7 +51,7 @@ internal static class NativeChainDocument
         }
         JsonElement allocations = Required(genesis, "alloc");
         if (allocations.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Genesis alloc must be an object.");
-        HashSet<Address> addresses = new(allocations.GetPropertyCount());
+        HashSet<Address> addresses = [with(allocations.GetPropertyCount())];
         foreach (JsonProperty entry in allocations.EnumerateObject())
         {
             string name = entry.Name.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? entry.Name : "0x" + entry.Name;
@@ -60,7 +60,7 @@ internal static class NativeChainDocument
             EnsureFields(entry.Value, AccountFields);
             if (!entry.Value.TryGetProperty("storage", out JsonElement storage) || storage.ValueKind == JsonValueKind.Null) continue;
             if (storage.ValueKind != JsonValueKind.Object) throw new InvalidDataException("Genesis storage must be an object.");
-            HashSet<UInt256> keys = new(storage.GetPropertyCount());
+            HashSet<UInt256> keys = [with(storage.GetPropertyCount())];
             foreach (JsonProperty slot in storage.EnumerateObject())
             {
                 if (!keys.Add(StorageWord(slot.Name))) throw new InvalidDataException("Duplicate genesis storage slot.");

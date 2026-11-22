@@ -19,6 +19,21 @@ public class GloasEpochProcessingTests
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
     [Test]
+    public void Churn_rejects_epoch_overflow([Values] bool consolidation)
+    {
+        BeaconStateGloas state = StateWithRegistry(8192, 2048);
+        state.EarliestExitEpoch = ulong.MaxValue;
+        state.EarliestConsolidationEpoch = ulong.MaxValue;
+        state.ExitBalanceToConsume = 0;
+        state.ConsolidationBalanceToConsume = 0;
+        EpochCache cache = new();
+
+        Assert.That(() => consolidation
+            ? state.ComputeConsolidationEpochAndUpdateChurn(Gwei, cache)
+            : state.ComputeExitEpochAndUpdateChurn(Gwei, cache), Throws.TypeOf<BeaconStateException>());
+    }
+
+    [Test]
     public void A_bid_at_the_same_slot_in_epoch_as_an_unsettled_payment_from_the_previous_epoch_lands_beside_it_not_on_top_of_it()
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
@@ -35,8 +50,11 @@ public class GloasEpochProcessingTests
 
         // Cross the epoch boundary: the rotation moves the unsettled payment to the lower half.
         GloasSlotProcessing.ProcessSlots(state, 2 * SlotsPerEpoch, cache);
-        Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the rotation must carry the unsettled payment into the previous-epoch half");
-        Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(0ul), "the rotation must clear the current-epoch half");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the rotation must carry the unsettled payment into the previous-epoch half");
+            Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(0ul), "the rotation must clear the current-epoch half");
+        }
 
         // Slot 64, slot-in-epoch 0 again: a second real payment at the same address as the first.
         SignedExecutionPayloadBid secondBid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: secondBidValue, blockHashFill: 0x8B);
@@ -106,16 +124,18 @@ public class GloasEpochProcessingTests
     }
 
     [Test]
-    public void ProcessBuilderPendingPayments_queues_only_quorum_reaching_previous_epoch_payments_and_rotates_the_window()
+    public void ProcessBuilderPendingPayments_queues_only_quorum_reaching_previous_epoch_payments_and_rotates_the_window([Values] bool reachesQuorum)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         EpochCache cache = new();
         ulong quorum = state.GetBuilderPaymentQuorumThreshold(cache);
         Assert.That(quorum, Is.GreaterThan(1ul), "fixture bug: a quorum this small cannot distinguish reaching it from missing it");
 
-        BuilderPendingPayment reaching = Payment(weight: quorum, amount: 3 * Gwei, feeRecipientFill: 0xA1);
+        BuilderPendingPayment reaching = Payment(weight: reachesQuorum ? quorum : quorum - 1, amount: 3 * Gwei, feeRecipientFill: 0xA1);
         BuilderPendingPayment justShort = Payment(weight: quorum - 1, amount: 5 * Gwei, feeRecipientFill: 0xA2);
         BuilderPendingPayment currentEpoch = Payment(weight: 0, amount: 7 * Gwei, feeRecipientFill: 0xA3);
+        BuilderPendingWithdrawal[] queued = [justShort.Withdrawal!];
+        state.BuilderPendingWithdrawals = queued;
         state.BuilderPendingPayments![3] = reaching;
         state.BuilderPendingPayments[5] = justShort;
         state.BuilderPendingPayments[40] = currentEpoch;
@@ -123,8 +143,10 @@ public class GloasEpochProcessingTests
         GloasEpochProcessing.ProcessBuilderPendingPayments(state, cache);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(state.BuilderPendingWithdrawals, Has.Length.EqualTo(1));
-        Assert.That(state.BuilderPendingWithdrawals![0], Is.SameAs(reaching.Withdrawal), "exactly the payment that reached the quorum is queued");
+        if (reachesQuorum)
+            Assert.That(state.BuilderPendingWithdrawals, Is.EqualTo(new[] { queued[0], reaching.Withdrawal }));
+        else
+            Assert.That(state.BuilderPendingWithdrawals, Is.SameAs(queued));
         Assert.That(state.BuilderPendingPayments[8], Is.SameAs(currentEpoch), "the current-epoch half becomes the previous-epoch half");
         Assert.That(state.BuilderPendingPayments.Take(32).Where((p, i) => i != 8).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul));
         Assert.That(state.BuilderPendingPayments.Skip(32).Select(p => p.Withdrawal!.Amount), Has.All.EqualTo(0ul), "the new current-epoch half is zeroed");
@@ -407,14 +429,14 @@ public class GloasEpochProcessingTests
 
         GloasEpochProcessing.ProcessPendingDeposits(state, cache);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(state.Balances![3], Is.EqualTo(132 * Gwei));
             Assert.That(state.Balances[5], Is.EqualTo(32 * Gwei), "the deposit that overflows the churn is not applied");
             Assert.That(state.Balances[7], Is.EqualTo(32 * Gwei), "the queue stops at the first overflow; a later deposit that would fit is not pulled ahead of it");
             Assert.That(state.PendingDeposits, Is.EqualTo(new[] { second, third }).AsCollection);
             Assert.That(state.DepositBalanceToConsume, Is.EqualTo(28 * Gwei), "the churn the stopped deposit left unused carries over");
-        });
+        }
 
         GloasEpochProcessing.ProcessPendingDeposits(state, cache);
 

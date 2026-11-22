@@ -89,8 +89,10 @@ public class LightClientGossipTests
             new BeaconChainStatusHolder(ConsensusTests.Spec, Timestamper.Default), LimboLogs.Instance);
         int port = receiver.ListenAddresses.Single(address => address.ToString().Contains(quic ? "/quic-v1" : "/tcp/", StringComparison.Ordinal)).ToEndPoint().Port;
         string transport = quic ? $"udp/{port}/quic-v1" : $"tcp/{port}";
-        Assert.That(await manager.TryAddPeerAsync($"/ip4/127.0.0.1/{transport}/p2p/{receiver.LocalPeerId}", token), Is.True);
-        Assert.That(sender.TryGetEstablishedSession(receiver.LocalPeerId!, out ISession? originalSession), Is.True);
+        bool connected = await manager.TryAddPeerAsync($"/ip4/127.0.0.1/{transport}/p2p/{receiver.LocalPeerId}", token);
+        Assert.That(connected, Is.True);
+        bool established = sender.TryGetEstablishedSession(receiver.LocalPeerId!, out ISession? originalSession);
+        Assert.That(established, Is.True);
         while (!HasMeshPeer(senderRouter, finalityTopic, receiver.LocalPeerId!) || !HasMeshPeer(senderRouter, optimisticTopic, receiver.LocalPeerId!) ||
             !HasMeshPeer(receiverRouter, finalityTopic, sender.LocalPeerId!) || !HasMeshPeer(receiverRouter, optimisticTopic, sender.LocalPeerId!))
         {
@@ -181,9 +183,13 @@ public class LightClientGossipTests
         LightClientOptimisticUpdate update = Optimistic(ConsensusTests.Update(2, 3, 4, 1));
         update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
 
-        Assert.That(await fixture.Handle(update, source), Is.EqualTo(MessageValidity.Rejected));
-        Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
-        Assert.That(authenticated, Is.Empty);
+        MessageValidity validity = await fixture.Handle(update, source);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+            Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(authenticated, Is.Empty);
+        }
     }
 
     [Test]
@@ -232,8 +238,12 @@ public class LightClientGossipTests
         fixture.Clock.SetSlot(4, 0);
         if (!valid) update.SyncAggregate!.SyncCommitteeSignature = new BlsSignature(new byte[96]);
 
-        Assert.That(await fixture.Handle(update), Is.EqualTo(valid ? MessageValidity.Ignored : MessageValidity.Rejected));
-        Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(valid ? 3 : 1));
+        MessageValidity validity = await fixture.Handle(update);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(valid ? MessageValidity.Ignored : MessageValidity.Rejected));
+            Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(valid ? 3 : 1));
+        }
     }
 
     [Test]
@@ -292,10 +302,13 @@ public class LightClientGossipTests
         LightClientOptimisticUpdate update = Optimistic(ConsensusTests.Update(2, 3, 4, 1));
         string wrong = GossipTopics.Topic(ForkDigest.Compute(ConsensusTests.Spec, 1), GossipTopics.LightClientOptimisticUpdate);
 
-        Assert.That(await fixture.Gossip.HandleAsync(wrong,
-            Snappy.CompressToArray(LightClientWireCodec.EncodeOptimistic(update, ConsensusTests.Spec)), static _ => true, CancellationToken.None),
-            Is.EqualTo(MessageValidity.Rejected));
-        Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        MessageValidity validity = await fixture.Gossip.HandleAsync(wrong,
+            Snappy.CompressToArray(LightClientWireCodec.EncodeOptimistic(update, ConsensusTests.Spec)), static _ => true, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+            Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -303,9 +316,13 @@ public class LightClientGossipTests
     {
         await using Fixture fixture = new();
         byte[] payload = oversized ? new byte[LightClientGossip.MaxUpdateBytes + 1] : [0, 1, 2];
-        Assert.That(await fixture.Gossip.HandleAsync(fixture.Topic(GossipTopics.LightClientOptimisticUpdate),
-            Snappy.CompressToArray(payload), static _ => true, CancellationToken.None), Is.EqualTo(MessageValidity.Rejected));
-        Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        MessageValidity validity = await fixture.Gossip.HandleAsync(fixture.Topic(GossipTopics.LightClientOptimisticUpdate),
+            Snappy.CompressToArray(payload), static _ => true, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(validity, Is.EqualTo(MessageValidity.Rejected));
+            Assert.That(fixture.Store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -318,9 +335,12 @@ public class LightClientGossipTests
         fixture.Clock.SetSlot(96, 6);
         fixture.Gossip.RefreshTopics(fixture.GetTopic);
 
-        Assert.That(fixture.Topics[old].UnsubscribeCount, Is.EqualTo(1));
-        Assert.That(fixture.Gossip.Verify(null!, new Message { Topic = old, Data = ByteString.Empty }), Is.EqualTo(MessageValidity.Throttled));
-        Assert.That(fixture.Gossip.Verify(null!, new Message { Topic = next, Data = ByteString.Empty }), Is.EqualTo(MessageValidity.Deferred));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Topics[old].UnsubscribeCount, Is.EqualTo(1));
+            Assert.That(fixture.Gossip.Verify(null!, new Message { Topic = old, Data = ByteString.Empty }), Is.EqualTo(MessageValidity.Throttled));
+            Assert.That(fixture.Gossip.Verify(null!, new Message { Topic = next, Data = ByteString.Empty }), Is.EqualTo(MessageValidity.Deferred));
+        }
     }
 
     [TestCase(31ul, 3498, false)]
@@ -334,8 +354,11 @@ public class LightClientGossipTests
         ManualClock clock = new();
         clock.SetSlot(signatureSlot, 0, milliseconds);
         await using LightClientGossip gossip = new(ConsensusTests.Spec with { GloasForkEpoch = 1 }, LimboLogs.Instance, clock);
-        Assert.That(gossip.IsDue(signatureSlot), Is.EqualTo(expected));
-        Assert.That(gossip.IsDue(ulong.MaxValue), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gossip.IsDue(signatureSlot), Is.EqualTo(expected));
+            Assert.That(gossip.IsDue(ulong.MaxValue), Is.False);
+        }
     }
 
     private static LightClientFinalityUpdate Finality(LightClientUpdate update) => new()
@@ -359,7 +382,7 @@ public class LightClientGossipTests
         internal readonly ManualClock Clock = new();
         internal readonly LightClientGossip Gossip;
         internal readonly LightClientStore Store;
-        internal readonly Dictionary<string, FakeTopic> Topics = new(StringComparer.Ordinal);
+        internal readonly Dictionary<string, FakeTopic> Topics = [with(StringComparer.Ordinal)];
 
         internal Fixture()
         {

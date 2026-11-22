@@ -21,7 +21,7 @@ namespace Nethermind.State.Flat.Persistence.TrieNodeLog;
 /// pinned the generation; the log holds its own lease until the generation has been merged into RocksDB, and the
 /// last release deletes the file unless <see cref="PreserveOnDispose"/> was set (shutdown before the merge).
 /// </remarks>
-internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
+internal sealed unsafe partial class TrieNodeLogGeneration : RefCountingDisposable
 {
     private const int MinCapacity = 1024;
 
@@ -226,14 +226,14 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
 
     private const int O_RDONLY = 0; // enough to fsync a directory; O_DIRECTORY's value differs between architectures
 
-    [DllImport("libc", EntryPoint = "open", SetLastError = true)]
-    private static extern int Open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags);
+    [LibraryImport("libc", EntryPoint = "open", SetLastError = true)]
+    private static partial int Open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags);
 
-    [DllImport("libc", EntryPoint = "fsync", SetLastError = true)]
-    private static extern int FsyncSyscall(int fd);
+    [LibraryImport("libc", EntryPoint = "fsync", SetLastError = true)]
+    private static partial int FsyncSyscall(int fd);
 
-    [DllImport("libc", EntryPoint = "close")]
-    private static extern int Close(int fd);
+    [LibraryImport("libc", EntryPoint = "close")]
+    private static partial int Close(int fd);
 
     /// <summary>
     /// <c>fsync(2)</c> on a directory, so a file created in it survives a crash along with its fsynced content;

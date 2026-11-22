@@ -50,7 +50,9 @@ public sealed class DiscoveryConnectionsPool(
         Task receiveTask = Task.Run(() => ReceiveAsync(socket, onReceive));
         if (socket.LocalEndpoint is { } endpoint)
         {
-            _ = _listenerState.TrackDiscoveryAddress(endpoint.Address, receiveTask);
+            // A completed receive task can be observed before its continuations run, so stopping waits for the listener
+            // state to be cleared instead.
+            receiveTask = _listenerState.TrackDiscoveryAddress(endpoint.Address, receiveTask);
         }
 
         _byPort.Add(port, new Listener(socket, receiveTask));
@@ -79,7 +81,7 @@ public sealed class DiscoveryConnectionsPool(
             }
             catch (Exception e) when (!preferredAddress.Equals(fallbackAddress))
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress}:{port}. Retrying on {fallbackAddress}:{port}. {e}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress:hide}:{port}. Retrying on {fallbackAddress:hide}:{port}. {e:hide}");
                 return Bind(socketFactory, fallbackAddress, port);
             }
         }
@@ -151,10 +153,11 @@ public sealed class DiscoveryConnectionsPool(
         }
         catch (Exception e) when (e is ObjectDisposedException or SocketException { SocketErrorCode: SocketError.OperationAborted })
         {
+            if (_logger.IsTrace) _logger.Trace($"Discovery stopped receiving on a closed socket: {e.GetType().Name}");
         }
         catch (SocketException e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint} after a socket error. {e}");
+            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint:hide} after a socket error. {e:hide}");
         }
         catch (Exception e)
         {
@@ -179,7 +182,7 @@ public sealed class DiscoveryConnectionsPool(
 
         try
         {
-            await listener.ReceiveTask.WaitAsync(TimeSpan.FromMilliseconds(_discoveryConfig.UdpChannelCloseTimeout));
+            await listener.Stopped.WaitAsync(TimeSpan.FromMilliseconds(_discoveryConfig.UdpChannelCloseTimeout));
         }
         catch (TimeoutException)
         {
@@ -187,5 +190,5 @@ public sealed class DiscoveryConnectionsPool(
         }
     }
 
-    private sealed record Listener(IDatagramSocket Socket, Task ReceiveTask);
+    private sealed record Listener(IDatagramSocket Socket, Task Stopped);
 }

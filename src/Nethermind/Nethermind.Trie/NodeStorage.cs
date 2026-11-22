@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,6 +31,7 @@ public class NodeStorage(
             ? GetHalfPathNodeStoragePathSpan(pathSpan, address, path, keccak)
             : GetHashBasedStoragePath(pathSpan, keccak);
 
+    [SkipLocalsInit]
     public static byte[] GetHalfPathNodeStoragePath(in ValueHash256? address, in TreePath path, in ValueHash256 keccak) =>
         GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak).ToArray();
 
@@ -99,6 +102,7 @@ public class NodeStorage(
         return pathSpan[..32];
     }
 
+    [SkipLocalsInit]
     public byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         // Some of the code does not save empty tree at all so this is more about correctness than optimization.
@@ -107,17 +111,7 @@ public class NodeStorage(
             return EmptyTreeHashBytes;
         }
 
-        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
-        {
-            if (address is null && path.Length > TopStateBoundary)
-            {
-                readFlags |= ReadFlags.HintReadAhead2;
-            }
-            else if (address is not null)
-            {
-                readFlags |= ReadFlags.HintReadAhead3;
-            }
-        }
+        readFlags = WithReadAhead(address is not null, path, readFlags);
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
@@ -130,6 +124,45 @@ public class NodeStorage(
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
+    /// <inheritdoc/>
+    [SkipLocalsInit]
+    public bool TryGet<TArg>(in ValueHash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct
+    {
+        if (keccak == Keccak.EmptyTreeHash.ValueHash256)
+        {
+            action(EmptyTreeHashBytes, arg);
+            return true;
+        }
+
+        readFlags = WithReadAhead(address is not null, path, readFlags);
+
+        Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
+        return Scheme == INodeStorage.KeyScheme.HalfPath
+            ? _keyValueStore.TryGet(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg)
+              || _keyValueStore.TryGet(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+            : _keyValueStore.TryGet(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags, action, arg)
+              || _keyValueStore.TryGet(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags, action, arg);
+    }
+
+    private ReadFlags WithReadAhead(bool isStorage, in TreePath path, ReadFlags readFlags)
+    {
+        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
+        {
+            if (!isStorage && path.Length > TopStateBoundary)
+            {
+                readFlags |= ReadFlags.HintReadAhead2;
+            }
+            else if (isStorage)
+            {
+                readFlags |= ReadFlags.HintReadAhead3;
+            }
+        }
+
+        return readFlags;
+    }
+
+    [SkipLocalsInit]
     public bool KeyExists(in ValueHash256? address, in TreePath path, in ValueHash256 keccak)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
@@ -157,6 +190,7 @@ public class NodeStorage(
         return new WriteBatch(batch, this);
     }
 
+    [SkipLocalsInit]
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
         if (keccak == Keccak.EmptyTreeHash.ValueHash256)
@@ -194,6 +228,7 @@ public class NodeStorage(
     {
         public void Dispose() => writeBatch.Dispose();
 
+        [SkipLocalsInit]
         public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {
             if (keccak != Keccak.EmptyTreeHash.ValueHash256)

@@ -75,7 +75,7 @@ public sealed class BeaconBlocksByRangeProtocolV2(BeaconChainSpec spec, BeaconCh
                 throw new Eth2ReqRespException("Blocks-by-range request count must be positive");
             }
 
-            ChargeRequest(context, Math.Min(request.Count, MaxRequestBlocks), MaxRequestBlocks);
+            await ChargeRequestAsync(context, Math.Min(request.Count, MaxRequestBlocks), MaxRequestBlocks, cts);
 
             // BeaconBlocksByRange: a peer unable to reply SHOULD answer ResourceUnavailable; an empty reply would claim the slots are empty.
             if (!store.TryGetEarliestBlockSlot(out ulong earliestSlot) || request.StartSlot < earliestSlot)

@@ -114,12 +114,12 @@ public class Snap1ProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
+                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, AccountStruct.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
 
-                        ZeroPacket packet = new(buffer);
+                        NettyBufferPacket packet = new(buffer);
 
                         packet.PacketType = Snap1MessageCode.AccountRange;
                         Snap1ProtocolHandler.HandleMessage(packet);
@@ -201,9 +201,9 @@ public class Snap1ProtocolHandlerTests
         IMessageSerializationService serializer = new MessageSerializationService(SerializerInfo.Create(new GetStorageRangesMessageSerializer()));
         IMessageSerializationService recordingSerializer = Substitute.For<IMessageSerializationService>();
         IOwnedReadOnlyList<PathWithAccount>? decodedAccounts = null;
-        recordingSerializer.Deserialize<GetStorageRangeMessage>(Arg.Any<IByteBuffer>()).Returns(call =>
+        recordingSerializer.Deserialize<GetStorageRangeMessage>(Arg.Any<ZeroPacket>()).Returns(call =>
         {
-            GetStorageRangeMessage decoded = serializer.Deserialize<GetStorageRangeMessage>(call.Arg<IByteBuffer>());
+            GetStorageRangeMessage decoded = serializer.Deserialize<GetStorageRangeMessage>(call.Arg<ZeroPacket>());
             decodedAccounts = decoded.StorageRange.Accounts;
             return decoded;
         });
@@ -215,7 +215,7 @@ public class Snap1ProtocolHandlerTests
             StorageRange = new()
             {
                 RootHash = TestItem.KeccakB,
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakA, null) }
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakA, default) }
             },
             ResponseBytes = 1000
         };
@@ -237,7 +237,7 @@ public class Snap1ProtocolHandlerTests
             SerializerInfo.Create(new StorageRangesMessageSerializer()));
         Context context = new() { MessageSerializationService = serializer };
         using Snap1ProtocolHandler handler = context.Snap1ProtocolHandler;
-        PathWithAccount[] expectedAccounts = [new(TestItem.KeccakA, null), new(TestItem.KeccakB, null)];
+        PathWithAccount[] expectedAccounts = [new(TestItem.KeccakA, default), new(TestItem.KeccakB, default)];
         using StorageRange range = new()
         {
             RootHash = TestItem.KeccakC,
@@ -270,8 +270,7 @@ public class Snap1ProtocolHandlerTests
 
         using SlotsAndProofs result = await handler.GetStorageRange(range, CancellationToken.None);
 
-        Assert.That(result.PathsAndSlots, Has.Count.EqualTo(1));
-        Assert.That(result.Proofs, Has.Count.EqualTo(1));
+        Assert.That((result.PathsAndSlots.Count, result.Proofs.Count), Is.EqualTo((1, 1)));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(range.Accounts.AsSpan().ToArray(), Is.EqualTo(expectedAccounts));
@@ -297,7 +296,7 @@ public class Snap1ProtocolHandlerTests
     {
         using DisposableByteBuffer buffer = serializer.ZeroSerialize(message).AsDisposable();
         buffer.ReadByte();
-        ZeroPacket packet = new(buffer.RetainedDuplicate()) { PacketType = (byte)message.PacketType };
+        NettyBufferPacket packet = new(buffer.RetainedDuplicate()) { PacketType = (byte)message.PacketType };
         try
         {
             handler.HandleMessage(packet);
@@ -355,7 +354,7 @@ public class Snap1ProtocolHandlerTests
         try
         {
             buffer.ReadByte();
-            ZeroPacket packet = new(buffer) { PacketType = Snap1MessageCode.GetTrieNodes };
+            NettyBufferPacket packet = new(buffer) { PacketType = Snap1MessageCode.GetTrieNodes };
             buffer = null;
             try
             {
@@ -470,6 +469,6 @@ public class Snap1ProtocolHandlerTests
         using DisposableByteBuffer source = UndecodableResponse.Create(requestId).AsDisposable();
         using DisposableByteBuffer content = detector.Allocator.Buffer(source.ReadableBytes).AsDisposable();
         content.WriteBytes(source, source.ReaderIndex, source.ReadableBytes);
-        handler.HandleMessage(new ZeroPacket(content) { PacketType = Snap1MessageCode.AccountRange });
+        handler.HandleMessage(new NettyBufferPacket(content) { PacketType = Snap1MessageCode.AccountRange });
     }
 }

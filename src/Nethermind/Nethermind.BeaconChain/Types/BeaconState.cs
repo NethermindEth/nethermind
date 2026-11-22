@@ -3,6 +3,7 @@
 
 using System.Collections;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
@@ -12,6 +13,8 @@ namespace Nethermind.BeaconChain.Types;
 [SszContainer]
 public partial class BeaconStateElectra
 {
+    internal static partial int GetSszFixedSectionLength();
+
     public ulong GenesisTime { get; set; }
     public Hash256? GenesisValidatorsRoot { get; set; }
     public ulong Slot { get; set; }
@@ -25,10 +28,21 @@ public partial class BeaconStateElectra
     public Hash256[]? HistoricalRoots { get; set; }
     public Eth1Data? Eth1Data { get; set; }
     [SszList(Presets.DefaultEth1DataVotesLimit, AlternateLimit = 1024)]
-    public Eth1Data[]? Eth1DataVotes { get; set; }
+    public Eth1Data[]? Eth1DataVotes
+    {
+        get => VoteList.AsArray();
+        set => VoteList = new(value);
+    }
+    internal Eth1VoteList VoteList;
     public ulong Eth1DepositIndex { get; set; }
     [SszList(1_099_511_627_776)]
-    public Validator[]? Validators { get; set; }
+    public Validator[]? Validators
+    {
+        get => ForkableArray<Validator>.Expose(ref ValidatorBuffer);
+        set => ValidatorBuffer = ForkableArray<Validator>.FromArray(value);
+    }
+    internal ForkableArray<Validator>? ValidatorBuffer;
+    internal ReadOnlySpan<Validator> ReadOnlyValidators => ValidatorBuffer?.Items;
     [SszList(1_099_511_627_776)]
     public ulong[]? Balances { get; set; }
     [SszVector((int)Presets.EpochsPerHistoricalVector)]
@@ -45,7 +59,12 @@ public partial class BeaconStateElectra
     public Checkpoint? CurrentJustifiedCheckpoint { get; set; }
     public Checkpoint? FinalizedCheckpoint { get; set; }
     [SszList(1_099_511_627_776)]
-    public ulong[]? InactivityScores { get; set; }
+    public ulong[]? InactivityScores
+    {
+        get => ForkableArray<ulong>.Expose(ref InactivityScoreBuffer);
+        set => InactivityScoreBuffer = ForkableArray<ulong>.FromArray(value);
+    }
+    internal ForkableArray<ulong>? InactivityScoreBuffer;
     public SyncCommittee? CurrentSyncCommittee { get; set; }
     public SyncCommittee? NextSyncCommittee { get; set; }
     public ExecutionPayloadHeader? LatestExecutionPayloadHeader { get; set; }
@@ -71,6 +90,11 @@ public partial class BeaconStateElectra
 [SszContainer]
 public partial class BeaconStateFulu : BeaconStateElectra
 {
+    internal BlockHashChanges? BlockChanges;
+    internal bool ExposedForApi;
+
+    internal new static partial int GetSszFixedSectionLength();
+
     /// <remarks>Length is <c>(MIN_SEED_LOOKAHEAD + 1) * SLOTS_PER_EPOCH</c>.</remarks>
     [SszVector((int)Presets.DefaultProposerLookaheadSlots, AlternateLength = 32)]
     public ulong[]? ProposerLookahead { get; set; }
@@ -84,6 +108,10 @@ public partial class BeaconStateFulu : BeaconStateElectra
 [SszContainer]
 public partial class BeaconStateGloas
 {
+    internal BlockHashChanges? BlockChanges => null;
+
+    internal static partial int GetSszFixedSectionLength();
+
     [SszField(0)]
     public ulong GenesisTime { get; set; }
     [SszField(1)]
@@ -109,12 +137,23 @@ public partial class BeaconStateGloas
     /// <remarks>Unmodified in Gloas: still a plain bounded list, not progressive.</remarks>
     [SszField(9)]
     [SszList(Presets.DefaultEth1DataVotesLimit, AlternateLimit = 1024)]
-    public Eth1Data[]? Eth1DataVotes { get; set; }
+    public Eth1Data[]? Eth1DataVotes
+    {
+        get => VoteList.AsArray();
+        set => VoteList = new(value);
+    }
+    internal Eth1VoteList VoteList;
     [SszField(10)]
     public ulong Eth1DepositIndex { get; set; }
     [SszField(11)]
     [SszProgressiveList]
-    public Validator[]? Validators { get; set; }
+    public Validator[]? Validators
+    {
+        get => ForkableArray<Validator>.Expose(ref ValidatorBuffer);
+        set => ValidatorBuffer = ForkableArray<Validator>.FromArray(value);
+    }
+    internal ForkableArray<Validator>? ValidatorBuffer;
+    internal ReadOnlySpan<Validator> ReadOnlyValidators => ValidatorBuffer?.Items;
     [SszField(12)]
     [SszProgressiveList]
     public ulong[]? Balances { get; set; }
@@ -141,7 +180,12 @@ public partial class BeaconStateGloas
     public Checkpoint? FinalizedCheckpoint { get; set; }
     [SszField(21)]
     [SszProgressiveList]
-    public ulong[]? InactivityScores { get; set; }
+    public ulong[]? InactivityScores
+    {
+        get => ForkableArray<ulong>.Expose(ref InactivityScoreBuffer);
+        set => InactivityScoreBuffer = ForkableArray<ulong>.FromArray(value);
+    }
+    internal ForkableArray<ulong>? InactivityScoreBuffer;
     [SszField(22)]
     public SyncCommittee? CurrentSyncCommittee { get; set; }
     [SszField(23)]

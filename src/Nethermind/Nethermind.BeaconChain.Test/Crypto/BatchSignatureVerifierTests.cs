@@ -76,8 +76,11 @@ public class BatchSignatureVerifierTests
 
         byte[] infinityPubkey = GloasTestFixtures.G1PointAtInfinity();
 
-        Assert.That(BlsSignatureSet.TryCreate(infinityPubkey, message, sig, out BlsSignatureSet? set), Is.False);
-        Assert.That(set, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BlsSignatureSet.TryCreate(infinityPubkey, message, sig, out BlsSignatureSet? set), Is.False);
+            Assert.That(set, Is.Null);
+        }
     }
 
     // ethereum/bls12-381-tests v0.1.2, deserialization_G1/deserialization_fails_not_in_G1 and
@@ -93,18 +96,21 @@ public class BatchSignatureVerifierTests
         bool decodes = point.TryDecode(NotInG1Pubkey, out _);
         bool isInfinity = point.IsInf();
         bool inGroup = point.InGroup();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(decodes, Is.True, "the vector must decode, or this pins the encoding branch instead of the subgroup branch");
             Assert.That(isInfinity, Is.False, "the vector must not be infinity, or this pins the infinity branch instead of the subgroup branch");
             Assert.That(inGroup, Is.False, "the vector must lie outside G1");
-        });
+        }
 
         byte[] message = Msg(0x22);
         byte[] sig = Sign(DeriveKey(3), message);
 
-        Assert.That(BlsSignatureSet.TryCreate(NotInG1Pubkey, message, sig, out BlsSignatureSet? set), Is.False);
-        Assert.That(set, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BlsSignatureSet.TryCreate(NotInG1Pubkey, message, sig, out BlsSignatureSet? set), Is.False);
+            Assert.That(set, Is.Null);
+        }
     }
 
     [Test]
@@ -113,17 +119,20 @@ public class BatchSignatureVerifierTests
         Bls.P2Affine point = new(new long[Bls.P2Affine.Sz]);
         bool decodes = point.TryDecode(NotInG2Signature, out _);
         bool inGroup = point.InGroup();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(decodes, Is.True, "the vector must decode, or this pins the encoding branch instead of the subgroup branch");
             Assert.That(inGroup, Is.False, "the vector must lie outside G2");
-        });
+        }
 
         byte[] message = Msg(0x33);
         byte[] pk = CompressedPubkey(DeriveKey(3));
 
-        Assert.That(BlsSignatureSet.TryCreate(pk, message, NotInG2Signature, out BlsSignatureSet? set), Is.False);
-        Assert.That(set, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BlsSignatureSet.TryCreate(pk, message, NotInG2Signature, out BlsSignatureSet? set), Is.False);
+            Assert.That(set, Is.Null);
+        }
     }
 
     [Test]
@@ -139,7 +148,7 @@ public class BatchSignatureVerifierTests
         for (int trial = 0; trial < trials; trial++)
         {
             int count = random.Next(1, maxSetsPerTrial + 1);
-            List<BlsSignatureSet> sets = new(count);
+            List<BlsSignatureSet> sets = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 int keyIndex = trial * maxSetsPerTrial + i;

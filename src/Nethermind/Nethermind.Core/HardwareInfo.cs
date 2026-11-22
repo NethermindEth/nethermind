@@ -3,10 +3,11 @@
 
 using System;
 using System.Runtime.InteropServices;
+using Nethermind.Logging;
 
 namespace Nethermind.Core;
 
-public class HardwareInfo : IHardwareInfo
+public partial class HardwareInfo : IHardwareInfo
 {
     public long AvailableMemoryBytes { get; }
     public int? MaxOpenFilesLimit { get; }
@@ -45,9 +46,11 @@ public class HardwareInfo : IHardwareInfo
                 }
             }
         }
-        catch
+        catch (Exception e)
         {
             // If we can't detect the limit, return null to indicate unknown
+            ILogger logger = Static.LogManager.GetClassLogger<HardwareInfo>();
+            if (logger.IsDebug) logger.Debug($"Cannot detect the open files limit: {e.Message}");
         }
 
         return null;
@@ -60,6 +63,6 @@ public class HardwareInfo : IHardwareInfo
         public ulong rlim_max; // Hard limit
     }
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int getrlimit(int resource, ref RLimit rlim);
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int getrlimit(int resource, ref RLimit rlim);
 }

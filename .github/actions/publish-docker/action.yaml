@@ -44,6 +44,9 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Set up .NET
+      uses: ./.github/actions/setup-dotnet
+
     - name: Set up QEMU
       uses: docker/setup-qemu-action@v4
 
@@ -88,7 +91,7 @@ runs:
         fi
 
         # LC and EL share a registry repository but have independent release versions.
-        light_client_dockerfile=$(realpath -m -- tools/LightClient/Dockerfile)
+        light_client_dockerfile=$(realpath -m -- src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile)
         light_client_project=$(realpath -m -- src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj)
         is_light_client=false
         if [ "$(realpath -m -- "$DOCKERFILE")" = "$light_client_dockerfile" ]; then
@@ -100,13 +103,16 @@ runs:
           fi
         else
           VERSION_FILE=${VERSION_FILE:-src/Nethermind/Directory.Build.props}
-          if [[ "$tag" == light-client-* ]] || [ "$(realpath -m -- "$VERSION_FILE")" = "$light_client_project" ]; then
-            echo "::error::Light-client tags and its project version are reserved for tools/LightClient/Dockerfile"
+          if [[ "$tag" =~ ^light-client-[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] ||
+            [ "$(realpath -m -- "$VERSION_FILE")" = "$light_client_project" ]; then
+            echo "::error::Light-client tags and its project version are reserved for src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile"
             exit 1
           fi
         fi
 
-        if ! version=$(scripts/version.sh "$VERSION_FILE"); then
+        # Validate captured CLI output before it enters the evaluated Docker command.
+        if ! version=$(dotnet run --file scripts/version.cs -- "$VERSION_FILE") ||
+          [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
           echo "::error::Could not determine the version for the image labels"
           exit 1
         fi

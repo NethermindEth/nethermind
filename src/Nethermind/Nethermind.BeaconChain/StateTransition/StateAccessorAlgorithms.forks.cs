@@ -55,16 +55,8 @@ public static partial class BeaconStateAccessors
     /// epoch's mix, so refuse rather than silently return it.
     /// </remarks>
     /// <exception cref="BeaconStateException">The epoch is outside the historical-vector window.</exception>
-    public static partial Hash256 GetRandaoMix(this LegacyState state, ulong epoch)
-    {
-        ulong currentEpoch = state.GetCurrentEpoch();
-        ulong age = currentEpoch - epoch; // unsigned wraparound rejects a later epoch, except one so near 2^64 that the wrapped age falls inside the window
-        if (age >= Presets.EpochsPerHistoricalVector)
-            throw new BeaconStateException(
-                $"Randao mix for epoch {epoch} is not available: state is at epoch {currentEpoch}, " +
-                $"window covers the {Presets.EpochsPerHistoricalVector} epochs up to and including it");
-        return state.RandaoMixes![(int)(epoch % Presets.EpochsPerHistoricalVector)];
-    }
+    public static partial Hash256 GetRandaoMix(this LegacyState state, ulong epoch) =>
+        state.RandaoMixes![BeaconStateAccessors.GetRandaoMixIndex(state.Slot, epoch)];
 
     /// <summary>Returns the shuffling seed for <paramref name="epoch"/> and the given domain type.</summary>
     public static partial Hash256 GetSeed(this LegacyState state, ulong epoch, ReadOnlySpan<byte> domainType)
@@ -95,7 +87,7 @@ public static partial class BeaconStateAccessors
     /// <summary>Returns the indices of validators active in <paramref name="epoch"/>, in ascending order.</summary>
     public static partial int[] GetActiveValidatorIndices(this LegacyState state, ulong epoch)
     {
-        Validator[] validators = state.Validators!;
+        ReadOnlySpan<Validator> validators = state.ReadOnlyValidators;
         int count = 0;
         foreach (Validator validator in validators)
             if (validator.IsActiveValidator(epoch)) count++;
@@ -112,7 +104,7 @@ public static partial class BeaconStateAccessors
         ulong total = 0;
         foreach (int index in indices)
         {
-            total += state.Validators![index].EffectiveBalance;
+            total += state.ReadOnlyValidators[index].EffectiveBalance;
         }
         return Math.Max(Presets.EffectiveBalanceIncrement, total);
     }

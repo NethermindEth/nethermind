@@ -3,7 +3,6 @@
 
 using System.Buffers;
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Net.Quic;
 using System.Text;
 using Multiformats.Address;
@@ -26,6 +25,7 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.RocksDbBindings;
+using Testably.Abstractions;
 using BeaconPeerManager = Nethermind.BeaconChain.P2P.PeerManager;
 
 namespace Nethermind.LightClient;
@@ -34,6 +34,7 @@ namespace Nethermind.LightClient;
 internal sealed class BeaconPeerTransport : IAsyncDisposable
 {
     private static readonly TimeSpan PeerRequestTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan PeerSearchInterval = TimeSpan.FromSeconds(3);
     private readonly IPResolver _ipResolver;
     private readonly BeaconP2P _p2p;
     private readonly BeaconDiscovery _discovery;
@@ -50,6 +51,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _stop = new();
     private Task? _peerLoop;
+    private TaskCompletionSource? _bootstrapPeerAdmission;
     private bool _needsCommitteeSupplier = true;
 
     internal int PeerCount => _peers.PeerCount;
@@ -94,7 +96,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             CurrentStatus = new StatusMessageV2 { FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero },
         };
         _ipResolver = new IPResolver(new NetworkConfig(), logManager);
-        _p2p = new BeaconP2P(config, spec, store, _status, new LocalMetadataSource(config, store),
+        _p2p = new BeaconP2P(config, spec, store, _status, new LocalMetadataSource(config, store, validateStoreSchema: false),
             new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), logManager,
             peerPool: new Lazy<IBeaconSyncPeerPool>(() => _peers!), configureGossip: _gossip.Configure, lightClientRequests: true);
         _discovery = new BeaconDiscovery(config, spec, store, _ipResolver, clock, logManager, peerStorage);
@@ -111,7 +113,11 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         _peers.PeerAdmitted += peer =>
         {
             if (_peers.TryGetPeer(PeerProviders.Identity(peer.Id), out PeerRecord record) && record.State == PeerConnectionState.Connected)
+            {
                 _providers.Admit(peer, record.Direction);
+                if (Volatile.Read(ref _bootstrapPeerAdmission) is { } admission && _bootstrapRequests.CanRequest<LightClientBootstrap>(peer))
+                    admission.TrySetResult();
+            }
             else if (_logger.IsDebug) _logger.Debug($"Admitted beacon peer {peer.Id} no longer has a connected peer-directory record");
         };
     }
@@ -146,17 +152,20 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     /// <summary>Opens durable beacon identity and ENR sequence storage owned by the caller.</summary>
     internal static ColumnsDb<BeaconChainDbColumns> OpenPeerDb(string dataDirectory, BeaconChainSpec spec, ILogManager logs)
     {
-        string path = Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "network");
+        string path = Path.GetFullPath(Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "network"));
         DbConfig config = new()
         {
             WriteAheadLogSync = true,
+            EnableMetricsUpdater = false,
             MaxOpenFiles = 64,
             AdditionalRocksDbOptions = "write_buffer_size=262144;max_write_buffer_number=2;block_based_table_factory.block_cache=262144;target_file_size_base=262144;max_bytes_for_level_base=1048576;",
         };
-        ColumnsDb<BeaconChainDbColumns> db = new(path,
-            new DbSettings("lightClientBeacon", path) { PersistRepairMarkerUntilAcknowledged = true, SkipMetricsTracking = true },
-            config, new RocksDbConfigFactory(config, new PruningConfig(), new HardwareInfo(), logs, validateConfig: false),
-            logs, Enum.GetValues<BeaconChainDbColumns>());
+        // Every column owns its explicitly configured block cache; the factory's required shared cache is unused.
+        using HyperClockCacheWrapper sharedCache = new(262144);
+        RocksDbFactory factory = new(new RocksDbConfigFactory(config, new PruningConfig(), new HardwareInfo(), logs, validateConfig: false),
+            config, sharedCache, new RealFileSystem(), logs, path);
+        ColumnsDb<BeaconChainDbColumns> db = (ColumnsDb<BeaconChainDbColumns>)factory.CreateColumnsDb<BeaconChainDbColumns>(
+            new DbSettings("lightClientBeacon", path) { PersistRepairMarkerUntilAcknowledged = true, SkipMetricsTracking = true });
         if (db.WasRepairedOnOpen)
         {
             db.Dispose();
@@ -230,8 +239,11 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>> optimistic, CancellationToken token) =>
         _gossip.Start(_p2p.GetTopic, finality, optimistic, token);
 
-    internal Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken token) =>
-        RequestAsync(_bootstrapRequests, (peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token);
+    internal async Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Func<LightClientBootstrap, CancellationToken, Task> validate, CancellationToken token)
+    {
+        try { return await RequestAsync(_bootstrapRequests, (peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token); }
+        finally { Volatile.Write(ref _bootstrapPeerAdmission, null); }
+    }
 
     internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
         RequestAsync(_updateRequests, (peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
@@ -253,21 +265,38 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             return true;
         };
         Func<IBeaconSyncPeer, bool> isEligible = requests.CanRequest<T>;
-        long lastStatus = Stopwatch.GetTimestamp();
+        long lastStatus = _time.GetTimestamp();
         while (true)
         {
             token.ThrowIfCancellationRequested();
+            TaskCompletionSource? admission = null;
+            if (typeof(T) == typeof(LightClientBootstrap))
+            {
+                // Arm before taking the snapshot so a newly admitted peer outside that snapshot can wake the retry.
+                admission = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Volatile.Write(ref _bootstrapPeerAdmission, admission);
+            }
             (T? response, bool sawInapplicable) = await requests.RequestAsync(_peers.GetBestPeers(0, isEligible), request, validateAndAccept, token);
             if (response is not null) return response;
             if (sawInapplicable) throw new IrrelevantLightClientUpdateException();
 
-            if (Stopwatch.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
+            if (_time.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
             {
                 if (_logger.IsInfo) _logger.Info($"Waiting for beacon light-client data; connected peers: {PeerCount}");
-                lastStatus = Stopwatch.GetTimestamp();
+                lastStatus = _time.GetTimestamp();
             }
 
-            await Task.Delay(TimeSpan.FromSeconds(3), token);
+            if (admission is null)
+            {
+                await Task.Delay(PeerSearchInterval, _time, token);
+            }
+            else if (!admission.Task.IsCompleted)
+            {
+                using CancellationTokenSource retry = CancellationTokenSource.CreateLinkedTokenSource(token);
+                Task delay = Task.Delay(PeerSearchInterval, _time, retry.Token);
+                if (await Task.WhenAny(delay, admission.Task) != delay)
+                    await retry.CancelAsync();
+            }
         }
     }
 
@@ -276,7 +305,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     {
         private readonly Nethermind.Logging.ILogger _logger = logger ?? NullLogger.Instance;
         private readonly int _concurrency = Math.Clamp(concurrency, 1, 4);
-        private readonly Dictionary<IBeaconSyncPeer, int> _localRejections = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<IBeaconSyncPeer, int> _localRejections = [with(ReferenceEqualityComparer.Instance)];
         private string? _lastAttemptedPeerId;
 
         internal bool CanRequest<T>(IBeaconSyncPeer peer) => providers?.CanRequest<T>(peer) ?? true;
@@ -308,7 +337,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             bool sawInapplicable = false;
             int offset = preferred >= 0 ? -1 : 0;
             int attempted = 0, unavailableCount = 0, failedCount = 0, inapplicableCount = 0, accepted = 0, validated = 0;
-            List<Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)>> pending = new(fanOut);
+            List<Task<(IBeaconSyncPeer Peer, T? Response, Exception? Failure, bool TimedOut)>> pending = [with(fanOut)];
             using CancellationTokenSource owner = CancellationTokenSource.CreateLinkedTokenSource(token);
             try
             {
@@ -458,7 +487,6 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private const int TargetPeers = 16;
         private const int MinFreshSuppliers = 4;
         private const ulong MaxSupplierLag = 10;
-        private const ulong MaxHealthyGossipLag = 2;
         private static readonly TimeSpan AdmissionGrace = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan RetryInterval = TimeSpan.FromSeconds(30);
         private static readonly TimeSpan Retention = TimeSpan.FromMinutes(10);
@@ -472,7 +500,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         private static readonly UTF8Encoding HintEncoding = new(false, true);
         private readonly Nethermind.Logging.ILogger _logger = logger ?? NullLogger.Instance;
         private readonly Lock _lock = new();
-        private readonly Dictionary<string, Supplier> _sessions = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, Supplier> _sessions = [with(StringComparer.Ordinal)];
         private readonly Dictionary<Type, string> _protocols = new()
         {
             [typeof(LightClientBootstrap)] = new LightClientBootstrapProtocol(spec).Id,
@@ -656,8 +684,8 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             lock (_lock)
             {
                 long now = time.GetTimestamp();
-                HashSet<string> connected = new(StringComparer.Ordinal);
-                HashSet<string> admitted = new(StringComparer.Ordinal);
+                HashSet<string> connected = [with(StringComparer.Ordinal)];
+                HashSet<string> admitted = [with(StringComparer.Ordinal)];
                 foreach (PeerRecord peer in peers)
                 {
                     connected.Add(peer.PeerId);
@@ -694,7 +722,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                     foreach (Supplier supplier in _sessions.Values)
                     {
                         if (!admitted.Contains(Identity(supplier.Peer.Id)) || time.GetElapsedTime(supplier.Admitted, now) < AdmissionGrace) continue;
-                        if (IsFresh(supplier.GossipSlot, MaxHealthyGossipLag)) continue;
+                        if (IsFresh(supplier.GossipSlot)) continue;
                         bool unavailable = needsOptimistic && supplier.FailedProtocols?.ContainsKey(typeof(LightClientOptimisticUpdate)) == true ||
                             needsFinality && supplier.FailedProtocols?.ContainsKey(typeof(LightClientFinalityUpdate)) == true ||
                             needsCommittee && supplier.FailedProtocols?.ContainsKey(typeof(LightClientUpdate)) == true;
@@ -754,10 +782,10 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         private bool IsCandidate(Supplier supplier) => supplier.CandidateAt is { } candidate && time.GetElapsedTime(candidate) <= Retention;
 
-        private bool IsFresh(ulong? slot, ulong maximumLag = MaxSupplierLag)
+        private bool IsFresh(ulong? slot)
         {
             ulong current = spec.GetSlotAtTime((ulong)Math.Max(0, time.GetUtcNow().ToUnixTimeSeconds()));
-            return slot is { } attested && attested <= current && current - attested <= maximumLag;
+            return slot is { } attested && attested <= current && current - attested <= MaxSupplierLag;
         }
 
         private void Remember(IBeaconSyncPeer peer)
@@ -802,7 +830,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 if (!stopping && _lastSaveAttempt is { } previous && time.GetElapsedTime(previous, now) < SaveInterval) return;
                 _lastSaveAttempt = now;
                 generation = _hintGeneration;
-                snapshot = new(_remembered.Count);
+                snapshot = [with(_remembered.Count)];
                 foreach (Remembered remembered in _remembered.Values)
                     if (HintAge(remembered, now) <= HintRetention) snapshot.Add((remembered.Address, remembered.UsefulUtc));
             }
@@ -818,7 +846,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
 
         private static Dictionary<string, Remembered> LoadHints(IDb? db, BeaconChainSpec spec, TimeProvider time, Nethermind.Logging.ILogger logger)
         {
-            Dictionary<string, Remembered> result = new(StringComparer.Ordinal);
+            Dictionary<string, Remembered> result = [with(StringComparer.Ordinal)];
             if (db is null) return result;
             try
             {
@@ -853,13 +881,13 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException or RocksDbException or DecoderFallbackException)
             {
                 if (logger.IsWarn) logger.Warn($"Ignoring optional light-client supplier hints: {exception.GetType().Name}");
-                return new(StringComparer.Ordinal);
+                return [with(StringComparer.Ordinal)];
             }
         }
 
         private static byte[] EncodeHints(List<(string Address, long UsefulUtc)> snapshot, BeaconChainSpec spec)
         {
-            List<(byte[] Address, long UsefulUtc)> entries = new(snapshot.Count);
+            List<(byte[] Address, long UsefulUtc)> entries = [with(snapshot.Count)];
             int length = HintHeaderBytes;
             foreach ((string address, long usefulUtc) in snapshot)
             {

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
 using Microsoft.CodeAnalysis;
 
 internal static class SszPropertyOrder
@@ -13,7 +16,7 @@ internal static class SszPropertyOrder
         }
         typeChain.Reverse();
 
-        Dictionary<string, IPropertySymbol> mostDerived = new(StringComparer.Ordinal);
+        Dictionary<string, IPropertySymbol> mostDerived = [with(StringComparer.Ordinal)];
         foreach (ITypeSymbol t in typeChain)
         {
             foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
@@ -22,7 +25,7 @@ internal static class SszPropertyOrder
             }
         }
 
-        HashSet<string> seen = new(StringComparer.Ordinal);
+        HashSet<string> seen = [with(StringComparer.Ordinal)];
         foreach (ITypeSymbol t in typeChain)
         {
             foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))

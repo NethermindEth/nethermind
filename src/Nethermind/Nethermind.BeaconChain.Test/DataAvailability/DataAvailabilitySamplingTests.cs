@@ -88,10 +88,10 @@ public class DataAvailabilitySamplingTests
         Assert.That(DataAvailabilitySampling.IsSampleAvailable([], _ => throw new InvalidOperationException("must not be called")), Is.False);
 
     [Test]
-    public void IsSampleAvailable_rejects_null_arguments() =>
-        Assert.Multiple(() =>
-        {
-            Assert.Throws<ArgumentNullException>(() => DataAvailabilitySampling.IsSampleAvailable(null!, _ => true));
-            Assert.Throws<ArgumentNullException>(() => DataAvailabilitySampling.IsSampleAvailable([1], null!));
-        });
+    public void IsSampleAvailable_rejects_null_arguments()
+    {
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.Throws<ArgumentNullException>(() => DataAvailabilitySampling.IsSampleAvailable(null!, _ => true));
+        Assert.Throws<ArgumentNullException>(() => DataAvailabilitySampling.IsSampleAvailable([1], null!));
+    }
 }

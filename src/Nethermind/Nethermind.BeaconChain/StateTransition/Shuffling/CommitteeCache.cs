@@ -100,7 +100,7 @@ public sealed class CommitteeCacheLru(int capacity = CommitteeCacheLru.DefaultCa
 {
     public const int DefaultCapacity = 4;
 
-    private readonly List<(ulong Epoch, Hash256 DecisionRoot, CommitteeCache Cache)> _entries = new(capacity);
+    private readonly List<(ulong Epoch, Hash256 DecisionRoot, CommitteeCache Cache)> _entries = [with(capacity)];
 
     /// <summary>Returns the cached committees for <paramref name="epoch"/>, building them if absent.</summary>
     public CommitteeCache GetOrBuild(BeaconStateFulu state, ulong epoch) =>

@@ -6,6 +6,7 @@ using System.IO;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Snappier;
@@ -18,6 +19,109 @@ namespace Nethermind.BeaconChain.Test.Storage;
 public class BeaconChainStoreEnvelopeTests
 {
     private static readonly ulong SlotsPerEpoch = Sepolia.SlotsPerEpoch;
+
+    [Test]
+    public void Sparse_prune_reads_populated_slots_and_preserves_other_key_lengths([Values] bool sorted)
+    {
+        using CountingStatesColumnsDb db = new(sorted, BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+        BeaconChainStore store = new(db, Sepolia);
+        SignedExecutionPayloadEnvelope first = Envelope(FirstGloasSlot);
+        SignedExecutionPayloadEnvelope last = Envelope(FirstGloasSlot + 1_000_000);
+        store.PutExecutionPayloadEnvelope(RootOf(first), first, valid: true);
+        store.PutExecutionPayloadEnvelope(RootOf(last), last, valid: true);
+        byte[] middle = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(middle, FirstGloasSlot + 500_000);
+        byte[][] otherKeys = [middle[..7], [.. middle, 1]];
+        foreach (byte[] key in otherKeys) db.Index.Set(key, [1]);
+        db.Index.ResetCount();
+        long reads = db.Index.ReadsCount;
+
+        store.PruneExecutionPayloadEnvelopes(ulong.MaxValue, ulong.MaxValue);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(db.Index.ReadsCount - reads, Is.LessThan(10));
+        Assert.That(db.Index.KeysRead, Is.LessThan(15));
+        Assert.That(db.Index.GetAllKeys(), Is.EquivalentTo(otherKeys));
+    }
+
+    [Test]
+    public void Sparse_prune_resumes_after_a_committed_batch_and_rechecks_old_inserts([Values] bool insertBetweenBatches)
+    {
+        using InterruptibleEnvelopeDb db = new();
+        BeaconChainStore store = new(db, Sepolia);
+        const ulong stride = 1_000_000;
+        for (ulong i = 0; i <= BeaconChainStore.EnvelopePruneBatchSlots; i++)
+        {
+            byte[] key = new byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64BigEndian(key, FirstGloasSlot + i * stride);
+            db.Envelopes.Set(key, []);
+        }
+        db.Envelopes.Set([0], BeaconChainStoreEnvelopeRetentionTests.Bounds(FirstGloasSlot, FirstGloasSlot + BeaconChainStore.EnvelopePruneBatchSlots * stride));
+        SignedExecutionPayloadEnvelope inserted = Envelope(FirstGloasSlot);
+        db.Envelopes.BeforeSecondBoundsRead = () =>
+        {
+            if (insertBetweenBatches) store.PutExecutionPayloadEnvelope(RootOf(inserted), inserted, valid: true);
+            else throw new OperationCanceledException();
+        };
+
+        if (insertBetweenBatches)
+        {
+            store.PruneExecutionPayloadEnvelopes(ulong.MaxValue, ulong.MaxValue);
+        }
+        else
+        {
+            Assert.Throws<OperationCanceledException>(() => store.PruneExecutionPayloadEnvelopes(ulong.MaxValue, ulong.MaxValue));
+            Assert.That(db.Envelopes.GetAllKeys().Count(key => key.Length == sizeof(ulong)), Is.EqualTo(1), "one batch deletes exactly the populated-slot limit");
+            new BeaconChainStore(db, Sepolia).PruneExecutionPayloadEnvelopes(ulong.MaxValue, ulong.MaxValue);
+        }
+
+        Assert.That(db.Envelopes.GetAllKeys(), Is.Empty);
+    }
+
+    private sealed class InterruptibleEnvelopeDb : TestColumnsDb
+    {
+        public InterruptibleEnvelopes Envelopes { get; } = new();
+        protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.ExecutionPayloadEnvelopes ? Envelopes : base.CreateColumn(key);
+    }
+
+    private sealed class InterruptibleEnvelopes : MemDb
+    {
+        public Action? BeforeSecondBoundsRead { get; set; }
+        private int _boundsReads;
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            if (BeforeSecondBoundsRead is { } action && key.Length == 1 && key[0] == 0 && ++_boundsReads == 2)
+            {
+                BeforeSecondBoundsRead = null;
+                action();
+            }
+            return base.Get(key, flags);
+        }
+    }
+
+    [Test]
+    public void Invalidated_envelope_and_verdict_stay_removed_after_reopening()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db, Sepolia);
+        ulong slot = FirstGloasSlot + 3;
+        SignedExecutionPayloadEnvelope invalid = Envelope(slot);
+        SignedExecutionPayloadEnvelope sibling = Envelope(slot, salt: 1);
+        store.PutExecutionPayloadEnvelope(RootOf(invalid), invalid, valid: true);
+        store.PutExecutionPayloadEnvelope(RootOf(sibling), sibling);
+        store.DeleteExecutionPayloadEnvelope(RootOf(invalid), slot);
+        BeaconChainStore reopened = new(db, Sepolia);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reopened.TryGetExecutionPayloadEnvelope(RootOf(invalid), out _), Is.False);
+            Assert.That(reopened.IsExecutionPayloadValid(RootOf(invalid)), Is.False);
+            Assert.That(reopened.TryGetExecutionPayloadEnvelope(RootOf(sibling), out _), Is.True);
+        }
+        Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+        Assert.That(db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Get(slotKey), Is.EqualTo(RootOf(sibling).Bytes.ToArray()));
+    }
 
     [TestCase(false, false)]
     [TestCase(true, false)]

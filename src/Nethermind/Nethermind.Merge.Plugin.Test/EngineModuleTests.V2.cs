@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.Producers;
@@ -19,12 +20,11 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.State.Repositories;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
 
@@ -68,7 +68,9 @@ public partial class EngineModuleTests
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -113,7 +115,9 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -124,7 +128,9 @@ public partial class EngineModuleTests
             chain.JsonSerializer.Serialize(ExecutionPayload.Create(block)));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -147,7 +153,9 @@ public partial class EngineModuleTests
         response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV2", @params!);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
+#pragma warning disable NUnit2045 // The later assertion consumes or dereferences the value checked by the earlier guard, including through a constraint or conversion.
         Assert.That(successResponse, Is.Not.Null);
+#pragma warning restore NUnit2045
         Assert.That(response, Is.EqualTo(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
         {
             Id = successResponse.Id,
@@ -193,8 +201,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse!.Error, Is.Not.Null);
-        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
-        Assert.That(errorResponse!.Error!.Message, Is.EqualTo("PayloadAttributesV1 expected"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+            Assert.That(errorResponse!.Error!.Message, Is.EqualTo("PayloadAttributesV1 expected"));
+        }
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -232,8 +243,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse!.Error, Is.Not.Null);
-        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
-        Assert.That(errorResponse!.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "PayloadAttributes")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse!.Error!.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
+            Assert.That(errorResponse!.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "PayloadAttributes")));
+        }
     }
 
     [Test]
@@ -257,8 +271,11 @@ public partial class EngineModuleTests
         byte[] payloadId = Bytes.FromHexString(forkchoiceResponse.Result.Data.PayloadId!);
         ResultWrapper<GetPayloadV2Result?> responseFirst = await rpc.engine_getPayloadV2(payloadId);
         Assert.That(responseFirst, Is.Not.Null);
-        Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(responseFirst.Data!.BlockValue, Is.EqualTo(UInt256.Zero));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responseFirst.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(responseFirst.Data!.BlockValue, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -276,8 +293,9 @@ public partial class EngineModuleTests
         PrivateKey sender = TestItem.PrivateKeyB;
         Transaction[] transactions =
             BuildTransactions(chain, startingHead, sender, Address.Zero, count, value, out _, out _);
+        chain.AddTransactions(transactions);
 
-        Task blockImprovementWait = chain.WaitForImprovedBlock();
+        Task blockImprovementWait = chain.WaitForImprovedBlock(startingHead, (int)count);
 
         string? payloadId = rpc.engine_forkchoiceUpdatedV1(
                 new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead),
@@ -293,6 +311,13 @@ public partial class EngineModuleTests
 
         await blockImprovementWait;
         GetPayloadV2Result getPayloadResult = (await rpc.engine_getPayloadV2(Bytes.FromHexString(payloadId))).Data!;
+        // Every transfer tips 1 GWei per gas (BuildTransactions) and the block has no base fee.
+        UInt256 expectedFees = GasCostOf.Transaction * count * 1.GWei;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(getPayloadResult.ExecutionPayload.Transactions, Has.Length.EqualTo((int)count));
+            Assert.That(getPayloadResult.BlockValue, Is.EqualTo(expectedFees));
+        }
 
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV1(getPayloadResult.ExecutionPayload);
@@ -322,12 +347,16 @@ public partial class EngineModuleTests
 
         chain.AddTransactions(txs);
 
-        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        Hash256[] blockHashes = [executionPayload1.BlockHash, TestItem.KeccakA, executionPayload2.BlockHash];
+        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, executionPayload1, withdrawals, txs.Length);
+        // An empty sibling of executionPayload2: the same height, so only the hash tells them apart.
+        ExecutionPayload sibling2 = await SendNewBlockV2(rpc, chain, withdrawals);
+        Assert.That(sibling2.BlockNumber, Is.EqualTo(executionPayload2.BlockNumber));
+        // Child before parent, so the answer has to follow the request, not the chain.
+        Hash256[] blockHashes = [executionPayload2.BlockHash, TestItem.KeccakA, executionPayload1.BlockHash, sibling2.BlockHash];
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByHashV1(blockHashes).Data;
         ExecutionPayloadBodyV1Result?[] expected = {
-            new(Array.Empty<Transaction>(), withdrawals), null, new(txs, withdrawals)
+            new(txs, withdrawals), null, new(Array.Empty<Transaction>(), withdrawals), new(Array.Empty<Transaction>(), withdrawals)
         };
 
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
@@ -346,19 +375,29 @@ public partial class EngineModuleTests
 
         chain.AddTransactions(txs);
 
-        await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, false, withdrawals);
+        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, executionPayload1, withdrawals, txs.Length);
+        ExecutionPayload executionPayload3 = await BuildAndSendNewBlockV2(rpc, chain, executionPayload2, withdrawals);
 
-        await chain.WaitForCommitted(executionPayload2.BlockHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(
-            new ForkchoiceStateV1(executionPayload2.BlockHash!, executionPayload2.BlockHash!, executionPayload2.BlockHash!));
+            new ForkchoiceStateV1(executionPayload3.BlockHash!, executionPayload3.BlockHash!, executionPayload3.BlockHash!));
         Assert.That(fcuResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
 
-        IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
-            rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
+        ExecutionPayloadBodyV1Result empty = new(Array.Empty<Transaction>(), withdrawals);
+        ExecutionPayloadBodyV1Result withTxs = new(txs, withdrawals);
+        await AssertRange(1, 2, empty, withTxs);
+        await AssertRange(2, 2, withTxs, empty);
+        // A range past the head is cut off at the head, not padded with nulls; nulls inside a range (pruned bodies)
+        // are covered by getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies.
+        await AssertRange(1, 5, empty, withTxs, empty);
 
-        Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
+        async Task AssertRange(ulong start, ulong count, params ExecutionPayloadBodyV1Result[] expected)
+        {
+            IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
+                (await rpc.engine_getPayloadBodiesByRangeV1(start, count)).Data;
+            Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)),
+                Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer),
+                $"range ({start}, {count})");
+        }
     }
 
     /// <summary>
@@ -376,7 +415,9 @@ public partial class EngineModuleTests
         using CommitGate commit = new(chain.BranchProcessor, block.BlockHash);
         Task<ExecutionPayload> send = SendNewBlockV2(rpc, chain, withdrawals);
         await commit.VerdictGiven.WaitAsync(GateTimeout);
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(chain.BlockTree.WasProcessed(block.BlockNumber, block.BlockHash), Is.False, "precondition: the block is answered but not committed yet");
+#pragma warning restore NUnit2045
         Assert.That(await Task.WhenAny(send, Task.Delay(100)), Is.Not.SameAs(send), "the helper waits while the block is committing");
 
         commit.Release();
@@ -472,6 +513,7 @@ public partial class EngineModuleTests
             ];
 
             Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(expected))).Using(JToken.EqualityComparer));
+            await AssertStreamedJsonMatchesSerializer((PayloadBodiesV1DirectResponse)payloadBodies);
         }
 
         // Second branch
@@ -506,48 +548,37 @@ public partial class EngineModuleTests
 
     [TestCaseSource(nameof(PayloadBodiesByRangeNullTrimTestCases))]
     public async Task getPayloadBodiesByRangeV1_should_trim_trailing_null_bodies(
-        (Func<CallInfo, Block?> Impl,
+        (Func<ulong, Block?> Impl,
+            ulong[] PrunedBodies,
             IReadOnlyList<ExecutionPayloadBodyV1Result?> Outcome) input)
     {
         IBlockTree? blockTree = Substitute.For<IBlockTree>();
-        IBlockStore? blockStore = Substitute.For<IBlockStore>();
-        BlockDecoder blockDecoder = new();
-
         blockTree.Head.Returns(Build.A.Block.WithNumber(5).TestObject);
-        blockTree.FindHeader(Arg.Any<ulong>(), Arg.Any<BlockTreeLookupOptions>())
-            .Returns(i => GetHeader(input.Impl(i)));
-        blockStore.GetRlp(Arg.Any<ulong>(), Arg.Any<Hash256>())
-            .Returns(i =>
-            {
-                Block? block = input.Impl(i);
-                return block is null ? null : blockDecoder.Encode(block).Bytes;
-            });
 
         using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance, configurer: (builder) =>
             builder
                 .AddSingleton<IBlockTree>(blockTree)
-                .AddSingleton<IBlockStore>(blockStore)
                 .AddSingleton(new TestBlockchain.Configuration()
                 {
                     SuggestGenesisOnStart = false,
                 }));
+
+        IChainLevelInfoRepository chainLevels = chain.Container.Resolve<IChainLevelInfoRepository>();
+        IBlockStore blockStore = chain.Container.Resolve<IBlockStore>();
+        for (ulong number = 1; number <= 5; number++)
+        {
+            if (input.Impl(number) is not { } block) continue;
+
+            chainLevels.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(block.GetOrCalculateHash(), 0)));
+            if (!input.PrunedBodies.Contains(number)) blockStore.Insert(block);
+        }
 
         IEngineRpcModule rpc = chain.EngineRpcModule;
         IReadOnlyList<ExecutionPayloadBodyV1Result?> payloadBodies =
             rpc.engine_getPayloadBodiesByRangeV1(1, 5).Result.Data;
 
         Assert.That(JToken.Parse(chain.JsonSerializer.Serialize(payloadBodies)), Is.EqualTo(JToken.Parse(chain.JsonSerializer.Serialize(input.Outcome))).Using(JToken.EqualityComparer));
-
-        static BlockHeader? GetHeader(Block? block)
-        {
-            if (block is null)
-            {
-                return null;
-            }
-
-            block.Header.Hash = block.GetOrCalculateHash();
-            return block.Header;
-        }
+        await AssertStreamedJsonMatchesSerializer((PayloadBodiesV1DirectResponse)payloadBodies);
     }
 
     [Test]
@@ -620,8 +651,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse!.Error, Is.Not.Null);
-        Assert.That(errorResponse!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
-        Assert.That(errorResponse!.Error!.Message, Is.EqualTo("ExecutionPayloadV1 expected"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse!.Error!.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(errorResponse!.Error!.Message, Is.EqualTo("ExecutionPayloadV1 expected"));
+        }
     }
 
     [TestCaseSource(nameof(GetWithdrawalValidationValues))]
@@ -665,8 +699,11 @@ public partial class EngineModuleTests
 
         Assert.That(errorResponse, Is.Not.Null);
         Assert.That(errorResponse.Error, Is.Not.Null);
-        Assert.That(errorResponse.Error!.Code, Is.EqualTo(input.ErrorCode));
-        Assert.That(errorResponse.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "ExecutionPayload")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(errorResponse.Error!.Code, Is.EqualTo(input.ErrorCode));
+            Assert.That(errorResponse.Error!.Message, Is.EqualTo(string.Format(input.ErrorMessage, "ExecutionPayload")));
+        }
     }
 
     protected static IEnumerable<(
@@ -879,10 +916,11 @@ public partial class EngineModuleTests
         Hash256 random,
         Address feeRecipient,
         Withdrawal[]? withdrawals,
-        bool waitForBlockImprovement = true)
+        bool waitForBlockImprovement = true,
+        int minTransactions = 0)
     {
         Task blockImprovementWait = waitForBlockImprovement
-            ? chain.WaitForImprovedBlock()
+            ? chain.WaitForImprovedBlock(headBlockHash, minTransactions)
             : Task.CompletedTask;
 
         ForkchoiceStateV1 forkchoiceState = new(headBlockHash, finalizedBlockHash, safeBlockHash);
@@ -903,21 +941,33 @@ public partial class EngineModuleTests
         return getPayloadResult.Data!;
     }
 
+    /// <summary>
+    /// Builds a child of <paramref name="parent"/> with at least <paramref name="minTransactions"/> transactions, sends it
+    /// with newPayloadV2 and returns once it is committed.
+    /// </summary>
+    /// <remarks>The forkchoiceUpdated that starts the build makes the parent the head; the returned block is not the head.</remarks>
     private async Task<ExecutionPayload> BuildAndSendNewBlockV2(
         IEngineRpcModule rpc,
         MergeTestBlockchain chain,
-        bool waitForBlockImprovement,
-        Withdrawal[]? withdrawals)
+        ExecutionPayload parent,
+        Withdrawal[]? withdrawals,
+        int minTransactions = 0)
     {
-        Hash256 head = chain.BlockTree.HeadHash!;
-        ulong timestamp = Timestamper.UnixTime.Seconds;
+        Hash256 head = parent.BlockHash;
+        ulong timestamp = parent.Timestamp + 1;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         ExecutionPayload executionPayload = await BuildAndGetPayloadResultV2(rpc, chain, head,
-            Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, waitForBlockImprovement);
+            Keccak.Zero, head, timestamp, random, feeRecipient, withdrawals, minTransactions > 0, minTransactions);
         ResultWrapper<PayloadStatusV1> executePayloadResult =
             await rpc.engine_newPayloadV2(executionPayload);
-        Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayload.ParentHash, Is.EqualTo(head));
+            Assert.That(executePayloadResult.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+        }
+
+        await chain.WaitForCommitted(executionPayload.BlockHash);
         return executionPayload;
     }
 
@@ -949,16 +999,17 @@ public partial class EngineModuleTests
 
     protected static IEnumerable<TestCaseData> PayloadBodiesByRangeNullTrimTestCases()
     {
-        static TestCaseData Case(string name, Func<CallInfo, Block?> blockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> expectedBodies) =>
-            new TestCaseData(((Func<CallInfo, Block?> BlockFinder, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, expectedBodies))
+        static TestCaseData Case(string name, Func<ulong, Block?> blockFinder, ulong[] prunedBodies, IReadOnlyList<ExecutionPayloadBodyV1Result?> expectedBodies) =>
+            new TestCaseData(((Func<ulong, Block?> BlockFinder, ulong[] PrunedBodies, IReadOnlyList<ExecutionPayloadBodyV1Result?> ExpectedBodies))(blockFinder, prunedBodies, expectedBodies))
                 .SetName(name);
 
-        static Block BuildBlock(CallInfo i) => Build.A.Block.WithNumber(i.ArgAt<ulong>(0)).TestObject;
+        static Block BuildBlock(ulong number) => Build.A.Block.WithNumber(number).TestObject;
         ExecutionPayloadBodyV1Result result = new(Array.Empty<Transaction>(), null);
 
-        yield return Case("AllMissing", _ => null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
-        yield return Case("EveryOtherBlockMissing", i => i.ArgAt<ulong>(0) % 2 == 0 ? BuildBlock(i) : null, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
-        yield return Case("AllPresent", BuildBlock, (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
+        yield return Case("AllMissing", _ => null, [], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, null, null, null]);
+        yield return Case("EveryOtherBlockMissing", n => n % 2 == 0 ? BuildBlock(n) : null, [], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, result, null, result, null]);
+        yield return Case("AllPresent", BuildBlock, [], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[result, result, result, result, result]);
+        yield return Case("BodiesPruned", BuildBlock, [1, 2, 5], (IReadOnlyList<ExecutionPayloadBodyV1Result?>)[null, null, result, result, null]);
     }
 
     protected static IEnumerable<TestCaseData> PayloadIdTestCases()

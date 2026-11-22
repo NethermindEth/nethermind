@@ -21,6 +21,7 @@ public class ProtoArrayBoostPassDifferentialTests
         yield return new TestCaseData((Action<Driver>)VotesAndBalancesMove).SetName("Votes and balances move between branches");
         yield return new TestCaseData((Action<Driver>)PruneBetweenUpdates).SetName("Prune between updates with a boost across it");
         yield return new TestCaseData((Action<Driver>)EquivocationUnderBoost).SetName("Equivocation under a boost");
+        yield return new TestCaseData((Action<Driver>)SparseVotesAndRepeatedHeads).SetName("Sparse vote updates and repeated heads");
     }
 
     [TestCaseSource(nameof(Scenarios))]
@@ -32,6 +33,24 @@ public class ProtoArrayBoostPassDifferentialTests
     }
 
     private static ulong[] Balances(int count, ulong each = Gwei32Eth) => Enumerable.Repeat(each, count).ToArray();
+
+    private static void SparseVotesAndRepeatedHeads(Driver d)
+    {
+        Random random = new(13611);
+        ulong[] balances = Balances(1024);
+        d.Block(1, 1, 0);
+        d.Block(1, 2, 0);
+        for (ulong validator = 0; validator < 1024; validator++) d.Vote(validator, 1, 1);
+        for (ulong step = 2; step < 100; step++)
+        {
+            d.Vote((ulong)random.Next(1024), (ulong)random.Next(1, 3), step);
+            if (step % 10 == 0) balances = Balances(1024, Gwei32Eth + step);
+            if (step % 7 == 0) d.Slash((ulong)random.Next(1024));
+            d.Head(balances, step, 1);
+            d.Head(balances, step, 2);
+            d.Head(balances, step);
+        }
+    }
 
     private static void ParentCollectsTwoCommittees(Driver d)
     {

@@ -20,6 +20,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Crypto;
+using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
@@ -80,9 +81,12 @@ public class GloasBlockImporterTests
         for (ulong slot = ForkSlot + 2; slot < ForkSlot + 7; slot++)
             tip = Import(importer, _chain.Next(tip, slot, full: false, (byte)slot));
         PostStateCache states = (PostStateCache)typeof(BlockImporter).GetField("_states", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
-        Assert.That(states.GetGloasBlockState(target.Root), Is.Null, "the per-block tier retains only four recent states");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(states.GetGloasBlockState(target.Root), Is.Null, "the per-block tier retains only four recent states");
 
-        Assert.That(importer.ImportEnvelope(target.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+            Assert.That(importer.ImportEnvelope(target.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
+        }
     }
 
     [Test]
@@ -143,6 +147,40 @@ public class GloasBlockImporterTests
 
         Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == last.Root).ExecutionStatus, Is.EqualTo(ExecutionStatus.Invalid),
             "the last block builds on the middle payload, which lies after the latest valid hash");
+    }
+
+    [Test]
+    public void Requested_fork_crossing_block_uses_its_parent_registry_after_a_sibling_populates_the_key_cache()
+    {
+        SignedGloasChain.Block block = _chain.Next(null, 2 * ForkSlot, full: false, 0xB1);
+        PubkeyCache pubkeys = new();
+        Validator[] validators = _chain.AnchorState.ValidatorBuffer!.Items;
+        int proposer = (int)block.Signed.Message!.ProposerIndex;
+        Assert.That(proposer, Is.InRange(1, validators.Length - 2), "cache reload samples the first and last keys");
+        pubkeys.Build(validators[..proposer]);
+        Validator[] sibling = [.. validators];
+        sibling[proposer] = CreateActiveValidator(new BlsPublicKey(new Bls.P1(ValidatorKey(validators.Length)).Compress()));
+        pubkeys.Extend(sibling, proposer);
+        using MemColumnsDb<BeaconChainDbColumns> columns = new();
+        BeaconChainStore store = new(columns, _chain.Spec);
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store, pubkeys: pubkeys);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(importer.VerifyCachedProposerSignature(block.Forked), Is.Null);
+        Assert.That(importer.ImportRequested(block.Forked, block.Root, fetchedByRoot: false), Is.EqualTo(BlockImportResult.Imported));
+
+        CheckpointRef finalized = new(_chain.Spec.GetEpoch(block.Forked.Slot), block.Root);
+        Finalize(importer, finalized);
+        importer.OnFinalized(finalized);
+
+        BeaconChainStore reopened = new(columns, _chain.Spec);
+        Assert.That(reopened.TryGetAnchor(out Hash256? root, out _), Is.True);
+        Assert.That(root, Is.EqualTo(block.Root));
+        Assert.That(reopened.TryGetState(root!, out byte[]? ssz), Is.True);
+        BeaconStateGloas.Decode(ssz!, out BeaconStateGloas state);
+        PubkeyCache reloaded = new();
+        Assert.That(reloaded.TryLoad(reopened, state.ValidatorBuffer!.Items), Is.True);
+        Assert.That(reloaded.GetPublicKey(proposer).Compress(), Is.EqualTo(validators[proposer].Pubkey.Bytes.ToArray()));
     }
 
     /// <summary>Fork upgrades alias Fulu arrays; import must copy the parent so fork choice retains its original state.</summary>
@@ -721,7 +759,7 @@ public class GloasBlockImporterTests
     private static DateTime SlotStart(SignedGloasChain chain, ulong slot) => DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot);
 
     [Test]
-    public void Safe_execution_hash_uses_the_configured_confirmation_policy([Values] bool enableFastConfirmation)
+    public void Safe_execution_hash_uses_the_configured_confirmation_policy([Values(null, false, true)] bool? enableFastConfirmation)
     {
         ForkCrossingChain fork = ForkCrossingChain.Instance;
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), enableFastConfirmation: enableFastConfirmation);
@@ -735,8 +773,29 @@ public class GloasBlockImporterTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(head.Justified.Root, Is.EqualTo(fork.First.Root), "fixture: the epoch-3 pull-up justifies the first Gloas block");
-        Assert.That(head.SafeExecutionHash, Is.EqualTo(enableFastConfirmation
+        Assert.That(head.SafeExecutionHash, Is.EqualTo((enableFastConfirmation ?? true)
             ? head.FinalizedExecutionHash : fork.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash));
+    }
+
+    [Test]
+    public void An_advanced_safe_confirmation_maps_to_the_gloas_bid_parent_hash()
+    {
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), enableFastConfirmation: true);
+        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = _chain.Next(first, ForkSlot + 1, full: true, 0xA2);
+        SignedGloasChain.Block head = _chain.Next(child, ForkSlot + 2, full: true, 0xA3);
+        foreach (SignedGloasChain.Block block in (SignedGloasChain.Block[])[first, child, head])
+            Assert.That(importer.Import(block.Forked, block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
+        ForkChoiceRunner runner = (ForkChoiceRunner)typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
+        runner.OnValidExecutionPayload(child.Root);
+        typeof(FastConfirmation).GetProperty(nameof(FastConfirmation.ConfirmedRoot), BindingFlags.NonPublic | BindingFlags.Instance)!
+            .SetValue(runner.FastConfirmation, child.Root);
+
+        HeadView view = importer.ComputeHead();
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(runner.GetConfirmedRoot(view.HeadRoot), Is.EqualTo(child.Root));
+        Assert.That(view.SafeExecutionHash, Is.EqualTo(child.Bid.ParentBlockHash));
     }
 
     [Test]
@@ -1197,10 +1256,13 @@ public class GloasBlockImporterTests
                 break;
         }
 
-        Assert.That(importer.Import(held.Forked, SszRoots.HashTreeRoot(message), verifySignatures: true), Is.EqualTo(expected));
-        Assert.That(importer.LastRefusal == ImportRefusal.LocalAdmission, Is.EqualTo(proposal is HeldProposal.FromTheFuture),
-            "the on_block checks against this node's store are told apart from a forged proposal and from a slot not after the parent's");
-        Assert.That(((IBlockImporter)importer).RejectGossip, Is.False, "a deferred parent is still unknown for gossip validation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(importer.Import(held.Forked, SszRoots.HashTreeRoot(message), verifySignatures: true), Is.EqualTo(expected));
+            Assert.That(importer.LastRefusal == ImportRefusal.LocalAdmission, Is.EqualTo(proposal is HeldProposal.FromTheFuture),
+                "the on_block checks against this node's store are told apart from a forged proposal and from a slot not after the parent's");
+            Assert.That(((IBlockImporter)importer).RejectGossip, Is.False, "a deferred parent is still unknown for gossip validation");
+        }
         if (expected is BlockImportResult.Invalid or BlockImportResult.TooEarly)
             await BeaconSyncOrchestratorTests.AssertBlockVerdictAsync(importer, held.Forked,
                 Snappy.CompressToArray(SignedBeaconBlockGloas.Encode(held.Signed)), MessageValidity.Ignored);
@@ -1432,10 +1494,13 @@ public class GloasBlockImporterTests
         if (!validSignature) child.Signed.Signature = default;
         PubkeyCache pubkeys = new();
         pubkeys.Build(parent.PostState.Validators!);
-        Assert.That(GloasBlockProcessing.VerifyProposerSignature(parent.PostState, child.Signed, pubkeys), Is.EqualTo(validSignature));
-        Assert.That(ImportOrFailIfStuck(importer, child.Forked, child.Forked.ComputeMessageRoot()), Is.EqualTo(BlockImportResult.Invalid),
-            "invalid children must still be refused before a transition or a payload retry is queued");
-        Assert.That(DeferredCount(importer), Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GloasBlockProcessing.VerifyProposerSignature(parent.PostState, child.Signed, pubkeys), Is.EqualTo(validSignature));
+            Assert.That(ImportOrFailIfStuck(importer, child.Forked, child.Forked.ComputeMessageRoot()), Is.EqualTo(BlockImportResult.Invalid),
+                "invalid children must still be refused before a transition or a payload retry is queued");
+            Assert.That(DeferredCount(importer), Is.Zero);
+        }
         importer.ComputeHead();
         ColumnGossipRouter headers = new(_chain.Spec, clock, LimboLogs.Instance, forkChoice: snapshots);
         GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance, store, headers: headers);

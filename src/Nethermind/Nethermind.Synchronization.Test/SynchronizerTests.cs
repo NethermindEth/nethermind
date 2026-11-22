@@ -67,7 +67,7 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
     {
         public override string Name => "Mock";
 
-        private readonly bool _causeTimeoutOnInit;
+        private readonly bool _causeFailureOnInit;
         private readonly bool _causeTimeoutOnBlocks;
         private readonly bool _causeTimeoutOnHeaders;
         private List<Block> Blocks { get; } = [];
@@ -78,11 +78,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public SyncPeerMock(
             string peerName,
-            bool causeTimeoutOnInit = false,
+            bool causeFailureOnInit = false,
             bool causeTimeoutOnBlocks = false,
             bool causeTimeoutOnHeaders = false)
         {
-            _causeTimeoutOnInit = causeTimeoutOnInit;
+            _causeFailureOnInit = causeFailureOnInit;
             _causeTimeoutOnBlocks = causeTimeoutOnBlocks;
             _causeTimeoutOnHeaders = causeTimeoutOnHeaders;
             Blocks.Add(_genesisBlock);
@@ -158,10 +158,11 @@ public class SynchronizerTests(SynchronizerType synchronizerType)
 
         public override async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
-            if (_causeTimeoutOnInit)
+            if (_causeFailureOnInit)
             {
                 Console.WriteLine("RESPONDING TO GET HEAD BLOCK HEADER WITH EXCEPTION");
-                await Task.FromException<BlockHeader>(new TimeoutException());
+                // Not a timeout: the pool keeps a peer whose head request times out and only marks it weak.
+                await Task.FromException<BlockHeader>(new InvalidOperationException("Init failed"));
             }
 
             BlockHeader header;

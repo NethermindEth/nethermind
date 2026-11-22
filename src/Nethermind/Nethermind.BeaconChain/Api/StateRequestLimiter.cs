@@ -15,7 +15,7 @@ using Nethermind.BeaconChain.Spec;
 
 namespace Nethermind.BeaconChain.Api;
 
-/// <summary>Bounds the Beacon API requests that read a full beacon state: how many run at once, how many one client runs at once, and how often one client may download one.</summary>
+/// <summary>Bounds concurrent Beacon API state reads and large responses, their response time, and each client's state download rate.</summary>
 /// <remarks>
 /// Each such request holds a whole persisted state in memory, so an unbounded number of them is a
 /// memory exhaustion vector for a node that serves checkpoint sync. Saturation is refused at once,
@@ -46,6 +46,8 @@ internal sealed class StateRequestLimiter : IDisposable
     private readonly TimeSpan _idleTimeout;
     private readonly ConcurrencyLimiter _inFlight;
     private readonly ConcurrencyLimiter _downloadInFlight;
+    private readonly ConcurrencyLimiter _largeResponseInFlight;
+    private readonly PartitionedRateLimiter<HttpContext> _largeResponseInFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext> _downloadInFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext> _inFlightPerClient;
     private readonly PartitionedRateLimiter<HttpContext>? _downloadsPerClient;
@@ -84,6 +86,10 @@ internal sealed class StateRequestLimiter : IDisposable
         _downloadInFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
             ClientKey(c.Connection.RemoteIpAddress),
             _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
+        _largeResponseInFlight = new ConcurrencyLimiter(new ConcurrencyLimiterOptions { PermitLimit = _maxConcurrent, QueueLimit = 0 });
+        _largeResponseInFlightPerClient = PartitionedRateLimiter.Create<HttpContext, UInt128>(c => RateLimitPartition.GetConcurrencyLimiter(
+            ClientKey(c.Connection.RemoteIpAddress),
+            _ => new ConcurrencyLimiterOptions { PermitLimit = perClient, QueueLimit = 0 }));
         _downloadsPerClient = CreatePerMinuteLimiter(config.StateDownloadsPerMinutePerClient);
         _queriesPerClient = CreatePerMinuteLimiter(config.StateQueriesPerMinutePerClient);
     }
@@ -103,8 +109,14 @@ internal sealed class StateRequestLimiter : IDisposable
     public async Task InvokeAsync(HttpContext c, RequestDelegate next)
     {
         PathString path = c.Request.Path;
+        bool largeResponse = path.StartsWithSegments("/eth/v2/beacon/blocks")
+            || path.StartsWithSegments("/eth/v1/beacon/execution_payload_envelopes")
+            || path.StartsWithSegments("/eth/v1/beacon/headers")
+            || path.StartsWithSegments("/eth/v1/beacon/blobs")
+            || path.StartsWithSegments("/eth/v1/debug/fork_choice")
+            || path.StartsWithSegments("/eth/v1/debug/beacon/fork_choice");
         bool download = path.StartsWithSegments(DebugStatesPrefix);
-        if (!download)
+        if (!download && !largeResponse)
         {
             if (!path.StartsWithSegments(StatesPrefix, out PathString stateRoute))
             {
@@ -123,7 +135,7 @@ internal sealed class StateRequestLimiter : IDisposable
         }
 
         // Taken first, so a request refused as busy never spends the client's download budget.
-        using RateLimitLease lease = (download ? _downloadInFlight : _inFlight).AttemptAcquire();
+        using RateLimitLease lease = (largeResponse ? _largeResponseInFlight : download ? _downloadInFlight : _inFlight).AttemptAcquire();
         if (!lease.IsAcquired)
         {
             await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
@@ -131,7 +143,7 @@ internal sealed class StateRequestLimiter : IDisposable
             return;
         }
 
-        using RateLimitLease ownLease = (download ? _downloadInFlightPerClient : _inFlightPerClient).AttemptAcquire(c);
+        using RateLimitLease ownLease = (largeResponse ? _largeResponseInFlightPerClient : download ? _downloadInFlightPerClient : _inFlightPerClient).AttemptAcquire(c);
         if (!ownLease.IsAcquired)
         {
             await ApiErrors.Write(c, StatusCodes.Status429TooManyRequests,
@@ -139,7 +151,7 @@ internal sealed class StateRequestLimiter : IDisposable
             return;
         }
 
-        if ((download ? _downloadsPerClient : _queriesPerClient) is { } perMinuteLimiter)
+        if (!largeResponse && (download ? _downloadsPerClient : _queriesPerClient) is { } perMinuteLimiter)
         {
             using RateLimitLease clientLease = perMinuteLimiter.AttemptAcquire(c);
             if (!clientLease.IsAcquired)
@@ -305,6 +317,8 @@ internal sealed class StateRequestLimiter : IDisposable
 
     public void Dispose()
     {
+        _largeResponseInFlight.Dispose();
+        _largeResponseInFlightPerClient.Dispose();
         _downloadInFlight.Dispose();
         _downloadInFlightPerClient.Dispose();
         _inFlight.Dispose();

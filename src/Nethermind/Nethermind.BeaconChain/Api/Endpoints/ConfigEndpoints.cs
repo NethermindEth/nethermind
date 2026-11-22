@@ -23,7 +23,7 @@ internal static class ConfigEndpoints
 
     /// <summary>The network config's <c>DEPOSIT_CONTRACT_ADDRESS</c>, or <c>null</c> for a chain this driver has no network config for.</summary>
     /// <remarks>
-    /// From consensus-specs v1.7.0-beta.2 <c>configs/mainnet.yaml</c> and the eth-clients <c>hoodi</c> and
+    /// From consensus-specs v1.7.0-beta.4 <c>configs/mainnet.yaml</c> and the eth-clients <c>hoodi</c> and
     /// <c>sepolia</c> <c>metadata/config.yaml</c>, whose <c>DEPOSIT_CHAIN_ID</c> equals the chain id each is keyed by.
     /// </remarks>
     private static string? DepositContractAddress(ulong chainId) => chainId switch
@@ -57,7 +57,7 @@ internal static class ConfigEndpoints
     private static Task Spec(HttpContext c, BeaconApiContext ctx)
     {
         BeaconChainSpec spec = ctx.Spec;
-        Dictionary<string, object> data = new(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4);
+        Dictionary<string, object> data = [with(SpecValues.Mainnet.Count + SpecConstants.All.Count + 4)];
         foreach ((string key, string value) in SpecValues.Mainnet)
         {
             data[key] = value;
@@ -86,11 +86,18 @@ internal static class ConfigEndpoints
         data["FULU_FORK_VERSION"] = spec.VersionForEpoch(spec.FuluForkEpoch).ToHexString(withZeroX: true);
         data["GLOAS_FORK_EPOCH"] = spec.GloasForkEpoch.ToString();
         data["GLOAS_FORK_VERSION"] = spec.GloasForkVersion.ToHexString(withZeroX: true);
+        if (spec.GloasForkEpoch == Presets.FarFutureEpoch && spec.ChainId is BlockchainIds.Gnosis or BlockchainIds.Chiado or BlockchainIds.Hoodi)
+        {
+            data.Remove("GLOAS_FORK_EPOCH");
+            data.Remove("GLOAS_FORK_VERSION");
+        }
         data["MAX_BLOBS_PER_BLOCK_ELECTRA"] = spec.MaxBlobsPerBlockElectra.ToString();
         data["BLOB_SCHEDULE"] = spec.BlobSchedule
             .Select(entry => new Dictionary<string, string> { ["EPOCH"] = entry.Epoch.ToString(), ["MAX_BLOBS_PER_BLOCK"] = entry.MaxBlobsPerBlock.ToString() })
             .ToArray();
-        data["GAS_LIMIT_SCHEDULE"] = Array.Empty<string>();
+        data["GAS_LIMIT_SCHEDULE"] = spec.ChainId == BlockchainIds.Sepolia
+            ? new Dictionary<string, string>[] { new() { ["EPOCH"] = "353024", ["GAS_LIMIT"] = "200000000" } }
+            : Array.Empty<Dictionary<string, string>>();
 
         return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
     }
@@ -145,6 +152,8 @@ internal static class ConfigEndpoints
                 data["MIN_GENESIS_TIME"] = "1655647200";
                 data["GENESIS_DELAY"] = "86400";
                 data["TERMINAL_TOTAL_DIFFICULTY"] = "17000000000000000";
+                data["TERMINAL_BLOCK_HASH"] = "0xd07cce9785d39c0dd2409b7d8e69d6bff26a69a0fa5308ac781c63ffe2a37bc1";
+                data["TERMINAL_BLOCK_HASH_ACTIVATION_EPOCH"] = "3599";
                 break;
         }
     }

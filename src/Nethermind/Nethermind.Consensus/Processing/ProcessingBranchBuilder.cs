@@ -53,7 +53,9 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
             Block firstBlock = blocksToProcess[0];
             if (!firstBlock.IsGenesis)
             {
-                BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
+                BlockHeader? parentOfFirstBlock = processingBranch.BaseBlock is { } baseBlock && baseBlock.Hash == firstBlock.ParentHash
+                    ? baseBlock
+                    : _blockTree.FindHeader(firstBlock.ParentHash!, BlockTreeLookupOptions.None) ?? throw new InvalidBlockException(firstBlock, $"Rejected a block from a different fork: {firstBlock.ToString(Block.Format.FullHashAndNumber)}");
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
                     ThrowOrphanedBlock(firstBlock);
@@ -84,7 +86,7 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
     public ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         BlockHeader? branchingPoint = null;
-        ArrayPoolList<Block> blocksToBeAddedToMain = new(InitialBranchCapacity);
+        ArrayPoolList<Block> blocksToBeAddedToMain = [with(InitialBranchCapacity)];
 
         bool branchingCondition;
 
@@ -141,8 +143,9 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
             // reprocessed - moving them onto the main chain (down to the real reorg boundary) is handled by
             // BlockTree.TryUpdateMainChain, which walks headers there cheaply. Hence MaxBranchSize now bounds
             // only the blocks-without-state we collect here, not the whole reorg depth.
-            bool hasState = toBeProcessed.StateRoot is null || _stateReader.HasStateForBlock(toBeProcessed.Header);
             bool notInForceProcessing = !options.ContainsFlag(ProcessingOptions.ForceProcessing);
+            bool hasState = toBeProcessed.StateRoot is null
+                || ((!notInForceProcessing || IsOwnState(toBeProcessed)) && _stateReader.HasStateForBlock(toBeProcessed.Header));
             branchingCondition = !hasState && notInForceProcessing;
 
             // notFoundTheBranchingPointYet no longer gates the loop; compute the IsMainChain lookup only for the trace.
@@ -218,6 +221,11 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
         static void ThrowNoAncestorState(Block suggestedBlock)
             => throw new InvalidOperationException($"No ancestor of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} has state.");
     }
+
+    private bool IsOwnState(Block block) =>
+        _blockTree.IsMainChain(block.Header)
+        || _blockTree.WasProcessed(block.Number, block.Hash!)
+        || (block.Number == _blockTree.SyncPivot.BlockNumber && block.Hash == _blockTree.SyncPivot.BlockHash);
 
     [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
     public bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
@@ -306,7 +314,7 @@ internal readonly ref struct ProcessingBranch(BlockHeader? baseBlock, ArrayPoolL
 {
     public BlockHeader? BaseBlock { get; } = baseBlock;
     public ArrayPoolList<Block> Blocks { get; } = blocks;
-    public ArrayPoolList<Block> BlocksToProcess { get; } = new(blocks.Count);
+    public ArrayPoolList<Block> BlocksToProcess { get; } = [with(blocks.Count)];
 
     public void Dispose()
     {

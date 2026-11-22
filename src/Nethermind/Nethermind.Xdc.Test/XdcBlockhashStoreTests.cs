@@ -66,12 +66,12 @@ internal class XdcBlockhashStoreTests
         XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(worldState.IsContract(Eip2935Account), Is.True);
             Assert.That(worldState.GetCode(Eip2935Account), Is.SequenceEqualTo(Eip2935Constants.Code));
             Assert.That(worldState.GetNonce(Eip2935Account), Is.EqualTo(1UL));
-        });
+        }
     }
 
     [Test]
@@ -105,12 +105,12 @@ internal class XdcBlockhashStoreTests
         XdcBlockhashStore store = new(new BlockhashStore(worldState), worldState);
         store.ApplyBlockhashStateChanges(header, spec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             // Nonce is left untouched — the contract is not redeployed.
             Assert.That(worldState.GetNonce(Eip2935Account), Is.EqualTo(existingNonce));
             Assert.That(ReadRingBuffer(worldState, (ulong)header.Number - 1, spec), Is.EqualTo(header.ParentHash));
-        });
+        }
     }
 
     [Test]

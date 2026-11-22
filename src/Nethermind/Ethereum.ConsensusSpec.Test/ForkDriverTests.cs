@@ -58,13 +58,13 @@ public class ForkDriverTests
         Hash256 fuluRoot = FuluPipeline("fulu").StateRoot(working);
         Hash256 electraRootOfWorking = FuluPipeline("electra").StateRoot(working);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(electraRootOfWorking, Is.EqualTo(electraRoot), "the Electra shape must not see proposer_lookahead");
             Assert.That(fuluRoot, Is.Not.EqualTo(electraRoot), "the Fulu shape does see it, so a Fulu-shaped root would fail every Electra vector");
             Assert.That(ForkDriver.ElectraRoot((BeaconStateElectra)FuluPipeline("electra").ForDiff(working)), Is.EqualTo(electraRoot),
                 "the diff view must be the same Electra state the root was taken over");
-        });
+        }
     }
 
     /// <summary>Every one of the Electra container's 37 fields carries a value no other field has, so a dropped or crossed field fails.</summary>
@@ -112,6 +112,7 @@ public class ForkDriverTests
         FuluPipeline("electra").ProcessSlots(state, Presets.SlotsPerEpoch, FuluPipeline("electra").NewCache());
 
         ulong[] electraProposers = state.ComputeProposerIndices(1);
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(electraProposers, Is.Not.EqualTo(sampledDuringEpochZero), "fixture bug: the balance change must move a proposer");
         Assert.That(state.ProposerLookahead![..(int)Presets.SlotsPerEpoch], Is.EqualTo(electraProposers));
     }
@@ -227,6 +228,16 @@ public class ForkDriverTests
         Hash256 after = hasher.HashTreeRoot(state);
         Assert.That(after, Is.Not.EqualTo(before));
         Assert.That(after, Is.EqualTo(new FullBeaconStateHasher().HashTreeRoot(state)));
+    }
+
+    [Test]
+    public void Tracked_operation_reports_an_unrecorded_balance_write()
+    {
+        ulong[] balances = [.. Enumerable.Repeat(32 * Gwei, 8)];
+        BeaconStateFulu state = WorkingStateAtEndOfEpochZero(effectiveBalances: [.. balances], balances, exitEpoch: Presets.FarFutureEpoch);
+        Assert.Throws<HasherDivergenceException>(() =>
+            DifferentialBeaconStateHasher.CheckTrackedOperation(state, new EpochCache(), () => state.Balances![3] += Gwei));
+        Assert.That(state.BlockChanges, Is.Null);
     }
 
     private sealed class FirstRootHasher : IBeaconStateHasher

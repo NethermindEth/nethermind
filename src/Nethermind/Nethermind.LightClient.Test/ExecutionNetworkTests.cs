@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
-using Nethermind.Specs;
+using Nethermind.Network.Discovery;
 
 namespace Nethermind.LightClient.Test;
 
@@ -50,6 +50,20 @@ public class ExecutionNetworkTests
     }
 
     [Test]
+    public void Gnosis_network_keeps_its_genesis_and_chainspec_bootnodes()
+    {
+        ExecutionNetwork network = ExecutionNetwork.Ethereum("gnosis");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(network.IsGnosis, Is.True);
+            Assert.That(network.ChainSpecFile, Is.EqualTo("gnosis.json"));
+            Assert.That(network.DiscoveryDns, Is.Null);
+            Assert.That(network.Bootnodes, Is.Empty);
+        }
+    }
+
+    [Test]
     public void Unknown_ethereum_network_is_rejected() =>
         Assert.That(() => ExecutionNetwork.Ethereum("rollupx"), Throws.ArgumentException);
 
@@ -82,7 +96,8 @@ public class ExecutionNetworkTests
         {
             Assert.That(services.Resolve<ISpecProvider>().ChainId, Is.EqualTo(ChainId));
             Assert.That(configuration.DiscoveryDns, Is.Empty);
-            Assert.That(transport.DiscoveryDomain, Is.EqualTo("<unset>"));
+            Assert.That(transport.DiscoveryDomain, Is.Empty);
+            Assert.That(services.Resolve<IDiscoveryConfig>().UseDefaultDiscv5Bootnodes, Is.False);
             Assert.That(configuration.StaticPeers, Is.EqualTo(Bootnode));
             Assert.That(configuration.Bootnodes.Select(static node => node.NodeId), Is.EqualTo(new[] { new NetworkNode(Bootnode).NodeId }));
             Assert.That(services.Resolve<IInitConfig>().DataDir, Is.EqualTo(Path.Combine(directory, "el", "rollupx")));

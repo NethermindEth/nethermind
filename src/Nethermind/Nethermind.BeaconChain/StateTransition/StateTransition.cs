@@ -3,7 +3,9 @@
 
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -35,31 +37,53 @@ public static class StateTransition
         BeaconChainSpec spec,
         bool validateResult = true,
         bool verifySignatures = true)
+        => Apply(state, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified: false);
+
+    /// <remarks>A verified proposer verdict must authenticate this exact block and signature under its fork domain. Registry bounds and operation signatures remain checked.</remarks>
+    internal static void Apply(BeaconStateFulu state, SignedBeaconBlock signedBlock, EpochCache cache, PubkeyCache pubkeys,
+        INewPayloadNotifier notifier, BeaconChainSpec spec, bool validateResult, bool verifySignatures, bool proposerSignatureVerified, bool trackBlockChanges = false)
     {
         cache.SigningSpec = spec;
         BeaconBlock block = signedBlock.Message!;
         SlotProcessing.ProcessSlots(state, block.Slot, cache);
-        ApplyPrepared(state, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures);
+        ApplyPrepared(state, signedBlock, cache, pubkeys, notifier, spec, validateResult, verifySignatures, proposerSignatureVerified, trackBlockChanges);
     }
 
     internal static void ApplyPrepared(BeaconStateFulu state, SignedBeaconBlock signedBlock, EpochCache cache, PubkeyCache pubkeys,
-        INewPayloadNotifier notifier, BeaconChainSpec spec, bool validateResult, bool verifySignatures)
+        INewPayloadNotifier notifier, BeaconChainSpec spec, bool validateResult, bool verifySignatures, bool proposerSignatureVerified = false, bool trackBlockChanges = false)
     {
         BeaconBlock block = signedBlock.Message!;
         if (state.Slot != block.Slot) throw new BeaconStateException("Prepared state does not match the block slot");
         cache.SigningSpec = spec;
 
-        if (verifySignatures && state.Validators!.Length > pubkeys.Count)
-            pubkeys.Extend(state.Validators, pubkeys.Count);
+        if (verifySignatures && state.ReadOnlyValidators.Length > pubkeys.Count)
+            pubkeys.Extend(state.ValidatorBuffer!.Items, pubkeys.Count);
 
-        if (verifySignatures && !SignatureSets.VerifyProposerSignature(state, signedBlock, pubkeys))
+        if (verifySignatures && block.ProposerIndex >= (ulong)state.ReadOnlyValidators.Length)
+            throw new BeaconStateException($"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.ReadOnlyValidators.Length})") { RejectGossip = true };
+
+        if (verifySignatures && !proposerSignatureVerified && !SignatureSets.VerifyProposerSignature(state, signedBlock, pubkeys))
             throw new ProposerSignatureException($"Invalid proposer signature for the block at slot {block.Slot}");
 
         // Pre-Fulu epochs have no blob schedule entry; the Electra limit applies.
         ulong maxBlobsPerBlock = spec.GetBlobParameters(state.GetCurrentEpoch())?.MaxBlobsPerBlock ?? spec.MaxBlobsPerBlockElectra;
-        BlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures);
-
-        if (validateResult && block.StateRoot != cache.Hasher.HashTreeRoot(state))
-            throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
+        CachedBeaconStateHasher? tracked = trackBlockChanges && validateResult && cache.Hasher is CachedBeaconStateHasher cached && cached.TryBeginBlock(state)
+            ? cached : null;
+        try
+        {
+            BlockProcessing.ProcessBlock(state, block, cache, pubkeys, notifier, maxBlobsPerBlock, verifySignatures);
+            if (validateResult)
+            {
+                Hash256 actual = tracked?.HashTreeRootAfterBlock(state) ?? cache.Hasher.HashTreeRoot(state);
+                if (block.StateRoot != actual)
+                    throw new BeaconStateException($"Block state root {block.StateRoot} does not match the post-state root");
+                if (trackBlockChanges && cache.Hasher is CachedBeaconStateHasher verified)
+                    verified.RecordVerifiedPostState(state, actual);
+            }
+        }
+        finally
+        {
+            tracked?.EndBlock(state);
+        }
     }
 }

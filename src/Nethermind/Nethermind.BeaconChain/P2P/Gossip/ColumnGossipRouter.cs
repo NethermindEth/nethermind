@@ -133,7 +133,7 @@ public sealed class ColumnGossipRouter(
     ForkChoiceSnapshotHolder? forkChoice = null,
     PubkeyCache? pubkeys = null,
     ProposerLookaheadHolder? proposerLookahead = null,
-    FailedBlockRoots? failedBlocks = null)
+    FailedBlockRoots? failedBlocks = null) : IAsyncDisposable
 {
     private readonly ConditionalWeakTable<DataColumnSidecar, PeerId> _sources = [];
 
@@ -189,8 +189,10 @@ public sealed class ColumnGossipRouter(
     private readonly LruKeyCache<(ulong Slot, ulong ProposerIndex, ulong Index)> _seenSidecars = new(SeenCacheSize, "beacon column gossip seen sidecars");
     private readonly LruKeyCache<(Hash256 BlockRoot, ulong Index)> _seenGloasSidecars = new(SeenCacheSize, "beacon column gossip seen gloas sidecars");
     private readonly Lock _pendingGloasLock = new();
-    private readonly Dictionary<DataColumnSidecarGloas, PendingGloasVerdict> _pendingGloasVerdicts = new(ReferenceEqualityComparer.Instance);
-    private sealed record PendingGloasVerdict(ulong Subnet, PeerId Source, GossipVerdict Verdict)
+    private readonly Dictionary<DataColumnSidecarGloas, PendingGloasVerdict> _pendingGloasVerdicts = [with(ReferenceEqualityComparer.Instance)];
+    private readonly Dictionary<(Hash256 Root, ulong Column), int> _pendingGloasCounts = [];
+    private readonly Dictionary<PeerId, HashSet<ulong>> _pendingGloasSubnets = [];
+    private sealed record PendingGloasVerdict((Hash256 Root, ulong Column) Key, ulong Subnet, PeerId Source, GossipVerdict Verdict)
     {
         public int Validating;
     }
@@ -212,7 +214,7 @@ public sealed class ColumnGossipRouter(
     private readonly Lock _kzgBatchesLock = new();
 
     // Signed sidecars whose expected proposer the published snapshot and lookahead cannot verify yet.
-    private readonly LruCache<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> _parkedColumns = new(ParkedColumnCacheSize, "beacon column gossip parked columns");
+    private readonly ParkedColumnCache _parkedColumns = new();
     private readonly Lock _parkedLock = new();
     private ForkChoiceSnapshot? _retriedSnapshot;
     private ProposerLookaheadSnapshot? _retriedLookahead;
@@ -244,6 +246,27 @@ public sealed class ColumnGossipRouter(
     private readonly LruCache<Hash256, BlsSignature> _acceptedHeaders = new(SeenCacheSize, "beacon column gossip accepted headers");
     private readonly HashSet<Hash256> _reconstructionsInFlight = [];
     private readonly Lock _reconstructionLock = new();
+    internal const int MaxPendingReconstructions = 16;
+    private readonly Queue<(Hash256 Root, ulong Slot)> _pendingReconstructions = new();
+    private Task _reconstructionWorker = Task.CompletedTask;
+    private volatile bool _reconstructionStopped;
+
+    internal Task WhenReconstructed()
+    {
+        lock (_reconstructionLock) return _reconstructionWorker;
+    }
+
+    /// <summary>Cancels queued reconstruction and waits for active recovery to finish.</summary>
+    public ValueTask DisposeAsync()
+    {
+        lock (_reconstructionLock)
+        {
+            _reconstructionStopped = true;
+            while (_pendingReconstructions.TryDequeue(out (Hash256 Root, ulong Slot) entry))
+                _reconstructionsInFlight.Remove(entry.Root);
+            return new ValueTask(_reconstructionWorker);
+        }
+    }
 
     internal DataColumnReconstructor Reconstruct { private get; init; } = DataColumnReconstruction.TryReconstruct;
 
@@ -305,7 +328,7 @@ public sealed class ColumnGossipRouter(
             }
 
             _subscriptions[key] = subscriptions;
-            _publishTopics = new(_subscriptions);
+            _publishTopics = [with(_subscriptions)];
             if (_logger.IsInfo) _logger.Info($"Subscribed {_subnets.Count} data column sidecar subnets for fork digest 0x{key}");
         }
     }
@@ -321,7 +344,7 @@ public sealed class ColumnGossipRouter(
                 return;
             }
 
-            _publishTopics = new(_subscriptions);
+            _publishTopics = [with(_subscriptions)];
 
             foreach ((ulong _, ITopic topic) in subscriptions)
             {
@@ -338,7 +361,7 @@ public sealed class ColumnGossipRouter(
     /// passed every check under an imported block's header or the expected proposer's; otherwise <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>,
     /// including for a consumed Fulu sidecar whose header this node cannot verify.
     /// </returns>
-    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict? verdict = null, PeerId? source = null)
+    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict? verdict = null, PeerId? source = null)
     {
         bool retrying = _retrying;
         _retrying = false;
@@ -352,7 +375,7 @@ public sealed class ColumnGossipRouter(
         }
     }
 
-    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict? verdict, PeerId? source)
+    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, ReadOnlySpan<byte> message, GossipVerdict? verdict, PeerId? source)
     {
         if (!IsSubscribed(subnetId))
         {
@@ -783,7 +806,7 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>fulu/p2p-interface.md: the header's proposer index is in the validator key cache and its signature verifies under <c>DOMAIN_BEACON_PROPOSER</c>.</summary>
     /// <remarks>
-    /// The key cache may briefly lag the head's registry, so an index outside it is unknown rather than invalid. The domain
+    /// Only the finalized registry prefix identifies the same proposer on every branch. The domain
     /// is the fork version scheduled for the header's epoch, which is what <c>get_domain</c> on the head state returns for it.
     /// </remarks>
     private HeaderSignature CheckHeaderSignature(BeaconBlockHeader header, Hash256 blockRoot, BlsSignature signature)
@@ -801,7 +824,7 @@ public sealed class ColumnGossipRouter(
         bool valid;
         try
         {
-            if (header.ProposerIndex >= (ulong)pubkeys.Count)
+            if (header.ProposerIndex >= (ulong)pubkeys.FinalizedCount)
             {
                 return HeaderSignature.UnknownProposer;
             }
@@ -855,7 +878,7 @@ public sealed class ColumnGossipRouter(
         lock (_parkedLock)
         {
             DataColumnSidecar[] copies = _parkedColumns.Get(key) ?? [];
-            if (copies.Length == 0 && ParkedKeysOf(sidecar.SignedBlockHeader!.Message!.ProposerIndex) >= ParkedColumnsPerProposer)
+            if (copies.Length == 0 && _parkedColumns.KeysOf(sidecar.SignedBlockHeader!.Message!.ProposerIndex) >= ParkedColumnsPerProposer)
             {
                 return;
             }
@@ -870,23 +893,30 @@ public sealed class ColumnGossipRouter(
 
             if (fromSource < KzgBatchesPerColumn && copies.Length < 16)
             {
-                _parkedColumns.Set(key, [.. copies, sidecar]);
+                _parkedColumns.Store(key, [.. copies, sidecar]);
             }
         }
     }
 
-    private int ParkedKeysOf(ulong proposerIndex)
+    internal sealed class ParkedColumnCache(int capacity = ParkedColumnCacheSize) : LruCache<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]>(capacity, "beacon column gossip parked columns")
     {
-        int keys = 0;
-        foreach (KeyValuePair<(Hash256 BlockRoot, ulong Index), DataColumnSidecar[]> entry in _parkedColumns.ToArray())
+        private readonly Dictionary<ulong, int> _keysPerProposer = [];
+
+        public int KeysOf(ulong proposer) => _keysPerProposer.GetValueOrDefault(proposer);
+
+        public void Store((Hash256, ulong) key, DataColumnSidecar[] copies)
         {
-            if (entry.Value[0].SignedBlockHeader!.Message!.ProposerIndex == proposerIndex)
-            {
-                keys++;
-            }
+            // Set evicts the old value on replacement as well as at capacity.
+            Set(key, copies);
+            ulong proposer = copies[0].SignedBlockHeader!.Message!.ProposerIndex;
+            _keysPerProposer[proposer] = KeysOf(proposer) + 1;
         }
 
-        return keys;
+        protected override void Evict(DataColumnSidecar[] copies)
+        {
+            ulong proposer = copies[0].SignedBlockHeader!.Message!.ProposerIndex;
+            if (--_keysPerProposer[proposer] == 0) _keysPerProposer.Remove(proposer);
+        }
     }
 
     /// <summary>Runs every queued sidecar through the checks again once a new fork-choice snapshot or proposer lookahead is published.</summary>
@@ -1224,21 +1254,29 @@ public sealed class ColumnGossipRouter(
             return Drop(reason, MessageValidity.Ignored);
         }
 
+        bool retainedVerdict = false;
         lock (_pendingGloasLock)
         {
             if (verdict.IsCompleted || _pendingGloasVerdicts.Count >= DataColumnSidecarPool.MaxPendingGloasSidecars)
                 return Drop(reason, MessageValidity.Ignored);
-            int sameKey = 0;
-            int sameSource = 0;
-            foreach ((DataColumnSidecarGloas candidate, PendingGloasVerdict pending) in _pendingGloasVerdicts)
-            {
-                if (pending.Source == source && (pending.Subnet == subnet || ++sameSource >= PendingGloasVerdictsPerSource))
-                    return Drop(reason, MessageValidity.Ignored);
-                if (candidate.BeaconBlockRoot == sidecar.BeaconBlockRoot && candidate.Index == sidecar.Index) sameKey++;
-            }
+            (Hash256 Root, ulong Column) key = (sidecar.BeaconBlockRoot!, sidecar.Index);
+            int sameKey = _pendingGloasCounts.GetValueOrDefault(key);
             if (sameKey >= DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey)
                 return Drop(reason, MessageValidity.Ignored);
-            _pendingGloasVerdicts.Add(sidecar, new(subnet, source, verdict));
+            if (!_pendingGloasSubnets.TryGetValue(source, out HashSet<ulong>? subnets))
+                _pendingGloasSubnets.Add(source, subnets = []);
+            if (subnets.Count < PendingGloasVerdictsPerSource && subnets.Add(subnet))
+            {
+                _pendingGloasVerdicts.Add(sidecar, new(key, subnet, source, verdict));
+                _pendingGloasCounts[key] = sameKey + 1;
+                retainedVerdict = true;
+            }
+        }
+
+        if (!retainedVerdict)
+        {
+            pool?.AddPendingGloas(sidecar, currentSlot);
+            return Drop(reason, MessageValidity.Ignored);
         }
 
         try
@@ -1257,7 +1295,18 @@ public sealed class ColumnGossipRouter(
 
     private void RemovePendingGloas(DataColumnSidecarGloas sidecar)
     {
-        lock (_pendingGloasLock) _pendingGloasVerdicts.Remove(sidecar);
+        lock (_pendingGloasLock)
+        {
+            if (_pendingGloasVerdicts.Remove(sidecar, out PendingGloasVerdict? pending))
+            {
+                if (--_pendingGloasCounts[pending.Key] == 0)
+                    _pendingGloasCounts.Remove(pending.Key);
+                HashSet<ulong> subnets = _pendingGloasSubnets[pending.Source];
+                subnets.Remove(pending.Subnet);
+                if (subnets.Count == 0)
+                    _pendingGloasSubnets.Remove(pending.Source);
+            }
+        }
         pool?.DiscardPendingGloas(sidecar);
     }
 
@@ -1413,22 +1462,55 @@ public sealed class ColumnGossipRouter(
         return false;
     }
 
-    /// <summary>Recovers and exposes missing columns once enough are held (fulu/das-core.md recover_matrix).</summary>
-    /// <remarks>A root stays claimed through publication; cell recovery and subscriber callbacks run outside the lock.</remarks>
+    /// <summary>Schedules bounded recovery of missing columns (fulu/das-core.md recover_matrix).</summary>
     private void TrackHeldColumnAndMaybeReconstruct(Hash256 blockRoot, ulong slot)
     {
-        DataColumnSidecar[] held;
         lock (_reconstructionLock)
         {
-            if (pool is null || _reconstructedBlockRoots.Get(blockRoot) || _reconstructionsInFlight.Contains(blockRoot)
-                || !pool.TryGetHeldColumns(blockRoot, slot, Eip7594DasConstants.RequiredColumnsForReconstruction, out held!))
+            if (_reconstructionStopped || pool is null || _pendingReconstructions.Count >= MaxPendingReconstructions
+                || _reconstructedBlockRoots.Get(blockRoot) || _reconstructionsInFlight.Contains(blockRoot)
+                || !pool.TryGetHeldColumns(blockRoot, slot, Eip7594DasConstants.RequiredColumnsForReconstruction, out _))
             {
                 return;
             }
-
             _reconstructionsInFlight.Add(blockRoot);
+            _pendingReconstructions.Enqueue((blockRoot, slot));
+            if (_reconstructionWorker.IsCompleted) _reconstructionWorker = Task.Run(ReconstructPending);
         }
+    }
 
+    private void ReconstructPending()
+    {
+        while (true)
+        {
+            (Hash256 Root, ulong Slot) entry;
+            lock (_reconstructionLock)
+            {
+                if (!_pendingReconstructions.TryDequeue(out entry))
+                {
+                    _reconstructionWorker = Task.CompletedTask;
+                    return;
+                }
+            }
+            try
+            {
+                if (!_reconstructionStopped && pool!.TryGetHeldColumns(entry.Root, entry.Slot,
+                    Eip7594DasConstants.RequiredColumnsForReconstruction, out DataColumnSidecar[]? held))
+                    ReconstructAndPublish(entry.Root, held);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Could not reconstruct data columns for {entry.Root}: {e.Message}");
+            }
+            finally
+            {
+                lock (_reconstructionLock) _reconstructionsInFlight.Remove(entry.Root);
+            }
+        }
+    }
+
+    private void ReconstructAndPublish(Hash256 blockRoot, DataColumnSidecar[] held)
+    {
         // Recovered columns copy the first held column's signed header, and sync pools columns without checking its signature.
         if (_acceptedHeaders.TryGet(blockRoot, out BlsSignature accepted))
         {
@@ -1437,40 +1519,31 @@ public sealed class ColumnGossipRouter(
         }
 
         List<ReconstructedSidecarToPublish> exposed = [];
-        try
+        if (!Reconstruct(held, out DataColumnSidecar[] fullMatrix) || _reconstructionStopped)
         {
-            if (!Reconstruct(held, out DataColumnSidecar[] fullMatrix))
-            {
-                return;
-            }
-
-            IReadOnlyList<ReconstructedSidecarToPublish> entries = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
-            foreach (ReconstructedSidecarToPublish entry in entries)
-            {
-                if (ExposeReconstructed(entry, blockRoot))
-                {
-                    exposed.Add(entry);
-                }
-            }
-            lock (_reconstructionLock)
-            {
-                _reconstructedBlockRoots.Set(blockRoot);
-            }
-        }
-        finally
-        {
-            lock (_reconstructionLock)
-            {
-                _reconstructionsInFlight.Remove(blockRoot);
-            }
+            return;
         }
 
+        IReadOnlyList<ReconstructedSidecarToPublish> entries = ReconstructionBroadcast.SelectNewlyReconstructed(held, fullMatrix);
+        foreach (ReconstructedSidecarToPublish entry in entries)
+        {
+            if (_reconstructionStopped) return;
+            if (ExposeReconstructed(entry, blockRoot))
+            {
+                exposed.Add(entry);
+            }
+        }
+        lock (_reconstructionLock)
+        {
+            _reconstructedBlockRoots.Set(blockRoot);
+        }
         foreach (ReconstructedSidecarToPublish entry in exposed)
         {
+            if (_reconstructionStopped) return;
             DataColumnSidecarReceived?.Invoke(entry.Sidecar);
         }
 
-        PublishReconstructed(blockRoot, exposed);
+        if (!_reconstructionStopped) PublishReconstructed(blockRoot, exposed);
     }
 
     /// <summary>Adds a locally reconstructed sidecar to the serving pool, unless a gossip copy of its (block root, index) already did.</summary>
@@ -1641,8 +1714,8 @@ public sealed class ColumnGossipRouter(
         {
             CheckpointRef finalized = snapshot.FinalizedCheckpoint;
             ulong finalizedSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(finalized.Epoch);
-            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = new(snapshot.Nodes.Count);
-            Dictionary<Hash256, bool> descends = new(snapshot.Nodes.Count);
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = [with(snapshot.Nodes.Count)];
+            Dictionary<Hash256, bool> descends = [with(snapshot.Nodes.Count)];
             foreach (ForkChoiceSnapshotNode node in snapshot.Nodes)
             {
                 nodes[node.Root] = node;

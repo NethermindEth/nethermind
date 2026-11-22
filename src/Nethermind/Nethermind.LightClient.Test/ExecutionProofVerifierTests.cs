@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using static Nethermind.LightClient.Test.ExecutionProofFixtures;
 
@@ -18,7 +19,7 @@ public class ExecutionProofVerifierTests
     public void Account_values_come_from_the_requested_authenticated_leaf()
     {
         Account expected = new(7, 123, Keccak.Compute([1, 2]), Keccak.Compute([3, 4]));
-        byte[] leaf = Leaf(Keccak.Compute(AccountAddress.Bytes), AccountDecoder.Instance.EncodeAsBytes(expected));
+        byte[] leaf = Leaf(Keccak.Compute(AccountAddress.Bytes), AccountDecoder.Instance.Encode(expected));
 
         Account actual = ExecutionProofVerifier.VerifyAccount(Keccak.Compute(leaf), AccountAddress, [leaf]);
 
@@ -28,7 +29,7 @@ public class ExecutionProofVerifierTests
     [Test]
     public void A_different_account_leaf_proves_absence()
     {
-        byte[] leaf = Leaf(Keccak.Compute(AccountAddress.Bytes), AccountDecoder.Instance.EncodeAsBytes(new Account(123)));
+        byte[] leaf = Leaf(Keccak.Compute(AccountAddress.Bytes), AccountDecoder.Instance.Encode(new Account(123)));
 
         Account actual = ExecutionProofVerifier.VerifyAccount(Keccak.Compute(leaf), Address.Zero, [leaf]);
 
@@ -48,7 +49,7 @@ public class ExecutionProofVerifierTests
     [Test]
     public void Missing_or_tampered_root_is_rejected([Values] bool tamper)
     {
-        byte[] leaf = Leaf(Keccak.Compute(AccountAddress.Bytes), AccountDecoder.Instance.EncodeAsBytes(new Account(123)));
+        byte[] leaf = Leaf(Keccak.Compute(AccountAddress.Bytes), AccountDecoder.Instance.Encode(new Account(123)));
         Hash256 root = Keccak.Compute(leaf);
         byte[][] proof = tamper ? [leaf] : [];
         if (tamper) leaf[^1] ^= 1;
@@ -60,7 +61,7 @@ public class ExecutionProofVerifierTests
     public void Missing_selected_child_is_not_absence([Values] bool includeChild)
     {
         Hash256 key = Keccak.Compute(AccountAddress.Bytes);
-        byte[] leaf = Rlp.Encode(Rlp.Encode(OddPath(key.Bytes)), Rlp.Encode(AccountDecoder.Instance.EncodeAsBytes(new Account(123)))).Bytes;
+        byte[] leaf = Sequence(Rlp.Encode(OddPath(key.Bytes)), Rlp.Encode(AccountDecoder.Instance.Encode(new Account(123))));
         byte[] branch = CreateBranch(key.Bytes[0] >> 4, Rlp.Encode(Keccak.Compute(leaf)));
 
         if (includeChild)
@@ -87,7 +88,7 @@ public class ExecutionProofVerifierTests
     public void Storage_uses_the_padded_slot_hash([Values(1UL, 255UL, 256UL)] ulong slot)
     {
         UInt256 expected = 987;
-        byte[] leaf = Leaf(StorageKey(slot), Rlp.Encode(expected).Bytes);
+        byte[] leaf = Leaf(StorageKey(slot), Rlp.Encode(expected));
 
         using (Assert.EnterMultipleScope())
         {
@@ -100,11 +101,11 @@ public class ExecutionProofVerifierTests
     public void Storage_accepts_embedded_children_and_extension_nodes()
     {
         Hash256 key = StorageKey(1);
-        Rlp leaf = Rlp.Encode(Rlp.Encode(new byte[] { (byte)(0x30 | (key.Bytes[31] & 15)) }), Rlp.Encode(Rlp.Encode((UInt256)42).Bytes));
+        byte[] leaf = Sequence(Rlp.Encode(new byte[] { (byte)(0x30 | (key.Bytes[31] & 15)) }), Rlp.Encode(Rlp.Encode((UInt256)42)));
         byte[] branch = CreateBranch(key.Bytes[31] >> 4, leaf);
         byte[] path = new byte[32];
         key.Bytes[..31].CopyTo(path.AsSpan(1));
-        byte[] extension = Rlp.Encode(Rlp.Encode(path), Rlp.Encode(Keccak.Compute(branch))).Bytes;
+        byte[] extension = Sequence(Rlp.Encode(path), Rlp.Encode(Keccak.Compute(branch)));
 
         Assert.That(ExecutionProofVerifier.VerifyStorage(Keccak.Compute(extension), 1, [extension, branch]), Is.EqualTo((UInt256)42));
     }
@@ -126,7 +127,7 @@ public class ExecutionProofVerifierTests
     [Test]
     public void Account_rlp_with_trailing_bytes_is_rejected()
     {
-        byte[] account = AccountDecoder.Instance.EncodeAsBytes(new Account(123));
+        byte[] account = AccountDecoder.Instance.Encode(new Account(123));
         byte[] value = new byte[account.Length + 1];
         account.CopyTo(value, 0);
         byte[] leaf = Leaf(Keccak.Compute(AccountAddress.Bytes), value);
@@ -141,7 +142,7 @@ public class ExecutionProofVerifierTests
     [Test]
     public void Proof_node_count_is_bounded_even_when_every_node_is_valid([Values(65, 66)] int count)
     {
-        byte[] leaf = Leaf(StorageKey(1), Rlp.Encode((UInt256)42).Bytes);
+        byte[] leaf = Leaf(StorageKey(1), Rlp.Encode((UInt256)42));
         byte[][] proof = Enumerable.Repeat(leaf, count).ToArray();
         if (count > 65)
             Assert.That(() => ExecutionProofVerifier.VerifyStorage(Keccak.Compute(leaf), 1, proof), Throws.TypeOf<InvalidDataException>());
@@ -175,12 +176,12 @@ public class ExecutionProofVerifierTests
         return path;
     }
 
-    private static byte[] CreateBranch(int nibble, Rlp child)
+    private static byte[] CreateBranch(int nibble, byte[] child)
     {
-        Rlp[] children = new Rlp[17];
-        Array.Fill(children, Rlp.OfEmptyByteArray);
+        byte[][] children = new byte[17][];
+        Array.Fill(children, [Rlp.EmptyByteArrayByte]);
         children[nibble] = child;
-        return Rlp.Encode(children).Bytes;
+        return Sequence(children);
     }
 }
 
@@ -191,6 +192,13 @@ internal static class ExecutionProofFixtures
         byte[] path = new byte[33];
         path[0] = 0x20;
         key.Bytes.CopyTo(path.AsSpan(1));
-        return Rlp.Encode(Rlp.Encode(path), Rlp.Encode(value)).Bytes;
+        return Sequence(Rlp.Encode(path), Rlp.Encode(value));
     }
+
+    internal static byte[] Sequence(params byte[][] encoded) => RlpCodec.Write(encoded,
+        static (ref RlpWriter writer, byte[][] items) => writer.WriteSequence(items,
+            static (ref RlpWriter sequence, byte[][] values) =>
+            {
+                foreach (byte[] value in values) sequence.WriteEncoded(value);
+            }));
 }

@@ -1,18 +1,86 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
+using Testably.Abstractions;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
 public class BeaconChainStoreTests
 {
+    [Test]
+    public void State_range_reads_across_chunks_without_loading_unrelated_chunks()
+    {
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        const int chunkSize = 4 * 1024 * 1024;
+        byte[] state = new byte[2 * chunkSize + 1];
+        state[chunkSize - 1] = 42;
+        state[chunkSize] = 43;
+        store.PutState(Hash256.Zero, state);
+        byte[] key = new byte[Hash256.Size + sizeof(uint)];
+        key[^1] = 2;
+        db.GetColumnDb(BeaconChainDbColumns.States).Remove(key);
+
+        byte[] result = new byte[2];
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(store.TryGetStateRange(Hash256.Zero, chunkSize - 1, result), Is.True);
+        Assert.That(result, Is.EqualTo(new byte[] { 42, 43 }));
+        Assert.That(store.TryGetStateRange(Hash256.Zero, state.Length - 1, result.AsSpan(0, 1)), Is.False);
+        Assert.That(store.TryGetStateRange(Hash256.Zero, state.Length, result), Is.False);
+    }
+
+    [Test]
+    public void Canonical_slot_iteration_filters_other_key_lengths_and_includes_max_slot([Values] bool sorted, [Values] bool reverse)
+    {
+        using CountingStatesColumnsDb db = new(sorted, BeaconChainDbColumns.BlockIndex);
+        AssertCanonicalSlotIteration(db, reverse);
+    }
+
+    [Test]
+    public void Canonical_slot_iteration_obeys_rocksdb_bounds([Values] bool reverse)
+    {
+        using TempPath path = TempPath.GetTempDirectory();
+        DbConfig config = new();
+        RocksDbConfigFactory configs = new(config, new PruningConfig(), new TestHardwareInfo(1.GiB), LimboLogs.Instance, validateConfig: false);
+        using HyperClockCacheWrapper cache = new();
+        RocksDbFactory factory = new(configs, config, cache, new RealFileSystem(), LimboLogs.Instance, path.Path);
+        using IColumnsDb<BeaconChainDbColumns> db = factory.CreateColumnsDb<BeaconChainDbColumns>(new DbSettings("BeaconChain", "canonical"));
+        AssertCanonicalSlotIteration(db, reverse);
+    }
+
+    private static void AssertCanonicalSlotIteration(IColumnsDb<BeaconChainDbColumns> db, bool reverse)
+    {
+        BeaconChainStore store = new(db);
+        foreach (ulong slot in new ulong[] { 0, 10, 1_000_000, ulong.MaxValue })
+            store.SetCanonicalRoot(slot, Hash256.Zero);
+        byte[] middle = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(middle, 500_000);
+        IDb index = db.GetColumnDb(BeaconChainDbColumns.BlockIndex);
+        index.Set(middle[..7], [1]);
+        index.Set([.. middle, 1], [1]);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        ulong[] expected = [10, 1_000_000, ulong.MaxValue];
+        Assert.That(store.EnumerateCanonicalSlots(10, ulong.MaxValue, reverse: reverse), Is.EqualTo(reverse ? expected.Reverse() : expected));
+        Assert.That(store.EnumerateCanonicalSlots(0, 0, reverse: reverse), Is.EqualTo((ulong[])[0]));
+        Assert.That(store.EnumerateCanonicalSlots(11, 999_999, reverse: reverse), Is.Empty);
+        Assert.That(store.EnumerateCanonicalSlots(11, 10, reverse: reverse), Is.Empty);
+        Assert.Throws<OperationCanceledException>(() => store.EnumerateCanonicalSlots(0, ulong.MaxValue, new CancellationToken(true), reverse).ToArray());
+    }
+
     [Test]
     public void Round_trips_blocks_canonical_index_chunked_states_metadata_and_anchor()
     {
@@ -105,8 +173,11 @@ public class BeaconChainStoreTests
 
         store.EnsureSchemaVersion();
 
-        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
+            Assert.That(version, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
+        }
     }
 
     [Test]
@@ -179,10 +250,15 @@ public class BeaconChainStoreTests
         store.PutBlock(fuluRoot, fulu);
         store.PutForkedBlock(BlockRoot, new ForkedSignedBeaconBlock.OfGloas(gloas));
 
-        Assert.That(store.TryGetForkedBlock(fuluRoot, out ForkedSignedBeaconBlock? readFulu), Is.True);
-        Assert.That(store.TryGetForkedBlock(BlockRoot, out ForkedSignedBeaconBlock? readGloas), Is.True);
-        Assert.That(readFulu, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
-        Assert.That(readGloas, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        ForkedSignedBeaconBlock? readFulu;
+        ForkedSignedBeaconBlock? readGloas;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetForkedBlock(fuluRoot, out readFulu), Is.True);
+            Assert.That(store.TryGetForkedBlock(BlockRoot, out readGloas), Is.True);
+            Assert.That(readFulu, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
+            Assert.That(readGloas, Is.TypeOf<ForkedSignedBeaconBlock.OfGloas>());
+        }
         bool hasChildren = store.TryGetChildren(fuluRoot, out Hash256[] children, out _);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(SignedBeaconBlock.Encode(((ForkedSignedBeaconBlock.OfFulu)readFulu!).Block), Is.EqualTo(SignedBeaconBlock.Encode(fulu)));

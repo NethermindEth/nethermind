@@ -147,8 +147,11 @@ public class ChainHeadSpecProviderTests
                 while (!cts.IsCancellationRequested)
                 {
                     IReleaseSpec spec = provider.GetCurrentHeadSpec();
-                    Assert.That(spec, Is.Not.Null);
-                    Assert.That(validSpecs.Contains(spec), Is.True);
+                    using (Assert.EnterMultipleScope())
+                    {
+                        Assert.That(spec, Is.Not.Null);
+                        Assert.That(validSpecs.Contains(spec), Is.True);
+                    }
                 }
             });
         }

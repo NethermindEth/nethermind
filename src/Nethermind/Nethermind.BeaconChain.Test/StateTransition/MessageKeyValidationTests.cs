@@ -130,7 +130,20 @@ public class MessageKeyValidationTests
     private static void AssertPairingHolds(KeyKind kind, BlsPublicKey key, BlsSignature signature, Hash256 signingRoot)
     {
         Bls.P1Affine decoded = new(new long[Bls.P1Affine.Sz]);
-        Assert.That(decoded.TryDecode(key.Bytes, out _) && BlsSigner.Verify(decoded, signature.Bytes, signingRoot.Bytes), Is.True,
+        Bls.P2 signaturePoint = new(stackalloc long[Bls.P2.Sz]);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.TryDecode(key.Bytes, out _), Is.True);
+            Assert.That(signaturePoint.TryDecode(signature.Bytes, out _), Is.True);
+        }
+        // These fixtures satisfy the pairing even when KeyValidate must reject the public key.
+        Bls.PT left = new(stackalloc long[Bls.PT.Sz]);
+        left.MillerLoop(signaturePoint.ToAffine(), Bls.P1Affine.Generator(stackalloc long[Bls.P1Affine.Sz]));
+        Bls.P2 message = new(stackalloc long[Bls.P2.Sz]);
+        message.HashTo(signingRoot.Bytes, "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_"u8);
+        Bls.PT right = new(stackalloc long[Bls.PT.Sz]);
+        right.MillerLoop(message.ToAffine(), decoded);
+        Assert.That(Bls.PT.FinalVerify(left, right), Is.True,
             $"fixture bug: the {kind} key must satisfy the pairing");
     }
 

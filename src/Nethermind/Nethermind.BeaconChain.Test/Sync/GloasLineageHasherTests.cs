@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Reflection;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Sync;
@@ -78,6 +79,24 @@ public class GloasLineageHasherTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(result, Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid));
         Assert.That(spy.GloasCalls, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void A_deferred_full_child_advances_through_the_shared_hasher()
+    {
+        SignedGloasChain chain = new(new FullBeaconStateHasher());
+        BlockImporter importer = chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        SignedGloasChain.Block first = chain.Next(null, ForkSlot, full: false, 0xA1);
+        SignedGloasChain.Block child = chain.Next(first, ForkSlot + 2 * Presets.SlotsPerEpoch, full: true, 0xA2);
+        Assert.That(importer.Import(first.Forked, first.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
+        CountingStateHasher spy = new(LineageHasher(importer));
+        LineageCache(importer).Hasher = spy;
+
+        BlockImportResult result = importer.Import(child.Forked, child.Root, verifySignatures: true);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
+        Assert.That(spy.GloasCalls, Is.GreaterThanOrEqualTo(2 * Presets.SlotsPerEpoch));
     }
 
     [Test]

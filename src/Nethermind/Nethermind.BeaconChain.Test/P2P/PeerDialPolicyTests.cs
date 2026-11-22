@@ -271,8 +271,11 @@ public class PeerDialPolicyTests
             await hanging.Entered.WaitAsync(token);
             Task<bool> waitsForSlot = manager.TryAddPeerAsync(LoopbackAddress(slowRemote.P2P), token);
 
-            Assert.That(await holdsSlot, Is.False, "the dial to a peer that never answers status did not time out");
-            Assert.That(await waitsForSlot, Is.True, "the time a dial waited for a slot was taken from its connection timeout");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await holdsSlot, Is.False, "the dial to a peer that never answers status did not time out");
+                Assert.That(await waitsForSlot, Is.True, "the time a dial waited for a slot was taken from its connection timeout");
+            }
         }
         finally
         {

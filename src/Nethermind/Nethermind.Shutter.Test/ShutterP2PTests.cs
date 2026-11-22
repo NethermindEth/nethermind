@@ -27,8 +27,11 @@ public class ShutterP2PTests
     {
         bool parsed = ShutterP2P.TryParseDecryptionKeys(message, LimboLogs.Instance.GetClassLogger<ShutterP2P>(), out Dto.DecryptionKeys? keys);
 
-        Assert.That(parsed, Is.False);
-        Assert.That(keys, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed, Is.False);
+            Assert.That(keys, Is.Null);
+        }
     }
 
     [Test]
@@ -39,7 +42,10 @@ public class ShutterP2PTests
 
         bool parsed = ShutterP2P.TryParseDecryptionKeys(message, LimboLogs.Instance.GetClassLogger<ShutterP2P>(), out Dto.DecryptionKeys? keys);
 
-        Assert.That(parsed, Is.True);
-        Assert.That(keys, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed, Is.True);
+            Assert.That(keys, Is.EqualTo(expected));
+        }
     }
 }

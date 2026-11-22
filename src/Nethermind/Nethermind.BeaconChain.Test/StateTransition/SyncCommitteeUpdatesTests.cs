@@ -86,6 +86,34 @@ public class SyncCommitteeUpdatesTests
         Assert.That(state.NextSyncCommittee, Is.SameAs(oldNext));
     }
 
+    [Test]
+    public void Sync_committee_accepts_maximum_balance_on_the_largest_random_draw([ValueSource(nameof(Forks))] ForkUnderTest fork)
+    {
+        IBeaconStateView view = fork.Create(Period - 1, false);
+        foreach (Validator validator in view.Validators)
+            validator.EffectiveBalance = Presets.MaxEffectiveBalanceElectra;
+        byte[] mix = new byte[32];
+        BinaryPrimitives.WriteUInt32LittleEndian(mix, 33190);
+        Hash256[] mixes = view.State switch
+        {
+            BeaconStateFulu state => state.RandaoMixes!,
+            BeaconStateGloas state => state.RandaoMixes!,
+            _ => throw new InvalidOperationException(),
+        };
+        mixes[(int)((Period - Presets.MinSeedLookahead - 1) % Presets.EpochsPerHistoricalVector)] = new Hash256(mix);
+        byte[] seed = view.GetSeed(Period).BytesToArray();
+        byte[] preimage = new byte[40];
+        seed.CopyTo(preimage, 0);
+        int[] active = view.GetActiveValidatorIndices(Period);
+        int firstCandidate = active[SwapOrNotShuffle.ComputeShuffledIndex(0, active.Length, seed)];
+
+        fork.Process(view.State);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(BinaryPrimitives.ReadUInt16LittleEndian(SHA256.HashData(preimage)), Is.EqualTo(ushort.MaxValue), "the first draw must exercise equality");
+        Assert.That(view.NextSyncCommittee.Pubkeys![0], Is.EqualTo(view.Validators[firstCandidate].Pubkey));
+    }
+
     // Electra get_next_sync_committee_indices oracle; Gloas uses weighted selection with shuffle_indices=True.
     private static int[] ReferenceNextSyncCommitteeIndices(IBeaconStateView state, ulong nextEpoch)
     {

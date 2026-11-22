@@ -68,8 +68,11 @@ public class BeaconChainStoreStateSlotIndexTests
         restarted.EnsureSchemaVersion();
         restarted.SetAnchor(Root(2), 40);
 
-        Assert.That(new[] { 1, 2, 3 }.Select(i => restarted.TryGetState(Root(i), out _)), Is.EqualTo(new[] { false, true, true }));
-        Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(2), "a pruned state leaves no index entry");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new[] { 1, 2, 3 }.Select(i => restarted.TryGetState(Root(i), out _)), Is.EqualTo(new[] { false, true, true }));
+            Assert.That(IndexKeyCount(db.GetColumnDb(BeaconChainDbColumns.StateSlotIndex)), Is.EqualTo(2), "a pruned state leaves no index entry");
+        }
     }
 
     [Test]

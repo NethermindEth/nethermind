@@ -97,6 +97,7 @@ public static partial class BlockProcessing
         ProcessBlockHeader(state, block);
         ProcessWithdrawals(state, body.ExecutionPayload!);
         ProcessExecutionPayload(state, body, notifier, maxBlobsPerBlock);
+        PredecodeBlockSignatures(body, batch);
         ProcessRandao(state, body, pubkeys, verifySignatures, batch);
         ProcessEth1Data(state, body);
         ProcessOperations(state, body, cache, pubkeys, verifySignatures, batch);
@@ -130,12 +131,13 @@ public static partial class BlockProcessing
             state.DecreaseBalance((int)withdrawal.ValidatorIndex, withdrawal.Amount);
         }
 
-        state.PendingPartialWithdrawals = state.PendingPartialWithdrawals![processedPartialWithdrawalsCount..];
+        if (processedPartialWithdrawalsCount != 0)
+            state.PendingPartialWithdrawals = state.PendingPartialWithdrawals![processedPartialWithdrawalsCount..];
 
         if (expected.Count != 0)
             state.NextWithdrawalIndex = expected[^1].Index + 1;
 
-        ulong validatorCount = (ulong)state.Validators!.Length;
+        ulong validatorCount = (ulong)state.ReadOnlyValidators.Length;
         state.NextWithdrawalValidatorIndex = expected.Count == Presets.MaxWithdrawalsPerPayload
             ? (expected[^1].ValidatorIndex + 1) % validatorCount
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
@@ -155,7 +157,7 @@ public static partial class BlockProcessing
             if (pending.WithdrawableEpoch > epoch || withdrawals.Count == Presets.MaxPendingPartialsPerWithdrawalsSweep)
                 break;
 
-            Validator validator = state.Validators![(int)pending.ValidatorIndex];
+            Validator validator = state.ReadOnlyValidators[(int)pending.ValidatorIndex];
             bool hasSufficientEffectiveBalance = validator.EffectiveBalance >= Presets.MinActivationBalance;
             ulong balance = state.Balances![(int)pending.ValidatorIndex] - TotalWithdrawn(withdrawals.AsSpan(), pending.ValidatorIndex);
             if (validator.ExitEpoch == Presets.FarFutureEpoch && hasSufficientEffectiveBalance && balance > Presets.MinActivationBalance)
@@ -171,10 +173,10 @@ public static partial class BlockProcessing
             processedPartialWithdrawalsCount++;
         }
 
-        int bound = Math.Min(state.Validators!.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
+        int bound = Math.Min(state.ReadOnlyValidators.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
         for (int i = 0; i < bound; i++)
         {
-            Validator validator = state.Validators[(int)validatorIndex];
+            Validator validator = state.ReadOnlyValidators[(int)validatorIndex];
             ulong balance = state.Balances![(int)validatorIndex] - TotalWithdrawn(withdrawals.AsSpan(), validatorIndex);
             if (validator.IsFullyWithdrawableValidator(balance, epoch))
             {
@@ -198,7 +200,7 @@ public static partial class BlockProcessing
             }
             if (withdrawals.Count == Presets.MaxWithdrawalsPerPayload)
                 break;
-            validatorIndex = (validatorIndex + 1) % (ulong)state.Validators.Length;
+            validatorIndex = (validatorIndex + 1) % (ulong)state.ReadOnlyValidators.Length;
         }
 
         return processedPartialWithdrawalsCount;
@@ -266,9 +268,6 @@ public static partial class BlockProcessing
     /// <summary>Spec <c>process_eth1_data</c>: records the vote and adopts it once it has a majority of the voting period.</summary>
     public static partial void ProcessEth1Data(BeaconStateFulu state, BeaconBlockBody body);
 
-    private static bool Eth1DataEquals(Eth1Data a, Eth1Data b) =>
-        a.DepositRoot == b.DepositRoot && a.DepositCount == b.DepositCount && a.BlockHash == b.BlockHash;
-
     /// <summary>
     /// Spec <c>process_operations</c> (Electra): checks the expected Eth1 deposit count, then
     /// dispatches every operation list in spec order.
@@ -280,7 +279,8 @@ public static partial class BlockProcessing
         // [Modified in Electra:EIP6110] The former deposit mechanism is disabled once all
         // pre-request deposits are processed.
         ulong eth1DepositIndexLimit = Math.Min(state.Eth1Data!.DepositCount, state.DepositRequestsStartIndex);
-        ulong expectedDeposits = state.Eth1DepositIndex < eth1DepositIndexLimit
+        bool fulu = state.GetCurrentEpoch() >= cache.ResolveSigningSpec(state.GenesisValidatorsRoot!).FuluForkEpoch;
+        ulong expectedDeposits = !fulu && state.Eth1DepositIndex < eth1DepositIndexLimit
             ? Math.Min(Presets.MaxDeposits, eth1DepositIndexLimit - state.Eth1DepositIndex)
             : 0;
         if ((ulong)(body.Deposits?.Length ?? 0) != expectedDeposits)
@@ -298,30 +298,23 @@ public static partial class BlockProcessing
         {
             ProcessAttestation(state, attestation, cache, pubkeys, verifySignatures, batch);
         }
-        cache.IndexDepositPubkeys(state.Validators!, body.Deposits ?? []);
+        cache.IndexDepositPubkeys(state.ValidatorBuffer!.Items, body.Deposits ?? []);
         foreach (Deposit deposit in body.Deposits ?? [])
         {
             ProcessDeposit(state, deposit, cache.SigningSpec, cache);
         }
+        PendingWithdrawalBatch withdrawals = new(state.PendingPartialWithdrawals!);
         foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
         {
-            ProcessVoluntaryExit(state, exit, cache, pubkeys, verifySignatures, batch);
+            ProcessVoluntaryExitCore(state, exit, cache, pubkeys, verifySignatures, batch, withdrawals);
         }
         foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
         {
             ProcessBlsToExecutionChange(state, change, verifySignatures, batch, cache.SigningSpec);
         }
         ExecutionRequests requests = body.ExecutionRequests!;
-        ProcessDepositRequests(state, requests.Deposits ?? []);
-        cache.IndexRequestPubkeys(state.Validators!, requests.Withdrawals, requests.Consolidations);
-        foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
-        {
-            ProcessWithdrawalRequest(state, request, cache);
-        }
-        foreach (ConsolidationRequest request in requests.Consolidations ?? [])
-        {
-            ProcessConsolidationRequest(state, request, cache);
-        }
+        ProcessDepositRequests(state, requests.Deposits ?? [], cache.SigningSpec);
+        ProcessWithdrawalAndConsolidationRequests(state, requests.Withdrawals, requests.Consolidations, cache, withdrawals);
         state.PendingDeposits = state.PendingDeposits.Length == 0 ? pendingDeposits : [.. pendingDeposits, .. state.PendingDeposits];
     }
 
@@ -387,12 +380,12 @@ public static partial class BlockProcessing
     /// </summary>
     private static void ApplyDeposit(BeaconStateFulu state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, BlsSignature signature, BeaconChainSpec? spec, EpochCache? cache)
     {
-        if ((cache is null ? FindValidatorIndex(state, pubkey) : cache.FindRequestValidator(state.Validators!, pubkey)) is null)
+        if ((cache is null ? FindValidatorIndex(state, pubkey) : cache.FindRequestValidator(state.ValidatorBuffer!.Items, pubkey)) is null)
         {
             if (!DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), pubkey, withdrawalCredentials, amount, signature))
                 return;
             state.AddValidatorToRegistry(pubkey, withdrawalCredentials, 0);
-            cache?.RegisterDepositedValidator(state.Validators!);
+            cache?.RegisterDepositedValidator(state.ValidatorBuffer!.Items);
         }
 
         state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
@@ -408,10 +401,10 @@ public static partial class BlockProcessing
 
     public static partial void ProcessVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
     public static partial void ProcessBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null, BeaconChainSpec? spec = null);
-    public static partial void ProcessDepositRequest(BeaconStateFulu state, DepositRequest request);
+    public static partial void ProcessDepositRequest(BeaconStateFulu state, DepositRequest request, BeaconChainSpec? spec = null);
     public static partial void ProcessWithdrawalRequest(BeaconStateFulu state, WithdrawalRequest request, EpochCache cache);
     public static partial void ProcessConsolidationRequest(BeaconStateFulu state, ConsolidationRequest request, EpochCache cache);
-    private static partial void ProcessDepositRequests(BeaconStateFulu state, DepositRequest[] requests);
+    private static partial void ProcessDepositRequests(BeaconStateFulu state, DepositRequest[] requests, BeaconChainSpec? spec = null);
     private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateFulu state, ConsolidationRequest request, int? sourceIndex);
 
     /// <summary>Spec <c>switch_to_compounding_validator</c>.</summary>
@@ -425,7 +418,8 @@ public static partial class BlockProcessing
             return;
 
         state.Balances[index] = Presets.MinActivationBalance;
-        Validator validator = state.Validators![index];
+        state.BlockChanges?.Balances.Add(index >> 2);
+        Validator validator = state.ReadOnlyValidators[index];
         state.PendingDeposits = [.. state.PendingDeposits!, new PendingDeposit
         {
             Pubkey = validator.Pubkey,

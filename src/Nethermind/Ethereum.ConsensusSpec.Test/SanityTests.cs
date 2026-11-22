@@ -13,6 +13,27 @@ namespace Ethereum.ConsensusSpec.Test;
 [TestFixture]
 public class SanityTests
 {
+    [TestCase(null, 0)]
+    [TestCase("MAX_BLOBS_PER_BLOCK_ELECTRA: 9", 0)]
+    [TestCase("FULU_FORK_EPOCH: 7", 7)]
+    public void Fulu_block_cases_use_the_configured_activation_epoch(string? yaml, int expectedEpoch)
+    {
+        DirectoryInfo directory = Directory.CreateTempSubdirectory();
+        try
+        {
+            if (yaml is not null)
+                File.WriteAllText(Path.Combine(directory.FullName, "config.yaml"), yaml);
+            BeaconChainSpec spec = FuluDriverSupport.CaseSpec(directory.FullName, "fulu");
+            using IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(spec.FuluForkEpoch, Is.EqualTo((ulong)expectedEpoch));
+            Assert.That(spec.Forks[^1].Epoch, Is.EqualTo((ulong)expectedEpoch));
+        }
+        finally
+        {
+            directory.Delete(true);
+        }
+    }
+
     [TestCaseSource(nameof(MinimalBlockCases))]
     public void Blocks(SanityCase testCase) => ExecuteBlocks(testCase);
     [TestCaseSource(nameof(MainnetBlockCases))]
@@ -59,7 +80,7 @@ public class SanityTests
         EpochCache cache = driver.NewCache();
         PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(driver.ValidatorsOf(state));
         bool verifySignatures = FuluDriverSupport.ShouldVerifySignatures(testCase.CasePath);
-        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(testCase.CasePath);
+        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(testCase.CasePath, testCase.Fork);
 
         Dictionary<string, string> meta = FuluDriverSupport.ParseFlowMap(Path.Combine(testCase.CasePath, "meta.yaml"));
         int blocksCount = int.Parse(meta["blocks_count"]);

@@ -15,7 +15,7 @@ public class EezLightClientOptionsTests
 
     [Test]
     public void Absent_genesis_keeps_ethereum_mode() =>
-        Assert.That(EezLightClientOptions.Read(Configuration(new Dictionary<string, string?>())), Is.Null);
+        Assert.That(EezLightClientOptions.Read(Configuration([])), Is.Null);
 
     [Test]
     public void Complete_options_describe_rollup_network_and_settlement()

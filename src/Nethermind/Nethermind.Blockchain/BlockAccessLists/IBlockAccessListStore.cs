@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.BlockAccessLists;
@@ -30,7 +31,7 @@ public interface IBlockAccessListStore
         {
             Insert(block.Number, blockHash, block.EncodedBlockAccessList);
         }
-        else if (block.BlockAccessList is not null)
+        else if (block.BlockAccessList is not null && !Exists(block.Number, blockHash))
         {
             Insert(block.Number, blockHash, block.BlockAccessList);
         }
@@ -49,6 +50,22 @@ public interface IBlockAccessListStore
     void Insert(ulong blockNumber, Hash256 blockHash, scoped ReadOnlySpan<byte> bal);
     void Insert(ulong blockNumber, Hash256 blockHash, ReadOnlyBlockAccessList bal);
     MemoryManager<byte>? GetRlp(ulong blockNumber, Hash256 blockHash);
+
+    /// <summary>Appends the stored RLP of several blocks' access lists to <paramref name="destination"/>.</summary>
+    /// <param name="blockNumbers">The numbers of the blocks.</param>
+    /// <param name="blockHashes">The hashes of the blocks, in the order of <paramref name="blockNumbers"/>.</param>
+    /// <param name="destination">Receives the RLP of each stored list.</param>
+    /// <param name="ranges">Receives where each block's list lies in <paramref name="destination"/>, or null when none is stored.</param>
+    void AppendRlps(ReadOnlySpan<ulong> blockNumbers, ReadOnlySpan<ValueHash256> blockHashes, ArrayPoolList<byte> destination, Span<Range?> ranges)
+    {
+        for (int i = 0; i < blockHashes.Length; i++)
+        {
+            using MemoryManager<byte>? rlp = GetRlp(blockNumbers[i], new Hash256(in blockHashes[i]));
+            int start = destination.Count;
+            if (rlp is not null) destination.AddRange(rlp.Memory.Span);
+            ranges[i] = rlp is null ? null : new Range(start, destination.Count);
+        }
+    }
     ReadOnlyBlockAccessList? Get(ulong blockNumber, Hash256 blockHash);
     bool Exists(ulong blockNumber, Hash256 blockHash);
     void Delete(ulong blockNumber, Hash256 blockHash);

@@ -98,11 +98,14 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
     {
         using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{endpoint}", Octet);
         byte[] body = await response.Content.ReadAsByteArrayAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Octet));
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
-        Assert.That(body.Length % elementSize, Is.Zero);
-        Assert.That(body, Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Octet));
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
+            Assert.That(body.Length % elementSize, Is.Zero);
+            Assert.That(body, Is.EqualTo(expected));
+        }
     }
 
     [Test]

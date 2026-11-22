@@ -49,7 +49,7 @@ public class DepositSignatureVerifierTests
     }
 
     [Test]
-    public void Deposit_signature_is_invalid_for_a_key_outside_the_subgroup_even_when_the_pairing_holds()
+    public void Deposit_signature_is_invalid_for_a_key_outside_the_subgroup()
     {
         Bls.SecretKey key = GloasTestFixtures.DeriveKey(7);
         BlsPublicKey pubkey = OffSubgroupKeys.WithTorsion(key);
@@ -58,10 +58,13 @@ public class DepositSignatureVerifierTests
         BlsSignature signature = GloasTestFixtures.Sign(key, signingRoot);
 
         Bls.P1Affine decoded = new(new long[Bls.P1Affine.Sz]);
-        Assert.That(decoded.TryDecode(pubkey.Bytes, out _) && BlsSigner.Verify(decoded, signature.Bytes, signingRoot.Bytes), Is.True,
-            "fixture bug: the pairing must accept, so only the subgroup check can refuse");
-
-        Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet.GenesisValidatorsRoot, pubkey, credentials, Amount, signature), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.TryDecode(pubkey.Bytes, out _), Is.True);
+            Assert.That(decoded.InGroup(), Is.False);
+            Assert.That(BlsSigner.Verify(decoded, signature.Bytes, signingRoot.Bytes), Is.False);
+            Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet.GenesisValidatorsRoot, pubkey, credentials, Amount, signature), Is.False);
+        }
     }
 
     // IETF BLS CoreVerify 2.7 requires deposit signatures in G2.
@@ -76,11 +79,14 @@ public class DepositSignatureVerifierTests
             ? OffSubgroupKeys.WithG2Torsion(GloasTestFixtures.Sign(key, signingRoot))
             : OffSubgroupKeys.NotInG2Signature();
         Bls.P2 point = new(new long[Bls.P2.Sz]);
-        Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
-        Assert.That(point.OnCurve(), Is.True);
-        Assert.That(point.ToAffine().InGroup(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(point.TryDecode(signature.Bytes, out _), Is.True);
+            Assert.That(point.OnCurve(), Is.True);
+            Assert.That(point.ToAffine().InGroup(), Is.False);
 
-        Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet.GenesisValidatorsRoot, pubkey, credentials, Amount, signature), Is.False);
+            Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet.GenesisValidatorsRoot, pubkey, credentials, Amount, signature), Is.False);
+        }
     }
 
     private static Hash256 SigningRoot(BlsPublicKey pubkey, Hash256 credentials)

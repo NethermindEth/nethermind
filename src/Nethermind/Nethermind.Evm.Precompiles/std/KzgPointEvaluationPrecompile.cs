@@ -23,12 +23,8 @@ public partial class KzgPointEvaluationPrecompile
     private const byte CompressedInfinity = 0b1100_0000;
     private const string SubgroupCheckFailed = "invalid point: subgroup check failed";
 
-    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
-    {
-        Metrics.KzgPointEvaluationPrecompile++;
-
-        return RunInternal(inputData);
-    }
+    public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _) =>
+        RunInternal(inputData);
 
     /// <remarks>
     /// The reason is go-ethereum's, which reports what its KZG library rejects first: a claimed value or evaluation

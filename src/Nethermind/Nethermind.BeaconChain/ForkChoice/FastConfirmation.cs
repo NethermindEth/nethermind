@@ -34,7 +34,9 @@ internal sealed class FastConfirmation(
     private Hash256 _currentHead = store.FinalizedCheckpoint.Root;
     private BalanceSource? _previousBalances;
     private BalanceSource? _currentBalances;
-    private readonly Dictionary<(ulong Epoch, Hash256 Decision), CommitteeCache> _committees = [];
+    private readonly Dictionary<(ulong Epoch, Hash256 Decision), CommitteeEntry> _committees = [];
+    private readonly Dictionary<BalanceSource, FastConfirmationScores> _scores = [];
+    private bool _trackingVotes;
 
     internal Hash256 ConfirmedRoot { get; private set; } = store.FinalizedCheckpoint.Root;
     internal CheckpointRef PreviousEpochObservedJustifiedCheckpoint => _previousObserved;
@@ -52,6 +54,7 @@ internal sealed class FastConfirmation(
         _pulledUpHeadBalances = null;
         _pulledUpHeadKey = null;
         _committees.Clear();
+        _scores.Clear();
     }
 
     internal void OnSlot(Hash256 head)
@@ -93,6 +96,28 @@ internal sealed class FastConfirmation(
         if (Epoch(confirmed) + 1 >= store.CurrentEpoch)
             confirmed = FindLatestConfirmedDescendant(context, confirmed);
         ConfirmedRoot = confirmed;
+    }
+
+    private ulong[] Scores(BalanceSource source)
+    {
+        if (!_trackingVotes)
+        {
+            tree.LatestVoteChanged += MarkVoteDirty;
+            _trackingVotes = true;
+        }
+        if (!_scores.TryGetValue(source, out FastConfirmationScores? scores))
+        {
+            foreach (BalanceSource retained in _scores.Keys)
+                if (retained != _currentBalances && retained != _previousBalances && retained != _pulledUpHeadBalances)
+                    _scores.Remove(retained);
+            _scores[source] = scores = new FastConfirmationScores(source.Balances, source.Slashed);
+        }
+        return scores.Calculate(tree, equivocators);
+    }
+
+    private void MarkVoteDirty(int validatorIndex)
+    {
+        foreach (FastConfirmationScores scores in _scores.Values) scores.MarkDirty(validatorIndex);
     }
 
     private Hash256 FindLatestConfirmedDescendant(Context context, Hash256 confirmed)
@@ -179,22 +204,42 @@ internal sealed class FastConfirmation(
         return _pulledUpHeadBalances!;
     }
 
-    private CommitteeCache Committees(Hash256 head, ulong epoch)
+    private CommitteeEntry GetCommitteeEntry(Hash256 head, ulong epoch)
     {
         ulong decisionSlot = epoch <= Presets.MinSeedLookahead ? 0 : (epoch - Presets.MinSeedLookahead) * spec.SlotsPerEpoch - 1;
         Hash256 decision = tree.GetAncestor(head, decisionSlot) ?? store.FinalizedCheckpoint.Root;
-        if (!_committees.TryGetValue((epoch, decision), out CommitteeCache? committees))
+        if (!_committees.TryGetValue((epoch, decision), out CommitteeEntry? entry))
         {
-            committees = blockState(head) switch
+            CommitteeCache committees = blockState(head) switch
             {
                 ForkedBeaconState.OfFulu fulu => CommitteeCache.Build(fulu.State, epoch),
                 ForkedBeaconState.OfGloas gloas => CommitteeCache.Build(gloas.State, epoch),
                 _ => throw new NotSupportedException(),
             };
             if (_committees.Count >= 6) _committees.Clear();
-            _committees[(epoch, decision)] = committees;
+            _committees[(epoch, decision)] = entry = new CommitteeEntry(committees);
         }
-        return committees;
+        return entry;
+    }
+
+    private sealed class CommitteeEntry(CommitteeCache committees)
+    {
+        internal CommitteeCache Committees => committees;
+        private int[]? _duties;
+
+        internal int[] Duties(ulong slotsPerEpoch)
+        {
+            if (_duties is not null) return _duties;
+            int length = 0;
+            foreach (int index in committees.ShuffledIndices) length = Math.Max(length, index + 1);
+            int[] duties = new int[length];
+            Array.Fill(duties, -1);
+            ulong firstSlot = committees.Epoch * slotsPerEpoch;
+            for (ulong offset = 0; offset < slotsPerEpoch; offset++)
+                for (int committee = 0; committee < committees.CommitteesPerSlot; committee++)
+                    foreach (int index in committees.GetBeaconCommittee(firstSlot + offset, committee)) duties[index] = (int)offset;
+            return _duties = duties;
+        }
     }
     private bool IsEpochStart => store.CurrentSlot % spec.SlotsPerEpoch == 0;
     private ulong Slot(Hash256 root) => Node(root).Slot;
@@ -204,8 +249,8 @@ internal sealed class FastConfirmation(
         : throw new ForkChoiceException($"Fast confirmation block {root} has no retained parent");
     private CheckpointRef VotingSource(Hash256 root) => Epoch(root) < store.CurrentEpoch
         ? Node(root).UnrealizedJustifiedCheckpoint!.Value : Node(root).JustifiedCheckpoint;
-    private CheckpointRef Checkpoint(Hash256 root, ulong epoch) => new(epoch,
-        tree.GetAncestor(root, epoch * spec.SlotsPerEpoch) ?? throw new ForkChoiceException($"No retained checkpoint for {root} at epoch {epoch}"));
+    private CheckpointRef? Checkpoint(Hash256 root, ulong epoch) =>
+        tree.GetAncestor(root, epoch * spec.SlotsPerEpoch) is { } ancestor ? new(epoch, ancestor) : null;
 
     private List<Hash256> Ancestors(Hash256 root, Hash256 terminal)
     {
@@ -248,10 +293,10 @@ internal sealed class FastConfirmation(
 
         internal BalanceSource(ForkedBeaconState state, BeaconChainSpec spec)
         {
-            Validator[] validators = state switch
+            ReadOnlySpan<Validator> validators = state switch
             {
-                ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
-                ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+                ForkedBeaconState.OfFulu fulu => fulu.State.ReadOnlyValidators,
+                ForkedBeaconState.OfGloas gloas => gloas.State.ReadOnlyValidators,
                 _ => throw new NotSupportedException(),
             };
             ulong epoch = state.Slot / spec.SlotsPerEpoch;
@@ -280,10 +325,18 @@ internal sealed class FastConfirmation(
         private readonly Dictionary<BalanceSource, ulong[]> _scores = [];
         private readonly Dictionary<(ulong Start, ulong End), HashSet<int>> _participants = [];
         private readonly Dictionary<ulong, int[]> _duties = [];
+        private readonly Dictionary<(BalanceSource Source, ulong Epoch), ulong[]> _equivocationPrefixes = [];
+        private readonly Dictionary<(Hash256 Root, ulong Epoch), CheckpointRef?> _checkpoints = [];
         private BalanceSource? _headBalances;
         private ulong? _honestFfgSupport;
         private BalanceSource HeadBalances => _headBalances ??= rule.HeadBalances(Head);
-        internal bool NoConflictingCheckpoint => rule.Checkpoint(Head, rule.Store.CurrentEpoch) == rule.Store.UnrealizedJustifiedCheckpoint
+        private CheckpointRef? Checkpoint(Hash256 root, ulong epoch)
+        {
+            if (!_checkpoints.TryGetValue((root, epoch), out CheckpointRef? checkpoint))
+                _checkpoints[(root, epoch)] = checkpoint = rule.Checkpoint(root, epoch);
+            return checkpoint;
+        }
+        internal bool NoConflictingCheckpoint => Checkpoint(Head, rule.Store.CurrentEpoch) == rule.Store.UnrealizedJustifiedCheckpoint
             || 3 * (UInt128)HonestFfgSupport > HeadBalances.Total;
         internal bool CurrentTargetWillBeJustified => 3 * (UInt128)HonestFfgSupport >= 2 * (UInt128)HeadBalances.Total;
 
@@ -293,13 +346,14 @@ internal sealed class FastConfirmation(
             {
                 if (_honestFfgSupport is ulong cached) return cached;
                 BalanceSource source = HeadBalances;
-                CheckpointRef target = rule.Checkpoint(Head, rule.Store.CurrentEpoch);
+                CheckpointRef? target = Checkpoint(Head, rule.Store.CurrentEpoch);
+                if (target is null) return 0;
                 ulong support = 0;
                 for (int i = 0; i < source.Balances.Length; i++)
                 {
                     if (!source.Slashed[i] && source.Balances[i] != 0 && !rule.Equivocators.Contains((ulong)i)
                         && rule.Tree.LatestVote((ulong)i) is VoteTracker vote && vote.NextEpoch == rule.Store.CurrentEpoch
-                        && rule.Tree.ContainsBlock(vote.NextRoot) && rule.Checkpoint(vote.NextRoot, vote.NextEpoch) == target)
+                        && rule.Tree.ContainsBlock(vote.NextRoot) && Checkpoint(vote.NextRoot, vote.NextEpoch) == target)
                         support += source.Balances[i];
                 }
                 ulong start = rule.Store.CurrentEpoch * rule.Spec.SlotsPerEpoch;
@@ -315,16 +369,7 @@ internal sealed class FastConfirmation(
         {
             if (!_scores.TryGetValue(source, out ulong[]? scores))
             {
-                scores = new ulong[rule.Tree.Nodes.Count];
-                for (int i = 0; i < source.Balances.Length; i++)
-                {
-                    if (!source.Slashed[i] && source.Balances[i] != 0 && !rule.Equivocators.Contains((ulong)i)
-                        && rule.Tree.LatestVote((ulong)i) is VoteTracker vote && rule.Tree.IndexOf(vote.NextRoot) is int index)
-                        scores[index] += source.Balances[i];
-                }
-                for (int i = scores.Length - 1; i >= 0; i--)
-                    if (rule.Tree.Nodes[i].Parent is int parent) scores[parent] += scores[i];
-                _scores[source] = scores;
+                _scores[source] = scores = rule.Scores(source);
             }
             return scores[rule.Tree.IndexOf(root)!.Value];
         }
@@ -347,18 +392,29 @@ internal sealed class FastConfirmation(
             ulong equivocation = 0;
             if (start <= end && rule.Equivocators.Count != 0)
             {
-                foreach (ulong index in rule.Equivocators)
+                ulong firstEpoch = start / rule.Spec.SlotsPerEpoch;
+                ulong lastEpoch = end / rule.Spec.SlotsPerEpoch;
+                if (firstEpoch == lastEpoch)
                 {
-                    if (index >= (ulong)source.Balances.Length || source.Balances[index] == 0) continue;
-                    for (ulong epoch = start / rule.Spec.SlotsPerEpoch; epoch <= end / rule.Spec.SlotsPerEpoch; epoch++)
+                    ulong[] prefix = EquivocationPrefix(source, firstEpoch);
+                    equivocation = prefix[end % rule.Spec.SlotsPerEpoch + 1] - prefix[start % rule.Spec.SlotsPerEpoch];
+                }
+                else
+                {
+                    // A validator with duties in multiple epochs contributes only once to this interval.
+                    foreach (ulong index in rule.Equivocators)
                     {
-                        int[] duties = Duties(epoch);
-                        if (index >= (ulong)duties.Length || duties[index] < 0) continue;
-                        ulong slot = epoch * rule.Spec.SlotsPerEpoch + (ulong)duties[index];
-                        if (slot >= start && slot <= end)
+                        if (index >= (ulong)source.Balances.Length || source.Balances[index] == 0) continue;
+                        for (ulong epoch = firstEpoch; epoch <= lastEpoch; epoch++)
                         {
-                            equivocation += source.Balances[index];
-                            break;
+                            int[] duties = Duties(epoch);
+                            if (index >= (ulong)duties.Length || duties[index] < 0) continue;
+                            ulong slot = epoch * rule.Spec.SlotsPerEpoch + (ulong)duties[index];
+                            if (slot >= start && slot <= end)
+                            {
+                                equivocation += source.Balances[index];
+                                break;
+                            }
                         }
                     }
                 }
@@ -366,20 +422,27 @@ internal sealed class FastConfirmation(
             return SaturatingSubtract(EstimateCommitteeWeight(source.Total, start, end, rule.Spec.SlotsPerEpoch) / 100 * ByzantineThreshold, equivocation);
         }
 
+        private ulong[] EquivocationPrefix(BalanceSource source, ulong epoch)
+        {
+            if (_equivocationPrefixes.TryGetValue((source, epoch), out ulong[]? prefix)) return prefix;
+            prefix = new ulong[rule.Spec.SlotsPerEpoch + 1];
+            int[]? duties = null;
+            foreach (ulong index in rule.Equivocators)
+            {
+                if (index >= (ulong)source.Balances.Length || source.Balances[index] == 0) continue;
+                duties ??= Duties(epoch);
+                if (index < (ulong)duties.Length && duties[index] >= 0)
+                    prefix[duties[index] + 1] += source.Balances[index];
+            }
+            for (int i = 1; i < prefix.Length; i++) prefix[i] += prefix[i - 1];
+            _equivocationPrefixes[(source, epoch)] = prefix;
+            return prefix;
+        }
+
         private int[] Duties(ulong epoch)
         {
             if (_duties.TryGetValue(epoch, out int[]? cached)) return cached;
-            CommitteeCache committees = rule.Committees(Head, epoch);
-            int length = 0;
-            foreach (int index in committees.ShuffledIndices) length = Math.Max(length, index + 1);
-            int[] duties = new int[length];
-            Array.Fill(duties, -1);
-            ulong firstSlot = epoch * rule.Spec.SlotsPerEpoch;
-            for (ulong offset = 0; offset < rule.Spec.SlotsPerEpoch; offset++)
-                for (int committee = 0; committee < committees.CommitteesPerSlot; committee++)
-                    foreach (int index in committees.GetBeaconCommittee(firstSlot + offset, committee)) duties[index] = (int)offset;
-            _duties[epoch] = duties;
-            return duties;
+            return _duties[epoch] = rule.GetCommitteeEntry(Head, epoch).Duties(rule.Spec.SlotsPerEpoch);
         }
 
         private HashSet<int> Participants(ulong start, ulong end)
@@ -391,7 +454,7 @@ internal sealed class FastConfirmation(
                 for (ulong slot = start; slot <= end; slot++)
                 {
                     ulong epoch = slot / rule.Spec.SlotsPerEpoch;
-                    CommitteeCache committees = rule.Committees(Head, epoch);
+                    CommitteeCache committees = rule.GetCommitteeEntry(Head, epoch).Committees;
                     for (int committee = 0; committee < committees.CommitteesPerSlot; committee++)
                         foreach (int index in committees.GetBeaconCommittee(slot, committee)) participants.Add(index);
                 }

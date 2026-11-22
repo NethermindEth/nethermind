@@ -71,15 +71,21 @@ public static partial class GloasEpochProcessing
         BuilderPendingPayment[] payments = state.BuilderPendingPayments!;
         int slotsPerEpoch = (int)Presets.SlotsPerEpoch;
 
-        List<BuilderPendingWithdrawal> queued = [.. state.BuilderPendingWithdrawals ?? []];
+        BuilderPendingWithdrawal[] queued = state.BuilderPendingWithdrawals ?? [];
+        int count = 0;
         for (int i = 0; i < slotsPerEpoch; i++)
-        {
-            if (payments[i].Weight >= quorum)
-                queued.Add(payments[i].Withdrawal!);
-        }
-        state.BuilderPendingWithdrawals = [.. queued];
+            if (payments[i].Weight >= quorum) count++;
 
-        // Matches spec slicing in place: shared arrays observe the rotation; the Fulu upgrade creates a fresh array.
+        if (count != 0)
+        {
+            int index = queued.Length;
+            Array.Resize(ref queued, index + count);
+            for (int i = 0; i < slotsPerEpoch; i++)
+                if (payments[i].Weight >= quorum) queued[index++] = payments[i].Withdrawal!;
+        }
+        state.BuilderPendingWithdrawals = queued;
+
+        // Rotate this state's private payment window as in spec slicing.
         Array.Copy(payments, slotsPerEpoch, payments, 0, slotsPerEpoch);
         for (int i = slotsPerEpoch; i < payments.Length; i++)
         {

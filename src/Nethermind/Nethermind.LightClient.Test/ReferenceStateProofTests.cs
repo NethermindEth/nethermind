@@ -11,6 +11,8 @@ namespace Nethermind.LightClient.Test;
 [TestFixture]
 public class ReferenceStateProofTests
 {
+    // Mainnet Electra BeaconState proofs from ethereum/consensus-spec-tests at bc5c1a7fb2a8871aaffd4b16ee4dd9c72bb81908.
+    // All three proofs share the current-committee case's object.ssz_snappy. The JSON files mirror proof.yaml and link to their sources.
     [Test]
     public void Official_mainnet_electra_proofs_authenticate_the_reference_state([Values("current_sync_committee", "next_sync_committee", "finality_root")] string field)
     {

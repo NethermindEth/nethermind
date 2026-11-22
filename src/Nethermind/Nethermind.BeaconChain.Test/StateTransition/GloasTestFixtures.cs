@@ -357,8 +357,11 @@ internal static class GloasTestFixtures
     {
         Hash256 rootBefore = SszRoots.HashTreeRoot(state);
         BeaconStateException exception = Assert.Throws<BeaconStateException>(() => process())!;
-        Assert.That(exception.Message, Does.Contain(expectedMessage));
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), mutationMessage);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exception.Message, Does.Contain(expectedMessage));
+            Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore), mutationMessage);
+        }
     }
 
     public static SignedExecutionPayloadBid ValidBuilderBid(BeaconStateGloas state, Bls.SecretKey builderSk, ulong builderIndex, ulong value, byte blockHashFill = 0x88)
@@ -528,7 +531,7 @@ internal static class GloasTestFixtures
         private static readonly ConcurrentDictionary<Type, FieldInfo[]> MutableFields = new();
 
         public static T Copy<T>(T value) where T : class =>
-            (T)Copy(value, new Dictionary<object, object>(ReferenceEqualityComparer.Instance))!;
+            (T)Copy(value, [with(ReferenceEqualityComparer.Instance)])!;
 
         private static object? Copy(object? value, Dictionary<object, object> copies)
         {
@@ -539,6 +542,8 @@ internal static class GloasTestFixtures
 
             switch (value)
             {
+                case Eth1VoteList votes:
+                    return votes.Clone();
                 case BitArray bits:
                     BitArray bitsCopy = new(bits);
                     copies.Add(value, bitsCopy);
@@ -574,7 +579,7 @@ internal static class GloasTestFixtures
                 {
                     if (IsLeaf(field.FieldType))
                         continue;
-                    if (field.FieldType.IsValueType)
+                    if (field.FieldType.IsValueType && field.FieldType != typeof(Eth1VoteList))
                         throw new NotSupportedException($"{type}.{field.Name} is a {field.FieldType} holding a reference that a copy would share");
                     fields.Add(field);
                 }

@@ -14,8 +14,51 @@ namespace Nethermind.BeaconChain.Test.Crypto;
 
 public class PubkeyCacheTests
 {
+    [Test]
+    public void Small_appends_reserve_bounded_capacity_and_reuse_it([Values] bool persisted)
+    {
+        Validator validator = new() { Pubkey = new BlsPublicKey(CompressedPubkey(0)) };
+        Validator[] validators = Enumerable.Repeat(validator, 66).ToArray();
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        PubkeyCache cache = new();
+        cache.Build(validators[..64]);
+        if (persisted)
+        {
+            cache.Persist(store);
+            cache = new PubkeyCache();
+            Assert.That(cache.TryLoad(store, validators[..64]), Is.True);
+        }
+        System.Reflection.FieldInfo pointsField = typeof(PubkeyCache).GetField("_points", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        int initialLength = ((long[])pointsField.GetValue(cache)!).Length;
+        cache.Extend(validators[..65], 64);
+        long[] points = (long[])pointsField.GetValue(cache)!;
+        cache.Extend(validators, 65);
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(points.Length, Is.LessThanOrEqualTo(initialLength * 9 / 8));
+        Assert.That(pointsField.GetValue(cache), Is.SameAs(points));
+        Assert.That(cache.GetPublicKey(65).Compress(), Is.EqualTo(validator.Pubkey.Bytes.ToArray()));
+    }
+
     // The store key of the first persisted chunk, which holds validators 0 to 65535.
     private const string FirstChunkKey = "pubkeys:0";
+
+    [Test]
+    public void Malformed_compressed_chunks_require_a_rebuild([Values("80", "6000")] string compressed)
+    {
+        Validator[] validators = [new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(0)) }];
+        using MemColumnsDb<BeaconChainDbColumns> db = new();
+        BeaconChainStore store = new(db);
+        PubkeyCache cache = new();
+        cache.Build(validators);
+        cache.Persist(store);
+        store.PutMetadata(FirstChunkKey, Bytes.FromHexString(compressed));
+
+        PubkeyCache loaded = new();
+        Assert.That(loaded.TryLoad(store, validators), Is.False);
+        loaded.Build(validators);
+        Assert.That(loaded.GetPublicKey(0).Compress(), Is.EqualTo(validators[0].Pubkey.Bytes.ToArray()));
+    }
 
     [Test]
     public void Builds_extends_persists_and_loads_real_pubkeys()
@@ -146,8 +189,11 @@ public class PubkeyCacheTests
         store.PutMetadata(FirstChunkKey, Snappy.CompressToArray(points));
 
         PubkeyCache loaded = new();
-        Assert.That(loaded.TryLoad(store, validators), Is.False);
-        Assert.That(loaded.Count, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loaded.TryLoad(store, validators), Is.False);
+            Assert.That(loaded.Count, Is.Zero);
+        }
     }
 
     [Test]
@@ -165,8 +211,11 @@ public class PubkeyCacheTests
         cache.Extend(validators, 2);
         bool[] second = [cache.IsInSubgroup(0), cache.IsInSubgroup(1), cache.IsInSubgroup(2)];
 
-        Assert.That(first, Is.EqualTo(new[] { true, false }));
-        Assert.That(second, Is.EqualTo(new[] { true, false, true }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(new[] { true, false }));
+            Assert.That(second, Is.EqualTo(new[] { true, false, true }));
+        }
     }
 
     // Re-caching an index must invalidate its old subgroup verdict, including restored caches.
@@ -189,9 +238,12 @@ public class PubkeyCacheTests
         bool before = cache.IsInSubgroup(1);
         cache.Extend([validators[0], new Validator { Pubkey = new BlsPublicKey(CompressedPubkey(1)) }], 1);
 
-        Assert.That(loadResult, Is.True);
-        Assert.That(loadedChecks, Is.EqualTo(new[] { true, false }));
-        Assert.That((before, cache.IsInSubgroup(1)), Is.EqualTo((false, true)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(loadResult, Is.True);
+            Assert.That(loadedChecks, Is.EqualTo(new[] { true, false }));
+            Assert.That((before, cache.IsInSubgroup(1)), Is.EqualTo((false, true)));
+        }
     }
 
     [Test]
@@ -206,8 +258,11 @@ public class PubkeyCacheTests
 
         cache.WarmSubgroupChecks(CancellationToken.None);
 
-        Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
-        Assert.That(Enumerable.Range(0, validators.Length).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, validators.Length).Select(static i => !IsOffSubgroup(i))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
+            Assert.That(Enumerable.Range(0, validators.Length).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, validators.Length).Select(static i => !IsOffSubgroup(i))));
+        }
     }
 
     [Test]
@@ -238,8 +293,11 @@ public class PubkeyCacheTests
         start.Set();
 
         await warm;
-        Assert.That(await Task.WhenAll(readers), Is.All.Zero);
-        Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await Task.WhenAll(readers), Is.All.Zero);
+            Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
+        }
     }
 
     [Test]
@@ -307,10 +365,13 @@ public class PubkeyCacheTests
         cache.ExtensionChecksCopied = () =>
         {
             warm = Task.Factory.StartNew(() => cache.WarmSubgroupChecks(CancellationToken.None), TaskCreationOptions.LongRunning);
-            Assert.That(SpinWait.SpinUntil(() => Enumerable.Range(0, original).All(cache.HasSubgroupCheck), timeout), Is.True,
-                "the warm-up must record every original verdict while the extension holds the copied array");
-            Assert.That(warm.Wait(TimeSpan.FromSeconds(1)), Is.False,
-                "the warm-up's publish check must wait for the extension's swap lock");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SpinWait.SpinUntil(() => Enumerable.Range(0, original).All(cache.HasSubgroupCheck), timeout), Is.True,
+                            "the warm-up must record every original verdict while the extension holds the copied array");
+                Assert.That(warm.Wait(TimeSpan.FromSeconds(1)), Is.False,
+                    "the warm-up's publish check must wait for the extension's swap lock");
+            }
         };
 
         try
@@ -336,8 +397,11 @@ public class PubkeyCacheTests
 
     private static void AssertEveryVerdictRemembered(PubkeyCache cache, int original)
     {
-        Assert.That(Enumerable.Range(0, original).All(cache.HasSubgroupCheck), Is.True, "no original key is left to an inline check");
-        Assert.That(Enumerable.Range(0, original).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, original).Select(static i => !IsOffSubgroup(i % DistinctKeys))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Enumerable.Range(0, original).All(cache.HasSubgroupCheck), Is.True, "no original key is left to an inline check");
+            Assert.That(Enumerable.Range(0, original).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, original).Select(static i => !IsOffSubgroup(i % DistinctKeys))));
+        }
     }
 
     [TestCase(1, 1)]

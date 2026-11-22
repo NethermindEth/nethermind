@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Eez.Execution.Settlement.RollupX;
@@ -37,10 +38,10 @@ internal sealed class NativeL1Header
         byte[] encoded = input.ToArray();
         try
         {
-            RlpReader reader = new(encoded);
-            int length = reader.ReadSequenceLength();
-            if (length != encoded.Length - reader.Position) throw Invalid("trailing or truncated header");
-            int fields = reader.PeekNumberOfItemsRemaining(maxSearch: 22);
+            RlpReader outer = new(encoded);
+            RlpReader reader = outer.EnterSequence(out int length);
+            if (length != encoded.Length) throw Invalid("trailing or truncated header");
+            int fields = reader.CountItems(22);
             if (fields is not (15 or 16 or 17 or 20 or 21)) throw Invalid("unsupported header layout");
             ulong number = 0, timestamp = 0;
             ValueHash256 parent = default, randao = default;
@@ -62,10 +63,12 @@ internal sealed class NativeL1Header
                     default: RequireWidth(value, Hash256.Size); break;
                 }
             }
-            if (reader.Position != encoded.Length || !rules.Matches(number, timestamp, fields)) throw Invalid("configured fork layout mismatch");
+            outer.ExitSequence(in reader, length);
+            outer.CheckEnd();
+            if (!rules.Matches(number, timestamp, fields)) throw Invalid("configured fork layout mismatch");
             return new NativeL1Header(encoded, number, timestamp, in parent, in randao);
         }
-        catch (Exception exception) when (exception is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        catch (Exception exception) when (exception is RlpReaderException or IndexOutOfRangeException or ArgumentOutOfRangeException)
         {
             throw Invalid("invalid header RLP");
         }

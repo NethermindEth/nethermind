@@ -89,7 +89,7 @@ internal static class RollupXCanonicalJson
 
     private static void WriteObject(JsonElement element, ArrayBufferWriter<byte> output)
     {
-        List<Property> properties = new(element.GetPropertyCount());
+        List<Property> properties = [with(element.GetPropertyCount())];
         foreach (JsonProperty property in element.EnumerateObject())
         {
             string name = property.Name;

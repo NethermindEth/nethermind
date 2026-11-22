@@ -27,6 +27,7 @@ using Nethermind.Network.Config;
 using Nethermind.Serialization.Rlp;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Hive.Test
 {
@@ -164,6 +165,32 @@ namespace Nethermind.Hive.Test
         }
 
         [Test]
+        public void Start_removes_its_handlers([Values] bool chainFileUnreadable)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            IOException readFailure = new("unreadable");
+            fileSystem.File.Exists(Arg.Any<string>()).Returns(chainFileUnreadable);
+            fileSystem.File.ReadAllBytes(Arg.Any<string>()).Returns(_ => throw readFailure);
+            HiveRunner hiveRunner = new(
+                blockTree,
+                blockProcessingQueue,
+                new HiveConfig { BlocksDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")) },
+                LimboLogs.Instance,
+                fileSystem,
+                Substitute.For<IBlockValidator>());
+
+            IResolveConstraint startOutcome = chainFileUnreadable ? Throws.Exception.SameAs(readFailure) : Throws.Nothing;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => hiveRunner.Start(CancellationToken.None), startOutcome);
+                blockTree.Received(1).NewBestSuggestedBlock -= Arg.Any<EventHandler<BlockEventArgs>>();
+                blockProcessingQueue.Received(1).BlockRemoved -= Arg.Any<EventHandler<BlockRemovedEventArgs>>();
+            }
+        }
+
+        [Test]
         public async Task Invalid_block_in_blocks_dir_does_not_become_parent_for_following_block()
         {
             Block genesis = Build.A.Block.Genesis.TestObject;
@@ -180,8 +207,8 @@ namespace Nethermind.Hive.Test
             using TempPath blocksDir = TempPath.GetTempDirectory(Path.Combine(nameof(HivePluginTests), Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(blocksDir.Path);
 
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(invalidBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(validSibling).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(invalidBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(validSibling));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
@@ -264,11 +291,11 @@ namespace Nethermind.Hive.Test
             using TempPath blocksDir = TempPath.GetTempDirectory(Path.Combine(nameof(HivePluginTests), Guid.NewGuid().ToString("N")));
             Directory.CreateDirectory(blocksDir.Path);
 
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(mainChainBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(sideChainBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0003.rlp"), Rlp.Encode(sideChainParent).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0004.rlp"), Rlp.Encode(invalidSideChainBlock).Bytes);
-            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0005.rlp"), Rlp.Encode(validSideChainBlock).Bytes);
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0001.rlp"), Rlp.Encode(mainChainBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0002.rlp"), Rlp.Encode(sideChainBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0003.rlp"), Rlp.Encode(sideChainParent));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0004.rlp"), Rlp.Encode(invalidSideChainBlock));
+            File.WriteAllBytes(Path.Combine(blocksDir.Path, "0005.rlp"), Rlp.Encode(validSideChainBlock));
 
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();

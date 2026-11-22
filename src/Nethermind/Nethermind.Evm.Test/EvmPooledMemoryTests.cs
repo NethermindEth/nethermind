@@ -28,6 +28,94 @@ namespace Nethermind.Evm.Test;
 
 public class EvmPooledMemoryTests : EvmMemoryTestsBase
 {
+    [Test]
+    public void Swizzled_move_matches_memmove([Range(0, 7)] int source, [Range(0, 7)] int destination,
+        [Values(0, 1, 3, 4, 31, 32, 255, 256, 257, 1024)] int length)
+    {
+        byte[] expected = new byte[length + 16];
+        new Random(42).NextBytes(expected);
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(expected);
+        expected.AsSpan(source, length).CopyTo(expected.AsSpan(destination, length));
+        ref byte data = ref MemoryMarshal.GetReference(swizzled.Span);
+        SwizzledMemory.Move(ref Unsafe.Add(ref data, destination), ref Unsafe.Add(ref data, source), length);
+        Assert.That(SwizzledMemory.ToNatural(swizzled).ToArray(), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Swizzled_move_does_not_allocate([Values(0, 1, 4, 65540, 65541)] int destination)
+    {
+        byte[] data = new byte[131080];
+        SwizzledMemory.Move(ref data[destination], ref data[0], 65536);
+        // A per-call allocation shows in every window. A one-off runtime allocation on the test thread, seen in CI
+        // while methods tier up, shows in one window only, so the minimum excludes it.
+        long allocated = long.MaxValue;
+        for (int window = 0; window < 5; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++) SwizzledMemory.Move(ref data[destination], ref data[0], 65536);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        Assert.That(allocated, Is.Zero);
+    }
+
+    [Test]
+    public void Swizzled_hash_matches_natural([Range(0, 3)] int offset,
+        [Values(0, 1, 32, 64, 135, 136, 137, 256, 257, 65536, 65537, 131073)] int length)
+    {
+        byte[] data = new byte[length + offset];
+        new Random(42).NextBytes(data);
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(data);
+        SwizzledMemory.ComputeHash(ref Unsafe.Add(ref MemoryMarshal.GetReference(swizzled.Span), offset), length, out ValueHash256 hash);
+        Assert.That(hash, Is.EqualTo(ValueKeccak.Compute(data.AsSpan(offset))));
+    }
+
+    [Test]
+    public void Swizzled_hash_reuses_scratch([Values(32, 257, 65536, 131072)] int length)
+    {
+        byte[] data = new byte[length + 8];
+        SwizzledMemory.ComputeHash(ref data[1], length, out _);
+        SwizzledMemory.ComputeHash(ref data[1], length, out _);
+        // Runtime tier-up can allocate on this thread during a round; reused scratch leaves at least one round clean.
+        long allocated = long.MaxValue;
+        for (int round = 0; round < 5 && allocated != 0; round++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 10; i++) SwizzledMemory.ComputeHash(ref data[1], length, out _);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+        Assert.That(allocated, Is.Zero);
+    }
+
+    [Test]
+    public void Swizzled_input_realigns_without_changing_bytes([Range(0, 3)] int offset,
+        [Values(0, 1, 2, 3, 4, 31, 32, 33)] int length)
+    {
+        byte[] natural = Enumerable.Range(0, 40).Select(i => (byte)i).ToArray();
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(natural);
+        ReadOnlyMemory<byte> aligned = SwizzledMemory.Realign(swizzled.Span.Slice(offset, length));
+        Assert.That(SwizzledMemory.ToNatural(aligned).ToArray(), Is.EqualTo(natural.AsSpan(offset, length).ToArray()));
+    }
+
+    [Test]
+    public void Swizzled_input_keeps_its_length_in_whole_groups([Range(0, 9)] int length)
+    {
+        byte[] natural = Enumerable.Range(1, length).Select(i => (byte)i).ToArray();
+        ReadOnlyMemory<byte> swizzled = SwizzledMemory.FromNatural(natural);
+
+        // The byte at offset o lies at o ^ 3; the positions of the last group no byte takes are zero.
+        byte[] expected = new byte[(length + 3) & ~3];
+        for (int i = 0; i < length; i++) expected[i ^ 3] = natural[i];
+
+        Assert.That(MemoryMarshal.TryGetArray(swizzled, out ArraySegment<byte> segment), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(segment.Count, Is.EqualTo(length));
+            Assert.That(segment.Array, Is.EqualTo(expected));
+            Assert.That(SwizzledMemory.ToNatural(swizzled).ToArray(), Is.EqualTo(natural));
+        }
+    }
+
     public enum StoreKind
     {
         Byte,
@@ -195,8 +283,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 location = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
         ulong result = memory.CalculateMemoryCost(in location, 32, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -205,8 +296,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 length = new(0, 1, 0, 0); // value larger than ulong max (u1 != 0)
         ulong result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -456,8 +550,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 length = (UInt256)long.MaxValue + 1; // just over long.MaxValue
         ulong result = memory.CalculateMemoryCost(0, in length, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -466,8 +563,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 location = ulong.MaxValue;
         ulong result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -476,8 +576,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 location = (UInt256)long.MaxValue;
         ulong result = memory.CalculateMemoryCost(in location, 1, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -496,8 +599,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         // Request one byte over the limit should fail
         UInt256 overLimitSize = maxAllowedSize + 1;
         result = memory.CalculateMemoryCost(0, in overLimitSize, out outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true), "Size over limit should return out of gas");
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true), "Size over limit should return out of gas");
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -510,14 +616,20 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         EvmPooledMemory ulongMemory = new();
         ulong ulongResult = ulongMemory.CalculateMemoryCost(0, EvmPooledMemory.MaxMemorySize, out bool ulongOutOfGas);
-        Assert.That(ulongOutOfGas, Is.EqualTo(false));
-        Assert.That(ulongResult, Is.EqualTo(expectedCost));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ulongOutOfGas, Is.EqualTo(false));
+            Assert.That(ulongResult, Is.EqualTo(expectedCost));
+        }
 
         EvmPooledMemory uint256Memory = new();
         UInt256 maxAllowedSize = (UInt256)EvmPooledMemory.MaxMemorySize;
         ulong uint256Result = uint256Memory.CalculateMemoryCost(0, in maxAllowedSize, out bool uint256OutOfGas);
-        Assert.That(uint256OutOfGas, Is.EqualTo(false));
-        Assert.That(uint256Result, Is.EqualTo(expectedCost));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(uint256OutOfGas, Is.EqualTo(false));
+            Assert.That(uint256Result, Is.EqualTo(expectedCost));
+        }
     }
 
     [Test]
@@ -528,8 +640,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 size4GB = 0xffffffffUL;
         ulong result = memory.CalculateMemoryCost(0, in size4GB, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true), "4GB memory request should return out of gas");
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true), "4GB memory request should return out of gas");
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -540,8 +655,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         UInt256 location = (UInt256)(int.MaxValue / 2);
         UInt256 length = (UInt256)(int.MaxValue / 2 + 100); // Sum exceeds limit
         ulong result = memory.CalculateMemoryCost(in location, in length, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(true), "Location + length exceeding limit should return out of gas");
-        Assert.That(result, Is.EqualTo(0UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true), "Location + length exceeding limit should return out of gas");
+            Assert.That(result, Is.EqualTo(0UL));
+        }
     }
 
     [Test]
@@ -577,8 +695,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 location = new(0, 1, 0, 0);
         bool outOfGas = !memory.TryLoadSpan(in location, out Span<byte> result);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result.IsEmpty, Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result.IsEmpty, Is.EqualTo(true));
+        }
     }
 
     [Test]
@@ -587,8 +708,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 length = new(0, 1, 0, 0);
         bool outOfGas = !memory.TryLoadSpan(0, in length, out Span<byte> result);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result.IsEmpty, Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result.IsEmpty, Is.EqualTo(true));
+        }
     }
 
     [Test]
@@ -597,8 +721,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 location = new(0, 1, 0, 0);
         bool outOfGas = !memory.TryLoad(in location, 32, out ReadOnlyMemory<byte> result);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result.IsEmpty, Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result.IsEmpty, Is.EqualTo(true));
+        }
     }
 
     [Test]
@@ -607,8 +734,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         EvmPooledMemory memory = new();
         UInt256 length = new(0, 1, 0, 0);
         bool outOfGas = !memory.TryLoad(0, in length, out ReadOnlyMemory<byte> result);
-        Assert.That(outOfGas, Is.EqualTo(true));
-        Assert.That(result.IsEmpty, Is.EqualTo(true));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(true));
+            Assert.That(result.IsEmpty, Is.EqualTo(true));
+        }
     }
 
     [Test]
@@ -764,14 +894,18 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         try
         {
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(memory.TrySave(in start, expected), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(memory.TryLoad(in start, in length, out ReadOnlyMemory<byte> view), Is.True);
             Assert.That(GetBackingMemory(ref memory), Is.Null);
 
             UInt256 spillDestination = EvmPooledMemory.InlineCapacity;
             Assert.That(memory.TrySave(in spillDestination, expected), Is.True);
             byte[]? backingMemory = GetBackingMemory(ref memory);
+#pragma warning disable NUnit2045 // Keep this state-changing operation separate from its prerequisites, dependent observations, or subsequent mutations.
             Assert.That(memory.Inspect(in start, in length), Is.SequenceEqualTo(expected));
+#pragma warning restore NUnit2045
             Assert.That(memory.TrySave(in start, replacement), Is.True);
 
             using (Assert.EnterMultipleScope())
@@ -809,7 +943,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             memory.LoadSpanAfterGas(in zero, 256).Fill(0xa7);
             memory.Dispose();
 
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(memory.TrySave(in start, expected), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(memory.TryLoad(in start, in length, out ReadOnlyMemory<byte> view), Is.True);
             Assert.That(GetBackingMemory(ref memory), Is.Null);
 
@@ -857,7 +993,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         try
         {
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(memory.BackingArray, Is.Null);
+#pragma warning restore NUnit2045
             Assert.That(memory.TryLoad(in location, in length, out ReadOnlyMemory<byte> data), Is.True);
 
             using (Assert.EnterMultipleScope())
@@ -885,7 +1023,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
 
         try
         {
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(memory.TrySave(in location, expected), Is.True);
+#pragma warning restore NUnit2045
             Assert.That(memory.TryLoadOwned(in location, in length, out ReadOnlyMemory<byte> owned), Is.True);
 
             memory.Dispose();
@@ -911,8 +1051,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
         ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
-        Assert.That(memory.Size, Is.EqualTo(initialSize));
-        Assert.That(result, Is.EqualTo(ReadOnlyMemory<byte>.Empty));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.Size, Is.EqualTo(initialSize));
+            Assert.That(result, Is.EqualTo(ReadOnlyMemory<byte>.Empty));
+        }
     }
 
     [Test]
@@ -927,9 +1070,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         ulong initialSize = memory.Size;
         ReadOnlyMemory<byte> actualKeccakMemoryRead = memory.Inspect((UInt256)offset, 32);
         ReadOnlyMemory<byte> actualEmptyRead = memory.Inspect(32 + (UInt256)offset, 32 - (UInt256)offset);
-        Assert.That(memory.Size, Is.EqualTo(initialSize));
-        Assert.That(actualKeccakMemoryRead, Is.SequenceEqualTo(expectedKeccakRead));
-        Assert.That(actualEmptyRead, Is.SequenceEqualTo(expectedEmptyRead));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.Size, Is.EqualTo(initialSize));
+            Assert.That(actualKeccakMemoryRead, Is.SequenceEqualTo(expectedKeccakRead));
+            Assert.That(actualEmptyRead, Is.SequenceEqualTo(expectedEmptyRead));
+        }
     }
 
     [Test]
@@ -941,9 +1087,12 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         Assert.That(outOfGas, Is.EqualTo(false));
         ulong initialSize = memory.Size;
         outOfGas = !memory.TryLoad(initialSize + 32, 32, out ReadOnlyMemory<byte> result);
-        Assert.That(outOfGas, Is.EqualTo(false));
-        Assert.That(memory.Size, Is.Not.EqualTo(initialSize));
-        Assert.That(result, Is.SequenceEqualTo(expectedResult));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(false));
+            Assert.That(memory.Size, Is.Not.EqualTo(initialSize));
+            Assert.That(result, Is.SequenceEqualTo(expectedResult));
+        }
     }
 
     [Test]
@@ -979,7 +1128,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         byte[] word = TestItem.KeccakA.BytesToArray();
 
         EvmPooledMemory original = new();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(original.TrySaveWord(0, word), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(original.TryLoadSpan((UInt256)(size - EvmPooledMemory.WordSize), (UInt256)EvmPooledMemory.WordSize, out Span<byte> tail), Is.True);
         Assert.That(tail, Is.SequenceEqualTo(new byte[EvmPooledMemory.WordSize]), "grown tail must read as zero");
         Assert.That(original.TryLoadSpan(0, (UInt256)EvmPooledMemory.WordSize, out Span<byte> head), Is.True);
@@ -989,7 +1140,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
         original.Dispose();
 
         EvmPooledMemory recycled = new();
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
         Assert.That(recycled.TryLoadSpan(0, (UInt256)size, out Span<byte> reused), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(reused.IndexOfAnyExcept((byte)0), Is.EqualTo(-1), "recycled buffer must read as zero");
         recycled.Dispose();
     }
@@ -1014,7 +1167,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             EvmPooledMemory dirty = new();
             try
             {
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
                 Assert.That(dirty.TrySave(in zero, dirtyBytes), Is.True);
+#pragma warning restore NUnit2045
                 Assert.That(GetBackingMemory(ref dirty), Is.SameAs(firstBackingMemory));
             }
             finally
@@ -1277,7 +1432,9 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
             WriteInitialMemory(ref memory, initial);
             AssertDirtyTailWasReused(ref memory);
             UInt256 destination = destinationOffset;
+#pragma warning disable NUnit2045 // Each state transition must succeed before the following operation or state check.
             Assert.That(memory.TrySave(in destination, source), Is.True);
+#pragma warning restore NUnit2045
 
             Assert.That(ReadVisibleMemory(ref memory), Is.EqualTo(expected));
         }
@@ -1524,8 +1681,11 @@ public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         EvmPooledMemory memory = new();
         memory.CalculateMemoryCost(0, 32, out bool outOfGas);
-        Assert.That(outOfGas, Is.EqualTo(false));
-        Assert.That(memory.GetTrace().ToHexWordList(), Is.EqualTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(outOfGas, Is.EqualTo(false));
+            Assert.That(memory.GetTrace().ToHexWordList(), Is.EqualTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" }));
+        }
     }
 
     [Test]

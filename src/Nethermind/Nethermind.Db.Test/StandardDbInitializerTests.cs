@@ -17,6 +17,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
 
@@ -56,8 +57,11 @@ public class StandardDbInitializerTests
         Type receiptsType = GetReceiptsType(useReceipts);
         AssertStandardDbs(dbProvider, typeof(DbOnTheRocks), receiptsType);
         AssertStandardDbs(readonlyDbProvider, typeof(ReadOnlyDb), GetReceiptsType(false));
-        Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
-        Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
+            Assert.That(((IDbProvider)readonlyDbProvider).StateDb, Is.TypeOf<ReadOnlyDb>());
+        }
     }
 
     [Test]
@@ -65,6 +69,26 @@ public class StandardDbInitializerTests
     {
         using IDbProvider dbProvider = await InitializeStandardDb(false, true, "pruning");
         Assert.That(dbProvider.StateDb, Is.TypeOf<FullPruningDb>());
+    }
+
+    [Test]
+    public void MemDbFactory_outside_MemDb_mode_skips_the_full_pruning_layout([Values] bool initConfigGiven)
+    {
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        using IContainer container = new ContainerBuilder()
+            // Without an init config the module looks for one in the container, which has none here.
+            .AddModule(initConfigGiven ? new PruningTrieStoreModule(new InitConfig()) : new PruningTrieStoreModule())
+            .AddSingleton<IDbFactory, MemDbFactory>()
+            .AddSingleton(fileSystem)
+            .Build();
+
+        IDb stateDb = container.ResolveKeyed<IDb>(DbNames.State);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateDb, Is.TypeOf<FullPruningDb>());
+            Assert.That(fileSystem.ReceivedCalls(), Is.Empty);
+        }
     }
 
     private Task<IDbProvider> InitializeStandardDb(bool useReceipts, bool useMemDb, string path)
@@ -100,11 +124,14 @@ public class StandardDbInitializerTests
 
     private void AssertStandardDbs(IDbProvider dbProvider, Type dbType, Type receiptsDb)
     {
-        Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
-        Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
-        Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dbProvider.BlockInfosDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.BlocksDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.HeadersDb, Is.TypeOf(dbType));
+            Assert.That(dbProvider.ReceiptsDb, Is.TypeOf(receiptsDb));
+            Assert.That(dbProvider.CodeDb, Is.TypeOf(dbType));
+        }
     }
 
     [OneTimeTearDown]

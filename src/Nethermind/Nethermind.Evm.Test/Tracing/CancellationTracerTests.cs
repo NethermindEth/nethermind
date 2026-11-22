@@ -32,6 +32,17 @@ namespace Nethermind.Evm.Test.Tracing
             ((IFrameTxReceiptTracer)inner).Received().ReportFrameTxReceipt(TestItem.AddressA, receipts);
         }
 
+        /// <param name="readsOutput">What the inner tracer reports as an output filter; null when it is not one.</param>
+        [Test]
+        public void Reads_the_output_when_the_inner_tracer_reads_it([Values] bool? readsOutput)
+        {
+            ITxTracer inner = readsOutput is null ? Substitute.For<ITxTracer>() : Substitute.For<ITxTracer, ITxOutputTracingFilter>();
+            if (inner is ITxOutputTracingFilter filter) filter.IsTracingOutput.Returns(readsOutput!.Value);
+            using CancellationTxTracer tracer = new(inner);
+
+            Assert.That(tracer.IsTracingOutput, Is.EqualTo(readsOutput is not false));
+        }
+
         [Test]
         public void Throws_operation_canceled_when_token_is_cancelled()
         {
@@ -41,6 +52,9 @@ namespace Nethermind.Evm.Test.Tracing
 
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionError(EvmExceptionType.None));
             Assert.Throws<OperationCanceledException>(() => tracer.ReportActionRemainingGas(1));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportActionErrorDetails("fault", actionOnly: true));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportActionErrorDetails("fault", actionOnly: false));
+            Assert.Throws<OperationCanceledException>(() => tracer.ReportCodeDepositError("fault"));
             Assert.Throws<OperationCanceledException>(() => tracer.ReportFrameEnd(0, null));
         }
 

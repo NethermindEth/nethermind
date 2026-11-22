@@ -73,7 +73,7 @@ public sealed class ExecutionPayloadEnvelopesByRootProtocol(BeaconChainSpec spec
                 throw new Eth2ReqRespException($"Malformed execution-payload-envelopes-by-root request: {e.Message}");
             }
 
-            ChargeRequest(context, (ulong)(request.Roots?.Length ?? 0), MaxRequestPayloads);
+            await ChargeRequestAsync(context, (ulong)(request.Roots?.Length ?? 0), MaxRequestPayloads, cts);
 
             foreach (Hash256 root in request.Roots ?? [])
             {

@@ -25,8 +25,11 @@ public class CustodyRankedCandidatesTests
         for (int failure = 1; failure <= 10; failure++)
         {
             history.Record("dead", connected: false);
-            Assert.That(history.CanDial("dead"), Is.False);
-            Assert.That(history.CanDial("other"), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(history.CanDial("dead"), Is.False);
+                Assert.That(history.CanDial("other"), Is.True);
+            }
             TimeSpan minimum = TimeSpan.FromTicks(Math.Min(TimeSpan.FromSeconds(30).Ticks << Math.Min(failure - 1, 6), TimeSpan.FromMinutes(15).Ticks));
             clock.Add(minimum - TimeSpan.FromTicks(1));
             Assert.That(history.CanDial("dead"), Is.False);
@@ -35,8 +38,11 @@ public class CustodyRankedCandidatesTests
         }
 
         history.Record("dead", connected: true);
-        Assert.That(history.CanDial("dead"), Is.True);
-        Assert.That(history.Quality("dead"), Is.GreaterThan(history.Quality("other")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.CanDial("dead"), Is.True);
+            Assert.That(history.Quality("dead"), Is.GreaterThan(history.Quality("other")));
+        }
         history.Record("dead", connected: false);
         clock.Add(TimeSpan.FromSeconds(36));
         Assert.That(history.CanDial("dead"), Is.True);
@@ -55,15 +61,24 @@ public class CustodyRankedCandidatesTests
     }
 
     [Test]
-    public void Dial_history_is_bounded_and_evicts_the_oldest_outcome()
+    public void Dial_history_is_bounded_and_evicts_the_oldest_outcome([Values] bool refreshFirst)
     {
         PeerDialHistory history = new(new ManualTimestamper(), capacity: 2);
         history.Record("first", false);
         history.Record("second", false);
+        if (refreshFirst) history.Record("first", false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.Quality("first"), Is.Negative);
+            Assert.That(history.CanDial("second"), Is.False);
+        }
         history.Record("third", false);
         Assert.That(history.Count, Is.EqualTo(2));
-        Assert.That(history.CanDial("first"), Is.True);
-        Assert.That(history.CanDial("second"), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(history.CanDial("first"), Is.EqualTo(!refreshFirst));
+            Assert.That(history.CanDial("second"), Is.EqualTo(refreshFirst));
+        }
     }
 
     [Test]
@@ -92,8 +107,11 @@ public class CustodyRankedCandidatesTests
         candidates.Add(Candidate("peer", 1) with { EnrSequence = 2 }, [1]);
         candidates.Add(Candidate("peer", 9), [1]);
         candidates.TryTake([1], out BeaconPeerCandidate? candidate);
-        Assert.That(candidate!.EnrSequence, Is.EqualTo(2));
-        Assert.That(candidate.Custody.Custodies(1), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(candidate!.EnrSequence, Is.EqualTo(2));
+            Assert.That(candidate.Custody.Custodies(1), Is.True);
+        }
     }
 
     [Test]
@@ -153,8 +171,11 @@ public class CustodyRankedCandidatesTests
         record.EnrSequence = 1;
         new NodeRecordSigner(new Ecdsa(), TestItem.PrivateKeyA).Sign(record);
 
-        Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), digest, null, out BeaconPeerCandidate? candidate), Is.True);
-        Assert.That(Columns(candidate!.Custody), Is.EqualTo(Columns(PeerColumnCustody.ForNode(TestItem.PrivateKeyA.PublicKey.Hash, expectedGroups))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeaconDiscovery.TryCreateCandidate(NodeRecord.FromEnrString(record.ToString()), digest, null, out BeaconPeerCandidate? candidate), Is.True);
+            Assert.That(Columns(candidate!.Custody), Is.EqualTo(Columns(PeerColumnCustody.ForNode(TestItem.PrivateKeyA.PublicKey.Hash, expectedGroups))));
+        }
     }
 
     private static BeaconPeerCandidate Candidate(string peerId, params ulong[] custodied) =>

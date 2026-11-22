@@ -167,7 +167,7 @@ internal static class NodeEndpoints
         }
 
         IReadOnlyList<PeerRecord> peers = ctx.PeerManager?.Peers ?? [];
-        List<PeerDto> filtered = new(peers.Count);
+        List<PeerDto> filtered = [with(peers.Count)];
         foreach (PeerRecord peer in peers)
         {
             if (states.Count > 0 && !states.Contains(peer.State))
@@ -191,7 +191,8 @@ internal static class NodeEndpoints
     /// driver's peer manager (or the driver itself, when it has none) has no record of.</summary>
     private static Task PeerById(HttpContext c, string peer_id, BeaconApiContext ctx)
     {
-        if (peer_id.Length > 64 || !Multihash.TryParse(peer_id, MultibaseEncoding.Base58Btc, out Multihash hash)
+        if (peer_id.Length > 64 || peer_id.AsSpan().IndexOfAnyExcept("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz") >= 0
+            || !Multihash.TryParse(peer_id, MultibaseEncoding.Base58Btc, out Multihash hash)
             || (int)hash.Code is not (0 or 18)
             || ((int)hash.Code == 18 ? hash.Length != 32 : hash.Length is < 1 or > 42)
             || !new PeerId(peer_id).Bytes.AsSpan().SequenceEqual(hash.ToBytes()))

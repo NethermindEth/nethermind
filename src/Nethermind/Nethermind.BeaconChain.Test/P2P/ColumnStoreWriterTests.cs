@@ -61,7 +61,10 @@ public class ColumnStoreWriterTests
         await barrier.WaitAsync(token);
         await disposed.WaitAsync(token);
 
-        Assert.That(completedEarly, Is.False, "the barrier completed while a write was still running");
-        Assert.That(Volatile.Read(ref writeFinished), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completedEarly, Is.False, "the barrier completed while a write was still running");
+            Assert.That(Volatile.Read(ref writeFinished), Is.True);
+        }
     }
 }

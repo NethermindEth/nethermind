@@ -36,8 +36,11 @@ public class XdcForkInfoTests
         // pending fork while the consensus switch is still ahead.
         ForkActivationsSummary summary = CreateXdcForkInfo().GetForkActivationsSummary(Build.A.BlockHeader.WithNumber(100).TestObject);
 
-        Assert.That(summary.Next?.Activation, Is.EqualTo(new ForkActivation(SwitchBlock)));
-        Assert.That(summary.Last?.Activation, Is.EqualTo(new ForkActivation(SwitchBlock)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(summary.Next?.Activation, Is.EqualTo(new ForkActivation(SwitchBlock)));
+            Assert.That(summary.Last?.Activation, Is.EqualTo(new ForkActivation(SwitchBlock)));
+        }
     }
 
     [Test]
@@ -58,14 +61,29 @@ public class XdcForkInfoTests
         };
         XdcForkInfo forkInfo = new(SpecProvider(), SyncServer(), engineParameters);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(forkInfo.GetForkId(100, 0).Next, Is.EqualTo(38383838));
             Assert.That(forkInfo.GetForkId(38383838, 0).Next, Is.EqualTo(SwitchBlock));
             Assert.That(forkInfo.GetForkId(SwitchBlock, 0).Next, Is.EqualTo(80370900));
             Assert.That(forkInfo.GetForkId(80370900, 0).Next, Is.EqualTo(99999999999999));
             Assert.That(forkInfo.GetForkId(99999999999999, 0).Next, Is.EqualTo(0));
-        });
+        }
+    }
+
+    [Test]
+    public void Gas2500x_is_part_of_the_schedule()
+    {
+        const ulong gas2500xBlock = 83600000;
+        XdcForkInfo forkInfo = new(SpecProvider(), SyncServer(),
+            new XdcChainSpecEngineParameters { SwitchBlock = SwitchBlock, Gas2500xBlock = gas2500xBlock });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkInfo.GetForkId(gas2500xBlock - 1, 0).Next, Is.EqualTo(gas2500xBlock));
+            Assert.That(forkInfo.GetForkId(gas2500xBlock, 0).ForkHash,
+                Is.Not.EqualTo(forkInfo.GetForkId(gas2500xBlock - 1, 0).ForkHash));
+        }
     }
 
     [Test]

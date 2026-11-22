@@ -9,7 +9,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -138,9 +137,9 @@ public sealed class BeaconHeadersSyncFeed(
         for (int i = 0; i < batchResponse.Count; i++)
         {
             BlockHeader? header = batchResponse[i];
-            if (header is not null && HeaderValidator.ValidateHash(header))
+            if (header?.Hash is not null)
             {
-                _invalidChainTracker.SetChildParent(header.Hash!, header.ParentHash!);
+                _invalidChainTracker.SetChildParent(header.Hash, header.ParentHash!);
             }
         }
     }

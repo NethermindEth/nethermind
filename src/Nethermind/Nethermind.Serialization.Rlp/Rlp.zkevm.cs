@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
@@ -17,17 +18,22 @@ namespace Nethermind.Serialization.Rlp;
 
 public partial class Rlp
 {
-    public static Rlp OfEmptyByteArray => field ??= new(EmptyByteArrayByte);
-
-    public static Rlp OfZero => OfEmptyByteArray;
-
-    public static Rlp OfEmptyList => field ??= new(EmptyListByte);
-
-    internal static Rlp OfEmptyTreeHash => field ??= Encode(Keccak.EmptyTreeHash.Bytes);
-
-    internal static Rlp OfEmptyStringHash => field ??= Encode(Keccak.OfAnEmptyString.Bytes);
-
-    internal static Rlp EmptyBloom => field ??= Encode(Bloom.Empty.Bytes);
+    /// <summary>Writes <paramref name="hash"/> to the 32 bytes at <paramref name="destination"/>.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, a 32-byte copy to a misaligned destination is 32 byte loads and
+    /// stores, so <see cref="Core.Extensions.Bytes.WriteMisalignedWords"/> writes it. A hash is a field of its object, so its words
+    /// are aligned. Where the flag is off, the store stays unaligned: the destination can be misaligned, and a guest
+    /// that traps on misaligned access gets the byte-wise form only from an unaligned store. See <c>Rlp.std.cs</c> for
+    /// the host form.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void WriteHash(ref byte destination, Hash256 hash)
+    {
+        if (StrictAlignmentFlag.IsActive && ((nuint)Unsafe.AsPointer(ref destination) & (sizeof(ulong) - 1)) != 0)
+            Core.Extensions.Bytes.WriteMisalignedWords((byte*)Unsafe.AsPointer(ref destination), (ulong*)Unsafe.AsPointer(ref Unsafe.AsRef(in hash.ValueHash256)));
+        else
+            Unsafe.WriteUnaligned(ref destination, hash.ValueHash256);
+    }
 
     private static Dictionary<RlpDecoderKey, IRlpDecoder> _decoderBuilder
     {
@@ -45,7 +51,7 @@ public partial class Rlp
 
     private static Lock _decoderLock => field ??= new();
 
-    private static ILogger _logger => Static.LogManager.GetClassLogger<Rlp>();
+    private static ILogger _logger => Static.LogManager.GetClassLogger(typeof(Rlp));
 
     private static Dictionary<RlpDecoderKey, IRlpDecoder>? _decodersSnapshot;
 
@@ -64,7 +70,7 @@ public partial class Rlp
         Dictionary<RlpDecoderKey, IRlpDecoder>? snapshot = _decodersSnapshot;
         if (snapshot is null)
         {
-            snapshot = new Dictionary<RlpDecoderKey, IRlpDecoder>(_decoderBuilder);
+            snapshot = [with(_decoderBuilder)];
             Volatile.Write(ref _decodersSnapshot, snapshot);
         }
 

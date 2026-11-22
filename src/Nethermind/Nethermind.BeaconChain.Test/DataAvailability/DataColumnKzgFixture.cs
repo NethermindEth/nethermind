@@ -34,14 +34,16 @@ internal static class DataColumnKzgFixture
     {
         byte[] blob = MakeBlob(seed);
         DasKzg.EnsureInitialized();
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V1);
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V0);
         ShardBlobNetworkWrapper wrapper = proofsManager.AllocateWrapper(blob);
         proofsManager.ComputeProofsAndCommitments(wrapper);
 
         byte[] cells = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell];
         KzgPolynomialCommitments.ComputeCells(blob, cells);
 
-        return new BlobFixture(wrapper.Commitments[0], cells, [.. wrapper.Proofs.SelectMany(static proof => proof)]);
+        byte[] proofs = new byte[Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof];
+        KzgPolynomialCommitments.ComputeCellProofs(blob, proofs);
+        return new BlobFixture(wrapper.Commitments[0], cells, proofs);
     }
 
     public static SszBlobCell CellAt(BlobFixture blob, int columnIndex) =>

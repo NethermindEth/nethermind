@@ -44,10 +44,13 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 
         local.CompareTrees(remote, _logger, "END");
-        Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(local.RootHash, Is.EqualTo(remote.StateTree.RootHash));
 
-        // I guess state root will be requested regardless
-        Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
+            // I guess state root will be requested regardless
+            Assert.That(data.RequestedNodesCount, Is.EqualTo(1));   // 4 boundary proof nodes stitched together => 0
+        }
     }
 
     [Test]
@@ -92,7 +95,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
         for (ulong blockNumber = 1; blockNumber <= blockJumps; blockNumber++)
         {
             // Store snapshot of accounts and root hash at this block
-            accountsAtBlock[blockNumber] = new SortedDictionary<Hash256, Account>(accounts);
+            accountsAtBlock[blockNumber] = [with(accounts)];
             rootHashAtBlock[blockNumber] = remote.StateTree.RootHash;
 
             // Modify tree for next block
@@ -146,7 +149,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
                 endHashIndex = startingHashIndex + 1000;
 
                 ProcessAccountRange(remote.StateTree, snapTrieFactory, blockNumber, rootHashAtBlock[blockNumber],
-                   blockAccounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
+                   blockAccounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value.ToStruct())).ToArray());
 
                 startingHashIndex = endHashIndex + 1;
             }
@@ -165,7 +168,7 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
             }
 
             ProcessAccountRange(remote.StateTree, snapTrieFactory, blockJumps, finalRootHash,
-                accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value)).ToArray());
+                accounts.Where(a => a.Key >= pathPool[startingHashIndex] && a.Key <= pathPool[endHashIndex]).Select(a => new PathWithAccount(a.Key, a.Value.ToStruct())).ToArray());
 
             startingHashIndex += 1000;
         }

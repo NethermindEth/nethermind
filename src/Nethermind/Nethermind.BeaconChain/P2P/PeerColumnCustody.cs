@@ -6,7 +6,7 @@ using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core.Dto;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
 namespace Nethermind.BeaconChain.P2P;
@@ -85,7 +85,7 @@ public sealed class PeerColumnCustody
         {
             return BeaconDiscovery.TryGetCustodyGroupCount(NodeRecord.FromEnrString(enr), out ulong count) ? count : null;
         }
-        catch (Exception e) when (e is RlpException or ArgumentException or FormatException or InvalidOperationException or InvalidCastException)
+        catch (Exception e) when (e is RlpReaderException or ArgumentException or FormatException or InvalidOperationException or InvalidCastException)
         {
             return null;
         }
@@ -110,7 +110,7 @@ public sealed class PeerColumnCustody
         {
             return ForRecord(NodeRecord.FromEnrString(enr));
         }
-        catch (Exception e) when (e is RlpException or ArgumentException or FormatException or InvalidOperationException or InvalidCastException)
+        catch (Exception e) when (e is RlpReaderException or ArgumentException or FormatException or InvalidOperationException or InvalidCastException)
         {
             return null;
         }

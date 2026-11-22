@@ -154,15 +154,21 @@ public class TotalDifficultyFixMigrationTest
         // Run
         await migration.Run(CancellationToken.None);
 
-        Assert.That(persistedLevels[0], Is.Null);
-        Assert.That(persistedLevels[1], Is.Null);
-        Assert.That(persistedLevels[2], Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedLevels[0], Is.Null);
+            Assert.That(persistedLevels[1], Is.Null);
+            Assert.That(persistedLevels[2], Is.Null);
 
-        Assert.That(persistedLevels[3].BlockInfos.Length, Is.EqualTo(2));
-        Assert.That(persistedLevels[3].BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)10));
-        Assert.That(persistedLevels[3].BlockInfos[1].TotalDifficulty, Is.EqualTo((UInt256)303));
+            Assert.That(persistedLevels[3].BlockInfos.Length, Is.EqualTo(2));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedLevels[3].BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)10));
+            Assert.That(persistedLevels[3].BlockInfos[1].TotalDifficulty, Is.EqualTo((UInt256)303));
 
-        Assert.That(persistedLevels[4].BlockInfos.Length, Is.EqualTo(1));
+            Assert.That(persistedLevels[4].BlockInfos.Length, Is.EqualTo(1));
+        }
         Assert.That(persistedLevels[4].BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)15));
     }
 }

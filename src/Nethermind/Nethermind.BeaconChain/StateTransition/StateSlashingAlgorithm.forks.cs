@@ -28,7 +28,7 @@ public static partial class BeaconStateMutators
         ulong epoch = state.GetCurrentEpoch();
         state.InitiateValidatorExit(slashedIndex, cache);
 
-        Validator validator = state.Validators![slashedIndex].Clone();
+        Validator validator = state.ReadOnlyValidators[slashedIndex].Clone();
         validator.Slashed = true;
         validator.WithdrawableEpoch = Math.Max(validator.WithdrawableEpoch,
 #if GLOAS
@@ -37,7 +37,8 @@ public static partial class BeaconStateMutators
             CheckedEpochSum(epoch, Presets.EpochsPerSlashingsVector)
 #endif
         );
-        state.Validators[slashedIndex] = validator;
+        state.Validators![slashedIndex] = validator;
+        state.BlockChanges?.Validators.Add(slashedIndex);
 
         state.Slashings![(int)(epoch % Presets.EpochsPerSlashingsVector)] += validator.EffectiveBalance;
         state.DecreaseBalance(slashedIndex, validator.EffectiveBalance / Presets.MinSlashingPenaltyQuotientElectra);

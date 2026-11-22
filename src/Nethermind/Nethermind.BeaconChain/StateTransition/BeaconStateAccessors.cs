@@ -52,6 +52,18 @@ public static partial class BeaconStateAccessors
     }
 
     public static partial Hash256 GetRandaoMix(this BeaconStateElectra state, ulong epoch);
+
+    internal static int GetRandaoMixIndex(ulong slot, ulong epoch)
+    {
+        ulong currentEpoch = ComputeEpochAtSlot(slot);
+        // Seed lookback before genesis uses unsigned epoch wraparound.
+        if (currentEpoch - epoch >= Presets.EpochsPerHistoricalVector)
+            throw new BeaconStateException(
+                $"Randao mix for epoch {epoch} is not available: state is at epoch {currentEpoch}, " +
+                $"window covers the {Presets.EpochsPerHistoricalVector} epochs up to and including it");
+        return (int)(epoch % Presets.EpochsPerHistoricalVector);
+    }
+
     public static partial Hash256 GetSeed(this BeaconStateElectra state, ulong epoch, ReadOnlySpan<byte> domainType);
 
     public static bool IsActiveValidator(this Validator validator, ulong epoch) =>
@@ -195,7 +207,7 @@ public static partial class BeaconStateAccessors
             BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 16);
             SHA256.HashData(preimage, randomBytes);
             ulong randomValue = BinaryPrimitives.ReadUInt16LittleEndian(randomBytes[(int)(i % 16 * 2)..]);
-            ulong effectiveBalance = state.Validators![candidateIndex].EffectiveBalance;
+            ulong effectiveBalance = state.ReadOnlyValidators[candidateIndex].EffectiveBalance;
             if (effectiveBalance * MaxRandomValue >= Presets.MaxEffectiveBalanceElectra * randomValue)
                 return candidateIndex;
             i++;

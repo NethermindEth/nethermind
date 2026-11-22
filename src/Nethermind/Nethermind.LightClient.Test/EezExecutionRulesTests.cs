@@ -48,14 +48,15 @@ public class EezExecutionRulesTests
     public void Rollup_calls_use_eez_transaction_processor()
     {
         EezExecutionRules rules = EezExecutionRules.FromGenesis(Genesis);
-        using VerifiedCall rollupCalls = new(null!, Substitute.For<ISpecProvider>(), LimboLogs.Instance,
+        using EvmExecutor rollupCalls = new(null!, Substitute.For<ISpecProvider>(), LimboLogs.Instance,
             executionRules: rules.ForCalls());
-        using VerifiedCall ethereumCalls = new(null!, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
+        using EvmExecutor ethereumCalls = new(null!, Substitute.For<ISpecProvider>(), LimboLogs.Instance);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ProcessorType(rollupCalls), Is.EqualTo(typeof(EezTransactionProcessor)));
             Assert.That(ProcessorType(ethereumCalls), Is.Not.EqualTo(typeof(EezTransactionProcessor)));
+            Assert.That(ethereumCalls.SupportsBlockExecution, Is.True);
         }
     }
 
@@ -88,9 +89,27 @@ public class EezExecutionRulesTests
         }
     }
 
-    private static Type ProcessorType(VerifiedCall calls)
+    [Test]
+    public async Task Rollup_rpc_rejects_block_execution_without_rollup_block_rules([Values] bool simulation)
     {
-        IContainer container = (IContainer)typeof(VerifiedCall)
+        EezExecutionRules rules = EezExecutionRules.FromGenesis(Genesis);
+        IExecutionStateSource execution = Substitute.For<IExecutionStateSource>();
+        using EvmExecutor calls = new(execution, Substitute.For<ISpecProvider>(), LimboLogs.Instance, executionRules: rules.ForCalls());
+        using RpcBackend rpc = new(execution, () => throw new AssertionException("The RPC must reject before looking up a head."), 699_069, calls);
+
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
+        {
+            if (simulation)
+                await rpc.SimulateAsync(default, default, CancellationToken.None);
+            else
+                await rpc.TraceTransactionAsync(Keccak.Zero, null, CancellationToken.None);
+        });
+        Assert.That(error!.Code, Is.EqualTo(-32601));
+    }
+
+    private static Type ProcessorType(EvmExecutor calls)
+    {
+        IContainer container = (IContainer)typeof(EvmExecutor)
             .GetField("_processing", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(calls)!;
         container.ComponentRegistry.TryGetRegistration(new TypedService(typeof(ITransactionProcessor)), out IComponentRegistration? registration);
         return registration!.Activator.LimitType;

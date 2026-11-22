@@ -66,9 +66,12 @@ public class ForkChoiceRunnerReorgTests
         (UnsignedChain chain, ForkChoiceRunner runner, UnsignedChain.ChainBlock a, _) = EquivocatingHeadAtSlotTwo();
         UnsignedChain.ChainBlock child = chain.Extend(a.Root, slot: 2, payloadHashByte: 0xc2);
         Import(runner, child);
-        Assert.That(runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug: the child must hold the boost");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ProposerBoostRoot, Is.EqualTo(child.Root), "fixture bug: the child must hold the boost");
 
-        Assert.That(runner.GetProposerHead(a.Root, proposalSlot: 2), Is.EqualTo(chain.AnchorRoot));
+            Assert.That(runner.GetProposerHead(a.Root, proposalSlot: 2), Is.EqualTo(chain.AnchorRoot));
+        }
     }
 
     [Test]

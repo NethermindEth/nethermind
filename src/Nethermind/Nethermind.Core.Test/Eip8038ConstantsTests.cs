@@ -20,7 +20,7 @@ public class Eip8038ConstantsTests
         ulong storageWrite = Eip8038Constants.StorageWrite;
         ulong callStipend = Eip8038Constants.CallStipend;
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(coldAccountAccess, Is.EqualTo(3000));
             Assert.That(warmAccess, Is.EqualTo(100));
@@ -28,12 +28,13 @@ public class Eip8038ConstantsTests
             Assert.That(accountWrite, Is.EqualTo(9000));
             Assert.That(storageWrite, Is.EqualTo(10000));
             Assert.That(callStipend, Is.EqualTo(2300));
-        });
+        }
     }
 
     [Test]
-    public void Derived_parameters_match_the_eip8038_derivations() =>
-        Assert.Multiple(() =>
+    public void Derived_parameters_match_the_eip8038_derivations()
+    {
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8038Constants.CallValue, Is.EqualTo(11300));
             Assert.That(Eip8038Constants.CreateAccess, Is.EqualTo(12000));
@@ -41,7 +42,8 @@ public class Eip8038ConstantsTests
             Assert.That(Eip8038Constants.AccessListStorageKeyCost, Is.EqualTo(2000));
             Assert.That(RefundOf.SClearEip8038, Is.EqualTo(11616));
             Assert.That(Eip8038Constants.PerAuthBaseExecution, Is.EqualTo(7816));
-        });
+        }
+    }
 
     [Test]
     public void Call_value_is_account_write_plus_stipend()
@@ -77,11 +79,11 @@ public class Eip8038ConstantsTests
         ulong addressCost = Eip8038Constants.AccessListAddressCost;
         ulong storageKeyCost = Eip8038Constants.AccessListStorageKeyCost;
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(addressCost, Is.GreaterThan(GasCostOf.AccessAccountListEntry));
             Assert.That(storageKeyCost, Is.GreaterThan(GasCostOf.AccessStorageListEntry));
-        });
+        }
     }
 
     [Test]
@@ -95,13 +97,13 @@ public class Eip8038ConstantsTests
         (ulong preAddress, ulong preStorage) = Eip8038Constants.AccessListEntryCosts(preSpec);
         (ulong postAddress, ulong postStorage) = Eip8038Constants.AccessListEntryCosts(postSpec);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(preAddress, Is.EqualTo(GasCostOf.AccessAccountListEntry));
             Assert.That(preStorage, Is.EqualTo(GasCostOf.AccessStorageListEntry));
             Assert.That(postAddress, Is.EqualTo(Eip8038Constants.AccessListAddressCost));
             Assert.That(postStorage, Is.EqualTo(Eip8038Constants.AccessListStorageKeyCost));
-        });
+        }
     }
 
     [Test]

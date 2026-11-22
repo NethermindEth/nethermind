@@ -107,8 +107,11 @@ internal class SubnetSnapshotManagerTests
 
         Assert.That(result, Is.TypeOf<SubnetSnapshot>());
         SubnetSnapshot subnetSnapshot = (SubnetSnapshot)result!;
-        Assert.That(subnetSnapshot.HeaderHash, Is.EqualTo(header.Hash!));
-        Assert.That(subnetSnapshot.NextEpochPenalties, Is.EquivalentTo(penalties));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(subnetSnapshot.HeaderHash, Is.EqualTo(header.Hash!));
+            Assert.That(subnetSnapshot.NextEpochPenalties, Is.EquivalentTo(penalties));
+        }
     }
 
 }

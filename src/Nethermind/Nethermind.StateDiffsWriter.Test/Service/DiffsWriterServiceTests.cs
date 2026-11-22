@@ -73,13 +73,19 @@ public class DiffsWriterServiceTests
         {
             BlockDiffRecord? read = _store.ReadBlockDiff(i);
             Assert.That(read, Is.Not.Null, $"block {i}");
-            Assert.That(read!.BlockNumber, Is.EqualTo(i));
-            Assert.That(read.SlotCountChanges, Has.Count.EqualTo(1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(read!.BlockNumber, Is.EqualTo(i));
+                Assert.That(read.SlotCountChanges, Has.Count.EqualTo(1));
+            }
             Assert.That(read.SlotCountChanges[0].NewCount, Is.EqualTo((ulong)i));
         }
 
-        Assert.That(_service.LastWrittenBlock, Is.EqualTo(100));
-        Assert.That(_store.GetSlotCount(TestItem.KeccakB.ValueHash256), Is.EqualTo(100UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_service.LastWrittenBlock, Is.EqualTo(100));
+            Assert.That(_store.GetSlotCount(TestItem.KeccakB.ValueHash256), Is.EqualTo(100UL));
+        }
     }
 
     [Test]

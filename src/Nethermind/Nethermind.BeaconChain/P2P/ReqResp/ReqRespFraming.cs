@@ -159,12 +159,7 @@ public static class ReqRespFraming
             byte[] payload;
             if (result != ResponseCode.Success && declaredLength == 0)
             {
-                RequestTail tail = await ReadEmptyRequestFramingAsync(input, token);
-                if (!tail.IsClosed && await tail.WatchAsync(input, token) is { } error)
-                {
-                    throw new Eth2ReqRespException(error);
-                }
-
+                await ReadEmptyRequestFramingAsync(input, token);
                 payload = [];
             }
             else
@@ -435,9 +430,16 @@ public static class ReqRespFraming
 
                     try
                     {
-                        uncompressedTotal += frameType == UncompressedFrame
+                        int frameLength = frameType == UncompressedFrame
                             ? dataLength - 4
                             : Snappy.GetUncompressedLength(data.AsSpan(4));
+                        if (frameLength > 65_536)
+                        {
+                            throw new Eth2ReqRespException("Snappy frame exceeds the 65536-byte uncompressed limit");
+                        }
+                        if (frameType == CompressedFrame && frameLength > 22L * (dataLength - 4))
+                            throw new Eth2ReqRespException("Snappy frame exceeds the maximum compression ratio");
+                        uncompressedTotal += frameLength;
                     }
                     catch (Exception e) when (e is not Eth2ReqRespException)
                     {

@@ -122,8 +122,11 @@ public class ProcessStallWatchdogTests
             return stop.WaitOne();
         });
         context.Watchdog.Start();
-        Assert.That(waiting.Wait(TimeSpan.FromSeconds(5)), Is.True);
-        Assert.That(context.Watchdog.IsRunning, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(waiting.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(context.Watchdog.IsRunning, Is.True);
+        }
         context.Watchdog.Dispose();
         context.Watchdog.Dispose();
         context.Watchdog.Start();
@@ -151,7 +154,7 @@ public class ProcessStallWatchdogTests
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(attempts, Is.EqualTo(2));
-        Assert.That(context.Debug, Is.EqualTo(new[] { "Process stall watchdog tick failed." }));
+        Assert.That(context.Debug, Is.EqualTo(new[] { "Process stall watchdog tick failed: InvalidOperationException: Operation is not valid due to the current state of the object." }));
         Assert.That(context.Info, Is.Empty);
     }
 

@@ -20,6 +20,10 @@ public sealed class MetaDataProtocolV3(LocalMetadataSource metadataSource) : Sin
 
     protected override MetaDataV3 DecodeResponse(byte[] ssz)
     {
+        if (ssz.Length != MetaDataV3Length)
+        {
+            throw new Eth2ReqRespException($"Metadata response must be {MetaDataV3Length} bytes");
+        }
         MetaDataV3.Decode(ssz, out MetaDataV3 metadata);
         return metadata;
     }

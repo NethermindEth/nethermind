@@ -74,20 +74,20 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
                         c.Response.Headers["Eth-Consensus-Version"] = consensusVersion;
                     }
 
-                    await c.Response.Body.WriteAsync(body);
+                    await c.Response.Body.WriteAsync(body, stopping);
                     break;
                 case StateResponse.DropMidBody:
                     c.Response.ContentType = "application/octet-stream";
                     c.Response.ContentLength = body.Length;
-                    await c.Response.Body.WriteAsync(body.AsMemory(0, body.Length / 2));
-                    await c.Response.Body.FlushAsync();
+                    await c.Response.Body.WriteAsync(body.AsMemory(0, body.Length / 2), stopping);
+                    await c.Response.Body.FlushAsync(stopping);
                     c.Abort();
                     break;
                 case StateResponse.StallMidBody:
                     c.Response.ContentType = "application/octet-stream";
                     c.Response.ContentLength = body.Length;
-                    await c.Response.Body.WriteAsync(body.AsMemory(0, body.Length / 2));
-                    await c.Response.Body.FlushAsync();
+                    await c.Response.Body.WriteAsync(body.AsMemory(0, body.Length / 2), stopping);
+                    await c.Response.Body.FlushAsync(stopping);
                     provider._stallEntered.TrySetResult(body[..(body.Length / 2)]);
                     await Hold(c, stopping);
                     break;

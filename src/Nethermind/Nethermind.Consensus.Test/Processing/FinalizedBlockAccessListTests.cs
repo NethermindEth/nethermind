@@ -27,6 +27,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Init.Modules;
+using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
@@ -321,6 +322,27 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Assert.That(env.Recording.Calls, Is.EqualTo(1));
     }
 
+    [Test]
+    public void Cancellation_during_apply_throws_before_the_state_root_is_recalculated()
+    {
+        using TestEnvironment env = new(useFlatDb);
+        Block block = env.CreateBlock();
+        env.Beacon.GetFinalizedHash().Returns(block.Hash);
+        using CancellationTokenSource cts = new();
+        IWorldState state = Substitute.For<IWorldState>();
+        state.When(s => s.ApplyBal(Arg.Any<ReadOnlyBlockAccessList>(), Arg.Any<CancellationToken>())).Do(_ => cts.Cancel());
+        FinalizedBlockAccessListProcessor processor = new(env.Recording, env.Policy, state, env.Receipts, env.Recovery, LimboLogs.Instance);
+        Assert.That(() => processor.ProcessOne(block, ProcessingOptions.None, NullBlockTracer.Instance, Amsterdam.Instance, cts.Token),
+            Throws.InstanceOf<OperationCanceledException>());
+        using (Assert.EnterMultipleScope())
+        {
+            state.Received(1).ApplyBal(Arg.Any<ReadOnlyBlockAccessList>(), cts.Token);
+            state.DidNotReceive().RecalculateStateRoot();
+            Assert.That(env.Recording.Calls, Is.EqualTo(0));
+        }
+        block.DisposeAccountChanges();
+    }
+
     [TestCase(false)]
     [TestCase(true)]
     public void Consecutive_finalized_blocks_reconstruct_through_branch_processing(bool mismatchSecond)
@@ -362,11 +384,17 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Assert.That(policy.CanReconstruct(first.Header), Is.True);
         tree.ClearReceivedCalls();
         env.Beacon.GetFinalizedHash().Returns(third.Hash);
-        Assert.That(policy.CanReconstruct(first.Header), Is.True);
-        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(first.Header), Is.True);
+            Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        }
         tree.Head.Returns(first);
-        Assert.That(policy.CanReconstruct(first.Header), Is.False);
-        Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(first.Header), Is.False);
+            Assert.That(policy.CanReconstruct(second.Header), Is.True);
+        }
         tree.DidNotReceive().FindHeader(env.Genesis.Hash!, BlockTreeLookupOptions.None);
         tree.DidNotReceive().FindHeader(first.Hash!, BlockTreeLookupOptions.None);
         tree.Received(1).FindHeader(second.Hash!, BlockTreeLookupOptions.None);
@@ -376,8 +404,11 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
         Block fourth = env.CreateBlock(parent: third);
         tree.FindHeader(fourth.Hash!, BlockTreeLookupOptions.None).Returns(fourth.Header);
         env.Beacon.GetFinalizedHash().Returns(fourth.Hash);
-        Assert.That(policy.CanReconstruct(fourth.Header), Is.True);
-        Assert.That(policy.CanReconstruct(third.Header), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(policy.CanReconstruct(fourth.Header), Is.True);
+            Assert.That(policy.CanReconstruct(third.Header), Is.False);
+        }
     }
 
     private static long Fallbacks(BalCatchUpFallbackReason reason) => MergeMetrics.BalCatchUpFallbacks.GetValueOrDefault(reason);
@@ -444,7 +475,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             }
             ReadOnlyBlockAccessList list = new([
                 new ReadOnlyAccountChanges(TestItem.AddressA, [], [], [new BalanceChange(1, finalBalance)], [], [])], 0);
-            byte[] encoded = Rlp.Encode(list).Bytes;
+            byte[] encoded = Rlp.Encode(list);
             BlockBuilder builder = Build.A.Block.WithParent(parent).WithDifficulty(0).WithGasUsed(gasUsed).WithStateRoot(matchingRoot ? root : TestItem.KeccakC)
                 .WithBlockAccessListHash(matchingList ? Keccak.Compute(encoded) : TestItem.KeccakD);
             if (withTransaction) builder.WithTransactions(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject);

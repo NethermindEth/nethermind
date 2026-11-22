@@ -77,7 +77,7 @@ public sealed class BeaconBlocksByRootProtocolV2(BeaconChainSpec spec, BeaconCha
                 throw new Eth2ReqRespException($"Malformed blocks-by-root request: {e.Message}");
             }
 
-            ChargeRequest(context, (ulong)(request.Roots?.Length ?? 0), MaxRequestBlocks);
+            await ChargeRequestAsync(context, (ulong)(request.Roots?.Length ?? 0), MaxRequestBlocks, cts);
 
             foreach (Hash256 root in request.Roots ?? [])
             {

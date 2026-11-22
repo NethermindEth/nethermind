@@ -2,69 +2,54 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.Messages
 {
-    public class DisconnectMessageSerializer : IZeroMessageSerializer<DisconnectMessage>
+    public class DisconnectMessageSerializer : IMessageSerializer<DisconnectMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, DisconnectMessage msg)
-        {
-            int length = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(length, force: true);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+        public int GetLength(DisconnectMessage msg) => Rlp.LengthOfSequence(GetContentLength(msg));
 
-            writer.StartSequence(contentLength);
+        public int Serialize(Span<byte> destination, DisconnectMessage msg)
+        {
+            RlpWriter writer = RlpWriter.ContentWriter(destination);
+
+            RlpSequence sequence = writer.StartSequence(GetContentLength(msg));
             writer.Encode((byte)msg.Reason);
+            writer.EndSequence(sequence);
+            return writer.Length;
         }
 
-        private static int GetLength(DisconnectMessage message, out int contentLength)
+        private static int GetContentLength(DisconnectMessage message) => Rlp.LengthOf((byte)message.Reason);
+
+        public DisconnectMessage Deserialize(ReadOnlySpan<byte> msg)
         {
-            contentLength = Rlp.LengthOf((byte)message.Reason);
-
-            return Rlp.LengthOfSequence(contentLength);
-        }
-
-
-        public DisconnectMessage Deserialize(IByteBuffer msgBytes)
-        {
-            if (msgBytes.ReadableBytes == 0)
+            if (msg.IsEmpty)
             {
                 // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
                 return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
             }
 
-            Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
             if (msg.Length == 1 && msg[0] < Rlp.EmptyByteArrayByte)
             {
                 return new DisconnectMessage(msg[0]);
             }
 
             RlpReader reader = new(msg);
-            CheckItem(reader);
-            if (!reader.IsSequenceNext())
+            if (!reader.IsNextSequence)
             {
                 ReadOnlySpan<byte> wrapped = reader.DecodeByteArraySpan();
                 if (wrapped.IsEmpty) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
                 reader = new RlpReader(wrapped);
-                CheckItem(reader);
             }
 
-            int contentLength = reader.ReadSequenceLength();
-            if (contentLength == 0) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
-            reader = new RlpReader(reader.Read(contentLength));
-            CheckItem(reader);
-            int reason = reader.DecodeInt();
+            RlpReader fields = reader.EnterSequence(out _);
+            if (!fields.HasNext) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
+            int reason = fields.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
             return disconnectMessage;
-
-            static void CheckItem(RlpReader item)
-            {
-                if (item.Length == 0 || item.PeekNextRlpLength() > item.Length)
-                    throw new RlpException("Truncated disconnect payload.");
-            }
         }
     }
 }

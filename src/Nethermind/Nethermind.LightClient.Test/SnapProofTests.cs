@@ -24,7 +24,7 @@ public class SnapProofTests
     public void Transport_proof_node_limit_precedes_reconstruction_of_a_valid_absence_witness([Values(65, 66)] int count)
     {
         UInt256 existing = 1;
-        byte[] leaf = Leaf(ValueKeccak.Compute(existing.ToBigEndian()).ToCommitment(), Rlp.Encode((UInt256)42).Bytes);
+        byte[] leaf = Leaf(ValueKeccak.Compute(existing.ToBigEndian()).ToCommitment(), Rlp.Encode((UInt256)42));
         Account account = new(1, 2, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
         using SlotsAndProofs response = new()
         {
@@ -45,10 +45,10 @@ public class SnapProofTests
     {
         Account account = new(7, 123);
         ValueHash256 path = ValueKeccak.Compute(Address.Bytes);
-        byte[] leaf = Leaf(path.ToCommitment(), AccountDecoder.Instance.EncodeAsBytes(account));
+        byte[] leaf = Leaf(path.ToCommitment(), AccountDecoder.Instance.Encode(account));
         using AccountsAndProofs response = new()
         {
-            PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(path, tamper ? new Account(7, 124) : account) },
+            PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(path, (tamper ? new Account(7, 124) : account).ToStruct()) },
             Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { leaf }),
         };
         VerifiedHead head = new(0, 0, Hash256.Zero, Keccak.Compute(leaf));
@@ -76,8 +76,8 @@ public class SnapProofTests
     [Test]
     public void Empty_account_range_needs_a_valid_absence_proof([Values] bool includeProof)
     {
-        byte[] leaf = Leaf(Keccak.Compute(Address.Bytes), AccountDecoder.Instance.EncodeAsBytes(new Account(123)));
-        ArrayPoolList<byte[]> proofs = new(1);
+        byte[] leaf = Leaf(Keccak.Compute(Address.Bytes), AccountDecoder.Instance.Encode(new Account(123)));
+        ArrayPoolList<byte[]> proofs = [with(1)];
         if (includeProof) proofs.Add(leaf);
         using AccountsAndProofs response = new()
         {
@@ -109,14 +109,14 @@ public class SnapProofTests
     {
         UInt256 key = 1;
         ValueHash256 path = ValueKeccak.Compute(key.ToBigEndian());
-        byte[] slotRlp = Rlp.Encode((UInt256)42).Bytes;
+        byte[] slotRlp = Rlp.Encode((UInt256)42);
         byte[] leaf = Leaf(path.ToCommitment(), slotRlp);
         Account account = new(7, 123, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
         using SlotsAndProofs response = new()
         {
             PathsAndSlots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
             {
-                new ArrayPoolList<PathWithStorageSlot>(1) { new(path, tamper ? Rlp.Encode((UInt256)43).Bytes : slotRlp) }
+                new ArrayPoolList<PathWithStorageSlot>(1) { new(path, tamper ? Rlp.Encode((UInt256)43) : slotRlp) }
             },
             Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { leaf }),
         };
@@ -144,9 +144,9 @@ public class SnapProofTests
     [Test]
     public void Storage_absence_is_verified_for_omitted_or_empty_group([Values] bool emptyGroup)
     {
-        byte[] leaf = Leaf(ValueKeccak.Compute(((UInt256)1).ToBigEndian()).ToCommitment(), Rlp.Encode((UInt256)42).Bytes);
+        byte[] leaf = Leaf(ValueKeccak.Compute(((UInt256)1).ToBigEndian()).ToCommitment(), Rlp.Encode((UInt256)42));
         Account account = new(7, 123, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> groups = new(1);
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> groups = [with(1)];
         if (emptyGroup) groups.Add(new ArrayPoolList<PathWithStorageSlot>(0));
         using SlotsAndProofs response = new()
         {
@@ -166,13 +166,13 @@ public class SnapProofTests
     {
         Account account = new(7, 123);
         ValueHash256 path = ValueKeccak.Compute(Address.Bytes);
-        (byte[] branch, byte[] leaf) = BranchProof(path, AccountDecoder.Instance.EncodeAsBytes(account));
+        (byte[] branch, byte[] leaf) = BranchProof(path, AccountDecoder.Instance.Encode(account));
         VerifiedHead head = new(0, 0, Hash256.Zero, Keccak.Compute(branch));
         byte[][] expected = [branch.ToArray(), leaf.ToArray()];
         byte[][] witness;
         using (AccountsAndProofs response = new()
         {
-            PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(path, account) },
+            PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(path, account.ToStruct()) },
             Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(1) { truncateProof ? branch[..^1] : branch }),
         })
         {
@@ -197,7 +197,7 @@ public class SnapProofTests
     public void Storage_export_includes_reconstructed_leaf_and_owns_its_witness([Values] bool truncateProof)
     {
         UInt256 key = 1;
-        byte[] slotRlp = Rlp.Encode((UInt256)42).Bytes;
+        byte[] slotRlp = Rlp.Encode((UInt256)42);
         ValueHash256 path = ValueKeccak.Compute(key.ToBigEndian());
         (byte[] branch, byte[] leaf) = BranchProof(path, slotRlp);
         Account account = new(7, 123, Keccak.Compute(branch), Keccak.OfAnEmptyString);
@@ -234,9 +234,9 @@ public class SnapProofTests
     {
         ValueHash256 path = duplicate ? ValueKeccak.Compute(Address.Bytes) : ValueKeccak.Zero;
         Account account = new(7, 123);
-        byte[] leaf = Leaf(path.ToCommitment(), AccountDecoder.Instance.EncodeAsBytes(account));
-        ArrayPoolList<PathWithAccount> accounts = new(2) { new(path, account) };
-        if (duplicate) accounts.Add(new(path, account));
+        byte[] leaf = Leaf(path.ToCommitment(), AccountDecoder.Instance.Encode(account));
+        ArrayPoolList<PathWithAccount> accounts = [with(2), new(path, account.ToStruct())];
+        if (duplicate) accounts.Add(new(path, account.ToStruct()));
         using AccountsAndProofs response = new()
         {
             PathAndAccounts = accounts,
@@ -256,10 +256,10 @@ public class SnapProofTests
     {
         UInt256 key = 1;
         ValueHash256 path = duplicate ? ValueKeccak.Compute(key.ToBigEndian()) : ValueKeccak.Zero;
-        byte[] slotRlp = Rlp.Encode((UInt256)42).Bytes;
+        byte[] slotRlp = Rlp.Encode((UInt256)42);
         byte[] leaf = Leaf(path.ToCommitment(), slotRlp);
         Account account = new(7, 123, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
-        ArrayPoolList<PathWithStorageSlot> slots = new(2) { new(path, slotRlp) };
+        ArrayPoolList<PathWithStorageSlot> slots = [with(2), new(path, slotRlp)];
         if (duplicate) slots.Add(new(path, slotRlp));
         using SlotsAndProofs response = new()
         {
@@ -280,10 +280,10 @@ public class SnapProofTests
         ValueHash256 requested = ValueKeccak.Compute(Address.Bytes);
         ValueHash256 path = requested.IncrementPath().IncrementPath();
         Account account = new(7, 123);
-        (Hash256 root, byte[][] proof) = OmittedKeyProof(requested, path, AccountDecoder.Instance.EncodeAsBytes(account), existing);
+        (Hash256 root, byte[][] proof) = OmittedKeyProof(requested, path, AccountDecoder.Instance.Encode(account), existing);
         using AccountsAndProofs response = new()
         {
-            PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(path, account) },
+            PathAndAccounts = new ArrayPoolList<PathWithAccount>(1) { new(path, account.ToStruct()) },
             Proofs = new ByteArrayListAdapter(new ArrayPoolList<byte[]>(proof)),
         };
         VerifiedHead head = new(0, 0, Hash256.Zero, root);
@@ -319,7 +319,7 @@ public class SnapProofTests
         UInt256 key = 1;
         ValueHash256 requested = ValueKeccak.Compute(key.ToBigEndian());
         ValueHash256 path = requested.IncrementPath().IncrementPath();
-        byte[] slotRlp = Rlp.Encode((UInt256)42).Bytes;
+        byte[] slotRlp = Rlp.Encode((UInt256)42);
         (Hash256 root, byte[][] proof) = OmittedKeyProof(requested, path, slotRlp, existing);
         Account account = new(7, 123, root, Keccak.OfAnEmptyString);
         using SlotsAndProofs response = new()
@@ -334,8 +334,8 @@ public class SnapProofTests
         using (MemDb db = new())
         {
             PatriciaSnapTrieFactory factory = new(new NodeStorage(db), NullDb.Instance, NullLogManager.Instance);
-            Assert.That(SnapProviderHelper.AddStorageRange(factory, new(ValueKeccak.Compute(Address.Bytes), account),
-                response.PathsAndSlots[0], requested, requested.IncrementPath(), response.Proofs).result,
+            Assert.That(SnapProviderHelper.ReconstructStorageProofNodes(factory, new(ValueKeccak.Compute(Address.Bytes), account.ToStruct()),
+                response.PathsAndSlots[0], requested, requested.IncrementPath(), response.Proofs),
                 Is.EqualTo(AddRangeResult.OK), "The single-key range check alone accepts this response.");
         }
         Assert.That(ExecutionProofVerifier.VerifyStorage(root, key, proof), Is.EqualTo(existing ? (UInt256)42 : UInt256.Zero));
@@ -362,12 +362,12 @@ public class SnapProofTests
     {
         PatriciaTree tree = new();
         ValueHash256 path = ValueKeccak.Compute(Address.Bytes);
-        ArrayPoolList<PathWithAccount> entries = new(count);
+        ArrayPoolList<PathWithAccount> entries = [with(count)];
         for (int i = 0; i < count; i++)
         {
             Account account = new((UInt256)(uint)(i + 1));
-            entries.Add(new(path, account));
-            tree.Set(path.Bytes, AccountDecoder.Instance.EncodeAsBytes(account));
+            entries.Add(new(path, account.ToStruct()));
+            tree.Set(path.Bytes, AccountDecoder.Instance.Encode(account));
             path = path.IncrementPath();
         }
         tree.UpdateRootHash();
@@ -383,14 +383,14 @@ public class SnapProofTests
                 Throws.TypeOf<InvalidDataException>().With.Message.Contains("too many accounts"));
         else
             Assert.That(ExecutionPeerTransport.VerifyAccountRange(tree.RootHash, Address, response, NullLogManager.Instance),
-                Is.EqualTo(entries[0].Account));
+                Is.EqualTo(entries[0].Account.ToAccount()));
     }
 
     [Test]
     public void Empty_storage_range_requires_a_proof_of_the_requested_key([Values] bool includeProof, [Values] bool existing)
     {
         UInt256 key = 1;
-        byte[] leaf = Leaf(Keccak.Compute(key.ToBigEndian()), Rlp.Encode((UInt256)42).Bytes);
+        byte[] leaf = Leaf(Keccak.Compute(key.ToBigEndian()), Rlp.Encode((UInt256)42));
         Account account = new(0, 0, Keccak.Compute(leaf), Keccak.OfAnEmptyString);
         using SlotsAndProofs response = new()
         {
@@ -413,17 +413,17 @@ public class SnapProofTests
     {
         PatriciaTree tree = new();
         ValueHash256 path = ValueKeccak.Compute(((UInt256)1).ToBigEndian());
-        ArrayPoolList<PathWithStorageSlot> entries = new(count);
+        ArrayPoolList<PathWithStorageSlot> entries = [with(count)];
         for (int i = 0; i < count; i++)
         {
-            byte[] value = Rlp.Encode((UInt256)(uint)(i + 1)).Bytes;
+            byte[] value = Rlp.Encode((UInt256)(uint)(i + 1));
             entries.Add(new(path, value));
             tree.Set(path.Bytes, value);
             path = path.IncrementPath();
         }
         tree.UpdateRootHash();
         Account account = new(0, 0, tree.RootHash, Keccak.OfAnEmptyString);
-        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> lists = new(groups) { entries };
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> lists = [with(groups), entries];
         if (groups > 1) lists.Add(new ArrayPoolList<PathWithStorageSlot>(entries.AsSpan()));
         ProofCollector collector = new(ValueKeccak.Compute(((UInt256)1).ToBigEndian()).Bytes.ToArray());
         tree.Accept(collector, tree.RootHash);
@@ -453,12 +453,12 @@ public class SnapProofTests
     {
         byte[] compactPath = path.Bytes.ToArray();
         compactPath[0] = (byte)(0x30 | (compactPath[0] & 15));
-        byte[] leaf = Rlp.Encode(Rlp.Encode(compactPath), Rlp.Encode(value)).Bytes;
-        Rlp[] children = new Rlp[17];
-        Array.Fill(children, Rlp.OfEmptyByteArray);
+        byte[] leaf = Sequence(Rlp.Encode(compactPath), Rlp.Encode(value));
+        byte[][] children = new byte[17][];
+        Array.Fill(children, [Rlp.EmptyByteArrayByte]);
         int nibble = path.Bytes[0] >> 4;
         children[nibble] = Rlp.Encode(Keccak.Compute(leaf));
         children[nibble ^ 1] = Rlp.Encode(Keccak.Compute([1, 2, 3]));
-        return (Rlp.Encode(children).Bytes, leaf);
+        return (Sequence(children), leaf);
     }
 }

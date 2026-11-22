@@ -18,6 +18,7 @@ public sealed record HeadSnapshot(StatusMessageV2 Status, Hash256? FullHeadRoot,
     /// <summary>The head's post-state for the Beacon API, or <c>null</c> when it was not captured.</summary>
     internal ForkedBeaconState? State { get; init; }
 
+    internal ForkChoiceSnapshot? ForkChoice { get; init; }
     internal CheckpointStateSnapshot? JustifiedState { get; init; }
     internal CheckpointStateSnapshot? FinalizedState { get; init; }
 

@@ -4,6 +4,7 @@
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
@@ -32,10 +33,10 @@ public class NfdEntryTests
         int keyLength = Rlp.LengthOf(entry.Key);
 
         byte[] buffer = new byte[keyLength + Rlp.LengthOf(digest) + 8];
-        RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         entry.Encode(ref writer);
 
-        Assert.That(buffer[keyLength..writer.Position], Is.EqualTo(Rlp.Encode(digest).Bytes));
+        Assert.That(buffer[keyLength..writer.Length], Is.EqualTo(Rlp.Encode(digest)));
     }
 
     // Real, shipped mainnet schedule (not a synthetic one): the two epochs either side of BPO1

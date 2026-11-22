@@ -203,33 +203,33 @@ public class EngineApiProxyLighthouseTests
     public async Task Proxy_InterceptsForkChoiceUpdatedWithPayloadAttributes()
     {
         string log = await _proxyContainer.GetCleanStdoutAsync();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(log, Does.Contain("LH mode: got FCU request with payload attributes"),
                 "proxy should intercept Lighthouse FCU-with-payload-attributes in Lighthouse mode");
             Assert.That(log, Does.Contain("LH mode: New unique FCU request with payload attributes"),
                 "proxy should treat each building-slot FCU as a new unique request");
-        });
+        }
     }
 
     [Test]
     public async Task Proxy_TracksPayloadIdForBuildingSlots()
     {
         string log = await _proxyContainer.GetCleanStdoutAsync();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(log, Does.Contain("Storing parentBeaconBlockRoot"),
                 "proxy should record the parentBeaconBlockRoot from the FCU payload attributes");
             Assert.That(log, Does.Contain("with payloadId"),
                 "proxy should track the payloadId the EL returns for a building slot");
-        });
+        }
     }
 
     [Test]
     public async Task Proxy_RunsSyntheticValidationCycleAgainstExecutionClient()
     {
         string log = await _proxyContainer.GetCleanStdoutAsync();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(log, Does.Contain("Lighthouse validation for block with hash:"),
                 "proxy should start the Lighthouse-mode validation flow on newPayload");
@@ -239,20 +239,20 @@ public class EngineApiProxyLighthouseTests
             // from the requests it merely forwards on behalf of the CL.
             Assert.That(log, Does.Contain("PR -> EL|engine_newPayloadV3|V|"),
                 "proxy should send a synthetic newPayload to the EL during validation");
-        });
+        }
     }
 
     [Test]
     public async Task Proxy_ForwardsRequestsAndValidResponsesBetweenLayers()
     {
         string log = await _proxyContainer.GetCleanStdoutAsync();
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(log, Does.Contain("CL -> PR|"), "proxy should log requests received from the consensus client");
             Assert.That(log, Does.Contain("PR -> EL|engine_newPayloadV3"), "proxy should forward newPayload to the execution client");
             Assert.That(log, Does.Contain("PR -> CL|engine_newPayloadV3"), "proxy should return the newPayload response to the consensus client");
             Assert.That(log, Does.Contain("\"status\":\"VALID\""), "the execution client should accept the Lighthouse-produced payloads as VALID");
-        });
+        }
     }
 
     [Test]
@@ -295,12 +295,12 @@ public class EngineApiProxyLighthouseTests
 
         JsonNode receipt = await Utils.WaitForReceiptAsync(_elClient, txHash, TimeSpan.FromMinutes(2));
         Assert.That(receipt, Is.Not.Null, "the legacy transaction should be mined into a Lighthouse-produced block");
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt["status"].GetValue<string>(), Is.EqualTo("0x1"), "transaction should succeed");
             Assert.That(Convert.ToInt64(receipt["blockNumber"].GetValue<string>()[2..], 16), Is.GreaterThan(0),
                 "transaction should be included in a non-genesis block");
-        });
+        }
     }
 
     [Test]

@@ -3,8 +3,12 @@
 
 using System.Net;
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
+using Nethermind.BeaconChain.Api;
+using Nethermind.BeaconChain.Api.Common;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
@@ -22,10 +26,56 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     private const ulong StateEpoch = 412_500;
     private const ulong StateSlot = StateEpoch * 32;
 
+    [Test]
+    public async Task Committee_cache_shares_concurrent_requests_and_isolates_states_and_epochs([Values] bool gloas)
+    {
+        StateCommitteeCache cache = new();
+        BeaconStateFulu state = RichState(Spec, StateSlot);
+        ApiState apiState = gloas
+            ? ApiState.Of(new BeaconStateGloas { Slot = state.Slot, Validators = state.Validators, RandaoMixes = state.RandaoMixes })
+            : ApiState.Of(BeaconFork.Fulu, state);
+        CommitteeCache[] results = await Task.WhenAll(Enumerable.Range(0, 32)
+            .Select(_ => Task.Run(() => cache.Get(apiState, StateEpoch))));
+        ApiState sameState = gloas ? ApiState.Of(apiState.Gloas!) : ApiState.Of(BeaconFork.Fulu, state);
+        BeaconStateFulu replacement = RichState(Spec, StateSlot);
+        replacement.Validators = [replacement.Validators![0]];
+        CommitteeCache replaced = cache.Get(ApiState.Of(BeaconFork.Fulu, replacement), StateEpoch);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        foreach (CommitteeCache result in results) Assert.That(result, Is.SameAs(results[0]));
+        Assert.That(cache.Get(sameState, StateEpoch), Is.SameAs(results[0]));
+        Assert.That(replaced.ActiveValidatorCount, Is.EqualTo(1));
+        Assert.That(results[0].ActiveValidatorCount, Is.EqualTo(3));
+        foreach (ulong epoch in new[] { StateEpoch - 1, StateEpoch, StateEpoch + 1 })
+            Assert.That(cache.Get(apiState, epoch).Epoch, Is.EqualTo(epoch));
+        Assert.Throws<ArgumentOutOfRangeException>(() => cache.Get(apiState, StateEpoch + 2));
+    }
+
+    [Test]
+    public void Committee_cache_does_not_retain_expired_states()
+    {
+        StateCommitteeCache cache = new();
+        WeakReference state = CacheTemporaryState(cache);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.That(state.IsAlive, Is.False);
+        GC.KeepAlive(cache);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference CacheTemporaryState(StateCommitteeCache cache)
+    {
+        BeaconStateFulu state = RichState(Spec, StateSlot);
+        cache.Get(ApiState.Of(BeaconFork.Fulu, state), StateEpoch);
+        return new WeakReference(state);
+    }
+
     [OneTimeSetUp]
     public async Task StartHost()
     {
-        _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false);
+        _host = await BeaconApiTestHost.StartAsync(Spec, forkAwareStore: false,
+            apiConfig: new BeaconApiConfig { StateDownloadsPerMinutePerClient = 0 });
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
     }
 
@@ -49,8 +99,11 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators");
         string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"body: {raw}");
-        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("application/json"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), $"body: {raw}");
+            Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo("application/json"));
+        }
 
         JsonDocument body = JsonDocument.Parse(raw);
         JsonElement data = body.RootElement.GetProperty("data");
@@ -59,11 +112,14 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         for (int i = 0; i < StatusFixture.Length; i++)
         {
             JsonElement entry = data[i];
-            Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo(i.ToString()));
-            Assert.That(entry.GetProperty("status").GetString(), Is.EqualTo(StatusFixture[i].ExpectedStatus),
-                $"validator {i} ({StatusFixture[i].ExpectedStatus}) misclassified");
-            Assert.That(entry.GetProperty("validator").GetProperty("pubkey").GetString(),
-                Is.EqualTo(StatusFixture[i].Validator.Pubkey.ToString()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo(i.ToString()));
+                Assert.That(entry.GetProperty("status").GetString(), Is.EqualTo(StatusFixture[i].ExpectedStatus),
+                    $"validator {i} ({StatusFixture[i].ExpectedStatus}) misclassified");
+                Assert.That(entry.GetProperty("validator").GetProperty("pubkey").GetString(),
+                    Is.EqualTo(StatusFixture[i].Validator.Pubkey.ToString()));
+            }
         }
     }
 
@@ -74,6 +130,9 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     [TestCase("validators", "id={1}&id={4}", "index", new[] { "1", "4" })]
     [TestCase("validator_balances", "id=0&id={1}&id={4}", "index", new[] { "0", "1", "4" })]
     [TestCase("validators", "id=0,2", "index", new[] { "0", "2" })]
+    [TestCase("validators", "id=4,2,4,999999&id={2}", "index", new[] { "2", "4" })]
+    [TestCase("validators", "id=8,4,2,0&status=active", "index", new[] { "2", "4" })]
+    [TestCase("validators", "id=999999", "index", new string[0])]
     [TestCase("validators", "status=active_ongoing&status=exited_slashed", "status", new[] { "active_ongoing", "exited_slashed" })]
     public async Task Validator_filters_resolve_mixed_and_multiple_pubkeys_and_union_query_forms(string endpoint, string query, string field, string[] expected)
     {
@@ -81,7 +140,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         query = string.Format(query, validators.Select(v => (object)v.Pubkey.ToString()).ToArray());
         using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{endpoint}?{query}");
         using JsonDocument body = await ReadJsonAsync(response);
-        Assert.That(body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty(field).GetString()), Is.EquivalentTo(expected));
+        Assert.That(body.RootElement.GetProperty("data").EnumerateArray().Select(e => e.GetProperty(field).GetString()), Is.EqualTo(expected));
     }
 
     [Test]
@@ -120,6 +179,16 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         Assert.That(body.RootElement.GetProperty("data").GetProperty("status").GetString(), Is.EqualTo("active_exiting"));
     }
 
+    [TestCase("0", HttpStatusCode.OK)]
+    [TestCase("1", HttpStatusCode.InternalServerError)]
+    [TestCase("18446744073709551615", HttpStatusCode.NotFound)]
+    public async Task Numeric_validator_checks_the_selected_index_against_both_list_lengths(string index, HttpStatusCode expected)
+    {
+        PutState(TestRoot(0xe3), [StatusFixture[0].Validator, StatusFixture[1].Validator], [42]);
+        using HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validators/{index}");
+        Assert.That(response.StatusCode, Is.EqualTo(expected));
+    }
+
     [Test]
     public async Task Validator_balances_reports_the_states_own_balance_array_not_effective_balance()
     {
@@ -132,8 +201,11 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/validator_balances");
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement entry = body.RootElement.GetProperty("data")[0];
-        Assert.That(entry.GetProperty("balance").GetString(), Is.EqualTo("32100000000"));
-        Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo("0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.GetProperty("balance").GetString(), Is.EqualTo("32100000000"));
+            Assert.That(entry.GetProperty("index").GetString(), Is.EqualTo("0"));
+        }
     }
 
     [Test]
@@ -160,10 +232,13 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         }
 
         distinctSlots = seenSlots.Count;
-        // compute_committee partitions active validators once per epoch, independently of the shuffling implementation.
-        Assert.That(allMembers.Distinct().Count(), Is.EqualTo(validatorCount), "every validator must appear exactly once");
-        Assert.That(allMembers, Has.Count.EqualTo(validatorCount), "no validator may be duplicated across committees");
-        Assert.That(distinctSlots, Is.EqualTo(32), "one committee-index-0 entry for every slot in the epoch (32 slots), given 50 active validators clamps to 1 committee/slot");
+        using (Assert.EnterMultipleScope())
+        {
+            // compute_committee partitions active validators once per epoch, independently of the shuffling implementation.
+            Assert.That(allMembers.Distinct().Count(), Is.EqualTo(validatorCount), "every validator must appear exactly once");
+            Assert.That(allMembers, Has.Count.EqualTo(validatorCount), "no validator may be duplicated across committees");
+            Assert.That(distinctSlots, Is.EqualTo(32), "one committee-index-0 entry for every slot in the epoch (32 slots), given 50 active validators clamps to 1 committee/slot");
+        }
     }
 
     [Test]
@@ -185,9 +260,12 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         JsonElement data = body.RootElement.GetProperty("data");
 
-        Assert.That(data.GetArrayLength(), Is.EqualTo(1));
-        Assert.That(data[0].GetProperty("slot").GetString(), Is.EqualTo(targetSlot.ToString()));
-        Assert.That(data[0].GetProperty("index").GetString(), Is.EqualTo("0"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(data[0].GetProperty("slot").GetString(), Is.EqualTo(targetSlot.ToString()));
+            Assert.That(data[0].GetProperty("index").GetString(), Is.EqualTo("0"));
+        }
     }
 
     [Test]

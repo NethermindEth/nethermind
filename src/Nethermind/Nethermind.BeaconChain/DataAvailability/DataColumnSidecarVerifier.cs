@@ -135,18 +135,58 @@ public static class DataColumnSidecarVerifier
         VerifyStructure(sidecar, kzgCommitments)
         && VerifyCellBatch(sidecar.Index, kzgCommitments, sidecar.Column!, sidecar.KzgProofs!);
 
+    internal readonly record struct ColumnProofs(ulong Index, SszBlobCell[] Cells, SszKzgCommitment[] Proofs);
+
+    /// <summary>Verifies structurally checked columns of one block against its shared blob commitments.</summary>
+    internal static bool VerifyColumnBatches<T>(List<T> columns, SszKzgCommitment[] commitments, Func<T, ColumnProofs> getProofs)
+    {
+        const int maxBatchCells = 128;
+        int width = commitments.Length;
+        int columnsPerBatch = Math.Max(1, maxBatchCells / width);
+        for (int start = 0; start < columns.Count; start += columnsPerBatch)
+        {
+            int length = Math.Min(columns.Count - start, columnsPerBatch);
+            if (length == 1)
+            {
+                ColumnProofs single = getProofs(columns[start]);
+                if (!VerifyCellBatch(single.Index, commitments, single.Cells, single.Proofs)) return false;
+                continue;
+            }
+            int cells = length * width;
+            using ArrayPoolSpan<ulong> indices = new(cells);
+            using ArrayPoolSpan<SszBlobCell> data = new(cells);
+            using ArrayPoolSpan<SszKzgCommitment> proofs = new(cells);
+            using ArrayPoolSpan<SszKzgCommitment> repeatedCommitments = new(cells);
+            for (int i = 0; i < length; i++)
+            {
+                ColumnProofs column = getProofs(columns[start + i]);
+                int offset = i * width;
+                indices.Slice(offset, width).Fill(column.Index);
+                column.Cells.AsSpan().CopyTo(data.Slice(offset, width));
+                column.Proofs.AsSpan().CopyTo(proofs.Slice(offset, width));
+                commitments.AsSpan().CopyTo(repeatedCommitments.Slice(offset, width));
+            }
+            if (!VerifyCells(repeatedCommitments, indices, data, proofs)) return false;
+        }
+        return true;
+    }
+
     private static bool VerifyCellBatch(ulong columnIndex, SszKzgCommitment[] commitments, SszBlobCell[] cells, SszKzgCommitment[] proofs)
     {
         int count = commitments.Length;
 
         using ArrayPoolSpan<ulong> cellIndices = new(count);
         cellIndices.Slice(0, count).Fill(columnIndex);
+        return VerifyCells(commitments, cellIndices, cells, proofs);
+    }
 
+    private static bool VerifyCells(ReadOnlySpan<SszKzgCommitment> commitments, ReadOnlySpan<ulong> cellIndices, ReadOnlySpan<SszBlobCell> cells, ReadOnlySpan<SszKzgCommitment> proofs)
+    {
         try
         {
             DasKzg.EnsureInitialized();
-            return KzgPolynomialCommitments.VerifyCellProofBatch(MemoryMarshal.AsBytes(commitments.AsSpan()), cellIndices,
-                MemoryMarshal.AsBytes(cells.AsSpan()), MemoryMarshal.AsBytes(proofs.AsSpan()), count);
+            return KzgPolynomialCommitments.VerifyCellProofBatch(MemoryMarshal.AsBytes(commitments), cellIndices,
+                MemoryMarshal.AsBytes(cells), MemoryMarshal.AsBytes(proofs), cellIndices.Length);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {

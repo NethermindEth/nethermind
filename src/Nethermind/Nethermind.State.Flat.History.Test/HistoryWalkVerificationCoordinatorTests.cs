@@ -604,8 +604,11 @@ public class HistoryWalkVerificationCoordinatorTests
         CommitmentMetadata metadata = new(_historyColumns, CommitmentDepthPolicy.Default);
         metadata.BeginWalk(0, 8, HistoryWalkRun.WorkItems, buildCommitments: checkpointBuildMode);
         metadata.AdvanceTipSeries(0, 8, out _);
-        Assert.That(metadata.TryGetCoverage(out _, out _), Is.True, "precondition: tip capture alone has published coverage");
-        Assert.That(metadata.TryGetWalkVerified(out _, out _), Is.False, "precondition: no first walk has completed");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.TryGetCoverage(out _, out _), Is.True, "precondition: tip capture alone has published coverage");
+            Assert.That(metadata.TryGetWalkVerified(out _, out _), Is.False, "precondition: no first walk has completed");
+        }
         availability.PublishWatermark(8, rowFormat.FormatVersion);
 
         using HistoryWalkVerificationCoordinator coordinator = new(

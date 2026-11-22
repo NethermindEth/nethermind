@@ -37,17 +37,18 @@ internal static class ResponseEnvelope
     public static bool ExecutionOptimistic(IBeaconChainStatusSource statusSource) => !statusSource.ExecutionInSync;
 
     /// <summary>Whether the referenced payload is unverified (Beacon API types/primitive.yaml ExecutionOptimistic).</summary>
-    public static bool ExecutionOptimistic(BeaconApiContext ctx, Hash256 root)
+    public static bool ExecutionOptimistic(BeaconApiContext ctx, Hash256 root, ulong? blockSlot = null)
     {
         if (ctx.ForkChoiceSnapshot is { } snapshot)
         {
             Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = IndexNodes(snapshot);
-            if (nodes.TryGetValue(root, out ForkChoiceSnapshotNode? node)) return node.ExecutionStatus == ExecutionStatus.Optimistic;
+            if (nodes.TryGetValue(root, out ForkChoiceSnapshotNode? node)) return node.ExecutionStatus is not (ExecutionStatus.Valid or ExecutionStatus.Irrelevant);
 
             // types/primitive.yaml ExecutionOptimistic: only a verified checkpoint verifies its canonical ancestors.
+            ulong slot = blockSlot.GetValueOrDefault();
             if (nodes.TryGetValue(snapshot.FinalizedCheckpoint.Root, out ForkChoiceSnapshotNode? finalizedNode)
                 && finalizedNode.ExecutionStatus is ExecutionStatus.Valid or ExecutionStatus.Irrelevant
-                && ctx.Store.TryGetBlockSlot(root, out ulong slot)
+                && (blockSlot.HasValue || ctx.Store.TryGetBlockSlot(root, out slot))
                 && slot <= snapshot.FinalizedCheckpoint.Epoch * ctx.Spec.SlotsPerEpoch
                 && IsFinalized(ctx, slot, root))
             {
@@ -77,7 +78,7 @@ internal static class ResponseEnvelope
 
         if (IndexNodes(snapshot).TryGetValue(resolved.Root, out ForkChoiceSnapshotNode? node))
         {
-            return !node.PayloadValid;
+            return node.ExecutionStatus == ExecutionStatus.Invalid || !node.PayloadValid;
         }
 
         if (ctx.Store.IsExecutionPayloadValid(resolved.Root)) return false;
@@ -100,7 +101,7 @@ internal static class ResponseEnvelope
     private static Dictionary<Hash256, ForkChoiceSnapshotNode> IndexNodes(ForkChoiceSnapshot snapshot) =>
         SnapshotNodes.GetValue(snapshot, static current => new Lazy<Dictionary<Hash256, ForkChoiceSnapshotNode>>(() =>
         {
-            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = new(current.Nodes.Count);
+            Dictionary<Hash256, ForkChoiceSnapshotNode> nodes = [with(current.Nodes.Count)];
             foreach (ForkChoiceSnapshotNode node in current.Nodes) nodes[node.Root] = node;
             return nodes;
         })).Value;

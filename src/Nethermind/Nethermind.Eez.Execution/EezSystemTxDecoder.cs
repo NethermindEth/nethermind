@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
 
@@ -17,21 +18,22 @@ namespace Nethermind.Eez.Execution;
 public sealed class EezSystemTxDecoder<T>(Func<T>? transactionFactory = null)
     : BaseTxDecoder(EezConstants.SystemTxType, transactionFactory is null ? (static () => new T()) : transactionFactory) where T : Transaction, new()
 {
-    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
-        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+    public override void Decode(ref Transaction? transaction, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, Memory<byte> source, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        DecodeTransaction<Payload>(ref transaction, transactionSequence, ref decoderContext, source, rlpBehaviors);
 
-    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+    public override void Encode(Transaction transaction, ref RlpWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
         int contentLength = GetPayloadLength(transaction);
         StartTypedTransaction(ref writer, EezConstants.SystemTxType, Rlp.LengthOfSequence(contentLength), rlpBehaviors);
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(transaction.ChainId ?? 0);
         writer.Encode(transaction.Nonce);
         writer.Encode(transaction.To);
         writer.Encode(in transaction.ValueRef);
         writer.Encode(transaction.Data);
+        writer.EndSequence(sequence);
     }
 
     private static int GetPayloadLength(Transaction transaction) =>
@@ -47,11 +49,11 @@ public sealed class EezSystemTxDecoder<T>(Func<T>? transactionFactory = null)
 
     private readonly struct Payload : ITxPayloadDecoder
     {
-        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
-            RlpBehaviors rlpBehaviors)
+        public static void DecodePayload<TCanonicalChecks>(Transaction transaction, ref RlpReader decoderContext, Memory<byte> source,
+            RlpBehaviors rlpBehaviors) where TCanonicalChecks : struct, IFlag
         {
-            transaction.ChainId = decoderContext.DecodeULong();
-            transaction.Nonce = decoderContext.DecodeULong();
+            transaction.ChainId = decoderContext.DecodeULong<TCanonicalChecks>();
+            transaction.Nonce = decoderContext.DecodeULong<TCanonicalChecks>();
             decoderContext.DecodeAddressStructRefNonNull(out AddressStructRef to);
             if (to == EezConstants.Eezl2Address)
             {
@@ -65,18 +67,19 @@ public sealed class EezSystemTxDecoder<T>(Func<T>? transactionFactory = null)
             }
             else
             {
-                throw new RlpException($"EEZ system transaction must target {EezConstants.Eezl2Address} or {EezConstants.RollupXEezl2Address}.");
+                throw new RlpReaderException($"EEZ system transaction must target {EezConstants.Eezl2Address} or {EezConstants.RollupXEezl2Address}.");
             }
 
-            transaction.Value = decoderContext.DecodeUInt256();
-            transaction.Data = decoderContext.DecodeByteArrayMemory(DataRlpLimit);
+            transaction.Value = decoderContext.DecodeUInt256<TCanonicalChecks>();
+            transaction.Data = decoderContext.DecodeByteArrayMemory<TCanonicalChecks>(source, DataRlpLimit);
             transaction.SenderAddress = EezConstants.SystemAddress;
             transaction.GasPrice = 0;
             transaction.DecodedMaxFeePerGas = 0;
             transaction.Signature = null;
         }
 
-        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
-            throw new RlpException("EEZ system transaction carries unexpected trailing fields.");
+        public static void DecodeTrailing<TCanonicalChecks>(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+            where TCanonicalChecks : struct, IFlag =>
+            throw new RlpReaderException("EEZ system transaction carries unexpected trailing fields.");
     }
 }

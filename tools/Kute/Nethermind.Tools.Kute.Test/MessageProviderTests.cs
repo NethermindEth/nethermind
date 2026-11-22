@@ -25,9 +25,12 @@ public class MessageProviderTests
         List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
         Assert.That(jsonRpcs, Has.Count.EqualTo(3));
-        Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
-        Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
-        Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Batch>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
+            Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
+            Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Batch>());
+        }
     }
 
     [Test]
@@ -45,8 +48,11 @@ public class MessageProviderTests
         List<JsonRpc> jsonRpcs = await provider.Messages().ToListAsync();
 
         Assert.That(jsonRpcs, Has.Count.EqualTo(3));
-        Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
-        Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
-        Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Single>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(jsonRpcs[0], Is.TypeOf<JsonRpc.Request.Single>());
+            Assert.That(jsonRpcs[1], Is.TypeOf<JsonRpc.Request.Single>());
+            Assert.That(jsonRpcs[2], Is.TypeOf<JsonRpc.Request.Single>());
+        }
     }
 }

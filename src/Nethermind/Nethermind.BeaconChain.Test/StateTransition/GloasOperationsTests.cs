@@ -19,6 +19,132 @@ public class GloasOperationsTests
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
     [Test]
+    public void Pending_withdrawal_totals_include_additions_before_and_after_the_second_validator_query()
+    {
+        PendingPartialWithdrawal[] initial = [new() { ValidatorIndex = 1, Amount = ulong.MaxValue }, new() { ValidatorIndex = 2, Amount = 5 }];
+        PendingWithdrawalBatch batch = new(initial);
+        batch.Add(new() { ValidatorIndex = 1, Amount = 1 });
+        Assert.That(batch.GetTotal(1), Is.Zero);
+        batch.Add(new() { ValidatorIndex = 1, Amount = 3 });
+        Assert.That(batch.GetTotal(1), Is.EqualTo(3));
+        batch.Add(new() { ValidatorIndex = 2, Amount = 7 });
+        Assert.That((batch.GetTotal(2), batch.GetTotal(1)), Is.EqualTo((12ul, 3ul)));
+        batch.Add(new() { ValidatorIndex = 1, Amount = 4 });
+        batch.Add(new() { ValidatorIndex = 2, Amount = 2 });
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(batch.GetTotal(1), Is.EqualTo(7));
+        Assert.That(batch.GetTotal(2), Is.EqualTo(14));
+        Assert.That(batch.Count, Is.EqualTo(7));
+        Assert.That(batch.ToArray().Select(w => w.Amount), Is.EqualTo(new ulong[] { ulong.MaxValue, 5, 1, 3, 7, 4, 2 }));
+        Assert.That(initial.Select(w => w.Amount), Is.EqualTo(new ulong[] { ulong.MaxValue, 5 }));
+    }
+
+    [Test]
+    public void Indexed_requests_keep_their_lookup_after_the_first_validator_write()
+    {
+        BeaconStateFulu seed = CreateFuluState(64);
+        Validator[] validators = seed.Validators!;
+        Validator target = validators.First(v => (v.Pubkey.GetHashCode() & 31) != (validators[0].Pubkey.GetHashCode() & 31));
+        byte[] credentials = new byte[32];
+        credentials[0] = Presets.EthWithdrawalPrefix;
+        target.WithdrawalCredentials = new Hash256(credentials);
+        ConsolidationRequest request = new() { SourcePubkey = target.Pubkey, TargetPubkey = target.Pubkey, SourceAddress = Address.Zero };
+        ValidatorPubkeyIndex index = new();
+        index.BeginBlock(Hash256.Zero);
+        index.Extend(validators);
+        index.AdmitBlock(Hash256.Zero);
+        // An indexed lookup never reads this unrelated bucket. A linear scan on the detached array would reach it first.
+        validators[0] = null!;
+        BeaconStateFulu parent = seed.Clone();
+        BeaconStateFulu child = parent.Clone();
+        Assert.That(child.ValidatorBuffer, Is.SameAs(parent.ValidatorBuffer));
+
+        index.BeginBlock(Hash256.Zero);
+        BeaconBlockBody body = new() { ExecutionRequests = new() { Consolidations = [request, request] } };
+        BlockProcessing.ProcessOperations(child, body, new EpochCache { RequestRegistry = index }, new PubkeyCache(), verifySignatures: false);
+
+        int targetIndex = Array.IndexOf(validators, target);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(child.ValidatorBuffer, Is.Not.SameAs(parent.ValidatorBuffer));
+        Assert.That(child.ReadOnlyValidators[targetIndex].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.CompoundingWithdrawalPrefix));
+        Assert.That(parent.ReadOnlyValidators[targetIndex].WithdrawalCredentials!.Bytes[0], Is.EqualTo(Presets.EthWithdrawalPrefix));
+    }
+
+    [Test]
+    public void Withdrawal_batches_match_sequential_operations([Values] bool gloas, [Values(0, 31)] int queued, [Values] bool overflow)
+    {
+        BeaconStateFulu fuluState = CreateFuluState(8);
+        BeaconStateGloas gloasState = CreateGloasState(out _, out _);
+        Validator[] validators = gloas ? gloasState.Validators! : fuluState.Validators!;
+        ulong[] balances = gloas ? gloasState.Balances! : fuluState.Balances!;
+        byte[] credentials = new byte[32];
+        credentials[0] = Presets.CompoundingWithdrawalPrefix;
+        for (int i = 0; i < 8; i++)
+        {
+            validators[i].WithdrawalCredentials = new Hash256(credentials);
+            validators[i].ActivationEpoch = 0;
+            balances[i] = 100 * Gwei;
+        }
+        // Enough active balance to exercise consolidation's pending-withdrawal check.
+        validators[7].EffectiveBalance = 100_000_000 * Gwei;
+        PendingPartialWithdrawal[] pending = [.. Enumerable.Range(0, queued).Select(i => new PendingPartialWithdrawal
+        {
+            ValidatorIndex = (ulong)(i % 2), Amount = Gwei, WithdrawableEpoch = Presets.FarFutureEpoch,
+        })];
+        if (overflow) pending = [new() { ValidatorIndex = 0, Amount = ulong.MaxValue, WithdrawableEpoch = Presets.FarFutureEpoch }, .. pending];
+        ulong slot = (Presets.ShardCommitteePeriod + 1) * Presets.SlotsPerEpoch + 1;
+        fuluState.Slot = gloasState.Slot = slot;
+        fuluState.PendingPartialWithdrawals = gloasState.PendingPartialWithdrawals = pending;
+        WithdrawalRequest Request(int index, ulong amount) => new() { ValidatorPubkey = validators[index].Pubkey, SourceAddress = Address.Zero, Amount = amount };
+        WithdrawalRequest[] requests =
+        [
+            Request(0, 10 * Gwei), Request(0, ulong.MaxValue), Request(0, 0),
+            new() { ValidatorPubkey = validators[1].Pubkey, SourceAddress = new Address(Hash(0xAB).Bytes[12..]), Amount = Gwei },
+            Request(2, 0), Request(2, Gwei), Request(3, Gwei),
+        ];
+        ConsolidationRequest consolidation = new() { SourcePubkey = validators[3].Pubkey, TargetPubkey = validators[4].Pubkey, SourceAddress = Address.Zero };
+        PendingPartialWithdrawal[] actualQueue;
+        PendingPartialWithdrawal[] expectedQueue;
+        Validator[] expectedValidators;
+        if (gloas)
+        {
+            BeaconStateGloas expected = gloasState.Clone();
+            EpochCache cache = new();
+            foreach (WithdrawalRequest request in requests) GloasBlockProcessing.ProcessWithdrawalRequest(expected, request, cache);
+            GloasBlockProcessing.ProcessConsolidationRequest(expected, consolidation, cache);
+            ExecutionRequestsGloas executionRequests = new() { Withdrawals = requests, Consolidations = [consolidation] };
+            gloasState.LatestBlockHeader!.Slot = slot - 1;
+            gloasState.LatestExecutionPayloadBid!.ExecutionRequestsRoot = SszRoots.HashTreeRoot(executionRequests);
+            BeaconBlockGloas block = MinimalBlock(gloasState, SelfBuildBid(gloasState, gloasState.LatestExecutionPayloadBid.BlockHash!, Hash(0xAA))).Message!;
+            block.Body!.ParentExecutionRequests = executionRequests;
+            GloasBlockProcessing.ProcessParentExecutionPayload(gloasState, block, new EpochCache());
+            actualQueue = gloasState.PendingPartialWithdrawals!;
+            expectedQueue = expected.PendingPartialWithdrawals!;
+            expectedValidators = expected.Validators!;
+            Assert.That((gloasState.EarliestExitEpoch, gloasState.ExitBalanceToConsume), Is.EqualTo((expected.EarliestExitEpoch, expected.ExitBalanceToConsume)));
+        }
+        else
+        {
+            BeaconStateFulu expected = fuluState.Clone();
+            EpochCache cache = new();
+            foreach (WithdrawalRequest request in requests) BlockProcessing.ProcessWithdrawalRequest(expected, request, cache);
+            BlockProcessing.ProcessConsolidationRequest(expected, consolidation, cache);
+            BeaconBlockBody body = new() { ExecutionRequests = new ExecutionRequests { Withdrawals = requests, Consolidations = [consolidation] } };
+            BlockProcessing.ProcessOperations(fuluState, body, new EpochCache(), new PubkeyCache(), verifySignatures: false);
+            actualQueue = fuluState.PendingPartialWithdrawals!;
+            expectedQueue = expected.PendingPartialWithdrawals!;
+            expectedValidators = expected.Validators!;
+            Assert.That((fuluState.EarliestExitEpoch, fuluState.ExitBalanceToConsume), Is.EqualTo((expected.EarliestExitEpoch, expected.ExitBalanceToConsume)));
+        }
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(actualQueue.Select(w => (w.ValidatorIndex, w.Amount, w.WithdrawableEpoch)), Is.EqualTo(expectedQueue.Select(w => (w.ValidatorIndex, w.Amount, w.WithdrawableEpoch))));
+        Assert.That(validators.Select(v => (v.ExitEpoch, v.WithdrawableEpoch)), Is.EqualTo(expectedValidators.Select(v => (v.ExitEpoch, v.WithdrawableEpoch))));
+        Assert.That(actualQueue.Length, Is.EqualTo(pending.Length + 3));
+        Assert.That(validators[3].ExitEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+    }
+
+    [Test]
     public void ProcessProposerSlashing_slashes_the_proposer_and_clears_the_pending_builder_payment_for_its_proposal()
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
@@ -267,8 +393,11 @@ public class GloasOperationsTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false))!;
 
-        Assert.That(ex.Message, Does.Contain(expectedMessage));
-        Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain(expectedMessage));
+            Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        }
     }
 
     [TestCase("target two epochs back", "not the previous or current epoch")]
@@ -317,12 +446,12 @@ public class GloasOperationsTests
 
         GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(state.BuilderPendingPayments[paymentIndex].Weight, Is.EqualTo(expectedWeight));
             Assert.That(state.BuilderPendingPayments[paymentIndex].Withdrawal!.Amount, Is.EqualTo(5 * Gwei), "weighing the payment must not disturb the payment itself");
             Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b111));
-        });
+        }
 
         // The same participants again set no new flag, so they weigh nothing more.
         GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 32, cache, pubkeys, verifySignature: true);
@@ -343,8 +472,11 @@ public class GloasOperationsTests
         AttestationGloas wrongHead = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, Hash(0x33)), committees, committeeIndex: 0, sign: false);
         GloasBlockProcessing.ProcessAttestation(state, wrongHead, parentSlot: 32, cache, new PubkeyCache(), verifySignature: false);
         ulong[] attesters = state.GetAttestingIndices(wrongHead, committees);
-        Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b011), "fixture bug: the flags must have been newly set");
-        Assert.That(state.BuilderPendingPayments![paymentIndex].Weight, Is.EqualTo(0ul), "a vote that is not for the slot's own block weighs nothing");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(attesters.Select(i => state.CurrentEpochParticipation![i]), Has.All.EqualTo(0b011), "fixture bug: the flags must have been newly set");
+            Assert.That(state.BuilderPendingPayments![paymentIndex].Weight, Is.EqualTo(0ul), "a vote that is not for the slot's own block weighs nothing");
+        }
 
         // The correct same-slot vote from the same validators sets a new (head) flag, but they had participated already.
         AttestationGloas sameSlot = CommitteeAttestation(state, VoteFor(state, slot: 32, targetEpoch: 1, state.GetBlockRootAtSlot(32)), committees, committeeIndex: 0, sign: false);
@@ -396,8 +528,11 @@ public class GloasOperationsTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessAttestation(state, attestation, parentSlot: 0, cache, pubkeys, verifySignature: true))!;
 
-        Assert.That(ex.Message, Does.Contain("Invalid indexed attestation"));
-        Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("Invalid indexed attestation"));
+            Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
+        }
     }
 
     private static BeaconStateGloas StateProcessingBlock33(out PubkeyCache pubkeys, out Hash256 parentRoot)

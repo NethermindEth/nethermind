@@ -4,7 +4,7 @@
 using DotNetty.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P
         {
             using DisconnectMessage msg = new(EthDisconnectReason.AlreadyConnected);
             DisconnectMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
             Assert.That(serialized.ToHexString(true), Is.EqualTo("0xc105"), "bytes");
             using DisconnectMessage deserialized = serializer.Deserialize(serialized);
             Assert.That(deserialized.Reason, Is.EqualTo(msg.Reason), "reason");
@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test.P2P
             Assert.That(() =>
             {
                 using DisconnectMessage message = serializer.Deserialize(Bytes.FromHexString(hex));
-            }, Throws.InstanceOf<RlpException>());
+            }, Throws.InstanceOf<RlpReaderException>());
         }
     }
 }

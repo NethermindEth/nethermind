@@ -79,8 +79,11 @@ public class InclusionListTxSourceTests
         source.Set(ilA, Bogota.Instance);
         source.Set(ilB, Bogota.Instance);
 
-        Assert.That(GetTransactions(source, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
-        Assert.That(GetTransactions(source, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetTransactions(source, attrsA).Select(t => t.Nonce), Is.EqualTo([1ul]));
+            Assert.That(GetTransactions(source, attrsB).Select(t => t.Nonce), Is.EqualTo([2ul]));
+        }
     }
 
     [Test]
@@ -101,13 +104,17 @@ public class InclusionListTxSourceTests
     {
         CountingEcdsa ecdsa = new(new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId));
         InclusionListTxSource source = new(ecdsa, new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)), LimboLogs.Instance);
-        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        // A fresh signer, so the process-wide sender cache cannot answer before the counting ecdsa.
+        Transaction tx = Build.A.Transaction.WithNonce(1).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
         byte[][] il = [Encode(tx)];
 
         source.Set(il, Bogota.Instance);
-        Assert.That(ecdsa.Recoveries, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ecdsa.Recoveries, Is.Zero);
 
-        Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
+            Assert.That(GetTransactions(source, Attributes(il)), Is.Not.Empty);
+        }
         Assert.That(ecdsa.Recoveries, Is.EqualTo(1));
     }
 
@@ -171,8 +178,8 @@ public class InclusionListTxSourceTests
         Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, default)],
         FrameSignatures = [],
         GasPrice = 1.GWei,
+        MaxFee = (UInt256)100_000 * 30.GWei,
         DecodedMaxFeePerGas = 30.GWei,
-        MaxFeePerBlobGas = blobVersionedHashes is null ? null : 1,
         BlobVersionedHashes = blobVersionedHashes,
     };
 
@@ -213,7 +220,7 @@ public class InclusionListTxSourceTests
             ]));
     }
 
-    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
+    private static byte[] Encode(Transaction tx) => TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping);
 
     private sealed class CountingEcdsa(IEthereumEcdsa inner) : IEthereumEcdsa
     {

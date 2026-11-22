@@ -28,8 +28,8 @@ namespace Nethermind.Specs.ChainSpecStyle.Json;
 /// </remarks>
 public class GethGenesisConfigJson : IHasNamedForks
 {
-    private readonly Dictionary<string, ulong> _blocks = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, ulong> _timestamps = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, ulong> _blocks = [with(StringComparer.OrdinalIgnoreCase)];
+    private readonly Dictionary<string, ulong> _timestamps = [with(StringComparer.OrdinalIgnoreCase)];
 
     public ulong ChainId { get; set; }
 
@@ -58,10 +58,16 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? CancunTime { get => GetTime(); set => SetTime(value); }
     public ulong? PragueTime { get => GetTime(); set => SetTime(value); }
     public ulong? OsakaTime { get => GetTime(); set => SetTime(value); }
+    // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
+    public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo2Time { get => GetTime(); set => SetTime(value); }
     public ulong? AmsterdamTime { get => GetTime(); set => SetTime(value); }
     // Devnet fork on top of Amsterdam. The genesis generator emits this as bogotaTime; the fork
     // class is Bogota.
     public ulong? BogotaTime { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo3Time { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo4Time { get => GetTime(); set => SetTime(value); }
+    public ulong? Bpo5Time { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8141 frame transactions, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
     public ulong? Eip8141PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-8250 keyed nonces, in Unix timestamp seconds; <c>null</c> leaves them unscheduled.</summary>
@@ -72,17 +78,15 @@ public class GethGenesisConfigJson : IHasNamedForks
     public ulong? Eip7906PrototypeTime { get => GetTime(); set => SetTime(value); }
     /// <summary>Activation time for EIP-4758 SENDALL, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
     public ulong? Eip4758PrototypeTime { get => GetTime(); set => SetTime(value); }
-
-    // OIC dict matches "Bpo1" (from CallerMemberName-strip) against the BPO1 fork class.
-    public ulong? Bpo1Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo2Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo3Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo4Time { get => GetTime(); set => SetTime(value); }
-    public ulong? Bpo5Time { get => GetTime(); set => SetTime(value); }
+    /// <summary>Activation time for the bogota-devnet-2 EIP set, in Unix timestamp seconds; <c>null</c> leaves it unscheduled.</summary>
+    public ulong? BogotaDevnet2Time { get => GetTime(); set => SetTime(value); }
 
     public UInt256? TerminalTotalDifficulty { get; set; }
     public bool? TerminalTotalDifficultyPassed { get; set; }
     public Address? DepositContractAddress { get; set; }
+
+    /// <summary>The accounts the EIP-8253 transition sets to nonce 1; <c>null</c> when the chain lists none.</summary>
+    public Address[]? ZeroNonceStorageAccounts { get; set; }
 
     /// <summary>
     /// Unix timestamp, in seconds, of the beacon chain genesis; <c>null</c> when the chain has no beacon chain.

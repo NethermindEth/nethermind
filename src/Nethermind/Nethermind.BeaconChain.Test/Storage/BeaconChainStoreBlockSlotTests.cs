@@ -43,8 +43,11 @@ public class BeaconChainStoreBlockSlotTests
     {
         _store.PutBlock(Root, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x01)));
 
-        Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
-        Assert.That(slot, Is.EqualTo(Slot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
+            Assert.That(slot, Is.EqualTo(Slot));
+        }
     }
 
     [Test]
@@ -52,16 +55,22 @@ public class BeaconChainStoreBlockSlotTests
     {
         WriteRecord(BeaconApiTestHost.SlotPrefixOnlyBlockSsz(Slot));
 
-        Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
-        Assert.That(slot, Is.EqualTo(Slot));
-        Assert.That(() => _store.TryGetForkedBlock(Root, out _), Throws.Exception, "the record really is undecodable, so reading its slot proves no decode ran");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
+            Assert.That(slot, Is.EqualTo(Slot));
+            Assert.That(() => _store.TryGetForkedBlock(Root, out _), Throws.Exception, "the record really is undecodable, so reading its slot proves no decode ran");
+        }
     }
 
     [Test]
     public void Is_false_for_a_root_with_no_stored_block()
     {
-        Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.False);
-        Assert.That(slot, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.False);
+            Assert.That(slot, Is.Zero);
+        }
     }
 
     [TestCase(107, 100u, TestName = "One byte short of the slot")]
@@ -142,8 +151,11 @@ public class BeaconChainStoreBlockSlotTests
     {
         _db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(Root.Bytes, record);
 
-        Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
-        Assert.That(slot, Is.EqualTo(expectedSlot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
+            Assert.That(slot, Is.EqualTo(expectedSlot));
+        }
     }
 
     private static IEnumerable<TestCaseData> HandBuiltPrefixes()
@@ -197,8 +209,11 @@ public class BeaconChainStoreBlockSlotTests
         if (seed % 2 == 0) BinaryPrimitives.WriteUInt64LittleEndian(ssz.AsSpan(100), (ulong)random.NextInt64());
         WriteRecord(ssz);
 
-        Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
-        Assert.That(slot, Is.EqualTo(BinaryPrimitives.ReadUInt64LittleEndian(ssz.AsSpan(100))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_store.TryGetBlockSlot(Root, out ulong slot), Is.True);
+            Assert.That(slot, Is.EqualTo(BinaryPrimitives.ReadUInt64LittleEndian(ssz.AsSpan(100))));
+        }
     }
 
     private static byte[] Concat(params IEnumerable<byte>[] parts) => parts.SelectMany(part => part).ToArray();

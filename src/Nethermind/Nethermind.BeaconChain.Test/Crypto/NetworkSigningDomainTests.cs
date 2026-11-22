@@ -78,18 +78,18 @@ public class NetworkSigningDomainTests
     public void Voluntary_exit_verifies_only_on_the_network_whose_capella_version_signed_it(string signedFor, string checkedOn, bool gloas)
     {
         Bls.SecretKey key = GloasTestFixtures.DeriveKey(9);
-        BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
-        BeaconStateFulu state = new() { GenesisValidatorsRoot = Spec(checkedOn).GenesisValidatorsRoot };
+        Validator[] validators = [new Validator { Pubkey = new BlsPublicKey(new Bls.P1(key).Compress()) }];
+        Hash256 genesisValidatorsRoot = Spec(checkedOn).GenesisValidatorsRoot;
         PubkeyCache pubkeys = new();
-        pubkeys.Build([new Validator { Pubkey = pubkey }]);
+        pubkeys.Build(validators);
         VoluntaryExit exit = new() { Epoch = 1, ValidatorIndex = 0 };
-        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Spec(signedFor).CapellaForkVersion, state.GenesisValidatorsRoot);
+        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Spec(signedFor).CapellaForkVersion, genesisValidatorsRoot);
         SignedVoluntaryExit signed = new() { Message = exit, Signature = GloasTestFixtures.Sign(key, Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain)) };
 
         BeaconChainSpec? spec = checkedOn == "Custom" ? Spec(checkedOn) : null;
         bool valid = gloas
-            ? GloasSignatureSets.VerifyVoluntaryExit(new BeaconStateGloas { GenesisValidatorsRoot = state.GenesisValidatorsRoot }, signed, pubkeys, spec: spec)
-            : SignatureSets.VerifyVoluntaryExit(state, signed, pubkeys, spec: spec);
+            ? GloasSignatureSets.VerifyVoluntaryExit(new BeaconStateGloas { GenesisValidatorsRoot = genesisValidatorsRoot, Validators = validators }, signed, pubkeys, spec: spec)
+            : SignatureSets.VerifyVoluntaryExit(new BeaconStateFulu { GenesisValidatorsRoot = genesisValidatorsRoot, Validators = validators }, signed, pubkeys, spec: spec);
         Assert.That(valid, Is.EqualTo(signedFor == checkedOn));
     }
 

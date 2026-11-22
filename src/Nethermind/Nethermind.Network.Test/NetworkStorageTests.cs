@@ -74,9 +74,12 @@ public class NetworkStorageTests
         {
             NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.Id));
             Assert.That(persistedNode, Is.Not.Null);
-            Assert.That(persistedNode.Port, Is.EqualTo(manager.Port));
-            Assert.That(persistedNode.Host, Is.EqualTo(manager.Host));
-            Assert.That(persistedNode.Reputation, Is.EqualTo(nodeStatsManager.GetOrAdd(manager).CurrentNodeReputation()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNode.Port, Is.EqualTo(manager.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(manager.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(nodeStatsManager.GetOrAdd(manager).CurrentNodeReputation()));
+            }
         }
 
         _storage.StartBatch();
@@ -95,9 +98,12 @@ public class NetworkStorageTests
         {
             NetworkNode persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.Id));
             Assert.That(persistedNode, Is.Not.Null);
-            Assert.That(persistedNode.Port, Is.EqualTo(manager.Port));
-            Assert.That(persistedNode.Host, Is.EqualTo(manager.Host));
-            Assert.That(persistedNode.Reputation, Is.EqualTo(nodeStatsManager.GetOrAdd(manager).CurrentNodeReputation(utcNow)));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNode.Port, Is.EqualTo(manager.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(manager.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(nodeStatsManager.GetOrAdd(manager).CurrentNodeReputation(utcNow)));
+            }
         }
     }
 
@@ -127,9 +133,12 @@ public class NetworkStorageTests
         {
             NetworkNode persistedNode = persistedPeers.FirstOrDefault(x => x.NodeId.Equals(peer.NodeId));
             Assert.That(persistedNode, Is.Not.Null);
-            Assert.That(persistedNode.Port, Is.EqualTo(peer.Port));
-            Assert.That(persistedNode.Host, Is.EqualTo(peer.Host));
-            Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNode.Port, Is.EqualTo(peer.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(peer.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
+            }
         }
 
         _storage.StartBatch();
@@ -147,9 +156,12 @@ public class NetworkStorageTests
         {
             NetworkNode persistedNode = persistedPeers.FirstOrDefault(x => x.NodeId.Equals(peer.NodeId));
             Assert.That(persistedNode, Is.Not.Null);
-            Assert.That(persistedNode.Port, Is.EqualTo(peer.Port));
-            Assert.That(persistedNode.Host, Is.EqualTo(peer.Host));
-            Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(persistedNode.Port, Is.EqualTo(peer.Port));
+                Assert.That(persistedNode.Host, Is.EqualTo(peer.Host));
+                Assert.That(persistedNode.Reputation, Is.EqualTo(peer.Reputation));
+            }
         }
     }
 

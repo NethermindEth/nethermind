@@ -94,7 +94,7 @@ namespace Nethermind.Core.Crypto
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Hash256 EmptyTreeHash = new(ValueKeccak.EmptyTreeHash);
+        public static readonly Hash256 EmptyTreeHash = new(ValueKeccak.EmptyTreeHash);
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>

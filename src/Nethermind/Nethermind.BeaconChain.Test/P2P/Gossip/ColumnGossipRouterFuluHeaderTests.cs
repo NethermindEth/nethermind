@@ -224,7 +224,7 @@ public class ColumnGossipRouterFuluHeaderTests
     // fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column of a subscribed subnet is sent to its mesh, so an equal gossip copy is a duplicate.
     // A failed send must not mark it, or the gossip copy, the only other way this node relays the column, would be dropped too.
     [Test]
-    public void A_reconstructed_column_is_published_once_and_an_equal_gossip_copy_is_forwarded_only_when_the_publish_failed([Values] bool publishFails)
+    public async Task A_reconstructed_column_is_published_once_and_an_equal_gossip_copy_is_forwarded_only_when_the_publish_failed([Values] bool publishFails)
     {
         const ulong reconstructedColumn = Eip7594DasConstants.RequiredColumnsForReconstruction;
         Dictionary<string, SilentTopic> topics = [];
@@ -235,6 +235,7 @@ public class ColumnGossipRouterFuluHeaderTests
             .Select(i => router.Handle((ulong)i, gloasTopic: false, Message(DataColumnSidecarTestFixture.BuildValidSidecar((ulong)i, CurrentSlot))))];
         long batchesBefore = router.KzgBatchCount;
         DataColumnSidecar honest = DataColumnSidecarTestFixture.BuildValidSidecar(reconstructedColumn, CurrentSlot);
+        await router.WhenReconstructed().WaitAsync(TimeSpan.FromSeconds(30));
         bool reconstructed = pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), reconstructedColumn, out _);
         string reconstructedTopic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.DataColumnSidecarTopicName(reconstructedColumn));
 
@@ -882,6 +883,24 @@ public class ColumnGossipRouterFuluHeaderTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the other proposer's queued column survives the flood");
         Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(ColumnGossipRouter.ParkedColumnsPerProposer), "the retry meets exactly the flooding proposer's share of the queue");
+    }
+
+    [Test]
+    public void Parked_key_counts_follow_replacement_eviction_and_clear()
+    {
+        ColumnGossipRouter.ParkedColumnCache cache = new(2);
+        DataColumnSidecar first = new() { SignedBlockHeader = new() { Message = new() { ProposerIndex = 1 } } };
+        DataColumnSidecar second = new() { SignedBlockHeader = new() { Message = new() { ProposerIndex = 2 } } };
+        cache.Store((ParentRoot, 0), [first]);
+        cache.Store((ParentRoot, 1), [second]);
+        cache.Store((ParentRoot, 0), [first, first]);
+        Assert.That(cache.KeysOf(1), Is.EqualTo(1));
+
+        cache.Store((ParentRoot, 2), [first]);
+        Assert.That((cache.KeysOf(1), cache.KeysOf(2)), Is.EqualTo((2, 0)));
+
+        cache.Clear();
+        Assert.That(cache.KeysOf(1), Is.Zero);
     }
 
     private static byte[] UndecodableMessage => Snappy.CompressToArray([0x01, 0x02, 0x03]);

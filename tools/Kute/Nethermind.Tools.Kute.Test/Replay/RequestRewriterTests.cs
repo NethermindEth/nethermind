@@ -41,7 +41,9 @@ public class RequestRewriterTests
     {
         byte[] utf8 = Encoding.UTF8.GetBytes(request);
 
+#pragma warning disable NUnit2045 // Locating the block parameter must succeed before reading its byte range.
         Assert.That(RequestRewriter.TryLocateBlockParameter(utf8, out int start, out int length), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Encoding.UTF8.GetString(utf8, start, length), Is.EqualTo(expected));
 
     }
@@ -74,7 +76,9 @@ public class RequestRewriterTests
         // at the block parameter. Malformed bytes after it prove the rewriter never looked.
         const string request = """{"method":"eth_call","params":[{"to":"0x01"},"0x1881446",{{{ not json""";
 
+#pragma warning disable NUnit2045 // Locating the block parameter must succeed before reading its byte range.
         Assert.That(RequestRewriter.TryLocateBlockParameter(Encoding.UTF8.GetBytes(request), out int start, out int length), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(Encoding.UTF8.GetString(Encoding.UTF8.GetBytes(request), start, length), Is.EqualTo("\"0x1881446\""));
     }
 

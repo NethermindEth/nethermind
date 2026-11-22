@@ -29,8 +29,7 @@ internal sealed class MerkleChunkTree(int depth)
     private int _leafCount;
 
     /// <summary>
-    /// Resizes the leaf level to <paramref name="count"/> chunks and returns the leaf array
-    /// (longer than <paramref name="count"/> entries is never returned).
+    /// Sets the logical leaf count and returns storage with at least <paramref name="count"/> entries.
     /// </summary>
     /// <remarks>
     /// Existing leaves and interior nodes are preserved; new slots are zero. After growing, every
@@ -50,8 +49,15 @@ internal sealed class MerkleChunkTree(int depth)
             {
                 int length = LevelLength(count, level);
                 UInt256[] nodes = level < oldLevels.Length ? oldLevels[level] : [];
-                if (nodes.Length != length)
-                    Array.Resize(ref nodes, length);
+                if (nodes.Length < length)
+                {
+                    int capacity = (int)Math.Min(Array.MaxLength, Math.Max((long)length, nodes.Length + Math.Max(4L, nodes.Length / 8L)));
+                    Array.Resize(ref nodes, capacity);
+                }
+                else if (count < _leafCount)
+                {
+                    nodes.AsSpan(length).Clear();
+                }
                 _levels[level] = nodes;
             }
             _leafCount = count;

@@ -26,7 +26,7 @@ using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Discovery.Discv5.Kademlia;
 using Nethermind.Network.Discovery.Kademlia;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
 using KeyType = Nethermind.Libp2p.Core.Dto.KeyType;
@@ -443,9 +443,9 @@ public sealed class BeaconDiscovery(
             try
             {
                 RlpReader reader = new(value);
-                ssz = reader.DecodeByteArraySpan();
+                ssz = reader.ReadBytes();
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 return false;
             }
@@ -467,10 +467,10 @@ public sealed class BeaconDiscovery(
         try
         {
             RlpReader reader = new(value);
-            custodyGroupCount = reader.DecodeULong();
-            return reader.Position == value.Length;
+            custodyGroupCount = reader.ReadInteger<ulong>();
+            return reader.BytesRead == value.Length;
         }
-        catch (RlpException)
+        catch (RlpReaderException)
         {
             return false;
         }
@@ -498,9 +498,9 @@ public sealed class BeaconDiscovery(
             try
             {
                 RlpReader reader = new(value);
-                ssz = reader.DecodeByteArraySpan();
+                ssz = reader.ReadBytes();
             }
-            catch (RlpException)
+            catch (RlpReaderException)
             {
                 return false;
             }
@@ -775,7 +775,7 @@ public sealed class BeaconDiscovery(
             ? spec.Bootnodes
             : config.Bootnodes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-        List<Node> bootNodes = new(enrs.Length);
+        List<Node> bootNodes = [with(enrs.Length)];
         foreach (string enr in enrs)
         {
             try

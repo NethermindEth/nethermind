@@ -33,6 +33,122 @@ public class ForkChoiceRunnerTests
 
     private const ulong DoctoredJustifiedEpoch = 2;
 
+    public enum ConfirmedCandidate { ValidAncestor, OptimisticAncestor, OtherBranch, Unknown }
+
+    [Test]
+    public void Cached_finalized_ancestors_match_walks_across_finality_and_pruning()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray");
+        ForkChoiceStore store = RunnerField<ForkChoiceStore>(runner, "_store");
+        CheckpointRef anchor = runner.FinalizedCheckpoint;
+        List<Hash256> roots = [chain.AnchorRoot];
+        for (ulong slot = 1; slot <= 128; slot++)
+        {
+            Hash256 root = TestHashes.GetRoot(slot);
+            tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(slot, root, roots[^1], anchor, anchor, ExecutionStatus.Optimistic, root), 128, anchor, anchor);
+            roots.Add(root);
+        }
+
+        for (ulong slot = 33; slot <= 128; slot++)
+        {
+            Hash256 root = TestHashes.GetRoot(256 + slot);
+            Hash256 parent = slot == 33 ? roots[16] : roots[^1];
+            tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(slot, root, parent, anchor, anchor, ExecutionStatus.Optimistic, root), 128, anchor, anchor);
+            roots.Add(root);
+        }
+
+        foreach (ulong epoch in (ReadOnlySpan<ulong>)[0, 1, 2])
+        {
+            CheckpointRef finalized = new(epoch, roots[(int)(epoch * chain.Spec.SlotsPerEpoch)]);
+            store.UpdateCheckpoints(finalized, finalized);
+            AssertAncestors();
+        }
+
+        tree.PruneThreshold = 0;
+        runner.Prune();
+        AssertAncestors();
+
+        void AssertAncestors()
+        {
+            for (int i = roots.Count - 1; i >= 0; i--)
+            {
+                Hash256? expected = tree.GetAncestor(roots[i], runner.FinalizedCheckpoint.Epoch * chain.Spec.SlotsPerEpoch);
+                Assert.That(runner.GetFinalizedCheckpointBlock(roots[i]), Is.EqualTo(expected), $"root {i}, finality {runner.FinalizedCheckpoint}");
+                Assert.That(runner.GetFinalizedCheckpointBlock(roots[i]), Is.EqualTo(expected), "cached result");
+            }
+        }
+    }
+
+    [Test]
+    public void Unknown_finalized_ancestor_can_become_known()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray");
+        Hash256 root = TestHashes.GetRoot(1);
+        Assert.That(runner.GetFinalizedCheckpointBlock(root), Is.Null);
+        CheckpointRef anchor = runner.FinalizedCheckpoint;
+        tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(1, root, chain.AnchorRoot, anchor, anchor, ExecutionStatus.Optimistic, root), 1, anchor, anchor);
+        Assert.That(runner.GetFinalizedCheckpointBlock(root), Is.EqualTo(chain.AnchorRoot));
+    }
+
+    [Test]
+    public void Finalized_ancestor_cache_work_is_linear_across_chain_extensions()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        ProtoArrayForkChoice tree = RunnerField<ProtoArrayForkChoice>(runner, "_protoArray");
+        AncestryLookupCounter counter = new();
+        Dictionary<Hash256, Hash256?> cache = [with(counter)];
+        typeof(ForkChoiceRunner).GetField("_finalizedAncestors", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.SetValue(runner, cache);
+        CheckpointRef anchor = runner.FinalizedCheckpoint;
+        Hash256 parent = chain.AnchorRoot;
+        const int blocks = 4096;
+        for (ulong slot = 1; slot <= blocks; slot++)
+        {
+            Hash256 root = TestHashes.GetRoot(slot);
+            tree.ProcessBlock(ProtoArrayTestBlocks.CreateProtoBlock(slot, root, parent, anchor, anchor, ExecutionStatus.Optimistic, root), blocks, anchor, anchor);
+            Assert.That(runner.GetFinalizedCheckpointBlock(root), Is.EqualTo(chain.AnchorRoot));
+            parent = root;
+        }
+
+        Assert.That(counter.HashCalls, Is.LessThanOrEqualTo(5 * blocks), "one cached parent lookup per extension instead of walking to the anchor");
+        TestContext.Out.WriteLine($"{blocks} extensions: {counter.HashCalls} ancestry cache key hashes");
+    }
+
+    private static T RunnerField<T>(ForkChoiceRunner runner, string name) =>
+        (T)typeof(ForkChoiceRunner).GetField(name, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(runner)!;
+
+    private sealed class AncestryLookupCounter : IEqualityComparer<Hash256>
+    {
+        public int HashCalls { get; private set; }
+        public bool Equals(Hash256? x, Hash256? y) => x == y;
+        public int GetHashCode(Hash256 value)
+        {
+            HashCalls++;
+            return value.GetHashCode();
+        }
+    }
+
+    [Test]
+    public void Safe_confirmation_requires_a_valid_ancestor_of_the_head([Values] ConfirmedCandidate candidate)
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        TickToSlot(runner, 2);
+        UnsignedChain.ChainBlock first = chain.Extend(chain.AnchorRoot, 1, 0x81);
+        UnsignedChain.ChainBlock child = chain.Extend(first.Root, 2, 0x82);
+        UnsignedChain.ChainBlock fork = chain.Extend(chain.AnchorRoot, 2, 0x83);
+        runner.OnBlock(first.Block, first.PostState, candidate == ConfirmedCandidate.OptimisticAncestor ? ExecutionStatus.Optimistic : ExecutionStatus.Valid,
+            (IReadOnlyList<DataColumnSidecar>?)null);
+        runner.OnBlock(child.Block, child.PostState, ExecutionStatus.Optimistic, (IReadOnlyList<DataColumnSidecar>?)null);
+        runner.OnBlock(fork.Block, fork.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        Hash256 confirmed = candidate == ConfirmedCandidate.OtherBranch ? fork.Root
+            : candidate == ConfirmedCandidate.Unknown ? Keccak.Compute("unknown confirmation") : first.Root;
+        typeof(FastConfirmation).GetProperty(nameof(FastConfirmation.ConfirmedRoot), System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(runner.FastConfirmation, confirmed);
+
+        Assert.That(runner.GetConfirmedRoot(child.Root), Is.EqualTo(candidate == ConfirmedCandidate.ValidAncestor ? first.Root : runner.FinalizedCheckpoint.Root));
+    }
+
     [Test]
     public void Fast_confirmation_observes_a_slot_only_once()
     {
@@ -1048,8 +1164,11 @@ public class ForkChoiceRunnerTests
             ? () => runner.OnAttesterSlashing(new AttesterSlashing { Attestation1 = ToFuluIndexed(attestation1), Attestation2 = ToFuluIndexed(attestation2) })
             : () => runner.OnAttesterSlashing(new AttesterSlashingGloas { Attestation1 = attestation1, Attestation2 = attestation2 });
 
-        Assert.That(chain.Committee32, Has.Length.EqualTo((int)CommitteeSize), "fixture bug");
-        Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Committee32, Has.Length.EqualTo((int)CommitteeSize), "fixture bug");
+            Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+        }
         if (forged)
             Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("attestation 2 is invalid"));
         else
@@ -1076,8 +1195,11 @@ public class ForkChoiceRunnerTests
             Attestation2 = SignedUnder(domain, GloasTestFixtures.Vote(GloasTestFixtures.BoundarySlot, 0, ForkCrossingChain.ForkEpoch, 0x41), signers),
         };
 
-        Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.AnchorRoot)), "fixture bug");
-        Assert.That(blockStateDomain, Is.Not.EqualTo(checkpointStateDomain), "fixture bug: the two states must sign under different fork versions");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, chain.AnchorRoot)), "fixture bug");
+            Assert.That(blockStateDomain, Is.Not.EqualTo(checkpointStateDomain), "fixture bug: the two states must sign under different fork versions");
+        }
         if (signedUnderBlockStateFork)
             Assert.That(() => runner.OnAttesterSlashing(slashing), Throws.Nothing);
         else
@@ -1164,9 +1286,12 @@ public class ForkChoiceRunnerTests
                 Attestation2 = new IndexedAttestationGloas { AttestingIndices = invalid, Data = vote2 },
             }, verifySignatures: false);
 
-        Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
-        Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
-        Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(weightBefore), "a refused slashing discounts nobody");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.JustifiedCheckpoint.Root, Is.EqualTo(chain.First.Root), "fixture bug");
+            Assert.That(slash, Throws.TypeOf<ForkChoiceException>().With.Message.Contains("invalid"));
+            Assert.That(Weight(runner, chain.First.Root), Is.EqualTo(weightBefore), "a refused slashing discounts nobody");
+        }
     }
 
     [Test]
@@ -1523,13 +1648,35 @@ public class ForkChoiceRunnerTests
         runner.OnBlock(sameProposal.Block, sameProposal.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
         runner.Prune();
 
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
-        Assert.That(fork.Block.Message!.ProposerIndex, Is.EqualTo(sameProposal.Block.Message!.ProposerIndex), "fixture bug");
-        Assert.That(atFinalizedSlot.Block.Message!.ProposerIndex, Is.EqualTo(finalized.Block.Message!.ProposerIndex), "fixture bug");
-        Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
-        Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
-        Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ContainsBlock(fork.Root), Is.False, "fixture bug: the proto-array must have pruned the fork block");
+            Assert.That(fork.Block.Message!.ProposerIndex, Is.EqualTo(sameProposal.Block.Message!.ProposerIndex), "fixture bug");
+            Assert.That(atFinalizedSlot.Block.Message!.ProposerIndex, Is.EqualTo(finalized.Block.Message!.ProposerIndex), "fixture bug");
+            Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.True, "slot 289 is after the finalized slot");
+            Assert.That(runner.IsProposerEquivocation(finalized.Root), Is.False, "the rival at the finalized slot 288 is dropped");
+            Assert.That(runner.IsProposerEquivocation(finalizing.Root), Is.False, "a unique proposal is no equivocation");
+            Assert.That(runner.IsProposerEquivocation(atFinalizedSlot.Root), Is.False, "the removed root has no retained proposal");
+        }
+
+        ulong nextFinalizedSlot = FinalizedSlot + Presets.SlotsPerEpoch;
+        TickToSlot(runner, nextFinalizedSlot + 1);
+        UnsignedChain.ChainBlock nextFinalized = chain.Extend(finalizing.Root, nextFinalizedSlot, payloadHashByte: 0xf6);
+        runner.OnBlock(nextFinalized.Block, nextFinalized.PostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        UnsignedChain.ChainBlock nextFinalizing = chain.Extend(nextFinalized.Root, nextFinalizedSlot + 1, payloadHashByte: 0xf7);
+        BeaconStateFulu nextPostState = nextFinalizing.PostState.Clone();
+        nextPostState.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = FinalizedEpoch + 1, Root = nextFinalized.Root };
+        nextPostState.FinalizedCheckpoint = new Checkpoint { Epoch = FinalizedEpoch + 1, Root = nextFinalized.Root };
+        runner.OnBlock(nextFinalizing.Block, nextPostState, ExecutionStatus.Valid, (IReadOnlyList<DataColumnSidecar>?)null);
+        Assert.That(runner.FinalizedCheckpoint, Is.EqualTo(new CheckpointRef(FinalizedEpoch + 1, nextFinalized.Root)));
+        runner.Prune();
+        runner.Prune();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runner.ContainsBlock(sameProposal.Root), Is.True, "the tree has not reached its next pruning threshold");
+            Assert.That(runner.IsProposerEquivocation(sameProposal.Root), Is.False, "finality has now passed the retained rival's slot");
+            Assert.That(runner.IsProposerEquivocation(fork.Root), Is.False, "the off-chain proposal record has been removed");
+        }
     }
 
     private static ForkChoiceRunner FinalizedOnFirstGloasBlock(ForkCrossingChain chain)

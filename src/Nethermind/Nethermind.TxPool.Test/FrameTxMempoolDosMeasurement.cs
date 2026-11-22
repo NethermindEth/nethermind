@@ -169,6 +169,11 @@ public class FrameTxMempoolDosMeasurement
     {
         foreach (ulong ceiling in SweptCeilings)
         {
+            if (ceiling < Eip8141Constants.MaxVerifyGas)
+            {
+                continue;
+            }
+
             yield return new TestCaseData(ceiling);
         }
     }
@@ -198,7 +203,7 @@ public class FrameTxMempoolDosMeasurement
         _logManager = LimboLogs.Instance;
         _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId);
-        _simulateMicros = new List<double>(Warmup + Samples + 1);
+        _simulateMicros = [with(Warmup + Samples + 1)];
         _frameExecutionGasLimit = VerifyGas;
         _frameCalldataPrefix = [];
         _frameSignatures = [];
@@ -321,7 +326,7 @@ public class FrameTxMempoolDosMeasurement
             "one simulation per submission is what makes the two spans comparable");
 
         // Samples are paired, so subtraction gives the non-EVM cost for each submission.
-        List<double> nonEvmMicros = new(Samples);
+        List<double> nonEvmMicros = [with(Samples)];
         for (int i = 0; i < Samples; i++) nonEvmMicros.Add(submitMicros[i] - _simulateMicros[i]);
 
         List<double> simulateMicros = [.. _simulateMicros];
@@ -363,7 +368,7 @@ public class FrameTxMempoolDosMeasurement
     private List<double> TimeSamples(
         Transaction[] samples, Func<AcceptTxResult, bool> isExpected, Func<int, AcceptTxResult, string> describeFailure)
     {
-        List<double> submitMicros = new(samples.Length);
+        List<double> submitMicros = [with(samples.Length)];
         for (int i = 0; i < samples.Length; i++)
         {
             long start = Stopwatch.GetTimestamp();
@@ -427,16 +432,20 @@ public class FrameTxMempoolDosMeasurement
 
         long gasRefusalsBefore = Metrics.PendingTransactionsFrameTxVerifyGasTooHigh;
         _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count + 1);
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
             Is.EqualTo(AcceptTxResult.FrameTxVerifyGasTooHigh),
             $"{count + 1} entries declare more than {ceiling} and must be refused by the declared-gas gate; "
             + "if they are not, the pool is not enforcing the ceiling this row claims");
+#pragma warning restore NUnit2045
         Assert.That(Metrics.PendingTransactionsFrameTxVerifyGasTooHigh, Is.EqualTo(gasRefusalsBefore + 1));
         _frameSignatures = FrameTxTestFrames.RecoveredSecp256k1Signatures(_ethereumEcdsa, count);
 
         long signatureFailuresBefore = Metrics.PendingTransactionsFrameTxSignatureInvalid;
+#pragma warning disable NUnit2045 // Keep transaction admission and its dependent pool state or subsequent admissions fail-fast.
         Assert.That(_txPool.SubmitTx(FrameTx(0), TxHandlingOptions.None),
             Is.Not.EqualTo(AcceptTxResult.Accepted), "the probe was admitted");
+#pragma warning restore NUnit2045
         Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(signatureFailuresBefore + 1),
             "the refusal must come from the signature filter, or this measures a cheaper upstream one");
         Assert.That(_simulateMicros, Is.Empty,
@@ -450,10 +459,13 @@ public class FrameTxMempoolDosMeasurement
             result => result != AcceptTxResult.Accepted,
             (i, _) => $"sample {i} was admitted");
 
-        Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid,
-            Is.EqualTo(sampledFailuresBefore + Samples),
-            "every timed submission must have been refused by the signature filter");
-        Assert.That(_simulateMicros, Is.Empty, "the EVM must not run for any sample");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid,
+                Is.EqualTo(sampledFailuresBefore + Samples),
+                "every timed submission must have been refused by the signature filter");
+            Assert.That(_simulateMicros, Is.Empty, "the EVM must not run for any sample");
+        }
 
         submitMicros.Sort();
         double p50 = Percentile(submitMicros, 0.50);
@@ -479,7 +491,7 @@ public class FrameTxMempoolDosMeasurement
 
         for (int i = 0; i < RecoveryCalibrationSamples; i++) _ethereumEcdsa.RecoverAddress(signature, digest);
 
-        List<double> micros = new(RecoveryCalibrationSamples);
+        List<double> micros = [with(RecoveryCalibrationSamples)];
         for (int i = 0; i < RecoveryCalibrationSamples; i++)
         {
             long start = Stopwatch.GetTimestamp();
@@ -780,7 +792,7 @@ public class FrameTxMempoolDosMeasurement
         // The container registration shares the process-wide code cache; production hands the simulator its
         // own env (BlockProcessingModule) so a rolled-back deposit cannot outlive its scope.
         IReadOnlyTxProcessingEnvFactory envFactory = new AutoReadOnlyTxProcessingEnvFactory(
-            _chain.Container, _chain.WorldStateManager, _specProvider, shareCodeCache: false);
+            _chain.Container, _chain.WorldStateManager, shareCodeCache: false);
 
         AssertSeededCodeIsVisibleAtHead(envFactory, _blockTree.Head!.Header, senderCode);
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -19,6 +20,25 @@ internal sealed class DifferentialBeaconStateHasher(IBeaconStateHasher increment
 
     public Hash256 HashTreeRoot(BeaconStateGloas state) =>
         Compare(state.Slot, full.HashTreeRoot(state), incremental.HashTreeRoot(state));
+
+    internal static void CheckTrackedOperation(BeaconStateFulu state, EpochCache cache, Action apply)
+    {
+        CachedBeaconStateHasher tracked = new();
+        cache.Hasher = tracked;
+        tracked.HashTreeRoot(state);
+        // Operation fixtures start immediately before the operation, after any slot or epoch processing.
+        tracked.RecordSlotBaseline(state);
+        state.BlockChanges = new();
+        try
+        {
+            apply();
+            Compare(state.Slot, FuluDriverSupport.StateRoot(state), tracked.HashTreeRootAfterBlock(state));
+        }
+        finally
+        {
+            tracked.EndBlock(state);
+        }
+    }
 
     private static Hash256 Compare(ulong slot, Hash256 fullRoot, Hash256 incrementalRoot) =>
         fullRoot == incrementalRoot

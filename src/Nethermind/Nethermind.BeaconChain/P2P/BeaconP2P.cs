@@ -117,8 +117,9 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton<PeerStore>()
             .AddSingleton(new StatusProtocolV1(statusSource) { RequestViolationSink = ReportRequestViolation, RequestServed = OnStatusServed })
             .AddSingleton(new StatusProtocolV2(statusSource) { RequestViolationSink = ReportRequestViolation, RequestServed = OnStatusServed })
-            .AddSingleton(new GoodbyeProtocol { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new GoodbyeProtocol { RequestViolationSink = ReportRequestViolation, RequestServed = OnGoodbyeServed })
             .AddSingleton(new Eth2PingProtocol(metadataSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new MetaDataProtocolV2(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new MetaDataProtocolV3(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new LightClientBootstrapProtocol(spec) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new LightClientUpdatesByRangeProtocol(spec) { RequestViolationSink = ReportRequestViolation })
@@ -141,12 +142,21 @@ public sealed class BeaconP2P : IAsyncDisposable
                         .AddProtocol<LightClientUpdatesByRangeProtocol>(isExposed: false)
                         .AddProtocol<LightClientFinalityUpdateProtocol>(isExposed: false)
                         .AddProtocol<LightClientOptimisticUpdateProtocol>(isExposed: false);
+                // Zero-custody light clients avoid Lighthouse's metadata v3 rejection:
+                // https://github.com/sigp/lighthouse/blob/v8.3.3/beacon_node/lighthouse_network/src/peer_manager/mod.rs#L1559-L1571
+                builder.AddProtocolFactory(sp => new ProtocolRef(sp.GetRequiredService<MetaDataProtocolV2>(), isExposed: lightClientRequests)
+                {
+                    AcceptInbound = lightClientRequests,
+                });
+                builder.AddProtocolFactory(sp => new ProtocolRef(sp.GetRequiredService<MetaDataProtocolV3>(), isExposed: !lightClientRequests)
+                {
+                    AcceptInbound = !lightClientRequests,
+                });
                 return builder.WithPubsub()
                 .AddProtocol<StatusProtocolV1>()
                 .AddProtocol<StatusProtocolV2>()
                 .AddProtocol<GoodbyeProtocol>()
                 .AddProtocol<Eth2PingProtocol>()
-                .AddProtocol<MetaDataProtocolV3>()
                 .AddProtocol<BeaconBlocksByRangeProtocolV2>()
                 .AddProtocol<BeaconBlocksByRootProtocolV2>()
                 .AddProtocol<BeaconBlocksByHeadProtocolV1>()
@@ -190,8 +200,8 @@ public sealed class BeaconP2P : IAsyncDisposable
                 MaxSeenMessageIds = MaxSeenMessageIds(spec),
                 // phase0 p2p "Gossipsub size limits": an encoded RPC, an IWANT answer included, may reach max_message_size().
                 MaxRpcBytes = Eth2MessageId.MaxMessageSize,
+                MaxOutboundRpcBytesPerPeer = 2L * Eth2MessageId.MaxMessageSize,
                 MaxIwantResponseBytes = Eth2MessageId.MaxMessageSize,
-                MaxOutboundRpcBytesPerPeer = Eth2MessageId.MaxMessageSize + 5L,
                 // The router would redial closed gossip peers past PeerManager's bans, band and backoff; PeerManager owns redials.
                 ReconnectionAttempts = 0,
                 // fulu/das-core.md "Reconstruction and cross-seeding": this node publishes only reconstructed columns, which go to the topic mesh neighbors.
@@ -273,6 +283,11 @@ public sealed class BeaconP2P : IAsyncDisposable
     private void OnStatusServed(PeerId peerId, StatusMessageV2 status)
     {
         if (_peerPool?.Value is PeerManager manager) manager.OnInboundStatus(peerId, status);
+    }
+
+    private void OnGoodbyeServed(PeerId peerId, Uint64Request request)
+    {
+        if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peerId} sent goodbye reason {request.Value}");
     }
 
     /// <summary>Records a protocol violation by an inbound requester against the peer's failure count, when the peer is connected.</summary>

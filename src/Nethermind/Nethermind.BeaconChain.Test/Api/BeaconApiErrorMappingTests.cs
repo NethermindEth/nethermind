@@ -74,8 +74,11 @@ public class BeaconApiErrorMappingTests
         using HttpResponseMessage response = await _pipelineClient.SendAsync(request);
         string raw = await response.Content.ReadAsStringAsync();
 
-        Assert.That((int)response.StatusCode, Is.EqualTo(status), $"body: {raw}");
-        Assert.That(raw, Does.Not.Contain(UnrelatedInternalDetail), "an exception's own text must never reach the caller");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int)response.StatusCode, Is.EqualTo(status), $"body: {raw}");
+            Assert.That(raw, Does.Not.Contain(UnrelatedInternalDetail), "an exception's own text must never reach the caller");
+        }
         using JsonDocument body = JsonDocument.Parse(raw);
         Assert.That(body.RootElement.GetProperty("message").GetString(), Is.EqualTo(message));
     }

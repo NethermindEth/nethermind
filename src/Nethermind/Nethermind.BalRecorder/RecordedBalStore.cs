@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 
@@ -35,8 +36,8 @@ public class RecordedBalStore(IBalRecorderConfig config, IInitConfig initConfig,
         ReadState state = new() { Logger = _logger, BlockNumber = blockNumber };
         _store.TryRead(blockNumber, static (data, s) =>
         {
-            try { s.Value = BalDecoder.Decode(data); }
-            catch (RlpException ex) { s.Logger.Warn($"Corrupt BAL slot for block {s.BlockNumber}: {ex.Message}"); }
+            try { s.Value = BalDecoder.Decode(data, RlpBehaviors.TrustedInput); }
+            catch (RlpReaderException ex) { s.Logger.Warn($"Corrupt BAL slot for block {s.BlockNumber}: {ex.Message}"); }
         }, state);
         return state.Value;
     }

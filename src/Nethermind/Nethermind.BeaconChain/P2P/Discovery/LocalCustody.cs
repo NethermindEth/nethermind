@@ -10,9 +10,8 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 /// </summary>
 /// <remarks>
 /// Every value here is computed from <see cref="DataAvailability.CustodyGroups"/> alone (no
-/// independent constant), so the ENR <c>cgc</c> entry, the subscribed
-/// <c>data_column_sidecar_{subnet_id}</c> topics and this node's own advertised
-/// <see cref="Types.MetaDataV3.CustodyGroupCount"/> can never drift apart.
+/// independent constant). Gossip subscriptions also include the extra columns sampled by
+/// <see cref="DataAvailability.NodeColumnCustody"/> beyond the advertised custody requirement.
 /// </remarks>
 public sealed class LocalCustody
 {

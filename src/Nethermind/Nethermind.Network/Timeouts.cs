@@ -7,7 +7,6 @@ namespace Nethermind.Network
 {
     public static class Timeouts
     {
-        public static readonly TimeSpan TcpClose = TimeSpan.FromSeconds(5);
         public static readonly TimeSpan Eth = Synchronization.Timeouts.Eth;
         public static readonly TimeSpan Cleanup = Eth * 1.5;
         public static readonly TimeSpan P2PPing = TimeSpan.FromSeconds(3);

@@ -18,9 +18,13 @@ public class BoundedJsonTests
             BoundedJson.ToElement(Array.Empty<byte>());
             long before = GC.GetAllocatedBytesForCurrentThread();
             RpcException? error = Assert.Throws<RpcException>(() => BoundedJson.ToElement(value));
-            Assert.That(error!.Code, Is.EqualTo(-32005));
-            Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.LessThan(256 * 1024),
-                "Reject the hex token before renting or materializing its encoded bytes.");
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error!.Code, Is.EqualTo(-32005));
+                Assert.That(allocated, Is.LessThan(256 * 1024),
+                    "Reject the hex token before renting or materializing its encoded bytes.");
+            }
         }
         else
         {

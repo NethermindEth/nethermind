@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.BeaconChain.Spec;
@@ -24,8 +25,11 @@ public class FuluFixtureTests
         Capture capture = Fixture(network);
         using JsonDocument bootstrapJson = Read("bootstrap", network);
         using JsonDocument finalityJson = Read("finality", network);
-        Assert.That(bootstrapJson.RootElement.GetProperty("version").GetString(), Is.EqualTo("fulu"));
-        Assert.That(finalityJson.RootElement.GetProperty("version").GetString(), Is.EqualTo("fulu"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bootstrapJson.RootElement.GetProperty("version").GetString(), Is.EqualTo("fulu"));
+            Assert.That(finalityJson.RootElement.GetProperty("version").GetString(), Is.EqualTo("fulu"));
+        }
 
         LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
         LightClientFinalityUpdate finality = Finality(finalityJson.RootElement.GetProperty("data"));
@@ -35,6 +39,8 @@ public class FuluFixtureTests
         LightClientBootstrap decodedBootstrap = LightClientWireCodec.DecodeBootstrap(LightClientWireCodec.EncodeBootstrap(bootstrap, spec), spec);
         LightClientFinalityUpdate decodedFinality = LightClientWireCodec.DecodeFinality(LightClientWireCodec.EncodeFinality(finality, spec), spec);
         LightClientStore store = new(spec, capture.Checkpoint, decodedBootstrap, decodedFinality.SignatureSlot);
+        Assert.That(SszRoots.HashTreeRoot(decodedBootstrap.CurrentSyncCommittee!),
+            Is.Not.EqualTo(decodedBootstrap.CurrentSyncCommitteeBranch![0]), "the captured current and next committees must be distinct");
         store.Process(decodedFinality, decodedFinality.SignatureSlot);
 
         using (Assert.EnterMultipleScope())
@@ -43,6 +49,34 @@ public class FuluFixtureTests
             Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(capture.OptimisticSlot));
             Assert.That(store.FinalizedHeader.Execution!.BlockHash, Is.EqualTo(new Hash256(capture.ExecutionHash)));
         }
+    }
+
+    [Test]
+    public void Captured_execution_hash_proofs_validate_a_pre_Gloas_header_in_Gloas_format(
+        [Values("mainnet", "hoodi")] string network, [Values] bool tamper)
+    {
+        Capture capture = Fixture(network);
+        using JsonDocument bootstrapJson = Read("bootstrap", network);
+        // The fixture uses the Deneb ExecutionPayloadHeader field order at its pinned spec_revision.
+        // The branch starts with two zero nodes for Gloas, then five block_hash siblings and the four captured body siblings.
+        using JsonDocument proof = Read("execution-block-proof", network);
+        LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
+        LightClientHeader legacy = bootstrap.Header!;
+        Assert.That(capture.Spec.GetEpoch(legacy.Beacon!.Slot), Is.LessThan(capture.Spec.GloasForkEpoch));
+        LightClientStore store = new(capture.Spec, capture.Checkpoint, bootstrap, capture.OptimisticSlot);
+        LightClientHeader header = new()
+        {
+            Beacon = legacy.Beacon,
+            IsGloas = true,
+            ExecutionBlockHash = tamper ? Hash256.Zero : legacy.Execution!.BlockHash,
+            ExecutionBranch = Branch(proof.RootElement, "execution_branch"),
+        };
+        Action<LightClientHeader> validate = typeof(LightClientStore)
+            .GetMethod("ValidateHeader", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Action<LightClientHeader>>(store);
+
+        if (tamper) Assert.That(() => validate(header), Throws.TypeOf<InvalidDataException>());
+        else Assert.That(() => validate(header), Throws.Nothing);
     }
 
     [Test]
@@ -109,13 +143,13 @@ public class FuluFixtureTests
         LightClientStore store = new(capture.Spec, capture.Checkpoint, bootstrap, finality.SignatureSlot);
         string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
             "NethermindLightClientFixtureJournal", Guid.NewGuid().ToString("N"));
-        VerifiedConsensusJournal journal = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
+        ConsensusJournal journal = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
         try
         {
             await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
             store.Process(finality, finality.SignatureSlot);
             await journal.AppendAsync(finality, store, CancellationToken.None);
-            VerifiedConsensusJournal reader = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
+            ConsensusJournal reader = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
             LightClientStore? resumed = await reader.LoadAsync(finality.SignatureSlot, CancellationToken.None);
             Assert.That(resumed, Is.Not.Null);
             using (Assert.EnterMultipleScope())
@@ -135,6 +169,9 @@ public class FuluFixtureTests
 
     private sealed record Capture(BeaconChainSpec Spec, Hash256 Checkpoint, ulong FinalizedSlot, ulong OptimisticSlot, string ExecutionHash);
 
+    // Historical bootstrap/{root} and finality_update responses under /eth/v1/beacon/light_client.
+    // Mainnet was captured on 2026-10-08 from https://ethereum-beacon-api.publicnode.com.
+    // Hoodi was captured on 2026-10-12 from https://ethereum-hoodi-beacon-api.publicnode.com.
     private static Capture Fixture(string network) => network switch
     {
         "mainnet" => new(BeaconChainSpec.Mainnet, Checkpoint, 15384736, 15384813,

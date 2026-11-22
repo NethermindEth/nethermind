@@ -531,37 +531,31 @@ public class BeaconPeerTransportTests
     }
 
     [Test]
-    public void Healthy_gossip_suppliers_are_retained_when_request_suppliers_are_sparse([Values(2UL, 3UL)] ulong gossipLag)
+    public void First_gossip_deliverer_is_retained_while_its_update_is_fresh([Values(10UL, 11UL)] ulong gossipLag)
     {
         ManualDeadlineClock clock = new();
         clock.SetSlot(1);
         BeaconPeerTransport.PeerProviders providers = new(ConsensusTests.Spec, clock);
         BootstrapPeer[] peers = Enumerable.Range(0, 16).Select(static _ => HintPeer()).ToArray();
-        foreach (BootstrapPeer peer in peers) providers.Admit(peer, PeerDirection.Outbound);
+        foreach (BootstrapPeer peer in peers.Take(3)) providers.Admit(peer, PeerDirection.Outbound);
         clock.SetSlot(14);
-
-        for (int tick = 0; tick < 4; tick++)
+        foreach (BootstrapPeer peer in peers.Skip(3)) providers.Admit(peer, PeerDirection.Outbound);
+        foreach (BootstrapPeer peer in peers.Take(2))
         {
-            ulong current = ConsensusTests.Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
-            foreach (BootstrapPeer peer in peers.Take(2))
+            providers.RecordValidated(peer, Optimistic(13));
+            LightClientUpdate signed = ConsensusTests.Update(1, 13, 14, 1);
+            providers.RecordValidated(peer, new LightClientFinalityUpdate
             {
-                providers.RecordValidated(peer, Optimistic(current - 1));
-                LightClientUpdate signed = ConsensusTests.Update(1, current - 1, current, 1);
-                providers.RecordValidated(peer, new LightClientFinalityUpdate
-                {
-                    AttestedHeader = signed.AttestedHeader,
-                    FinalizedHeader = signed.FinalizedHeader,
-                    FinalityBranch = signed.FinalityBranch,
-                    SyncAggregate = signed.SyncAggregate,
-                    SignatureSlot = signed.SignatureSlot,
-                });
-            }
-            foreach (BootstrapPeer peer in peers.Skip(2))
-                providers.RecordGossip(new PeerId(BeaconPeerTransport.PeerProviders.Identity(peer.Id)), current - gossipLag);
-
-            Assert.That(providers.Maintain(Connected(peers)).Recycle, gossipLag == 2 ? Is.Null : Is.SameAs(peers[2]));
-            clock.Advance(TimeSpan.FromSeconds(15));
+                AttestedHeader = signed.AttestedHeader,
+                FinalizedHeader = signed.FinalizedHeader,
+                FinalityBranch = signed.FinalityBranch,
+                SyncAggregate = signed.SyncAggregate,
+                SignatureSlot = signed.SignatureSlot,
+            });
         }
+        providers.RecordGossip(new PeerId(BeaconPeerTransport.PeerProviders.Identity(peers[2].Id)), 14 - gossipLag);
+
+        Assert.That(providers.Maintain(Connected(peers)).Recycle, gossipLag == 10 ? Is.Null : Is.SameAs(peers[2]));
     }
 
     [Test]
@@ -714,8 +708,11 @@ public class BeaconPeerTransportTests
         }
         current.HeadRoot = Hash256.Zero;
         current.HeadSlot = 999;
-        Assert.That(source.CurrentStatus.HeadRoot, Is.EqualTo(SszRoots.HashTreeRoot(nextHead.Beacon!)));
-        Assert.That(source.CurrentStatus.HeadSlot, Is.EqualTo(96));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.CurrentStatus.HeadRoot, Is.EqualTo(SszRoots.HashTreeRoot(nextHead.Beacon!)));
+            Assert.That(source.CurrentStatus.HeadSlot, Is.EqualTo(96));
+        }
         clock.SetSlot(121);
         Assert.That(source.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(122));
     }
@@ -2184,7 +2181,7 @@ public class BeaconPeerTransportTests
         BeaconPeerTransport.PeerProviders providers = LearnHints(db, clock, first);
         db.Fail = failWrite;
         db.BeforeSave = () => { entered.SetResult(); release.Wait(token); };
-        Task save = Task.Run(() => providers.FlushHints());
+        Task save = Task.Run(() => providers.FlushHints(), token);
         BootstrapPeer second = sameIdentity
             ? new BootstrapPeer(ConsensusTests.Bootstrap(1, 1), first.Id.Replace("/9000/", "/9001/", StringComparison.Ordinal))
             : HintPeer();
@@ -2233,7 +2230,7 @@ public class BeaconPeerTransportTests
             providers.RecordValidated(first, ConsensusTests.Bootstrap(1, 1));
             TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
             db.BeforeSave = () => { db.BeforeSave = null; entered.SetResult(); release.Wait(token); };
-            save = Task.Run(() => providers.FlushHints());
+            save = Task.Run(() => providers.FlushHints(), token);
             typeof(BeaconPeerTransport).GetField("_peerLoop", flags)!.SetValue(transport, save);
             await Task.WhenAny(entered.Task, save).WaitAsync(token);
             if (save.IsCompleted) await save;
@@ -2261,6 +2258,41 @@ public class BeaconPeerTransportTests
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(db.Attempts, Is.EqualTo(2));
         Assert.That(requested, Is.EqualTo(new[] { second.Id, first.Id, null }), "late callbacks cannot save after shutdown");
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Bootstrap_retries_when_a_supplier_arrives_or_the_search_interval_expires(
+        [Values("waiting", "in flight", "interval")] string arrival, CancellationToken token)
+    {
+        await using BootstrapAbsenceFixture fixture = new();
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        TaskCompletionSource<LightClientBootstrap> unavailable = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        BootstrapSession? pending = arrival == "in flight" ? fixture.Add() : null;
+        if (pending is not null)
+        {
+            pending.Session.DialAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+                .Returns(call => unavailable.Task.WaitAsync(call.Arg<CancellationToken>()));
+        }
+
+        Task<LightClientBootstrap> bootstrap = fixture.BootstrapAsync(stop.Token);
+        try
+        {
+            Assert.That(fixture.Clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(pending is null ? 3 : 5)));
+            BootstrapSession supplier = fixture.Add();
+            supplier.Session.DialAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(Arg.Any<Hash256>(), Arg.Any<CancellationToken>())
+                .Returns(Task.FromResult(fixture.Bootstrap));
+            if (arrival == "interval") fixture.Clock.Expire();
+            else fixture.NotifyPeerAdmitted(supplier.Peer);
+
+            if (pending is not null) unavailable.SetException(BootstrapUnavailable());
+            Assert.That(await bootstrap.WaitAsync(token), Is.SameAs(fixture.Bootstrap));
+        }
+        finally
+        {
+            await stop.CancelAsync();
+            await ((Task)bootstrap).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
     }
 
     [Test]
@@ -2616,6 +2648,16 @@ public class BeaconPeerTransportTests
 
         internal BeaconPeerTransport.PeerRequests Requests(string field) =>
             (BeaconPeerTransport.PeerRequests)typeof(BeaconPeerTransport).GetField(field, Flags)!.GetValue(_transport)!;
+
+        internal void NotifyPeerAdmitted(IBeaconSyncPeer peer) =>
+            ((Action<IBeaconSyncPeer>)typeof(PeerManager).GetField(nameof(PeerManager.PeerAdmitted), Flags)!.GetValue(Manager)!).Invoke(peer);
+
+        internal Task<LightClientBootstrap> BootstrapAsync(CancellationToken token) =>
+            _transport.BootstrapAsync(SszRoots.HashTreeRoot(Bootstrap.Header!.Beacon!), (value, _) =>
+            {
+                ValidateBootstrap(value);
+                return Task.CompletedTask;
+            }, token);
 
         internal Task<LightClientUpdate> UpdateAsync(ulong period, Func<LightClientUpdate, CancellationToken, Task> validate, CancellationToken token) =>
             _transport.UpdateAsync(period, validate, token);

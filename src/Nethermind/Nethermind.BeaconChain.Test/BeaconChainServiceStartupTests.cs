@@ -70,8 +70,11 @@ public class BeaconChainServiceStartupTests
 
         Assert.That(async () => await service.Start(), Throws.Nothing, "a driver fault must not surface to node shutdown or exit the node");
 
-        Assert.That(source.IsCancellationRequested, Is.True);
-        Assert.That(Metrics.BeaconChainDriverStopped, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source.IsCancellationRequested, Is.True);
+            Assert.That(Metrics.BeaconChainDriverStopped, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -116,9 +119,12 @@ public class BeaconChainServiceStartupTests
 
         Assert.That(() => step.Execute(CancellationToken.None),
             Throws.InvalidOperationException.With.Message.Contains($"schema version {newer}").And.Message.Contains("delete the beaconChain database"));
-        Assert.That(logManager.Errors, Is.Empty, "the background run never started, so it read no anchor");
-        Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
-        Assert.That(version, Is.EqualTo(newer), "a refused database is not restamped");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logManager.Errors, Is.Empty, "the background run never started, so it read no anchor");
+            Assert.That(store.TryGetSchemaVersion(out uint version), Is.True);
+            Assert.That(version, Is.EqualTo(newer), "a refused database is not restamped");
+        }
     }
 
     [Test]
@@ -136,9 +142,15 @@ public class BeaconChainServiceStartupTests
         Hash256 storedUnder = GloasTestFixtures.Hash(0x5A);
         (Exception? refusal, TestErrorLogManager.Error[] errors, int pubkeys) = await ResumeAsync(gloas, nextCommittee: false, key: null, prepare: store =>
         {
-            Assert.That(store.TryGetAnchor(out Hash256? root, out ulong slot), Is.True);
-            Assert.That(store.TryGetState(root!, out byte[]? state), Is.True);
-            Assert.That(store.TryGetForkedBlock(root!, out ForkedSignedBeaconBlock? block), Is.True);
+            ulong slot;
+            byte[]? state;
+            ForkedSignedBeaconBlock? block;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(store.TryGetAnchor(out Hash256? root, out slot), Is.True);
+                Assert.That(store.TryGetState(root!, out state), Is.True);
+                Assert.That(store.TryGetForkedBlock(root!, out block), Is.True);
+            }
             store.PutState(storedUnder, state!);
             store.PutForkedBlock(storedUnder, block!);
             store.SetAnchor(storedUnder, slot);
@@ -226,8 +238,11 @@ public class BeaconChainServiceStartupTests
         using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile, WeakSubjectivityCheckpoint = $"{first.Root}:1" },
             GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
         await Assert.ThrowsAsync<IOException>(() => sync.RunAsync(CancellationToken.None));
-        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     [Test]
@@ -252,6 +267,7 @@ public class BeaconChainServiceStartupTests
         }
 
         store.SetAnchor(TestItem.KeccakA, 1);
+        Metrics.BeaconChainDriverStopped = 0;
         container.Resolve<ExternalClDetector>().OnExternalEngineCall();
         StartBeaconChain step = new(container.Resolve<BeaconChainService>(), container.Resolve<IEngineDriver>(), logManager);
 
@@ -259,6 +275,7 @@ public class BeaconChainServiceStartupTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(store.TryGetSchemaVersion(out uint version) ? version : (uint?)null, Is.EqualTo(newerSchema ? newer : null), "no rebuild and no stamp");
         Assert.That(logManager.Errors, Is.Empty, "the anchor was never read");
+        Assert.That(Metrics.BeaconChainDriverStopped, Is.EqualTo(2));
     }
 
     [Test]
@@ -623,8 +640,11 @@ public class BeaconChainServiceStartupTests
 
         await service.StopAsync().WaitAsync(TimeSpan.FromSeconds(30), token);
 
-        Assert.That(run.IsCompletedSuccessfully, Is.True);
-        Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty, "a stop is not a failure");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.IsCompletedSuccessfully, Is.True);
+            Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty, "a stop is not a failure");
+        }
     }
 
     private static async Task<(TestLogRecorder Logs, KickEngine Engine, PubkeyCache PubkeyCache)> RunFromProviderAsync(FlakyCheckpointProvider provider, TimeSpan startRetryDelay, bool waitForCache)
@@ -766,8 +786,14 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    private sealed class GatedMemDb(ReadGate gate) : MemDb
+    private sealed class GatedMemDb(ReadGate gate) : MemDb, IDb
     {
+        IEnumerable<byte[]> IDb.GetAllKeys(bool ordered)
+        {
+            gate.PassThrough();
+            return GetAllKeys(ordered);
+        }
+
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             gate.PassThrough();
@@ -788,9 +814,15 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    private sealed class OnReadMemDb : MemDb
+    private sealed class OnReadMemDb : MemDb, IDb
     {
         public Action? OnRead { get; set; }
+
+        IEnumerable<byte[]> IDb.GetAllKeys(bool ordered)
+        {
+            OnRead?.Invoke();
+            return GetAllKeys(ordered);
+        }
 
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -817,7 +849,7 @@ public class BeaconChainServiceStartupTests
             ObservedCancellation = cancellationToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(10));
             if (ObservedCancellation)
                 _cancelled.TrySetResult();
-            Release.Wait(TimeSpan.FromSeconds(30));
+            Release.Wait(TimeSpan.FromSeconds(30), CancellationToken.None);
             _ended = true;
             cancellationToken.ThrowIfCancellationRequested();
         }

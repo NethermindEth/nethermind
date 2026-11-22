@@ -7,8 +7,10 @@ internal sealed class EezHeadPublisher(IExecutionStateSource settlementSource, I
     EezSettlement settlement, Action<VerifiedHead, ulong> publish)
 {
     private EezCommittedHead? _current;
+    private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal EezCommittedHead? Current => Volatile.Read(ref _current);
+    internal Task NextHeadChange => Volatile.Read(ref _changed).Task;
 
     internal async Task<bool> UpdateAsync(VerifiedHead settlementHead, CancellationToken cancellationToken)
     {
@@ -22,8 +24,9 @@ internal sealed class EezHeadPublisher(IExecutionStateSource settlementSource, I
             || next.Head.Number == current.Head.Number && next.Head.BlockHash != current.Head.BlockHash))
             throw new InvalidDataException("Finalized EEZ settlement commitment moved away from the published rollup head.");
 
-        Volatile.Write(ref _current, next);
         publish(next.Head, next.Header.Timestamp);
+        Volatile.Write(ref _current, next);
+        Interlocked.Exchange(ref _changed, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
         return true;
     }
 }

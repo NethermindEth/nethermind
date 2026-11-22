@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using Nethermind.Db.LogIndex;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using NUnit.Framework;
@@ -94,13 +95,13 @@ public class PerTableDbConfigTests
         IDictionary<string, string> receiptsBlocks = DbOnTheRocks.ExtractOptions(
             new PerTableDbConfig(dbConfig, DbNames.Receipts, nameof(ReceiptsColumns.Blocks)).RocksDbOptions);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(ulong.Parse(receiptsBlocks["write_buffer_size"]),
                 Is.GreaterThanOrEqualTo(ulong.Parse(generic["write_buffer_size"])));
             Assert.That(int.Parse(receiptsBlocks["max_write_buffer_number"]),
                 Is.GreaterThanOrEqualTo(int.Parse(generic["max_write_buffer_number"])));
-        });
+        }
     }
 
     [Test]
@@ -110,6 +111,34 @@ public class PerTableDbConfigTests
         PerTableDbConfig config = new(new DbConfig(), DbNames.Code);
         Assert.That(config.RowCacheSize ?? 0, Is.Zero);
     }
+
+    [Test]
+    public void Trace_address_index_options_are_declared_and_resolved_for_every_column(
+        [Values(null, nameof(LogIndexColumns.Meta), nameof(LogIndexColumns.Addresses), nameof(LogIndexColumns.Topics0),
+            nameof(LogIndexColumns.Topics1), nameof(LogIndexColumns.Topics2), nameof(LogIndexColumns.Topics3))] string? column)
+    {
+        DbConfig dbConfig = new();
+        foreach (string propertyName in new[] { nameof(IRocksDbConfig.RocksDbOptions), nameof(IRocksDbConfig.AdditionalRocksDbOptions) })
+        {
+            string name = $"TraceAddressIndex{column}Db{propertyName}";
+            PropertyInfo? property = typeof(IDbConfig).GetProperty(name);
+            Assert.That(property, Is.Not.Null, $"{name} is missing in {nameof(IDbConfig)}");
+            property!.SetValue(dbConfig, "some_option=1;");
+        }
+
+        PerTableDbConfig config = new(dbConfig, "TraceAddressIndex", column);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(config.RocksDbOptions, Is.EqualTo(dbConfig.RocksDbOptions + "some_option=1;"));
+            Assert.That(config.AdditionalRocksDbOptions, Is.EqualTo(dbConfig.AdditionalRocksDbOptions + "some_option=1;"));
+        }
+    }
+
+#if DEBUG
+    [Test]
+    public void Named_databases_still_require_declared_options() =>
+        Assert.Throws<Nethermind.Core.Exceptions.InvalidConfigurationException>(() => new PerTableDbConfig(new DbConfig(), "UndeclaredPlugin"));
+#endif
 
     [Test]
     public void AllDbConfigMemberMustBeDeclaredInIDbConfig()

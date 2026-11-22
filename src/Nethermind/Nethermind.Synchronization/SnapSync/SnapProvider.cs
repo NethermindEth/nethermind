@@ -294,12 +294,18 @@ namespace Nethermind.Synchronization.SnapSync
 
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, pathWithAccount, slots, request.StartingHash, request.LimitHash, proofs);
+                // A refresh of the other half of a split storage can replace the account meanwhile, and the range has
+                // to be verified against the root its run is decided on.
+                PathWithAccount verifiedAccount = new(pathWithAccount.Path, pathWithAccount.Account);
+                ValueHash256 storageRoot = verifiedAccount.Account.StorageRoot;
+                ValueHash256 runStart = request.PrevRunRoot == storageRoot ? request.PrevRunStart : request.StartingHash ?? ValueKeccak.Zero;
+
+                (AddRangeResult result, bool moreChildrenToRight, Hash256 actualRootHash, bool isRootPersisted) = SnapProviderHelper.AddStorageRange(_trieFactory, verifiedAccount, slots, request.StartingHash, runStart, request.LimitHash, proofs);
                 if (result == AddRangeResult.OK)
                 {
                     if (moreChildrenToRight)
                     {
-                        _progressTracker.EnqueueNextSlot(request, accountIndex, slots[^1].Path, slots.Count);
+                        _progressTracker.EnqueueNextSlot(request, accountIndex, slots[^1].Path, slots.Count, storageRoot, runStart);
                     }
                     else if (accountIndex == 0 && request.Accounts.Count == 1)
                     {
@@ -308,9 +314,9 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (!moreChildrenToRight && (request.LimitHash == null || request.LimitHash == ValueKeccak.MaxValue) && !isRootPersisted)
                     {
-                        // Sometimes the stitching does not work. Likely because part of the storage is using different
-                        // pivot, sometimes the proof is in a form that we cannot cleanly verify if it should persist or not,
-                        // but also because of stitching bug. So we just force trigger healing and continue on with our lives.
+                        // The root is persisted only once every range of the storage is stitched under it, which takes
+                        // them all to be downloaded at one root without a split, so a refreshed or split storage is left
+                        // for healing.
                         _progressTracker.TrackAccountToHeal(accounts[accountIndex].Path);
                     }
 
@@ -353,11 +359,12 @@ namespace Nethermind.Synchronization.SnapSync
             ValueHash256 path = requestedPath.PathAndAccount.Path;
 
             AddRangeResult result;
-            switch (VerifyRefreshedAccount(response, request.RootHash, path, out Account? account))
+            switch (VerifyRefreshedAccount(response, request.RootHash, path, out AccountStruct account))
             {
                 case RefreshVerifyResult.Verified:
                     result = AddRangeResult.OK;
-                    requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(account!.StorageRoot);
+                    AccountStruct oldAccount = requestedPath.PathAndAccount.Account;
+                    requestedPath.PathAndAccount.Account = new AccountStruct(oldAccount.Nonce, oldAccount.Balance, account.StorageRoot, oldAccount.CodeHash);
                     // Read and reset in one step, for the same reason as above.
                     int emptyResponses = Interlocked.Exchange(ref requestedPath.PathAndAccount.EmptyStorageResponses, 0);
 
@@ -419,9 +426,9 @@ namespace Nethermind.Synchronization.SnapSync
         /// isolated, empty-backed trie - the account leaf is set from the response, not assumed to be in the proof -
         /// then extracts the verified account at <paramref name="path"/>. Nothing is written to the client state DB.
         /// </summary>
-        private RefreshVerifyResult VerifyRefreshedAccount(AccountsAndProofs response, Hash256 stateRoot, in ValueHash256 path, out Account? account)
+        private RefreshVerifyResult VerifyRefreshedAccount(AccountsAndProofs response, Hash256 stateRoot, in ValueHash256 path, out AccountStruct account)
         {
-            account = null;
+            account = default;
             IReadOnlyList<PathWithAccount> accounts = response.PathAndAccounts;
             // An empty response carries no range to verify, so the account's absence cannot be proven here -
             // retry rather than concluding (unproven) that it was deleted.
@@ -464,6 +471,7 @@ namespace Nethermind.Synchronization.SnapSync
         public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IByteArrayList codes)
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
+            int storedCodes = 0;
 
             using (IWriteBatch writeBatch = _codeDb.StartWriteBatch())
             {
@@ -474,14 +482,15 @@ namespace Nethermind.Synchronization.SnapSync
 
                     if (set.Remove(codeHash))
                     {
-                        byte[] code = codeSpan.ToArray();
-                        Interlocked.Add(ref Metrics.SnapStateSynced, code.Length);
-                        writeBatch[codeHash.Bytes] = code;
+                        Interlocked.Add(ref Metrics.SnapStateSynced, codeSpan.Length);
+                        writeBatch.PutSpan(codeHash.Bytes, codeSpan);
+                        storedCodes++;
                     }
                 }
             }
 
-            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);
+            // Not codes.Count: a response can carry unrequested or duplicate items, which are not stored and are not progress.
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, storedCodes);
 
             foreach (ValueHash256 unserved in set)
             {
@@ -489,8 +498,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public IDisposable? BeginResponse() => _progressTracker.BeginResponse();
+
         public void ReleaseRequest(SnapSyncBatch batch, bool responseHandled)
         {
+            _progressTracker.ReportRequestReleased(batch);
             if (batch.AccountRangeRequest is not null)
             {
                 // Re-offered from the progress it recorded, so the flag makes no difference here.

@@ -19,8 +19,17 @@ internal sealed class ConsensusPublisher(
     private readonly Lock _commit = new();
     private PublishedHeads _heads = new(null, null, 0);
     private TaskCompletionSource _changed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource _persistedChanged = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     internal PublishedHeads Heads => Volatile.Read(ref _heads);
+
+    internal Task NextHeadChange
+    {
+        get { lock (_commit) return _changed.Task; }
+    }
+
+    internal void NotifyPersistedHeadsChanged() =>
+        Interlocked.Exchange(ref _persistedChanged, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
 
     internal async Task<VerifiedHead> WaitForFreshLatestAsync(Func<VerifiedHead, bool> isFresh,
         Action requestRepair, CancellationToken cancellationToken)
@@ -71,6 +80,7 @@ internal sealed class ConsensusPublisher(
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                Task persistedChanged = Volatile.Read(ref _persistedChanged).Task;
                 try
                 {
                     if (finalized) await PublishFinalizedAsync(cancellationToken);
@@ -80,7 +90,7 @@ internal sealed class ConsensusPublisher(
                 {
                     reportFailure(finalized, exception);
                 }
-                await Task.Delay(TimeSpan.FromSeconds(1), clock, cancellationToken);
+                await WaitForChangeOrTickAsync(persistedChanged, cancellationToken);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
@@ -101,19 +111,26 @@ internal sealed class ConsensusPublisher(
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
 
-    private async Task WaitForChangeOrTickAsync(PublishedHeads observed, CancellationToken cancellationToken)
+    private Task WaitForChangeOrTickAsync(PublishedHeads observed, CancellationToken cancellationToken)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        using CancellationTokenSource wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Task changed;
         lock (_commit)
-            changed = ReferenceEquals(observed, _heads) ? _changed.Task.WaitAsync(wake.Token) : Task.CompletedTask;
+            changed = ReferenceEquals(observed, _heads) ? _changed.Task : Task.CompletedTask;
+        return WaitForChangeOrTickAsync(changed, cancellationToken);
+    }
+
+    private async Task WaitForChangeOrTickAsync(Task changed, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (changed.IsCompleted) return;
+        using CancellationTokenSource wake = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task signal = changed.WaitAsync(wake.Token);
         Task delay = Task.Delay(TimeSpan.FromSeconds(1), clock, wake.Token);
-        try { await Task.WhenAny(changed, delay); }
+        try { await Task.WhenAny(signal, delay); }
         finally
         {
             await wake.CancelAsync();
-            await Task.WhenAll(changed, delay).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await Task.WhenAll(signal, delay).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
     }
 

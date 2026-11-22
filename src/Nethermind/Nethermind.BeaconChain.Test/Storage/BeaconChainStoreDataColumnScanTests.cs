@@ -23,6 +23,45 @@ public class BeaconChainStoreDataColumnScanTests
     private static Hash256 RootAt(ulong slot) => Keccak.Compute($"canonical {slot}");
 
     [Test]
+    public void Scan_reads_only_indexed_slots_in_a_sparse_window()
+    {
+        using FaultyColumnsDb db = new();
+        BeaconChainStore store = new(db, Spec);
+        ulong slot = FuluStart + 10;
+        store.SetCanonicalRoot(slot, RootAt(slot));
+        int reads = 0;
+        db.BeforeCanonicalSlotRead = () => reads++;
+
+        ulong? result = store.FindIncompleteDataColumnSlot(FuluStart, slot + 10_000, null, Required, out BeaconChainStore.DataColumnShortfall shortfall);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(slot));
+        Assert.That(shortfall, Is.EqualTo(BeaconChainStore.DataColumnShortfall.BlockMissing));
+        Assert.That(reads, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void An_unreadable_canonical_index_fails_the_highest_unverified_slot([Values(0, 1)] int verified)
+    {
+        using CountingStatesColumnsDb db = new(sorted: true, BeaconChainDbColumns.BlockIndex);
+        BeaconChainStore store = new(db, Spec with { GloasForkEpoch = Spec.FuluForkEpoch });
+        ulong top = FuluStart + 50;
+        ulong highest = top - 10;
+        store.SetCanonicalRoot(highest, RootAt(highest));
+        store.SetCanonicalRoot(highest - 20, RootAt(highest - 20));
+        db.Index.BeforeReverseKeyRead = () =>
+        {
+            if (db.Index.KeysRead == verified) throw new InvalidOperationException();
+        };
+
+        ulong? result = store.FindIncompleteDataColumnSlot(FuluStart, top, null, Required, out BeaconChainStore.DataColumnShortfall shortfall);
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(result, Is.EqualTo(verified == 0 ? top : highest - 1));
+        Assert.That(shortfall, Is.EqualTo(BeaconChainStore.DataColumnShortfall.ReadFailed));
+        Assert.Throws<OperationCanceledException>(() =>
+            store.FindIncompleteDataColumnSlot(FuluStart, top, null, Required, out _, new CancellationToken(true)));
+    }
+
+    [Test]
     public void A_read_fault_fails_the_slot_it_hits_and_none_above()
     {
         FaultyColumnsDb db = new();
@@ -59,7 +98,7 @@ public class BeaconChainStoreDataColumnScanTests
     public void A_Gloas_block_needs_its_columns_only_once_its_payload_envelope_is_stored([Values] bool envelopeStored)
     {
         const ulong gloasEpoch = 500_000;
-        BeaconChainSpec spec = Spec.WithGloasForkOverride(gloasEpoch, "0x07000000");
+        BeaconChainSpec spec = Spec with { GloasForkEpoch = gloasEpoch };
         MemColumnsDb<BeaconChainDbColumns> db = new();
         BeaconChainStore store = new(db, spec);
         ulong slot = gloasEpoch * spec.SlotsPerEpoch + 5;
@@ -91,7 +130,7 @@ public class BeaconChainStoreDataColumnScanTests
             required |= UInt128.One << (i * 16 + 5);
         }
 
-        List<(ulong Slot, Hash256? Root)> canonical = new((int)slots);
+        List<(ulong Slot, Hash256? Root)> canonical = [with((int)slots)];
         byte[] slotKey = new byte[sizeof(ulong)];
         byte[] recordKey = new byte[Hash256.Size + sizeof(ulong)];
         byte[] record = new byte[9];
@@ -130,7 +169,7 @@ public class BeaconChainStoreDataColumnScanTests
         ulong first = FuluStart + 1_000_000;
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         Random random = new(42);
-        List<(ulong Slot, Hash256? Root)> canonical = new(blocks);
+        List<(ulong Slot, Hash256? Root)> canonical = [with(blocks)];
         for (ulong slot = first; slot < first + blocks; slot++)
         {
             SignedBeaconBlock block = TestChain.CreateBlock(slot, Hash256.Zero);

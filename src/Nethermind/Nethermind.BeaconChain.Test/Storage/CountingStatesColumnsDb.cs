@@ -9,15 +9,16 @@ using Nethermind.Db;
 namespace Nethermind.BeaconChain.Test.Storage;
 
 // Sorted tables support disk-like seeking; otherwise range reads must walk keys.
-internal sealed class CountingStatesColumnsDb(bool sorted) : TestColumnsDb
+internal sealed class CountingStatesColumnsDb(bool sorted, BeaconChainDbColumns indexColumn = BeaconChainDbColumns.StateSlotIndex) : TestColumnsDb
 {
     public CountingStatesDb States { get; } = new();
     public CountingStatesDb Index { get; } = sorted ? new SeekableCountingStatesDb() : new CountingStatesDb();
-    protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == BeaconChainDbColumns.StateSlotIndex ? Index : base.CreateColumn(key);
+    protected override IDb CreateColumn(BeaconChainDbColumns key) => key == BeaconChainDbColumns.States ? States : key == indexColumn ? Index : base.CreateColumn(key);
 
     internal class CountingStatesDb : MemDb, IDb
     {
         public int KeysRead { get; protected set; }
+        public Action? BeforeReverseKeyRead { get; set; }
         public void ResetCount() => KeysRead = 0;
 
         public new IEnumerable<byte[]> GetAllKeys(bool ordered = false)
@@ -45,11 +46,24 @@ internal sealed class CountingStatesColumnsDb(bool sorted) : TestColumnsDb
             return new CountingView(this, inRange);
         }
 
-        private sealed class CountingView(SeekableCountingStatesDb owner, List<KeyValuePair<byte[], byte[]>> entries) : ISortedView
+        private sealed class CountingView(SeekableCountingStatesDb owner, List<KeyValuePair<byte[], byte[]>> entries) : IReverseSortedView
         {
             private int _index = -1;
 
-            public bool StartBefore(ReadOnlySpan<byte> value) => throw new NotSupportedException();
+            public bool StartBefore(ReadOnlySpan<byte> value)
+            {
+                _index = entries.Count;
+                while (_index > 0 && entries[_index - 1].Key.AsSpan().SequenceCompareTo(value) > 0) _index--;
+                return MovePrevious();
+            }
+
+            public bool MovePrevious()
+            {
+                if (--_index < 0) return false;
+                owner.BeforeReverseKeyRead?.Invoke();
+                owner.KeysRead++;
+                return true;
+            }
 
             public bool MoveNext()
             {

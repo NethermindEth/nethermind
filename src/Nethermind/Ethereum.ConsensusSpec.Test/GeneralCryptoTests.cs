@@ -42,6 +42,7 @@ public class GeneralCryptoTests
     [Test]
     public void Every_crypto_handler_has_its_pinned_vectors()
     {
+        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(BlsCases().Count(), Is.EqualTo(20));
         Assert.That(KzgCases().GroupBy(test => test.Arguments[0]).ToDictionary(group => (string)group.Key!, group => group.Count()),
             Is.EquivalentTo(new Dictionary<string, int> { ["compute_cells"] = 11, ["compute_cells_and_kzg_proofs"] = 11, ["recover_cells_and_kzg_proofs"] = 18, ["verify_cell_kzg_proof_batch"] = 32 }));

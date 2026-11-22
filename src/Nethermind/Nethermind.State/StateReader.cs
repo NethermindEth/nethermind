@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
 
@@ -42,10 +43,31 @@ namespace Nethermind.State
             storage.Get(in index, out value, new Hash256(storageRoot));
         }
 
+        public void GetStorage(BlockHeader? baseBlock, Address address, ReadOnlySpan<UInt256> indexes, Span<UInt256> values)
+        {
+            if (!TryGetAccount(baseBlock, address, out AccountStruct account) || account.StorageRoot == Keccak.EmptyTreeHash.ValueHash256)
+            {
+                values[..indexes.Length].Clear();
+                return;
+            }
+
+            StorageTree storage = new(_trieStore.GetTrieStore(address), Keccak.EmptyTreeHash, _logManager);
+            Hash256 storageRoot = new(account.StorageRoot);
+            for (int i = 0; i < indexes.Length; i++)
+            {
+                Metrics.IncrementStorageReaderReads();
+                storage.Get(in indexes[i], out values[i], storageRoot);
+            }
+        }
+
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : _codeDb.Get(codeHash.Bytes, ReadFlags.HintCacheMiss);
 
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? header, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>
             => _state.Accept(treeVisitor, header?.StateRoot ?? Keccak.EmptyTreeHash, visitingOptions, diagnostics: diagnostics);
+
+        /// <inheritdoc/>
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? header, VisitingOptions? visitingOptions, VisitingStats? diagnostics) where TCtx : struct, INodeContext<TCtx>
+            => RunTreeVisitor(new NodeRecordVisitorAdapter<TCtx>(visitor), header, visitingOptions, diagnostics);
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => trieStore.HasRoot(baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, baseBlock?.Number ?? 0);
 

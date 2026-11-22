@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -17,8 +18,11 @@ namespace Nethermind.Evm.Test
         {
             using VmStateScope scope = CreateEvmStateScope();
             StorageCell storageCell = new(TestItem.AddressA, 1);
-            Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
-            Assert.That(scope.VmState.AccessTracker.IsCold(storageCell), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+                Assert.That(scope.VmState.AccessTracker.IsCold(storageCell), Is.True);
+            }
         }
 
         [Test]
@@ -43,8 +47,11 @@ namespace Nethermind.Evm.Test
 
             for (int i = 0; i < TestItem.Addresses.Length; i++)
             {
-                Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.Addresses[i]), Is.False);
-                Assert.That(scope.VmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)), Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(scope.VmState.AccessTracker.IsCold(TestItem.Addresses[i]), Is.False);
+                    Assert.That(scope.VmState.AccessTracker.IsCold(new StorageCell(TestItem.Addresses[i], 1)), Is.False);
+                }
             }
         }
 
@@ -117,6 +124,35 @@ namespace Nethermind.Evm.Test
             }
 
             Assert.That(parent.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.True);
+        }
+
+        [Test]
+        public void Cached_frame_restores_access_by_the_tracing_of_each_parent([Values] bool firstParentTracesAccess, [Values] bool parentsShareTrackedState)
+        {
+            VmState<EthereumGasPolicy>[] frameCache = new VmState<EthereumGasPolicy>[1];
+            VmState<EthereumGasPolicy> cachedFrame = null;
+            List<object> trackedStates = [];
+            foreach (bool tracesAccess in new[] { firstParentTracesAccess, !firstParentTracesAccess })
+            {
+                StackAccessTracker tracker = new(tracesAccess);
+                trackedStates.Add(tracker.AccessedAddresses);
+                using (VmStateScope parent = new(VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromULong(10000), ExecutionType.CALL, RentExecutionEnvironment(), in tracker, Snapshot.Empty)))
+                {
+                    using (VmStateScope child = CreateEvmStateScope(parent.VmState, frameCache))
+                    {
+                        cachedFrame ??= child.VmState;
+                        Assert.That(child.VmState, Is.SameAs(cachedFrame));
+                        child.VmState.AccessTracker.WarmUp(TestItem.AddressA);
+                    }
+
+                    Assert.That(parent.VmState.AccessTracker.IsCold(TestItem.AddressA), Is.EqualTo(!tracesAccess));
+                }
+
+                // The per-thread pool hands a disposed state to the next parent.
+                if (parentsShareTrackedState) tracker.Dispose();
+            }
+
+            Assert.That(trackedStates[1], parentsShareTrackedState ? Is.SameAs(trackedStates[0]) : Is.Not.SameAs(trackedStates[0]));
         }
 
         [Test]
@@ -240,12 +276,26 @@ namespace Nethermind.Evm.Test
                 scope.VmState.InitializeStacks(default, out EvmStack _);
             });
 
-        private static VmStateScope CreateEvmStateScope(VmState<EthereumGasPolicy> parentVmState = null) =>
+        private static VmStateScope CreateEvmStateScope(
+            VmState<EthereumGasPolicy> parentVmState = null,
+            VmState<EthereumGasPolicy>[] frameCache = null,
+            bool isTracingAccess = false) =>
             new(parentVmState is null
                 ? VmState<EthereumGasPolicy>.RentTopLevel(EthereumGasPolicy.FromULong(10000),
                     ExecutionType.CALL,
                     RentExecutionEnvironment(),
-                    new StackAccessTracker(),
+                    new StackAccessTracker(isTracingAccess),
+                    Snapshot.Empty)
+                : frameCache is not null
+                ? VmState<EthereumGasPolicy>.RentFrame(frameCache,
+                    EthereumGasPolicy.FromULong(10000),
+                    0,
+                    0,
+                    ExecutionType.CALL,
+                    false,
+                    false,
+                    RentExecutionEnvironment(),
+                    parentVmState.AccessTracker,
                     Snapshot.Empty)
                 : VmState<EthereumGasPolicy>.RentFrame(EthereumGasPolicy.FromULong(10000),
                     0,

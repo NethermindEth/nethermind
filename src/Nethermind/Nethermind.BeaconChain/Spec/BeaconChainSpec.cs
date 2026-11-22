@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
 
 namespace Nethermind.BeaconChain.Spec;
 
@@ -52,7 +53,7 @@ public partial record BeaconChainSpec
 
     /// <summary>
     /// The execution-layer chain id this spec was selected for (<c>0</c> for ad hoc specs built
-    /// outside <see cref="ForChainId"/>, e.g. in tests).
+    /// outside <see cref="ForExecution"/>, e.g. in tests).
     /// </summary>
     public ulong ChainId { get; init; }
     /// <summary>Default checkpoint-sync provider for this network, used when no override is configured.</summary>
@@ -87,7 +88,7 @@ public partial record BeaconChainSpec
     /// This and <see cref="ForkAtEpoch"/> read different fields, so a spec whose scalar fork epochs
     /// disagree with its <see cref="Forks"/> entries would compute a digest for one fork while
     /// processing state as another, and silently lose every peer at the boundary. The shipped specs
-    /// are held consistent by a test rather than by construction.
+    /// are consistent by construction in <see cref="ForExecution"/>; a copy made with <c>with</c> is not checked.
     /// </remarks>
     public byte[] VersionForEpoch(ulong epoch)
     {
@@ -138,187 +139,144 @@ public partial record BeaconChainSpec
         return scheduled ?? new BlobScheduleEntry(ElectraForkEpoch, MaxBlobsPerBlockElectra);
     }
 
-    public static BeaconChainSpec Mainnet { get; } = new()
+    public static BeaconChainSpec Mainnet { get; } = ForExecution(MainnetSpecProvider.Instance);
+    public static BeaconChainSpec Hoodi { get; } = ForExecution(HoodiSpecProvider.Instance);
+    public static BeaconChainSpec Sepolia { get; } = ForExecution(SepoliaSpecProvider.Instance);
+    public static BeaconChainSpec Gnosis { get; } = ForExecution(GnosisSpecProvider.Instance);
+    public static BeaconChainSpec Chiado { get; } = ForExecution(ChiadoSpecProvider.Instance);
+
+    /// <summary>The spec of the network <paramref name="execution"/> follows, with its fork timing read from that execution schedule.</summary>
+    /// <remarks>
+    /// <para>
+    /// The fork versions, slot timing, the Altair and Bellatrix epochs and the bootnodes come from the
+    /// built-in network definition. The genesis time comes from the chainspec's <c>beaconChainGenesisTimestamp</c>.
+    /// Each later fork activates at the epoch of the execution fork that ships with it: Capella with Shanghai
+    /// (EIP-4895), Deneb with Cancun (EIP-4844), Electra with Prague (EIP-7002), Fulu with Osaka (EIP-7594) and
+    /// Gloas with Amsterdam (EIP-7928).
+    /// </para>
+    /// <para>
+    /// Each execution fork from Osaka on that changes the blob parameters adds an EIP-7892 blob schedule entry, and so
+    /// does each later blob-parameter-only fork in <paramref name="blobScheduleTimestamps"/> even when it repeats the
+    /// previous parameters, since the fork digest hashes the entry's epoch. Any other later execution fork changes nothing
+    /// the beacon chain uses (for example a Gnosis bytecode rewrite) and is ignored. Timestamps above
+    /// <see cref="Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp"/> are the execution layer's placeholders for
+    /// unscheduled forks and are ignored.
+    /// </para>
+    /// </remarks>
+    /// <param name="execution">The execution-layer fork schedule; its chain id selects the network.</param>
+    /// <param name="gloasForkVersion"><c>BeaconChain.GloasForkVersion</c>: the Gloas version as 4 bytes of hex, or
+    /// <c>null</c> for the network's published one.</param>
+    /// <param name="blobScheduleTimestamps">The activation timestamps of the chainspec's <c>blobSchedule</c> entries, or
+    /// <c>null</c> to infer blob-parameter-only forks from parameter changes alone.</param>
+    /// <exception cref="UnsupportedBeaconNetworkException">The chain id is not a supported network.</exception>
+    /// <exception cref="InvalidConfigurationException">The execution schedule has no beacon genesis time, activates a
+    /// fork off an epoch boundary or out of order, changes blob parameters between Prague and Osaka, or schedules
+    /// Amsterdam without a usable Gloas fork version.</exception>
+    public static BeaconChainSpec ForExecution(ISpecProvider execution, string? gloasForkVersion = null, IEnumerable<ulong>? blobScheduleTimestamps = null)
     {
-        ChainId = BlockchainIds.Mainnet,
-        CheckpointSyncUrl = "https://mainnet.checkpoint.sigp.io",
-        Bootnodes = MainnetBootnodes.Enrs,
-        SecondsPerSlot = 12,
-        SlotsPerEpoch = 32,
-        GenesisTime = 1606824023,
-        GenesisValidatorsRoot = new Hash256(Bytes.FromHexString("0x4b363db94e286120d76eb905340fdd4e54bfe9f06bf33ff6cf5ad27f511bfe95")),
-        Forks =
-        [
-            new(Bytes.FromHexString("0x00000000"), 0), // phase0
-            new(Bytes.FromHexString("0x01000000"), 74240), // altair
-            new(Bytes.FromHexString("0x02000000"), 144896), // bellatrix
-            new(Bytes.FromHexString("0x03000000"), 194048), // capella
-            new(Bytes.FromHexString("0x04000000"), 269568), // deneb
-            new(Bytes.FromHexString("0x05000000"), 364032), // electra
-            new(Bytes.FromHexString("0x06000000"), 411392), // fulu
-        ],
-        BlobSchedule =
-        [
-            new(412672, 15), // BPO1
-            new(419072, 21), // BPO2
-        ],
-        ElectraForkEpoch = 364032,
-        FuluForkEpoch = 411392,
-        MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = Presets.FarFutureEpoch, // not yet scheduled on mainnet as of 2026-09-19
-        GloasForkVersion = Bytes.FromHexString("0x07000000"), // specs/gloas/fork.md GLOAS_FORK_VERSION; meaningless while unscheduled
-    };
+        BeaconNetwork network = BeaconNetwork.ForChainId(execution.ChainId);
+        ulong genesisTime = execution.BeaconChainGenesisTimestamp
+            ?? throw Conflict("The execution chainspec has no beaconChainGenesisTimestamp; the beacon chain fork schedule is derived from it.");
+        ulong epochSeconds = network.SecondsPerSlot * network.SlotsPerEpoch;
 
-    public static BeaconChainSpec Hoodi { get; } = new()
-    {
-        ChainId = BlockchainIds.Hoodi,
-        CheckpointSyncUrl = "https://checkpoint-sync.hoodi.ethpandaops.io",
-        Bootnodes = HoodiBootnodes.Enrs,
-        SecondsPerSlot = 12,
-        SlotsPerEpoch = 32,
-        GenesisTime = 1742213400,
-        GenesisValidatorsRoot = new Hash256(Bytes.FromHexString("0x212f13fc4df078b6cb7db228f1c8307566dcecf900867401a92023d7ba99cb5f")),
-        Forks =
-        [
-            new(Bytes.FromHexString("0x10000910"), 0), // phase0
-            new(Bytes.FromHexString("0x20000910"), 0), // altair
-            new(Bytes.FromHexString("0x30000910"), 0), // bellatrix
-            new(Bytes.FromHexString("0x40000910"), 0), // capella
-            new(Bytes.FromHexString("0x50000910"), 0), // deneb
-            new(Bytes.FromHexString("0x60000910"), 2048), // electra
-            new(Bytes.FromHexString("0x70000910"), 50688), // fulu
-        ],
-        BlobSchedule =
-        [
-            new(52480, 15), // BPO1
-            new(54016, 21), // BPO2
-        ],
-        ElectraForkEpoch = 2048,
-        FuluForkEpoch = 50688,
-        MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = Presets.FarFutureEpoch, // eth-clients/hoodi unscheduled Gloas on 2026-10-22
-        GloasForkVersion = Bytes.FromHexString("0x07000000"),
-    };
+        // Forks at or before the execution genesis are not transitions, so timestamp 0 stands in for them.
+        ulong[] timestamps = [.. execution.TransitionActivations
+            .Select(static activation => activation.Timestamp ?? 0)
+            .Where(static timestamp => timestamp <= Core.Specs.SpecProviderExtensions.LastScheduledForkTimestamp)
+            .Append(0ul)
+            .Distinct()
+            .Order()];
+        IReleaseSpec[] specs = [.. timestamps.Select(timestamp => execution.GetSpec(long.MaxValue - 1, timestamp))];
 
-    /// <summary>
-    /// Sepolia activates Glamsterdam (consensus fork Gloas) at epoch 353024 (2026-10-06). Every value
-    /// below is from the <c>eth-clients/sepolia</c> network config as of 2026-09-22:
-    /// <list type="bullet">
-    /// <item>ChainId, GenesisTime, GenesisValidatorsRoot, GenesisForkVersion, and the Phase0-through-Fulu
-    /// fork schedule: <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c>, cross-checked live against
-    /// a public beacon node's <c>/eth/v1/beacon/genesis</c> and <c>/eth/v1/config/fork_schedule</c>.</item>
-    /// <item><see cref="GloasForkVersion"/> (0x90000076) and <see cref="GloasForkEpoch"/> (353024):
-    /// <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c> (<c>GLOAS_FORK_VERSION</c> and
-    /// <c>GLOAS_FORK_EPOCH</c>, merged 2026-09-22 in eth-clients/sepolia PR #126). The epoch also matches
-    /// ethereum/pm PR #2205 (merged 2026-09-15, the cross-client activation-time proposal) and the
-    /// EIP-7773 activation table (ethereum/EIPs PR #12355, merged 2026-09-17).</item>
-    /// <item><see cref="BlobSchedule"/> (BPO1 274176/15, BPO2 275712/21) and
-    /// <see cref="MaxBlobsPerBlockElectra"/> (9): <c>eth-clients/sepolia</c> <c>metadata/config.yaml</c>
-    /// (<c>BLOB_SCHEDULE</c> and <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c>).</item>
-    /// <item>Bootnode ENRs (<see cref="P2P.Discovery.SepoliaBootnodes"/>): <c>eth-clients/sepolia</c>
-    /// <c>metadata/bootstrap_nodes.yaml</c> (the maintained registry, post PR #124's EF fleet
-    /// replacement).</item>
-    /// </list>
-    /// </summary>
-    public static BeaconChainSpec Sepolia { get; } = new()
-    {
-        ChainId = BlockchainIds.Sepolia,
-        CheckpointSyncUrl = "https://checkpoint-sync.sepolia.ethpandaops.io",
-        Bootnodes = SepoliaBootnodes.Enrs,
-        SecondsPerSlot = 12,
-        SlotsPerEpoch = 32,
-        GenesisTime = 1655733600,
-        GenesisValidatorsRoot = new Hash256(Bytes.FromHexString("0xd8ea171f3c94aea21ebc42a1ed61052acf3f9209c00e4efbaaddac09ed9b8078")),
-        Forks =
-        [
-            new(Bytes.FromHexString("0x90000069"), 0), // phase0
-            new(Bytes.FromHexString("0x90000070"), 50), // altair
-            new(Bytes.FromHexString("0x90000071"), 100), // bellatrix
-            new(Bytes.FromHexString("0x90000072"), 56832), // capella
-            new(Bytes.FromHexString("0x90000073"), 132608), // deneb
-            new(Bytes.FromHexString("0x90000074"), 222464), // electra
-            new(Bytes.FromHexString("0x90000075"), 272640), // fulu
-            new(Bytes.FromHexString("0x90000076"), 353024), // gloas
-        ],
-        BlobSchedule =
-        [
-            new(274176, 15), // BPO1
-            new(275712, 21), // BPO2
-        ],
-        ElectraForkEpoch = 222464,
-        FuluForkEpoch = 272640,
-        MaxBlobsPerBlockElectra = 9,
-        GloasForkEpoch = 353024, // eth-clients/sepolia metadata/config.yaml
-        GloasForkVersion = Bytes.FromHexString("0x90000076"),
-    };
+        int capella = Activation(static spec => spec.IsEip4895Enabled, "Shanghai");
+        int deneb = Activation(static spec => spec.IsEip4844Enabled, "Cancun");
+        int electra = Activation(static spec => spec.IsEip7002Enabled, "Prague");
+        int fulu = Activation(static spec => spec.IsEip7594Enabled, "Osaka");
+        int gloas = Array.FindIndex(specs, static spec => spec.IsAmsterdamEnabled);
 
-    /// <summary>Selects the beacon chain spec for the execution layer's chain id.</summary>
-    /// <exception cref="UnsupportedBeaconNetworkException">
-    /// <paramref name="chainId"/> is not a network the embedded beacon chain driver supports.
-    /// Never falls back to <see cref="Mainnet"/>: following the wrong chain silently is worse
-    /// than refusing to start.
-    /// </exception>
-    public static BeaconChainSpec ForChainId(ulong chainId) => chainId switch
-    {
-        BlockchainIds.Mainnet => Mainnet,
-        BlockchainIds.Hoodi => Hoodi,
-        BlockchainIds.Sepolia => Sepolia,
-        BlockchainIds.Gnosis => Gnosis,
-        BlockchainIds.Chiado => Chiado,
-        _ => throw new UnsupportedBeaconNetworkException(chainId),
-    };
+        ulong[] epochs = [0, network.AltairForkEpoch, network.BellatrixForkEpoch, EpochAt(capella, "Shanghai"), EpochAt(deneb, "Cancun"), EpochAt(electra, "Prague"), EpochAt(fulu, "Osaka")];
+        List<ForkScheduleEntry> forks = [.. network.ForkVersions.Select((version, fork) => new ForkScheduleEntry(version, epochs[fork]))];
 
-    /// <summary>
-    /// A copy of this spec with the Gloas activation epoch and/or fork version replaced, for following a
-    /// network whose Gloas parameters changed after this release. Both <see cref="Forks"/> and the scalar
-    /// Gloas fields are rewritten together, since the fork digest reads one and state processing the other.
-    /// </summary>
-    /// <param name="epoch"><c>GLOAS_FORK_EPOCH</c>, or <c>null</c> to keep this spec's.</param>
-    /// <param name="version"><c>GLOAS_FORK_VERSION</c> as 4 bytes of hex, or <c>null</c> to keep this spec's.</param>
-    /// <exception cref="InvalidConfigurationException">
-    /// The version is not 4 hex bytes or repeats an earlier fork's version, the epoch is below
-    /// <see cref="FuluForkEpoch"/>, or the override leaves no Gloas epoch or no version to apply.
-    /// </exception>
-    public BeaconChainSpec WithGloasForkOverride(ulong? epoch, string? version)
-    {
-        if (epoch is null && version is null) return this;
-
-        if (ChainId is BlockchainIds.Gnosis or BlockchainIds.Chiado && epoch != Presets.FarFutureEpoch)
-            throw new InvalidConfigurationException("A Gnosis Gloas preset and fork schedule are not configured.", ExitCodes.ConflictingConfigurations);
-
-        bool scheduled = GloasForkEpoch != Presets.FarFutureEpoch;
-        if (epoch == Presets.FarFutureEpoch && version is null && !scheduled) return this;
-
-        if (epoch is { } requested && requested < FuluForkEpoch)
+        HashSet<ulong> blobParameterForks = [.. blobScheduleTimestamps ?? []];
+        List<BlobScheduleEntry> blobSchedule = [];
+        for (int i = electra + 1; i < timestamps.Length; i++)
         {
-            throw new InvalidConfigurationException($"BeaconChain.GloasForkEpoch {requested} is below the Fulu fork epoch {FuluForkEpoch}; Gloas cannot activate before Fulu.", ExitCodes.ConflictingConfigurations);
+            bool changed = !SameBlobParameters(specs[i - 1], specs[i]);
+            if (changed && i < fulu)
+                throw Conflict($"The execution chainspec changes blob parameters at timestamp {timestamps[i]}, between Prague and Osaka, where the beacon chain has no blob schedule.");
+            if (changed || (i > fulu && i != gloas && blobParameterForks.Contains(timestamps[i])))
+                blobSchedule.Add(new BlobScheduleEntry(EpochAt(i, "a blob parameter fork"), specs[i].MaxBlobCount));
         }
 
-        if (epoch is null && !scheduled)
+        ulong gloasEpoch = Presets.FarFutureEpoch;
+        byte[] gloasVersion = network.GloasForkVersion;
+        if (gloas >= 0)
         {
-            throw new InvalidConfigurationException("BeaconChain.GloasForkVersion has no effect because this network has no Gloas epoch; set BeaconChain.GloasForkEpoch as well.", ExitCodes.ConflictingConfigurations);
+            if (network.ChainId is BlockchainIds.Gnosis or BlockchainIds.Chiado)
+                throw Conflict("A Gnosis Gloas preset and fork schedule are not configured.");
+
+            gloasEpoch = EpochAt(gloas, "Amsterdam");
+            gloasVersion = gloasForkVersion is not null ? ParseForkVersion(gloasForkVersion)
+                : network.GloasForkVersionConfirmed ? network.GloasForkVersion
+                : throw Conflict($"The execution chainspec activates Amsterdam at timestamp {timestamps[gloas]}, but this release has no published Gloas fork version for chain id {network.ChainId}; set BeaconChain.GloasForkVersion.");
+            foreach (ForkScheduleEntry fork in forks)
+            {
+                if (fork.Version.AsSpan().SequenceEqual(gloasVersion))
+                    throw Conflict($"BeaconChain.GloasForkVersion {gloasVersion.ToHexString(withZeroX: true)} repeats an earlier fork version of this network.");
+            }
+
+            forks.Add(new ForkScheduleEntry(gloasVersion, gloasEpoch));
+        }
+        else if (gloasForkVersion is not null)
+        {
+            throw Conflict("BeaconChain.GloasForkVersion has no effect because the execution chainspec does not schedule Amsterdam.");
         }
 
-        if (version is null && !scheduled)
+        for (int i = 1; i < forks.Count; i++)
         {
-            throw new InvalidConfigurationException("BeaconChain.GloasForkEpoch needs BeaconChain.GloasForkVersion because the built-in Gloas fork version of a network without a Gloas epoch is not confirmed.", ExitCodes.ConflictingConfigurations);
+            if (forks[i].Epoch < forks[i - 1].Epoch)
+                throw Conflict($"The execution chainspec activates the fork with beacon version {forks[i].Version.ToHexString(withZeroX: true)} at epoch {forks[i].Epoch}, before the previous fork at epoch {forks[i - 1].Epoch}.");
         }
 
-        byte[] gloasVersion = version is null ? GloasForkVersion : ParseForkVersion(version);
-        ForkScheduleEntry[] earlier = Forks[..(scheduled ? Forks.Length - 1 : Forks.Length)];
-        foreach (ForkScheduleEntry fork in earlier)
+        return new BeaconChainSpec
         {
-            if (fork.Version.AsSpan().SequenceEqual(gloasVersion))
-                throw new InvalidConfigurationException($"BeaconChain.GloasForkVersion {gloasVersion.ToHexString(withZeroX: true)} repeats an earlier fork version of this network.", ExitCodes.ConflictingConfigurations);
-        }
-
-        ulong gloasEpoch = epoch ?? GloasForkEpoch;
-        return this with
-        {
-            Forks = gloasEpoch == Presets.FarFutureEpoch ? earlier : [.. earlier, new ForkScheduleEntry(gloasVersion, gloasEpoch)],
+            ChainId = network.ChainId,
+            CheckpointSyncUrl = network.CheckpointSyncUrl,
+            Bootnodes = network.Bootnodes,
+            SecondsPerSlot = network.SecondsPerSlot,
+            SlotsPerEpoch = network.SlotsPerEpoch,
+            GenesisTime = genesisTime,
+            GenesisValidatorsRoot = network.GenesisValidatorsRoot,
+            Forks = [.. forks],
+            BlobSchedule = [.. blobSchedule],
+            ElectraForkEpoch = epochs[5],
+            FuluForkEpoch = epochs[6],
+            MaxBlobsPerBlockElectra = specs[electra].MaxBlobCount,
             GloasForkEpoch = gloasEpoch,
             GloasForkVersion = gloasVersion,
         };
+
+        int Activation(Func<IReleaseSpec, bool> enabled, string fork)
+        {
+            int index = Array.FindIndex(specs, spec => enabled(spec));
+            return index >= 0 ? index : throw Conflict($"The execution chainspec never activates {fork}, which the embedded beacon chain requires.");
+        }
+
+        ulong EpochAt(int index, string fork)
+        {
+            ulong timestamp = timestamps[index];
+            if (timestamp <= genesisTime) return 0;
+            ulong elapsed = timestamp - genesisTime;
+            return elapsed % epochSeconds == 0 ? elapsed / epochSeconds
+                : throw Conflict($"The execution chainspec activates {fork} at timestamp {timestamp}, which is not on a beacon epoch boundary ({epochSeconds} s epochs from beaconChainGenesisTimestamp {genesisTime}).");
+        }
+
+        static bool SameBlobParameters(IReleaseSpec left, IReleaseSpec right) =>
+            left.MaxBlobCount == right.MaxBlobCount
+            && left.TargetBlobCount == right.TargetBlobCount
+            && left.BlobBaseFeeUpdateFraction == right.BlobBaseFeeUpdateFraction;
+
+        static InvalidConfigurationException Conflict(string message) => new(message, ExitCodes.ConflictingConfigurations);
     }
 
     private static byte[] ParseForkVersion(string version)

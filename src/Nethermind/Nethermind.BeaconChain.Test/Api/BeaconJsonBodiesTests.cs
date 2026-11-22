@@ -40,8 +40,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json);
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
-        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
+        }
 
         BeaconApiTestHost.AssertJsonDigest(raw, "8e53a2bbacd1dcb44aa240c0db316d1e857b52b57048b9b17440db063ec2e60e");
     }
@@ -88,12 +91,18 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         _host.Store.PutBlock(root, block);
 
         HttpResponseMessage ssz = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Octet);
-        Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(await ssz.Content.ReadAsByteArrayAsync(), Is.EqualTo(SignedBeaconBlock.Encode(block)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(await ssz.Content.ReadAsByteArrayAsync(), Is.EqualTo(SignedBeaconBlock.Encode(block)));
+        }
 
         HttpResponseMessage json = await _host.GetAsync($"/eth/v2/beacon/blocks/{root}", Json);
-        Assert.That(json.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(json.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(json.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
+        }
     }
 
     [Test]
@@ -106,8 +115,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
 
         HttpResponseMessage response = await _host.GetAsync("/eth/v2/debug/beacon/states/head", Json);
         string raw = await response.Content.ReadAsStringAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
+        }
 
         BeaconApiTestHost.AssertJsonDigest(raw, "73dd94790c3028ae2fd5ecdb35d9b6c63c4cc373b724adf4a60dfb4e899d38e3");
     }
@@ -122,9 +134,12 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         _host.Store.PutBlock(root, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v2/debug/beacon/states/{Slot}", Octet);
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
-        Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(ssz), "the checkpoint-provider path must not re-encode");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
+            Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(ssz), "the checkpoint-provider path must not re-encode");
+        }
     }
 
     [Test]
@@ -136,8 +151,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v2/debug/beacon/states/{Slot}", Json);
         JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not decodable"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError));
+            Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("not decodable"));
+        }
     }
 
     [Test]
@@ -199,8 +217,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
 
         HttpResponseMessage filtered = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot={Slot + 1}", Json);
         JsonElement filteredData = (await BeaconApiTestHost.ReadJsonAsync(filtered)).RootElement.GetProperty("data");
-        Assert.That(filteredData.GetArrayLength(), Is.EqualTo(1));
-        Assert.That(filteredData[0].GetProperty("root").GetString(), Is.EqualTo(childA.ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(filteredData.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(filteredData[0].GetProperty("root").GetString(), Is.EqualTo(childA.ToString()));
+        }
 
         HttpResponseMessage badSlot = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot=abc", Json);
         Assert.That(badSlot.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
@@ -220,8 +241,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement data = JsonDocument.Parse(raw).RootElement.GetProperty("data");
-        Assert.That(data.GetArrayLength(), Is.EqualTo(1));
-        Assert.That(data[0].GetProperty("root").GetString(), Is.EqualTo(child.ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.GetArrayLength(), Is.EqualTo(1));
+            Assert.That(data[0].GetProperty("root").GetString(), Is.EqualTo(child.ToString()));
+        }
     }
 
     [Test]
@@ -232,15 +256,21 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         _host.Store.PutBlock(parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
 
         JsonElement empty = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json))).RootElement;
-        Assert.That(empty.GetProperty("data").GetArrayLength(), Is.EqualTo(0), "no child has been stored: empty is the true answer");
-        Assert.That(empty.GetProperty("finalized").GetBoolean(), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(empty.GetProperty("data").GetArrayLength(), Is.EqualTo(0), "no child has been stored: empty is the true answer");
+            Assert.That(empty.GetProperty("finalized").GetBoolean(), Is.False);
+        }
 
         _host.Store.PutBlock(child, BeaconApiTestHost.RichBlock(Slot + 1, parent));
         _host.Store.DeleteBlock(child);
 
         HttpResponseMessage afterPrune = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", Json);
-        Assert.That(afterPrune.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That((await BeaconApiTestHost.ReadJsonAsync(afterPrune)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterPrune.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That((await BeaconApiTestHost.ReadJsonAsync(afterPrune)).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -275,8 +305,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
 
         JsonElement body = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot={Slot + 10}", Json))).RootElement;
 
-        Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
-        Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False, "an empty answer references no finalized history, however finalized the children it filtered out are");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(0));
+            Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False, "an empty answer references no finalized history, however finalized the children it filtered out are");
+        }
     }
 
     [Test]
@@ -289,8 +322,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
 
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={unindexedParent}", Json);
         JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError), "one child is known, but a one-element list from a damaged index would be a lie");
-        Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("no complete entry"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.InternalServerError), "one child is known, but a one-element list from a damaged index would be a lie");
+            Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("no complete entry"));
+        }
     }
 
     [Test]
@@ -322,8 +358,11 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         _host.Store.SetCanonicalRoot(Slot + 20, root);
 
         JsonElement body = (await BeaconApiTestHost.ReadJsonAsync(await _host.GetAsync($"/eth/v1/beacon/headers?slot={Slot + 20}", Json))).RootElement;
-        Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(1));
-        Assert.That(body.GetProperty("data")[0].GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(body.GetProperty("data").GetArrayLength(), Is.EqualTo(1));
+            Assert.That(body.GetProperty("data")[0].GetProperty("root").GetString(), Is.EqualTo(root.ToString()));
+        }
     }
 
     [Test]
@@ -364,12 +403,18 @@ public class BeaconJsonBodiesGloasTests : BeaconApiFixture
 
         HttpResponseMessage mixed = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}", "application/json");
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(mixed);
-        Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(2));
-        Assert.That(mixed.Headers.Contains("Eth-Consensus-Version"), Is.False, "children straddle the Gloas boundary, so no single fork name is true of the list");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JsonDocument.Parse(raw).RootElement.GetProperty("data").GetArrayLength(), Is.EqualTo(2));
+            Assert.That(mixed.Headers.Contains("Eth-Consensus-Version"), Is.False, "children straddle the Gloas boundary, so no single fork name is true of the list");
+        }
 
         HttpResponseMessage gloasOnly = await _host.GetAsync($"/eth/v1/beacon/headers?parent_root={parent}&slot={gloasSlot + 1}", "application/json");
-        Assert.That(gloasOnly.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(gloasOnly.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"), "the fork is named for the listed children, not for every child in the index");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gloasOnly.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(gloasOnly.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"), "the fork is named for the listed children, not for every child in the index");
+        }
     }
 
 }

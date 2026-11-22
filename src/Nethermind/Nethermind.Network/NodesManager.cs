@@ -7,9 +7,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -41,6 +43,9 @@ public abstract class NodesManager(string path, ILogger logger)
     // so transient (updateFile=false) changes to _nodes never leak into it and a failed load cannot be amplified.
     private ConcurrentDictionary<PublicKey, NetworkNode> _persistedNodes = [];
 
+    // Subscribers of the running DiscoverNetworkNodes enumerations; each only does a non-blocking TryWrite.
+    private Action<NetworkNode>? _nodeAdded;
+
     /// <summary>Adds a node and updates the IP index. Returns <see langword="false"/> if already present.</summary>
     protected bool TryAddNode(NetworkNode node)
     {
@@ -48,9 +53,59 @@ public abstract class NodesManager(string path, ILogger logger)
         {
             if (!_nodes.TryAdd(node.NodeId, node)) return false;
             _ipCounts.AddOrUpdate(node.HostIp, 1, static (_, count) => count + 1);
+            // Inside the lock, unlike NodeRemoved: enumerations copy _nodes under it, so each gets an add once; subscribers only TryWrite.
+            _nodeAdded?.Invoke(node);
             return true;
         }
     }
+
+    /// <summary>Yields each managed node once: the nodes present when the enumeration starts, then every node added later.</summary>
+    protected async IAsyncEnumerable<NetworkNode> DiscoverNetworkNodes([EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Channel<NetworkNode> added = Channel.CreateUnbounded<NetworkNode>();
+        Action<NetworkNode> onNodeAdded = node => added.Writer.TryWrite(node);
+
+        NetworkNode[] snapshot = Subscribe(onNodeAdded);
+        try
+        {
+            foreach (NetworkNode node in snapshot)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (IsManaged(node)) yield return node;
+            }
+
+            await foreach (NetworkNode node in added.Reader.ReadAllAsync(cancellationToken))
+            {
+                if (IsManaged(node)) yield return node;
+            }
+        }
+        finally
+        {
+            Unsubscribe(onNodeAdded);
+        }
+    }
+
+    // Under the lock that guards every add: a node is either in the returned copy or published to the subscriber.
+    // Every writer of _nodes holds this lock, so walking the dictionary here gives a point-in-time copy.
+    private NetworkNode[] Subscribe(Action<NetworkNode> onNodeAdded)
+    {
+        lock (_indexLock)
+        {
+            _nodeAdded += onNodeAdded;
+            return [.. _nodes.Select(static kvp => kvp.Value)];
+        }
+    }
+
+    private void Unsubscribe(Action<NetworkNode> onNodeAdded)
+    {
+        lock (_indexLock)
+        {
+            _nodeAdded -= onNodeAdded;
+        }
+    }
+
+    // A node removed, or replaced by a later add, after it was copied or queued is not yielded.
+    private bool IsManaged(NetworkNode node) => _nodes.TryGetValue(node.NodeId, out NetworkNode? current) && ReferenceEquals(current, node);
 
     /// <summary>Replaces the whole node set (bulk load) and rebuilds the IP index.</summary>
     protected void SetNodes(ConcurrentDictionary<PublicKey, NetworkNode> nodes)
@@ -107,23 +162,24 @@ public abstract class NodesManager(string path, ILogger logger)
                     moved = false;
 
                     if (_logger.IsWarn)
-                        _logger.Warn($"Failed to move {oldPath} to {Path.GetFullPath(path)}: {ex.Message}\n  {resource} is ignored and will not be used");
+                        _logger.Warn($"Failed to move {oldPath:hide} to {Path.GetFullPath(path):hide}: {ex.Message:hide}\n  {resource} is ignored and will not be used");
                 }
 
                 if (moved)
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn($"{oldPath} has been moved to {Path.GetFullPath(path)}");
+                        _logger.Warn($"{oldPath:hide} has been moved to {Path.GetFullPath(path):hide}");
 
                     return;
                 }
             }
         }
 
-        // Create the directory if needed
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        // Create the directory if needed; a bare file name has none
+        string? directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
 
-        if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path)}");
+        if (_logger.IsDebug) _logger.Debug($"Nodes file was not found, creating one at {Path.GetFullPath(path):hide}");
 
         using Stream actualNodes = File.Create(path);
         using Stream embeddedNodes = typeof(NodesManager).Assembly.GetManifestResourceStream(resource);
@@ -146,7 +202,7 @@ public abstract class NodesManager(string path, ILogger logger)
         {
             string separator = $"{Environment.NewLine}  ";
 
-            _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString()))}");
+            _logger.Debug($"{title}:{separator}{string.Join(separator, nodes.Values.Select(n => n.ToString())):hide}");
         }
     }
 
@@ -179,7 +235,7 @@ public abstract class NodesManager(string path, ILogger logger)
             }
             catch (ArgumentException ex)
             {
-                if (_logger.IsError) _logger.Error($"Failed to parse node: {n}", ex);
+                if (_logger.IsError) _logger.Error($"Failed to parse node: {n:hide}", SensitiveLogMasking.Enabled ? null : ex);
 
                 continue;
             }
@@ -188,7 +244,7 @@ public abstract class NodesManager(string path, ILogger logger)
         }
 
         if (_logger.IsInfo)
-            _logger.Info($"Loaded {nodes.Count} nodes from {Path.GetFullPath(path)}");
+            _logger.Info($"Loaded {nodes.Count} nodes from {Path.GetFullPath(path):hide}");
 
         return nodes;
     }

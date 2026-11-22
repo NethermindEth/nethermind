@@ -210,7 +210,7 @@ public partial class BeaconSyncOrchestratorTests
         int queuedEnvelopes = harness.Orchestrator.QueuedWorkCount;
         bool blockQueued = harness.Orchestrator.WorkWriter.TryWrite(
             new BeaconSyncOrchestrator.GossipBlockItem(new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(wallSlot, TestItem.KeccakA))));
-        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await DrainQueuedWorkAsync(harness.Orchestrator, CancellationToken.None);
         MessageValidity afterDrain = SendUnseen(BeaconSyncOrchestrator.WorkQueueCapacity);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();

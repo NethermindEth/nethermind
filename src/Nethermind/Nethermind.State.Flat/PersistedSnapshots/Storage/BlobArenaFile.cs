@@ -186,7 +186,8 @@ public sealed class BlobArenaFile : RefCountingDisposable
         Handle.Dispose();
         if (Volatile.Read(ref _preserveOnDispose) == 0)
         {
-            try { File.Delete(Path); } catch { /* best-effort */ }
+            try { File.Delete(Path); }
+            catch (Exception) { Metrics.RecordSnapshotFileDeleteFailure(); }
         }
         Interlocked.Decrement(ref Metrics._blobFileCount);
         long reported = ReportedFrontier;

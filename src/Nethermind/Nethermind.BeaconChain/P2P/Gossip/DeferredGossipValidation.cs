@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using Nethermind.Core.Caching;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
@@ -24,6 +25,14 @@ namespace Nethermind.BeaconChain.P2P.Gossip;
 /// messages from one delivering peer, a new message is <see cref="MessageValidity.Throttled"/>: the router caches no id for it, so a
 /// later copy is checked, and charges its sender nothing. Aggregates and payload attestations are held to their own bound of
 /// <paramref name="maxPendingVotes"/> instead, the import worker's vote queue, so their volume cannot take the room of a block.
+/// New peers share a quarter of the vote queue. Each starts with a small allowance and earns one additional pending vote for each accepted
+/// vote, up to one eighth of the queue. After two accepted votes, a peer may use up to twice its earned allowance while fewer than one
+/// sixteenth of the queue's places are occupied. The one-eighth per-peer cap still applies. The node retains allowances for the
+/// <see cref="AcceptedVoteSourcesCapacity"/> most recently active peers with accepted votes. A peer whose vote is rejected loses its
+/// earned allowance and has its new votes refused for the rest of the
+/// wall slot (at most <paramref name="maxPendingVotes"/> peers per slot), or until one of its votes already being checked is accepted. Its votes
+/// already deferred are still checked here, and nothing unchecked counts against it; <see cref="GossipRouter"/>'s own per-slot rule for payload
+/// attestations still throttles a peer's queued payload attestations once fork choice rejected one of them.
 /// Columns have a separate count and byte budget of the same size as the main budget; a column parked for its unseen block leaves it,
 /// held to the parking bounds of <see cref="ColumnGossipRouter"/> instead.
 /// A verdict not given within <paramref name="timeout"/> is abandoned, which the router treats the same way.
@@ -48,19 +57,42 @@ internal sealed class DeferredGossipValidation(
     /// <summary>The largest message counted as a vote; anything larger is no legal aggregate or payload attestation and is held to the main bounds.</summary>
     internal const int MaxVoteMessageBytes = 32 * 1024;
 
+    /// <summary>The most peers with an accepted vote that keep their standing; past it the one least recently promoted or offering a vote is new again.</summary>
+    internal const int AcceptedVoteSourcesCapacity = 1024;
+
+    // One delivering peer's share of a bound, as the router's own per-peer bounds.
+    private const int SourceShareDivisor = 8;
+    // A new peer's share of the vote bound: 2 of 1,024, so a peer id, which costs nothing, buys two checks at a time.
+    private const int NewVoteSourceShareDivisor = 512;
+    // All new peers' share of the vote bound, so new ids together cannot take the room of the peers whose votes were accepted.
+    private const int AllNewVoteSourcesShareDivisor = 4;
+    private const int VoteBurstOccupancyDivisor = 16;
+
     // Past the router's own expiry of a message it has not dispatched: it skips that message, so the reservation is released here instead.
     private static readonly TimeSpan ReservationSlack = TimeSpan.FromSeconds(1);
 
     private readonly TimeProvider _time = time ?? TimeProvider.System;
     private readonly ConcurrentDictionary<Message, Reservation> _reservations = new(ReferenceEqualityComparer.Instance);
     private long _nextSweepTicks;
-    private readonly int _maxPendingPerSource = Math.Max(1, maxPending / 8);
+    private readonly int _maxPendingPerSource = Math.Max(1, maxPending / SourceShareDivisor);
+    private readonly int _maxPendingVotesPerSource = Math.Max(1, maxPendingVotes / SourceShareDivisor);
+    private readonly int _maxPendingVotesPerNewSource = Math.Max(1, maxPendingVotes / NewVoteSourceShareDivisor);
+    private readonly int _maxPendingVotesOfAllNewSources = Math.Max(1, maxPendingVotes / AllNewVoteSourcesShareDivisor);
     private readonly ConcurrentDictionary<(PeerId Source, bool Vote, bool Column), int> _pendingBySource = new();
+    // Only a verified vote adds a peer, so peer id churn alone cannot evict the peers that sent one; its next rejected vote removes it.
+    private readonly LruCache<PeerId, int> _voteAllowances = new(AcceptedVoteSourcesCapacity, "beacon gossip vote allowances");
     private int _pending;
     private long _pendingBytes;
     private int _pendingVotes;
     private int _pendingColumns;
     private long _pendingColumnBytes;
+    private int _pendingVotesOfNewSources;
+    // Guards the rejected set and its slot. A peer's promotion, demotion and mark change together under it, and admission reads the mark under
+    // it; admission reads the accepted set outside it, which at worst admits one vote of a peer being promoted as a new peer's vote, or one
+    // vote of a peer being demoted at its old share.
+    private readonly Lock _rejectedVoteSourcesLock = new();
+    private readonly HashSet<PeerId> _rejectedVoteSources = [];
+    private ulong _rejectedVoteSourcesSlot;
 
     internal Action<PeerId, string>? ReportRejectedMessage { get; init; }
 
@@ -74,6 +106,10 @@ internal sealed class DeferredGossipValidation(
     internal int PendingColumns => Volatile.Read(ref _pendingColumns);
     /// <summary>The most messages other than votes and columns from one delivering peer that may await a verdict at once.</summary>
     internal int MaxPendingPerSource => _maxPendingPerSource;
+    /// <summary>The most votes from one delivering peer with no accepted vote since it joined or since its last rejected one that may await a verdict at once.</summary>
+    internal int MaxPendingVotesPerNewSource => _maxPendingVotesPerNewSource;
+    /// <summary>The most votes from all delivering peers with no accepted vote since they joined or since their last rejected one that may await a verdict at once.</summary>
+    internal int MaxPendingVotesOfAllNewSources => _maxPendingVotesOfAllNewSources;
 
     /// <summary>The router's synchronous hook: drops a message on a topic this node does not handle, and reserves room for the others or throttles them.</summary>
     /// <remarks>It runs under the router's monitor, so reservations of concurrent RPCs do not race.</remarks>
@@ -88,19 +124,33 @@ internal sealed class DeferredGossipValidation(
         long size = message.CalculateSize();
         bool vote = IsVote(message, size);
         bool column = GossipMessageValidator.IsColumn(message.Topic);
-        int sourceLimit = vote ? Math.Max(1, maxPendingVotes / 8) : _maxPendingPerSource;
-        if (_pendingBySource.GetValueOrDefault((source, vote, column)) >= sourceLimit || (vote ? PendingVotes >= maxPendingVotes
+        int earnedAllowance = vote ? _voteAllowances.Get(source) : 0;
+        bool newVoteSource = vote && earnedAllowance == 0;
+        if (newVoteSource && IsVoteSourceRejectedThisSlot(source))
+        {
+            return RefuseVote(source, message);
+        }
+
+        int pendingVotes = vote ? PendingVotes : 0;
+        int sourceLimit = vote ? VoteSourceLimit(earnedAllowance, pendingVotes) : _maxPendingPerSource;
+        bool overSourceShare = _pendingBySource.GetValueOrDefault((source, vote, column)) >= sourceLimit;
+        bool overBound = vote ? pendingVotes >= maxPendingVotes || (newVoteSource && Volatile.Read(ref _pendingVotesOfNewSources) >= _maxPendingVotesOfAllNewSources)
             : column ? Volatile.Read(ref _pendingColumns) >= maxPending || Interlocked.Read(ref _pendingColumnBytes) + size > maxPendingBytes
-            : Pending >= maxPending || PendingBytes + size > maxPendingBytes))
+            : Pending >= maxPending || PendingBytes + size > maxPendingBytes;
+        if (overSourceShare || overBound)
         {
             return Throttle(source, message);
         }
 
-        Reservation reservation = new(this, source, vote ? 0 : size, vote, column, _time.GetUtcNow() + timeout + ReservationSlack);
+        Reservation reservation = new(this, source, vote ? 0 : size, vote, column, newVoteSource, _time.GetUtcNow() + timeout + ReservationSlack);
         _pendingBySource.AddOrUpdate((source, vote, column), 1, static (_, count) => count + 1);
         if (vote)
         {
             Interlocked.Increment(ref _pendingVotes);
+            if (newVoteSource)
+            {
+                Interlocked.Increment(ref _pendingVotesOfNewSources);
+            }
         }
         else if (column)
         {
@@ -115,6 +165,16 @@ internal sealed class DeferredGossipValidation(
 
         _reservations[message] = reservation;
         return MessageValidity.Deferred;
+    }
+
+    private int VoteSourceLimit(int earnedAllowance, int pendingVotes)
+    {
+        if (earnedAllowance > _maxPendingVotesPerNewSource + 1 && pendingVotes < maxPendingVotes / VoteBurstOccupancyDivisor)
+        {
+            return Math.Min(2 * earnedAllowance, _maxPendingVotesPerSource);
+        }
+
+        return Math.Max(_maxPendingVotesPerNewSource, earnedAllowance);
     }
 
     /// <summary>Releases the reservations of messages the router never dispatched, which it skips once they expire; at most once a second.</summary>
@@ -142,13 +202,25 @@ internal sealed class DeferredGossipValidation(
     {
         // A message whose reservation expired before dispatch was released already; it is validated unreserved.
         Action? release = _reservations.TryRemove(message, out Reservation? reservation) ? reservation.Release : null;
+        bool vote = reservation?.Vote ?? IsVote(message, message.CalculateSize());
         GossipVerdict verdict = new(validity =>
         {
+            // Before the router applies the verdict, so an admission the router orders after it already sees the peer's new standing.
+            if (vote && validity == MessageValidity.Accepted)
+            {
+                MarkVoteSourceAccepted(source);
+            }
+            else if (vote && validity == MessageValidity.Rejected)
+            {
+                MarkVoteSourceRejected(source);
+            }
+
             bool applied = router.CompleteValidation(message, validity);
             if (validity == MessageValidity.Rejected)
             {
                 ReportRejectedMessage?.Invoke(source, $"rejected gossip on {message.Topic}");
             }
+
             return applied;
         }, release);
         try
@@ -178,12 +250,71 @@ internal sealed class DeferredGossipValidation(
         }
     }
 
+    /// <summary>Increases the peer's vote allowance by one up to its limit and lifts its refusal for the slot.</summary>
+    /// <remarks>Under the lock, so a refusal check ordered after this sees no mark, and a rejection ordered after this demotes and marks the peer again.</remarks>
+    private void MarkVoteSourceAccepted(PeerId source)
+    {
+        lock (_rejectedVoteSourcesLock)
+        {
+            int allowance = _voteAllowances.Get(source);
+            if (allowance < _maxPendingVotesPerSource)
+            {
+                _voteAllowances.Set(source, Math.Min(_maxPendingVotesPerSource, Math.Max(allowance, _maxPendingVotesPerNewSource) + 1));
+            }
+            _rejectedVoteSources.Remove(source);
+        }
+    }
+
+    /// <summary>Demotes <paramref name="source"/>, whose vote was rejected, and refuses its new votes for the rest of the wall slot.</summary>
+    /// <remarks>
+    /// The peer loses its standing even if one of its votes was accepted before: it is held to a new peer's share until its next vote is accepted,
+    /// so one valid vote does not keep a peer's later votes admitted. At most <c>maxPendingVotes</c> peers are marked per slot, which bounds
+    /// the set against peer id churn; a peer past that cap is demoted but not refused.
+    /// </remarks>
+    private void MarkVoteSourceRejected(PeerId source)
+    {
+        lock (_rejectedVoteSourcesLock)
+        {
+            _voteAllowances.Delete(source);
+            HashSet<PeerId> sources = RejectedVoteSourcesOfThisSlot();
+            if (sources.Count < maxPendingVotes)
+            {
+                sources.Add(source);
+            }
+        }
+    }
+
+    /// <summary>Whether a vote of <paramref name="source"/> was rejected in the current wall slot and none accepted since.</summary>
+    private bool IsVoteSourceRejectedThisSlot(PeerId source)
+    {
+        lock (_rejectedVoteSourcesLock)
+        {
+            return RejectedVoteSourcesOfThisSlot().Contains(source);
+        }
+    }
+
+    /// <summary>The peers marked in the current wall slot; the set is cleared on the first use in a new slot.</summary>
+    /// <remarks>The caller holds <see cref="_rejectedVoteSourcesLock"/>.</remarks>
+    private HashSet<PeerId> RejectedVoteSourcesOfThisSlot()
+    {
+        ulong slot = validator.CurrentSlot;
+        if (slot != _rejectedVoteSourcesSlot)
+        {
+            _rejectedVoteSourcesSlot = slot;
+            _rejectedVoteSources.Clear();
+        }
+
+        return _rejectedVoteSources;
+    }
+
     /// <summary>The room <see cref="Verify"/> reserved for one deferred message, released exactly once: by its verdict, or by expiry if never dispatched.</summary>
-    private sealed class Reservation(DeferredGossipValidation owner, PeerId source, long size, bool vote, bool column, DateTimeOffset expiresAt)
+    private sealed class Reservation(DeferredGossipValidation owner, PeerId source, long size, bool vote, bool column, bool newVoteSource, DateTimeOffset expiresAt)
     {
         private int _released;
 
         public DateTimeOffset ExpiresAt => expiresAt;
+
+        public bool Vote => vote;
 
         public void Release()
         {
@@ -200,6 +331,11 @@ internal sealed class DeferredGossipValidation(
             if (vote)
             {
                 Interlocked.Decrement(ref owner._pendingVotes);
+                if (newVoteSource)
+                {
+                    Interlocked.Decrement(ref owner._pendingVotesOfNewSources);
+                }
+
                 return;
             }
 
@@ -221,6 +357,13 @@ internal sealed class DeferredGossipValidation(
     {
         Interlocked.Increment(ref Metrics.GossipThrottledCount);
         if (logger.IsDebug) logger.Debug($"Throttling gossip on {message.Topic} from {source}: {Pending} messages, {PendingBytes} bytes and {PendingVotes} votes await a verdict");
+        return MessageValidity.Throttled;
+    }
+
+    private MessageValidity RefuseVote(PeerId source, Message message)
+    {
+        Interlocked.Increment(ref Metrics.GossipVotesRefusedAfterRejectionCount);
+        if (logger.IsDebug) logger.Debug($"Refusing a vote on {message.Topic} from {source}: a vote it delivered was rejected in this slot");
         return MessageValidity.Throttled;
     }
 }

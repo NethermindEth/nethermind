@@ -60,6 +60,6 @@ namespace Nethermind.JsonRpc
 
         internal ref readonly JsonRpcId IdRef => ref _id;
 
-        public override string ToString() => $"Id:{Id}, {Method}({Params})";
+        public override string ToString() => $"Id:{Id}, {Method}(params omitted)";
     }
 }

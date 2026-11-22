@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Blockchain.Find;
@@ -31,6 +32,8 @@ public class SimulateTxExecutor<TTrace>(
     private readonly IBlockFinder _blockFinder = blockFinder;
     private readonly IJsonRpcConfig _rpcConfig = rpcConfig;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
+    private readonly long _callsLimit = rpcConfig.MaxSimulateCallsCap ?? 10000;
+    private readonly long _callsPerBlockLimit = rpcConfig.MaxSimulateCallsPerBlockCap ?? 5000;
     private readonly ulong _secondsPerSlot = secondsPerSlot ?? new BlocksConfig().SecondsPerSlot;
 
     private Result<SimulatePayload<TransactionWithSourceDetails>> Prepare(SimulatePayload<TransactionForRpc> call, BlockHeader header)
@@ -39,10 +42,14 @@ public class SimulateTxExecutor<TTrace>(
 
         if (call.BlockStateCalls is not null)
         {
-            blockStateCalls = new List<BlockStateCall<TransactionWithSourceDetails>>(call.BlockStateCalls.Count);
+            blockStateCalls = [with(call.BlockStateCalls.Count)];
 
             foreach (BlockStateCall<TransactionForRpc> blockStateCall in call.BlockStateCalls)
             {
+                // As in Geth, a block's state overrides are validated before its calls.
+                if (StateOverrideValidation.GetStorageConflictError(blockStateCall.StateOverrides) is { } storageError)
+                    return storageError;
+
                 TransactionWithSourceDetails[]? calls = null;
 
                 if (blockStateCall.Calls is not null)
@@ -104,7 +111,8 @@ public class SimulateTxExecutor<TTrace>(
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter,
         Dictionary<Address, AccountOverride>? stateOverride = null,
-        SearchResult<BlockHeader>? searchResult = null)
+        SearchResult<BlockHeader>? searchResult = null,
+        CancellationToken cancellationToken = default)
     {
         if (call.BlockStateCalls is null || call.BlockStateCalls.Count == 0)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(SimulateErrorMessages.EmptyBlockStateCalls, ErrorCodes.InvalidParams);
@@ -112,6 +120,22 @@ public class SimulateTxExecutor<TTrace>(
         if (call.BlockStateCalls!.Count > _rpcConfig.MaxSimulateBlocksCap)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
                 $"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.ClientLimitExceededError);
+
+        foreach (BlockStateCall<TransactionForRpc>? block in call.BlockStateCalls)
+        {
+            if (block is null)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated blocks must not be null.", ErrorCodes.InvalidParams);
+        }
+
+        string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
+        if (callsLimitError is not null)
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
+
+        foreach (BlockStateCall<TransactionForRpc> block in call.BlockStateCalls)
+        {
+            if (block.Calls is { } calls && Array.IndexOf(calls, null) >= 0)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated calls must not be null.", ErrorCodes.InvalidParams);
+        }
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
@@ -182,9 +206,9 @@ public class SimulateTxExecutor<TTrace>(
                 if (blockToSimulate.StateOverrides is not null)
                 {
                     IReleaseSpec spec = specProvider.GetSpec(givenNumber, blockToSimulate.BlockOverrides.Time);
-                    foreach ((Address address, AccountOverride accountOverride) in blockToSimulate.StateOverrides)
+                    foreach ((Address address, AccountOverride? accountOverride) in blockToSimulate.StateOverrides)
                     {
-                        if (accountOverride.MovePrecompileToAddress is null) continue;
+                        if (accountOverride?.MovePrecompileToAddress is null) continue;
 
                         if (spec.IsPrecompile(address) && accountOverride.MovePrecompileToAddress == address)
                             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
@@ -198,18 +222,10 @@ public class SimulateTxExecutor<TTrace>(
             call.BlockStateCalls = [.. completeBlockStateCalls];
         }
 
-        CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-        try
-        {
-            Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
-            return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
-                ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
-                : Execute(header.Clone(), data, stateOverride, timeout.Token);
-        }
-        finally
-        {
-            JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-        }
+        Result<SimulatePayload<TransactionWithSourceDetails>> prepareResult = Prepare(call, header);
+        return !prepareResult.Success(out SimulatePayload<TransactionWithSourceDetails>? data, out string? error)
+            ? ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(error, ErrorCodes.InvalidInput)
+            : Execute(header.Clone(), data, stateOverride, cancellationToken);
     }
 
     private ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>> Execute(
@@ -290,6 +306,21 @@ public class SimulateTxExecutor<TTrace>(
         EvmExceptionType.Revert => ErrorCodes.ExecutionReverted,
         _ => ErrorCodes.VMError
     };
+
+    private string? GetCallsLimitError(List<BlockStateCall<TransactionForRpc>> blockStateCalls)
+    {
+        long count = 0;
+        foreach (BlockStateCall<TransactionForRpc> blockStateCall in blockStateCalls)
+        {
+            int blockCount = blockStateCall.Calls?.Length ?? 0;
+            if (blockCount > _callsPerBlockLimit)
+                return $"too many calls in block: {blockCount} > {_callsPerBlockLimit}";
+
+            count += blockCount;
+        }
+
+        return count > _callsLimit ? $"too many calls: {count} > {_callsLimit}" : null;
+    }
 }
 
 /// <summary>
@@ -307,7 +338,7 @@ internal static class SimulateErrorMessages
     /// Returned when <c>maxFeePerGas</c> is below the block <c>baseFeePerGas</c>
     /// (error code <see cref="ErrorCodes.FeeCapBelowBaseFee"/>).
     /// </summary>
-    public const string FeeCapBelowBaseFee = "max fee per gas less than block base fee";
+    public const string FeeCapBelowBaseFee = RpcTransactionErrors.FeeCapBelowBaseFee;
 
     /// <summary>
     /// Returned when the sender does not have enough balance to cover gas + value

@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.IO.Pipelines;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -18,7 +16,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using HealthChecks.UI.Client;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Connections;
+using Microsoft.AspNetCore.Cors.Infrastructure;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -26,6 +24,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.AspNetCore.Server.Kestrel.Core.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -37,6 +36,7 @@ using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.Monitoring;
@@ -62,8 +62,11 @@ public class Startup : IStartup
     private IJsonRpcLocalStats _jsonRpcLocalStats = null!;
     private EthereumJsonSerializer _jsonSerializer = null!;
     private IJsonRpcConfig _jsonRpcConfig = null!;
+    private MinDataRate? _minResponseDataRate;
     private IRpcAuthentication? _rpcAuthentication;
     private ILogger _logger = default;
+    private static readonly TimeSpan MinResponseDataRateGracePeriod = TimeSpan.FromSeconds(10);
+    private readonly UnsentResponseCounter _unsentResponses = new();
 
     public Startup() { }
 
@@ -82,6 +85,7 @@ public class Startup : IStartup
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
         _jsonRpcConfig = jsonRpcConfig;
+        _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _logger = logger;
         _rpcAuthentication = rpcAuthentication;
     }
@@ -102,7 +106,7 @@ public class Startup : IStartup
                 .Select(static u => u.Port)
                 .ToHashSet();
 
-        services.AddSingleton<IMemoryPoolFactory<byte>, TransportMemoryPoolFactory>();
+        services.AddJsonRpcTransportMemoryPool();
         services.Configure<KestrelServerOptions>(options =>
         {
             options.AddServerHeader = false;
@@ -132,10 +136,7 @@ public class Startup : IStartup
 
         services.AddSingleton<MatcherPolicy, LocalPortMatcherPolicy>();
 
-        services.AddCors(options => options.AddDefaultPolicy(builder => builder
-            .AllowAnyMethod()
-            .AllowAnyHeader()
-            .WithOrigins(jsonRpcConfig.CorsOrigins)));
+        services.AddCors(options => options.AddDefaultPolicy(CreateCorsPolicy(jsonRpcConfig)));
 
         services.AddResponseCompression(options =>
         {
@@ -147,6 +148,12 @@ public class Startup : IStartup
     }
 
     private static ServiceProvider Build(IServiceCollection services) => services.BuildServiceProvider();
+
+    internal static CorsPolicy CreateCorsPolicy(IJsonRpcConfig jsonRpcConfig) => new CorsPolicyBuilder()
+        .AllowAnyMethod()
+        .AllowAnyHeader()
+        .WithOrigins(jsonRpcConfig.CorsOrigins)
+        .Build();
 
     public void Configure(IApplicationBuilder app)
     {
@@ -193,6 +200,7 @@ public class Startup : IStartup
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _jsonSerializer = jsonSerializer;
         _jsonRpcConfig = jsonRpcConfig;
+        _minResponseDataRate = CreateMinResponseDataRate(jsonRpcConfig);
         _rpcAuthentication = rpcAuthentication;
         _logger = logger;
 
@@ -225,12 +233,7 @@ public class Startup : IStartup
 
         if (initConfig.WebSocketsEnabled)
         {
-            app.UseWebSockets(new WebSocketOptions());
-            app.UseWhen(ctx =>
-                ctx.WebSockets.IsWebSocketRequest &&
-                jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
-                jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
-            builder => builder.UseWebSocketsModules());
+            UseJsonRpcWebSockets(app, jsonRpcConfig, jsonRpcUrlCollection, logger);
         }
 
         IReadOnlySet<int> healthPorts = jsonRpcUrlCollection.Values
@@ -275,6 +278,25 @@ public class Startup : IStartup
                     builder.UseStaticFiles(new StaticFileOptions { FileProvider = fileProvider });
                 });
         }
+    }
+
+    /// <summary>
+    /// Serves WebSockets on the ports that enable them. Clients that send an <c>Origin</c> that
+    /// <see cref="IJsonRpcConfig.CorsOrigins"/> does not allow are turned away before a socket is accepted.
+    /// </summary>
+    internal static void UseJsonRpcWebSockets(IApplicationBuilder app, IJsonRpcConfig jsonRpcConfig, IJsonRpcUrlCollection jsonRpcUrlCollection, ILogger logger)
+    {
+        CorsPolicy corsPolicy = CreateCorsPolicy(jsonRpcConfig);
+        app.UseWebSockets(new WebSocketOptions());
+        app.UseWhen(ctx =>
+            ctx.WebSockets.IsWebSocketRequest &&
+            jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
+            jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Ws),
+        builder =>
+        {
+            builder.UseWebSocketOriginFilter(corsPolicy, logger);
+            builder.UseWebSocketsModules();
+        });
     }
 
     private static bool IsLocalhost(IPAddress remoteIp)
@@ -384,7 +406,7 @@ public class Startup : IStartup
     {
         if (cidrs is null || cidrs.Length == 0) return [];
 
-        List<TrustedCidr> parsed = new(cidrs.Length);
+        List<TrustedCidr> parsed = [with(cidrs.Length)];
         foreach (string? cidr in cidrs)
         {
             if (string.IsNullOrWhiteSpace(cidr)) continue;
@@ -453,6 +475,17 @@ public class Startup : IStartup
         await ctx.Response.CompleteAsync();
     }
 
+    private void LimitUnauthenticatedResponse(HttpContext ctx)
+    {
+        if (ctx.Features.Get<IHttpMinResponseDataRateFeature>() is { } dataRate)
+        {
+            dataRate.MinDataRate = _minResponseDataRate;
+        }
+    }
+
+    private static MinDataRate? CreateMinResponseDataRate(IJsonRpcConfig jsonRpcConfig) =>
+        jsonRpcConfig.MinResponseDataRate > 0 ? new MinDataRate(jsonRpcConfig.MinResponseDataRate, MinResponseDataRateGracePeriod) : null;
+
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
@@ -480,17 +513,18 @@ public class Startup : IStartup
 
         long? contentLength = ctx.Request.ContentLength;
         long? effectiveMaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize ?? _jsonRpcConfig.MaxRequestBodySize;
-        CollectedHttpBody collectedBody = new();
+        JsonRpcRequestBody collectedBody = new();
         HttpJsonRpcResponseSink? responseSink = null;
         try
         {
-            await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
+            await collectedBody.ReadAsync(ctx, contentLength, effectiveMaxRequestBodySize, ctx.RequestAborted);
             JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
             {
                 RemoteAddress = ctx.Connection.RemoteIpAddress,
                 ForwardedFor = ctx.Request.Headers["X-Forwarded-For"]
             };
-            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
+            if (!jsonRpcUrl.IsAuthenticated) LimitUnauthenticatedResponse(ctx);
+            responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime, jsonRpcUrl.IsAuthenticated || _jsonRpcConfig.MaxUnsentResponsesSize <= 0 ? null : _unsentResponses);
 
             await _jsonRpcProcessor.ProcessAsync(
                 collectedBody.Memory,
@@ -498,6 +532,12 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+        }
+        catch (OperationCanceledException e) when (ctx.RequestAborted.IsCancellationRequested && e.CancellationToken == ctx.RequestAborted)
+        {
+            // The client went away: nobody is left to read an answer, so discard what is buffered instead of finishing it.
+            responseSink?.Abort(abortTransport: ctx.Response.HasStarted);
+            if (_logger.IsDebug) _logger.Debug("JSON-RPC request aborted by the client.");
         }
         catch (Exception e) when (responseSink is { BytesWritten: > 0 })
         {
@@ -550,179 +590,9 @@ public class Startup : IStartup
         }
     }
 
-    private static async ValueTask CollectHttpRequestBodyAsync(
-        HttpContext context,
-        long? contentLength,
-        long? maxRequestBodySize,
-        CollectedHttpBody collectedBody,
-        CancellationToken cancellationToken)
-    {
-        const int MissingContentLengthInitialCapacity = 4096;
-
-        if (contentLength is > 0 &&
-            maxRequestBodySize is not null &&
-            contentLength.Value > maxRequestBodySize.Value)
-        {
-            ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
-        }
-
-        if (contentLength is > 0 and <= int.MaxValue)
-        {
-            collectedBody.EnsureExactCapacity((int)contentLength.Value);
-        }
-        else if (contentLength is null or > int.MaxValue)
-        {
-            collectedBody.SetInitialCapacity(MissingContentLengthInitialCapacity);
-        }
-
-        PipeReader bodyReader = context.Request.BodyReader;
-        try
-        {
-            while (true)
-            {
-                ReadResult readResult;
-                try
-                {
-                    readResult = await bodyReader.ReadAsync(cancellationToken);
-                }
-                catch (IOException e) when (e.GetType() == typeof(IOException))
-                {
-                    // Kestrel reports some malformed bodies (e.g. a chunk-size line overflowing Int32) as a *bare*
-                    // IOException; without this it escapes as an unhandled 500 instead of a framed 400.
-                    //
-                    // The exact-type test is deliberate. Everything Kestrel surfaces from the body pipe derives from
-                    // IOException, including BadHttpRequestException (already handled below) and the genuine
-                    // transport failures - ConnectionResetException, a mid-body TLS or stream error, an IOException
-                    // wrapping a socket error. Reframing those as a client error would blame the caller for a
-                    // dropped connection and, because the handler below logs at Debug, would leave a real I/O
-                    // failure with no trace at default log level. They keep propagating instead.
-                    //
-                    // The message is a constant on purpose, even though the handler below no longer echoes an
-                    // arbitrary one: the real transport-layer message stays on the inner exception, which
-                    // LogBadRequest writes at Debug.
-                    throw new Microsoft.AspNetCore.Http.BadHttpRequestException(MalformedRequestBodyMessage, StatusCodes.Status400BadRequest, e);
-                }
-
-                ReadOnlySequence<byte> buffer = readResult.Buffer;
-
-                long newBytesRead = collectedBody.BytesRead + buffer.Length;
-                if (maxRequestBodySize is not null && newBytesRead > maxRequestBodySize)
-                {
-                    ThrowRequestBodyTooLarge(maxRequestBodySize.Value);
-                }
-
-                if (newBytesRead > int.MaxValue)
-                {
-                    ThrowRequestBodyTooLarge(maxRequestBodySize ?? int.MaxValue);
-                }
-
-                collectedBody.Append(buffer);
-                bodyReader.AdvanceTo(buffer.End);
-
-                if (readResult.IsCompleted || readResult.IsCanceled)
-                {
-                    break;
-                }
-            }
-        }
-        finally
-        {
-            await bodyReader.CompleteAsync();
-        }
-
-        [DoesNotReturn, StackTraceHidden]
-        static void ThrowRequestBodyTooLarge(long maxRequestBodySize) =>
-            throw new Microsoft.AspNetCore.Http.BadHttpRequestException(
-                $"Request body too large. The max request body size is {maxRequestBodySize} bytes.",
-                StatusCodes.Status413PayloadTooLarge);
-    }
-
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void LogBadRequest(ILogger logger, Exception e) =>
         logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
 
-    private sealed class CollectedHttpBody : IDisposable
-    {
-        private const int DefaultInitialCapacity = 256;
 
-        private byte[]? _buffer;
-        private int _initialCapacity = DefaultInitialCapacity;
-
-        public int BytesRead { get; private set; }
-
-        public ReadOnlyMemory<byte> Memory =>
-            _buffer is null ? ReadOnlyMemory<byte>.Empty : _buffer.AsMemory(0, BytesRead);
-
-        public void SetInitialCapacity(int initialCapacity)
-        {
-            if (_buffer is null && initialCapacity > _initialCapacity)
-            {
-                _initialCapacity = initialCapacity;
-            }
-        }
-
-        public void EnsureExactCapacity(int capacity)
-        {
-            if (capacity <= 0 || _buffer?.Length >= capacity)
-            {
-                return;
-            }
-
-            RentCapacity(capacity);
-        }
-
-        public void EnsureCapacity(int minCapacity)
-        {
-            if (minCapacity <= 0 || _buffer?.Length >= minCapacity)
-            {
-                return;
-            }
-
-            int newCapacity = _buffer is null ? _initialCapacity : _buffer.Length;
-            while (newCapacity < minCapacity)
-            {
-                newCapacity = newCapacity <= Array.MaxLength / 2 ? newCapacity * 2 : minCapacity;
-            }
-
-            RentCapacity(newCapacity);
-        }
-
-        private void RentCapacity(int newCapacity)
-        {
-            byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newCapacity);
-            if (_buffer is not null)
-            {
-                _buffer.AsSpan(0, BytesRead).CopyTo(newBuffer);
-                ArrayPool<byte>.Shared.Return(_buffer);
-            }
-
-            _buffer = newBuffer;
-        }
-
-        public void Append(ReadOnlySequence<byte> sequence)
-        {
-            int sequenceLength = (int)sequence.Length;
-            if (sequenceLength == 0)
-            {
-                return;
-            }
-
-            int newLength = BytesRead + sequenceLength;
-            EnsureCapacity(newLength);
-            sequence.CopyTo(_buffer!.AsSpan(BytesRead, sequenceLength));
-            BytesRead = newLength;
-        }
-
-        public void Dispose()
-        {
-            if (_buffer is null)
-            {
-                return;
-            }
-
-            ArrayPool<byte>.Shared.Return(_buffer);
-            _buffer = null;
-            BytesRead = 0;
-        }
-    }
 }

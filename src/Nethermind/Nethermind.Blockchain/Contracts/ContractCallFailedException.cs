@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Abi;
-
 namespace Nethermind.Blockchain.Contracts;
 
 /// <summary>
@@ -11,6 +9,6 @@ namespace Nethermind.Blockchain.Contracts;
 /// <remarks>
 /// Includes EVM failures (revert, out of gas, invalid opcode) and calls returning without a receipt.
 /// Distinguished from an exception thrown while executing the call
-/// (e.g. a state read failure), which <see cref="Contract"/> wraps in a plain <see cref="AbiException"/>.
+/// (e.g. a state read failure), which <see cref="Contract"/> wraps in a plain <see cref="ContractException"/>.
 /// </remarks>
-public sealed class ContractCallFailedException(string message) : AbiException(message);
+public sealed class ContractCallFailedException(string message) : ContractException(message);

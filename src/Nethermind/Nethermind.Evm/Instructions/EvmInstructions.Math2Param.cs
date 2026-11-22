@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -289,13 +290,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                // Prepare uninitialized result, so doesn't complain when passed by ref in As call.
-                SkipInit(out result);
-                // Convert operands to signed integers and perform division.
-                Int256.Divide(
-                    in As<UInt256, Int256>(ref AsRef(in a)),
-                    in As<UInt256, Int256>(ref AsRef(in b)),
-                    out As<UInt256, Int256>(ref result));
+                SignedDivide256(in a, in b, out result);
             }
         }
     }
@@ -338,13 +333,7 @@ public static partial class EvmInstructions
             }
             else
             {
-                // Prepare uninitialized result, so doesn't complain when passed by ref in As call.
-                SkipInit(out result);
-                // Convert operands to signed integers and perform the modulo operation.
-                As<UInt256, Int256>(ref AsRef(in a))
-                    .Mod(
-                        in As<UInt256, Int256>(ref AsRef(in b)),
-                        out As<UInt256, Int256>(ref result));
+                SignedMod256(in a, in b, out result);
             }
         }
     }
@@ -412,7 +401,11 @@ public static partial class EvmInstructions
         where Eip160 : struct, IFlag
     {
         // Charge the fixed gas cost for exponentiation.
-        if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.UpdateGas<ExpGasCost>(ref gas))
+        {
+            if (TTracingInst.IsActive) TraceExpBaseOutOfGas<TGasPolicy, Eip160>(in stack, vm);
+            return EvmExceptionType.OutOfGas;
+        }
 
         if (!stack.EnsureDepth(2)) goto StackUnderflow;
         ref byte topRef = ref stack.Pop1Peek32BytesUnchecked();
@@ -423,25 +416,40 @@ public static partial class EvmInstructions
         int leadingZeros = exponent.CountLeadingZeros() >> 3;
         if (leadingZeros == 32)
         {
+            if (TTracingInst.IsActive) vm.TraceOperationReady(ExpGasCost.GasCost);
             // Exponent is zero, so the result is 1.
-            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, in stack, vm);
         }
 
         ulong expSize = (ulong)(32 - leadingZeros);
         // Deduct gas proportional to the number of 32-byte words needed to represent the exponent.
-        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize)) return EvmExceptionType.OutOfGas;
+        if (!TGasPolicy.TryConsumeExpBytes<Eip160>(ref gas, vm.Spec, expSize))
+        {
+            if (TTracingInst.IsActive) vm.TraceOperationGasCost(ExpCost<Eip160>(expSize));
+            return EvmExceptionType.OutOfGas;
+        }
+
+        if (TTracingInst.IsActive) vm.TraceOperationReady(ExpCost<Eip160>(expSize));
 
         if (a.IsZero)
         {
-            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 0UL, vm);
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 0UL, in stack, vm);
         }
         if (a.IsOne)
         {
-            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, vm);
+            return WriteSmallExpResult<TGasPolicy, TTracingInst>(ref topRef, 1UL, in stack, vm);
         }
 
         // The result goes to a local first: the exponent it overwrites is still an input.
-        UInt256.Exp(in a, in exponent, out UInt256 expResult);
+        UInt256 expResult;
+        if (DispatchFlags.PowerOfTwoExp && IsPowerOfTwo(in a))
+        {
+            PowerOfTwoExp(in a, in exponent, out expResult);
+        }
+        else
+        {
+            UInt256.Exp(in a, in exponent, out expResult);
+        }
         EvmStack.WriteUInt256ToSlot(ref topRef, in expResult);
         if (TTracingInst.IsActive) stack.ReportPushWord(ref topRef);
         return EvmExceptionType.None;
@@ -450,13 +458,67 @@ public static partial class EvmInstructions
         return EvmExceptionType.StackUnderflow;
     }
 
+    private const int MaxBitIndex = 255;
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static EvmExceptionType WriteSmallExpResult<TGasPolicy, TTracingInst>(ref byte slot, ulong value, VirtualMachine<TGasPolicy> vm)
+    private static bool IsPowerOfTwo(in UInt256 value)
+    {
+        ulong u0 = value.u0, u1 = value.u1, u2 = value.u2, u3 = value.u3;
+        return BitOperations.IsPow2(u0 | u1 | u2 | u3) && ((u0 & u1) | (u2 & u3) | ((u0 | u1) & (u2 | u3))) == 0;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void PowerOfTwoExp(in UInt256 powerOfTwo, in UInt256 exponent, out UInt256 result)
+    {
+        if ((exponent.u1 | exponent.u2 | exponent.u3) != 0 || exponent.u0 > MaxBitIndex)
+        {
+            result = default;
+            return;
+        }
+
+        int shift = (MaxBitIndex - powerOfTwo.CountLeadingZeros()) * (int)exponent.u0;
+        if (shift > MaxBitIndex)
+        {
+            result = default;
+            return;
+        }
+
+        ulong bit = 1UL << shift;
+        int limb = shift >> 6;
+        result = new UInt256(limb == 0 ? bit : 0, limb == 1 ? bit : 0, limb == 2 ? bit : 0, limb == 3 ? bit : 0);
+    }
+
+    private static ulong ExpCost<Eip160>(ulong expSize) where Eip160 : struct, IFlag =>
+        ExpGasCost.GasCost + (Eip160.IsActive ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * expSize;
+
+    /// <summary>
+    /// Reports the full cost of an EXP that cannot pay its base cost, including the exponent-byte cost.
+    /// </summary>
+    /// <remarks>
+    /// Geth charges both parts as one dynamic cost, so its struct log never shows the base cost alone.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceExpBaseOutOfGas<TGasPolicy, Eip160>(in EvmStack stack, VirtualMachine<TGasPolicy> vm)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where Eip160 : struct, IFlag
+    {
+        ulong expSize = 0;
+        if (stack.EnsureDepth(2))
+        {
+            ref UInt256 exponent = ref As<byte, UInt256>(ref Subtract(ref stack.PeekBytesByRefUnchecked(), EvmStack.WordSize));
+            expSize = (ulong)(32 - (exponent.CountLeadingZeros() >> 3));
+        }
+
+        vm.TraceOperationGasCost(ExpCost<Eip160>(expSize));
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType WriteSmallExpResult<TGasPolicy, TTracingInst>(ref byte slot, ulong value, in EvmStack stack, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
     {
         WriteSmallWordToSlot(ref slot, value);
-        if (TTracingInst.IsActive) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
+        if (TTracingInst.IsActive && stack.TracesPushes) vm.TxTracer.ReportStackPush(value == 0 ? Bytes.ZeroByteSpan : Bytes.OneByteSpan);
         return EvmExceptionType.None;
     }
 }

@@ -16,6 +16,51 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class GloasStateCloneTests
 {
     [Test]
+    public void Exposed_registry_and_scores_cannot_mutate_sibling_or_failed_clones([Values] bool gloas)
+    {
+        Validator original = new() { EffectiveBalance = 42 };
+        Validator[] validators = [original];
+        ulong[] scores = [7];
+        if (gloas)
+            AssertIsolation(new BeaconStateGloas { Validators = validators, InactivityScores = scores }, s => s.Clone(),
+                s => s.Validators!, s => s.InactivityScores!, s => s.ValidatorBuffer!, s => s.InactivityScoreBuffer!);
+        else
+            AssertIsolation(new BeaconStateFulu { Validators = validators, InactivityScores = scores }, s => s.Clone(),
+                s => s.Validators!, s => s.InactivityScores!, s => s.ValidatorBuffer!, s => s.InactivityScoreBuffer!);
+
+        void AssertIsolation<T>(T anchor, Func<T, T> clone, Func<T, Validator[]> registry, Func<T, ulong[]> inactivity,
+            Func<T, ForkableArray<Validator>> registryBuffer, Func<T, ForkableArray<ulong>> scoreBuffer)
+        {
+            T parent = clone(anchor);
+            T failed = clone(parent);
+            T sibling = clone(parent);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(registryBuffer(failed), Is.SameAs(registryBuffer(parent)));
+                Assert.That(scoreBuffer(failed), Is.SameAs(scoreBuffer(parent)));
+            }
+            validators[0] = new Validator();
+            scores[0] = 83;
+            registry(failed)[0] = new Validator();
+            inactivity(failed)[0] = 93;
+            // A caller may retain both arrays across a later fork of the same parent.
+            Validator[] escaped = registry(parent);
+            ulong[] escapedScores = inactivity(parent);
+            T later = clone(parent);
+            escaped[0] = new Validator();
+            escapedScores[0] = 101;
+
+            using IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(registry(sibling)[0], Is.SameAs(original));
+            Assert.That(inactivity(sibling)[0], Is.EqualTo(7));
+            Assert.That(registry(later)[0], Is.SameAs(original));
+            Assert.That(inactivity(later)[0], Is.EqualTo(7));
+            Assert.That(registry(parent), Is.SameAs(escaped));
+            Assert.That(inactivity(parent), Is.SameAs(escapedScores));
+        }
+    }
+
+    [Test]
     public void Clone_hashes_identically_and_advancing_either_copy_across_a_block_and_an_epoch_boundary_leaves_the_other_untouched()
     {
         BeaconStateGloas source = CreateGloasState(out Bls.SecretKey builderSk, out _);
@@ -27,11 +72,11 @@ public class GloasStateCloneTests
         // Bid, RANDAO, header and root vectors, then the boundary (registry, lookahead, payment and
         // PTC window rotation, availability bits), then a settlement that replaces a Builder element.
         Advance(clone, builderSk);
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(SszRoots.HashTreeRoot(source), Is.EqualTo(sourceRoot), "advancing the clone must not reach the source through any shared field");
             Assert.That(SszRoots.HashTreeRoot(clone), Is.Not.EqualTo(sourceRoot), "fixture bug: advancing must actually have changed the clone");
-        });
+        }
 
         Hash256 cloneRoot = SszRoots.HashTreeRoot(clone);
         Advance(source, builderSk);
@@ -50,9 +95,12 @@ public class GloasStateCloneTests
         {
             object? expected = property.GetValue(source);
             object? actual = property.GetValue(clone);
-            Assert.That(expected, Is.Not.Null, $"fixture bug: {property.Name} must be populated for this test to see it");
-            Assert.That(actual, Is.Not.Null, $"{property.Name} was not cloned");
-            Assert.That(SameContent(expected!, actual!), Is.True, $"{property.Name} differs between source and clone");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(expected, Is.Not.Null, $"fixture bug: {property.Name} must be populated for this test to see it");
+                Assert.That(actual, Is.Not.Null, $"{property.Name} was not cloned");
+                Assert.That(SameContent(expected!, actual!), Is.True, $"{property.Name} differs between source and clone");
+            }
             if (property.PropertyType.IsValueType)
                 continue;
             bool copied = CopiedFields.Contains(property.Name);

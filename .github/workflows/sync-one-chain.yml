@@ -60,7 +60,7 @@ on:
         required: false
         default: ""
       collect_metrics:
-        description: Collect sync-stage timings for the master-validation dashboard.
+        description: Collect sync-stage timings for the sync-metrics history branch.
         type: boolean
         required: false
         default: false
@@ -142,10 +142,11 @@ jobs:
     needs: [create_runner]
     runs-on: ${{ inputs.runner_label }}
     timeout-minutes: ${{ inputs.timeout }}
-    # Deliberately no id-token here: teardown is a separate job, so the job running sedge
-    # and the client images cannot mint credentials for the spawner account.
+    # id-token is for Tailscale only: the GCP provider accepts only GitHub-hosted jobs, so this
+    # self-hosted job running sedge and the client images cannot impersonate the spawner account.
     permissions:
       contents: read
+      id-token: write
     steps:
       - name: Authenticate App
         id: gh-app
@@ -160,6 +161,16 @@ jobs:
         with:
           clean: true
           ref: ${{ inputs.checkout_ref }}
+
+      # Outside sync-chain because composite steps ignore continue-on-error, and telemetry must not fail the sync.
+      - name: Connect to Tailscale
+        continue-on-error: true
+        timeout-minutes: 5
+        uses: tailscale/github-action@064b10558093f38325e838ddea35486bdc6b1d5c # v4.4.0
+        with:
+          oauth-client-id: ${{ vars.TS_SYNC_ONE_CHAIN_CLIENT_ID }}
+          audience: api.tailscale.com/${{ vars.TS_SYNC_ONE_CHAIN_CLIENT_ID }}
+          tags: tag:access-dev
 
       - name: Sync ${{ inputs.network }}
         uses: ./.github/actions/sync-chain
@@ -194,7 +205,7 @@ jobs:
           NETWORK: ${{ inputs.network }}
           SYNC_MODE: ${{ inputs.mode }}
           DOCKER_IMAGE: ${{ inputs.docker_image }}
-        run: python3 scripts/sync-metrics/collect.py "sync-metrics-${NETWORK}-${SYNC_MODE}.json"
+        run: dotnet run --file scripts/sync-metrics/collect.cs -- "sync-metrics-${NETWORK}-${SYNC_MODE}.json"
 
       - name: Upload sync metrics
         if: success() && inputs.collect_metrics

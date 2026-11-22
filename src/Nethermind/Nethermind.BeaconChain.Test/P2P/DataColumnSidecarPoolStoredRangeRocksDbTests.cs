@@ -28,16 +28,18 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
 
     private static Hash256 RootAt(ulong slot) => Keccak.Compute($"canonical {slot}");
 
-    private static ColumnsDb<BeaconChainDbColumns> Open(string path) =>
-        new(path, new DbSettings("beaconChain", path), new DbConfig(),
+    private static ColumnsDb<BeaconChainDbColumns> Open(string path, HyperClockCacheWrapper cache) =>
+        (ColumnsDb<BeaconChainDbColumns>)new RocksDbFactory(
             new RocksDbConfigFactory(new DbConfig(), new PruningConfig(), new TestHardwareInfo(), LimboLogs.Instance, validateConfig: false),
-            LimboLogs.Instance, Enum.GetValues<BeaconChainDbColumns>());
+            new DbConfig(), cache, new Testably.Abstractions.RealFileSystem(), LimboLogs.Instance, path)
+            .CreateColumnsDb<BeaconChainDbColumns>(new DbSettings("beaconChain", path));
 
     [Test]
     public void The_stored_range_check_of_a_full_window_on_RocksDB()
     {
         string path = Path.Combine(Path.GetTempPath(), "bc-stored-range-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
+        using HyperClockCacheWrapper cache = new();
         try
         {
             IReadOnlyList<ulong> sampled = new NodeColumnCustody(TestItem.PrivateKeyA.PublicKey.Hash, Eip7594DasConstants.CustodyRequirement).SampledColumns;
@@ -48,7 +50,7 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
             }
 
             Stopwatch build = Stopwatch.StartNew();
-            using (ColumnsDb<BeaconChainDbColumns> db = Open(path))
+            using (ColumnsDb<BeaconChainDbColumns> db = Open(path, cache))
             {
                 BeaconChainStore store = new(db, Spec);
                 store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyA.KeyBytes);
@@ -58,7 +60,7 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
                     templates[i] = DataColumnSidecarGloasTestFixture.BuildSidecar(sampled[i]);
                 }
 
-                List<(ulong Slot, Hash256? Root)> canonical = new(4096);
+                List<(ulong Slot, Hash256? Root)> canonical = [with(4096)];
                 for (ulong slot = First; slot <= Last; slot++)
                 {
                     if (slot % 10 != 7)
@@ -93,7 +95,7 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
 
             build.Stop();
 
-            using ColumnsDb<BeaconChainDbColumns> reopened = Open(path);
+            using ColumnsDb<BeaconChainDbColumns> reopened = Open(path, cache);
             BeaconChainStore reopenedStore = new(reopened, Spec);
             ulong top = reopenedStore.GetCanonicalIndexTopSlot() ?? 0;
 
@@ -123,12 +125,13 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
     {
         string path = Path.Combine(Path.GetTempPath(), "bc-state-prune-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(path);
+        using HyperClockCacheWrapper cache = new();
         const int StateCount = 256;
         const int StateLength = 160 * 1024 * 1024;
         try
         {
             byte[] state = new byte[StateLength];
-            using (ColumnsDb<BeaconChainDbColumns> db = Open(path))
+            using (ColumnsDb<BeaconChainDbColumns> db = Open(path, cache))
             {
                 BeaconChainStore store = new(db);
                 for (ulong slot = 1; slot <= StateCount; slot++)
@@ -140,7 +143,7 @@ public class DataColumnSidecarPoolStoredRangeRocksDbTests
                 db.Flush();
             }
 
-            using ColumnsDb<BeaconChainDbColumns> reopened = Open(path);
+            using ColumnsDb<BeaconChainDbColumns> reopened = Open(path, cache);
             BeaconChainStore reopenedStore = new(reopened);
             Stopwatch prune = Stopwatch.StartNew();
             reopenedStore.SetAnchor(RootAt(32), 32);

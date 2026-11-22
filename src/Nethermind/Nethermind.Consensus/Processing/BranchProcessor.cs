@@ -18,6 +18,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
@@ -124,7 +125,7 @@ public class BranchProcessor(
             {
                 // Start prewarming as early as possible.
                 prewarming = PreWarmTransactions(suggestedBlock, baseBlock!, spec, backgroundCancellation.Token);
-                prefetchBlockhash = blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                prefetchBlockhash = spec.IsEip7709Enabled ? null : blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
                 blocksProcessingEventArgs = new BlocksProcessingEventArgs(suggestedBlocks);
                 BlocksProcessing?.Invoke(this, blocksProcessingEventArgs);
             }
@@ -148,7 +149,7 @@ public class BranchProcessor(
                 // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();
                 if (i > 0) prewarming = PreWarmTransactions(suggestedBlock, preBlockBaseBlock, spec, backgroundCancellation.Token);
-                prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
+                if (!spec.IsEip7709Enabled) prefetchBlockhash ??= blockhashProvider.Prefetch(suggestedBlock.Header, backgroundCancellation.Token);
 
                 if (blocksCount > 64 && i % 8 == 0)
                 {
@@ -207,7 +208,7 @@ public class BranchProcessor(
                             () => processedBlock.BlockAccessList ?? (processedBlock.EncodedBlockAccessList is { } encoded
                                 ? BlockAccessListDecoder.Instance.Decode(encoded)
                                 : processedBlock.GeneratedBlockAccessList is { } generated
-                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated)) : null),
+                                    ? BlockAccessListDecoder.Instance.Decode(BlockAccessListDecoder.EncodeToBytes(generated), RlpBehaviors.TrustedInput) : null),
                             () => new ScopeReadOnlyStateProvider(parentScope ??= OpenInclusionListParentScope(preBlockBaseBlock)));
                         inclusionListSatisfied = inclusionListSatisfactionChecker.IsSatisfied(processedBlock, suggestedBlock, boundaryState);
                         if (!boundaryState.Available) throw new InvalidOperationException("Inclusion-list transaction-boundary state is unavailable");

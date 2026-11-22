@@ -156,12 +156,15 @@ public class CodeInfoRepositoryTests
     public void Ordinary_address_is_not_taken_for_a_precompile()
     {
         // Sixteen leading zero bytes is what makes an address a candidate; this has none.
-        Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
-        Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
+            Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
 
-        // Zero clears the shape guard — index 0 — so only the set can reject it.
-        Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
-        Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
+            // Zero clears the shape guard — index 0 — so only the set can reject it.
+            Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
+            Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
+        }
     }
 
     public static IEnumerable<TestCaseData> NotDelegationCodeCases()
@@ -211,9 +214,12 @@ public class CodeInfoRepositoryTests
 
         LoadTrackingCodeInfoRepository sut = new(stateProvider);
 
-        Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
 
-        Assert.That(sut.LoadCalled, Is.False);
+            Assert.That(sut.LoadCalled, Is.False);
+        }
     }
 
     public static IEnumerable<TestCaseData> DelegationCodeCases()

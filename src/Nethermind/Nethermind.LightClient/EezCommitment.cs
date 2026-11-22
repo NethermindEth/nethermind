@@ -49,7 +49,7 @@ internal static class EezCommitment
     internal static void Verify(BlockHeader header, Hash256 commitment)
     {
         if (header.Hash != commitment || header.StateRoot is null
-            || _headerDecoder.GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes
+            || _headerDecoder.GetLength(header, RlpBehaviors.None) > FinalizedHeaderHistory.MaxHeaderBytes
             || header.CalculateHash() != commitment)
             throw new InvalidDataException("Rollup header differs from the authenticated EEZ settlement commitment.");
     }

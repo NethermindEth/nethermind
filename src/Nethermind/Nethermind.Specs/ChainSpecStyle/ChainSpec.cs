@@ -44,6 +44,10 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public long? FixedDifficulty { get; set; }
 
+        /// <summary>Whether an unset pre-merge fork transition means the fork never activates, rather than activating at genesis.</summary>
+        /// <remarks>Set for geth-style genesis files, where an absent fork block label leaves the fork off (<c>isBlockForked</c> in geth's params/config.go).</remarks>
+        internal bool UnsetPreMergeForksNeverActivate { get; init; }
+
         public ulong? DaoForkBlockNumber { get; set; }
 
         public ulong? HomesteadBlockNumber { get; set; }

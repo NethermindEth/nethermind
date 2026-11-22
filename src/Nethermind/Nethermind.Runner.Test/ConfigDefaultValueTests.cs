@@ -30,9 +30,9 @@ public class ConfigDefaultValueTests
     /// </summary>
     private static readonly HashSet<string> NonDeterministicDefaults =
     [
-        "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 2, 1)
-        "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 2, 1)
-        "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 2, 1)
+        "ILogIndexConfig.MaxReceiptsParallelism",     // Max(ProcessorCount / 4, 1)
+        "ILogIndexConfig.MaxAggregationParallelism",  // Max(ProcessorCount / 4, 1)
+        "ILogIndexConfig.MaxCompressionParallelism",  // Max(ProcessorCount / 4, 1)
         "ILogIndexConfig.CompressionAlgorithm",       // depends on the CPU instruction sets
         "IBlocksConfig.GasToken",                     // backed by the static GasTokenTicker, so any config that set it earlier (e.g. XDAI) wins
     ];
@@ -48,6 +48,14 @@ public class ConfigDefaultValueTests
         StandardConfigTests.CheckDefault(property, Activator.CreateInstance(implementation));
     }
 
+    /// <remarks>Covers every discovered config property, including those whose default cannot be checked.</remarks>
+    [TestCaseSource(nameof(AllProperties))]
+    public void Config_item_is_described_or_hidden(Type configInterface, Type implementation, string propertyName)
+    {
+        PropertyInfo property = configInterface.GetProperty(propertyName)!;
+        StandardConfigTests.CheckDescribedOrHidden(property, Activator.CreateInstance(implementation));
+    }
+
     [Test]
     public void Discovers_configs_from_all_assemblies()
     {
@@ -56,6 +64,7 @@ public class ConfigDefaultValueTests
         Assert.That(assemblies, Does.Contain("Nethermind.JsonRpc"));
         Assert.That(assemblies, Does.Contain("Nethermind.Network.Contract"));
         Assert.That(assemblies, Does.Contain("Nethermind.Merge.Plugin"));
+        Assert.That(assemblies, Does.Contain("Nethermind.Consensus.Clique"));
     }
 
     private static IEnumerable<(Type Interface, Type Implementation)> ConfigTypes() =>
@@ -70,4 +79,10 @@ public class ConfigDefaultValueTests
         let name = $"{config.Interface.Name}.{property.Name}"
         where !NonDeterministicDefaults.Contains(name)
         select new TestCaseData(config.Interface, config.Implementation, property.Name).SetName(name);
+
+    private static IEnumerable<TestCaseData> AllProperties() =>
+        from config in ConfigTypes()
+        from property in config.Interface.GetProperties()
+        select new TestCaseData(config.Interface, config.Implementation, property.Name)
+            .SetArgDisplayNames($"{config.Interface.Name}.{property.Name}");
 }

@@ -197,6 +197,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip8246TransitionTimestamp { get; set; }
     public ulong? Eip8253TransitionTimestamp { get; set; }
+    public Address[]? ZeroNonceStorageAccounts { get; set; }
     public ulong? Eip7709TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
@@ -234,7 +235,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     /// anything still present after expansion is an unknown/typo key.
     /// </summary>
     [JsonExtensionData]
-    public Dictionary<string, JsonElement>? NamedForks { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, JsonElement>? NamedForks { get; set; } = [with(StringComparer.OrdinalIgnoreCase)];
 
     [JsonIgnore]
     private Dictionary<string, ulong>? _namedForkBlocks;
@@ -260,7 +261,7 @@ public class ChainSpecParamsJson : IHasNamedForks
         {
             if (label.Kind == kind && NamedForks.TryGetValue(label.LabelName, out JsonElement element))
             {
-                result ??= new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
+                result ??= [with(StringComparer.OrdinalIgnoreCase)];
                 result[label.LabelName] = TypeInfoJsonSerializer.Deserialize<T>(element, EthereumJsonSerializer.JsonOptions);
             }
         }

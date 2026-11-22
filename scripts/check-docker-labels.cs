@@ -1,0 +1,162 @@
+#!/usr/bin/env dotnet
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+#:property PublishAot=false
+#:include version.helpers.cs
+#:include ci/script-process.helpers.cs
+using System.Globalization;
+using System.Text.Json.Nodes;
+
+// Final-stage ARGs must be redeclared or OCI labels silently inherit empty values.
+// Round-trip supplied build arguments through image inspection; check publishing callers separately.
+// The default stub build context checks final-stage labels without compiling the client.
+var full = false;
+var dockerfiles = new List<string>();
+const string lightClientDirectory = "src/Nethermind/Nethermind.LightClient";
+const string lightClientDeployment = lightClientDirectory + "/Deployment";
+for (var i = 0; i < args.Length; i++)
+{
+    switch (args[i])
+    {
+        case "--full": full = true; break;
+        case "--dockerfile" when i + 1 < args.Length: dockerfiles.Add(args[++i]); break;
+        case "-h" or "--help":
+            Console.WriteLine("Usage: check-docker-labels.cs [--full] [--dockerfile PATH]...\nChecks published image labels and ports. Requires git and Docker with buildx.");
+            return 0;
+        default:
+            Console.Error.WriteLine(args[i] == "--dockerfile" ? "error: --dockerfile needs a path" : $"error: unknown argument '{args[i]}'");
+            return 2;
+    }
+}
+using var cancellation = new CancellationTokenSource();
+Console.CancelKeyPress += (_, e) => { e.Cancel = true; cancellation.Cancel(); };
+var tags = new List<string>();
+var failureCode = 1;
+DirectoryInfo? temporary = null;
+try
+{
+    var root = ScriptVersion.Root();
+    if (dockerfiles.Count == 0)
+    {
+        // New images must be checked or deliberately excluded, including published internal tooling.
+        string[] excluded =
+        [
+            "Dockerfile.diag", // Ad hoc dotTrace image for gas benchmarks.
+            "Dockerfile.pgo", // Throwaway collect-pgo-profile.yml image.
+            "scripts/build/Dockerfile", // Release package builder; image is not pushed.
+            "scripts/build/deb/Dockerfile", // Debian package builder; image is not pushed.
+            "src/Nethermind/Nethermind.Runner/Dockerfile", // Visual Studio debug container.
+            "src/Nethermind/Nethermind.Test.Runner/Dockerfile",
+            "tools/EngineApiProxy/Dockerfile", // E2E fixture; image is never pushed.
+            "tools/Kute/Dockerfile",
+            "tools/RpcTests/RpcTests.Monitor/Dockerfile", // Published as nethermindeth/rpc-monitor for internal operations.
+            "tools/SendBlobs/Dockerfile"
+        ];
+        var tracked = await Run("git", ["-C", root, "ls-files", "--", "Dockerfile", "Dockerfile.*", "*/Dockerfile", "*/Dockerfile.*"]);
+        dockerfiles.AddRange(tracked.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(file => file.TrimEnd('\r')).Except(excluded).Order(StringComparer.Ordinal));
+        if (dockerfiles.Count == 0) throw new InvalidOperationException("error: found no Dockerfile to check");
+    }
+    foreach (var builder in new[] { ".github/actions/publish-docker/action.yaml", ".github/workflows/release.yml", ".github/workflows/release-bootnode.yml" })
+        foreach (var argument in new[] { "COMMIT_HASH", "VERSION", "BUILD_TIMESTAMP" })
+            if (!File.ReadAllText(Path.Combine(root, builder)).Contains($"--build-arg {argument}=", StringComparison.Ordinal))
+                throw new InvalidOperationException($"error: {builder} does not pass --build-arg {argument}");
+    var commit = (await Run("git", ["-C", root, "rev-parse", "HEAD"])).Trim();
+    var epoch = (await Run("git", ["-C", root, "log", "-1", "--format=%ct"])).Trim();
+    var timestamp = DateTimeOffset.FromUnixTimeSeconds(long.Parse(epoch, CultureInfo.InvariantCulture)).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+    if (commit.Length == 0) throw new InvalidOperationException("error: could not determine the commit and timestamp to build with");
+    temporary = Directory.CreateTempSubdirectory("nethermind-label-check-");
+    Directory.CreateDirectory(Path.Combine(temporary.FullName, "publish"));
+    File.WriteAllText(Path.Combine(temporary.FullName, "publish/nethermind"), "");
+    var failures = 0;
+    foreach (var dockerfile in dockerfiles)
+    {
+        var bootnode = dockerfile == "tools/Bootnode/Dockerfile";
+        var lightClient = dockerfile == lightClientDeployment + "/Dockerfile";
+        if (!bootnode && !lightClient && dockerfile is not ("Dockerfile" or "Dockerfile.chiseled"))
+        {
+            Console.Error.WriteLine($"error: '{dockerfile}' has no expected labels here. Add them, or exclude it in check-docker-labels.cs if it is not released.");
+            return 2;
+        }
+        var version = ScriptVersion.Read(Path.Combine(root, bootnode ? "tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj"
+            : lightClient ? lightClientDirectory + "/Nethermind.LightClient.csproj" : "src/Nethermind/Directory.Build.props"));
+        var tag = "nethermind-label-check:" + dockerfile.Replace('/', '-').Replace('.', '-');
+        List<string> build = ["buildx", "build", root, "-f", Path.Combine(root, dockerfile), "-t", tag,
+            "--build-arg", $"COMMIT_HASH={commit}", "--build-arg", $"VERSION={version}", "--build-arg", $"BUILD_TIMESTAMP={timestamp}", "--load"];
+        build.AddRange(full ? ["--build-arg", $"SOURCE_DATE_EPOCH={epoch}"] : new[] { "--build-context", $"build={temporary.FullName}" });
+        Console.WriteLine($"Building {dockerfile} as {tag}");
+        tags.Add(tag);
+        await Run("docker", [.. build], echo: true);
+        var config = JsonNode.Parse(await Run("docker", ["image", "inspect", "--format", "{{json .Config}}", tag]));
+        var labels = config?["Labels"];
+        Console.WriteLine($"Checking the labels of {tag}");
+        foreach (var (key, expected) in new[]
+        {
+            ("title", bootnode ? "Nethermind Bootnode" : lightClient ? "Nethermind Light Client" : "Nethermind"),
+            ("description", bootnode ? "Standalone discovery bootnode for discv4 and discv5." : lightClient ? "Ethereum light client with verified P2P state and local JSON-RPC." : "A robust execution client for Ethereum node operators."),
+            ("vendor", "Demerzel Solutions Limited"), ("licenses", "LGPL-3.0-only"),
+            ("url", bootnode ? "https://github.com/NethermindEth/nethermind/tree/master/tools/Bootnode" : lightClient ? $"https://github.com/NethermindEth/nethermind/tree/master/{lightClientDeployment}" : "https://nethermind.io/nethermind-client"),
+            ("documentation", bootnode ? "https://github.com/NethermindEth/nethermind/blob/master/tools/Bootnode/README.md" : lightClient ? $"https://github.com/NethermindEth/nethermind/blob/master/{lightClientDeployment}/README.md" : "https://docs.nethermind.io"),
+            ("source", "https://github.com/NethermindEth/nethermind"), ("version", version), ("revision", commit), ("created", timestamp)
+        })
+        {
+            var label = $"org.opencontainers.image.{key}";
+            var actual = labels?[label]?.ToString() ?? "";
+            if (actual == expected) Console.WriteLine($"  ok   {label} = {actual}");
+            else
+            {
+                Console.Error.WriteLine($"  FAIL {label}\n         expected: {expected}\n         actual:   {(actual.Length == 0 ? "<empty or missing>" : actual)}");
+                failures++;
+            }
+        }
+        if (!bootnode)
+        {
+            string[] requiredPorts = lightClient
+                ? ["8545/tcp", "30303/tcp", "30303/udp", "9050/tcp", "9050/udp", "9051/udp"]
+                : ["30303/tcp", "30303/udp"];
+            if (config?["ExposedPorts"] is not JsonObject ports ||
+                requiredPorts.Any(port => !ports.ContainsKey(port)))
+            {
+                Console.Error.WriteLine($"FAIL: {dockerfile} must expose {string.Join(", ", requiredPorts)}");
+                failures++;
+            }
+        }
+        if (lightClient &&
+            (!JsonNode.DeepEquals(config?["Entrypoint"], JsonNode.Parse("""["./Nethermind.LightClient"]""")) ||
+             !JsonNode.DeepEquals(config?["Healthcheck"]?["Test"], JsonNode.Parse("""["CMD","./Nethermind.LightClient","--health-check"]"""))))
+        {
+            Console.Error.WriteLine($"FAIL: {dockerfile} must launch the client and healthcheck directly");
+            failures++;
+        }
+    }
+    if (failures > 0) throw new InvalidOperationException($"{failures} image metadata check(s) failed");
+    Console.WriteLine("All image metadata checks passed");
+    return 0;
+}
+catch (OperationCanceledException) { return 130; }
+catch (Exception exception)
+{
+    Console.Error.WriteLine(exception.Message);
+    return failureCode;
+}
+finally
+{
+    temporary?.Delete(recursive: true);
+    if (tags.Count > 0)
+    {
+        using var cleanup = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try { await ScriptProcess.Run("docker", ["image", "rm", .. tags], cleanup.Token); }
+        catch (Exception exception) { Console.Error.WriteLine($"Image cleanup failed: {exception.Message}"); }
+    }
+}
+
+async Task<string> Run(string executable, string[] arguments, bool echo = false)
+{
+    var result = await ScriptProcess.Run(executable, arguments, cancellation.Token, echo);
+    if (result.Code != 0)
+    {
+        failureCode = result.Code;
+        throw new InvalidOperationException($"{executable} exited with code {result.Code}: {result.Error}");
+    }
+    return result.Output;
+}

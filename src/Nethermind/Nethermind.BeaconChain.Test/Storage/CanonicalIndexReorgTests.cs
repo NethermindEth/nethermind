@@ -42,10 +42,13 @@ public class CanonicalIndexReorgTests
         UnsignedChain.ChainBlock b1 = fixture.Import(fixture.Chain.AnchorRoot, slot: 1, 0xb1);
         UnsignedChain.ChainBlock b2 = fixture.Import(b1.Root, slot: 2, 0xb2, [fixture.Chain.Vote(1, b1.Root)]);
 
-        Assert.That(fixture.ComputeHead(), Is.EqualTo(b2.Root), "one vote puts chain B ahead of the unvoted chain A");
-        Assert.That(fixture.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, b1.Root, b2.Root, null }),
-            "slot 3 held chain A's head, above chain B's head");
-        Assert.That(fixture.Store.GetCanonicalIndexTopSlot(), Is.EqualTo(2UL), "the recorded top slot follows the head down");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.ComputeHead(), Is.EqualTo(b2.Root), "one vote puts chain B ahead of the unvoted chain A");
+            Assert.That(fixture.CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, b1.Root, b2.Root, null }),
+                "slot 3 held chain A's head, above chain B's head");
+            Assert.That(fixture.Store.GetCanonicalIndexTopSlot(), Is.EqualTo(2UL), "the recorded top slot follows the head down");
+        }
     }
 
     [Test]
@@ -86,9 +89,12 @@ public class CanonicalIndexReorgTests
         fixture.Store.SetCanonicalRoot(3, Keccak.Compute("stale 3"));
         UnsignedChain.ChainBlock a5 = fixture.Import(a4.Root, slot: 5, 0xa5);
 
-        Assert.That(fixture.ComputeHead(), Is.EqualTo(a5.Root));
-        Assert.That(fixture.CanonicalRoots(through: 5), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, null, a2.Root, null, a4.Root, a5.Root }),
-            "skipped slots below a canonical block that still held an entry must not end the walk");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.ComputeHead(), Is.EqualTo(a5.Root));
+            Assert.That(fixture.CanonicalRoots(through: 5), Is.EqualTo(new Hash256?[] { fixture.Chain.AnchorRoot, null, a2.Root, null, a4.Root, a5.Root }),
+                "skipped slots below a canonical block that still held an entry must not end the walk");
+        }
     }
 
     [Test]
@@ -175,8 +181,11 @@ public class CanonicalIndexReorgTests
             }
         }
 
-        Assert.That(restarted.ComputeHead(), Is.EqualTo(expectedHead));
-        Assert.That(restarted.CanonicalRoots(through: (ulong)expected.Length - 1), Is.EqualTo(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restarted.ComputeHead(), Is.EqualTo(expectedHead));
+            Assert.That(restarted.CanonicalRoots(through: (ulong)expected.Length - 1), Is.EqualTo(expected));
+        }
     }
 }
 
@@ -289,8 +298,11 @@ internal sealed class CanonicalReorgFixture(UnsignedChain chain, FailableCommitC
         UnsignedChain.ChainBlock a1 = Import(Chain.AnchorRoot, slot: 1, 0xa1);
         UnsignedChain.ChainBlock a2 = Import(a1.Root, slot: 2, 0xa2);
         UnsignedChain.ChainBlock a3 = Import(a2.Root, slot: 3, 0xa3);
-        Assert.That(ComputeHead(), Is.EqualTo(a3.Root));
-        Assert.That(CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { Chain.AnchorRoot, a1.Root, a2.Root, a3.Root }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ComputeHead(), Is.EqualTo(a3.Root));
+            Assert.That(CanonicalRoots(through: 3), Is.EqualTo(new Hash256?[] { Chain.AnchorRoot, a1.Root, a2.Root, a3.Root }));
+        }
         return [a1, a2, a3];
     }
 

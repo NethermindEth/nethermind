@@ -48,11 +48,14 @@ public class CheckpointSyncTests
         }
         TestContext.Out.WriteLine($"Checkpoint sync took {stopwatch.Elapsed.TotalSeconds:F1} s");
 
-        Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfFulu>());
-        Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(anchor.State, Is.TypeOf<ForkedBeaconState.OfFulu>());
+            Assert.That(anchor.Block, Is.TypeOf<ForkedSignedBeaconBlock.OfFulu>());
+        }
         BeaconStateFulu state = ((ForkedBeaconState.OfFulu)anchor.State).State;
         SignedBeaconBlock block = ((ForkedSignedBeaconBlock.OfFulu)anchor.Block!).Block;
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(state.Fork!.CurrentVersion, Is.EqualTo(Bytes.FromHexString("0x06000000")), "finalized mainnet state must be Fulu");
             Assert.That(state.Validators!.Length, Is.GreaterThan(1_000_000));
@@ -63,7 +66,7 @@ public class CheckpointSyncTests
             Assert.That(store.TryGetState(anchor.BlockRoot, out byte[]? persistedState), Is.True);
             Assert.That(persistedState!.Length, Is.GreaterThan(100 * 1024 * 1024));
             Assert.That(store.TryGetForkedBlock(anchor.BlockRoot, out _), Is.True);
-        });
+        }
 
         // The unroutable URL proves the second start resumes from the persisted anchor without HTTP:
         // had it attempted checkpoint sync it would have failed and never populated the pubkey cache.
@@ -149,8 +152,58 @@ public class CheckpointSyncTests
 
         InvalidDataException ex = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
-        Assert.That(ex.Message, Does.Contain(nameof(BeaconFork.Gloas)).And.Not.Contain("root mismatch"));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain(nameof(BeaconFork.Gloas)).And.Not.Contain("root mismatch"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Fulu_checkpoint_checks_the_proposers_key_after_genesis([Values] bool correctSigner)
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        BeaconStateFulu state = chain.AnchorState.Clone();
+        SlotProcessing.ProcessSlots(state, 1, new EpochCache());
+        SignedBeaconBlock block = TestChain.CreateBlock(state.Slot, chain.AnchorRoot);
+        BeaconBlock message = block.Message!;
+        message.ProposerIndex = state.GetBeaconProposerIndex();
+        state.LatestBlockHeader = ImportableBlobBlock.HeaderFor(message).Message;
+        state.LatestBlockHeader!.StateRoot = Hash256.Zero;
+        message.StateRoot = SszRoots.HashTreeRoot(state);
+        Hash256 blockRoot = SszRoots.HashTreeRoot(message);
+        int proposer = (int)message.ProposerIndex;
+        int signer = correctSigner ? proposer : (proposer + 1) % state.ReadOnlyValidators.Length;
+        block.Signature = ImportableBlobBlock.Sign(GloasTestFixtures.ValidatorKey(signer), blockRoot, state.GetDomain(DomainType.BeaconProposer, 0));
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(BeaconStateFulu.Encode(state), new ForkedSignedBeaconBlock.OfFulu(block));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        if (correctSigner)
+            Assert.That((await sync.RunAsync(CancellationToken.None)).BlockRoot, Is.EqualTo(blockRoot));
+        else
+            Assert.That((await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!.Message, Does.Contain("proposer signature"));
+        Assert.That(store.TryGetForkedBlock(blockRoot, out _), Is.EqualTo(correctSigner));
+    }
+
+    [Test]
+    public async Task Anchor_with_another_blocks_signature_is_rejected_before_persistence()
+    {
+        ForkCrossingChain chain = ForkCrossingChain.Instance;
+        SignedBeaconBlockGloas wrongSignature = new() { Message = chain.First.Block.Message, Signature = chain.Voting[0].Block.Signature };
+        using GloasCheckpointFiles files = GloasCheckpointFiles.Write(chain.First.PostState, new ForkedSignedBeaconBlock.OfGloas(wrongSignature));
+        BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
+        using CheckpointSync sync = new(new BeaconChainConfig { CheckpointStateFile = files.StateFile }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
+
+        InvalidDataException refusal = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain("proposer signature"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+            Assert.That(store.TryGetForkedBlock(chain.First.Root, out _), Is.False);
+            Assert.That(store.TryGetState(chain.First.Root, out _), Is.False);
+        }
     }
 
     [TestCase("https://user:secret@beacon.example:5052/path?token=1", "https://beacon.example:5052", TestName = "Credentials and path never reach the log")]
@@ -179,8 +232,11 @@ public class CheckpointSyncTests
         Exception refusal = (await Assert.CatchAsync(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(refusal, unknownVersion ? Is.TypeOf<NotSupportedException>() : Is.TypeOf<InvalidDataException>());
-        Assert.That(refusal.Message, Does.Contain("Fix the fork configuration or use a checkpoint source of this network").And.Not.Contain("beaconChain database"));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(refusal.Message, Does.Contain("Fix the fork configuration or use a checkpoint source of this network").And.Not.Contain("beaconChain database"));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     [Test]
@@ -225,8 +281,11 @@ public class CheckpointSyncTests
         InvalidDataException ex = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
         Assert.That(ex.Message, Does.Contain("genesis_validators_root").And.Contain("another network"));
-        Assert.That(ex.Message, Does.Not.Contain("delete").IgnoreCase, "a first sync has no database to delete");
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Not.Contain("delete").IgnoreCase, "a first sync has no database to delete");
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     /// <summary>Pairing alone does not validate committee keys; reject infinity, off-subgroup members and wrong aggregate keys.</summary>
@@ -241,8 +300,11 @@ public class CheckpointSyncTests
 
         InvalidDataException ex = (await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None)))!;
 
-        Assert.That(ex.Message, Does.Contain(SyncCommitteeKeyAnchors.Refusal(nextCommittee, key)));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain(SyncCommitteeKeyAnchors.Refusal(nextCommittee, key)));
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+        }
     }
 
     [Test]
@@ -258,9 +320,12 @@ public class CheckpointSyncTests
 
         CheckpointAnchor anchor = await sync.RunAsync(CancellationToken.None);
 
-        Assert.That(anchor.BlockRoot, Is.EqualTo(blockRoot));
-        Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out _), Is.True);
-        Assert.That(anchorRoot, Is.EqualTo(blockRoot));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(anchor.BlockRoot, Is.EqualTo(blockRoot));
+            Assert.That(store.TryGetAnchor(out Hash256? anchorRoot, out _), Is.True);
+            Assert.That(anchorRoot, Is.EqualTo(blockRoot));
+        }
     }
 
     [Test]
@@ -274,8 +339,11 @@ public class CheckpointSyncTests
             WeakSubjectivityCheckpoint = $"{GloasTestFixtures.Hash(0x5A)}:{epoch}",
         }, GloasCheckpointFiles.Spec, store, LimboLogs.Instance);
         await Assert.ThrowsAsync<InvalidDataException>(() => sync.RunAsync(CancellationToken.None));
-        Assert.That(store.TryGetAnchor(out _, out _), Is.False);
-        Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.TryGetAnchor(out _, out _), Is.False);
+            Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
+        }
     }
 
     [TestCase(false, false, 1UL, true)]
@@ -313,8 +381,11 @@ public class CheckpointSyncTests
     {
         Checkpoint? checkpoint = CheckpointSync.ParseWeakSubjectivityCheckpoint(value);
 
-        Assert.That(checkpoint?.Epoch, Is.EqualTo(epoch));
-        Assert.That(checkpoint?.Root, epoch is null ? Is.Null : Is.EqualTo(new Hash256("0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9")));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(checkpoint?.Epoch, Is.EqualTo(epoch));
+            Assert.That(checkpoint?.Root, epoch is null ? Is.Null : Is.EqualTo(new Hash256("0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9")));
+        }
     }
 
     private static ExternalClDetector CreateDetector(ILogManager logManager) =>

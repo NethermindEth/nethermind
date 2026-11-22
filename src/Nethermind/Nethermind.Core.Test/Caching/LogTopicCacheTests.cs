@@ -20,8 +20,11 @@ public class LogTopicCacheTests
         Hash256 first = LogTopicCache.Get(topic);
         Hash256 second = LogTopicCache.Get(topic);
 
-        Assert.That(first.Bytes.SequenceEqual(topic), Is.True);
-        Assert.That(second, Is.SameAs(first));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.Bytes.SequenceEqual(topic), Is.True);
+            Assert.That(second, Is.SameAs(first));
+        }
     }
 
     [Test]
@@ -33,10 +36,13 @@ public class LogTopicCacheTests
         Hash256 fromB = LogTopicCache.Get(b);
         Hash256 fromAAgain = LogTopicCache.Get(a);
 
-        Assert.That(fromA.Bytes.SequenceEqual(a), Is.True);
-        Assert.That(fromB.Bytes.SequenceEqual(b), Is.True);
-        Assert.That(fromAAgain.Bytes.SequenceEqual(a), Is.True);
-        Assert.That(fromAAgain, Is.Not.SameAs(fromB));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromA.Bytes.SequenceEqual(a), Is.True);
+            Assert.That(fromB.Bytes.SequenceEqual(b), Is.True);
+            Assert.That(fromAAgain.Bytes.SequenceEqual(a), Is.True);
+            Assert.That(fromAAgain, Is.Not.SameAs(fromB));
+        }
     }
 
     [Test]

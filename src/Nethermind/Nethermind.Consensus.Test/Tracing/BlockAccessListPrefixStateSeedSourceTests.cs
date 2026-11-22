@@ -13,7 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -218,12 +218,18 @@ public class BlockAccessListPrefixStateSeedSourceTests
         ReadAll(overlay, underlying);
 
         const int iterations = 1_000;
-        // Below the 24-byte minimum object size: any per-read allocation exceeds it, while a one-off
-        // runtime allocation on the test thread (2,016 bytes has been seen in CI) does not.
+        const int windows = 5;
+        // Below the 24-byte minimum object size: any per-read allocation exceeds it.
         const int maxBytesPerIteration = 8;
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < iterations; i++) ReadAll(overlay, underlying);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // A per-read allocation shows in every window. A one-off runtime allocation on the test thread
+        // (up to 8,152 bytes seen in CI) shows in one window only, so the minimum excludes it.
+        long allocated = long.MaxValue;
+        for (int window = 0; window < windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < iterations; i++) ReadAll(overlay, underlying);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         Assert.That(allocated, Is.LessThan(iterations * maxBytesPerIteration), "slot reads, storage probes, code lookups and reads of accounts the prefix left alone must not allocate");
 
@@ -332,7 +338,7 @@ public class BlockAccessListPrefixStateSeedSourceTests
     {
         IBlockAccessListStore store = Substitute.For<IBlockAccessListStore>();
         Block block = BuildBlock();
-        store.Get(ForkBlock, block.Hash).Returns(_ => throw new RlpException("corrupt"), _ => BuildAccessList(TestItem.KeccakA));
+        store.Get(ForkBlock, block.Hash).Returns(_ => throw new RlpReaderException("corrupt"), _ => BuildAccessList(TestItem.KeccakA));
         BlockAccessListPrefixStateSeedSource seeds = BuildSource(store);
         StateReadOverlaySlot slot = new();
 
@@ -398,6 +404,22 @@ public class BlockAccessListPrefixStateSeedSourceTests
         {
             Assert.That(disabled, Is.False, "a chain that never carries access lists can arm only what the source underneath arms");
             Assert.That(seeds.Enabled, Is.True, "an enabled source underneath still arms slots");
+        }
+    }
+
+    [Test]
+    public void MayCover_OnABlockBeforeTheFork_FollowsTheSourceUnderneath([Values] bool innerCovers)
+    {
+        IPrefixStateSeedSource inner = Substitute.For<IPrefixStateSeedSource>();
+        Block before = BuildBlock(ForkBlock - 1);
+        inner.MayCover(before).Returns(innerCovers);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)ForkBlock, Amsterdam.Instance));
+        BlockAccessListPrefixStateSeedSource seeds = new(inner, Substitute.For<IBlockAccessListStore>(), specProvider, LimboLogs.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.MayCover(before), Is.EqualTo(innerCovers), "a block before the fork is seeded by whatever sits underneath");
+            Assert.That(seeds.MayCover(BuildBlock(ForkBlock)), Is.True, "a block with an access list may be seeded from it");
         }
     }
 

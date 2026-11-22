@@ -77,8 +77,11 @@ public class ProtoArrayForkChoiceTests
         }
 
         forkChoice.ProcessAttestation(1, GetRoot(2), 3);
-        Assert.That(forkChoice.GetHead(anchor, anchor, balances, null, 0), Is.EqualTo(GetRoot(1)), "slashed validator stays out");
-        Assert.That(forkChoice.GetWeight(GetRoot(2)), Is.EqualTo(0ul), "no repeat counting");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkChoice.GetHead(anchor, anchor, balances, null, 0), Is.EqualTo(GetRoot(1)), "slashed validator stays out");
+            Assert.That(forkChoice.GetWeight(GetRoot(2)), Is.EqualTo(0ul), "no repeat counting");
+        }
 
         ProtoBlock NewBlock(Hash256 root) => CreateProtoBlock(1, root, GetRoot(0), anchor, anchor, ExecutionStatus.Optimistic, root);
     }

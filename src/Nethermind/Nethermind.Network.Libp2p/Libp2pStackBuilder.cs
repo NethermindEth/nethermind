@@ -19,7 +19,6 @@ using Nethermind.Libp2p.Protocols.Pubsub;
 namespace Nethermind.Network.Libp2p;
 
 /// <summary>The libp2p stack the node's hosts run on: TCP/Noise with Yamux, optional Mplex and QUIC, identify, ping and optional gossipsub.</summary>
-/// <remarks>Uses component packages without the meta package's WebRTC, WebSocket and circuit-relay dependencies.</remarks>
 public sealed class Libp2pStackBuilder(IServiceProvider? serviceProvider = null)
     : PeerFactoryBuilderBase<Libp2pStackBuilder, Libp2pStackPeerFactory>(serviceProvider)
 {

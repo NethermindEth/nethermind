@@ -63,11 +63,11 @@ internal static class BlobsEndpoint
         };
 
         List<int> rows = SelectRows(commitments, wanted);
+        using RateLimitLease? lease = rows.Count > 0 ? ctx.BlobRebuilds.AttemptAcquire() : null;
         byte[][] blobs = [];
         if (rows.Count > 0)
         {
-            using RateLimitLease lease = ctx.BlobRebuilds.AttemptAcquire();
-            if (!lease.IsAcquired)
+            if (!lease!.IsAcquired)
             {
                 await ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
                     $"The node is already rebuilding blobs for {MaxConcurrentRebuilds} requests; retry later.", c.RequestAborted);
@@ -156,7 +156,7 @@ internal static class BlobsEndpoint
     /// <summary>The blob indices to serve, in commitment order: all of them, or those whose <c>kzg_to_versioned_hash</c> is in <paramref name="wanted"/>.</summary>
     private static List<int> SelectRows(SszKzgCommitment[] commitments, HashSet<Hash256>? wanted)
     {
-        List<int> rows = new(commitments.Length);
+        List<int> rows = [with(commitments.Length)];
         Hash256?[] versionedHashes = wanted is null ? [] : PayloadConverter.ToBlobVersionedHashes(commitments);
         for (int i = 0; i < commitments.Length; i++)
         {

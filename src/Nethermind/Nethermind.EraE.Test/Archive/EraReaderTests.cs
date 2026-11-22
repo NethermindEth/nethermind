@@ -8,16 +8,40 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Archive;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.Exceptions.EraException;
+using EraVerificationException = Nethermind.Era1.Exceptions.EraVerificationException;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.EraE.Test.Archive;
 
 internal class EraReaderTests
 {
+    [Test, NonParallelizable]
+    public async Task VerifyContent_returns_transactions_when_validation_fails([Values] bool throwFromValidator)
+    {
+        Transaction source = Build.A.Transaction.WithType(TxType.EIP1559).Signed().TestObject;
+        using TestEraFile file = await TestEraFile.Create(1, 0, transaction: source);
+        Transaction? decoded = null;
+        IBlockValidator validator = Substitute.For<IBlockValidator>();
+        validator.ValidateBodyAgainstHeader(Arg.Any<BlockHeader>(), Arg.Any<BlockBody>(), out Arg.Any<string?>())
+            .Returns(call =>
+            {
+                decoded = call.Arg<BlockBody>().Transactions[0];
+                if (throwFromValidator) throw new OperationCanceledException();
+                return false;
+            });
+
+        using EraReader reader = new(file.FilePath);
+        Assert.That(() => reader.VerifyContent(MainnetSpecProvider.Instance, validator, verifyConcurrency: 1),
+            throwFromValidator ? Throws.InstanceOf<OperationCanceledException>() : Throws.TypeOf<EraVerificationException>());
+        Assert.That(decoded, Is.Not.Null);
+        Assert.That(decoded!.Type, Is.EqualTo(TxType.Legacy), "Returning to the pool resets the transaction type.");
+    }
+
     [Test, NonParallelizable]
     public async Task Imported_transactions_do_not_consume_the_network_pool([Values] bool postMerge)
     {
@@ -80,6 +104,20 @@ internal class EraReaderTests
         ValueHash256 verifiedRoot = await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid);
 
         Assert.That(verifiedRoot, Is.EqualTo(expectedRoot));
+    }
+
+    [TestCase(3U, 0U, 2UL, TestName = "Duplicate number in pre-merge epoch")]
+    [TestCase(3U, 0U, 3UL, TestName = "Number past the last block")]
+    [TestCase(0U, 3U, 2UL, TestName = "Duplicate number in post-merge epoch")]
+    [TestCase(0U, 3U, 0UL, TestName = "Number below its slot in post-merge epoch")]
+    public async Task VerifyContent_HeaderNumberDiffersFromSlot_ThrowsEraVerificationException(uint preMergeCount, uint postMergeCount, ulong storedNumber)
+    {
+        using TestEraFile file = await TestEraFile.Create(preMergeCount, postMergeCount);
+        file.OverwriteHeaderNumber(1, storedNumber);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(async () => await sut.VerifyContent(MainnetSpecProvider.Instance, Always.Valid),
+            Throws.TypeOf<EraVerificationException>().With.Message.Contains("header number"));
     }
 
     [Test]

@@ -3,6 +3,20 @@ name: Sync PR Gate (Hoodi)
 on:
   pull_request:
     branches: [master]
+    # Syncs Hoodi with the PR's Docker image on a paid larger runner, so it only runs when the
+    # PR can change that image or this gate. Not a required check, so skipping leaves no pending status.
+    paths:
+      - 'Dockerfile'
+      - 'src/**'
+      - 'scripts/entrypoint.sh'
+      - 'scripts/wait-for-sync.cs'
+      - 'scripts/sync/**'
+      - 'Directory.Packages.props'
+      - 'Directory.Build.props'
+      - 'Directory.Build.targets'
+      - 'nuget.config'
+      - 'global.json'
+      - '.github/workflows/sync-pr-gate.yml'
 
 concurrency:
   group: sync-pr-${{ github.event.pull_request.number }}
@@ -33,6 +47,7 @@ jobs:
             });
             const affectsEmbedded = path =>
               /^src\/Nethermind\/Nethermind\.(BeaconChain[^/]*|Network\.Libp2p[^/]*|Merge\.Plugin[^/]*|Serialization\.Ssz[^/]*|Analyzers[^/]*)\//.test(path) ||
+              /^src\/Nethermind\/Nethermind\.Runner\/(NethermindPlugins\.cs|Nethermind\.Runner\.csproj)$/.test(path) ||
               /(^|\/)(Directory\.(Build\.(props|targets)|Packages\.props)|global\.json|Dockerfile)$/.test(path) ||
               path === '.github/workflows/sync-pr-gate.yml';
             return files.length >= 3000 || files.some(file => affectsEmbedded(file.filename) || affectsEmbedded(file.previous_filename || ''))
@@ -104,6 +119,9 @@ jobs:
           check-latest: true
           cache: true
 
+      - name: Set up .NET for CI scripts
+        uses: actions/setup-dotnet@v6
+
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -137,16 +155,12 @@ jobs:
           FLATDB: ${{ matrix.flatdb }}
           CONSENSUS: ${{ matrix.consensus }}
         run: |
-          node_name="SyncPRGate-hoodi-${SYNC_MODE}-${CONSENSUS}-${GITHUB_RUN_ID}"
-          echo "node_name=$node_name" >> $GITHUB_ENV
-
           mkdir -p execution-data/logs/configs
           mv ../tests/predefined_configs/customNLog.config execution-data/logs/configs/customNLog.config
           flags=("FlatDb.Enabled=$FLATDB" "Sync.NonValidatorNode=true"
             "Sync.DownloadBodiesInFastSync=false" "Sync.DownloadReceiptsInFastSync=false"
             "Sync.VerifyTrieOnStateSyncFinished=true" "Sync.SnapSync=true"
             "loggerConfigSource=/nethermind/data/logs/configs/customNLog.config"
-            "Metrics.NodeName=$node_name" "Metrics.Enabled=true"
             "Init.LogRules=Synchronization.Peers.SyncPeersReport:Debug")
           args=()
           if [[ "$CONSENSUS" == "Embedded" ]]; then
@@ -167,25 +181,11 @@ jobs:
             docker compose up -d
           fi
 
-      - name: Start Grafana Alloy
-        continue-on-error: true
-        uses: ./.github/actions/start-alloy
-        with:
-          network: hoodi
-          node-name: ${{ env.node_name }}
-          loki-url: ${{ secrets.LOKI_URL }}
-          loki-username: ${{ secrets.LOKI_USERNAME }}
-          loki-password: ${{ secrets.LOKI_PASSWORD }}
-          prometheus-url: ${{ secrets.PROMETHEUS_URL }}
-          prometheus-username: ${{ secrets.PROMETHEUS_USERNAME }}
-          prometheus-password: ${{ secrets.PROMETHEUS_PASSWORD }}
-
       - name: Wait for hoodi to sync
         env:
           NETWORK: hoodi
           SYNC_MODE: ${{ matrix.mode }}
-          PYTHONUNBUFFERED: "1"
-        run: python scripts/wait-for-sync.py
+        run: dotnet run --file scripts/wait-for-sync.cs
 
       - name: Get Nethermind Debug Logs
         if: failure() || cancelled()
@@ -214,10 +214,3 @@ jobs:
       - name: Check size of DB
         if: always()
         run: du -h $GITHUB_WORKSPACE/sedge
-
-      - name: Stop Grafana Alloy
-        if: always()
-        continue-on-error: true
-        run: |
-          docker stop -t 15 grafana-alloy 2>/dev/null || true
-          docker rm -f grafana-alloy 2>/dev/null || true

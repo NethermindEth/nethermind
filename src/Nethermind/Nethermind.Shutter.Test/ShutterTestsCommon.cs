@@ -4,7 +4,6 @@
 
 using System;
 using System.IO.Abstractions;
-using Nethermind.Abi;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -32,7 +31,6 @@ class ShutterTestsCommon
     public static readonly ISpecProvider SpecProvider = ChiadoSpecProvider.Instance;
     public static readonly IEthereumEcdsa Ecdsa = new EthereumEcdsa(ChainId);
     public static readonly ILogManager LogManager = LimboLogs.Instance;
-    public static readonly AbiEncoder AbiEncoder = new();
     public static readonly ShutterConfig Cfg = new()
     {
         InstanceID = 0,
@@ -53,7 +51,7 @@ class ShutterTestsCommon
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         return new(
             eventSimulator ?? InitEventSimulator(rnd),
-            AbiEncoder, blockTree, Ecdsa, logFinder, receiptStorage,
+            blockTree, Ecdsa, logFinder, receiptStorage,
             LogManager, SpecProvider, timestamper ?? Substitute.For<ITimestamper>(),
             Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg,
             Substitute.For<IShareableTxProcessorSource>(), new(), rnd
@@ -63,7 +61,7 @@ class ShutterTestsCommon
     public static ShutterApiSimulator InitApi(Random rnd, BaseEngineModuleTests.MergeTestBlockchain chain, ITimestamper? timestamper = null, ShutterEventSimulator? eventSimulator = null)
         => new(
             eventSimulator ?? InitEventSimulator(rnd),
-            AbiEncoder, chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
+            chain.BlockTree.AsReadOnly(), chain.EthereumEcdsa, chain.LogFinder, chain.ReceiptStorage,
             chain.LogManager, chain.SpecProvider, timestamper ?? chain.Timestamper,
             Substitute.For<IFileSystem>(), Substitute.For<IKeyStoreConfig>(), Cfg, chain.ShareableTxProcessorSource, new(), rnd
         );
@@ -74,7 +72,6 @@ class ShutterTestsCommon
             ChainId,
             Threshold,
             InitialSlot,
-            AbiEncoder,
             new(Cfg.SequencerContractAddress!)
         );
 

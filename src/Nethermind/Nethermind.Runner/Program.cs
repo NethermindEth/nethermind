@@ -11,7 +11,9 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
@@ -52,10 +54,12 @@ Console.Title = ProductInfo.Name;
 Regex.CacheSize = 128;
 BlocksConfig.SetDefaultExtraDataWithVersion();
 
-ManualResetEventSlim exit = new(true);
+int cancellationExitCode = ExitCodes.SigInt;
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 string unhandledError = "A critical error has occurred";
+int maskingConfigLoaded = 0;
+SensitiveLogMasking.Enabled = true;
 Option<string>[] deprecatedOptions =
 [
     BasicOptions.ConfigurationDirectory,
@@ -69,9 +73,9 @@ AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
     ILogger criticalLogger = GetCriticalLogger();
 
     if (e.ExceptionObject is Exception ex)
-        criticalLogger.Error($"{unhandledError}.", ex);
+        LogCriticalException(criticalLogger, $"{unhandledError}.", ex);
     else
-        criticalLogger.Error($"{unhandledError}: {e.ExceptionObject}");
+        criticalLogger.Error($"{unhandledError}: {e.ExceptionObject:hide}");
 };
 
 try
@@ -84,13 +88,30 @@ catch (Exception ex)
 
     ex = ex is AggregateException aex ? aex.InnerException : ex;
 
-    criticalLogger.Error($"{unhandledError}.", ex);
+    LogCriticalException(criticalLogger, $"{unhandledError}.", ex);
 
     return ex is IExceptionWithExitCode exc ? exc.ExitCode : ExitCodes.GeneralError;
 }
 finally
 {
     NLogManager.Shutdown();
+}
+
+void LogCriticalException(ILogger criticalLogger, string message, Exception ex)
+{
+    if (Volatile.Read(ref maskingConfigLoaded) == 0 || SensitiveLogMasking.Enabled)
+    {
+        string detail = ex switch
+        {
+            ConfigurationFileNotFoundException => ex.Message,
+            System.Configuration.ConfigurationErrorsException { InnerException: JsonException jsonError } =>
+                $"Invalid JSON at line {jsonError.LineNumber + 1}, byte position {jsonError.BytePositionInLine + 1}.",
+            _ => $"Exception: {ex.GetType().Name}"
+        };
+        criticalLogger.Error($"{message} {detail}");
+    }
+    else
+        criticalLogger.Error(message, ex);
 }
 
 async Task<int> ConfigureAsync(string[] args)
@@ -112,11 +133,8 @@ async Task<int> ConfigureAsync(string[] args)
         logger.Info($"Version: {ProductInfo.Version}");
     }
 
-    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-    {
-        processExitSource?.Exit(ExitCodes.SigTerm);
-        exit.Wait();
-    };
+    // Does not wait for the runner to stop: the thread that called Environment.Exit can be one the stop waits for.
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => processExitSource?.Exit(ExitCodes.SigTerm);
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
     PluginLoader pluginLoader = new(
@@ -127,45 +145,80 @@ async Task<int> ConfigureAsync(string[] args)
     );
     pluginLoader.Load();
 
-    CheckForDeprecatedOptions(parseResult);
-
-    // leaving here as an example of adding Debug plugin
-    // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
-    // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
-
-    TypeDiscovery.Initialize(typeof(INethermindPlugin));
-
-    AddConfigurationOptions(rootCommand);
-
-    rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
-
-    parseResult = rootCommand.Parse(args);
-    parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
-    parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
-
     try
     {
-        return await parseResult.InvokeAsync();
+        CheckForDeprecatedOptions(parseResult);
+
+        // leaving here as an example of adding Debug plugin
+        // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+        // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
+
+        TypeDiscovery.Initialize(typeof(INethermindPlugin));
+
+        AddConfigurationOptions(rootCommand);
+
+        Task<int>? runner = null;
+        rootCommand.SetAction((result, token) => runner = RunUntilExitAsync(result, pluginLoader, token));
+
+        parseResult = rootCommand.Parse(args);
+        parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
+        parseResult.InvocationConfiguration.ProcessTerminationTimeout = Timeout.InfiniteTimeSpan;
+
+        // The default error action follows the errors with the help for every config option, which buries them.
+        if (parseResult.Action is ParseErrorAction)
+        {
+            // Flushed first so that the errors are the last lines logged.
+            pluginLoader.LogDiagnostics();
+            return BasicOptions.ReportParseErrors(parseResult, logger);
+        }
+
+        int exitCode = await parseResult.InvokeAsync();
+
+        // A signal during the runner's synchronous start ends the invocation with the signal's code while the runner
+        // still runs, so the runner's own result is awaited and reported instead.
+        return runner is null ? exitCode : await runner;
     }
     finally
     {
-        exit.Wait();
+        pluginLoader.LogDiagnostics();
     }
+}
+
+async Task<int> RunUntilExitAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
+{
+    // The handlers of a signal run from the last registered to the first, so these run before the handlers that
+    // System.CommandLine registered before invoking this action, which cancel the token. After a signal during the
+    // synchronous start, System.CommandLine returns early and removes its handlers while the runner still stops;
+    // cancelling the default handling here keeps a later signal from ending the process before the stop completes.
+    using PosixSignalRegistration sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+    {
+        Volatile.Write(ref cancellationExitCode, ExitCodes.SigTerm);
+        context.Cancel = true;
+    });
+    using PosixSignalRegistration sigInt = PosixSignalRegistration.Create(PosixSignal.SIGINT, static context => context.Cancel = true);
+
+    return await RunAsync(parseResult, pluginLoader, cancellationToken);
 }
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
 {
-    IConfigProvider configProvider = CreateConfigProvider(parseResult);
+    (IConfigProvider configProvider, string? configFile) = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+    SensitiveLogMasking.Enabled = initConfig.MaskSensitiveData;
+    Volatile.Write(ref maskingConfigLoaded, 1);
+    pluginLoader.LogDiagnostics();
+    if (configFile is not null) logger.Info($"Loading configuration from {configFile:hide}");
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
     ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
     IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();
 
     pluginLoader.OrderPlugins(pluginConfig);
 
+    string? configuredDbPath = initConfig.BaseDbPath;
     ResolveDataDirectory(parseResult.GetValue(BasicOptions.DataDirectory),
         initConfig, keyStoreConfig, snapshotConfig);
 
+    IpMasker.Enabled = initConfig.MaskIpsInLogs;
     NLogManager logManager = new(initConfig.LogFileName, initConfig.LogDirectory, initConfig.LogRules);
     DotNettyLoggerFactory.DefaultFactory = new NethermindLoggerFactory(logManager, lowerLogLevel: true);
 #if !DEBUG
@@ -175,7 +228,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     logger = logManager.GetClassLogger<Program>();
 
     ConfigureSeqLogger(configProvider);
-    ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), initConfig);
+    ResolveDatabaseDirectory(parseResult.GetValue(BasicOptions.DatabasePath), configuredDbPath, initConfig);
 
     if (parseResult.GetValue(BasicOptions.PurgeDb))
     {
@@ -205,7 +258,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
         {
             nonDefaults.Append("\n  ");
             if (entry.Category is not null) nonDefaults.Append(entry.Category).Append('.');
-            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.CurrentValue));
+            nonDefaults.Append(entry.Name).Append(" = ").Append(serializer.Serialize(entry.ValueForLog(SensitiveLogMasking.Enabled)));
             count++;
         }
 
@@ -222,8 +275,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsDebug)
     {
-        logger.Debug($"Nethermind configuration:\n{serializer.Serialize(initConfig, true)}");
-
         logger.Debug($"Server GC:           {GCSettings.IsServerGC}");
         logger.Debug($"GC latency mode:     {GCSettings.LatencyMode}");
         logger.Debug($"LOH compaction mode: {GCSettings.LargeObjectHeapCompactionMode}");
@@ -231,7 +282,12 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
-    processExitSource = new(cancellationToken);
+    ProcessExitSource exitSource = new(CancellationToken.None);
+    processExitSource = exitSource;
+    // Runs at once if the token is already cancelled; reads the code when the token is cancelled, after the runner's
+    // SIGTERM handler has recorded it.
+    using CancellationTokenRegistration onCancel =
+        cancellationToken.Register(() => exitSource.Exit(Volatile.Read(ref cancellationExitCode)));
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
     EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
@@ -247,7 +303,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     }
     catch (Exception ex)
     {
-        if (logger.IsError) logger.Error(unhandledError, ex);
+        if (logger.IsError) LogCriticalException(logger, unhandledError, ex);
 
         processExitSource.Exit(ex is IExceptionWithExitCode withExit ? withExit.ExitCode : ExitCodes.GeneralError);
     }
@@ -257,8 +313,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     await ethereumRunner.StopAsync();
 
     logger.Info("Nethermind is shut down");
-
-    exit.Set();
 
     return processExitSource.ExitCode;
 }
@@ -346,7 +400,7 @@ void ConfigureLogger(ParseResult parseResult)
     }
     catch (Exception ex)
     {
-        logger.Error($"Failed to load logging configuration file.", ex);
+        logger.Error($"Failed to load logging configuration file: {ex.GetType().Name}.");
         return;
     }
 
@@ -365,12 +419,12 @@ void ConfigureSeqLogger(IConfigProvider configProvider)
     ISeqConfig seqConfig = configProvider.GetConfig<ISeqConfig>();
 
     if (!seqConfig.MinLevel.Equals("Off", StringComparison.Ordinal) && logger.IsInfo)
-        logger.Info($"Seq logging is enabled on {seqConfig.ServerUrl} with level of {seqConfig.MinLevel}");
+        logger.Info($"Seq logging is enabled on {SensitiveLogMasking.SafeUrl(seqConfig.ServerUrl)} with level of {seqConfig.MinLevel}");
 
     NLogConfigurator.ConfigureSeq(seqConfig, logger);
 }
 
-IConfigProvider CreateConfigProvider(ParseResult parseResult)
+(IConfigProvider ConfigProvider, string? ConfigFile) CreateConfigProvider(ParseResult parseResult)
 {
     ConfigProvider configProvider = new();
     Dictionary<string, string> configArgs = [];
@@ -393,54 +447,12 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     configProvider.AddSource(argsSource);
     configProvider.AddSource(new EnvConfigSource());
 
-    string configFile = parseResult.GetValue(BasicOptions.Configuration)
+    string config = parseResult.GetValue(BasicOptions.Configuration)
         ?? Environment.GetEnvironmentVariable("NETHERMIND_CONFIG")
         ?? "mainnet";
 
-    // If configFile is not a path, handle it
-    if (string.IsNullOrEmpty(Path.GetDirectoryName(configFile)))
-    {
-        string configsDir = parseResult.GetValue(BasicOptions.ConfigurationDirectory)
-            ?? "configs".GetApplicationResourcePath();
-
-        configFile = Path.Join(configsDir, configFile);
-
-        // If the configFile doesn't have an extension, try with supported file extensions
-        if (!Path.HasExtension(configFile))
-        {
-            string? fallback;
-
-            foreach (string ext in new[] { ".json", ".cfg" })
-            {
-                fallback = $"{configFile}{ext}";
-
-                if (File.Exists(fallback))
-                {
-                    configFile = fallback;
-                    break;
-                }
-            }
-        }
-        // For backward compatibility. To be removed in the future.
-        else if (Path.GetExtension(configFile).Equals(".cfg", StringComparison.Ordinal))
-        {
-            string name = Path.GetFileNameWithoutExtension(configFile)!;
-
-            configFile = $"{configFile[..^4]}.json";
-
-            logger.Warn($"'{name}.cfg' is deprecated. Use '{name}' instead.");
-        }
-    }
-
-    // Resolve the full path for logging purposes
-    configFile = Path.GetFullPath(configFile);
-
-    if (!File.Exists(configFile))
-        throw new FileNotFoundException("Configuration file not found.", configFile);
-
-    logger.Info($"Loading configuration from {configFile}");
-
-    configProvider.AddSource(new JsonConfigSource(configFile));
+    (JsonConfigSource source, string? configFile) = CreateConfigSource(config, parseResult.GetValue(BasicOptions.ConfigurationDirectory));
+    configProvider.AddSource(source);
     configProvider.Initialize();
 
     (string ErrorMsg, IList<(IConfigSource Source, string? Category, string Name)> Errors) = configProvider.FindIncorrectSettings();
@@ -448,7 +460,36 @@ IConfigProvider CreateConfigProvider(ParseResult parseResult)
     if (Errors.Any())
         logger.Warn($"Invalid configuration settings:\n{ErrorMsg}");
 
-    return configProvider;
+    foreach (string warning in configProvider.GetObsoleteSettingWarnings())
+        logger.Warn(warning);
+
+    return (configProvider, configFile);
+}
+
+(JsonConfigSource Source, string? ConfigFile) CreateConfigSource(string config, string? configsDir)
+{
+    string? configFile = ConfigFileLocator.Find(config, configsDir);
+
+    if (configFile is not null)
+    {
+        return (new JsonConfigSource(configFile), configFile);
+    }
+
+    using Stream stream = BuiltInConfigs.Open(config)
+        ?? throw new ConfigurationFileNotFoundException(config);
+
+    if (configsDir is not null)
+        logger.Warn($"Configuration '{config}' not found in --configs-dir. Loading the built-in configuration.");
+    else
+        logger.Info($"Loading built-in configuration {config}");
+
+    // The node used to read configs/ next to the binary, so an edited or mounted file there is now ignored.
+    string oldConfigFile = Path.Join(AppContext.BaseDirectory, "configs", Path.ChangeExtension(config, ".json"));
+
+    if (File.Exists(oldConfigFile))
+        logger.Warn("A configuration file next to the binary is ignored. To use it, set --config to its path.");
+
+    return (new JsonConfigSource(stream), null);
 }
 
 RootCommand CreateRootCommand()
@@ -491,34 +532,13 @@ RootCommand CreateRootCommand()
     return rootCommand;
 }
 
-ILogger GetCriticalLogger()
+ILogger GetCriticalLogger() => NLogConfigurator.GetCriticalLogger(logger);
+
+void ResolveDatabaseDirectory(string? path, string? configuredDbPath, IInitConfig initConfig)
 {
-    try
-    {
-        return new NLogManager("nethermind.log").GetClassLogger<Program>();
-    }
-    catch
-    {
-        if (logger.IsWarn) logger.Warn("File logging failed. Using console logging.");
+    initConfig.BaseDbPath = DatabaseDirectory.Resolve(path, configuredDbPath, initConfig.BaseDbPath, logger);
 
-        return logger;
-    }
-}
-
-void ResolveDatabaseDirectory(string? path, IInitConfig initConfig)
-{
-    if (string.IsNullOrWhiteSpace(path))
-    {
-        initConfig.BaseDbPath ??= string.Empty.GetApplicationResourcePath("db");
-    }
-    else
-    {
-        string dbPath = initConfig.BaseDbPath.GetApplicationResourcePath(path);
-
-        if (logger.IsDebug) logger.Debug($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(dbPath)}");
-
-        initConfig.BaseDbPath = dbPath;
-    }
+    if (!string.IsNullOrWhiteSpace(path) && logger.IsInfo) logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(initConfig.BaseDbPath):hide}");
 }
 
 void PurgeDatabaseDirectory(string basePath, bool preserveNetwork = false) =>
@@ -541,12 +561,12 @@ void ResolveDataDirectory(string? path, IInitConfig initConfig, IKeyStoreConfig 
 
         if (logger.IsInfo)
         {
-            logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath)}");
-            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory)}");
-            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath)}");
+            logger.Info($"{nameof(initConfig.BaseDbPath)}: {Path.GetFullPath(newDbPath):hide}");
+            logger.Info($"{nameof(initConfig.LogDirectory)}: {Path.GetFullPath(newLogDirectory):hide}");
+            logger.Info($"{nameof(keyStoreConfig.KeyStoreDirectory)}: {Path.GetFullPath(newKeyStorePath):hide}");
 
             if (snapshotConfig.Enabled)
-                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath)}");
+                logger.Info($"{nameof(snapshotConfig.SnapshotDirectory)}: {Path.GetFullPath(newSnapshotPath):hide}");
         }
 
         initConfig.BaseDbPath = newDbPath;
@@ -562,26 +582,71 @@ static class BasicOptions
     public static Argument<string?> Command { get; } = new("command")
     {
         Description = "A standalone command to run instead of the node. Runs only that command and exits; an unknown name lists what is available.",
-        Arity = ArgumentArity.ZeroOrOne
+        Arity = ArgumentArity.ZeroOrOne,
+        // An unrecognized option is otherwise taken as the command name.
+        Validators =
+        {
+            static result =>
+            {
+                if (result.Tokens is [Token token] && token.Value.StartsWith('-'))
+                    result.AddError($"Unrecognized option '{token.Value}'.");
+            }
+        }
     };
+
+    /// <summary>Logs the errors of a command line that failed to parse.</summary>
+    /// <remarks>
+    /// An unrecognized option is logged before the other errors because the value that follows it
+    /// is reported as an unrecognized argument.
+    /// </remarks>
+    /// <returns>
+    /// <see cref="ExitCodes.UnrecognizedOption"/> if an option or argument was not recognized;
+    /// otherwise, <see cref="ExitCodes.GeneralError"/>.
+    /// </returns>
+    public static int ReportParseErrors(ParseResult parseResult, ILogger logger)
+    {
+        List<string> messages = [];
+        int unrecognizedOptions = 0;
+
+        foreach (ParseError error in parseResult.Errors)
+        {
+            if (error.SymbolResult is ArgumentResult result && result.Argument == Command)
+                messages.Insert(unrecognizedOptions++, error.Message);
+            else
+                messages.Add(error.Message);
+        }
+
+        foreach (string message in messages)
+            logger.Error(message);
+
+        bool unrecognized = unrecognizedOptions > 0 || parseResult.UnmatchedTokens.Count > 0;
+        // A stray argument cannot be an option that was removed.
+        bool unrecognizedOption = unrecognizedOptions > 0 || parseResult.UnmatchedTokens.Any(static token => token.StartsWith('-'));
+
+        logger.Error(unrecognizedOption
+            ? "Run with --help to list the available options. An option that worked in an earlier version may have been removed; check the release notes."
+            : "Run with --help to list the available options.");
+
+        return unrecognized ? ExitCodes.UnrecognizedOption : ExitCodes.GeneralError;
+    }
 
     public static Option<string> Configuration { get; } =
         new("--config", "-c")
         {
-            Description = "The path to the configuration file or the file name (also without extension) of any of the configuration files in the configuration files directory.",
+            Description = "The path to a configuration file, or the name of a built-in configuration (for example, mainnet or sepolia).",
             HelpName = "network or file name"
         };
 
     public static Option<string> ConfigurationDirectory { get; } =
         new("--configs-dir", "--configsDirectory", "-cd")
         {
-            Description = "The path to the configuration files directory.",
+            Description = "The path to a directory with your own configuration files. A name given with --config is looked up in this directory before the built-in configurations.",
             HelpName = "path"
         };
 
     public static Option<string> DatabasePath { get; } = new("--db-dir", "--baseDbPath", "-d")
     {
-        Description = "The path to the Nethermind database directory.",
+        Description = "The parent directory for the database. The configured database path (for example, nethermind_db/mainnet) is created under it, unless that path is absolute. Takes precedence over --data-dir for the database.",
         HelpName = "path"
     };
 
@@ -651,3 +716,5 @@ class AsynchronousCommandLineAction(Func<ParseResult, int> action) : Synchronous
     /// <inheritdoc />
     public override int Invoke(ParseResult parseResult) => _action(parseResult);
 }
+
+file sealed class ConfigurationFileNotFoundException(string config) : FileNotFoundException(ConfigFileLocator.NotFoundMessage(config));

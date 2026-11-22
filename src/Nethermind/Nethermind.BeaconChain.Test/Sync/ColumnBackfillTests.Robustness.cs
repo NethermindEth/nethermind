@@ -44,9 +44,12 @@ public partial class ColumnBackfillTests
 
         await fixture.Start(token, peer).WaitAsync(token);
 
-        Assert.That(fixture.Backfill.CompleteFrom, Is.EqualTo(32));
-        Assert.That(preForkChecks, Is.Zero);
-        Assert.That(peer.Failures, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fixture.Backfill.CompleteFrom, Is.EqualTo(32));
+            Assert.That(preForkChecks, Is.Zero);
+            Assert.That(peer.Failures, Is.Zero);
+        }
     }
 
     private sealed class HistoryFixture : IAsyncDisposable
@@ -324,9 +327,12 @@ public partial class ColumnBackfillTests
         p.Time.Add(TimeSpan.FromSeconds(p.Spec.SecondsPerSlot));
         await p.UntilFloor(0, token);
         await run.WaitAsync(token);
-        Assert.That(p.ChainRoots.Where(p.Columns.ContainsKey).All(r => p.Sampled.All(c => p.Store.HasDataColumnRecord(r, c))), Is.True);
-        Assert.That(Enumerable.Range(0, 42).Count(s => p.Store.TryGetCanonicalRoot((ulong)s, out _)), Is.EqualTo(6));
-        Assert.That(honest.RequestedRanges.All(r => r.Count <= RangeSync.DefaultBatchSize), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(p.ChainRoots.Where(p.Columns.ContainsKey).All(r => p.Sampled.All(c => p.Store.HasDataColumnRecord(r, c))), Is.True);
+            Assert.That(Enumerable.Range(0, 42).Count(s => p.Store.TryGetCanonicalRoot((ulong)s, out _)), Is.EqualTo(6));
+            Assert.That(honest.RequestedRanges.All(r => r.Count <= RangeSync.DefaultBatchSize), Is.True);
+        }
     }
 
     [Test]

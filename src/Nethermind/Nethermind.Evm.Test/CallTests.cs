@@ -80,9 +80,12 @@ namespace Nethermind.Evm.Test
                 new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
                 NullTxTracer.Instance);
 
-            Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(TestState.GetBalance(Recipient), Is.EqualTo((UInt256)expectedRecipientBalance * 1.Ether));
-            Assert.That(TestState.GetBalance(target), Is.EqualTo((UInt256)expectedTargetBalance * 1.Ether));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(TestState.GetBalance(Recipient), Is.EqualTo((UInt256)expectedRecipientBalance * 1.Ether));
+                Assert.That(TestState.GetBalance(target), Is.EqualTo((UInt256)expectedTargetBalance * 1.Ether));
+            }
         }
 
         [Test]
@@ -98,8 +101,11 @@ namespace Nethermind.Evm.Test
                 new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
                 NullTxTracer.Instance);
 
-            Assert.That(result.TransactionExecuted, Is.True);
-            Assert.That(TestState.AccountExists(target), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(TestState.AccountExists(target), Is.False);
+            }
         }
 
         [Test]
@@ -703,9 +709,12 @@ namespace Nethermind.Evm.Test
                     new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
                     tracer));
 
-            Assert.That(tracer.ParentState, Is.Not.Null);
-            Assert.That(tracer.IntermediateState, Is.Not.Null);
-            Assert.That(tracer.CancelledState, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(tracer.ParentState, Is.Not.Null);
+                Assert.That(tracer.IntermediateState, Is.Not.Null);
+                Assert.That(tracer.CancelledState, Is.Not.Null);
+            }
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(GetStateStack().Count, Is.Zero);

@@ -71,7 +71,7 @@ public class PosForwardHeaderProviderCacheTests
 
     private void RaiseMainChainUpdate(params Block[] blocks)
     {
-        List<BlockHeader> headers = new(blocks.Length);
+        List<BlockHeader> headers = [with(blocks.Length)];
         foreach (Block block in blocks) headers.Add(block.Header);
         _blockTree.OnUpdateMainChain += Raise.EventWith(_blockTree, new OnUpdateMainChainArgs(headers, wereProcessed: true));
     }
@@ -179,14 +179,20 @@ public class PosForwardHeaderProviderCacheTests
     public async Task Cached_slice_advances_with_best_known_number()
     {
         using IOwnedReadOnlyList<BlockHeader?>? first = await Get();
-        Assert.That(first!.Count, Is.EqualTo(Requested));
-        Assert.That(first[0]!.Number, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first!.Count, Is.EqualTo(Requested));
+            Assert.That(first[0]!.Number, Is.EqualTo(0));
+        }
 
         _blockTree.BestKnownNumber.Returns(20UL);
         using IOwnedReadOnlyList<BlockHeader?>? second = await Get();
 
-        Assert.That(second!.Count, Is.EqualTo(Requested));
-        Assert.That(second[0]!.Number, Is.EqualTo(20));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second!.Count, Is.EqualTo(Requested));
+            Assert.That(second[0]!.Number, Is.EqualTo(20));
+        }
         AssertChainLevelCalls(1);
     }
 

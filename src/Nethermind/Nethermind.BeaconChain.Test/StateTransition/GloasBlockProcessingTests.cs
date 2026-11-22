@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -21,6 +22,99 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 [HardTimeout(60_000)]
 public class GloasBlockProcessingTests
 {
+    [Test]
+    public void Builder_exit_batch_matches_sequential_wrapping_pending_totals([Values(1ul, 2ul)] ulong payment)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Builder original = state.Builders![0];
+        state.Builders = [.. Enumerable.Range(0, 3).Select(i => new Builder
+        {
+            Pubkey = state.Validators![i].Pubkey, ExecutionAddress = original.ExecutionAddress,
+            Balance = original.Balance, DepositEpoch = 0, WithdrawableEpoch = Presets.FarFutureEpoch,
+        })];
+        state.BuilderPendingWithdrawals =
+        [
+            new() { BuilderIndex = 0, Amount = ulong.MaxValue, FeeRecipient = original.ExecutionAddress },
+            new() { BuilderIndex = 1, Amount = ulong.MaxValue, FeeRecipient = original.ExecutionAddress },
+            new() { BuilderIndex = 99, Amount = 123, FeeRecipient = original.ExecutionAddress },
+        ];
+        for (int i = 0; i < 2; i++)
+            state.BuilderPendingPayments![i].Withdrawal = new() { BuilderIndex = (ulong)i, Amount = payment, FeeRecipient = original.ExecutionAddress };
+        BuilderExitRequest[] exits = [.. new[] { 0, 0, 1, 2 }.Select(i => new BuilderExitRequest
+        {
+            Pubkey = state.Builders[i].Pubkey, SourceAddress = original.ExecutionAddress,
+        })];
+        BeaconStateGloas expected = state.Clone();
+        foreach (BuilderExitRequest exit in exits) GloasBlockProcessing.ProcessBuilderExitRequest(expected, exit);
+
+        ApplyBuilderRequests(state, new() { BuilderExits = exits });
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(state.Builders.Select(b => b.WithdrawableEpoch), Is.EqualTo(expected.Builders!.Select(b => b.WithdrawableEpoch)));
+        Assert.That(state.Builders[0].WithdrawableEpoch, Is.EqualTo(payment == 1 ? state.GetCurrentEpoch() + Presets.MinBuilderWithdrawabilityDelay : Presets.FarFutureEpoch));
+        Assert.That(state.Builders[2].WithdrawableEpoch, Is.Not.EqualTo(Presets.FarFutureEpoch));
+    }
+
+    [Test]
+    public void Builder_request_batch_matches_sequential_helpers_with_reused_slots_and_exits([Values] bool customNetwork, [Values(0, 1)] int unrelatedBuilders)
+    {
+        BeaconChainSpec spec = customNetwork ? NetworkSigningDomainTests.CustomSigningSpec : SyntheticSpec();
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        BuilderDepositRequest[] signed = [.. Enumerable.Range(2000, 7 + unrelatedBuilders).Select(i => SignedBuilderDeposit(i, 10 * Gwei, spec))];
+        state.Builders = [.. signed.Take(5).Concat(signed.Skip(7)).Select(r => new Builder
+        {
+            Pubkey = r.Pubkey, ExecutionAddress = new Address(r.WithdrawalCredentials!.Bytes[12..]),
+            Balance = 100 * Gwei, DepositEpoch = 0, WithdrawableEpoch = Presets.FarFutureEpoch,
+        })];
+        state.Builders[1].Balance = state.Builders[2].Balance = 0;
+        state.Builders[1].WithdrawableEpoch = state.Builders[2].WithdrawableEpoch = 0;
+        state.BuilderPendingWithdrawals = [new() { BuilderIndex = 3, Amount = 1 }];
+        BuilderDepositRequest[] deposits =
+        [
+            new() { Pubkey = signed[1].Pubkey, WithdrawalCredentials = signed[1].WithdrawalCredentials, Amount = 5 * Gwei },
+            signed[5], signed[2],
+            new() { Pubkey = signed[5].Pubkey, WithdrawalCredentials = signed[5].WithdrawalCredentials, Amount = 7 * Gwei },
+            new() { Pubkey = signed[6].Pubkey, WithdrawalCredentials = signed[6].WithdrawalCredentials, Amount = 99 },
+            new() { Pubkey = signed[0].Pubkey, WithdrawalCredentials = Hash256.Zero, Amount = 99 },
+            signed[6],
+        ];
+        BuilderExitRequest Exit(int index) => new() { Pubkey = signed[index].Pubkey, SourceAddress = new Address(signed[index].WithdrawalCredentials!.Bytes[12..]) };
+        BuilderExitRequest[] exits = [Exit(0), Exit(0), Exit(1), Exit(2), Exit(3), Exit(5), new() { Pubkey = signed[4].Pubkey, SourceAddress = Address.Zero }];
+        BeaconStateGloas expected = state.Clone();
+        foreach (BuilderDepositRequest request in deposits) GloasBlockProcessing.ProcessBuilderDepositRequest(expected, request, spec);
+        foreach (BuilderExitRequest request in exits) GloasBlockProcessing.ProcessBuilderExitRequest(expected, request);
+
+        ApplyBuilderRequests(state, new() { BuilderDeposits = deposits, BuilderExits = exits }, spec);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(state.Builders!.Select(b => (b.Pubkey, b.Version, b.ExecutionAddress, b.Balance, b.DepositEpoch, b.WithdrawableEpoch)),
+            Is.EqualTo(expected.Builders!.Select(b => (b.Pubkey, b.Version, b.ExecutionAddress, b.Balance, b.DepositEpoch, b.WithdrawableEpoch))));
+        Assert.That(state.Builders, Has.Length.EqualTo(7 + unrelatedBuilders));
+        Assert.That(state.Builders[2].Pubkey, Is.EqualTo(signed[5].Pubkey));
+        Assert.That(state.Builders[5 + unrelatedBuilders].Pubkey, Is.EqualTo(signed[2].Pubkey));
+        Assert.That(state.Builders[2].Balance, Is.EqualTo(17 * Gwei));
+        Assert.That(state.Builders[0].WithdrawableEpoch, Is.Not.EqualTo(Presets.FarFutureEpoch));
+        Assert.That(state.Builders[3].WithdrawableEpoch, Is.EqualTo(Presets.FarFutureEpoch));
+    }
+
+    private static BuilderDepositRequest SignedBuilderDeposit(int keyIndex, ulong amount, BeaconChainSpec spec)
+    {
+        Bls.SecretKey key = DeriveKey(keyIndex);
+        BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
+        Hash256 credentials = BuilderWithdrawalCredentials(0xC1);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, spec.GenesisForkVersion, Hash256.Zero);
+        Hash256 root = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = amount }), domain);
+        return new BuilderDepositRequest { Pubkey = pubkey, WithdrawalCredentials = credentials, Amount = amount, Signature = Sign(key, root) };
+    }
+
+    private static void ApplyBuilderRequests(BeaconStateGloas state, ExecutionRequestsGloas requests, BeaconChainSpec? spec = null)
+    {
+        state.LatestBlockHeader!.Slot = state.Slot - 1;
+        state.LatestExecutionPayloadBid!.ExecutionRequestsRoot = SszRoots.HashTreeRoot(requests);
+        BeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, state.LatestExecutionPayloadBid.BlockHash!, Hash(0xA1))).Message!;
+        block.Body!.ParentExecutionRequests = requests;
+        GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache { SigningSpec = spec ?? SyntheticSpec() });
+    }
 
     [Test]
     public void ProcessExecutionPayloadBid_rejects_a_bid_whose_signature_does_not_match_the_registered_builder()
@@ -35,9 +129,12 @@ public class GloasBlockProcessingTests
         BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
             GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true))!;
 
-        Assert.That(ex.Message, Does.Contain("Invalid execution payload bid signature"));
-        Assert.That(state.LatestExecutionPayloadBid!.BuilderIndex, Is.EqualTo(Presets.BuilderIndexSelfBuild),
-            "a rejected bid must never be committed to state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ex.Message, Does.Contain("Invalid execution payload bid signature"));
+            Assert.That(state.LatestExecutionPayloadBid!.BuilderIndex, Is.EqualTo(Presets.BuilderIndexSelfBuild),
+                "a rejected bid must never be committed to state");
+        }
     }
 
     [Test]
@@ -58,7 +155,7 @@ public class GloasBlockProcessingTests
     }
 
     [Test]
-    public void ProcessBuilderDepositRequest_enforces_the_uint64_balance_limit([Values(1ul, 2ul, ulong.MaxValue)] ulong amount)
+    public void ProcessBuilderDepositRequest_enforces_the_uint64_balance_limit([Values(1ul, 2ul, ulong.MaxValue)] ulong amount, [Values] bool batched)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         Builder builder = state.Builders![0];
@@ -70,7 +167,9 @@ public class GloasBlockProcessingTests
             Amount = amount,
         };
 
-        Action process = () => GloasBlockProcessing.ProcessBuilderDepositRequest(state, request);
+        Action process = batched
+            ? () => ApplyBuilderRequests(state, new() { BuilderDeposits = [new() { Pubkey = builder.Pubkey, WithdrawalCredentials = request.WithdrawalCredentials, Amount = 0 }, request] })
+            : () => GloasBlockProcessing.ProcessBuilderDepositRequest(state, request);
 
         if (amount == 1)
         {
@@ -228,8 +327,11 @@ public class GloasBlockProcessingTests
 
         cache.RetainGloas(BlockRootOf(state), state);
 
-        Assert.That(cache.GetGloasBlockState(BlockRootOf(state)), Is.SameAs(state));
-        Assert.That(cache.GetGloasBlockState(Hash(0x77)), Is.Null, "a root that was never retained must not resolve to any state");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.GetGloasBlockState(BlockRootOf(state)), Is.SameAs(state));
+            Assert.That(cache.GetGloasBlockState(Hash(0x77)), Is.Null, "a root that was never retained must not resolve to any state");
+        }
         Assert.DoesNotThrow(() => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(cache, envelope, new AcceptingNotifier(), new PubkeyCache()));
     }
 
@@ -283,7 +385,55 @@ public class GloasBlockProcessingTests
     }
 
     [Test]
-    public void Parent_payment_prevents_a_builder_exit([Values(1ul, 2ul, 3ul)] ulong epoch, [Values(0ul, 1ul)] ulong payment)
+    public void Parent_requests_append_deposits_and_consolidation_excess_after_the_existing_queue()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.Slot = Presets.SlotsPerEpoch + 1;
+        state.LatestBlockHeader!.Slot = Presets.SlotsPerEpoch;
+        PendingDeposit first = new() { Amount = 1 };
+        PendingDeposit second = new() { Amount = 2 };
+        state.PendingDeposits = [first, second];
+        Validator validator = state.Validators![0];
+        byte[] credentials = new byte[32];
+        credentials[0] = Presets.EthWithdrawalPrefix;
+        validator.WithdrawalCredentials = new Hash256(credentials);
+        state.Balances![0] = Presets.MinActivationBalance + 4;
+        ExecutionRequestsGloas requests = new()
+        {
+            Deposits = [new DepositRequest { Amount = 3, WithdrawalCredentials = Hash256.Zero }],
+            Consolidations = [new ConsolidationRequest { SourcePubkey = validator.Pubkey, TargetPubkey = validator.Pubkey, SourceAddress = Address.Zero }],
+        };
+        ExecutionPayloadBid parent = state.LatestExecutionPayloadBid!;
+        parent.BlockHash = Hash(0x88);
+        parent.ExecutionRequestsRoot = SszRoots.HashTreeRoot(requests);
+        BeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, parent.BlockHash, Hash(0x99))).Message!;
+        block.Body!.ParentExecutionRequests = requests;
+
+        GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache());
+
+        Assert.That(state.PendingDeposits!.Select(deposit => deposit.Amount), Is.EqualTo(new ulong[] { 1, 2, 3, 4 }));
+    }
+
+    [Test]
+    public void Parent_request_root_is_checked_before_any_state_mutation()
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        state.Slot = Presets.SlotsPerEpoch + 1;
+        state.LatestBlockHeader!.Slot = Presets.SlotsPerEpoch;
+        ExecutionPayloadBid parent = state.LatestExecutionPayloadBid!;
+        parent.BlockHash = Hash(0x88);
+        parent.ExecutionRequestsRoot = Hash(0x77);
+        BeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, parent.BlockHash, Hash(0x99))).Message!;
+        block.Body!.ParentExecutionRequests = new ExecutionRequestsGloas();
+        Hash256 before = SszRoots.HashTreeRoot(state);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(() => GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache()), Throws.TypeOf<BeaconStateException>());
+        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(before));
+    }
+
+    [Test]
+    public void Parent_payment_prevents_a_builder_exit([Values(1ul, 2ul, 3ul)] ulong epoch, [Values(0ul, 1ul)] ulong payment, [Values(1, 2)] int requestCount)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         Builder builder = state.Builders![0];
@@ -292,7 +442,7 @@ public class GloasBlockProcessingTests
         state.LatestBlockHeader!.Slot = parentSlot;
         ExecutionRequestsGloas requests = new()
         {
-            BuilderExits = [new BuilderExitRequest { Pubkey = builder.Pubkey, SourceAddress = builder.ExecutionAddress }],
+            BuilderExits = [.. Enumerable.Repeat(new BuilderExitRequest { Pubkey = builder.Pubkey, SourceAddress = builder.ExecutionAddress }, requestCount)],
         };
         ExecutionPayloadBid parent = state.LatestExecutionPayloadBid!;
         parent.BlockHash = Hash(0x88);

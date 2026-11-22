@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
@@ -34,6 +35,7 @@ public static class BeaconChainMetadataKeys
     public const string CheckpointSyncAnchor = "checkpointSyncAnchor";
     /// <summary>8-byte big-endian lower bound of retained canonical history, including verified backfill.</summary>
     public const string EarliestBlockSlot = "earliestBlockSlot";
+    public const string CanonicalPruneCursor = "canonicalPruneCursor";
     /// <summary>8-byte big-endian exclusive end of pruned canonical history; late backfill cannot lower the retained floor past it.</summary>
     public const string PrunedBlockSlot = "prunedBlockSlot";
     /// <summary>8-byte big-endian finalized slot of the last completed prune, at or below which every stored block is canonical; absent until every summary has its slot key.</summary>
@@ -44,7 +46,7 @@ public static class BeaconChainMetadataKeys
 /// <remarks>
 /// States use independently snappy-compressed StateChunkSize slices keyed by blockRoot ++ big-endian chunk index,
 /// with chunk count and uncompressed length under the bare root. Blocks use snappy-compressed SSZ.
-/// BlockIndex keys are disjoint: 8-byte slots, BlockSummaryKeyPrefix ++ root, ChildrenKeyPrefix ++ root, and
+/// BlockIndex keys are disjoint: 8-byte slots, prefixed root indexes for summaries, signed headers, children and state roots, and
 /// BlockSlotKeyPrefix ++ big-endian slot ++ root with an empty value, written and removed with the summary so stored blocks sort by slot.
 /// Children values contain state (1 byte), parent root (32), then child roots (32 each). Stored blocks have complete
 /// child lists; absent parents have pending lists.
@@ -77,6 +79,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     private const int ChildrenKeyLength = 1 + Hash256.Size;
     private const int ChildrenHeaderLength = 1 + Hash256.Size;
 
+    internal const byte SignedHeaderKeyPrefix = 0x06;
     internal const byte BlockSummaryKeyPrefix = 0x02;
     private const int BlockSummaryKeyLength = 1 + Hash256.Size;
     private const int BlockSummaryHeaderLength = 1 + sizeof(ulong);
@@ -155,7 +158,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <remarks>The single import worker and checkpoint-sync writes do not overlap, so children read-modify-write needs no lock.</remarks>
     /// <exception cref="BeaconStateException">The block shape disagrees with its slot's fork.</exception>
     /// <exception cref="InvalidOperationException">The block is Gloas and this store has no spec.</exception>
-    public void PutForkedBlock(Hash256 root, ForkedSignedBeaconBlock block)
+    public void PutForkedBlock(Hash256 root, ForkedSignedBeaconBlock block) => StoreBlock(root, block, null);
+
+    internal void StoreBlock(Hash256 root, ForkedSignedBeaconBlock block, Hash256? bodyRoot)
     {
         using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
         Hash256 parentRoot = block.ParentRoot;
@@ -165,6 +170,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                 ? SignedBeaconBlock.Encode(fulu.Block)
                 : throw new InvalidOperationException($"A store without a {nameof(BeaconChainSpec)} cannot store the {block.GetType().Name} block {root}: it would read back as the Fulu shape");
 
+        byte[] header = SignedBeaconBlockHeader.Encode(CreateSignedHeader(block, bodyRoot));
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
         batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(ssz));
         IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
@@ -173,6 +179,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, summaryKey);
         index.Set(summaryKey, EncodeBlockSummary(block));
+        summaryKey[0] = SignedHeaderKeyPrefix;
+        index.Set(summaryKey, header);
         index.Set(BlockSlotKey(block.Slot, root), []);
 
         Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
@@ -330,14 +338,63 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>Reads the stored slot and bid for gloas/p2p-interface.md sidecar validation without decoding the block.</summary>
     /// <returns><c>false</c> when the block was stored before the summary index existed, or the entry is malformed; <see cref="PutBlockSummary"/> then backfills it.</returns>
     /// <remarks>Written in the same batch as the block, so a stored block has one unless it predates the index.</remarks>
-    internal bool TryGetBlockSummary(Hash256 root, out StoredBlockSummary summary)
+    internal bool TryGetBlockSummary(Hash256 root, out StoredBlockSummary summary) =>
+        TryDecodeBlockSummary(ReadBlockSummary(root), out summary);
+
+    internal bool TryGetSignedHeader(Hash256 root, ulong? slotFilter, [NotNullWhen(true)] out SignedBeaconBlockHeader? header)
+    {
+        header = null;
+        Span<byte> key = stackalloc byte[1 + Hash256.Size];
+        key[0] = SignedHeaderKeyPrefix;
+        root.Bytes.CopyTo(key[1..]);
+        if (_blockIndex.Get(key) is { } encoded)
+        {
+            SignedBeaconBlockHeader.Decode(encoded, out SignedBeaconBlockHeader stored);
+            if (slotFilter is not null && stored.Message!.Slot != slotFilter) return false;
+            header = stored;
+            return true;
+        }
+
+        byte[]? compressed = _blocks.Get(root.Bytes);
+        if (compressed is null) return false;
+        ulong slot = ReadBlockSlot(root, compressed);
+        if ((slotFilter is not null && slot != slotFilter) || !TryDecodeForkedBlock(compressed, out ForkedSignedBeaconBlock? block))
+        {
+            return false;
+        }
+
+        SignedBeaconBlockHeader legacy = CreateSignedHeader(block);
+        // The block may have been pruned during the legacy decode. Publish its header only while it is retained.
+        using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
+        if (!HasBlock(root)) return false;
+        _blockIndex.Set(key, SignedBeaconBlockHeader.Encode(legacy));
+        header = legacy;
+        return true;
+    }
+
+    private static SignedBeaconBlockHeader CreateSignedHeader(ForkedSignedBeaconBlock block, Hash256? knownBodyRoot = null)
+    {
+        (Hash256? stateRoot, Hash256 bodyRoot, BlsSignature signature) = block switch
+        {
+            ForkedSignedBeaconBlock.OfFulu fulu => (fulu.Block.Message!.StateRoot, knownBodyRoot ?? SszRoots.HashTreeRoot(fulu.Block.Message.Body!), fulu.Block.Signature),
+            ForkedSignedBeaconBlock.OfGloas gloas => (gloas.Block.Message!.StateRoot, knownBodyRoot ?? SszRoots.HashTreeRoot(gloas.Block.Message.Body!), gloas.Block.Signature),
+            _ => throw new NotSupportedException($"Unhandled block shape {block.GetType().Name}"),
+        };
+        return new SignedBeaconBlockHeader
+        {
+            Message = new BeaconBlockHeader { Slot = block.Slot, ProposerIndex = block.ProposerIndex, ParentRoot = block.ParentRoot, StateRoot = stateRoot, BodyRoot = bodyRoot },
+            Signature = signature,
+        };
+    }
+
+    private byte[]? ReadBlockSummary(Hash256 root)
     {
         Span<byte> key = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, key);
-        return TryDecodeBlockSummary(_blockIndex.Get(key), out summary);
+        return _blockIndex.Get(key);
     }
 
-    private static bool TryDecodeBlockSummary(byte[]? value, out StoredBlockSummary summary)
+    private static bool TryReadSummarySlot([NotNullWhen(true)] byte[]? value, out ulong slot)
     {
         if (value is null
             || value.Length < BlockSummaryHeaderLength
@@ -345,6 +402,18 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             || value[0] > GloasBlockSummary
             || (value[0] == FuluBlockSummary && value.Length != BlockSummaryHeaderLength)
             || (value.Length - BlockSummaryHeaderLength) % SszKzgCommitment.KzgCommitmentLength != 0)
+        {
+            slot = 0;
+            return false;
+        }
+
+        slot = BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(1));
+        return true;
+    }
+
+    private static bool TryDecodeBlockSummary(byte[]? value, out StoredBlockSummary summary)
+    {
+        if (!TryReadSummarySlot(value, out ulong slot))
         {
             summary = default;
             return false;
@@ -356,7 +425,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             commitments[i] = SszKzgCommitment.FromSpan(value.AsSpan(BlockSummaryHeaderLength + i * SszKzgCommitment.KzgCommitmentLength, SszKzgCommitment.KzgCommitmentLength));
         }
 
-        summary = new StoredBlockSummary(BinaryPrimitives.ReadUInt64BigEndian(value.AsSpan(1)), value[0] == GloasBlockSummary, commitments);
+        summary = new StoredBlockSummary(slot, value[0] == GloasBlockSummary, commitments);
         return true;
     }
 
@@ -414,6 +483,11 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             return false;
         }
 
+        return TryDecodeForkedBlock(compressed, out block);
+    }
+
+    private bool TryDecodeForkedBlock(byte[] compressed, [NotNullWhen(true)] out ForkedSignedBeaconBlock? block)
+    {
         if (Snappy.GetUncompressedLength(compressed) > ReqRespFraming.MaxPayloadSize)
         {
             block = null;
@@ -430,6 +504,21 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         SignedBeaconBlock.Decode(ssz, out SignedBeaconBlock fulu);
         block = new ForkedSignedBeaconBlock.OfFulu(fulu);
         return true;
+    }
+
+    /// <summary>Resolves a retained block's slot from its summary, falling back to the block for older records.</summary>
+    internal bool TryGetRetainedBlockSlot(Hash256 root, out ulong slot)
+    {
+        if (TryReadSummarySlot(ReadBlockSummary(root), out slot)) return HasBlock(root);
+
+        if (TryGetForkedBlock(root, out ForkedSignedBeaconBlock? block))
+        {
+            slot = block.Slot;
+            return true;
+        }
+
+        slot = 0;
+        return false;
     }
 
     /// <summary>Reads a stored block's slot from its SSZ prefix, decompressing only that prefix.</summary>
@@ -449,14 +538,20 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             return false;
         }
 
+        slot = ReadBlockSlot(root, compressed);
+        return true;
+    }
+
+    private static ulong ReadBlockSlot(Hash256 root, byte[] compressed)
+    {
         Span<byte> prefix = stackalloc byte[SignedBeaconBlockCodec.SlotPrefixLength];
         int written = DecompressSnappyPrefix(compressed, prefix, ReqRespFraming.MaxPayloadSize);
-        if (!SignedBeaconBlockCodec.TryReadSlot(prefix[..written], out slot))
+        if (!SignedBeaconBlockCodec.TryReadSlot(prefix[..written], out ulong slot))
         {
             throw new BeaconStateException($"The record stored for block {root} does not start with a signed beacon block slot");
         }
 
-        return true;
+        return slot;
     }
 
     /// <summary>Decompresses the start of a raw snappy block into <paramref name="prefix"/>, reading no further than it needs.</summary>
@@ -527,26 +622,28 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     public void DeleteBlock(Hash256 root)
     {
         using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
-        if (!_blocks.KeyExists(root.Bytes))
-        {
-            return;
-        }
-
-        Span<byte> ownKey = stackalloc byte[ChildrenKeyLength];
-        ChildrenKey(root, ownKey);
-        byte[]? ownEntry = ReadChildrenEntry(ownKey);
-
         using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        Dictionary<Hash256, byte[]?> children = [];
+        DeleteBlock(root, batch, children);
+        WriteChildren(batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex), children);
+    }
+
+    private void DeleteBlock(Hash256 root, IColumnsWriteBatch<BeaconChainDbColumns> batch, Dictionary<Hash256, byte[]?> children)
+    {
+        if (!_blocks.KeyExists(root.Bytes)) return;
+        byte[]? ownEntry = ReadChildren(root, children);
         batch.GetColumnBatch(BeaconChainDbColumns.Blocks).Remove(root.Bytes);
         IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
 
         Span<byte> summaryKey = stackalloc byte[BlockSummaryKeyLength];
         BlockSummaryKey(root, summaryKey);
-        if (TryDecodeBlockSummary(_blockIndex.Get(summaryKey), out StoredBlockSummary summary))
+        if (TryReadSummarySlot(_blockIndex.Get(summaryKey), out ulong slot))
         {
-            index.Remove(BlockSlotKey(summary.Slot, root));
+            index.Remove(BlockSlotKey(slot, root));
         }
 
+        index.Remove(summaryKey);
+        summaryKey[0] = SignedHeaderKeyPrefix;
         index.Remove(summaryKey);
         RemoveStateRootIndex(index, root);
 
@@ -563,21 +660,19 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         {
             if (ownEntry.Length == ChildrenHeaderLength)
             {
-                index.Remove(ownKey);
+                children[root] = null;
             }
             else
             {
                 // The list stays intact and merely waits for a re-store to vouch for it again.
                 ownEntry[0] = ChildrenPending;
-                index.Set(ownKey, ownEntry);
+                children[root] = ownEntry;
             }
 
             parentRoot = new Hash256(ownEntry.AsSpan(1, Hash256.Size));
         }
 
-        Span<byte> parentKey = stackalloc byte[ChildrenKeyLength];
-        ChildrenKey(parentRoot, parentKey);
-        byte[]? parentEntry = ReadChildrenEntry(parentKey);
+        byte[]? parentEntry = ReadChildren(parentRoot, children);
         if (parentEntry is null || !ContainsChild(parentEntry, root))
         {
             return;
@@ -587,11 +682,29 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         if (remaining.Length == ChildrenHeaderLength && remaining[0] == ChildrenPending)
         {
             // A pending entry exists only for the sake of its children; with the last one gone it says nothing.
-            index.Remove(parentKey);
+            children[parentRoot] = null;
         }
         else
         {
-            index.Set(parentKey, remaining);
+            children[parentRoot] = remaining;
+        }
+    }
+
+    private byte[]? ReadChildren(Hash256 root, Dictionary<Hash256, byte[]?> children)
+    {
+        if (children.TryGetValue(root, out byte[]? pending)) return pending;
+        Span<byte> key = stackalloc byte[ChildrenKeyLength];
+        ChildrenKey(root, key);
+        return ReadChildrenEntry(key);
+    }
+
+    private static void WriteChildren(IWriteBatch index, Dictionary<Hash256, byte[]?> children)
+    {
+        Span<byte> key = stackalloc byte[ChildrenKeyLength];
+        foreach ((Hash256 root, byte[]? value) in children)
+        {
+            ChildrenKey(root, key);
+            index.Set(key, value);
         }
     }
 
@@ -624,22 +737,11 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return written == result.Length ? result : result[..written];
     }
 
-    private long _backfilledBlockFloor = long.MaxValue;
-
-    /// <summary>The earliest block range verified by backfill in this process (fulu/p2p-interface.md).</summary>
-    internal ulong? BackfilledBlockFloor
+    internal void LowerBackfilledBlockFloor(ulong floor)
     {
-        get => Volatile.Read(ref _backfilledBlockFloor) is long floor && floor != long.MaxValue ? (ulong)floor : null;
-        set
-        {
-            using Lock.Scope retentionScope = _canonicalRetentionLock.EnterScope();
-            if (value is { } floor)
-            {
-                using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-                LowerBlockFloor(floor, batch.GetColumnBatch(BeaconChainDbColumns.Metadata));
-            }
-            Volatile.Write(ref _backfilledBlockFloor, value is { } available ? (long)available : long.MaxValue);
-        }
+        using Lock.Scope retentionScope = _canonicalRetentionLock.EnterScope();
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        LowerBlockFloor(floor, batch.GetColumnBatch(BeaconChainDbColumns.Metadata));
     }
 
     public void SetCanonicalRoot(ulong slot, Hash256 root)
@@ -718,6 +820,66 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return root is not null;
     }
 
+    internal IEnumerable<ulong> EnumerateCanonicalSlots(ulong first, ulong last, CancellationToken token = default, bool reverse = false) =>
+        EnumerateStoredSlots(_blockIndex, first, last, token, reverse);
+
+    private static IEnumerable<ulong> EnumerateStoredSlots(IDb table, ulong first, ulong last, CancellationToken token = default, bool reverse = false)
+    {
+        token.ThrowIfCancellationRequested();
+        if (first > last) yield break;
+        byte[] lower = new byte[sizeof(ulong)];
+        // Appending zero makes the exact last slot inclusive without overflowing ulong.MaxValue.
+        byte[] upper = new byte[sizeof(ulong) + 1];
+        BinaryPrimitives.WriteUInt64BigEndian(lower, first);
+        BinaryPrimitives.WriteUInt64BigEndian(upper, last);
+        if (table is ISortedKeyValueStore sorted)
+        {
+            using ISortedView view = sorted.GetViewBetween(lower, upper);
+            if (reverse && view is IReverseSortedView backwards)
+            {
+                if (backwards.StartBefore(upper))
+                {
+                    do
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (backwards.CurrentKey.Length == sizeof(ulong))
+                            yield return BinaryPrimitives.ReadUInt64BigEndian(backwards.CurrentKey);
+                    } while (backwards.MovePrevious());
+                }
+                yield break;
+            }
+            if (!reverse)
+            {
+                while (view.MoveNext())
+                {
+                    token.ThrowIfCancellationRequested();
+                    if (view.CurrentKey.Length == sizeof(ulong))
+                        yield return BinaryPrimitives.ReadUInt64BigEndian(view.CurrentKey);
+                }
+                yield break;
+            }
+        }
+
+        List<ulong>? reversed = reverse ? [] : null;
+        foreach (byte[] key in table.GetAllKeys(ordered: true))
+        {
+            token.ThrowIfCancellationRequested();
+            if (key.AsSpan().SequenceCompareTo(upper) >= 0) break;
+            if (key.Length == sizeof(ulong) && key.AsSpan().SequenceCompareTo(lower) >= 0)
+            {
+                ulong slot = BinaryPrimitives.ReadUInt64BigEndian(key);
+                if (reversed is not null) reversed.Add(slot);
+                else yield return slot;
+            }
+        }
+        if (reversed is not null)
+            for (int i = reversed.Count - 1; i >= 0; i--)
+            {
+                token.ThrowIfCancellationRequested();
+                yield return reversed[i];
+            }
+    }
+
     /// <exception cref="ArgumentException"><paramref name="sszBytes"/> is longer than a stored state may be, so it could never be read back.</exception>
     public void PutState(Hash256 blockRoot, ReadOnlySpan<byte> sszBytes)
     {
@@ -765,21 +927,8 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     public bool TryGetState(Hash256 blockRoot, [NotNullWhen(true)] out byte[]? sszBytes)
     {
         sszBytes = null;
-        byte[]? manifest = _states.Get(blockRoot.Bytes);
-        if (manifest is null || manifest.Length != StateManifestLength)
-        {
-            return false;
-        }
-
-        uint declaredChunkCount = BinaryPrimitives.ReadUInt32BigEndian(manifest);
-        ulong declaredLength = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
-        if (declaredLength > MaxStateBytes || declaredChunkCount == 0 || (declaredLength + StateChunkSize - 1) / StateChunkSize != declaredChunkCount)
-        {
-            return false;
-        }
-
-        int chunkCount = (int)declaredChunkCount;
-        int length = (int)declaredLength;
+        if (!TryGetStateLength(blockRoot, out int length)) return false;
+        int chunkCount = (length - 1) / StateChunkSize + 1;
         byte[] buffer = new byte[length];
 
         Span<byte> chunkKey = stackalloc byte[Hash256.Size + sizeof(uint)];
@@ -806,20 +955,60 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         return true;
     }
 
+    internal bool TryGetStateLength(Hash256 blockRoot, out int totalLength)
+    {
+        totalLength = 0;
+        if (_states.Get(blockRoot.Bytes) is not { Length: StateManifestLength } manifest) return false;
+        ulong length = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
+        uint chunks = BinaryPrimitives.ReadUInt32BigEndian(manifest);
+        if (length > MaxStateBytes || chunks == 0 || (length + StateChunkSize - 1) / StateChunkSize != chunks) return false;
+        totalLength = (int)length;
+        return true;
+    }
+
+    /// <summary>Reads a range of stored SSZ, validating the manifest and the chunks intersecting that range.</summary>
+    internal bool TryGetStateRange(Hash256 blockRoot, int offset, Span<byte> destination)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(offset);
+        if (!TryGetStateLength(blockRoot, out int totalLength)) return false;
+        if (offset > totalLength || destination.Length > totalLength - offset) return false;
+
+        Span<byte> key = stackalloc byte[Hash256.Size + sizeof(uint)];
+        blockRoot.Bytes.CopyTo(key);
+        while (!destination.IsEmpty)
+        {
+            int chunk = offset / StateChunkSize;
+            int within = offset % StateChunkSize;
+            int expected = Math.Min(StateChunkSize, totalLength - chunk * StateChunkSize);
+            BinaryPrimitives.WriteUInt32BigEndian(key[Hash256.Size..], (uint)chunk);
+            if (_states.Get(key) is not { } compressed || Snappy.GetUncompressedLength(compressed) != expected) return false;
+            byte[] buffer = ArrayPool<byte>.Shared.Rent(expected);
+            int take = Math.Min(destination.Length, expected - within);
+            try
+            {
+                if (Snappy.Decompress(compressed, buffer.AsSpan(0, expected)) != expected) return false;
+                buffer.AsSpan(within, take).CopyTo(destination);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+            destination = destination[take..];
+            offset += take;
+        }
+        return true;
+    }
+
     internal bool TryGetStatePrefix(Hash256 blockRoot, int length, [NotNullWhen(true)] out byte[]? prefix)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(length, StateChunkSize);
         prefix = null;
-        byte[]? manifest = _states.Get(blockRoot.Bytes);
-        if (manifest is not { Length: StateManifestLength }) return false;
-        ulong totalLength = BinaryPrimitives.ReadUInt64BigEndian(manifest.AsSpan(sizeof(uint)));
-        uint chunkCount = BinaryPrimitives.ReadUInt32BigEndian(manifest);
-        if (totalLength < (ulong)length || chunkCount == 0 || (totalLength + StateChunkSize - 1) / StateChunkSize != chunkCount) return false;
+        if (!TryGetStateLength(blockRoot, out int totalLength) || totalLength < length) return false;
         Span<byte> key = stackalloc byte[Hash256.Size + sizeof(uint)];
         blockRoot.Bytes.CopyTo(key);
         key[Hash256.Size..].Clear();
-        if (_states.Get(key) is not { } compressed || Snappy.GetUncompressedLength(compressed) != (int)Math.Min((ulong)StateChunkSize, totalLength)) return false;
+        if (_states.Get(key) is not { } compressed || Snappy.GetUncompressedLength(compressed) != Math.Min(StateChunkSize, totalLength)) return false;
         byte[] result = new byte[length];
         if (DecompressSnappyPrefix(compressed, result, StateChunkSize) != length) return false;
         prefix = result;
@@ -1009,6 +1198,31 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
             ? payload.SlotNumber
             : throw new ArgumentException($"The envelope for {blockRoot} has no payload or names beacon block {envelope.Message?.BeaconBlockRoot?.ToString() ?? "none"}", nameof(envelope));
 
+    internal void DeleteExecutionPayloadEnvelope(Hash256 blockRoot, ulong slot)
+    {
+        Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
+        lock (_envelopeIndexLock)
+        {
+            using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+            IWriteBatch envelopes = batch.GetColumnBatch(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+            envelopes.Remove(blockRoot.Bytes);
+            envelopes.Remove(ExecutionPayloadVerdictKey(blockRoot.Bytes));
+            if (_envelopes.Get(slotKey) is not { } roots) return;
+            roots = (byte[])roots.Clone();
+            int kept = 0;
+            for (int offset = 0; offset + Hash256.Size <= roots.Length; offset += Hash256.Size)
+            {
+                ReadOnlySpan<byte> root = roots.AsSpan(offset, Hash256.Size);
+                if (root.SequenceEqual(blockRoot.Bytes)) continue;
+                root.CopyTo(roots.AsSpan(kept));
+                kept += Hash256.Size;
+            }
+            if (kept == 0) envelopes.Remove(slotKey);
+            else envelopes.PutSpan(slotKey, roots.AsSpan(0, kept));
+        }
+    }
+
     internal void SetExecutionPayloadValid(Hash256 blockRoot)
     {
         lock (_envelopeIndexLock)
@@ -1075,28 +1289,47 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         ulong windowStart = epoch > ulong.MaxValue / networkSpec.SlotsPerEpoch ? ulong.MaxValue : epoch * networkSpec.SlotsPerEpoch;
         ulong keepFrom = Math.Min(windowStart, replaySlot);
         if (TryGetAnchor(out _, out ulong anchorSlot)) keepFrom = Math.Min(keepFrom, anchorSlot);
-        if (!TryGetEarliestBlockSlot(out ulong lowest) || lowest >= keepFrom) return;
+        if (!TryGetEarliestBlockSlot(out ulong servedFloor)) return;
+        ulong lowest = GetMetadata(BeaconChainMetadataKeys.CanonicalPruneCursor) is { Length: sizeof(ulong) } cursor
+            ? Math.Min(servedFloor, BinaryPrimitives.ReadUInt64BigEndian(cursor)) : servedFloor;
+        if (lowest >= keepFrom) return;
 
         ulong end = lowest + Math.Min(keepFrom - lowest, CanonicalPruneBatchSlots);
-        for (ulong slot = lowest; slot < end; slot++)
-        {
-            if (TryGetCanonicalRoot(slot, out Hash256? root)) DeleteBlock(root);
-        }
-
-        // Commit the cursor with the index removals. A crash before this batch repeats the idempotent block deletes.
-        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
-        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
-        Span<byte> key = stackalloc byte[sizeof(ulong)];
-        for (ulong slot = lowest; slot < end; slot++)
-        {
-            BinaryPrimitives.WriteUInt64BigEndian(key, slot);
-            index.Remove(key);
-        }
-
         byte[] floor = new byte[sizeof(ulong)];
         BinaryPrimitives.WriteUInt64BigEndian(floor, end);
-        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.EarliestBlockSlot), floor);
-        batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.PrunedBlockSlot), floor);
+        // Hide the range before deleting its blocks; the cursor advances only after its index is removed.
+        using (IColumnsWriteBatch<BeaconChainDbColumns> start = db.StartWriteBatch())
+        {
+            IWriteBatch metadata = start.GetColumnBatch(BeaconChainDbColumns.Metadata);
+            byte[] resume = new byte[sizeof(ulong)];
+            BinaryPrimitives.WriteUInt64BigEndian(resume, lowest);
+            metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.CanonicalPruneCursor), resume);
+            metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.PrunedBlockSlot), floor);
+            metadata.Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.EarliestBlockSlot), floor);
+        }
+        using Lock.Scope summaryScope = _blockSummaryLock.EnterScope();
+        using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
+        IWriteBatch index = batch.GetColumnBatch(BeaconChainDbColumns.BlockIndex);
+        Dictionary<Hash256, byte[]?> children = [];
+        Span<byte> key = stackalloc byte[sizeof(ulong)];
+        try
+        {
+            for (ulong slot = lowest; slot < end; slot++)
+            {
+                if (TryGetCanonicalRoot(slot, out Hash256? root)) DeleteBlock(root, batch, children);
+                BinaryPrimitives.WriteUInt64BigEndian(key, slot);
+                index.Remove(key);
+            }
+
+            WriteChildren(index, children);
+            batch.GetColumnBatch(BeaconChainDbColumns.Metadata).Set(Encoding.UTF8.GetBytes(BeaconChainMetadataKeys.CanonicalPruneCursor), floor);
+        }
+        catch
+        {
+            // Dispose commits the batch. Leave the cursor and all indexes intact for a retry.
+            batch.Clear();
+            throw;
+        }
     }
 
     /// <summary>Deletes every stored execution payload envelope whose slot is below both the ExecutionPayloadEnvelopesByRange/ByRoot retention window as of <paramref name="currentEpoch"/> and <paramref name="finalizedSlot"/>.</summary>
@@ -1105,7 +1338,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// (gloas/p2p-interface.md), where <paramref name="currentEpoch"/> is the wall-clock epoch; no envelope precedes the Gloas fork,
     /// so the fork term never prunes more and is left out. Envelopes from the finalized block on are kept even outside the window,
     /// because replay from the finalized state verifies each child against its parent's payload. Only the stored slot bounds are
-    /// visited, at most <see cref="EnvelopePruneBatchSlots"/> slots per write batch, and each batch moves the lower bound with its
+    /// visited, at most <see cref="EnvelopePruneBatchSlots"/> populated slots per write batch, and each batch moves the lower bound with its
     /// deletions, so an interrupted prune resumes where it stopped.
     /// </remarks>
     /// <param name="currentEpoch">The wall-clock epoch.</param>
@@ -1123,7 +1356,7 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
     }
 
-    /// <summary>Deletes the envelopes of at most <see cref="EnvelopePruneBatchSlots"/> slots from the lower slot bound up, stopping below <paramref name="keepFrom"/>.</summary>
+    /// <summary>Deletes the envelopes of at most <see cref="EnvelopePruneBatchSlots"/> populated slots from the lower slot bound up, stopping below <paramref name="keepFrom"/>.</summary>
     /// <returns><c>false</c> when no stored slot is below <paramref name="keepFrom"/>.</returns>
     /// <remarks>The bounds are read again for each batch, so <see cref="PutExecutionPayloadEnvelope(Hash256, SignedExecutionPayloadEnvelope)"/> waits for one batch only and a slot it adds meanwhile is still pruned.</remarks>
     private bool PruneExecutionPayloadEnvelopeBatch(ulong keepFrom)
@@ -1137,11 +1370,12 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
 
             bool prunesAll = keepFrom > highest;
             ulong last = prunesAll ? highest : keepFrom - 1;
-            ulong batchLast = last - lowest >= EnvelopePruneBatchSlots ? lowest + EnvelopePruneBatchSlots - 1 : last;
+            ulong batchLast = last;
+            ulong slots = 0;
             Span<byte> slotKey = stackalloc byte[sizeof(ulong)];
             using IColumnsWriteBatch<BeaconChainDbColumns> batch = db.StartWriteBatch();
             IWriteBatch envelopes = batch.GetColumnBatch(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
-            for (ulong slot = lowest; ; slot++)
+            foreach (ulong slot in EnumerateStoredSlots(_envelopes, lowest, last))
             {
                 BinaryPrimitives.WriteUInt64BigEndian(slotKey, slot);
                 if (_envelopes.Get(slotKey) is { } roots)
@@ -1155,8 +1389,9 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
                     envelopes.Remove(slotKey);
                 }
 
-                if (slot == batchLast)
+                if (++slots == EnvelopePruneBatchSlots)
                 {
+                    batchLast = slot;
                     break;
                 }
             }
@@ -1481,20 +1716,26 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
         }
 
         Span<byte> key = stackalloc byte[ColumnKeyLength];
-        for (ulong slot = through; ; slot--)
+        ulong uncheckedThrough = through;
+        try
+        {
+            foreach (ulong slot in EnumerateCanonicalSlots(from, through, cancellationToken, reverse: true))
+            {
+                shortfall = CheckStoredDataColumns(slot, required, key);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (shortfall != DataColumnShortfall.None) return slot;
+                if (slot == from) return null;
+                uncheckedThrough = slot - 1;
+            }
+            cancellationToken.ThrowIfCancellationRequested();
+            return null;
+        }
+        catch (Exception e) when (e is not OutOfMemoryException)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            shortfall = CheckStoredDataColumns(slot, required, key);
-            cancellationToken.ThrowIfCancellationRequested();
-            if (shortfall != DataColumnShortfall.None)
-            {
-                return slot;
-            }
-
-            if (slot == from)
-            {
-                return null;
-            }
+            // An iterator failure leaves all slots below the last verified entry unverified.
+            shortfall = DataColumnShortfall.ReadFailed;
+            return uncheckedThrough;
         }
     }
 

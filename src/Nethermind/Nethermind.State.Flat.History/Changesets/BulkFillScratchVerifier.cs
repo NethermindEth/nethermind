@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.Persistence;
@@ -66,10 +67,10 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             try
             {
                 RlpReader decoder = new(row);
-                if (!AccountDecoder.Slim.TryDecodeStruct(ref decoder, out account) || decoder.Position != row.Length)
+                if (!AccountDecoder.Slim.TryDecodeStruct(ref decoder, out account) || decoder.HasNext)
                     throw new ScratchStateUnusableException($"Invalid scratch account value for {path}.");
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 throw new ScratchStateUnusableException($"Invalid scratch account value for {path}.", exception);
             }
@@ -143,9 +144,9 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             {
                 RlpReader decoder = new(value);
                 value = decoder.DecodeByteArraySpan();
-                if (decoder.Position != decoder.Length) throw new ScratchStateUnusableException($"Trailing bytes in the scratch slot {Convert.ToHexString(key)}.");
+                if (decoder.HasNext) throw new ScratchStateUnusableException($"Trailing bytes in the scratch slot {Convert.ToHexString(key)}.");
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 throw new ScratchStateUnusableException($"Invalid scratch slot value at {Convert.ToHexString(key)}.", exception);
             }

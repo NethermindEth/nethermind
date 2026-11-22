@@ -36,8 +36,8 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
 
     private static string Generate(string schema, Compilation compilation)
     {
-        Dictionary<string, Field[]> fields = new(StringComparer.Ordinal);
-        Dictionary<string, Method> methods = new(StringComparer.Ordinal);
+        Dictionary<string, Field[]> fields = [with(StringComparer.Ordinal)];
+        Dictionary<string, Method> methods = [with(StringComparer.Ordinal)];
         foreach (string raw in schema.Replace("\r", "").Split('\n'))
         {
             string[] parts = raw.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);

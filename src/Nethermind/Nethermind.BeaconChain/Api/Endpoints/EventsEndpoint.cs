@@ -157,15 +157,18 @@ internal static class EventsEndpoint
         private readonly Lock _lock = new();
         private Hash256? _root;
         private HeadEventDto? _head;
+        private ulong _attemptSlot;
 
         public HeadEventDto? Head(BeaconApiContext ctx, Hash256 root, ulong? previousSlot)
         {
             lock (_lock)
             {
-                if (_root != root)
+                ulong currentSlot = ctx.SlotClock.CurrentSlot;
+                if (_root != root || (_head is null && _attemptSlot != currentSlot))
                 {
                     _head = CreateHeadEvent(ctx, root, null);
                     _root = root;
+                    _attemptSlot = currentSlot;
                 }
                 if (_head is not { } head) return null;
                 return head with

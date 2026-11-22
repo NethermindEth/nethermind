@@ -23,6 +23,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         return _executionHandlers!;
     }
 
+    /// <summary>Resolves the untraced dispatch table and the current fork's own frame handlers, for tests that enter a frame directly.</summary>
+    /// <remarks>The shared table keeps the frame handlers of the first fork it prepares, so they are rebuilt for the current spec.</remarks>
+    internal void PrepareFrameHandlersForTests()
+    {
+        PrepareOpcodes<OffFlag>();
+        _executionHandlers = new ExecutionHandlers(Spec);
+    }
+
     /// <summary>Frame operations selected once for the same spec as the opcode tables.</summary>
     private sealed class ExecutionHandlers(IReleaseSpec spec)
     {
@@ -46,7 +54,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     }
 
     /// <summary>Selects how a frame credits and, under EIP-158, bumps the nonce of the account it executes in.</summary>
-    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec);
+    private static delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrame(IReleaseSpec spec) =>
+        // EIP-8360 frame entry also sets the TCREATE context, so it cannot be skipped.
+        SpecFlags.Eip158(spec) && !SpecFlags.Eip8360(spec) ? &InitializeFrameSkippingNoOpCredit :
+        SelectInitializeFrameCore(spec);
 
     /// <summary>The frame entry both builds select from, by the EIP-158 and EIP-8360 flags.</summary>
     private static delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, bool> SelectInitializeFrameCore(IReleaseSpec spec) =>
@@ -73,6 +84,27 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((Eip158.IsActive || (Eip8360.IsActive && state.ExecutionType == ExecutionType.TCREATE)) && state.ExecutionType.IsAnyCreate())
             vm._worldState.IncrementNonce(env.ExecutingAccount);
         return true;
+    }
+
+    /// <summary>
+    /// <see cref="InitializeFrameCore{Eip158, Eip8360}"/> under EIP-158, minus the zero credit to the executing account of a frame that runs code.
+    /// </summary>
+    /// <remarks>
+    /// That account is never empty: under CALL, STATICCALL and a transaction it holds the code, or an EIP-7702 designator
+    /// to it; under DELEGATECALL and CALLCODE it is the caller, itself running code or a creation whose nonce is already 1.
+    /// Crediting it zero neither creates nor touches it, yet costs two account lookups on every value-less call.
+    /// Under EIP-7928 all the credit leaves in the block access list is the account's entry, which is already there: the
+    /// call or transaction that targets the account made it while resolving the account's code, and under DELEGATECALL
+    /// and CALLCODE the account is the caller's, whose entry was made the same way or by its creation.
+    /// </remarks>
+    private static bool InitializeFrameSkippingNoOpCredit(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)
+    {
+        ExecutionEnvironment env = state.Env;
+        ExecutionType executionType = state.ExecutionType;
+        if (!executionType.IsAnyCreate() && env.CodeInfo.CodeLength != 0 && executionType.GetBalanceCredit(in env.Value).IsZero)
+            return true;
+
+        return InitializeFrameCore<OnFlag, OffFlag>(vm, state);
     }
 
     private static void AddTransferLogCore<Eip7708>(VirtualMachine<TGasPolicy> vm, VmState<TGasPolicy> state)

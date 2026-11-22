@@ -37,7 +37,7 @@ public partial class GossipRouterTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
     [Test]
-    public void Retiring_digest_sends_unsubscribe_and_skips_validation_without_caching([Values] bool column, [Values] bool getTopic)
+    public async Task Retiring_digest_sends_unsubscribe_and_skips_validation_without_caching([Values] bool column, [Values] bool getTopic)
     {
         using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings
         {
@@ -62,7 +62,7 @@ public partial class GossipRouterTests
 
         string topicId = GossipTopics.Topic(digest, column ? GossipTopics.DataColumnSidecarTopicName(0) : GossipTopics.BeaconBlock);
         ITopic topic = subscriptions.GetTopic(topicId);
-        (PeerId peer, List<Rpc> sent, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topicId);
+        (PeerId peer, List<Rpc> sent, Func<Rpc, Task> receive) = await ConnectSubscribedPeer(pubsub, topicId);
         ((IRoutingStateContainer)pubsub).Mesh[topicId].Add(peer);
         sent.Clear();
 
@@ -77,8 +77,8 @@ public partial class GossipRouterTests
 
         Rpc publish = new();
         publish.Publish.Add(new Message { Topic = topicId, Data = ByteString.CopyFrom([1]) });
-        receive(publish);
-        receive(publish);
+        await receive(publish);
+        await receive(publish);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(topic.IsSubscribed, Is.False);
@@ -89,7 +89,7 @@ public partial class GossipRouterTests
 
         string kept = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.BeaconBlock);
         pubsub.GetTopic(kept);
-        (_, List<Rpc> toLaterPeer, _) = ConnectSubscribedPeer(pubsub, kept);
+        (_, List<Rpc> toLaterPeer, _) = await ConnectSubscribedPeer(pubsub, kept);
         string[] announced = [.. toLaterPeer.SelectMany(static rpc => rpc.Subscriptions).Where(static s => s.Subscribe).Select(static s => s.Topicid)];
         Assert.That(announced, Does.Contain(kept).And.Not.Contain(topicId), "a peer connecting after retirement is told only of subscribed topics");
 
@@ -103,7 +103,7 @@ public partial class GossipRouterTests
         }
 
         Assert.That(topic.IsSubscribed, Is.True);
-        receive(publish);
+        await receive(publish);
         Assert.That(verified, Is.EqualTo(1), "retired messages do not enter the seen cache, and rejoining restores validation");
     }
 
@@ -119,19 +119,19 @@ public partial class GossipRouterTests
         pubsub.VerifyMessage = (_, _) => { verified++; return MessageValidity.Ignored; };
         string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
         pubsub.GetTopic(topicId);
-        (PeerId peer, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topicId);
+        (PeerId peer, _, Func<Rpc, Task> receive) = await ConnectSubscribedPeer(pubsub, topicId);
         await pubsub.Heartbeat();
         Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "the heartbeat grafts the subscribed peer");
         Rpc ihave = new() { Control = new ControlMessage() };
         ihave.Control.Ihave.Add(new ControlIHave { TopicID = topicId, MessageIDs = { ByteString.CopyFrom(new byte[20]) } });
-        receive(ihave);
+        await receive(ihave);
 
         // Past the library's default MeshMessageDeliveriesActivation of 5 s and IWantFollowupTime of 3 s.
         await Task.Delay(TimeSpan.FromSeconds(6), token);
         await pubsub.Heartbeat();
         Rpc publish = new();
         publish.Publish.Add(new Message { Topic = topicId, Data = ByteString.CopyFrom([1]) });
-        receive(publish);
+        await receive(publish);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(((IRoutingStateContainer)pubsub).Mesh[topicId], Does.Contain(peer), "no delivery score or broken promise prunes the peer");
@@ -150,7 +150,7 @@ public partial class GossipRouterTests
         pubsub.VerifyMessage = (_, message) => { verified.Add(message.Clone()); return MessageValidity.Ignored; };
         string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconBlock);
         pubsub.GetTopic(topicId);
-        (_, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topicId);
+        (_, _, Func<Rpc, Task> receive) = await ConnectSubscribedPeer(pubsub, topicId);
         Message unsigned = new() { Topic = topicId, Data = ByteString.CopyFrom([1, 2, 3]) };
         Message present = unsigned.Clone();
         ByteString value = empty ? ByteString.Empty : ByteString.CopyFrom([1]);
@@ -165,45 +165,44 @@ public partial class GossipRouterTests
         // A wire round trip, so an empty field stays present as it would arrive from a peer.
         Rpc signedRpc = new();
         signedRpc.Publish.Add(Message.Parser.ParseFrom(present.ToByteArray()));
-        receive(signedRpc);
+        await receive(signedRpc);
         Rpc unsignedRpc = new();
         unsignedRpc.Publish.Add(unsigned);
-        receive(unsignedRpc);
+        await receive(unsignedRpc);
 
         Assert.That(verified, Is.EqualTo(new[] { unsigned }), "only the unsigned copy reaches the validator");
     }
 
-    private static (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) ConnectSubscribedPeer(PubsubRouter pubsub, string topicId, string protocol = PubsubRouter.GossipsubProtocolVersionV11)
+    private static async Task<(PeerId Peer, List<Rpc> Sent, Func<Rpc, Task> Receive)> ConnectSubscribedPeer(PubsubRouter pubsub, string topicId, string protocol = PubsubRouter.GossipsubProtocolVersionV11)
     {
         PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
         List<Rpc> sent = [];
         TaskCompletionSource dial = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<IOResult>> write = (bytes, _) =>
+        ValueTask<IOResult> Write(ReadOnlyMemory<byte> frame, CancellationToken token)
         {
             int offset = 0;
-            while ((bytes.Span[offset++] & 0x80) != 0) { }
-            sent.Add(Rpc.Parser.ParseFrom(bytes.Span[offset..]));
+            while ((frame.Span[offset++] & 0x80) != 0) { }
+            sent.Add(Rpc.Parser.ParseFrom(frame.Span[offset..]));
             return ValueTask.FromResult(IOResult.Ok);
-        };
+        }
         typeof(PubsubRouter).GetMethod("OutboundConnection", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub,
-            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), protocol, dial.Task, write,
+            [Multiaddress.Decode($"/ip4/127.0.0.1/tcp/9000/p2p/{peer}"), protocol, dial.Task,
+                (Func<ReadOnlyMemory<byte>, CancellationToken, ValueTask<IOResult>>)Write,
                 (Func<ValueTask>)(static () => ValueTask.CompletedTask), (Func<Task>)(static () => Task.CompletedTask)]);
-        FlushOutbound(pubsub);
         MethodInfo onRpc = typeof(PubsubRouter).GetMethod("OnRpcAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        void Receive(Rpc rpc)
+        async Task Receive(Rpc rpc)
         {
-            ((Task)onRpc.Invoke(pubsub, [peer, rpc, null, true, CancellationToken.None])!).GetAwaiter().GetResult();
-            FlushOutbound(pubsub);
+            await (Task)onRpc.Invoke(pubsub, [peer, rpc, null, true, CancellationToken.None])!;
+            await FlushOutboundAsync(pubsub);
         }
         Rpc subscribe = new();
         subscribe.Subscriptions.Add(new Rpc.Types.SubOpts { Topicid = topicId, Subscribe = true });
-        Receive(subscribe);
+        await Receive(subscribe);
         return (peer, sent, Receive);
     }
 
-    private static void FlushOutbound(PubsubRouter pubsub) =>
-        ((Task)typeof(PubsubRouter).GetMethod("FlushOutboundAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .Invoke(pubsub, null)!).GetAwaiter().GetResult();
+    private static Task FlushOutboundAsync(PubsubRouter pubsub) =>
+        (Task)typeof(PubsubRouter).GetMethod("FlushOutboundAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(pubsub, null)!;
 
     [Test]
     public void Retiring_a_topic_waits_for_the_router_monitor()
@@ -220,12 +219,18 @@ public partial class GossipRouterTests
                 started.SetResult();
                 topic.Unsubscribe();
             });
-            Assert.That(started.Task.Wait(5_000), Is.True, "the unsubscribe worker did not start");
-            Assert.That(retire.Wait(200), Is.False, "unsubscribing ran while the router's monitor was held");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(started.Task.Wait(5_000), Is.True, "the unsubscribe worker did not start");
+                Assert.That(retire.Wait(200), Is.False, "unsubscribing ran while the router's monitor was held");
+            }
         }
 
-        Assert.That(retire.Wait(5_000), Is.True, "unsubscribing did not finish after releasing the monitor");
-        Assert.That(topic.IsSubscribed, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(retire.Wait(5_000), Is.True, "unsubscribing did not finish after releasing the monitor");
+            Assert.That(topic.IsSubscribed, Is.False);
+        }
     }
 
     private static GossipRouter CreateRouter(double secondsIntoSlot = 6.0)
@@ -760,7 +765,7 @@ public partial class GossipRouterTests
             Router.Handle(GossipTopics.ExecutionPayload, gloasTopic: true, Snappy.CompressToArray(SignedExecutionPayloadEnvelope.Encode(envelope)));
     }
 
-    private static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
+    internal static SignedAggregateAndProof CreateAggregate(ulong slot) => new()
     {
         Message = new AggregateAndProof
         {

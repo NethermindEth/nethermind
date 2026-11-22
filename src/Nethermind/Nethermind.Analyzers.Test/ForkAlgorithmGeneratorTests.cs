@@ -56,6 +56,7 @@ public class ForkAlgorithmGeneratorTests
         {
             bool gloas = source.HintName.StartsWith("Gloas", StringComparison.Ordinal);
             string text = source.SourceText.ToString();
+            using IDisposable scope = Assert.EnterMultipleScope();
             Assert.That(source.SyntaxTree.GetDiagnostics(), Is.Empty);
             Assert.That(text, Does.Contain(gloas ? "class GloasBlockProcessing" : "class BlockProcessing"));
             MethodDeclarationSyntax method = source.SyntaxTree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>().Single();

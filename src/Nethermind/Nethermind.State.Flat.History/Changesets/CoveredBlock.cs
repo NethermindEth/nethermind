@@ -19,6 +19,7 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
     private readonly int _cacheBits = CacheBits(rows);
     private BlockReadCache? _reads = RentReads(CacheBits(rows));
     private readonly Lock _readsLock = new();
+    private readonly List<MidBlockOverlay> _overlays = [];
     private int _activeReads;
     private bool _disposed;
 
@@ -31,7 +32,9 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
     {
         using Lock.Scope scope = _readsLock.EnterScope();
         ObjectDisposedException.ThrowIf(_disposed, this);
-        return new WorkerSeeds(rows, earlierBlocks, this);
+        MidBlockOverlay overlay = MidBlockOverlay.Rent(rows.Number);
+        _overlays.Add(overlay);
+        return new WorkerSeeds(rows, earlierBlocks, this, overlay);
     }
 
     /// <summary>Nothing is published for a block the chain cannot describe exactly.</summary>
@@ -45,12 +48,17 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
         if (_activeReads == 0) ReturnReads();
     }
 
+    /// <summary>Runs once the block is disposed and no lease is active. A worker folds and reads its overlay only
+    /// under a lease, so no overlay given back here can still be in use.</summary>
     private void ReturnReads()
     {
         BlockReadCache? reads = _reads;
         _reads = null;
         if (reads is not null && reads.Clear())
             Interlocked.CompareExchange(ref SpareReads[_cacheBits], reads, null);
+
+        foreach (MidBlockOverlay overlay in _overlays) MidBlockOverlay.Return(overlay);
+        _overlays.Clear();
     }
 
     private ReadLease? TryLeaseReads()
@@ -76,38 +84,26 @@ internal sealed class CoveredBlock(BlockChangesets rows, RangeOverlay? earlierBl
 
     /// <summary>One worker's view of the block: its own overlay, folded as far as the last target and extended in
     /// place while the targets rise. Nothing here is shared, so nothing here is locked.</summary>
-    private sealed class WorkerSeeds : IPrefixStateSeedSource
+    private sealed class WorkerSeeds(BlockChangesets rows, RangeOverlay? earlierBlocks, CoveredBlock owner, MidBlockOverlay overlay) : IPrefixStateSeedSource
     {
-        private readonly BlockChangesets _rows;
-        private readonly RangeOverlay? _earlierBlocks;
-        private readonly CoveredBlock _owner;
-        private readonly MidBlockOverlay _overlay = new();
-
-        public WorkerSeeds(BlockChangesets rows, RangeOverlay? earlierBlocks, CoveredBlock owner)
-        {
-            _rows = rows;
-            _earlierBlocks = earlierBlocks;
-            _owner = owner;
-            _overlay.Reset(rows.Number);
-        }
-
         public bool Enabled => true;
 
         public bool TrySeed(Block block, int transactionIndex, StateReadOverlaySlot slot)
         {
-            if ((ulong)block.Number != _rows.Number || block.Hash != _rows.Hash) return false;
-            if (transactionIndex < 0 || transactionIndex > _rows.Rows.Length) return false;
+            if ((ulong)block.Number != rows.Number || block.Hash != rows.Hash) return false;
+            if (transactionIndex < 0 || transactionIndex > rows.Rows.Length) return false;
 
-            // Every row of the block was read when it was opened, so the fold cannot fail here.
-            if (_overlay.Folded > transactionIndex) _overlay.Reset(_rows.Number);
-            while (_overlay.Folded < transactionIndex) _overlay.Fold(_overlay.Folded, _rows.Rows[_overlay.Folded]);
-
-            IStateReadOverlay view = new MidBlockReadOverlay(_overlay);
-            ReadLease? lease = _owner.TryLeaseReads();
+            // The lease comes first: the overlay goes back to the spares once the block is disposed and no lease is
+            // active, so it is folded only while one is held.
+            ReadLease? lease = owner.TryLeaseReads();
             if (lease is null) return false;
             try
             {
-                slot.Arm(view, lease, lease.Cache, _earlierBlocks);
+                // Every row of the block was read when it was opened, so the fold cannot fail here.
+                if (overlay.Folded > transactionIndex) overlay.Reset(rows.Number);
+                while (overlay.Folded < transactionIndex) overlay.Fold(overlay.Folded, rows.Rows[overlay.Folded]);
+
+                slot.Arm(new MidBlockReadOverlay(overlay), lease, lease.Cache, earlierBlocks);
             }
             catch
             {

@@ -34,9 +34,14 @@ public static partial class GloasSlotProcessing
     /// current slot and, new in Gloas, marks the next slot's payload as not (yet) available.
     /// </summary>
     public static void ProcessSlot(BeaconStateGloas state, IBeaconStateHasher hasher)
+        => ProcessSlot(state, hasher, onlySlotChanges: false);
+
+    private static void ProcessSlot(BeaconStateGloas state, IBeaconStateHasher hasher, bool onlySlotChanges)
     {
         int slotIndex = (int)(state.Slot % Presets.SlotsPerHistoricalRoot);
-        Hash256 previousStateRoot = hasher.HashTreeRoot(state);
+        Hash256 previousStateRoot = onlySlotChanges && hasher is CachedBeaconStateHasher cached
+            ? cached.HashTreeRootAfterSlot(state)
+            : hasher.HashTreeRoot(state);
         state.StateRoots![slotIndex] = previousStateRoot;
 
         if (state.LatestBlockHeader!.StateRoot == Hash256.Zero)

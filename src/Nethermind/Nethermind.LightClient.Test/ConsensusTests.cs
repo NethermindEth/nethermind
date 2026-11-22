@@ -38,7 +38,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         using BootstrapFixture fixture = new(checkpoint);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         TaskCompletionSource fetching = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<LightClientBootstrap> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -161,7 +161,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         using BootstrapFixture fixture = new(checkpoint);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         LightClientStore store = new(Spec, checkpoint, bootstrap, fixture.CurrentSlot);
         await journal.InitializeAsync(bootstrap, store, token);
         LightClientUpdate update = Update(2, 3, 4, 1);
@@ -479,7 +479,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         LightClientStore store = Store(bootstrap);
         using BootstrapFixture fixture = new(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), initialSlot: 8101);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate learning = Update(1, 1, 2, 1, nextKey: 2);
         store.Process(learning, fixture.CurrentSlot);
@@ -532,7 +532,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         LightClientStore store = Store(bootstrap);
         using BootstrapFixture fixture = new(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), initialSlot: 8201);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         foreach (LightClientUpdate update in new[] { Update(1, 1, 2, 1, nextKey: 2), Update(1, 8200, 8201, 2) })
         {
@@ -724,8 +724,12 @@ public class ConsensusTests
             Assert.That(catchUp.IsCompleted, Is.False);
             clock.Advance(TimeSpan.FromMilliseconds(1));
             await catchUp.WaitAsync(TimeSpan.FromSeconds(2));
-            Assert.That(store.ForceUpdate(16384), Is.True);
-            Assert.That(store.Period, Is.EqualTo(1));
+            bool forced = store.ForceUpdate(16384);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(forced, Is.True);
+                Assert.That(store.Period, Is.EqualTo(1));
+            }
         }
         using (Assert.EnterMultipleScope())
         {
@@ -917,7 +921,7 @@ public class ConsensusTests
         LightClientStore store = new(spec, checkpoint, bootstrap, 8188);
         string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
             "NethermindLightClientGloasRollover", Guid.NewGuid().ToString("N"));
-        VerifiedConsensusJournal journal = new(directory, spec, "sepolia", checkpoint, NullLogger.Instance);
+        ConsensusJournal journal = new(directory, spec, "sepolia", checkpoint, NullLogger.Instance);
         try
         {
             await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
@@ -1062,9 +1066,14 @@ public class ConsensusTests
         {
             await clock.NextTimerAsync();
             Assert.That(repairs, Is.EqualTo(1));
-            Assert.That(clock.Advance(TimeSpan.FromSeconds(11)), Is.False);
-            Assert.That(repairs, Is.EqualTo(1), "an unavailable peer must not cause a retry spin");
-            Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True, "stale consensus must retry within one slot");
+            bool retryElapsed = clock.Advance(TimeSpan.FromSeconds(11));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retryElapsed, Is.False);
+                Assert.That(repairs, Is.EqualTo(1), "an unavailable peer must not cause a retry spin");
+            }
+            bool slotElapsed = clock.Advance(TimeSpan.FromSeconds(1));
+            Assert.That(slotElapsed, Is.True, "stale consensus must retry within one slot");
             await clock.NextTimerAsync();
             Assert.That(repairs, Is.EqualTo(2));
         }
@@ -1154,9 +1163,14 @@ public class ConsensusTests
             Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
             await clock.NextTimerAsync();
             Assert.That(expired, Is.EqualTo(1));
-            Assert.That(clock.Advance(TimeSpan.FromSeconds(11)), Is.False);
-            Assert.That(repairs, Is.EqualTo(1));
-            Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
+            bool retryElapsed = clock.Advance(TimeSpan.FromSeconds(11));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(retryElapsed, Is.False);
+                Assert.That(repairs, Is.EqualTo(1));
+            }
+            bool slotElapsed = clock.Advance(TimeSpan.FromSeconds(1));
+            Assert.That(slotElapsed, Is.True);
             await clock.NextTimerAsync();
             Assert.That(repairs, Is.EqualTo(2));
         }
@@ -1300,13 +1314,19 @@ public class ConsensusTests
         try
         {
             Assert.That(await requests.Reader.ReadAsync(), Is.EqualTo(1));
-            Assert.That(clock.Advance(TimeSpan.FromSeconds(90)), Is.False);
-            Assert.That(optimisticRequests, Is.EqualTo(1));
+            bool pendingElapsed = clock.Advance(TimeSpan.FromSeconds(90));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pendingElapsed, Is.False);
+                Assert.That(optimisticRequests, Is.EqualTo(1));
+            }
             response.SetResult();
             await clock.NextTimerAsync();
             Assert.That(optimisticRequests, Is.EqualTo(1));
-            Assert.That(clock.Advance(TimeSpan.FromSeconds(12)), Is.True);
-            Assert.That(await requests.Reader.ReadAsync(), Is.EqualTo(2));
+            bool slotElapsed = clock.Advance(TimeSpan.FromSeconds(12));
+            Assert.That(slotElapsed, Is.True);
+            int nextRequest = await requests.Reader.ReadAsync();
+            Assert.That(nextRequest, Is.EqualTo(2));
             await clock.NextTimerAsync();
             Assert.That(optimisticRequests, Is.EqualTo(2), "completed requests do not replay missed slots");
         }
@@ -1449,7 +1469,7 @@ public class ConsensusTests
         {
             await entered.Task;
             PublicationSource source = new();
-            using VerifiedRpc rpc = new(source, () => harness.Publisher.Heads.Finalized!, 1,
+            using RpcBackend rpc = new(source, () => harness.Publisher.Heads.Finalized!, 1,
                 getLatestHead: () => harness.Publisher.Heads.Latest,
                 isLatestHeadFresh: head => head.IsFresh(200, 10));
             object syncing = await rpc.InvokeAsync("eth_syncing", default, CancellationToken.None);
@@ -1532,9 +1552,10 @@ public class ConsensusTests
 
         Assert.That(clock.Advance(TimeSpan.FromSeconds(1)), Is.True);
 
-        Assert.That(await recovered.WaitAsync(token), Is.SameAs(published.Latest));
+        VerifiedHead latest = await recovered.WaitAsync(token);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(latest, Is.SameAs(published.Latest));
             Assert.That(publisher.Heads, Is.SameAs(published), "clock recovery does not need another publication");
             Assert.That(repairs, Is.EqualTo(1));
             Assert.That(clock.ActiveTimers, Is.Zero);
@@ -1554,8 +1575,12 @@ public class ConsensusTests
             () => publication = harness.Publisher.PublishFinalizedAsync(token), token);
 
         await publication.WaitAsync(token);
-        Assert.That(await recovered.WaitAsync(token), Is.EqualTo(ResolvedPublicationHeader(harness.Finalized).Head));
-        Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+        VerifiedHead latest = await recovered.WaitAsync(token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(latest, Is.EqualTo(ResolvedPublicationHeader(harness.Finalized).Head));
+            Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+        }
     }
 
     [Test]
@@ -1587,8 +1612,12 @@ public class ConsensusTests
             for (int i = 0; i < 10; i++) demand.Writer.TryWrite(true);
             Assert.That(count, Is.EqualTo(2), "demand must not start overlapping consensus requests");
             release.SetResult();
-            Assert.That(await requests.Reader.ReadAsync(token), Is.EqualTo(3));
-            Assert.That(clock.GetTimestamp(), Is.Zero, "the request must not wait for the periodic repair timer");
+            int nextRequest = await requests.Reader.ReadAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(nextRequest, Is.EqualTo(3));
+                Assert.That(clock.GetTimestamp(), Is.Zero, "the request must not wait for the periodic repair timer");
+            }
         }
         finally { await StopRepairLoopAsync(loop, stop); }
         using (Assert.EnterMultipleScope())
@@ -1833,6 +1862,39 @@ public class ConsensusTests
 
     private const ulong PublicationTimestamp = 12345;
 
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Persisted_heads_wake_publication_before_the_retry_tick([Values] bool finalized, CancellationToken token)
+    {
+        PublicationHarness harness = new();
+        await harness.SeedAsync();
+        TaskCompletionSource<VerifiedHead> published = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        LightClientHeader next = PublicationHeader(198, 130);
+        harness.Observe = snapshot =>
+        {
+            VerifiedHead? head = finalized ? snapshot.Finalized : snapshot.Latest;
+            if (head is not null && head.BlockHash == next.ExecutionBlockHash) published.TrySetResult(head);
+        };
+        using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        Task loop = harness.Start(stop.Token);
+        try
+        {
+            await harness.Clock.WaitForTimersAsync(3);
+            if (finalized) harness.Finalized = next;
+            else harness.Optimistic = next;
+            harness.Publisher.NotifyPersistedHeadsChanged();
+
+            VerifiedHead head = await published.Task.WaitAsync(token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(head, Is.EqualTo(ResolvedPublicationHeader(next).Head));
+                Assert.That(harness.Clock.GetTimestamp(), Is.Zero);
+            }
+        }
+        finally { await StopRepairLoopAsync(loop, stop); }
+        Assert.That(harness.Clock.ActiveTimers, Is.Zero);
+    }
+
     private static LightClientHeader PublicationHeader(ulong slot, byte number, byte branch = 0)
     {
         byte[] hash = new byte[32];
@@ -1930,7 +1992,7 @@ public class ConsensusTests
             "NethermindLightClientBootstrapTests", Guid.NewGuid().ToString("N"));
         internal RepairClock Clock { get; } = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + initialSlot * Spec.SecondsPerSlot)));
         internal ulong CurrentSlot => Spec.GetSlotAtTime((ulong)Clock.GetUtcNow().ToUnixTimeSeconds());
-        internal VerifiedConsensusJournal OpenJournal() => new(_directory, Spec, "mainnet", checkpoint, NullLogger.Instance);
+        internal ConsensusJournal OpenJournal() => new(_directory, Spec, "mainnet", checkpoint, NullLogger.Instance);
         public void Dispose()
         {
             if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);

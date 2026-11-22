@@ -192,8 +192,9 @@ internal sealed class PlainPeer(ServiceProvider services, LocalPeer peer) : IAsy
         ServiceProvider services = collection
             .AddLibp2p(builder =>
             {
-                IPeerFactoryBuilder configured = statusSource is null ? builder : builder.AddProtocol<StatusProtocolV2>();
-                return additionalProtocol is null ? configured : configured.AddProtocol(additionalProtocol);
+                if (statusSource is not null) builder.AddProtocol<StatusProtocolV2>();
+                if (additionalProtocol is not null) builder.AddProtocol(additionalProtocol);
+                return builder;
             })
             .BuildServiceProvider();
         // Building the factory is what fills the stack settings the peer runs on.

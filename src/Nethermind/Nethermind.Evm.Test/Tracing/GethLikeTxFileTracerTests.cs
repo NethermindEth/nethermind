@@ -39,8 +39,11 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
     {
         GethLikeTxTrace trace = ExecuteAndTraceToFile(static e => { }, GetBytecode(), GethTraceOptions.Default);
 
-        Assert.That(trace.Gas, Is.EqualTo(24));
-        Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Gas, Is.EqualTo(24));
+            Assert.That(trace.ReturnValue.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]
@@ -270,6 +273,24 @@ public class GethLikeTxFileTracerTests : GethLikeTracerTestsBase
             Assert.That(entries[4].StackWordCount(), Is.EqualTo(1));
             Assert.That(entries[5].StackWordCount(), Is.EqualTo(2));
             Assert.That(entries[6].StackWordCount(), Is.EqualTo(0));
+        }
+    }
+
+    [TestCase(Instruction.REVERT, "execution reverted", 0)]
+    [TestCase(Instruction.INVALID, "invalid opcode: INVALID", 2)]
+    public void Should_repeat_faulting_opcode_with_error_without_action_ends(Instruction opcode, string error, int faultStackWords)
+    {
+        List<GethTxFileTraceEntry> entries = [];
+        ExecuteAndTraceToFile(e => entries.Add(CloneTraceEntry(e)), Prepare.EvmCode.PushData(0).PushData(0).Op(opcode).Done, GethTraceOptions.Default);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.Select(static e => e.Opcode), Is.EqualTo(new[] { "PUSH1", "PUSH1", opcode.ToString(), opcode.ToString() }));
+            Assert.That(entries[2].Error, Is.Null);
+            Assert.That(entries[2].GasCost, Is.Zero);
+            Assert.That(entries[2].StackWordCount(), Is.EqualTo(2));
+            Assert.That(entries[3].Error, Is.EqualTo(error));
+            Assert.That(entries[3].StackWordCount(), Is.EqualTo(faultStackWords));
         }
     }
 

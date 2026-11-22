@@ -5,17 +5,21 @@ using Nethermind.Core.Extensions;
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Flat.Test;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,12 +35,12 @@ public class HistoricalTraceReExecutionTests
 
     private ResourcePool _resourcePool = null!;
     private IProcessExitSource _processExitSource = null!;
-    private ITrieNodeCache _trieNodeCache = null!;
     private ISnapshotCompactor _snapshotCompactor = null!;
     private ISnapshotRepository _snapshotRepository = null!;
     private IPersistenceManager _persistenceManager = null!;
     private IBlocksConfig _blocksConfig = null!;
     private CancellationTokenSource _cts = null!;
+    private INodeRecordBuffer _nodeRecordBuffer = null!;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _historyDb = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -47,9 +51,9 @@ public class HistoricalTraceReExecutionTests
     {
         _resourcePool = new ResourcePool(new FlatDbConfig { CompactSize = 16 });
         _cts = new CancellationTokenSource();
+        _nodeRecordBuffer = FlatTestHelpers.NewTestBuffer();
         _processExitSource = Substitute.For<IProcessExitSource>();
         _processExitSource.Token.Returns(_cts.Token);
-        _trieNodeCache = Substitute.For<ITrieNodeCache>();
         _snapshotCompactor = Substitute.For<ISnapshotCompactor>();
         _snapshotRepository = Substitute.For<ISnapshotRepository>();
         _persistenceManager = Substitute.For<IPersistenceManager>();
@@ -70,6 +74,7 @@ public class HistoricalTraceReExecutionTests
     {
         _cts.Cancel();
         _cts.Dispose();
+        _nodeRecordBuffer.Dispose();
         _historyDb.Dispose();
         _historyColumns.Dispose();
     }
@@ -94,7 +99,6 @@ public class HistoricalTraceReExecutionTests
             inner,
             _persistenceManager,
             _historyReader,
-            _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
             new HistoryScopeGate(),
@@ -111,8 +115,11 @@ public class HistoricalTraceReExecutionTests
         {
             using IDisposable scope = worldState.BeginScope(historicalHeader);
 
-            Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
-            Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(worldState.GetNonce(ExistingAddr), Is.EqualTo((ulong)3));
+                Assert.That(worldState.GetBalance(ExistingAddr), Is.EqualTo((UInt256)300));
+            }
 
             worldState.AddToBalance(ExistingAddr, 50, spec);
             worldState.IncrementNonce(ExistingAddr);
@@ -161,7 +168,6 @@ public class HistoricalTraceReExecutionTests
             inner,
             _persistenceManager,
             _historyReader,
-            _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
             new HistoryScopeGate(),
@@ -190,6 +196,35 @@ public class HistoricalTraceReExecutionTests
     }
 
     [Test]
+    public async Task IntermediateRoots_OverTrieLessScope_RefusesInsteadOfRepeatingBaseRoot()
+    {
+        HistoryColumnsWriter.MarkBlock(_historyColumns, HistoricalBlock, TestItem.KeccakB);
+        HistoryColumnsWriter.SetWatermark(_historyColumns, HistoricalBlock);
+
+        await using FlatDbManager inner = CreateManager();
+        HistoricalFlatDbManager manager = new(
+            inner,
+            _persistenceManager,
+            _historyReader,
+            _resourcePool,
+            enableDetailedMetrics: false,
+            new HistoryScopeGate(),
+            LimboLogs.Instance);
+        using FlatScopeProvider scopeProvider = CreateScopeProvider(manager, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        WorldState worldState = new(scopeProvider, LimboLogs.Instance);
+
+        BlockHeader historicalHeader = Build.A.BlockHeader.WithNumber(HistoricalBlock).WithStateRoot(TestItem.KeccakB).TestObject;
+        using IDisposable scope = worldState.BeginScope(historicalHeader);
+
+        Block block = Build.A.Block.WithNumber(HistoricalBlock + 1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        IBlockTracer tracer = new IntermediateRootsBlockTracer(worldState, MuirGlacier.Instance);
+        tracer.StartNewBlockTrace(block);
+
+        Assert.That(() => tracer.StartNewTxTrace(block.Transactions[0]),
+            Throws.TypeOf<StateNotRetainedException>());
+    }
+
+    [Test]
     public async Task MainProcessingAtHistoricalState_HasStateForBlock_ButTryBeginScopeRefuses()
     {
         HistoryColumnsWriter.MarkBlock(_historyColumns, HistoricalBlock, TestItem.KeccakB);
@@ -200,7 +235,6 @@ public class HistoricalTraceReExecutionTests
             inner,
             _persistenceManager,
             _historyReader,
-            _trieNodeCache,
             _resourcePool,
             enableDetailedMetrics: false,
             new HistoryScopeGate(),
@@ -220,7 +254,7 @@ public class HistoricalTraceReExecutionTests
     private FlatDbManager CreateManager() => new(
         _resourcePool,
         _processExitSource,
-        _trieNodeCache,
+        _nodeRecordBuffer,
         _snapshotCompactor,
         _snapshotRepository,
         _persistenceManager,

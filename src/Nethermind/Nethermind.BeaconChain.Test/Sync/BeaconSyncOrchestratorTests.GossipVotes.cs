@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Google.Protobuf;
 using Nethermind.BeaconChain.P2P.Gossip;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
@@ -11,7 +13,9 @@ using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
+using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
@@ -273,6 +277,47 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
+    [Test]
+    public async Task Votes_and_head_updates_progress_while_work_keeps_arriving()
+    {
+        (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
+        BeaconSyncOrchestrator sync = harness.Orchestrator;
+        sync.RouteGossipEvents();
+        (_, Hash256 anchor, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 102, 103);
+        harness.Importer.Known.Add(anchor);
+        List<int> votesBeforeImport = [];
+        List<ulong> publishedHeadSlots = [];
+        harness.Importer.OnImported = (block, root) =>
+        {
+            votesBeforeImport.Add(harness.Importer.GossipOperations.Count);
+            publishedHeadSlots.Add(harness.StatusHolder.CurrentStatus.HeadSlot);
+            harness.Importer.Head = CreateHead(root, block.Slot, Spec.GetEpoch(AnchorSlot));
+            int imported = votesBeforeImport.Count;
+            if (imported == chain.Length) return;
+
+            PtcVote(router, slot, validatorIndex: (ulong)imported);
+            BeaconSyncOrchestrator.PrepareSlotItem work = new(AnchorSlot);
+            for (int i = 0; i < BeaconSyncOrchestrator.WorkQueueCapacity / 2; i++)
+                sync.WorkWriter.TryWrite(work);
+            sync.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[imported])));
+        };
+
+        sync.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(new ForkedSignedBeaconBlock.OfFulu(chain[0])));
+        await sync.ProcessQueuedAsync(CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sync.QueuedWorkCount, Is.Positive);
+            Assert.That(harness.StatusHolder.CurrentStatus.HeadSlot, Is.EqualTo(101UL));
+        }
+        await DrainQueuedWorkAsync(sync, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(votesBeforeImport, Is.EqualTo(new[] { 0, 1, 2 }));
+            Assert.That(publishedHeadSlots.Skip(1), Is.EqualTo(new ulong[] { 101, 102 }));
+        }
+    }
+
     // p2p-interface.md beacon_aggregate_and_proof: only accepted aggregates mark seen sets and suppress queued copies.
     [Test]
     public async Task Gossip_aggregate_marks_the_seen_sets_only_once_fork_choice_accepts_it([Values] bool accepted)
@@ -280,8 +325,11 @@ public partial class BeaconSyncOrchestratorTests
         (ulong slot, GossipRouter router, Harness harness) = CreatePayloadVoteHarness();
         harness.Importer.AcceptsGossipOperations = accepted;
         harness.Orchestrator.RouteGossipEvents();
-        Assert.That(Handle(Aggregate(participants: 2, aggregator: 7)), Is.EqualTo(MessageValidity.Ignored), "fixture: the aggregate is raised");
-        Assert.That(Handle(Aggregate(participants: 1, aggregator: 8)), Is.EqualTo(MessageValidity.Ignored), "fixture: the covered copy is raised before the first verifies");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Handle(Aggregate(participants: 2, aggregator: 7)), Is.EqualTo(MessageValidity.Ignored), "fixture: the aggregate is raised");
+            Assert.That(Handle(Aggregate(participants: 1, aggregator: 8)), Is.EqualTo(MessageValidity.Ignored), "fixture: the covered copy is raised before the first verifies");
+        }
 
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         long duplicatesBefore = router.GetDropCount(GossipDropReason.Duplicate);
@@ -302,6 +350,93 @@ public partial class BeaconSyncOrchestratorTests
             aggregate.Message!.AggregatorIndex = aggregator;
             return aggregate;
         }
+    }
+
+    // A peer's vote admitted before one of its votes is rejected may be a real one it relayed ahead of the mesh, whose other copies the router
+    // dropped while it waited: it is checked as any other, so it is not lost.
+    [Test]
+    public async Task Aggregate_queued_before_its_peers_rejected_vote_still_reaches_fork_choice()
+    {
+        Harness harness = CreateHarness();
+        harness.Orchestrator.RouteGossipEvents();
+        List<PeerId> rejected = [];
+        using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings());
+        DeferredGossipValidation validation = CreateVoteValidation(pubsub, harness, rejected);
+        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+
+        Task queued = SendVote(validation, peer, AggregatePayload(aggregatorIndex: 1));
+        await SendVote(validation, peer, [1]);
+        int rejectedBeforeCheck = rejected.Count;
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await queued;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejectedBeforeCheck, Is.EqualTo(1), "fixture: the malformed vote is rejected while the valid one waits in the queue");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(1), "the queued aggregate is checked");
+        Assert.That(rejected, Is.EqualTo(new[] { peer }), "only the malformed vote counts against the peer");
+    }
+
+    // The router dispatches a peer's next message without waiting for the verdicts of its earlier ones, so a malformed vote can be rejected
+    // while the import worker checks the peer's valid aggregate; that aggregate's acceptance lifts the refusal of the peer's votes.
+    [Test]
+    public async Task Peer_whose_aggregate_is_accepted_after_its_later_vote_was_rejected_is_admitted_again_and_charged_once()
+    {
+        Harness harness = CreateHarness();
+        harness.Orchestrator.RouteGossipEvents();
+        List<PeerId> rejected = [];
+        using PubsubRouter pubsub = new(new PeerStore(), new PubsubSettings());
+        DeferredGossipValidation validation = CreateVoteValidation(pubsub, harness, rejected);
+        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        int rejectedDuringCheck = -1;
+        harness.Importer.GossipOperationVerdict = _ =>
+        {
+            if (rejectedDuringCheck < 0)
+            {
+                _ = SendVote(validation, peer, [1]);
+                rejectedDuringCheck = rejected.Count;
+            }
+
+            return true;
+        };
+
+        Task first = SendVote(validation, peer, AggregatePayload(aggregatorIndex: 1));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await first;
+        Task next = SendVote(validation, peer, AggregatePayload(aggregatorIndex: 2));
+        await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
+        await next;
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(rejectedDuringCheck, Is.EqualTo(1), "fixture: the malformed vote is rejected while the valid one is being checked");
+        Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(2), "both valid aggregates reach fork choice");
+        Assert.That(rejected, Is.EqualTo(new[] { peer }), "only the malformed vote counts against the peer");
+    }
+
+    private static DeferredGossipValidation CreateVoteValidation(PubsubRouter pubsub, Harness harness, List<PeerId> rejected)
+    {
+        SlotClock clock = new(Spec, harness.Timestamper);
+        return new DeferredGossipValidation(pubsub,
+            new GossipMessageValidator(harness.Router, new ColumnGossipRouter(Spec, clock, LimboLogs.Instance), Spec, clock),
+            maxPending: 16, maxPendingBytes: 1 << 20, maxPendingVotes: 1024, TimeSpan.FromSeconds(30), LimboLogs.Instance.GetClassLogger<BeaconSyncOrchestratorTests>(), CancellationToken.None)
+        {
+            ReportRejectedMessage = (peer, _) => rejected.Add(peer),
+        };
+    }
+
+    private static Task SendVote(DeferredGossipValidation validation, PeerId peer, byte[] data)
+    {
+        Message message = new() { Topic = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(WallSlot)), GossipTopics.BeaconAggregateAndProof), Data = ByteString.CopyFrom(data) };
+        Assert.That(validation.Verify(peer, message), Is.EqualTo(MessageValidity.Deferred), "fixture: the vote is reserved");
+        return validation.ValidateAsync(peer, message);
+    }
+
+    private static byte[] AggregatePayload(ulong aggregatorIndex)
+    {
+        SignedAggregateAndProof aggregate = GossipRouterTests.CreateAggregate(WallSlot);
+        aggregate.Message!.AggregatorIndex = aggregatorIndex;
+        // Another participant each, so an accepted aggregate does not cover the next one's bits.
+        aggregate.Message.Aggregate!.AggregationBits![(int)aggregatorIndex] = true;
+        return Snappy.CompressToArray(SignedAggregateAndProof.Encode(aggregate));
     }
 
     [Test]
@@ -376,10 +511,7 @@ public partial class BeaconSyncOrchestratorTests
         ulong dropped = Metrics.BeaconChainGossipDropped - droppedBefore;
         await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
         await pendingTick.WaitAsync(TimeSpan.FromSeconds(10));
-        for (int pass = 0; pass < 10; pass++)
-        {
-            await harness.Orchestrator.ProcessQueuedAsync(CancellationToken.None);
-        }
+        await DrainQueuedWorkAsync(harness.Orchestrator, CancellationToken.None);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(dropped, Is.EqualTo((ulong)(BeaconSyncOrchestrator.VoteQueueCapacity - BeaconSyncOrchestrator.MaxVotesAheadOfTick)), "votes past the bound are dropped");

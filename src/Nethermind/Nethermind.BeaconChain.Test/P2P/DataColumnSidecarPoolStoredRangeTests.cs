@@ -279,7 +279,7 @@ public class DataColumnSidecarPoolStoredRangeTests
         store.RaiseDataColumnFloor(singleSlot ? top : top - 100);
         ManualResetEventSlim held = new();
         ManualResetEventSlim release = new();
-        db.BeforeCanonicalSlotRead = () =>
+        db.BeforeCanonicalEnumeration = () =>
         {
             if (!held.IsSet)
             {

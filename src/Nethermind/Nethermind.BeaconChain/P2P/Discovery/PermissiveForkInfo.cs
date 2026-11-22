@@ -17,6 +17,7 @@ internal sealed class PermissiveForkInfo : IForkInfo
 {
     public static PermissiveForkInfo Instance { get; } = new();
     public bool IsForkIdCompatible(ForkId peerId) => true;
+    public ReadOnlySpan<Fork> GetAllForks() => throw new NotSupportedException();
     public ForkId GetForkId(ulong headNumber, ulong headTimestamp) => throw new NotSupportedException();
     public Nethermind.Network.ValidationResult ValidateForkId(ForkId peerId, BlockHeader? head) => throw new NotSupportedException();
     public ForkActivationsSummary GetForkActivationsSummary(BlockHeader? head) => throw new NotSupportedException();

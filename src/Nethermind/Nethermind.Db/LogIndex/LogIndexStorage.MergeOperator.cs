@@ -80,7 +80,7 @@ partial class LogIndexStorage
             {
                 // Fast return in case of a single operand
                 if (!enumerator.HasExistingValue && enumerator.OperandsCount == 1 && !MergeOps.IsAny(enumerator.GetOperand(0)))
-                    return new(enumerator.GetOperand(0));
+                    return [with(enumerator.GetOperand(0))];
 
                 bool isBackwards = UseBackwardSyncFor(key);
 
@@ -101,12 +101,14 @@ partial class LogIndexStorage
                     resultLength += operand.Length;
                 }
 
-                result = new(resultLength);
+                result = [with(resultLength)];
 
                 // For truncate - just use max/min for all operands
                 int? truncateAggregate = Aggregate(MergeOp.Truncate, enumerator, isBackwards);
 
-                int iReorg = 0;
+                // A value is cut by every reorg written after it, so the lowest of them applies
+                int? reorgBlock = null;
+                int nextReorgIndex = -1;
                 for (int i = 0; i < enumerator.TotalCount; i++)
                 {
                     Span<byte> operand = enumerator.Get(i);
@@ -114,10 +116,11 @@ partial class LogIndexStorage
                     if (MergeOps.IsAny(operand))
                         continue;
 
-                    // For reorg - order matters, so we need to always traverse from the current position
-                    iReorg = Math.Max(iReorg, i + 1);
-                    if (FindNext(MergeOp.Reorg, enumerator, ref iReorg) is { } reorgBlock)
-                        operand = MergeOps.ApplyTo(operand, MergeOp.Reorg, reorgBlock, isBackwards);
+                    if (i > nextReorgIndex)
+                        reorgBlock = FindLowestReorgAfter(enumerator, i, out nextReorgIndex);
+
+                    if (reorgBlock is { } block)
+                        operand = MergeOps.ApplyTo(operand, MergeOp.Reorg, block, isBackwards);
 
                     if (truncateAggregate is { } truncateBlock)
                         operand = MergeOps.ApplyTo(operand, MergeOp.Truncate, truncateBlock, isBackwards);
@@ -146,14 +149,21 @@ partial class LogIndexStorage
             }
         }
 
-        private static int? FindNext(MergeOp op, RocksDbMergeEnumerator enumerator, ref int i)
+        private static int? FindLowestReorgAfter(RocksDbMergeEnumerator enumerator, int index, out int firstReorgIndex)
         {
-            while (i < enumerator.TotalCount && !MergeOps.Is(op, enumerator.Get(i)))
-                i++;
+            int? lowest = null;
+            firstReorgIndex = enumerator.TotalCount;
+            for (int i = index + 1; i < enumerator.TotalCount; i++)
+            {
+                if (!MergeOps.Is(MergeOp.Reorg, enumerator.Get(i), out int block))
+                    continue;
 
-            return i < enumerator.TotalCount && MergeOps.Is(op, enumerator.Get(i), out int block)
-                ? block
-                : null;
+                firstReorgIndex = Math.Min(firstReorgIndex, i);
+                if (lowest is null || block < lowest)
+                    lowest = block;
+            }
+
+            return lowest;
         }
 
         private static int? Aggregate(MergeOp op, RocksDbMergeEnumerator enumerator, bool isBackwardSync)

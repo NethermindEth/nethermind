@@ -48,8 +48,8 @@ public class MergeTraceRewardTests
             .AddSingleton<ISpecProvider>(specProvider)
             .AddSingleton<IBlockTree>(blockTree)
             .AddSingleton<IPoSSwitcher>(poSSwitcher)
-            .AddSingleton<IRewardCalculatorSource>(new RewardCalculator(specProvider))
-            .AddDecorator<IRewardCalculatorSource, MergeRewardCalculatorSource>()
+            .AddSingleton<IRewardCalculator>(new RewardCalculator(specProvider))
+            .AddDecorator<IRewardCalculator, MergeRewardCalculator>()
             .Build();
 
         await container.Resolve<PseudoNethermindRunner>().StartBlockProcessing(default);

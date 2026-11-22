@@ -2,58 +2,54 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<EnrResponseMsg>
+public sealed class EnrResponseMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IMessageSerializer<EnrResponseMsg>
 {
     private readonly NodeRecordSigner _nodeRecordSigner = new(ecdsa, nodeKey.Generate());
 
-    public void Serialize(IByteBuffer byteBuffer, EnrResponseMsg msg)
+    public int Serialize(Span<byte> destination, EnrResponseMsg msg)
     {
-        int contentLength = Rlp.LengthOfKeccakRlp;
-        contentLength += msg.NodeRecord.GetRlpLengthWithSignature();
-        int totalLength = Rlp.LengthOfSequence(contentLength);
+        GetDataLength(msg, out int contentLength);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, (byte)msg.MsgType);
-        ByteBufferRlpWriter writer = new(byteBuffer);
-        writer.StartSequence(contentLength);
+        RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         writer.Encode(msg.RequestKeccak);
         msg.NodeRecord.Encode(ref writer);
+        writer.EndSequence(sequence);
 
-        byteBuffer.ResetIndex();
-        AddSignatureAndMdc(byteBuffer, totalLength + 1);
+        return CompletePacket(destination, in writer, out _);
     }
 
-    public EnrResponseMsg Deserialize(IByteBuffer msgBytes)
+    public EnrResponseMsg Deserialize(ReadOnlySpan<byte> msgBytes)
     {
-        (PublicKey? farPublicKey, _, IByteBuffer? data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = new(data.AsSpan());
-        ctx.ReadSequenceLength();
+        (PublicKey? farPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
+        RlpReader ctx = new RlpReader(data).EnterSequence(out int itemLength);
         Hash256 requestKeccak = ctx.DecodeKeccak(); // skip (not sure if needed to verify)
 
-        int positionForHex = ctx.Position;
+        int positionForHex = itemLength - ctx.Remaining;
         NodeRecord nodeRecord = _nodeRecordSigner.Deserialize(ref ctx);
         if (!_nodeRecordSigner.Verify(nodeRecord))
         {
-            string resHex = data.AsSpan()[..positionForHex].ToHexString();
+            string resHex = data[..positionForHex].ToHexString();
             throw new NetworkingException($"Invalid ENR signature: {resHex}", NetworkExceptionType.Discovery);
         }
 
-        data.SetReaderIndex(data.ReaderIndex + ctx.Position);
         EnrResponseMsg msg = new(farPublicKey, nodeRecord, requestKeccak);
         return msg;
     }
 
-    public int GetLength(EnrResponseMsg msg, out int contentLength)
+    public int GetLength(EnrResponseMsg msg) => GetPacketLength(GetDataLength(msg, out _));
+
+    private static int GetDataLength(EnrResponseMsg msg, out int contentLength)
     {
         contentLength = Rlp.LengthOfKeccakRlp;
         contentLength += msg.NodeRecord.GetRlpLengthWithSignature();

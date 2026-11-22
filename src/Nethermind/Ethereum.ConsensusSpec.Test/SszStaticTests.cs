@@ -4,6 +4,7 @@
 using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.DataAvailability;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Int256;
 using Nethermind.Serialization.Ssz;
@@ -20,13 +21,15 @@ public class SszStaticTests
         bool Decodes(byte[] ssz, UInt256 expectedRoot);
     }
 
-    private sealed class Handler<T> : IHandler where T : ISszCodec<T>
+    private sealed class Handler<T>(Func<byte[], byte[]>? wireRoundTrip = null) : IHandler where T : ISszCodec<T>
     {
         public void Run(byte[] ssz, UInt256 expectedRoot)
         {
             T.Decode(ssz, out T decoded);
             byte[] reencoded = T.Encode(decoded);
             Assert.That(reencoded, Is.EqualTo(ssz), "re-encoded SSZ does not round-trip to the original bytes");
+            if (wireRoundTrip is not null)
+                Assert.That(wireRoundTrip(ssz), Is.EqualTo(ssz), "production light-client wire encoding differs from the vector");
 
             T.Merkleize(decoded, out UInt256 actual);
             Assert.That(actual, Is.EqualTo(expectedRoot), $"hash tree root mismatch: expected {expectedRoot}, actual {actual}");
@@ -38,7 +41,8 @@ public class SszStaticTests
             {
                 T.Decode(ssz, out T decoded);
                 T.Merkleize(decoded, out UInt256 actual);
-                return T.Encode(decoded).AsSpan().SequenceEqual(ssz) && actual == expectedRoot;
+                return T.Encode(decoded).AsSpan().SequenceEqual(ssz) && actual == expectedRoot &&
+                    (wireRoundTrip is null || wireRoundTrip(ssz).AsSpan().SequenceEqual(ssz));
             }
             catch (Exception)
             {
@@ -62,15 +66,26 @@ public class SszStaticTests
 
     private static Dictionary<string, IReadOnlyDictionary<string, Entry>> BuildRegistry()
     {
-        Dictionary<string, Dictionary<string, Entry>> r = new(StringComparer.Ordinal);
+        Dictionary<string, Dictionary<string, Entry>> r = [with(StringComparer.Ordinal)];
 
         // SSZ vector/list bounds must match the preset compiled into this assembly.
-        void Map<T>(string name, IEnumerable<string> forks, bool presetDependent = false) where T : ISszCodec<T>
+        void Map<T>(string name, IEnumerable<string> forks, bool presetDependent = false,
+            Func<byte[], byte[]>? wireRoundTrip = null) where T : ISszCodec<T>
         {
             if (!r.TryGetValue(name, out Dictionary<string, Entry>? byFork))
-                r[name] = byFork = new Dictionary<string, Entry>(StringComparer.Ordinal);
+                r[name] = byFork = [with(StringComparer.Ordinal)];
             foreach (string fork in forks)
-                byFork[fork] = new Entry(new Handler<T>(), presetDependent);
+                byFork[fork] = new Entry(new Handler<T>(wireRoundTrip), presetDependent);
+        }
+
+        void MapLightClient<TLegacy, TGloas>(string name, Func<byte[], BeaconChainSpec, byte[]> roundTrip)
+            where TLegacy : ISszCodec<TLegacy>
+            where TGloas : ISszCodec<TGloas>
+        {
+            BeaconChainSpec legacy = FuluDriverSupport.DefaultSpec with { GloasForkEpoch = ulong.MaxValue };
+            BeaconChainSpec gloas = legacy with { GloasForkEpoch = 0 };
+            Map<TLegacy>(name, ElectraFulu, presetDependent: true, wireRoundTrip: data => roundTrip(data, legacy));
+            Map<TGloas>(name, GloasOnly, presetDependent: true, wireRoundTrip: data => roundTrip(data, gloas));
         }
 
         Map<Fork>("Fork", AllForks);
@@ -91,6 +106,16 @@ public class SszStaticTests
 
         Map<SyncCommittee>("SyncCommittee", AltairPlus, presetDependent: true);
         Map<SyncAggregate>("SyncAggregate", AltairPlus, presetDependent: true);
+        Map<LightClientHeader>("LightClientHeader", ElectraFulu);
+        Map<GloasLightClientHeader>("LightClientHeader", GloasOnly);
+        MapLightClient<LightClientBootstrap, GloasLightClientBootstrap>("LightClientBootstrap",
+            static (data, spec) => LightClientWireCodec.EncodeBootstrap(LightClientWireCodec.DecodeBootstrap(data, spec), spec));
+        MapLightClient<LightClientUpdate, GloasLightClientUpdate>("LightClientUpdate",
+            static (data, spec) => LightClientWireCodec.EncodeUpdate(LightClientWireCodec.DecodeUpdate(data, spec), spec));
+        MapLightClient<LightClientFinalityUpdate, GloasLightClientFinalityUpdate>("LightClientFinalityUpdate",
+            static (data, spec) => LightClientWireCodec.EncodeFinality(LightClientWireCodec.DecodeFinality(data, spec), spec));
+        MapLightClient<LightClientOptimisticUpdate, GloasLightClientOptimisticUpdate>("LightClientOptimisticUpdate",
+            static (data, spec) => LightClientWireCodec.EncodeOptimistic(LightClientWireCodec.DecodeOptimistic(data, spec), spec));
 
         Map<HistoricalSummary>("HistoricalSummary", CapellaPlus);
         Map<BlsToExecutionChange>("BLSToExecutionChange", CapellaPlus);
@@ -158,7 +183,7 @@ public class SszStaticTests
         Map<NewPayloadRequest>("NewPayloadRequest", ElectraFulu, presetDependent: true);
         Map<NewPayloadRequestGloas>("NewPayloadRequest", GloasOnly);
 
-        Dictionary<string, IReadOnlyDictionary<string, Entry>> result = new(StringComparer.Ordinal);
+        Dictionary<string, IReadOnlyDictionary<string, Entry>> result = [with(StringComparer.Ordinal)];
         foreach (KeyValuePair<string, Dictionary<string, Entry>> kv in r)
             result[kv.Key] = kv.Value;
         return result;
@@ -174,14 +199,14 @@ public class SszStaticTests
         ["bellatrix"] = 17,
         ["capella"] = 21,
         ["deneb"] = 24,
-        ["electra"] = 40,
-        ["fulu"] = 42,
-        ["gloas"] = 54,
+        ["electra"] = 45,
+        ["fulu"] = 47,
+        ["gloas"] = 59,
     };
 
     private const string BeforeElectra = "the fork predates Electra, the oldest fork this node runs, and no container is modeled for it";
     private const string UnrunFork = "heze is not a fork this node runs";
-    private const string LightClient = "the node serves and follows no light client";
+    private const string LightClient = "light-client wire formats before Electra are not supported";
     private const string SyncCommitteeDuty = "the node neither produces nor consumes sync committee contributions or messages";
     private const string PowChain = "the node has no eth1 data voting or proof-of-work block tracking";
     private const string BlobSidecars = "blob sidecars are not modeled; Fulu replaces them with data column sidecars";
@@ -193,7 +218,7 @@ public class SszStaticTests
     {
         [BeforeElectra] = 55,
         [UnrunFork] = 75,
-        [LightClient] = 35,
+        [LightClient] = 20,
         [SyncCommitteeDuty] = 35,
         [PowChain] = 14,
         [BlobSidecars] = 4,

@@ -113,11 +113,14 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         ReadOnlyMemory<byte> fullInput = Convert.FromHexString(input + trailing);
         ReadOnlyMemory<byte> effInput = precompile.NormalizeInput(fullInput);
 
-        Assert.That(effInput.Span.SequenceEqual(fullInput.Span), Is.False);
-        Assert.That(
-            precompile.Run(effInput, spec),
-            Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
-        );
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(effInput.Span.SequenceEqual(fullInput.Span), Is.False);
+            Assert.That(
+                precompile.Run(effInput, spec),
+                Is.EqualTo(precompile.Run(fullInput, spec)).Using(ResultComparer)
+            );
+        }
     }
 
     private static string ComposeName(string name, IReleaseSpec? spec)

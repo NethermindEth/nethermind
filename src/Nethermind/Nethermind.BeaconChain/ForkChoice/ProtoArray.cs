@@ -17,6 +17,9 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
     private Hash256 _previousProposerBoostRoot = Hash256.Zero;
     private ulong _previousProposerBoostScore;
+    private bool?[] _leafViability = [];
+    private bool[] _finalizedAncestry = [];
+    private bool[]? _scorePassAncestry;
 
     /// <summary>Do not prune unless the finalized block is at least this deep; small prunes waste time.</summary>
     public int PruneThreshold { get; set; } = ProtoArrayForkChoice.DefaultPruneThreshold;
@@ -98,13 +101,24 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         _previousProposerBoostRoot = proposerBoostRoot;
         _previousProposerBoostScore = ApplyProposerBoost(proposerBoostRoot, newJustifiedBalances);
 
+        // Slot, checkpoints and child execution statuses remain fixed throughout this pass.
+        if (_leafViability.Length < Nodes.Count)
+        {
+            _leafViability = new bool?[Math.Max(Nodes.Count, _leafViability.Length * 2)];
+        }
+        else
+        {
+            Array.Clear(_leafViability, 0, Nodes.Count);
+        }
+
         // A second backward pass, separate from the weight-updating loop above, so the
         // best-child/best-descendant updates see a fully coherent set of weights.
+        _scorePassAncestry = null;
         for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
         {
             if (Nodes[nodeIndex].Parent is int parentIndex)
             {
-                MaybeUpdateBestChildAndDescendant(parentIndex, nodeIndex, currentSlot, newJustifiedCheckpoint, newFinalizedCheckpoint);
+                MaybeUpdateBestChildAndDescendant(parentIndex, nodeIndex, currentSlot, newJustifiedCheckpoint, newFinalizedCheckpoint, _leafViability);
             }
         }
     }
@@ -334,6 +348,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     /// </remarks>
     internal bool[,] FilterNodeTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, IReadOnlySet<Hash256> payloads)
     {
+        bool[]? finalizedAncestry = finalizedCheckpoint.Epoch == GenesisEpoch ? null : ComputeFinalizedAncestry(finalizedCheckpoint);
         bool[,] kept = new bool[Nodes.Count, 3];
         for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
         {
@@ -355,11 +370,27 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
                     anyChildKept |= kept[child, (int)ForkChoicePayloadStatus.Pending];
                 }
 
-                kept[nodeIndex, (int)status] = hasChildren ? anyChildKept : (viableLeaf ??= NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint));
+                kept[nodeIndex, (int)status] = hasChildren ? anyChildKept : (viableLeaf ??= NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint, finalizedAncestry?[nodeIndex]));
             }
             kept[nodeIndex, (int)ForkChoicePayloadStatus.Pending] = kept[nodeIndex, (int)ForkChoicePayloadStatus.Empty] || kept[nodeIndex, (int)ForkChoicePayloadStatus.Full];
         }
         return kept;
+    }
+
+    private bool[] ComputeFinalizedAncestry(CheckpointRef finalizedCheckpoint)
+    {
+        if (_finalizedAncestry.Length < Nodes.Count)
+            _finalizedAncestry = new bool[Math.Max(Nodes.Count, _finalizedAncestry.Length * 2)];
+        ulong finalizedSlot = checked(finalizedCheckpoint.Epoch * slotsPerEpoch);
+        for (int i = 0; i < Nodes.Count; i++)
+        {
+            ProtoNode node = Nodes[i];
+            // A node's checkpoint shortcut applies only to that node, not to descendants walking its raw ancestry.
+            _finalizedAncestry[i] = node.Slot <= finalizedSlot ? node.Root == finalizedCheckpoint.Root
+                : node.Parent is int parent ? _finalizedAncestry[parent]
+                : node.Root == finalizedCheckpoint.Root && node.FinalizedCheckpoint == finalizedCheckpoint;
+        }
+        return _finalizedAncestry;
     }
 
     /// <summary>Drops all nodes preceding <paramref name="finalizedRoot"/>, unless it is shallower than <see cref="PruneThreshold"/>.</summary>
@@ -429,7 +460,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         int childIndex,
         ulong currentSlot,
         CheckpointRef justifiedCheckpoint,
-        CheckpointRef finalizedCheckpoint)
+        CheckpointRef finalizedCheckpoint,
+        bool?[]? leafViability = null)
     {
         ProtoNode child = Nodes[childIndex];
         ProtoNode parent = Nodes[parentIndex];
@@ -446,7 +478,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             return;
         }
 
-        bool childLeadsToViableHead = NodeLeadsToViableHead(child, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+        bool childLeadsToViableHead = NodeLeadsToViableHead(childIndex, currentSlot, justifiedCheckpoint, finalizedCheckpoint, leafViability);
 
         (int? BestChild, int? BestDescendant) changeToNone = (null, null);
         (int? BestChild, int? BestDescendant) changeToChild = (childIndex, child.BestDescendant ?? childIndex);
@@ -468,7 +500,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             ProtoNode bestChild = Nodes[bestChildIndex];
             if (bestChild.ExecutionStatus == ExecutionStatus.Invalid) return childLeadsToViableHead ? changeToChild : changeToNone;
 
-            bool bestChildLeadsToViableHead = NodeLeadsToViableHead(bestChild, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+            bool bestChildLeadsToViableHead = NodeLeadsToViableHead(bestChildIndex, currentSlot, justifiedCheckpoint, finalizedCheckpoint, leafViability);
 
             if (childLeadsToViableHead && !bestChildLeadsToViableHead) return changeToChild;
             if (!childLeadsToViableHead && bestChildLeadsToViableHead) return noChange;
@@ -483,19 +515,32 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         }
     }
 
-    private bool NodeLeadsToViableHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint) =>
-        IsViableLeaf(node.BestDescendant is int bestDescendantIndex ? Nodes[bestDescendantIndex] : node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+    private bool NodeLeadsToViableHead(int nodeIndex, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, bool?[]? leafViability)
+    {
+        int leafIndex = Nodes[nodeIndex].BestDescendant ?? nodeIndex;
+        if (leafViability?[leafIndex] is bool cached) return cached;
+
+        ProtoNode leaf = Nodes[leafIndex];
+        // Most leaves carry finality in their own checkpoints. Build the ancestry table once if a scoring pass needs it.
+        if (leafViability is not null && finalizedCheckpoint.Epoch != GenesisEpoch && !HasFinalizedCheckpoint(leaf, finalizedCheckpoint))
+            _scorePassAncestry ??= ComputeFinalizedAncestry(finalizedCheckpoint);
+
+        bool viable = IsViableLeaf(leaf, currentSlot, justifiedCheckpoint, finalizedCheckpoint,
+            leafViability is null ? null : _scorePassAncestry?[leafIndex]);
+        if (leafViability is not null) leafViability[leafIndex] = viable;
+        return viable;
+    }
 
     /// <summary>Indicates if <paramref name="node"/> is kept by <c>filter_node_tree</c> as a leaf.</summary>
     /// <remarks>A node with a child that is not invalid is kept only through a kept child, never on its own checkpoints; specs/phase0/fork-choice.md <c>filter_node_tree</c>.</remarks>
-    private bool IsViableLeaf(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
+    private bool IsViableLeaf(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, bool? finalizedAncestry = null)
     {
         foreach (int child in node.Children)
         {
             if (Nodes[child].ExecutionStatus != ExecutionStatus.Invalid) return false;
         }
 
-        return NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+        return NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint, finalizedAncestry);
     }
 
     /// <summary>
@@ -508,7 +553,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     /// For blocks from a prior epoch the voting source is "pulled up" to the unrealized justified
     /// checkpoint when it is tracked.
     /// </remarks>
-    private bool NodeIsViableForHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
+    private bool NodeIsViableForHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, bool? finalizedAncestry = null)
     {
         if (node.ExecutionStatus == ExecutionStatus.Invalid) return false;
 
@@ -524,7 +569,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             || votingSource.Epoch + 2 >= currentEpoch;
 
         bool correctFinalized = finalizedCheckpoint.Epoch == GenesisEpoch
-            || IsFinalizedCheckpointOrDescendant(node.Root, finalizedCheckpoint);
+            || (finalizedAncestry is bool ancestor ? HasFinalizedCheckpoint(node, finalizedCheckpoint) || ancestor
+                : IsFinalizedCheckpointOrDescendant(node.Root, finalizedCheckpoint));
 
         return correctJustified && correctFinalized;
     }
@@ -575,10 +621,7 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
 
         // The node's own checkpoints are known ancestors likely to coincide with the store's
         // finalized checkpoint; check them once here rather than walking the whole chain.
-        if (node.FinalizedCheckpoint == finalizedCheckpoint
-            || node.JustifiedCheckpoint == finalizedCheckpoint
-            || node.UnrealizedFinalizedCheckpoint == finalizedCheckpoint
-            || node.UnrealizedJustifiedCheckpoint == finalizedCheckpoint)
+        if (HasFinalizedCheckpoint(node, finalizedCheckpoint))
         {
             return true;
         }
@@ -597,6 +640,12 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
             node = Nodes[parentIndex];
         }
     }
+
+    private static bool HasFinalizedCheckpoint(ProtoNode node, CheckpointRef finalizedCheckpoint) =>
+        node.FinalizedCheckpoint == finalizedCheckpoint
+        || node.JustifiedCheckpoint == finalizedCheckpoint
+        || node.UnrealizedFinalizedCheckpoint == finalizedCheckpoint
+        || node.UnrealizedJustifiedCheckpoint == finalizedCheckpoint;
 
 
     /// <summary>The proposer boost in Gwei: <paramref name="boostPercent"/>% of one committee's share of the unslashed active balance.</summary>

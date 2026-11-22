@@ -34,7 +34,7 @@ internal static class StartupWarmupTask
             {
                 if (logger.IsWarn) logger.Warn($"Startup payload pipeline warmup failed; RPC startup will continue. {exception}");
             }
-        });
+        }, CancellationToken.None);
         try
         {
             await work.WaitAsync(budget, cancellationToken);

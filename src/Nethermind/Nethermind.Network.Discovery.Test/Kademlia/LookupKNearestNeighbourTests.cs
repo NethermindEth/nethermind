@@ -247,7 +247,9 @@ public class LookupKNearestNeighbourTests
             },
             token).GetAsyncEnumerator(token);
 
+#pragma warning disable NUnit2045 // The assertions sequence an asynchronous state transition or wait prerequisite with dependent state checks; preserve fail-fast ordering.
         Assert.That(await enumerator.MoveNextAsync(), Is.True);
+#pragma warning restore NUnit2045
         Assert.That(enumerator.Current, Is.EqualTo(Seed1));
         await requestStarted.Task.WaitAsync(token);
     }
@@ -270,8 +272,11 @@ public class LookupKNearestNeighbourTests
             },
             token).ToListAsync(token);
 
-        Assert.That(result, Is.EqualTo(new[] { Seed1 }));
-        Assert.That(requests, Is.Zero);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(new[] { Seed1 }));
+            Assert.That(requests, Is.Zero);
+        }
     }
 
     [Test]
@@ -281,6 +286,7 @@ public class LookupKNearestNeighbourTests
         (LookupKNearestNeighbour<int, int, int> lookup, _, _) =
             CreateLookup(2, TimeSpan.FromSeconds(10), [Seed1, Seed2, Seed3, N1]);
         TaskCompletionSource cancelledWorkerDrained = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource seed1Requested = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         _ = await lookup.Lookup(
             Self,
@@ -289,9 +295,13 @@ public class LookupKNearestNeighbourTests
             {
                 if (node != Seed1)
                 {
+                    // Without this, the worker that dequeued Seed1 can be preempted until the other
+                    // worker has run enough rounds to make it stop before it sends the request.
+                    await seed1Requested.Task.WaitAsync(findToken);
                     return [];
                 }
 
+                seed1Requested.SetResult();
                 try
                 {
                     await Task.Delay(Timeout.Infinite, findToken);
@@ -306,7 +316,11 @@ public class LookupKNearestNeighbourTests
             },
             token);
 
-        Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cancelledWorkerDrained.Task.IsCompleted, Is.True);
+            Assert.That(token.IsCancellationRequested, Is.False);
+        }
     }
 
     [Test]
@@ -321,8 +335,11 @@ public class LookupKNearestNeighbourTests
 
         _ = await lookup.Lookup(Self, 8, (_, _) => throw new IOException("channel closed"), token);
 
-        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
-        Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Trace && e.Message.Contains("Find neighbour op failed")), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Warning), Is.False);
+            Assert.That(logger.Entries.Any(e => e.Level == LogLevel.Trace && e.Message.Contains("Find neighbour op failed")), Is.True);
+        }
     }
 
     [Test]

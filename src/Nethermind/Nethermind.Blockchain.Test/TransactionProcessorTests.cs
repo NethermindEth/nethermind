@@ -18,7 +18,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.Evm.State;
-using Nethermind.State;
 using NUnit.Framework;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
@@ -265,6 +264,32 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         Assert.That(_stateProvider.GetNonce(TestItem.PrivateKeyA.Address), Is.EqualTo(0ul));
     }
 
+    /// <summary>
+    /// eth_call runs with <see cref="ExecutionOptions.SkipValidation"/> and <see cref="ExecutionOptions.BuildUp"/>:
+    /// the regular processor runs it, and its changes stay in the world state, neither restored nor committed.
+    /// </summary>
+    [Test]
+    public void Call_without_validation_in_build_up_keeps_uncommitted_changes()
+    {
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithValue(1).WithGasPrice(1).WithGasLimit(21000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, eip155Enabled).TestObject;
+        Block block = Build.A.Block.WithNumber(1ul).WithTransactions(tx).TestObject;
+        Snapshot snapshot = _stateProvider.TakeSnapshot();
+
+        _transactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)));
+        TransactionResult result = _transactionProcessor.Process(tx, NullTxTracer.Instance, ExecutionOptions.SkipValidation | ExecutionOptions.BuildUp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(1ul), "the system processor does not increment the nonce");
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.One), "the value transfer is not restored");
+        }
+
+        _stateProvider.Restore(snapshot);
+        Assert.That(_stateProvider.GetNonce(TestItem.AddressA), Is.EqualTo(0ul), "the changes are not committed");
+    }
+
     [Test]
     public void Can_estimate_with_value([Values] bool systemUser)
     {
@@ -306,13 +331,19 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         if (txValue == AccountBalance)
         {
             // Gas price is zero so no gas payment is needed; sending the full balance as value is valid.
-            Assert.That(err, Is.Null);
-            Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Is.Null);
+                Assert.That(estimate, Is.EqualTo(GasCostOf.Transaction));
+            }
         }
         else if (txValue + (UInt256)gasLimit > AccountBalance)
         {
-            Assert.That(err, Does.StartWith(TxErrorMessages.InsufficientFundsForGas), "the unpriced transfer is rejected by the processor's balance check");
-            Assert.That(estimation.RejectedGasLimit, Is.EqualTo(gasLimit), "rejected at the requested gas limit");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(err, Does.StartWith(TxErrorMessages.InsufficientFundsForGas), "the unpriced transfer is rejected by the processor's balance check");
+                Assert.That(estimation.RejectedGasLimit, Is.EqualTo(gasLimit), "rejected at the requested gas limit");
+            }
         }
         else
         {
@@ -371,9 +402,12 @@ public partial class TransactionProcessorTests(bool eip155Enabled)
         _transactionProcessor.CallAndRestore(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), tracer);
         GasEstimation estimation = Estimate(tx, block);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
-        Assert.That(estimation.Gas, Is.EqualTo(21000ul));
-        Assert.That(estimation.Error, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracer.GasSpent, Is.EqualTo(21000ul));
+            Assert.That(estimation.Gas, Is.EqualTo(21000ul));
+            Assert.That(estimation.Error, Is.Null);
+        }
     }
 
     [TestCase]

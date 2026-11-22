@@ -32,6 +32,9 @@ public enum ReqRespFailureReason
 
     /// <summary>The channel failed below the req/resp framing: a read, write or half-close did not succeed.</summary>
     Transport,
+
+    /// <summary>The channel failed while the tail of an accepted request was watched, during serving or the linger after it.</summary>
+    TransportWhileWatchingTail,
 }
 
 /// <summary>An outbound request cut by one of its bounds; the message names the bound and what the request was waiting for.</summary>
@@ -52,12 +55,12 @@ public readonly record struct ReqRespFailureKey(string ProtocolId, ReqRespFailur
 /// <summary>Shared timeouts and stream plumbing for the eth2 req/resp protocols.</summary>
 public abstract class ReqRespProtocolBase
 {
-    /// <summary>The spec <c>TTFB_TIMEOUT</c>: maximum time to wait for the first response byte.</summary>
+    /// <summary>Local policy: maximum time to wait for the first response byte.</summary>
     internal static readonly TimeSpan DefaultTtfbTimeout = TimeSpan.FromSeconds(5);
 
     internal TimeSpan TtfbTimeout { get; init; } = DefaultTtfbTimeout;
 
-    /// <summary>The spec <c>RESP_TIMEOUT</c>: maximum time for each subsequent response chunk.</summary>
+    /// <summary>Local policy: maximum time for each subsequent response chunk.</summary>
     internal static readonly TimeSpan DefaultRespTimeout = TimeSpan.FromSeconds(10);
 
     internal TimeSpan RespTimeout { get; init; } = DefaultRespTimeout;
@@ -112,8 +115,20 @@ public abstract class ReqRespProtocolBase
     /// A host is an IPv4 address or an IPv6 /64, so reconnecting from one host with fresh keys draws on the budget the host already spent.
     /// The host bucket holds <see cref="PeersPerHost"/> peer buckets to serve NAT and multi-node hosts, which stays a small share of the global bucket of <see cref="MaxPeerCount"/> peer buckets.
     /// </remarks>
-    /// <exception cref="Eth2ReqRespException">Code 139: a budget is spent, or a global charge comes from a peer that is not admitted.</exception>
-    protected void ChargeRequest(ISessionContext context, ulong items, ulong capacity, bool perPeerOnly = false)
+    /// <exception cref="Eth2ReqRespException">Code 139: a global charge comes from a peer that is not admitted.</exception>
+    protected async Task ChargeRequestAsync(ISessionContext context, ulong items, ulong capacity, CancellationTokenSource timeout, bool perPeerOnly = false)
+    {
+        TimeSpan delay;
+        while ((delay = TryChargeRequest(context, items, capacity, perPeerOnly)) > TimeSpan.Zero)
+        {
+            // phase0 p2p-interface.md: withhold the response while rate-limited, retaining the stream's concurrency reservation.
+            timeout.CancelAfter(delay + RespTimeout);
+            await Task.Delay(delay, QuotaTime, timeout.Token);
+        }
+        timeout.CancelAfter(RespTimeout);
+    }
+
+    protected TimeSpan TryChargeRequest(ISessionContext context, ulong items, ulong capacity, bool perPeerOnly = false)
     {
         // Any key can open a session, so fresh identities could drain the global budget before admission refuses them.
         if (!perPeerOnly && IsAdmitted is { } isAdmitted && (context.State.RemotePeerId is not { } requester || !isAdmitted(requester)))
@@ -155,11 +170,14 @@ public abstract class ReqRespProtocolBase
             }
 
             quota.Refill(now, capacity);
-            if (quota.Tokens < items || global is not null && global.Tokens < items || host is not null && host.Tokens < items)
-                throw new Eth2ReqRespException("Request rate limit exceeded", ReqRespFraming.ResponseCode.RateLimited);
+            double seconds = Math.Max(0, (items - quota.Tokens) * 10 / capacity);
+            if (global is not null) seconds = Math.Max(seconds, (items - global.Tokens) * 10 / globalCapacity);
+            if (host is not null) seconds = Math.Max(seconds, (items - host.Tokens) * 10 / hostCapacity);
+            if (seconds > 0) return TimeSpan.FromSeconds(Math.Max(0.001, seconds));
             quota.Tokens -= items;
             if (global is not null) global.Tokens -= items;
             if (host is not null) host.Tokens -= items;
+            return TimeSpan.Zero;
         }
     }
 
@@ -429,9 +447,13 @@ public abstract class ReqRespProtocolBase
                     owner.ReportViolation(context, protocolId, violation);
                 }
             }
+            catch (OperationCanceledException)
+            {
+            }
             catch (Exception)
             {
                 // Awaited only when disposing, so an escaping exception must not fail the listener.
+                RecordFailure(protocolId, ReqRespFailureReason.TransportWhileWatchingTail);
             }
         }
 
@@ -624,7 +646,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
             {
                 request = DecodeRequest(await inboundSlot.ReadRequestAsync(stream, MaxRequestSize, cts.Token));
             }
-            ChargeRequest(context, 1, 32, perPeerOnly: true);
+            await ChargeRequestAsync(context, 1, 32, cts, perPeerOnly: true);
             byte[] response = EncodeResponse(HandleRequest(request));
             if (context.State.RemotePeerId is { } requester) RequestServed?.Invoke(requester, request);
             await ReqRespFraming.WriteResponseChunkAsync(stream, ReqRespFraming.ResponseCode.Success, default, response, cts.Token);

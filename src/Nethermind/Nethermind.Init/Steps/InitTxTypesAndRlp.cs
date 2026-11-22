@@ -16,7 +16,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(ApplyMemoryHint))]
+    [RunnerStepDependencies(typeof(ConfigureMemoryAllocators))]
     public sealed class InitTxTypesAndRlp(INethermindApi api) : IStep
     {
         [Todo(Improve.Refactor, "Automatically scan all the references solutions?")]

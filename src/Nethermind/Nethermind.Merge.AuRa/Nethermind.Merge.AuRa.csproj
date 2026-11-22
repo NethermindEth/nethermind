@@ -7,11 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Contracts\WithdrawalContract.json" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <EmbeddedResource Include="Contracts\WithdrawalContract.json" />
+    <InternalsVisibleTo Include="Nethermind.Merge.AuRa.Test" />
   </ItemGroup>
 
   <ItemGroup>

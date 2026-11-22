@@ -6,6 +6,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -25,7 +26,7 @@ internal static class ExecutionProofVerifier
         RlpReader reader = new(value);
         Account account = AccountDecoder.Instance.Decode(ref reader)
             ?? throw new InvalidDataException("An account proof contains an invalid account.");
-        if (!value.AsSpan().SequenceEqual(AccountDecoder.Instance.EncodeAsBytes(account)))
+        if (!value.AsSpan().SequenceEqual(AccountDecoder.Instance.Encode(account)))
             throw new InvalidDataException("An account proof contains noncanonical account RLP.");
         return account;
     }
@@ -44,7 +45,7 @@ internal static class ExecutionProofVerifier
     {
         RlpReader reader = new(value);
         UInt256 result = reader.DecodeUInt256();
-        if (result.IsZero || !value.AsSpan().SequenceEqual(Rlp.Encode(result).Bytes))
+        if (result.IsZero || !value.AsSpan().SequenceEqual(Rlp.Encode(result)))
             throw new InvalidDataException("A storage proof contains noncanonical storage RLP.");
         return result;
     }
@@ -53,20 +54,6 @@ internal static class ExecutionProofVerifier
     {
         if (Keccak.Compute(code) != codeHash)
             throw new InvalidDataException("Contract code does not match its authenticated account hash.");
-    }
-
-    internal static void VerifyStorageSnapshot(Hash256 storageRoot, IReadOnlyDictionary<ValueHash256, UInt256> storage,
-        CancellationToken cancellationToken)
-    {
-        PatriciaTree tree = new();
-        foreach ((ValueHash256 path, UInt256 value) in storage)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            tree.Set(path.Bytes, Rlp.Encode(value).Bytes);
-        }
-        tree.UpdateRootHash();
-        if (tree.RootHash != storageRoot)
-            throw new InvalidDataException("Hosted storage is incomplete or does not match its authenticated root.");
     }
 
     private static byte[] ReadValue(Hash256 root, Hash256 key, byte[][] proof)

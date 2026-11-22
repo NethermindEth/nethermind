@@ -167,7 +167,7 @@ public sealed class DataColumnSidecarsByRangeProtocol(BeaconChainSpec spec, Data
                 throw new Eth2ReqRespException($"Request must have a positive count and 1..{Eip7594DasConstants.NumberOfColumns} columns");
             }
 
-            ChargeRequest(context, Math.Min(request.Count, MaxRequestDataColumnSidecars / (ulong)columns.Length) * (ulong)columns.Length, MaxRequestDataColumnSidecars);
+            await ChargeRequestAsync(context, Math.Min(request.Count, MaxRequestDataColumnSidecars / (ulong)columns.Length) * (ulong)columns.Length, MaxRequestDataColumnSidecars, cts);
 
             // fulu/p2p-interface.md: sidecars MUST be sent in (slot, column_index) order.
             ulong[] orderedColumns = [.. new SortedSet<ulong>(columns)];

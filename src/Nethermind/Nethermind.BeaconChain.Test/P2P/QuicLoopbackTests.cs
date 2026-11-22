@@ -100,7 +100,8 @@ public class QuicLoopbackTests
         await manager.DialDiscoveredPeersAsync(Single(candidate), token);
 
         Assert.That(manager.PeerCount, Is.EqualTo(1));
-        Assert.That(client.P2P.LocalPeerForTest!.Sessions.Single().RemoteAddress.ToString(), Does.Contain("/tcp/"));
+        string selectedAddress = client.P2P.LocalPeerForTest!.Sessions.Single().RemoteAddress.ToString();
+        Assert.That(selectedAddress, Does.Contain("/tcp/"));
 
         static async IAsyncEnumerable<BeaconPeerCandidate> Single(BeaconPeerCandidate value)
         {

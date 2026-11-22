@@ -27,9 +27,12 @@ public class GasPriceMetricsTests
     {
         Metrics.PublishBlockGasPrices([LegacyTx(Gwei(10)), LegacyTx(Gwei(30))], isEip1559Enabled: false, Gwei(1));
 
-        Assert.That(Metrics.GasPriceMin, Is.EqualTo(10.0f), "lowest effective gas price of the block");
-        Assert.That(Metrics.GasPriceMax, Is.EqualTo(30.0f), "highest effective gas price of the block");
-        Assert.That(Metrics.GasPriceAve, Is.EqualTo(20.0f), "mean of the block's effective gas prices");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.GasPriceMin, Is.EqualTo(10.0f), "lowest effective gas price of the block");
+            Assert.That(Metrics.GasPriceMax, Is.EqualTo(30.0f), "highest effective gas price of the block");
+            Assert.That(Metrics.GasPriceAve, Is.EqualTo(20.0f), "mean of the block's effective gas prices");
+        }
     }
 
     [Test]

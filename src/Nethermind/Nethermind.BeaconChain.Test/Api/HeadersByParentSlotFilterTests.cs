@@ -37,10 +37,28 @@ public class HeadersByParentSlotFilterTests
         _host.Store.PutBlock(Parent, BeaconApiTestHost.RichBlock(Slot, BeaconApiTestHost.FilledHash(0x00)));
         _host.Store.PutBlock(Kept, BeaconApiTestHost.RichBlock(Slot + 1, Parent));
         _host.Store.PutBlock(Broken, BeaconApiTestHost.RichBlock(Slot + 2, Parent));
+        // Exercise the bounded decode used for records written before signed headers were indexed.
+        _host.Db.GetColumnDb(BeaconChainDbColumns.BlockIndex).Remove(new byte[] { BeaconChainStore.SignedHeaderKeyPrefix }.Concat(Broken.Bytes.ToArray()).ToArray());
     }
 
     [TearDown]
     public async Task StopHost() => await _host.DisposeAsync();
+
+    [Test]
+    public async Task A_legacy_header_is_backfilled_and_served_without_decoding_the_block_again()
+    {
+        string path = $"/eth/v1/beacon/headers/{Broken}";
+        using HttpResponseMessage first = await _host.GetAsync(path, Json);
+        string expected = await BeaconApiTestHost.ReadSuccessfulBodyAsync(first);
+        BreakRecord(BrokenRecord.NotSnappy);
+
+        using HttpResponseMessage second = await _host.GetAsync(path, Json);
+        string actual = await BeaconApiTestHost.ReadSuccessfulBodyAsync(second);
+        List<string> roots = await ListedRootsAsync($"&slot={Slot + 2}");
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(actual, Is.EqualTo(expected));
+        Assert.That(roots, Is.EqualTo(new[] { Broken.ToString() }));
+    }
 
     [Test]
     public async Task A_child_outside_the_slot_filter_is_never_decoded()
@@ -49,9 +67,12 @@ public class HeadersByParentSlotFilterTests
 
         List<string> roots = await ListedRootsAsync($"&slot={Slot + 1}");
 
-        Assert.That(roots, Is.EqualTo(new[] { Kept.ToString() }));
-        Assert.That(_log.LogList.Where(entry => entry.Contains(Broken.ToString())), Is.Empty,
-            "a decode attempt on the filtered-out child's bodyless record is the only thing that logs its root");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roots, Is.EqualTo(new[] { Kept.ToString() }));
+            Assert.That(_log.LogList.Where(entry => entry.Contains(Broken.ToString())), Is.Empty,
+                "a decode attempt on the filtered-out child's bodyless record is the only thing that logs its root");
+        }
     }
 
     [Test]

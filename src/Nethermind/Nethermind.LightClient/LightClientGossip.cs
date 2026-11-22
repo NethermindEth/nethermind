@@ -26,8 +26,8 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
     private readonly SemaphoreSlim _validation = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private readonly Lock _lifetime = new();
-    private readonly Dictionary<string, ITopic> _subscriptions = new(StringComparer.Ordinal);
-    private HashSet<string> _activeTopics = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ITopic> _subscriptions = [with(StringComparer.Ordinal)];
+    private HashSet<string> _activeTopics = [with(StringComparer.Ordinal)];
     private Func<LightClientFinalityUpdate, CancellationToken, Task<bool>>? _finality;
     private Func<LightClientOptimisticUpdate, CancellationToken, Task<bool>>? _optimistic;
     private PubsubRouter? _router;
@@ -71,7 +71,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
     {
         ulong epoch = spec.GetEpoch(CurrentSlot());
         if (_subscriptionEpoch == epoch) return;
-        HashSet<string> active = new(StringComparer.Ordinal);
+        HashSet<string> active = [with(StringComparer.Ordinal)];
         foreach ((byte[] digest, _) in GossipTopics.DigestsAround(spec, epoch))
         {
             active.Add(GossipTopics.Topic(digest, GossipTopics.LightClientFinalityUpdate));
@@ -282,7 +282,7 @@ internal sealed class LightClientGossip(BeaconChainSpec spec, ILogManager logs, 
         }
         finally
         {
-            Volatile.Write(ref _activeTopics, new HashSet<string>(StringComparer.Ordinal));
+            Volatile.Write(ref _activeTopics, [with(StringComparer.Ordinal)]);
             foreach (ITopic topic in _subscriptions.Values) topic.Unsubscribe();
             _subscriptions.Clear();
             await handlers;

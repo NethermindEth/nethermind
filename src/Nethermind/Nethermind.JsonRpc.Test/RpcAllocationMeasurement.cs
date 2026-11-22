@@ -146,8 +146,11 @@ public class RpcAllocationMeasurement
         }
 
         await TestContext.Out.WriteLineAsync(File.ReadAllText(reportPath));
-        Assert.That(casesRun, Is.Positive, $"no case matches RPC_ALLOC_FILTER '{filter}'");
-        Assert.That(errors, Is.Empty, "error responses are not representative measurements");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(casesRun, Is.Positive, $"no case matches RPC_ALLOC_FILTER '{filter}'");
+            Assert.That(errors, Is.Empty, "error responses are not representative measurements");
+        }
     }
 
     private static IEnumerable<(string Method, string Params, int Iterations)> Cases(Address contract, Block[] blocks)

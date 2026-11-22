@@ -50,6 +50,7 @@ public sealed class BlockImporter : IBlockImporter
     private readonly BeaconChainSpec _spec;
     private readonly BeaconChainStore _store;
     private readonly PubkeyCache _pubkeys;
+    private readonly ValidatorPubkeyIndex _requestRegistry = new();
     private readonly IEngineDriver _engine;
     private readonly IBeaconChainConfig _config;
     private readonly SlotClock _clock;
@@ -60,6 +61,9 @@ public sealed class BlockImporter : IBlockImporter
     internal Action<Hash256, DataColumnSidecar[]>? PublishLocalColumns { get; init; }
     private PreparedSlot? _preparedSlot;
     private sealed record PreparedSlot(Hash256 Parent, BeaconStateFulu Original, BeaconStateFulu State, EpochCache Cache);
+    private EarlyFuluBlock? _earlyFuluBlock;
+    private sealed record EarlyFuluBlock(Hash256 Root, BlsSignature Signature, BeaconStateFulu Parent,
+        BeaconStateFulu State, EpochCache Cache, DataColumnSidecar[] LocalColumns);
 
     internal void PrepareNextSlot(Hash256 headRoot, ulong nextSlot)
     {
@@ -71,8 +75,9 @@ public sealed class BlockImporter : IBlockImporter
         if (_runner.GetBlockSlot(headRoot) is not { } headSlot || headSlot >= nextSlot || nextSlot - headSlot > 2) return;
         if (_preparedSlot is { } held && held.Parent == headRoot && held.State.Slot == nextSlot) return;
         if (_states.GetHeldBlockState(headRoot) is not { } parent) return;
-        BeaconStateFulu copy = parent.Clone();
-        EpochCache cache = new() { Hasher = _lineageCache.Hasher, SigningSpec = _spec };
+        BeaconStateFulu copy = parent.CloneForImport(_lineageCache.Hasher, headRoot);
+        EpochCache cache = headRoot == _states.LineageRoot ? _lineageCache.ForSpeculativeImport() : new EpochCache { Hasher = _lineageCache.Hasher };
+        cache.SigningSpec = _spec;
         SlotProcessing.ProcessSlots(copy, nextSlot, cache);
         _preparedSlot = new(headRoot, parent, copy, cache);
     }
@@ -110,7 +115,6 @@ public sealed class BlockImporter : IBlockImporter
 
     private EpochCache _gloasLineageCache = new() { Hasher = new CachedBeaconStateHasher() };
 
-    /// <summary>A Gloas anchor's root and its bid's <c>parent_block_hash</c>, which fork choice records only for blocks it imported; <c>null</c> for a Fulu anchor.</summary>
     private readonly Hash256? _fuluProposerDomain;
 
     private readonly Hash256 _gloasProposerDomain = null!;
@@ -190,6 +194,7 @@ public sealed class BlockImporter : IBlockImporter
                 throw new ArgumentException($"The anchor state at slot {anchorState.Slot} is a {anchorState.Fork} state, but its block at slot {anchorBlock.Slot} is a {anchorBlock.GetType().Name} block", nameof(anchorBlock));
         }
 
+        _runner.PayloadInvalidated = store.DeleteExecutionPayloadEnvelope;
         foreach ((Hash256 root, ulong slot) in store.StoredBlocksForPruning(anchorBlock.Slot))
         {
             _unfinalized[root] = slot;
@@ -206,9 +211,16 @@ public sealed class BlockImporter : IBlockImporter
     /// <remarks>Shared as is, not copied: every import applies its block to a copy of the parent state, so a held state is never mutated afterwards.</remarks>
     internal ForkedBeaconState? GetStateForApi(Hash256 root) => IsGloasBlock(root)
         ? _states.GetHeldGloasBlockState(root) is { } gloas ? new ForkedBeaconState.OfGloas(gloas) : null
-        : _states.GetHeldBlockState(root, readStore: false) is { } fulu ? new ForkedBeaconState.OfFulu(fulu) : null;
+        : _states.GetHeldBlockState(root, readStore: false) is { } fulu ? ExposeForApi(new ForkedBeaconState.OfFulu(fulu)) : null;
 
-    internal ForkedBeaconState GetCheckpointStateForApi(CheckpointRef checkpoint) => _runner.GetCheckpointState(checkpoint);
+    internal ForkedBeaconState GetCheckpointStateForApi(CheckpointRef checkpoint) => ExposeForApi(_runner.GetCheckpointState(checkpoint));
+
+    private static ForkedBeaconState ExposeForApi(ForkedBeaconState state)
+    {
+        if (state is ForkedBeaconState.OfFulu fulu)
+            fulu.State.ExposedForApi = true;
+        return state;
+    }
 
     /// <inheritdoc/>
     public bool IsKnown(Hash256 blockRoot) => _runner.ContainsBlock(blockRoot);
@@ -267,6 +279,8 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
     {
+        if (_earlyFuluBlock is { } early && _clock.CurrentSlot > early.State.Slot)
+            _earlyFuluBlock = null;
         LastRefusal = ImportRefusal.None;
         RejectGossip = false;
         // Recorded again only if this attempt defers it too.
@@ -326,12 +340,16 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.Invalid;
         }
 
-        return block switch
+        _requestRegistry.BeginBlock(block.ParentRoot);
+        BlockImportResult resultAfterTransition = block switch
         {
             ForkedSignedBeaconBlock.OfFulu fulu => ImportFulu(fulu.Block, blockRoot, verifySignatures, receivedMs),
             ForkedSignedBeaconBlock.OfGloas gloas => ImportGloas(gloas, blockRoot, verifySignatures, receivedMs),
             _ => throw new NotSupportedException($"Unhandled block {block.GetType().Name}"),
         };
+        if (resultAfterTransition == BlockImportResult.Imported)
+            _requestRegistry.AdmitBlock(blockRoot);
+        return resultAfterTransition;
     }
 
     /// <summary>Checks on_block conditions in spec order, then block.slot &gt; parent slot, before costly process_slots (phase0/fork-choice.md).</summary>
@@ -361,33 +379,19 @@ public sealed class BlockImporter : IBlockImporter
             return $"the block is not after the finalized slot {finalizedSlot}";
         }
 
-        // The spec's get_checkpoint_block(parent_root, finalized.epoch) == finalized.root.
-        Hash256? checkpointBlock = null;
-        foreach (ProtoNode node in _runner.EnumerateAncestors(parentRoot))
+        // specs/bellatrix/optimistic-sync.md: the parent of the block MUST NOT have an INVALIDATED execution payload.
+        if (_runner.GetBlockExecutionStatus(parentRoot) == ExecutionStatus.Invalid)
         {
-            // specs/bellatrix/optimistic-sync.md: the parent of the block MUST NOT have an INVALIDATED execution payload.
-            if (node.Root == parentRoot && node.ExecutionStatus == ExecutionStatus.Invalid)
-            {
-                failedValidation = true;
-                return $"its parent {parentRoot} has an invalid execution payload";
-            }
-
-            if (node.Slot <= finalizedSlot)
-            {
-                checkpointBlock = node.Root;
-                break;
-            }
+            failedValidation = true;
+            return $"its parent {parentRoot} has an invalid execution payload";
         }
 
-        if (checkpointBlock != finalized.Root)
+        if (_runner.GetFinalizedCheckpointBlock(parentRoot) != finalized.Root)
         {
-            if (checkpointBlock is not null || !_runner.IsBootstrapCheckpointDescendant(parentRoot, finalized))
-            {
-                // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The current finalized checkpoint is an ancestor of the block".
-                rejectGossip = true;
-                failedValidation = true;
-                return $"the block does not descend from the finalized checkpoint {finalized}";
-            }
+            // ethereum/consensus-specs gloas/p2p-interface.md: "[REJECT] The current finalized checkpoint is an ancestor of the block".
+            rejectGossip = true;
+            failedValidation = true;
+            return $"the block does not descend from the finalized checkpoint {finalized}";
         }
 
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
@@ -412,18 +416,16 @@ public sealed class BlockImporter : IBlockImporter
     private bool? CheckGossipSignature(ForkedSignedBeaconBlock block)
     {
         Hash256 head = _runner.GetHead();
-        int? validatorCount = _states.GetGloasBlockState(head)?.Validators?.Length ?? _states.GetHeldBlockState(head)?.Validators?.Length;
+        Validator[]? validators = _states.GetGloasBlockState(head)?.ValidatorBuffer?.Items ?? _states.GetHeldBlockState(head)?.ValidatorBuffer?.Items;
         Hash256? domain = block is ForkedSignedBeaconBlock.OfGloas ? _gloasProposerDomain : _fuluProposerDomain;
-        if (validatorCount is null || domain is null)
+        if (validators is null || domain is null)
             return null;
-        ulong proposer = block.ProposerIndex;
-        if (proposer >= (ulong)validatorCount.Value)
+        if (block.ProposerIndex >= (ulong)validators.Length)
             return false;
-        if (proposer >= (ulong)_pubkeys.Count)
+        if (block.ProposerIndex >= (ulong)_pubkeys.Count)
             return null;
         BlsSignature signature = block is ForkedSignedBeaconBlock.OfGloas gloas ? gloas.Block.Signature : ((ForkedSignedBeaconBlock.OfFulu)block).Block.Signature;
-        return _pubkeys.TryGetValidPublicKey((int)proposer, out G1Affine key)
-            && BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(block.ComputeMessageRoot(), domain).Bytes);
+        return VerifyCachedProposerSignature(block.ComputeMessageRoot(), block.ProposerIndex, signature, domain, validators);
     }
 
     private bool HasInvalidGossipFields(ForkedSignedBeaconBlock block)
@@ -460,13 +462,15 @@ public sealed class BlockImporter : IBlockImporter
         BeaconBlock block = signedBlock.Message!;
         Hash256 parentRoot = block.ParentRoot!;
 
+        bool? proposerSignatureValid = verifySignatures ? VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) : null;
+
         // Check on_block availability before cloning or calling the engine, so missing columns defer cheaply.
-        // Trusted replays already passed this gate; their verifying columns were not persisted and cannot be rechecked.
+        // Trusted replays already passed this gate.
         IDataAvailabilityRule availability = verifySignatures ? _availability : ReplayedBlockAvailability.Instance;
         DataColumnSidecar[] localColumns = [];
         bool dataAvailable = availability.IsDataAvailable(block, blockRoot, _spec);
         if (verifySignatures && !dataAvailable
-            && VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == true)
+            && proposerSignatureValid == true)
         {
             localColumns = RecoverLocalColumns?.Invoke(signedBlock) ?? [];
             if (localColumns.Length != 0) dataAvailable = availability.IsDataAvailable(block, blockRoot, _spec);
@@ -475,7 +479,7 @@ public sealed class BlockImporter : IBlockImporter
         {
             // Honest columns carry the honest signature, so a requested copy with altered signature bytes would never become available.
             // Gossip verified the signature before import (phase0/p2p-interface.md beacon_block).
-            if (_importing != RequestedImport.None && VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false)
+            if (_importing != RequestedImport.None && proposerSignatureValid == false)
             {
                 RejectGossip = true;
                 if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");
@@ -489,14 +493,16 @@ public sealed class BlockImporter : IBlockImporter
         bool onLineage = parentRoot == _states.LineageRoot;
         // Kept frozen: the body operations below may load states that push it out of the retained tiers before it is marked.
         BeaconStateFulu? heldParent = null;
+        bool regenerationBudgetUsed = false;
         if (!onLineage && (heldParent = _states.GetHeldBlockState(parentRoot)) is null)
         {
-            if (verifySignatures && RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) is { } refused)
+            if (verifySignatures && RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, proposerSignatureValid) is { } refused)
             {
                 return refused;
             }
 
             heldParent = _states.GetBlockState(parentRoot);
+            regenerationBudgetUsed = verifySignatures;
         }
 
         BeaconStateFulu? parentState = onLineage ? _states.LineageState : heldParent;
@@ -508,9 +514,11 @@ public sealed class BlockImporter : IBlockImporter
             return BlockImportResult.UnknownParent;
         }
 
-        // An uncached key within the registry is checked by the transition; a known forgery must not buy a state copy.
-        if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.Validators!.Length
-            || VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain) == false))
+        if (verifySignatures)
+            proposerSignatureValid ??= VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _fuluProposerDomain, parentState.ValidatorBuffer!.Items);
+
+        if (verifySignatures && (block.ProposerIndex >= (ulong)parentState.ReadOnlyValidators.Length
+            || proposerSignatureValid == false))
         {
             RejectGossip = true;
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: Invalid proposer signature");
@@ -519,77 +527,98 @@ public sealed class BlockImporter : IBlockImporter
 
         ulong parentEpoch = parentState.GetCurrentEpoch();
         ulong blockEpoch = BeaconStateAccessors.ComputeEpochAtSlot(block.Slot);
+        if (verifySignatures && CheckProposerBeforeAdvance(blockRoot, block.Slot, block.ProposerIndex, parentEpoch, parentState.ProposerLookahead!, regenerationBudgetUsed, proposerSignatureValid) is { } proposerRefusal)
+            return proposerRefusal;
         bool crossesEpoch = blockEpoch > parentEpoch;
         // specs/phase0/fork-choice.md get_checkpoint_block: the parent is one when it sits at an epoch start slot or this block skips one.
         bool parentIsCheckpoint = parentState.Slot % _spec.SlotsPerEpoch == 0 || blockEpoch > parentEpoch + (block.Slot % _spec.SlotsPerEpoch == 0 ? 1UL : 0UL);
 
         BeaconStateFulu state;
         EpochCache cache;
-        PreparedSlot? prepared = TakePreparedSlot(parentRoot, block.Slot, parentState);
-        if (prepared is not null)
+        ExecutionStatus executionStatus;
+        EarlyFuluBlock? early = _earlyFuluBlock;
+        if (early is not null && early.Root == blockRoot && early.Signature.Equals(signedBlock.Signature)
+            && ReferenceEquals(early.Parent, parentState))
         {
-            state = prepared.State;
-            cache = prepared.Cache;
-        }
-        else if (onLineage)
-        {
-            // Replay can now receive an INVALID execution verdict; preserve the parent until admission succeeds.
-            state = parentState.Clone();
-            cache = _lineageCache;
+            _earlyFuluBlock = null;
+            state = early.State;
+            cache = early.Cache;
+            localColumns = early.LocalColumns;
+            executionStatus = ExecutionStatus.Valid;
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state: the lineage is at {_states.LineageRoot}");
-            state = parentState.Clone();
-            cache = new EpochCache { Hasher = _lineageCache.Hasher };
-        }
-
-        ImportVerdict verdict = new(_engine);
-        _engine.CurrentBlock = signedBlock;
-        try
-        {
-            if (prepared is not null) StateTransition.StateTransition.ApplyPrepared(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
-            else StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures);
-        }
-        catch (EngineUnavailableException e)
-        {
-            if (_logger.IsWarn) _logger.Warn($"Deferring block {blockRoot} at slot {block.Slot}: {e.Message}");
-            return BlockImportResult.EngineUnavailable;
-        }
-        catch (BeaconStateException e)
-        {
-            // An incomplete key cache cannot convict a validator whose index passed the registry bound.
-            if (verifySignatures && !e.RejectGossip && block.ProposerIndex >= (ulong)_pubkeys.Count)
-                return BlockImportResult.UnknownParent;
-            if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
-            // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer signature is valid"; unrelated transition failures are not gossip rejections.
-            RejectGossip = verifySignatures && (e is ProposerSignatureException || e.RejectGossip || HasInvalidGossipFields(new ForkedSignedBeaconBlock.OfFulu(signedBlock)))
-                && CanRejectBlock(new ForkedSignedBeaconBlock.OfFulu(signedBlock));
-            MarkFailed(blockRoot, block.Slot, e);
-            // specs/bellatrix/optimistic-sync.md: the optimistic blocks after the payload latestValidHash names are invalid too.
-            if (verdict.Status == ExecutionStatus.Invalid)
+            PreparedSlot? prepared = TakePreparedSlot(parentRoot, block.Slot, parentState);
+            if (prepared is not null)
             {
-                try
-                {
-                    _runner.InvalidateExecutionChain(parentRoot, payloadHash: null, verdict.LatestValidHash);
-                }
-                catch (ProtoArrayException invalidation)
-                {
-                    // The block is dropped either way; a latest valid hash that contradicts a VALID ancestor is the execution layer's fault, not the block's.
-                    if (_logger.IsError) _logger.Error($"Execution layer reported the payload of {blockRoot} INVALID (latest valid hash {verdict.LatestValidHash}) against a VALID ancestor; ignoring the latest valid hash: {invalidation.Message}");
-                }
+                state = prepared.State;
+                cache = prepared.Cache;
             }
-            return BlockImportResult.Invalid;
-        }
-        finally
-        {
-            _engine.CurrentBlock = null;
-        }
+            else if (onLineage)
+            {
+                // Replay can now receive an INVALID execution verdict; preserve the parent until admission succeeds.
+                state = parentState.CloneForImport(_lineageCache.Hasher, parentRoot);
+                cache = _lineageCache;
+            }
+            else
+            {
+                if (_logger.IsDebug) _logger.Debug($"Importing block {blockRoot} at slot {block.Slot} on a copy of its parent's state: the lineage is at {_states.LineageRoot}");
+                state = parentState.CloneForImport(_lineageCache.Hasher, parentRoot);
+                cache = new EpochCache { Hasher = _lineageCache.Hasher };
+            }
 
-        // The transition hook already drove engine_newPayload; an INVALID verdict made Apply throw.
-        ExecutionStatus executionStatus = verdict.Status;
+            ImportVerdict verdict = new(_engine);
+            cache.RequestRegistry = _requestRegistry;
+            _engine.CurrentBlock = signedBlock;
+            try
+            {
+                if (prepared is not null) StateTransition.StateTransition.ApplyPrepared(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures, proposerSignatureVerified: proposerSignatureValid == true, trackBlockChanges: true);
+                else StateTransition.StateTransition.Apply(state, signedBlock, cache, _pubkeys, verdict, _spec, validateResult: true, verifySignatures, proposerSignatureVerified: proposerSignatureValid == true, trackBlockChanges: true);
+            }
+            catch (EngineUnavailableException e)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Deferring block {blockRoot} at slot {block.Slot}: {e.Message}");
+                return BlockImportResult.EngineUnavailable;
+            }
+            catch (BeaconStateException e)
+            {
+                // An incomplete key cache cannot convict a validator whose index passed the registry bound.
+                if (verifySignatures && !e.RejectGossip && block.ProposerIndex >= (ulong)_pubkeys.Count)
+                    return BlockImportResult.UnknownParent;
+                if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: {e.Message}");
+                // ethereum/consensus-specs fulu/p2p-interface.md: "[REJECT] The proposer signature is valid"; unrelated transition failures are not gossip rejections.
+                RejectGossip = verifySignatures && (e is ProposerSignatureException || e.RejectGossip || HasInvalidGossipFields(new ForkedSignedBeaconBlock.OfFulu(signedBlock)))
+                    && CanRejectBlock(new ForkedSignedBeaconBlock.OfFulu(signedBlock));
+                MarkFailed(blockRoot, block.Slot, e);
+                // specs/bellatrix/optimistic-sync.md: the optimistic blocks after the payload latestValidHash names are invalid too.
+                if (verdict.Status == ExecutionStatus.Invalid)
+                {
+                    try
+                    {
+                        _runner.InvalidateExecutionChain(parentRoot, payloadHash: null, verdict.LatestValidHash);
+                    }
+                    catch (ProtoArrayException invalidation)
+                    {
+                        // The block is dropped either way; a latest valid hash that contradicts a VALID ancestor is the execution layer's fault, not the block's.
+                        if (_logger.IsError) _logger.Error($"Execution layer reported the payload of {blockRoot} INVALID (latest valid hash {verdict.LatestValidHash}) against a VALID ancestor; ignoring the latest valid hash: {invalidation.Message}");
+                    }
+                }
+                return BlockImportResult.Invalid;
+            }
+            finally
+            {
+                cache.EndImportedRequests();
+                _engine.CurrentBlock = null;
+            }
+
+            // The transition hook already drove engine_newPayload; an INVALID verdict made Apply throw.
+            executionStatus = verdict.Status;
+        }
         if (IsBeforeItsSlot(block.Slot, blockRoot))
         {
+            if (verifySignatures && executionStatus == ExecutionStatus.Valid)
+                _earlyFuluBlock = new(blockRoot, signedBlock.Signature, parentState, state,
+                    cache.ForSpeculativeImport(), localColumns);
             return BlockImportResult.FutureSlot;
         }
 
@@ -615,7 +644,7 @@ public sealed class BlockImporter : IBlockImporter
 
         ApplyBodyOperations(block.Body!, blockRoot);
 
-        _store.PutBlock(blockRoot, signedBlock);
+        _store.StoreBlock(blockRoot, new ForkedSignedBeaconBlock.OfFulu(signedBlock), state.LatestBlockHeader!.BodyRoot);
         if (localColumns.Length > 0) PublishLocalColumns?.Invoke(blockRoot, localColumns);
         _unfinalized[blockRoot] = block.Slot;
 
@@ -640,6 +669,8 @@ public sealed class BlockImporter : IBlockImporter
             }
         }
 
+        if (cache.Hasher is CachedBeaconStateHasher hasher)
+            hasher.AdmitBlock(state, blockRoot);
         return BlockImportResult.Imported;
     }
 
@@ -656,9 +687,11 @@ public sealed class BlockImporter : IBlockImporter
             return DeferForParentPayload(signedBlock, blockRoot, parentRoot, parentDeferred: false);
         }
 
+        bool? proposerSignatureValid = verifySignatures ? VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) : null;
         ulong parentSlot = _runner.GetBlockSlot(parentRoot)!.Value;
         BeaconStateGloas? gloasParent = null;
         BeaconStateFulu? fuluParent = null;
+        bool regenerationBudgetUsed = false;
         ForkedBeaconState? parentState;
         bool gloasParentSlot = SignedBeaconBlockCodec.IsGloasSlot(parentSlot, _spec);
         if (gloasParentSlot)
@@ -672,7 +705,7 @@ public sealed class BlockImporter : IBlockImporter
 
         if (gloasParent is null && fuluParent is null)
         {
-            if (verifySignatures && RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) is { } refused)
+            if (verifySignatures && RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, proposerSignatureValid) is { } refused)
             {
                 return refused;
             }
@@ -685,16 +718,27 @@ public sealed class BlockImporter : IBlockImporter
             {
                 fuluParent = _states.GetBlockState(parentRoot);
             }
+            regenerationBudgetUsed = verifySignatures;
         }
 
-        if (verifySignatures && (gloasParent?.Validators ?? fuluParent?.Validators) is { } validators
+        Validator[]? validators = gloasParent?.ValidatorBuffer?.Items ?? fuluParent?.ValidatorBuffer?.Items;
+        if (verifySignatures && validators is not null)
+            proposerSignatureValid ??= VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain, validators);
+
+        if (verifySignatures && validators is not null
             && (block.ProposerIndex >= (ulong)validators.Length
-                || VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) == false))
+                || proposerSignatureValid == false))
         {
             RejectGossip = true;
             if (_logger.IsWarn) _logger.Warn($"Dropping invalid block {blockRoot} at slot {block.Slot}: invalid proposer signature");
             return BlockImportResult.Invalid;
         }
+
+        if (verifySignatures && (gloasParent is not null || fuluParent is not null)
+            && CheckProposerBeforeAdvance(blockRoot, block.Slot, block.ProposerIndex,
+                gloasParent?.GetCurrentEpoch() ?? fuluParent!.GetCurrentEpoch(),
+                gloasParent?.ProposerLookahead ?? fuluParent!.ProposerLookahead!, regenerationBudgetUsed, proposerSignatureValid) is { } proposerRefusal)
+            return proposerRefusal;
 
         parentState = gloasParent is not null ? new ForkedBeaconState.OfGloas(gloasParent.Clone())
             : fuluParent is not null ? new ForkedBeaconState.OfFulu(fuluParent.Clone())
@@ -708,11 +752,12 @@ public sealed class BlockImporter : IBlockImporter
 
         bool extendsLineage = parentRoot == _gloasLineageRoot;
         EpochCache cache = extendsLineage ? _gloasLineageCache : new EpochCache { Hasher = _gloasLineageCache.Hasher };
+        cache.RequestRegistry = _requestRegistry;
         BeaconStateGloas postState;
         try
         {
             // On a copy: the transition mutates before its last check, and UpgradeToGloas aliases the Fulu parent's arrays.
-            postState = ((ForkedBeaconState.OfGloas)ForkedStateTransition.Apply(parentState, forked, cache, _pubkeys, new ImportVerdict(_engine), _spec, validateResult: true, verifySignatures)).State;
+            postState = ((ForkedBeaconState.OfGloas)ForkedStateTransition.Apply(parentState, forked, cache, _pubkeys, new ImportVerdict(_engine), _spec, validateResult: true, verifySignatures, proposerSignatureVerified: proposerSignatureValid == true)).State;
         }
         catch (BeaconStateException e)
         {
@@ -724,6 +769,10 @@ public sealed class BlockImporter : IBlockImporter
             RejectGossip = verifySignatures && (e is ProposerSignatureException || e.RejectGossip) && CanRejectBlock(forked);
             MarkFailed(blockRoot, block.Slot, e);
             return BlockImportResult.Invalid;
+        }
+        finally
+        {
+            cache.EndImportedRequests();
         }
 
         if (parentPayloadUnverified)
@@ -768,14 +817,14 @@ public sealed class BlockImporter : IBlockImporter
 
         ApplyBodyOperations(block.Body!, blockRoot);
 
-        _store.PutForkedBlock(blockRoot, forked);
+        _store.StoreBlock(blockRoot, forked, postState.LatestBlockHeader!.BodyRoot);
         _unfinalized[blockRoot] = block.Slot;
         _gloasLineageRoot = blockRoot;
         _gloasLineageCache = cache;
         return BlockImportResult.Imported;
     }
 
-    /// <summary>Checks a block signature against the cached proposer key without reading mutable fork-choice state.</summary>
+    /// <summary>Checks a block signature against the finalized proposer key without reading mutable fork-choice state.</summary>
     /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>
     internal bool? VerifyCachedProposerSignature(ForkedSignedBeaconBlock block) => block switch
     {
@@ -784,12 +833,36 @@ public sealed class BlockImporter : IBlockImporter
         _ => null,
     };
 
-    /// <summary>Runs phase0/beacon-chain.md verify_block_signature with the cached key of <paramref name="proposerIndex"/>, which no later state changes.</summary>
+    /// <summary>Verifies the proposer against the selected registry, or against the finalized prefix when the state is unavailable.</summary>
     /// <returns>Null when the domain or that key is not known, so the signature cannot be judged.</returns>
-    private bool? VerifyCachedProposerSignature(Hash256 blockRoot, ulong proposerIndex, BlsSignature signature, Hash256? domain) =>
-        domain is null || proposerIndex >= (ulong)_pubkeys.Count || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out G1Affine key)
-            ? null
-            : BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+    private bool? VerifyCachedProposerSignature(Hash256 blockRoot, ulong proposerIndex, BlsSignature signature, Hash256? domain, Validator[]? validators = null)
+    {
+        if (domain is null)
+            return null;
+
+        G1Affine key;
+        if (validators is null)
+        {
+            if (proposerIndex >= (ulong)_pubkeys.FinalizedCount || !_pubkeys.TryGetValidPublicKey((int)proposerIndex, out key))
+                return null;
+        }
+        else if (!SignatureSets.TryGetValidatorKey(_pubkeys, validators, proposerIndex, out key))
+            return false;
+
+        return BlsSigner.Verify(key, signature.Bytes, Domains.ComputeSigningRoot(blockRoot, domain).Bytes);
+    }
+
+    private BlockImportResult? CheckProposerBeforeAdvance(Hash256 root, ulong slot, ulong proposer, ulong parentEpoch, ulong[] lookahead, bool budgetUsed, bool? proposerSignatureValid)
+    {
+        // Fulu/Gloas process_proposer_lookahead preserves the parent's current and next epoch entries.
+        if (BeaconStateAccessors.ComputeEpochAtSlot(slot) <= parentEpoch + 1)
+        {
+            if (IsInLookahead(parentEpoch, lookahead, slot, proposer)) return null;
+            RejectGossip = true;
+            return BlockImportResult.Invalid;
+        }
+        return budgetUsed ? null : RefuseRegeneration(root, slot, proposer, proposerSignatureValid);
+    }
 
     /// <summary>Allows untrusted state regeneration only after proposer-signature verification, subject to source budgets.</summary>
     /// <remarks>Gossip must be the first signed (slot, proposer) proposal and fit <see cref="MaxUntrustedRegenerationsPerSlot"/> per wall slot.
@@ -800,9 +873,8 @@ public sealed class BlockImporter : IBlockImporter
     /// Refused gossip is recovered by its first child's ByRoot backfill; later signed proposals cost no regeneration
     /// (phase0/p2p-interface.md beacon_block).</remarks>
     /// <returns>Null to allow regeneration; otherwise the block's refusal result.</returns>
-    private BlockImportResult? RefuseRegeneration(Hash256 blockRoot, ulong slot, ulong proposerIndex, BlsSignature signature, Hash256? domain)
+    private BlockImportResult? RefuseRegeneration(Hash256 blockRoot, ulong slot, ulong proposerIndex, bool? valid)
     {
-        bool? valid = VerifyCachedProposerSignature(blockRoot, proposerIndex, signature, domain);
         if (valid is null)
         {
             if (_logger.IsDebug) _logger.Debug($"Not regenerating a state for block {blockRoot} at slot {slot}: its proposer {proposerIndex} has no cached key");
@@ -892,16 +964,19 @@ public sealed class BlockImporter : IBlockImporter
     private BlockImportResult DeferForParentPayload(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, Hash256 ancestorRoot, bool parentDeferred)
     {
         BeaconBlockGloas block = signedBlock.Message!;
+        bool? proposerSignatureValid = VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain);
         // A full parent whose payload is unverified is a Gloas block: a known Fulu block counts as verified.
         BeaconStateGloas? ancestorState = _states.GetGloasBlockState(ancestorRoot);
+        bool regenerationBudgetUsed = false;
         if (ancestorState is null)
         {
-            if (RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain) is { } refused)
+            if (RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, proposerSignatureValid) is { } refused)
             {
                 return refused;
             }
 
             ancestorState = _states.GetOrRegenerateGloasBlockState(ancestorRoot);
+            regenerationBudgetUsed = true;
         }
 
         if (ancestorState is null)
@@ -909,6 +984,8 @@ public sealed class BlockImporter : IBlockImporter
             if (_logger.IsWarn) _logger.Warn($"Cannot import block at slot {block.Slot}: the post-state of its ancestor {ancestorRoot} is no longer retained");
             return BlockImportResult.UnknownParent;
         }
+
+        proposerSignatureValid ??= VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain, ancestorState.ValidatorBuffer!.Items);
 
         string? refusal;
         try
@@ -923,8 +1000,8 @@ public sealed class BlockImporter : IBlockImporter
                 }
 
                 // Checked before the clone and multi-epoch advance, which a forged block must not buy.
-                switch (block.ProposerIndex >= (ulong)ancestorState.Validators!.Length ? false
-                    : VerifyCachedProposerSignature(blockRoot, block.ProposerIndex, signedBlock.Signature, _gloasProposerDomain))
+                switch (block.ProposerIndex >= (ulong)ancestorState.ReadOnlyValidators.Length ? false
+                    : proposerSignatureValid)
                 {
                     case false:
                         RejectGossip = true;
@@ -935,11 +1012,14 @@ public sealed class BlockImporter : IBlockImporter
                         return BlockImportResult.UnknownParent;
                 }
 
+                if (!regenerationBudgetUsed && RefuseRegeneration(blockRoot, block.Slot, block.ProposerIndex, proposerSignatureValid) is { } refused)
+                    return refused;
+
                 proposerState = ancestorState.Clone();
-                GloasSlotProcessing.ProcessSlots(proposerState, block.Slot, new EpochCache { SigningSpec = _spec });
+                GloasSlotProcessing.ProcessSlots(proposerState, block.Slot, new EpochCache { SigningSpec = _spec, Hasher = _gloasLineageCache.Hasher });
             }
 
-            refusal = CheckProposal(signedBlock, proposerState);
+            refusal = CheckProposal(signedBlock, proposerState, proposerSignatureValid);
         }
         catch (BeaconStateException)
         {
@@ -978,7 +1058,7 @@ public sealed class BlockImporter : IBlockImporter
         return DeferForParentPayload(signedBlock, blockRoot, parent.AncestorRoot, parentDeferred: true);
     }
 
-    private string? CheckProposal(SignedBeaconBlockGloas signedBlock, BeaconStateGloas state)
+    private string? CheckProposal(SignedBeaconBlockGloas signedBlock, BeaconStateGloas state, bool? proposerSignatureValid)
     {
         BeaconBlockGloas block = signedBlock.Message!;
         try
@@ -988,7 +1068,9 @@ public sealed class BlockImporter : IBlockImporter
                 return $"proposer {block.ProposerIndex} is not the expected proposer";
             }
 
-            return GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, _pubkeys) ? null : "invalid proposer signature";
+            if (block.ProposerIndex >= (ulong)state.ReadOnlyValidators.Length)
+                return $"Block proposer index {block.ProposerIndex} is not a validator index (registry size {state.ReadOnlyValidators.Length})";
+            return (proposerSignatureValid ?? GloasBlockProcessing.VerifyProposerSignature(state, signedBlock, _pubkeys)) ? null : "invalid proposer signature";
         }
         catch (BeaconStateException e) when (e.RejectGossip)
         {
@@ -1091,6 +1173,8 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public void OnSlotTick(ulong slot)
     {
+        if (_earlyFuluBlock is { } early && slot > early.State.Slot)
+            _earlyFuluBlock = null;
         ulong timeMilliseconds = (_runner.GenesisTime + slot * _spec.SecondsPerSlot) * 1000;
         if (timeMilliseconds > _runner.TimeMilliseconds)
         {
@@ -1175,14 +1259,14 @@ public sealed class BlockImporter : IBlockImporter
         bool gloasFinalized = SignedBeaconBlockCodec.IsGloasSlot(finalizedSlot, _spec);
         if (gloasFinalized && _states.GetGloasBlockState(finalized.Root) is { } gloasState)
         {
-            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.Validators!.Length);
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateGloas.Encode(gloasState), gloasState.ValidatorBuffer!.Items);
             _states.PinGloas(finalized.Root, gloasState);
             // No Fulu block can extend the lineage below a Gloas finalized checkpoint; release its hasher trees and registry index.
             _lineageCache = new EpochCache();
         }
         else if (!gloasFinalized && _states.GetBlockState(finalized.Root) is { } finalizedState)
         {
-            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateFulu.Encode(finalizedState), finalizedState.Validators!.Length);
+            PersistAnchor(finalized.Root, finalizedSlot, BeaconStateFulu.Encode(finalizedState), finalizedState.ValidatorBuffer!.Items);
         }
         else if (_logger.IsDebug)
         {
@@ -1208,14 +1292,12 @@ public sealed class BlockImporter : IBlockImporter
         }
     }
 
-    private void PersistAnchor(Hash256 root, ulong slot, byte[] stateSsz, int validatorCount)
+    private void PersistAnchor(Hash256 root, ulong slot, byte[] stateSsz, Validator[] validators)
     {
         _store.PutState(root, stateSsz);
         _store.SetAnchor(root, slot);
-        if (_pubkeys.Count >= validatorCount)
-        {
-            _pubkeys.Persist(_store, validatorCount);
-        }
+        _pubkeys.FinalizeRegistry(validators);
+        _pubkeys.Persist(_store, validators.Length);
     }
 
     /// <inheritdoc/>
@@ -1288,10 +1370,10 @@ public sealed class BlockImporter : IBlockImporter
     private ForkedBeaconState RequireSlashableIntersection(ulong[] first, ulong[] second)
     {
         ForkedBeaconState state = _runner.GetHeldHeadState();
-        Validator[] validators = state switch
+        ReadOnlySpan<Validator> validators = state switch
         {
-            ForkedBeaconState.OfFulu fulu => fulu.State.Validators!,
-            ForkedBeaconState.OfGloas gloas => gloas.State.Validators!,
+            ForkedBeaconState.OfFulu fulu => fulu.State.ReadOnlyValidators,
+            ForkedBeaconState.OfGloas gloas => gloas.State.ReadOnlyValidators,
             _ => throw new NotSupportedException("Unsupported head state"),
         };
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(state.Slot);
@@ -1494,7 +1576,7 @@ public sealed class BlockImporter : IBlockImporter
             // Above the head, clear up to the index's top slot; below it, the slots between this block and its child.
             ulong clearTo = childSlot is ulong child ? child - 1 : Math.Max(Math.Min(_canonicalIndexTopSlot, _clock.CurrentSlot + 1), node.Slot);
             bool skippedSlotsWereEmpty = true;
-            for (ulong slot = node.Slot + 1; slot <= clearTo; slot++)
+            foreach (ulong slot in _store.EnumerateCanonicalSlots(node.Slot + 1, clearTo))
             {
                 if (_store.TryGetCanonicalRoot(slot, out _))
                 {

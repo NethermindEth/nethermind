@@ -50,7 +50,7 @@ public static class GloasForkTransition
             StateRoots = pre.StateRoots,
             HistoricalRoots = pre.HistoricalRoots,
             Eth1Data = pre.Eth1Data,
-            Eth1DataVotes = pre.Eth1DataVotes,
+            VoteList = pre.VoteList.Clone(),
             Eth1DepositIndex = pre.Eth1DepositIndex,
             // [Modified in Gloas:EIP7688] (Validators/Balances/... retype to ProgressiveList; the
             // underlying CLR array is unaffected, so this is a plain copy either way)
@@ -153,21 +153,23 @@ public static class GloasForkTransition
     {
         List<Builder> builders = [.. state.Builders!];
         ulong index = GetIndexForNewBuilder(builders, BeaconStateAccessors.ComputeEpochAtSlot(state.Slot));
-        Builder builder = new()
-        {
-            Pubkey = pubkey,
-            Version = version,
-            ExecutionAddress = executionAddress,
-            Balance = amount,
-            DepositEpoch = BeaconStateAccessors.ComputeEpochAtSlot(slot),
-            WithdrawableEpoch = Presets.FarFutureEpoch,
-        };
+        Builder builder = CreateBuilder(pubkey, version, executionAddress, amount, slot);
         if (index < (ulong)builders.Count)
             builders[(int)index] = builder;
         else
             builders.Add(builder);
         state.Builders = [.. builders];
     }
+
+    internal static Builder CreateBuilder(BlsPublicKey pubkey, byte version, Address executionAddress, ulong amount, ulong slot) => new()
+    {
+        Pubkey = pubkey,
+        Version = version,
+        ExecutionAddress = executionAddress,
+        Balance = amount,
+        DepositEpoch = BeaconStateAccessors.ComputeEpochAtSlot(slot),
+        WithdrawableEpoch = Presets.FarFutureEpoch,
+    };
 
     /// <summary>
     /// Spec <c>onboard_builders_from_pending_deposits</c>: the only path, from the fork onward, that
@@ -177,8 +179,7 @@ public static class GloasForkTransition
     {
         HashSet<BlsPublicKey> validatorPubkeys = [];
         foreach (Validator validator in state.Validators!) validatorPubkeys.Add(validator.Pubkey);
-        HashSet<BlsPublicKey> builderPubkeys = [];
-        foreach (Builder builder in state.Builders!) builderPubkeys.Add(builder.Pubkey);
+        BuilderRegistryBatch builders = new(state.Builders!, BeaconStateAccessors.ComputeEpochAtSlot(state.Slot));
         Dictionary<BlsPublicKey, List<PendingDeposit>> uncheckedDeposits = [];
         HashSet<BlsPublicKey> pendingValidators = [];
         BeaconChainSpec signingSpec = spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
@@ -193,7 +194,8 @@ public static class GloasForkTransition
                 continue;
             }
 
-            if (!builderPubkeys.Contains(deposit.Pubkey))
+            int builderIndex = builders.Find(deposit.Pubkey);
+            if (builderIndex < 0)
             {
                 if (!IsBuilderWithdrawalCredential(deposit.WithdrawalCredentials!))
                 {
@@ -220,19 +222,16 @@ public static class GloasForkTransition
                 if (!DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
                     continue;
 
-                AddBuilderToRegistry(
-                    state,
+                Builder builder = CreateBuilder(
                     deposit.Pubkey,
                     Presets.PayloadBuilderVersion,
                     new Address(deposit.WithdrawalCredentials!.Bytes[12..]),
                     deposit.Amount,
                     deposit.Slot);
-                builderPubkeys.Add(deposit.Pubkey);
+                builders.Add(builder);
             }
             else
             {
-                Builder[] builders = state.Builders!;
-                int builderIndex = Array.FindIndex(builders, b => b.Pubkey.Equals(deposit.Pubkey));
                 builders[builderIndex] = new Builder
                 {
                     Pubkey = builders[builderIndex].Pubkey,
@@ -245,6 +244,7 @@ public static class GloasForkTransition
             }
         }
 
+        state.Builders = builders.ToArray();
         state.PendingDeposits = [.. kept];
     }
 

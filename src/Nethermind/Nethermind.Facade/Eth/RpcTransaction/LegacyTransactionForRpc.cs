@@ -5,7 +5,6 @@ using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -41,7 +40,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     /// <summary>Sets calldata through the legacy alias for <see cref="Input"/>.</summary>
     /// <remarks>
     /// Accepted during deserialization for compatibility with clients such as Prysm, but never serialized.
-    /// When JSON supplies both aliases, their non-null values must be equal; assignments in code update <see cref="Input"/> directly.
+    /// JSON retains both aliases for submission validation; calls prefer <see cref="Input"/>. Assignments in code update <see cref="Input"/> directly.
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
@@ -50,7 +49,7 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         private get => null;
         set
         {
-            if (_isDeserializing) _data = value ?? _data;
+            if (_isDeserializing) _data = value;
             else Input = value;
         }
     }
@@ -59,26 +58,37 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     private bool _isDeserializing;
 
     /// <remarks>
-    /// <see cref="Data"/> is an alias when deserializing: a request may set either or both, but both must be equal.
-    /// An explicit JSON null for either is the same as omitting it.
+    /// The last JSON assignment sets each alias, including null. A non-null input takes precedence over data;
+    /// submissions additionally require both non-null aliases to agree, as in Geth's setDefaults.
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get => _input; set => _input = value ?? _input; }
+    public byte[]? Input
+    {
+        get => _input ?? _data;
+        set
+        {
+            if (!_isDeserializing) _data = null;
+            _input = value;
+        }
+    }
 
     private byte[]? _input;
 
     void IJsonOnDeserializing.OnDeserializing() => _isDeserializing = true;
 
-    void IJsonOnDeserialized.OnDeserialized()
-    {
-        _isDeserializing = false;
-        if (_data is null) return;
-        if (Input is not null && !Input.AsSpan().SequenceEqual(_data))
-            throw new SafePublicMessageFormatException(RpcTransactionErrors.DataAndInputDiffer);
+    void IJsonOnDeserialized.OnDeserialized() => _isDeserializing = false;
 
-        Input = _data;
-        _data = null;
+    internal override bool HasConflictingCalldata => _data is not null && _input is not null && !_input.AsSpan().SequenceEqual(_data);
+
+    internal override string? GetSubmissionDataError(string? conversionError = null)
+    {
+        if (HasConflictingCalldata)
+            return RpcTransactionErrors.DataAndInputDiffer;
+        if (conversionError is not null) return conversionError;
+        if (Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
+            return RpcTransactionErrors.ContractCreationWithoutData;
+        return null;
     }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -136,9 +146,6 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
-        if (validateUserInput && Type?.SupportsFrames() != true && To is null && Input is null or { Length: 0 })
-            return RpcTransactionErrors.ContractCreationWithoutData;
-
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
@@ -162,19 +169,33 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
 
         if ((R?.IsZero == false || S?.IsZero == false) && (R is not null || S is not null))
         {
-            ulong v = 0;
-            if (V is not null)
-            {
-                if (V.Value > 1)
-                    v = V.Value.ToUInt64(null); // non protected
-                else if (!EthereumEcdsaExtensions.TryCalculateV(ChainId ?? 0, V.Value == 1, out v)) // protected
-                    return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
-            }
+            if (!TryGetSignatureV(out ulong v))
+                return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
+            // A signature carries a v of 27 or more: the request gave none, or one that is no y-parity either.
+            if (v < Signature.VOffset)
+                return RpcTransactionErrors.InvalidSignatureV;
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }
 
         return tx;
+    }
+
+    /// <summary>The <c>v</c> the transaction's signature carries for the request's <see cref="V"/>.</summary>
+    /// <returns>False when a y-parity <c>v</c> has no EIP-155 <c>v</c> for <see cref="ChainId"/>.</returns>
+    /// <remarks>A legacy request's <c>v</c> of 0 or 1 is a y-parity, protected for <see cref="ChainId"/> as in EIP-155.</remarks>
+    internal virtual bool TryGetSignatureV(out ulong v)
+    {
+        v = 0;
+        if (V is not { } value) return true;
+        if (value > 1)
+        {
+            // Non protected. No signature carries a v above a ulong; 0 has the caller report it as unusable.
+            v = value.IsUint64 ? value.ToUInt64(null) : 0;
+            return true;
+        }
+
+        return EthereumEcdsaExtensions.TryCalculateV(ChainId ?? 0, value == 1, out v); // protected
     }
 
     public override bool ShouldSetBaseFee() => GasPrice.IsPositive();

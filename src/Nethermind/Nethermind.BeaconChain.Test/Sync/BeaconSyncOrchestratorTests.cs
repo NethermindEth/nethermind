@@ -3,6 +3,7 @@
 
 using System.Diagnostics;
 using System.Net;
+using System.Net.Sockets;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -14,6 +15,7 @@ using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Test.P2P;
 using Nethermind.BeaconChain.Test.P2P.Gossip;
+using Nethermind.BeaconChain.Test.Storage;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -192,8 +194,11 @@ public partial class BeaconSyncOrchestratorTests
             harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(newTip));
             harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.GossipBlockItem(child));
             await harness.Orchestrator.ProcessQueuedAsync(token);
-            Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(child.ComputeMessageRoot()));
-            Assert.That(harness.Importer.Head.HeadRoot, Is.EqualTo(child.ComputeMessageRoot()));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(child.ComputeMessageRoot()));
+                Assert.That(harness.Importer.Head.HeadRoot, Is.EqualTo(child.ComputeMessageRoot()));
+            }
             if (delayPropagation)
             {
                 await propagationBlocked.Task.WaitAsync(token);
@@ -201,8 +206,11 @@ public partial class BeaconSyncOrchestratorTests
             }
             reply.TrySetResult();
             await Task.WhenAny(round, reported.Task).WaitAsync(token);
-            Assert.That(failures, Is.Empty, "the canonical peer must not be blamed for disagreeing with the superseded fork");
-            Assert.That(await EndsAsync(round, token), Is.True, "gossip progress retires the old round rather than retrying its stale anchor");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failures, Is.Empty, "the canonical peer must not be blamed for disagreeing with the superseded fork");
+                Assert.That(await EndsAsync(round, token), Is.True, "gossip progress retires the old round rather than retrying its stale anchor");
+            }
         }
         finally
         {
@@ -261,16 +269,22 @@ public partial class BeaconSyncOrchestratorTests
             await harness.Orchestrator.ProcessQueuedAsync(token);
             bool superseded = selectedHead || linked;
             if (superseded) Assert.That(await EndsAsync(round, token), Is.True);
-            Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo((superseded ? gossip : tip).ComputeMessageRoot()));
-            Assert.That(requestToken.IsCancellationRequested, Is.EqualTo(superseded));
-            Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(headSteps + 1), "the scheduled head step remains the only fork-choice computation");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo((superseded ? gossip : tip).ComputeMessageRoot()));
+                Assert.That(requestToken.IsCancellationRequested, Is.EqualTo(superseded));
+                Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(headSteps + 1), "the scheduled head step remains the only fork-choice computation");
+            }
             if (!superseded)
             {
                 harness.Orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(canonical, peer, requestToken));
                 await harness.Orchestrator.ProcessQueuedAsync(token);
-                Assert.That(harness.Importer.Known, Does.Contain(canonical.ComputeMessageRoot()), "the active canonical round's queued blocks remain importable");
-                Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(canonical.ComputeMessageRoot()));
-                Assert.That(requestToken.IsCancellationRequested, Is.False);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(harness.Importer.Known, Does.Contain(canonical.ComputeMessageRoot()), "the active canonical round's queued blocks remain importable");
+                    Assert.That(harness.Orchestrator.SyncTip.Root, Is.EqualTo(canonical.ComputeMessageRoot()));
+                    Assert.That(requestToken.IsCancellationRequested, Is.False);
+                }
             }
         }
         finally
@@ -383,7 +397,7 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(await EndsAsync(firstRound, token), Is.True);
         ulong acceptedSlot = harness.Orchestrator.SyncTip.Slot;
         await harness.Orchestrator.FeedRangeSyncRoundAsync(token);
-        await harness.Orchestrator.ProcessQueuedAsync(token);
+        await DrainQueuedWorkAsync(harness.Orchestrator, token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(acceptedSlot, Is.EqualTo(rejectedSlot - 1));
@@ -1134,6 +1148,27 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Replay_seeks_populated_slots_across_large_gaps_and_stops_at_the_clock([Values] bool sorted)
+    {
+        using CountingStatesColumnsDb db = new(sorted, BeaconChainDbColumns.BlockIndex);
+        BeaconChainStore store = new(db);
+        const ulong wallSlot = 2_000_000;
+        (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 101, 1_000_000, wallSlot + 1);
+        TestChain.Persist(store, anchor, anchorRoot, chain);
+        Harness harness = CreateHarness(store: store, wallSlot: wallSlot);
+        harness.Importer.Known.Add(anchorRoot);
+        db.Index.ResetCount();
+        long reads = db.Index.ReadsCount;
+
+        await harness.Orchestrator.ReplayStoredBlocksAsync(CancellationToken.None);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo((ulong[])[101, 1_000_000]));
+        Assert.That(db.Index.ReadsCount - reads, Is.LessThan(20));
+        Assert.That(db.Index.KeysRead, Is.LessThan(20), "empty slots must not cost index reads");
+    }
+
+    [Test]
     public async Task Metrics_replay_imports_canonical_store_blocks_without_network_and_stops_at_a_linkage_break()
     {
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
@@ -1299,7 +1334,10 @@ public partial class BeaconSyncOrchestratorTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1);
         TestChain.Persist(store, anchorBlock, anchorRoot, chain);
-        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
+        int discoveryPort;
+        using (UdpClient reservation = new(new IPEndPoint(IPAddress.Loopback, 0)))
+            discoveryPort = ((IPEndPoint)reservation.Client.LocalEndPoint!).Port;
+        await using BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = discoveryPort }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
         await using PeerBandTests.Node node = PeerBandTests.CreateNode();
         BeaconP2P p2p = node.P2P;
         Harness harness = CreateHarness(store: store, discovery: discovery, p2p: p2p, peerManager: new PeerManager(p2p, node.Config, node.StatusHolder, LimboLogs.Instance));
@@ -1314,6 +1352,9 @@ public partial class BeaconSyncOrchestratorTests
         await Assert.CatchAsync<OperationCanceledException>(() => harness.Orchestrator.RunAsync(new ForkedBeaconState.OfFulu(new BeaconStateFulu()), new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot, cts.Token));
 
         Assert.That(duringReplay, Is.EqualTo((true, true)), "the stored block was replayed with the host listening and discovery running");
+        using UdpClient rebound = new();
+        Assert.That(() => rebound.Client.Bind(new IPEndPoint(IPAddress.Any, discoveryPort)), Throws.Nothing,
+            "ending the run releases discovery before the node is disposed");
     }
 
     [TestCase(65UL, 32UL, false, true, ExpectedResult = true)]
@@ -1383,8 +1424,11 @@ public partial class BeaconSyncOrchestratorTests
         bool roundEnded = await Task.WhenAny(round, Task.Delay(TimeSpan.FromSeconds(childOfHead ? 5 : 1), token)) == round;
         await stopRound.CancelAsync();
 
-        Assert.That(roundEnded, Is.EqualTo(childOfHead));
-        Assert.That(await EndsAsync(round, token), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundEnded, Is.EqualTo(childOfHead));
+            Assert.That(await EndsAsync(round, token), Is.True);
+        }
     }
 
     [Test]
@@ -1459,6 +1503,12 @@ public partial class BeaconSyncOrchestratorTests
         return (harness, peer, chain);
     }
 
+    internal static async Task DrainQueuedWorkAsync(BeaconSyncOrchestrator orchestrator, CancellationToken token)
+    {
+        while (orchestrator.QueuedWorkCount > 0)
+            await orchestrator.ProcessQueuedAsync(token);
+    }
+
     private static async Task CompleteWorkerAsync(BeaconSyncOrchestrator orchestrator, CancellationToken token)
     {
         orchestrator.WorkWriter.Complete();
@@ -1502,7 +1552,8 @@ public partial class BeaconSyncOrchestratorTests
         bool filterPoolByHead = false,
         HeadSnapshotHolder? headSnapshots = null,
         Func<Hash256, ForkedBeaconState?>? apiStateReader = null,
-        Func<CheckpointRef, ForkedBeaconState?>? apiCheckpointStateReader = null)
+        Func<CheckpointRef, ForkedBeaconState?>? apiCheckpointStateReader = null,
+        bool? blockSignature = true)
     {
         DateTime now = DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + wallSlot * Spec.SecondsPerSlot).AddSeconds(6);
         ManualTimestamper timestamper = new(now);
@@ -1540,7 +1591,7 @@ public partial class BeaconSyncOrchestratorTests
         orchestrator.ApiStateReader = apiStateReader;
         orchestrator.ApiCheckpointStateReader = apiCheckpointStateReader;
         orchestrator.Initialize(importer, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
-        rangeSync.VerifyBlockSignature = _ => Task.FromResult<bool?>(true);
+        rangeSync.VerifyBlockSignature = _ => Task.FromResult(blockSignature);
         return new Harness(orchestrator, importer, engine, pool, router, statusHolder, timestamper, envelopePool);
     }
 

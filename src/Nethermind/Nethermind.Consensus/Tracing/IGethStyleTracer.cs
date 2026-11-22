@@ -10,7 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.GethStyle;
-using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Tracing;
 
@@ -33,7 +33,7 @@ public interface IGethStyleTracer
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
     GethLikeTxTrace? Trace(ulong blockNumber, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? Trace(Hash256 blockHash, int txIndex, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
-    GethLikeTxTrace? Trace(Rlp blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    GethLikeTxTrace? Trace(byte[] blockRlp, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? Trace(Block block, Hash256 txHash, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     GethLikeTxTrace? Trace(BlockParameter blockParameter, Transaction tx, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
 
@@ -43,7 +43,7 @@ public interface IGethStyleTracer
     /// an empty collection (nothing is buffered).
     /// </summary>
     IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
-    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Rlp blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
+    IReadOnlyCollection<GethLikeTxTrace> TraceBlock(byte[] blockRlp, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block block, GethTraceOptions options, CancellationToken cancellationToken, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null);
     /// <summary>
     /// Replays <paramref name="blockHash"/> and returns the world-state root after each transaction
@@ -54,6 +54,14 @@ public interface IGethStyleTracer
     /// <param name="cancellationToken">Cooperative cancellation.</param>
     /// <returns>Post-tx state roots in execution order; failed transactions still produce a root.</returns>
     IReadOnlyCollection<Hash256> TraceBlockIntermediateRoots(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);
+    /// <summary>
+    /// Collects storage slots of <paramref name="address"/> as they are before transaction <paramref name="txIndex"/>
+    /// of <paramref name="block"/> runs, replaying the preceding transactions on the parent state.
+    /// </summary>
+    /// <param name="startKey">The hashed slot key to start at.</param>
+    /// <param name="limit">The maximum number of slots to collect.</param>
+    /// <exception cref="System.NotSupportedException">The chain's block processor cannot stop the replay before a transaction.</exception>
+    StorageRangeVisitor StorageRangeAt(Block block, int txIndex, Address address, in ValueHash256 startKey, int limit, CancellationToken cancellationToken);
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);
     IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken);
 }

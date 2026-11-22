@@ -15,12 +15,15 @@ internal sealed class FaultyColumnsDb : TestColumnsDb
     public bool FailReads { set => _sidecars.FailReads = value; }
     public bool FailWrites { set => _sidecars.FailWrites = value; }
     public bool FailDeletes { set => _sidecars.FailDeletes = value; }
+    public int SidecarReads => _sidecars.ReadCount;
 
     // Callback runs after the next 40-byte record read, before its consumer continues.
     public Action? AfterNextRecordRead { set => _sidecars.AfterNextRecordRead = value; }
 
     // Callback blocks canonical-slot readers before their underlying read.
     public Action? BeforeCanonicalSlotRead { set => _canonicalIndex.BeforeSlotRead = value; }
+
+    public Action? BeforeCanonicalEnumeration { set => _canonicalIndex.BeforeEnumeration = value; }
 
     protected override IDb CreateColumn(BeaconChainDbColumns key) => key switch
     {
@@ -29,9 +32,16 @@ internal sealed class FaultyColumnsDb : TestColumnsDb
         _ => base.CreateColumn(key),
     };
 
-    private sealed class SlotReadHookMemDb : MemDb
+    private sealed class SlotReadHookMemDb : MemDb, IDb
     {
         public Action? BeforeSlotRead { get; set; }
+        public Action? BeforeEnumeration { get; set; }
+
+        public new IEnumerable<byte[]> GetAllKeys(bool ordered = false)
+        {
+            BeforeEnumeration?.Invoke();
+            return base.GetAllKeys(ordered);
+        }
 
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -46,6 +56,7 @@ internal sealed class FaultyColumnsDb : TestColumnsDb
 
     private sealed class FaultyMemDb : MemDb
     {
+        public int ReadCount { get; private set; }
         public bool FailReads { get; set; }
         public bool FailWrites { get; set; }
         public bool FailDeletes { get; set; }
@@ -53,6 +64,7 @@ internal sealed class FaultyColumnsDb : TestColumnsDb
 
         public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
+            ReadCount++;
             byte[]? value = FailReads ? throw new ObjectDisposedException("the data column table") : base.Get(key, flags);
             if (key.Length == 40 && AfterNextRecordRead is { } after)
             {

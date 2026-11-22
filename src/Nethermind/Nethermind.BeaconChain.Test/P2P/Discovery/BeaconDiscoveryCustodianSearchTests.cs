@@ -94,8 +94,11 @@ public class BeaconDiscoveryCustodianSearchTests
         int converted = 0;
         await foreach (BeaconPeerCandidate candidate in discovery.OfferByCustodyAsync(nodes.Reader, Convert, CancellationToken.None))
         {
-            Assert.That(candidate.PeerId, Is.EqualTo("peer"));
-            Assert.That(converted, Is.LessThanOrEqualTo(BeaconDiscoveryQueueCapacity));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(candidate.PeerId, Is.EqualTo("peer"));
+                Assert.That(converted, Is.LessThanOrEqualTo(BeaconDiscoveryQueueCapacity));
+            }
             break;
         }
 
@@ -116,8 +119,11 @@ public class BeaconDiscoveryCustodianSearchTests
         discovery.DialHistory.Record("ipv4", false);
         Assert.That(discovery.SelectDialableAddress(candidate)!.Multiaddress, Is.EqualTo("ipv6"));
         discovery.DialHistory.Record("ipv6", false);
-        Assert.That(discovery.SelectDialableAddress(candidate with { EnrSequence = 2 }), Is.Null);
-        Assert.That(discovery.SelectDialableAddress(candidate with { Addresses = ["new-address"] })!.Multiaddress, Is.EqualTo("new-address"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(discovery.SelectDialableAddress(candidate with { EnrSequence = 2 }), Is.Null);
+            Assert.That(discovery.SelectDialableAddress(candidate with { Addresses = ["new-address"] })!.Multiaddress, Is.EqualTo("new-address"));
+        }
         clock.Add(PeerDialHistory.InitialBackoff * 1.2);
         Assert.That(discovery.SelectDialableAddress(candidate), Is.Not.Null);
         discovery.DialHistory.Record("ipv6", true);

@@ -3,7 +3,6 @@
 
 using Microsoft.AspNetCore.Http;
 using Nethermind.BeaconChain.StateTransition;
-using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Api.Common;
@@ -23,20 +22,6 @@ internal readonly record struct ResolvedBlock(Hash256 Root, ForkedSignedBeaconBl
     {
         ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Message!.StateRoot!,
         ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Message!.StateRoot!,
-        _ => throw UnknownShape(),
-    };
-
-    public BlsSignature Signature => Block switch
-    {
-        ForkedSignedBeaconBlock.OfFulu fulu => fulu.Block.Signature,
-        ForkedSignedBeaconBlock.OfGloas gloas => gloas.Block.Signature,
-        _ => throw UnknownShape(),
-    };
-
-    public Hash256 ComputeBodyRoot() => Block switch
-    {
-        ForkedSignedBeaconBlock.OfFulu fulu => SszRoots.HashTreeRoot(fulu.Block.Message!.Body!),
-        ForkedSignedBeaconBlock.OfGloas gloas => SszRoots.HashTreeRoot(gloas.Block.Message!.Body!),
         _ => throw UnknownShape(),
     };
 

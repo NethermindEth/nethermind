@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -70,7 +71,33 @@ public static class BlobGasCalculator
             && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, blobGasPriceUpdateFraction, out feePerBlobGas);
     }
 
+    private static FeePerBlobGasMemo? _lastFeePerBlobGas;
+
     public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, ulong blobGasPriceUpdateFraction, out UInt256 feePerBlobGas)
+    {
+        UInt256 minBlobGasPrice = Eip4844Constants.MinBlobGasPrice;
+        FeePerBlobGasMemo? last = Volatile.Read(ref _lastFeePerBlobGas);
+        if (last is not null && last.Matches(excessBlobGas, blobGasPriceUpdateFraction, in minBlobGasPrice))
+        {
+            feePerBlobGas = last.FeePerBlobGas;
+            return last.Success;
+        }
+
+        bool success = CalculateFeePerBlobGas(excessBlobGas, blobGasPriceUpdateFraction, in minBlobGasPrice, out feePerBlobGas);
+        Volatile.Write(ref _lastFeePerBlobGas, new FeePerBlobGasMemo(excessBlobGas, blobGasPriceUpdateFraction, minBlobGasPrice, feePerBlobGas, success));
+        return success;
+    }
+
+    private sealed class FeePerBlobGasMemo(ulong excessBlobGas, ulong updateFraction, UInt256 minBlobGasPrice, UInt256 feePerBlobGas, bool success)
+    {
+        public readonly UInt256 FeePerBlobGas = feePerBlobGas;
+        public readonly bool Success = success;
+
+        public bool Matches(ulong excess, ulong fraction, in UInt256 minPrice) =>
+            excess == excessBlobGas && fraction == updateFraction && minPrice == minBlobGasPrice;
+    }
+
+    private static bool CalculateFeePerBlobGas(ulong excessBlobGas, ulong blobGasPriceUpdateFraction, in UInt256 minBlobGasPrice, out UInt256 feePerBlobGas)
     {
         static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
         {
@@ -115,7 +142,7 @@ public static class BlobGasCalculator
         }
 
         UInt256 denominator = blobGasPriceUpdateFraction;
-        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, denominator, out feePerBlobGas);
+        return !FakeExponentialOverflow(minBlobGasPrice, excessBlobGas, denominator, out feePerBlobGas);
     }
 
     public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)

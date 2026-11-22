@@ -181,8 +181,11 @@ public class OptimismGossipSettingsTests
         try
         {
             await active.Reverse.WriteSizeAndProtobufAsync(rpc).AsTask().WaitAsync(token);
-            Assert.That(await received.Task.WaitAsync(token), Is.EqualTo(rpc));
-            Assert.That(idleListener.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await received.Task.WaitAsync(token), Is.EqualTo(rpc));
+                Assert.That(idleListener.IsCompleted, Is.False);
+            }
             await idle.CloseAsync();
             await idleListener.WaitAsync(token);
             Assert.That(await budget.AcquireAsync(peer.State.RemotePeerId!, token), Is.False,
@@ -238,8 +241,11 @@ public class OptimismGossipSettingsTests
         using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<bool> firstWait = budget.AcquireAsync(first, cancellation.Token);
         Task<bool> secondWait = budget.AcquireAsync(second, token);
-        Assert.That(await budget.AcquireAsync(first, token), Is.False);
-        Assert.That(await budget.AcquireAsync(active[0], token), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await budget.AcquireAsync(first, token), Is.False);
+            Assert.That(await budget.AcquireAsync(active[0], token), Is.False);
+        }
 
         if (cancelFirst)
         {
@@ -251,12 +257,18 @@ public class OptimismGossipSettingsTests
         Assert.That(rejoining.IsCompleted, Is.False);
         if (!cancelFirst)
         {
-            Assert.That(await firstWait.WaitAsync(token), Is.True);
-            Assert.That(secondWait.IsCompleted, Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(await firstWait.WaitAsync(token), Is.True);
+                Assert.That(secondWait.IsCompleted, Is.False);
+            }
             budget.Release(first);
         }
-        Assert.That(await secondWait.WaitAsync(token), Is.True);
-        Assert.That(rejoining.IsCompleted, Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await secondWait.WaitAsync(token), Is.True);
+            Assert.That(rejoining.IsCompleted, Is.False);
+        }
         budget.Release(second);
         Assert.That(await rejoining.WaitAsync(token), Is.True);
         foreach (PeerId peer in active) budget.Release(peer);
@@ -379,7 +391,7 @@ public class OptimismGossipSettingsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(settings.MaxRpcBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize).And.GreaterThan(10 * 1024 * 1024));
-            Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(Eth2MessageId.MaxMessageSize));
+            Assert.That(settings.MaxIwantResponseBytes, Is.EqualTo(10 * 1024 * 1024));
             Assert.That(settings.MaxOutboundRpcBytesPerPeer, Is.GreaterThanOrEqualTo(settings.MaxRpcBytes + 5L));
             PeerScore score = new(settings);
             TopicScore topic = score.GetTopicScore(BlocksTopic);

@@ -21,7 +21,7 @@ public class XdcChainSpecTests
     {
         XdcChainSpecEngineParameters engineParameters = EngineParameters(LoadChainSpec(chainSpecFile));
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(engineParameters.MasternodeVotingContract, Is.EqualTo(new Address("0x0000000000000000000000000000000000000088")));
             Assert.That(engineParameters.BlockSignerContract, Is.EqualTo(new Address("0x0000000000000000000000000000000000000089")));
@@ -30,7 +30,7 @@ public class XdcChainSpecTests
             Assert.That(engineParameters.TradingStateAddressBinary, Is.EqualTo(new Address("0x0000000000000000000000000000000000000092")));
             Assert.That(engineParameters.XDCXLendingAddressBinary, Is.EqualTo(new Address("0x0000000000000000000000000000000000000093")));
             Assert.That(engineParameters.XDCXLendingFinalizedTradeAddressBinary, Is.EqualTo(new Address("0x0000000000000000000000000000000000000094")));
-        });
+        }
     }
 
     [Test]
@@ -44,7 +44,7 @@ public class XdcChainSpecTests
         ulong minerDisable = engineParameters.TIPXDCXMinerDisable!.Value;
         ulong receiverDisable = engineParameters.TIPXDCXReceiverDisable!.Value;
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(specProvider.GetXdcSpec(activation - 1).IsTIPXDCXMiner, Is.False);
             Assert.That(specProvider.GetXdcSpec(activation).IsTIPXDCXMiner, Is.True);
@@ -55,7 +55,7 @@ public class XdcChainSpecTests
             Assert.That(specProvider.GetXdcSpec(activation).IsTIPXDCXReceiver, Is.True);
             Assert.That(specProvider.GetXdcSpec(receiverDisable - 1).IsTIPXDCXReceiver, Is.True);
             Assert.That(specProvider.GetXdcSpec(receiverDisable).IsTIPXDCXReceiver, Is.False);
-        });
+        }
     }
 
     // Apothem sets the post-TIPUpgradePenalty parole window in its v2 config and mainnet does not, where

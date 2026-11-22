@@ -15,6 +15,88 @@ public class ProtoArrayPayloadStatusTests
     private static readonly CheckpointRef Anchor = new(0, GetRoot(0));
     private static readonly Hash256 OtherHash = new("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee");
 
+    [Test]
+    public void Gloas_filter_ancestry_matches_individual_queries_after_growth_finality_and_pruning([Values(64, 1024)] int length)
+    {
+        ProtoArray tree = new(SlotsPerEpoch, 40) { PruneThreshold = 0 };
+        HashSet<Hash256> payloads = [];
+        AddThrough(length);
+        Check(new CheckpointRef(1, GetRoot(32)));
+        Check(new CheckpointRef(2, GetRoot(64)));
+        Check(new CheckpointRef(1, OtherHash));
+        Check(Anchor);
+        AddThrough(length + 64);
+        Check(new CheckpointRef(1, GetRoot(32)));
+        tree.Nodes[^1].ExecutionStatus = ExecutionStatus.Invalid;
+        tree.Prune(GetRoot(32));
+        Check(new CheckpointRef(2, GetRoot(64)));
+
+        void AddThrough(int last)
+        {
+            for (int i = tree.Nodes.Count; i <= last; i++)
+            {
+                Hash256 root = GetRoot((ulong)i);
+                Hash256? parent = i == 0 ? null : GetRoot((ulong)i - 1);
+                tree.OnBlock(Block((ulong)i, root, parent, isGloas: true, parentBlockHash: parent), (ulong)last, Anchor, Anchor);
+                payloads.Add(root);
+            }
+        }
+
+        void Check(CheckpointRef finalized)
+        {
+            bool[,] filtered = tree.FilterNodeTree((ulong)length + 64, Anchor, finalized, payloads);
+            using System.IDisposable scope = Assert.EnterMultipleScope();
+            for (int i = 0; i < tree.Nodes.Count; i++)
+            {
+                ProtoNode node = tree.Nodes[i];
+                bool expected = node.ExecutionStatus != ExecutionStatus.Invalid
+                    && (finalized.Epoch == 0 || tree.IsFinalizedCheckpointOrDescendant(node.Root, finalized));
+                Assert.That(filtered[i, (int)ForkChoicePayloadStatus.Empty], Is.EqualTo(expected), $"node {i}, finalized {finalized}");
+            }
+        }
+    }
+
+    [Test]
+    public void Gloas_filter_does_not_propagate_a_parents_checkpoint_shortcut([Range(0, 3)] int shortcut)
+    {
+        CheckpointRef finalized = new(1, OtherHash);
+        ProtoArray tree = new(SlotsPerEpoch, 40);
+        tree.OnBlock(Block(0, GetRoot(0), null, isGloas: true), 35, Anchor, Anchor);
+        ProtoBlock parent = Block(33, GetRoot(1), GetRoot(0), isGloas: true, parentBlockHash: GetRoot(0));
+        parent = shortcut switch
+        {
+            0 => parent with { FinalizedCheckpoint = finalized },
+            1 => parent with { JustifiedCheckpoint = finalized },
+            2 => parent with { UnrealizedFinalizedCheckpoint = finalized },
+            _ => parent with { UnrealizedJustifiedCheckpoint = finalized },
+        };
+        tree.OnBlock(parent, 35, Anchor, Anchor);
+        tree.OnBlock(Block(35, GetRoot(2), GetRoot(1), isGloas: true, parentBlockHash: GetRoot(1)), 35, Anchor, Anchor);
+
+        bool[,] filtered = tree.FilterNodeTree(35, Anchor, finalized, new HashSet<Hash256> { GetRoot(0), GetRoot(1), GetRoot(2) });
+        int count = tree.Nodes.Count;
+        tree.ApplyScoreChanges(new ScoreDeltas(new long[count], new long[count], new long[count]), Anchor, finalized,
+            JustifiedBalances.FromEffectiveBalances([]), Hash256.Zero, 35);
+
+        using System.IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(tree.Nodes[1].BestChild, Is.Null, "the child cannot inherit the parent's checkpoint shortcut during scoring");
+        Assert.That(filtered[1, (int)ForkChoicePayloadStatus.Empty], Is.True);
+        Assert.That(filtered[2, (int)ForkChoicePayloadStatus.Empty], Is.False);
+    }
+
+    [Test]
+    public void Gloas_filter_preserves_a_mid_epoch_bootstrap_checkpoint()
+    {
+        CheckpointRef bootstrap = new(1, GetRoot(0));
+        ProtoArray tree = new(SlotsPerEpoch, 40);
+        tree.OnBlock(Block(33, GetRoot(0), null, isGloas: true) with { FinalizedCheckpoint = bootstrap }, 35, Anchor, bootstrap);
+        tree.OnBlock(Block(35, GetRoot(1), GetRoot(0), isGloas: true, parentBlockHash: GetRoot(0)), 35, Anchor, bootstrap);
+
+        bool[,] filtered = tree.FilterNodeTree(35, Anchor, bootstrap, new HashSet<Hash256> { GetRoot(0), GetRoot(1) });
+
+        Assert.That(filtered[1, (int)ForkChoicePayloadStatus.Empty], Is.True);
+    }
+
     private static ProtoBlock Block(ulong slot, Hash256 root, Hash256? parent, ExecutionStatus status = ExecutionStatus.Optimistic, bool isGloas = false, Hash256? parentBlockHash = null) =>
         CreateProtoBlock(slot, root, parent, Anchor, Anchor, status, root,
             isGloas: isGloas, parentBlockHash: parentBlockHash);
@@ -28,6 +110,35 @@ public class ProtoArrayPayloadStatusTests
     {
         fc.SetProposerBoostRoot(boost ?? Hash256.Zero);
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances(balances), null, slot);
+    }
+
+    [Test]
+    public void Repeated_heads_apply_status_balance_and_equivocation_changes()
+    {
+        ProtoArrayForkChoice fc = NewForkChoice();
+        fc.ProcessBlock(Block(1, GetRoot(1), GetRoot(0), isGloas: true), 2, Anchor, Anchor);
+        JustifiedBalances balances = JustifiedBalances.FromEffectiveBalances([7]);
+        HashSet<ulong> equivocators = [];
+        fc.ProcessAttestation(0, GetRoot(1), 2, 0, payloadPresent: true);
+        Check(7, 0, 7);
+        Check(7, 0, 7);
+        fc.ProcessAttestation(0, GetRoot(1), 3, 0, payloadPresent: false);
+        Check(7, 7, 0);
+        Check(7, 7, 0);
+        balances = JustifiedBalances.FromEffectiveBalances([11]);
+        Check(11, 11, 0);
+        equivocators.Add(0);
+        Check(0, 0, 0);
+        Check(0, 0, 0);
+        equivocators.Clear();
+        Check(11, 11, 0);
+
+        void Check(ulong weight, ulong empty, ulong full)
+        {
+            fc.GetHead(Anchor, Anchor, balances, equivocators, 4);
+            ProtoNode node = Node(fc, GetRoot(1));
+            Assert.That((node.Weight, node.EmptyWeight, node.FullWeight), Is.EqualTo((weight, empty, full)));
+        }
     }
 
     [TestCase(2ul, true, ForkChoicePayloadStatus.Full, TestName = "Later slot, index 1: FULL")]

@@ -46,6 +46,8 @@ namespace Nethermind.TxPool
 
         public void RemovePeer(PublicKey nodeId) { }
 
+        public void RemovePeer(ITxPoolPeer peer) { }
+
         public bool ContainsTx(Hash256 hash, TxType txType) => false;
 
         public long GetRemovalGeneration(Address sender) => 0;
@@ -93,15 +95,15 @@ namespace Nethermind.TxPool
 
         public bool TryGetBlobAndProofV1(byte[] blobVersionedHash,
             [NotNullWhen(true)] out byte[]? blob,
-            [NotNullWhen(true)] out byte[][]? cellProofs)
+            out ReadOnlyMemory<byte> cellProofs)
         {
             blob = null;
-            cellProofs = null;
+            cellProofs = default;
             return false;
         }
 
         public int TryGetBlobsAndProofsV1(byte[][] requestedBlobVersionedHashes,
-            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte[]>> proofs) => 0;
+            Span<byte[]?> blobs, Span<ReadOnlyMemory<byte>> proofs) => 0;
 
         public bool TryGetPendingBlobCellMask(in ValueHash256 hash, out BlobCellMask availableMask)
         {

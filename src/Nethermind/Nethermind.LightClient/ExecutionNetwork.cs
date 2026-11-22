@@ -13,6 +13,8 @@ internal sealed record ExecutionNetwork(string Name, string ChainSpecFile, Hash2
 {
     internal Module? ExecutionRules { get; init; }
     internal string? StaticPeers { get; init; }
+    internal bool IsGnosis { get; init; }
+    internal bool UseDefaultDiscv5Bootnodes { get; init; }
 
     private const string EthereumDnsTree = "enrtree://AKA3AM6LPBYEUDMVNU3BSVQJ5AD45Y7YPOHJLEF6W26QOE4VTUDPE@snap.{0}.ethdisco.net";
 
@@ -21,7 +23,8 @@ internal sealed record ExecutionNetwork(string Name, string ChainSpecFile, Hash2
         "mainnet" => Known(name, "foundation.json", KnownHashes.MainnetGenesis),
         "hoodi" => Known(name, "hoodi.json", KnownHashes.HoodiGenesis),
         "sepolia" => Known(name, "sepolia.json", KnownHashes.SepoliaGenesis),
-        _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia.", nameof(name)),
+        "gnosis" => new(name, "gnosis.json", KnownHashes.GnosisGenesis, null, []) { IsGnosis = true },
+        _ => throw new ArgumentException("Supported networks: mainnet, hoodi, sepolia, gnosis.", nameof(name)),
     };
 
     internal static ExecutionNetwork Custom(string name, string genesisFile, Hash256 genesisHash, string? discoveryDns,
@@ -40,5 +43,5 @@ internal sealed record ExecutionNetwork(string Name, string ChainSpecFile, Hash2
     }
 
     private static ExecutionNetwork Known(string name, string chainSpecFile, Hash256 genesisHash) =>
-        new(name, chainSpecFile, genesisHash, string.Format(EthereumDnsTree, name), []);
+        new(name, chainSpecFile, genesisHash, string.Format(EthereumDnsTree, name), []) { UseDefaultDiscv5Bootnodes = true };
 }

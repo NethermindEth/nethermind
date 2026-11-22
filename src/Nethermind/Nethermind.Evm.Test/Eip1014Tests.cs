@@ -70,8 +70,11 @@ namespace Nethermind.Evm.Test
 
             Execute(callCode);
 
-            Assert.That(TestState.TryGetAccount(expectedAddress, out AccountStruct account), Is.True);
-            Assert.That(account.Balance, Is.EqualTo(1.Ether));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TestState.TryGetAccount(expectedAddress, out AccountStruct account), Is.True);
+                Assert.That(account.Balance, Is.EqualTo(1.Ether));
+            }
             AssertEip1014(expectedAddress, []);
             if (withStorage)
             {
@@ -112,12 +115,15 @@ namespace Nethermind.Evm.Test
 
             Address delegateTarget = new("0x0000000000000000000000000000000000000042");
             TestState.CreateAccount(expectedAddress, UInt256.Zero);
-            CodeInfoRepository.SetDelegation(delegateTarget, expectedAddress, SpecProvider.GetSpec(MainnetSpecProvider.OsakaActivation));
+            CodeInfoRepository.SetDelegation(TestState, delegateTarget, expectedAddress, SpecProvider.GetSpec(MainnetSpecProvider.OsakaActivation));
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
             Execute(MainnetSpecProvider.OsakaActivation, callCode);
-            Assert.That(TestState.GetCode(expectedAddress).ToArray(), Is.Not.Empty, "delegation code should be preserved");
-            Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCodeSpan(expectedAddress)), Is.True, "original delegation should remain");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(TestState.GetCode(expectedAddress).ToArray(), Is.Not.Empty, "delegation code should be preserved");
+                Assert.That(Eip7702Constants.IsDelegatedCode(TestState.GetCodeSpan(expectedAddress)), Is.True, "original delegation should remain");
+            }
         }
 
         /// <summary>

@@ -31,8 +31,11 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlockNumber + 1));
-        Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0)); // merge block number shouldn't affect transition blocks
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(terminalBlockNumber + 1));
+            Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0)); // merge block number shouldn't affect transition blocks
+        }
     }
 
     [Test]
@@ -43,11 +46,14 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(path);
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(101));
-        Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo((UInt256)10));
-        Assert.That(chainSpec.MergeForkIdBlockNumber, Is.EqualTo(72));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(101));
+            Assert.That(chainSpec.TerminalTotalDifficulty, Is.EqualTo((UInt256)10));
+            Assert.That(chainSpec.MergeForkIdBlockNumber, Is.EqualTo(72));
 
-        Assert.That(provider.TransitionActivations, Has.Member((ForkActivation)72)); // MergeForkIdBlockNumber should affect transition blocks
+            Assert.That(provider.TransitionActivations, Has.Member((ForkActivation)72)); // MergeForkIdBlockNumber should affect transition blocks
+        }
         Assert.That(provider.TransitionActivations, Has.No.Member((ForkActivation)100)); // merge block number shouldn't affect transition blocks
         Assert.That(provider.TransitionActivations, Has.No.Member((ForkActivation)101)); // merge block number shouldn't affect transition blocks
     }
@@ -62,8 +68,11 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         };
 
         ChainSpecBasedSpecProvider provider = new(chainSpec);
-        Assert.That(provider.MergeBlockNumber, Is.EqualTo(null));
-        Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.MergeBlockNumber, Is.EqualTo(null));
+            Assert.That(provider.TransitionActivations.Length, Is.EqualTo(0));
+        }
     }
 
     [Test]

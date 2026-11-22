@@ -149,6 +149,8 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         message.StateRoot = SszRoots.HashTreeRoot(state);
 
         Hash256 root = SszRoots.HashTreeRoot(message);
+        Hash256 proposerDomain = state.GetDomain(DomainType.BeaconProposer, Spec.GetEpoch(message.Slot));
+        block.Signature = Sign(ValidatorKey((int)message.ProposerIndex), Domains.ComputeSigningRoot(root, proposerDomain));
         BeaconStateGloas frozen = state.Clone();
         _gloasStates[root] = frozen;
         return new ChainBlock(block, root, frozen);

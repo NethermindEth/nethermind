@@ -734,8 +734,11 @@ public class ColumnGossipRouterGloasTests
         List<MessageValidity> given = [];
         GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
 
-        Assert.That(router.Handle(Column, true, Encode(sidecar), verdict, DeliveringPeer), Is.EqualTo(MessageValidity.Ignored));
-        Assert.That((given.Count, verdict.IsHandedOff), Is.EqualTo((0, true)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(router.Handle(Column, true, Encode(sidecar), verdict, DeliveringPeer), Is.EqualTo(MessageValidity.Ignored));
+            Assert.That((given.Count, verdict.IsHandedOff), Is.EqualTo((0, true)));
+        }
         SignedBeaconBlockGloas namedBlock = CreateMinimalGloasBlock(wrongSlot ? BlockSlot + 1 : BlockSlot);
         namedBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = DataColumnSidecarGloasTestFixture.Commitments();
         store!.PutForkedBlock(UnknownRoot, new ForkedSignedBeaconBlock.OfGloas(namedBlock));
@@ -860,6 +863,30 @@ public class ColumnGossipRouterGloasTests
     }
 
     [Test]
+    public void Completing_a_verdict_reopens_one_place_for_its_root_and_column()
+    {
+        (ColumnGossipRouter router, _) = Create();
+        byte[] message = Encode(Sidecar(root: UnknownRoot));
+        GossipVerdict[] held = new GossipVerdict[DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey];
+        foreach (ref GossipVerdict verdict in held.AsSpan())
+        {
+            verdict = new(static _ => true, null);
+            PeerId source = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+            router.Handle(Column, true, message, verdict, source);
+            Assert.That(verdict.IsHandedOff, Is.True);
+        }
+
+        GossipVerdict next = new(static _ => true, null);
+        router.Handle(Column, true, message, next, DeliveringPeer);
+        Assert.That(next.IsHandedOff, Is.False);
+        held[0].Abandon();
+        router.Handle(Column, true, message, next, DeliveringPeer);
+        Assert.That(next.IsHandedOff, Is.True);
+        foreach (GossipVerdict verdict in held) verdict.Abandon();
+        next.Abandon();
+    }
+
+    [Test]
     public void Pending_gloas_columns_are_bounded_per_peer_and_subnet()
     {
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();
@@ -871,12 +898,12 @@ public class ColumnGossipRouterGloasTests
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(first.IsHandedOff, Is.True);
         Assert.That(second.IsHandedOff, Is.False);
-        Assert.That(pool.PendingGloasCount, Is.EqualTo(1));
+        Assert.That(pool.PendingGloasCount, Is.EqualTo(2), "a candidate beyond the verdict allowance remains available for recovery");
         first.Abandon();
         router.Handle(Column, true, Encode(Sidecar(root: Hash256.Zero)), second, DeliveringPeer);
         Assert.That(second.IsHandedOff, Is.True, "abandonment releases the peer's queue allowance");
         second.Abandon();
-        Assert.That(pool.PendingGloasCount, Is.Zero);
+        Assert.That(pool.PendingGloasCount, Is.EqualTo(1), "the candidate without a retained verdict remains available for recovery");
     }
 
     private static SszKzgCommitment DistinctProof(int variant)

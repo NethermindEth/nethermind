@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Tracing;
 
 /// <summary>Checks cancellation in tracer callbacks, never between an instruction's start and its completion.</summary>
 /// <remarks>Wrap the complete tracer graph so cancellation cannot interrupt delivery to sibling observers.</remarks>
-public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter, IFrameTxReceiptTracer
+public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default) : ITxTracer, ITxTracerWrapper, IInstructionTracingFilter, IFrameTxReceiptTracer, ITxOutputTracingFilter
 {
     private readonly bool _isTracingReceipt;
     private readonly bool _isTracingActions;
@@ -47,6 +47,10 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     /// <inheritdoc/>
+    public void ReportFrameCodelessTarget() =>
+        _frameTxTracer?.ReportFrameCodelessTarget();
+
+    /// <inheritdoc/>
     public void ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex) =>
         _frameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
@@ -63,6 +67,9 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         && innerTracer is IInstructionTracingFilter filter
         ? filter.InstructionMask
         : UInt256.MaxValue;
+
+    /// <inheritdoc/>
+    public bool IsTracingOutput => innerTracer is not ITxOutputTracingFilter { IsTracingOutput: false };
 
     public bool IsCancelable => true;
     public bool IsCancelled => token.IsCancellationRequested;
@@ -124,6 +131,9 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         get => _isTracingStack || innerTracer.IsTracingStack;
         init => _isTracingStack = value;
     }
+
+    // Pushes are also cancellation points while the inner tracer traces no instructions.
+    public bool IsTracingStackPushes => innerTracer.IsTracingInstructions ? innerTracer.IsTracingStackPushes : _isTracingInstructions;
 
     public bool IsTracingState
     {
@@ -436,13 +446,27 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public void ReportActionErrorDetails(string error) => ReportActionErrorDetails(error, actionOnly: false);
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error, bool actionOnly)
     {
         token.ThrowIfCancellationRequested();
         if (innerTracer.IsTracingActions)
         {
-            innerTracer.ReportActionErrorDetails(error);
+            if (actionOnly)
+                innerTracer.ReportActionErrorDetails(error, actionOnly: true);
+            else
+                innerTracer.ReportActionErrorDetails(error);
         }
+    }
+
+    /// <inheritdoc/>
+    public void ReportCodeDepositError(string error)
+    {
+        token.ThrowIfCancellationRequested();
+        if (innerTracer.IsTracingActions)
+            innerTracer.ReportCodeDepositError(error);
     }
 
     public void ReportActionRemainingGas(ulong gas)
@@ -463,7 +487,7 @@ public class CancellationTxTracer(ITxTracer innerTracer, CancellationToken token
         }
     }
 
-    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
         ThrowIfCancellationRequestedUnlessTracingInstructions();

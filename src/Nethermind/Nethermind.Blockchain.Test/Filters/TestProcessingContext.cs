@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using Autofac;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Evm.State;
@@ -48,6 +49,7 @@ internal class TestMainProcessingContext : IMainProcessingContext
     public IBlockProcessingQueue BlockProcessingQueue => null!;
     public IWorldState WorldState => null!;
     public IGenesisLoader GenesisLoader => null!;
+    public ILifetimeScope LifetimeScope => null!;
 
     public event EventHandler<TxProcessedEventArgs>? TransactionProcessed { add { } remove { } }
 

@@ -34,12 +34,11 @@ public static partial class BeaconStateClone
         StateRoots = (Hash256[]?)state.StateRoots?.Clone(),
         // Frozen since Capella; nothing in the transition writes it.
         HistoricalRoots = state.HistoricalRoots,
-        // ProcessEth1Data replaces the Eth1Data instance and reassigns the votes array wholesale.
+        // ProcessEth1Data replaces the Eth1Data instance.
         Eth1Data = state.Eth1Data,
-        Eth1DataVotes = state.Eth1DataVotes,
+        VoteList = state.VoteList.Clone(),
         Eth1DepositIndex = state.Eth1DepositIndex,
-        // Mutators replace Validator elements in place; the elements are immutable by convention.
-        Validators = (Validator[]?)state.Validators?.Clone(),
+        ValidatorBuffer = state.ValidatorBuffer?.Fork(),
         Balances = (ulong[]?)state.Balances?.Clone(),
         // ProcessRandao assigns a mix element in place.
         RandaoMixes = (Hash256[]?)state.RandaoMixes?.Clone(),
@@ -54,8 +53,7 @@ public static partial class BeaconStateClone
         PreviousJustifiedCheckpoint = state.PreviousJustifiedCheckpoint,
         CurrentJustifiedCheckpoint = state.CurrentJustifiedCheckpoint,
         FinalizedCheckpoint = state.FinalizedCheckpoint,
-        // ProcessInactivityUpdates writes scores in place.
-        InactivityScores = (ulong[]?)state.InactivityScores?.Clone(),
+        InactivityScoreBuffer = state.InactivityScoreBuffer?.Fork(),
         // Replaced wholesale at sync-committee period boundaries.
         CurrentSyncCommittee = state.CurrentSyncCommittee,
         NextSyncCommittee = state.NextSyncCommittee,

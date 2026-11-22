@@ -266,6 +266,15 @@ public class GuestOpcodeHandlerTests
             (3 + 3 + 3 + 6) + (3 + 3) + (3 + 3 + 6),
             [0, .. WordA, .. new byte[32], 0, .. WordA[..31], .. new byte[31]]);
 
+        yield return Succeeds("MSTORE and MLOAD at half-word offsets",
+            Code([
+                PUSH32, .. WordA, PUSH1, 4, MSTORE,
+                PUSH1, 4, MLOAD,
+                PUSH1, 0x44, MSTORE,
+                STOP]),
+            (3 + 3 + 3 + 6) + (3 + 3) + (3 + 3 + 6),
+            [.. new byte[4], .. WordA, .. new byte[32], .. WordA, .. new byte[28]]);
+
         yield return Succeeds("MLOAD past the active memory",
             Code(PUSH1, 0x40, MLOAD, PUSH1, 0, MSTORE, STOP),
             (3 + 3 + 9) + (3 + 3),
@@ -381,7 +390,7 @@ public class GuestOpcodeHandlerTests
         // which read as zero-padded.
         byte[] input = Enumerable.Range(1, 40).Select(static b => (byte)b).ToArray();
         byte[] padded = [.. input, .. new byte[256]];
-        foreach (int offset in (int[])[0, 8, 9, 39, 40, 200])
+        foreach (int offset in (int[])[0, 4, 8, 9, 39, 40, 200])
         {
             yield return Succeeds($"CALLDATALOAD at {offset}", Code(PUSH1, (byte)offset, CALLDATALOAD, PUSH1, 0, MSTORE, STOP),
                 3 + 3 + (3 + 3 + 3), padded[offset..(offset + 32)], input);
@@ -450,6 +459,10 @@ public class GuestOpcodeHandlerTests
 
         yield return Succeeds("NOT", Code([PUSH32, .. WordA, NOT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3 + 3),
             Word(~new BigInteger(WordA, isUnsigned: true, isBigEndian: true)));
+
+        yield return Succeeds("ADDMOD dispatches to PUSH2",
+            Code(PUSH1, 97, PUSH1, 16, PUSH1, 24, ADDMOD, PUSH2, 0, 0, MSTORE, STOP),
+            3 + 3 + 3 + 8 + (3 + 3 + 3), Word(40));
 
         // A zero modulus, one, and ones the operands reach or pass.
         BigInteger[] moduli = [0, 1, 97, ulong.MaxValue, new BigInteger(WordB, isUnsigned: true, isBigEndian: true)];
@@ -543,6 +556,9 @@ public class GuestOpcodeHandlerTests
         yield return Fails("KECCAK256 with one operand", Code(PUSH1, 0, KECCAK256), EvmExceptionType.StackUnderflow);
         yield return Fails("KECCAK256 at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, KECCAK256), EvmExceptionType.OutOfGas);
         yield return Fails("KECCAK256 of 2^32 bytes", Code(PUSH5, 1, 0, 0, 0, 0, PUSH1, 0, KECCAK256), EvmExceptionType.OutOfGas);
+        yield return Fails("POP POP after KECCAK256 of an empty range", Code(PUSH1, 0, PUSH2, 4, 0, KECCAK256, POP, POP), EvmExceptionType.StackUnderflow);
+        yield return Fails("POP POP after KECCAK256 of an empty range at 2^256 - 1",
+            Code([PUSH1, 0, PUSH32, .. Filled(32, 0xff), KECCAK256, POP, POP]), EvmExceptionType.StackUnderflow);
         yield return Fails("SHL with one operand", Code(PUSH1, 1, SHL), EvmExceptionType.StackUnderflow);
         foreach (byte op in (byte[])[ADD, SUB, AND, OR, XOR])
         {
@@ -593,6 +609,18 @@ public class GuestOpcodeHandlerTests
             [.. WordA, .. WordB, .. digest],
             []);
     }
+
+    /// <remarks>
+    /// An empty range touches no memory, so an offset past the memory charges no expansion. An offset of -1 pushes
+    /// 2^256 - 1. With a word written first, offsets 0 and 31 lie inside the memory.
+    /// </remarks>
+    [Test]
+    public void Keccak256_of_an_empty_range_leaves_the_empty_digest([Values(0L, 31L, 1024L, 1L << 32, -1L)] long offset, [Values] bool written) =>
+        AssertSucceedsOnExactlyItsGas(
+            Code([.. written ? [PUSH1, 1, PUSH1, 0, MSTORE] : Array.Empty<byte>(), PUSH1, 0, PUSH32, .. Word(offset), KECCAK256, PUSH1, 0, MSTORE, STOP]),
+            (written ? 3 + 3 + 3 : 0UL) + (3 + 3 + GasCostOf.Sha3) + (3 + 3) + MemoryCost(1),
+            ValueKeccak.OfAnEmptyString.Bytes.ToArray(),
+            []);
 
     [TestCaseSource(nameof(Failures))]
     public void Fails_as_the_shared_handlers_do(byte[] code, EvmExceptionType exception) =>

@@ -13,7 +13,7 @@ consensus and execution data come from P2P peers, never an upstream JSON-RPC end
 
 ## Run
 
-For a VPS, use the [Docker Compose deployment](../../../tools/LightClient/README.md).
+For a VPS, use the [Docker Compose deployment](Deployment/README.md).
 It includes a persistent light client, Prometheus and provisioned Grafana
 dashboards. RPC and dashboards bind to the host's loopback interface; only
 P2P ports are public. The image has its own release version:
@@ -36,12 +36,25 @@ trusted HTTPS provider explicitly, for example:
 dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --network mainnet --checkpoint-url https://mainnet.checkpoint.sigp.io
 ```
 
+For [Gnosis mainnet](https://docs.gnosischain.com/about/networks/mainnet), use:
+
+```powershell
+dotnet run --project src/Nethermind/Nethermind.LightClient -c release -p:SaveDiskSpace=true -- --network gnosis
+```
+
+Gnosis uses chain ID `100` (`eth_chainId` returns `0x64`) and native xDAI balances.
+Its default checkpoint provider is `https://checkpoint.gnosischain.com`, operated
+by Gnosis. Using that default trusts its initial finalized beacon root; choose
+`--checkpoint` or `--checkpoint-url` to supply your own trust anchor or provider.
+Ethereum mainnet remains the default when `--network` is omitted.
+
 The `Nethermind.LightClient` debug profile selects mainnet and supplies the
 checkpoint URL above automatically. Edit its command-line arguments to select
 another trusted provider or root.
 Select `Nethermind.LightClient (Sepolia)` or `Nethermind.LightClient (Hoodi)`
 from Visual Studio's launch-profile dropdown to debug those networks using
-their EF-operated checkpoint defaults. All profiles use RPC port 8545.
+their EF-operated checkpoint defaults. `Nethermind.LightClient (Gnosis)` uses
+the Gnosis checkpoint default. All profiles use RPC port 8545.
 
 Press **Ctrl+C** in the terminal to cancel checkpoint/bootstrap startup or stop
 the running client. Shutdown waits for RPC and sync workers, closes P2P
@@ -63,7 +76,7 @@ root, but do not independently establish whether it belongs to the canonical
 chain. Provider network genesis root and time are checked before initial
 selection and before a cross-check.
 
-`--network` accepts `mainnet` (default), `hoodi` and `sepolia`. The listener defaults to
+`--network` accepts `mainnet` (default), `hoodi`, `sepolia` and `gnosis`. The listener defaults to
 `http://127.0.0.1:8545`; `--urls` overrides it. `--help` prints the options.
 `--log-level Debug` adds received beacon-update slots, validation outcomes and
 durable consensus progress to the light-client logs; the default is `Info`.
@@ -71,7 +84,8 @@ Debug also records selected peer admission, advertised capabilities, connection
 outcomes and disconnect reasons from the consensus and execution transports.
 To use MetaMask or another browser wallet extension, select
 `http://127.0.0.1:8545` as the RPC URL for Ethereum
-Mainnet (chain ID `1`), or Sepolia (chain ID `11155111`). In MetaMask's network
+Mainnet (chain ID `1`), Sepolia (chain ID `11155111`), or Gnosis (chain ID `100`,
+currency symbol `xDAI`). In MetaMask's network
 settings, edit the existing network and add the local endpoint to its RPC URLs;
 see the [wallet setup guide](https://support.metamask.io/configure/networks/how-to-add-a-custom-network-rpc#adding-or-editing-rpc-urls).
 HTTP RPC and WebSocket subscriptions share the port; the WebSocket URL is
@@ -112,8 +126,9 @@ block hash or a beacon state root. The client never obtains or replaces its
 trust anchor from its peers.
 The bootstrap, the latest replayed authenticated header, and the retained live
 state before processing or forcing another update must be
-at most 256 epochs of slots old (27 hours 18 minutes 24 seconds on these
-networks). This uses the minimum validator withdrawal delay, a conservative
+at most 256 epochs of slots old (27 hours 18 minutes 24 seconds on Ethereum
+networks; 5 hours 41 minutes 20 seconds on Gnosis). This uses the minimum
+validator withdrawal delay, a conservative
 lower bound of the supported forks' [weak-subjectivity periods](https://ethereum.github.io/consensus-specs/specs/gloas/weak-subjectivity/).
 It does not compute the full state-dependent validator churn term. A saved
 original checkpoint may be older when replay proves recent authenticated
@@ -173,6 +188,11 @@ stops startup rather than silently reusing an identity with an older sequence.
 Recovery must preserve the last published ENR sequence. If that cannot be
 established, remove the whole networking directory to create a new identity.
 
+Older builds could place the database for a plain relative `--data-dir`
+under `<executable-dir>/<data-dir>/cl/<chain-id>/network/<data-dir>/cl/<chain-id>/network`.
+To retain that identity, stop the client and move the entire RocksDB directory
+to `<data-dir>/cl/<chain-id>/network` before restarting.
+
 Signed beacon peer ENRs are cached separately in
 `<data-dir>/cl/<chain-id>/discovery`, with at most 512 records and a 2 MiB file
 limit. The client snapshots discovery every 30 seconds and at shutdown. On
@@ -210,8 +230,10 @@ other protocols or retry on every supplier-search round.
 The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
 serve the selected state, state queries return an error after 30 seconds.
-Execution data requests race at most two suppliers, use only a verified response,
-and cancel and join the other attempt. Account, storage and bytecode reads have
+Wallet execution requests race at most two suppliers, use only a verified response,
+and cancel and join the other attempt. Bulk hosted storage pages and trie-node
+updates use one supplier at a time, with retries on other peers, avoiding duplicate
+large downloads. Account, storage and bytecode reads have
 separate 32 MiB verified caches shared by RPC, EVM and hosted-account refreshes.
 Authenticated headers have another 32 MiB cache; each read rechecks the requested
 number and state root and returns an independent mutable copy.
@@ -248,16 +270,18 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 ## Metrics
 
 `GET /metrics` exports Prometheus metrics on the same HTTP listener, under the
-same Host/origin policy. The [Docker deployment](../../../tools/LightClient/README.md)
+same Host/origin policy. The [Docker deployment](Deployment/README.md)
 includes a scraper and Grafana dashboard. Keep these operational endpoints private.
 
 The `nethermind_light_client_` metrics cover startup/readiness, authenticated
 latest/finalized heights and freshness, beacon/execution/SNAP peers, hosted
 accounts and retained slots, and RPC item counts and duration histograms.
-RPC observations include HTTP and WebSocket items, batch items and
-notifications, initialization waits, failures and cancellation. Method labels
-are bounded; unknown methods share `other`, and account/peer identities are not
-metric labels. Standard `process_` metrics report CPU and process memory.
+RPC observations include dispatched HTTP and WebSocket items, including batch
+items and notifications, initialization waits, failures and cancellation.
+Batch limit errors do not count as executed methods. HTTP request outcomes are
+recorded separately in `nethermind_light_client_http_requests_total`. Unknown
+methods share the `other` label. Standard `process_` metrics report CPU and
+process memory.
 
 `nethermind_light_client_ready` requires the running stage, completed RPC
 initialization and a fresh authenticated latest head. HTTP health alone does
@@ -295,7 +319,8 @@ arrive during a download are coalesced; the next refresh selects the newest fres
 head. At a new root each worker fetches
 a fresh account proof. Unchanged storage roots and code hashes reuse their
 verified data; changed storage uses BAL updates automatically from the network's
-EIP-7928 activation, with complete SNAP downloads before activation or as fallback.
+EIP-7928 activation. Otherwise it attempts an incremental SNAP/1 trie update,
+with a complete verified range download as fallback.
 A snapshot becomes visible atomically only when all its data has verified.
 Reorganizations use the same root checks. While catching up, RPC uses the regular proof-backed P2P path
 for anything the retained snapshot cannot authenticate at the requested root.
@@ -320,16 +345,36 @@ the retained snapshot before fetching any BALs. It obtains BALs over SNAP/2 or
 ETH/71+, checks their raw RLP hashes against the authenticated headers, applies
 each slot's final value in block order and removes zeroed slots. The resulting
 complete local storage must reconstruct the freshly proven account storage root
-before publication. It still rebuilds that local trie; BALs reduce network
-transfers rather than eliminating work proportional to hosted storage size.
+before publication. The sealed in-memory trie shares unchanged branches between
+snapshots; applying a few slot changes no longer copies every slot or rebuilds
+the entire trie.
+
+Before BAL activation, or when BALs are unavailable, the client requests storage
+trie nodes through SNAP/1 `GetTrieNodes`. Every received node is checked against
+its authenticated parent hash. It reuses an old subtree only when both its hash
+and full trie path match, identifies inserted, changed and deleted slots, and
+verifies the resulting complete storage root before publication. This also works
+across reorganizations without assuming the new head descends from the old one.
+An attempt is bounded to ten seconds, 8,192 fetched nodes, 8,192 changed leaves
+and 32,768 visited nodes. SNAP/2 removed this request: peers offering only SNAP/2,
+unavailable trie nodes, budget exhaustion or invalid data trigger the complete
+verified range-download fallback. No upstream JSON-RPC is used.
 
 Catch-up is limited to 256 forward blocks, 30 seconds per account attempt and
 16 MiB per encoded BAL. Verified BALs share a separate 32 MiB retained-weight
 cache keyed by block hash, and concurrent requests share one download. Unsupported
 forks or peers, reorgs, larger gaps, timeouts, missing or
-invalid data and root mismatches fall back to the complete SNAP download. If
+invalid data and root mismatches fall back to the bounded trie update, then a
+complete SNAP download. If
 that also fails, the previous verified snapshot stays available at its original
 root. Merely relabeling old state with a new root is never safe.
+
+## Send policy
+
+Add `--send-policy-rules <path>` to refuse `eth_sendRawTransaction` submissions
+that break a SendPolicy rule file, before the transaction is relayed to peers.
+The rule format and the `cap` journal (`<path>.journal`) are those of the
+Nethermind SendPolicy plugin. Without the option, submissions are relayed as before.
 
 ## Verified RPC contract
 
@@ -337,25 +382,42 @@ root. Merely relabeling old state with a new root is never safe.
 | --- | --- |
 | `eth_chainId` | Locally selected network |
 | `net_version`, `web3_clientVersion` | Local network ID and client version |
+| `net_peerCount`, `web3_sha3` | Connected execution peer count and local Keccak-256 |
 | `eth_accounts`, `net_listening` | Empty local signing-account list; `net_listening` is true after P2P initialization and does not measure connected peers |
 | `eth_blockNumber` | Last authenticated optimistic execution height, including while synchronizing |
 | `eth_syncing` | Consensus freshness: `false` for a fresh authenticated optimistic head; otherwise standard progress quantities |
 | `eth_getBalance` | Account RLP authenticated against the execution state root |
-| `eth_getTransactionCount` | The same authenticated account's nonce |
+| `eth_getTransactionCount` | Authenticated account nonce. With `pending`, it also counts consecutive locally retained submissions. |
 | `eth_getStorageAt` | Requested storage key authenticated against that account's storage root; 32-byte DATA result |
+| `eth_getAccount`, `eth_getAccountInfo`, `eth_getStorageValues` | Authenticated account metadata, bytecode and ordered storage reads at one selected state root |
 | `eth_getCode` | Bytes whose Keccak hash matches that account's authenticated code hash |
 | `eth_getProof` | Standard [EIP-1186](https://eips.ethereum.org/EIPS/eip-1186) account and storage path witnesses, reconstructed from verified SNAP ranges and verified again before export |
 | `eth_call` | Local Nethermind EVM execution over proof-backed selected state; no execution RPC |
 | `eth_estimateGas` | Local Nethermind gas estimator over the same proof-backed selected state |
+| `eth_createAccessList`, `debug_traceCall` | Local access-list generation and bounded `callTracer` output over authenticated state |
+| `debug_traceTransaction` | Bounded `callTracer` output from replaying the transaction and its predecessors on authenticated parent state |
+| `eth_simulateV1` | Local Nethermind block simulation over the same proof-backed selected state |
 | `eth_getBlockByNumber`, `eth_getBlockByHash` | Authenticated execution header, transaction root, withdrawals root and block body |
+| `eth_getHeaderByNumber`, `eth_getHeaderByHash` | Authenticated execution header without a block body download |
+| `eth_getBlockAccessList` | EIP-7928 access list authenticated against the selected header's commitment on supported forks |
 | `eth_getBlockTransactionCountByNumber`, `eth_getBlockTransactionCountByHash` | Transaction count from the authenticated block body |
 | `eth_getTransactionByBlockNumberAndIndex`, `eth_getTransactionByBlockHashAndIndex` | Transaction from the authenticated block body |
 | `eth_getTransactionByHash`, `eth_getTransactionReceipt` | Bounded observed transaction index and recent authenticated block scan; body and receipt roots are verified locally |
+| `eth_getRawTransactionByHash`, `eth_getRawTransactionByBlockNumberAndIndex`, `eth_getRawTransactionByBlockHashAndIndex` | Canonical transaction envelope from the authenticated block body |
 | `eth_getBlockReceipts`, `eth_getLogs` | Receipt trie and bloom authenticated by the block header; log results are complete within the accepted range |
+| `eth_newFilter`, `eth_newBlockFilter`, `eth_newPendingTransactionFilter`, `eth_getFilterChanges`, `eth_getFilterLogs`, `eth_uninstallFilter` | Polling filters for authenticated logs and blocks or for this client's local submissions |
 | `eth_feeHistory` | Authenticated headers and complete verified receipts for gas-weighted effective tips |
 | `eth_gasPrice`, `eth_maxPriorityFeePerGas` | Local fee suggestion from the authenticated latest block; gas price adds the derived next-block base fee |
 | `eth_blobBaseFee` | Blob base fee derived from the authenticated latest execution header and its fork |
+| `eth_baseFee`, `eth_config`, `eth_capabilities` | Next-block base fee derived from the authenticated head, chain fork configuration and enabled execution data resources |
 | `eth_sendRawTransaction` | Local envelope, signature, fork and authenticated state checks, followed by execution P2P relay; blob sidecars are KZG verified |
+| `eth_sendRawTransactionSync` | Local readiness checks and execution P2P relay, followed by a bounded wait for an authenticated receipt |
+
+In EEZ mode, `latest` and `finalized` use the RollupX block committed in
+the EEZ registry at the finalized L1 head. The EEZ execution rules apply
+to single-call execution. Block simulation (`eth_simulateV1`) and
+transaction replay (`debug_traceTransaction`) are available on the built-in
+networks and return `-32601` in EEZ mode.
 
 State methods default to `"latest"` when their block parameter is omitted. They accept an explicit `"finalized"` or `"latest"` selector,
 an authenticated block number, or an EIP-1898 object naming its hash/number.
@@ -363,8 +425,8 @@ Wallets and dapps can use `"latest"` for the recent sync-committee-authenticated
 head. Gossip advances it between recovery polls; it is not restricted to the
 older finalized block. Use `"finalized"` explicitly when finality is required.
 `"latest"` state, block, log, fee and transaction-preparation requests require
-an authenticated head within ten beacon slots (120 seconds on supported networks)
-of the current slot. While it is unavailable or stale, these requests trigger
+an authenticated head no more than 120 seconds old (ten Ethereum beacon slots
+or 24 Gnosis slots). While it is unavailable or stale, these requests trigger
 coalesced recovery and wait up to two seconds before returning `-32001`; stale data is never
 served as `latest`. Explicit block
 numbers and hashes are outside these time-based freshness gates and retain their
@@ -380,6 +442,8 @@ This status is available before checkpoint bootstrap; unknown execution heights
 are initially zero.
 A `false` result describes consensus freshness, not hosted-cache completeness or
 historical log coverage; requested data still has to be fetched and verified.
+`eth_capabilities` reports the authenticated head and supported resource types.
+It omits `oldestBlock` because actual retention depends on the supplying peers.
 Historical state selectors are limited to 32 ancestors of either the finalized
 head or the authenticated optimistic head. A wallet's pinned prior
 optimistic hash remains usable when the native head advances, provided it is
@@ -446,21 +510,20 @@ the requested target, backfill activity and errors. A cold old-history request
 can exceed the HTTP deadline while backfill continues; retry after coverage
 reaches the requested range. Shutdown cancels and joins the worker before
 closing its database.
-`pending`, `safe` and `earliest` return an explicit unavailable error (`-32001`):
-execution peers do not authenticate pending state, a distinct safe execution head
-is not available, and genesis is outside the bounded history.
-This includes `eth_getTransactionCount(..., "pending")`: the relay is a bounded
-cache of local submissions, not an authenticated pending-state view. Wallets
-can use the confirmed `"latest"` nonce and track their own signed submissions;
-libraries that prepare transactions with a pending nonce need an explicit nonce
-or a local nonce manager.
+`safe` and `earliest` return `-32001`. The beacon light-client protocol supplies
+optimistic and finalized heads. Genesis falls outside the bounded history.
+`eth_getTransactionCount(..., "pending")` starts at the latest authenticated
+nonce and advances over consecutive, affordable transactions this client has
+announced to execution peers. Pending account state and pending block construction
+are unavailable.
 The optimistic head can be reorganized,
 whereas the finalized head is stable. Each state or block request pins its selected authenticated head,
 including during a concurrent consensus update. Returned account and storage values are not
 trusted until their ranges reconstruct the selected state/storage root. Authenticated account/storage absence
 returns zero or empty code; an incomplete proof fails.
 
-`eth_call` and `eth_estimateGas` accept a transaction object and an optional authenticated selector.
+`eth_call` and `eth_estimateGas` accept a transaction object, an optional authenticated selector,
+and optional state and block overrides applied to the local execution only.
 Omitting the selector uses the authenticated optimistic `"latest"` head, which must be available.
 They fetch the selected execution header by its authenticated hash, then run
 Nethermind's EVM against the corresponding state root. Accounts, storage slots
@@ -479,8 +542,23 @@ with their return data. An estimate of a reverting transaction returns the same
 error rather than a gas quantity. Blob and frame transactions use the selected
 execution fork's existing conversion and EVM rules. Frame estimates fill omitted
 execution/state limits through local replay; explicitly supplied limits determine
-the fixed frame gas reservation. State overrides, pending state and
-`eth_createAccessList` are unavailable.
+the fixed frame gas reservation. `eth_createAccessList` uses the same verified
+state and returns the access list and gas used. `debug_traceCall` supports the
+native `callTracer` with `onlyTopCall` and `withLog`. The default tracing deadline
+is five seconds and the maximum is 60 seconds. The caller must select `callTracer`
+explicitly.
+`debug_traceTransaction` uses `callTracer` and the same deadline. It replays up
+to 64 transactions and 10 million cumulative gas in a recent authenticated block.
+Proof suppliers must still have the authenticated parent state.
+
+`eth_simulateV1` accepts the standard simulation payload and an optional authenticated selector,
+and runs Nethermind's block processor with the same simulation rules as a full node over the same
+proof-backed state. Each simulated block sees the changes of the blocks before it, including
+state and block overrides, `traceTransfers` and `validation`. `BLOCKHASH` also resolves the
+blocks simulated earlier in the request. Because every new state item costs a peer round trip,
+a request is limited to 16 blocks, 64 calls and 10 million gas in total, with the same deadline,
+fetch-round limit and four-way concurrency as calls. The light client holds no state trie, so a
+simulated block reports the base block's `stateRoot`, and its `hash` is computed from that root.
 
 `eth_getProof` accepts at most 64 storage keys. The returned account/storage
 witnesses can be verified independently against the selected header's state root;
@@ -528,7 +606,9 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 ```
 
 JSON-RPC 2.0 batches and notifications are supported. A batch executes at most
-32 items; additional requests retain their IDs and receive `-32005` errors.
+32 items and handles up to 128 envelopes individually. Requests between those
+limits retain their IDs and receive `-32005`. The first excess request ends the
+batch with a limit error and its ID when readable.
 No request is forwarded without verification. Receipt/log queries fail when
 any block body or receipt set is unavailable; log ranges are capped at 512
 inclusive blocks and 10,000 matches.
@@ -544,7 +624,8 @@ remaining items are not executed. Notifications still produce no response, and i
 envelopes retain their standard errors. Oversized results fail explicitly rather
 than returning incomplete data.
 Normal HTTP requests, batches and WebSocket messages have a 64 KiB body limit.
-A single HTTP `eth_sendRawTransaction`, `eth_call` or `eth_estimateGas` request may
+A single HTTP `eth_sendRawTransaction`, `eth_sendRawTransactionSync`, `eth_call`,
+`eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` or `debug_traceCall` request may
 use up to 4 MiB plus 64 KiB of JSON text, so permitted contract-initcode inputs
 fit. Submitted raw envelopes/sidecars are limited to 2 MiB; at most four such large
 requests run concurrently. Peer responses and proof nodes have separate size limits.
@@ -560,6 +641,26 @@ The console shows each JSON-RPC method, its result, and its handling time. Batch
 items are logged individually; malformed requests and oversized bodies are
 logged without their contents. Routine ASP.NET Core request logs are suppressed.
 
+## Polling filters and synchronous submissions
+
+Create an `eth_newBlockFilter` to poll for block hashes, an `eth_newFilter` to
+poll for logs, or an `eth_newPendingTransactionFilter` for hashes of submissions
+announced by this client. `eth_getFilterChanges` consumes changes since the last
+poll and includes `removed: true` for previously returned logs on a replaced
+branch. `eth_getFilterLogs` reads the authenticated canonical range without
+advancing the cursor. The client retains up to 32 filters, expires them after
+five minutes without a change poll, and keeps up to 32 authenticated head publications.
+If a client falls behind that window, create a new filter and use `eth_getLogs`
+to recover logs. Use HTTP for large polling results.
+
+`eth_sendRawTransactionSync` takes a signed transaction and an optional timeout
+in milliseconds. The default is 20 seconds and the maximum is 60 seconds. It
+returns an authenticated receipt when available, or error `4` with the submitted
+hash if the wait expires. A gap from the authenticated nonce returns error `6`
+with the expected nonce. A valid transaction that exceeds the available balance
+or falls below the next block's fee requirements returns error `5` with its hash.
+Up to eight synchronous submissions may wait at once.
+
 ## WebSocket subscriptions
 
 Connect to `ws://127.0.0.1:8545/ws` and send standard JSON-RPC requests:
@@ -567,6 +668,7 @@ Connect to `ws://127.0.0.1:8545/ws` and send standard JSON-RPC requests:
 ```json
 {"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}
 {"jsonrpc":"2.0","id":2,"method":"eth_subscribe","params":["logs",{"address":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}]}
+{"jsonrpc":"2.0","id":3,"method":"eth_subscribe","params":["newPendingTransactions",false]}
 ```
 
 `newHeads` publishes authenticated optimistic execution headers. `logs` accepts
@@ -576,11 +678,13 @@ orphaned logs have `removed: true` before replacement logs are sent. Missing
 blocks are verified by tracing parents from the next authenticated head; a
 catch-up emits each intervening block's logs and only the newest head.
 Subscriptions start after their acknowledgement and belong to their connection.
-`eth_unsubscribe` takes the returned subscription ID. Pending transaction and
-sync-status subscriptions are unavailable.
+`eth_unsubscribe` takes the returned subscription ID. `newPendingTransactions`
+streams transactions this client announces to execution peers, as hashes by default or
+objects when the second parameter is `true`. Sync-status subscriptions are
+unavailable.
 
 The host permits 16 connections and 16 subscriptions per connection. Each
-connection has a 128-message, 1 MiB outbound queue, a 256 KiB message limit,
+connection has an eight-head backlog, a 128-message, 1 MiB outbound queue, a 256 KiB message limit,
 and a 10-second deadline to admit responses or a verified head's notifications.
 Healthy bursts wait for the sender to drain the bounded queue; a stalled client
 is disconnected independently of other clients. Shared authenticated header
@@ -593,8 +697,9 @@ Reconnect, recover the affected range with `eth_getLogs`, then resubscribe.
 Only logs matching that connection's active filters enter its retained history.
 A log data/history failure closes only that connection; other filtered log
 clients and independent `newHeads` clients continue. Affected clients receive
-WebSocket close code 1013, with a two-second transport close deadline. Fetching
-and verifying one update has a separate 90-second deadline from queue admission.
+WebSocket close code 1013. Clients receive code 1001 when the light client stops.
+The transport has two seconds to finish either close handshake. Fetching,
+verifying and queuing notifications for one head share a 90-second deadline.
 An individual request deadline or oversized result
 returns a JSON-RPC error without discarding the connection's subscriptions.
 WebSocket batches preserve prior acknowledgements and per-item IDs under the
@@ -641,13 +746,19 @@ offers both `snap/1` and `snap/2`, with BAL requests gated by the block's fork. 
 cached in memory; it does no full block synchronization. Peers can withhold
 recent selected state; this affects availability, never the returned
 value. The startup checkpoint remains a trusted input, whether supplied directly
-or fetched from the selected HTTPS provider. Chain-spec bootnodes and default
-ENRs seed discovery; direct public-network RLPx candidates come from discovered
-peer records from discv5 or the signed DNS ENR tree.
-The light client selects the signer-pinned `snap.<network>.ethdisco.net` tree
+or fetched from the selected HTTPS provider. Direct public-network RLPx candidates
+come from discovered peer records. On Ethereum mainnet, Hoodi and Sepolia,
+default ENRs seed discv5. The signer-pinned `snap.<network>.ethdisco.net` tree
 (`snap.mainnet.ethdisco.net`, `snap.hoodi.ethdisco.net` or
-`snap.sepolia.ethdisco.net`) to discover SNAP-capable execution peers.
+`snap.sepolia.ethdisco.net`) discovers SNAP-capable execution peers.
+Gnosis mainnet uses both discv4 and discv5 with the bootnodes embedded in its
+[chain specification](../Chains/gnosis.json), matching full-node discv4 discovery
+while retaining discv5. It has no configured ethdisco DNS tree.
 SNAP support is confirmed during the live P2P handshake.
+
+Beacon connections serve Altair metadata v2 without a data-column custody
+promise; full-node hosts retain Fulu metadata v3. The light client keeps its
+discovery custody count at zero and does not store or serve data columns.
 
 Signed discovery ENRs are retained under `<data-dir>/el/<network>/discovery`
 using the existing discovery storage and revalidated on restart. The cache keeps
@@ -678,7 +789,10 @@ the committee that recovery selected, so it carries that recovery's weaker
 trust; each forced advance is logged as a warning.
 
 The client implements Electra, Fulu and Gloas wire formats with built-in
-mainnet, Hoodi and Sepolia schedules. Gloas authenticates an execution block
+mainnet, Hoodi, Sepolia and Gnosis schedules. Gnosis uses five-second slots,
+16 slots per epoch and a 512-epoch sync committee period (8192 slots, or
+11 hours 22 minutes 40 seconds). Its schedule includes Fulu; Gloas is unscheduled.
+Gloas authenticates an execution block
 hash through the payload bid's parent-block hash; the client then retrieves the matching execution
 header by hash before serving its state. Consequently the newest authenticated
 Gloas execution head inherently trails its attested beacon head by one slot.

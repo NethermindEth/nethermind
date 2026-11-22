@@ -202,7 +202,7 @@ public sealed class ColumnBackfill(
             }
         }
 
-        store.BackfilledBlockFloor = floor;
+        store.LowerBackfilledBlockFloor(floor);
         pool.LowerCompletelyServableFloor(floor, verifiedThrough, failureVersion);
         Volatile.Write(ref _completeFrom, (long)floor);
         if (_logger.IsDebug) _logger.Debug($"Blocks and sampled columns are held from slot {floor}");
@@ -405,7 +405,7 @@ public sealed class ColumnBackfill(
     private bool TryFindWalkStart(ulong floor, CancellationToken token, out Hash256? parent, out ForkedSignedBeaconBlock? child)
     {
         ulong top = store.GetCanonicalIndexTopSlot() ?? 0;
-        for (ulong slot = floor; slot <= top; slot++)
+        foreach (ulong slot in store.EnumerateCanonicalSlots(floor, top, token))
         {
             token.ThrowIfCancellationRequested();
             if (store.TryGetCanonicalRoot(slot, out Hash256? root) && store.TryGetForkedBlock(root, out ForkedSignedBeaconBlock? above))
@@ -418,17 +418,12 @@ public sealed class ColumnBackfill(
 
         child = null;
         ulong lowestIndexed = store.TryGetAnchor(out _, out ulong anchorSlot) ? anchorSlot : 0;
-        for (ulong slot = Math.Min(floor - 1, top); slot >= lowestIndexed; slot--)
+        foreach (ulong slot in store.EnumerateCanonicalSlots(lowestIndexed, Math.Min(floor - 1, top), token, reverse: true))
         {
             token.ThrowIfCancellationRequested();
             if (store.TryGetCanonicalRoot(slot, out parent) && store.TryGetForkedBlock(parent, out _))
             {
                 return true;
-            }
-
-            if (slot == 0)
-            {
-                break;
             }
         }
 
@@ -486,7 +481,7 @@ public sealed class ColumnBackfill(
                 continue;
             }
 
-            Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = new(kept);
+            Dictionary<Hash256, ForkedSignedBeaconBlock> byRoot = [with(kept)];
             HashSet<Hash256> replyRoots = [];
             ulong replyLast = askFrom;
             foreach (ForkedSignedBeaconBlock block in reply)

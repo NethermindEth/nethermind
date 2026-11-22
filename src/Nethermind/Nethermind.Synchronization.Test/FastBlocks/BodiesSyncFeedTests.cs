@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
@@ -15,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.History;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -32,6 +35,7 @@ public class BodiesSyncFeedTests
 {
     private IBlockTree _syncingFromBlockTree;
     private IBlockTree _syncingToBlockTree;
+    private IBlockStore _syncingToBlockStore;
     private TestMemDb _blocksDb;
     private ISyncPointers _syncPointers;
     private BodiesSyncFeed _feed;
@@ -52,9 +56,9 @@ public class BodiesSyncFeedTests
         _blocksDb = new TestMemDb();
         _metadataDb = new MemDb();
         _syncPointers = new MemorySyncPointers();
-        _syncingToBlockTree = Build.A.BlockTree()
-            .WithBlocksDb(_blocksDb)
-            .TestObject;
+        BlockTreeBuilder syncingToBuilder = Build.A.BlockTree().WithBlocksDb(_blocksDb);
+        _syncingToBlockTree = syncingToBuilder.TestObject;
+        _syncingToBlockStore = syncingToBuilder.BlockStore;
 
         for (ulong i = 1; i < 100; i++)
         {
@@ -161,7 +165,7 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
-    public async Task ShouldHandleSparseBodyResponseWithoutReportingBreach()
+    public async Task ShouldHandleSparseBodyResponseWithoutReportingBreach([Values] bool encodedBodies)
     {
         _feed.InitializeFeed();
 
@@ -174,20 +178,75 @@ public class BodiesSyncFeedTests
         // cache being cleared.
         Block fourthBlock = _syncingFromBlockTree.FindBlock(req.Infos[3]!.BlockNumber, BlockTreeLookupOptions.None)!;
         Assert.That(fourthBlock.Header.TxRoot, Is.Not.EqualTo(thirdBlock.Header.TxRoot), "the two bodies must differ for this to assert anything");
-        req.Response = new OwnedBlockBodies([firstBlock.Body, thirdBlock.Body, fourthBlock.Body]);
+        req.Response = CreateResponse(encodedBodies, firstBlock, thirdBlock, fourthBlock);
         req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
 
         SyncResponseHandlingResult result = _feed.HandleResponse(req);
 
-        Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
-        Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
-        Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
-        Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
-        Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(skippedBlock.Hash!, BlockTreeLookupOptions.None, skippedBlock.Number), Is.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(thirdBlock.Hash!, BlockTreeLookupOptions.None, thirdBlock.Number), Is.Not.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(fourthBlock.Hash!, BlockTreeLookupOptions.None, fourthBlock.Number), Is.Not.Null);
+            Assert.That(_syncingToBlockStore.GetRlp(thirdBlock.Number, thirdBlock.Hash!), Is.EqualTo(BlockDecoder.Encode(thirdBlock)));
+        }
         _syncPeerPool.DidNotReceive().ReportBreachOfProtocol(
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
             Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task ShouldReportBreachForBodyThatDoesNotDecode([Values] bool rlpError)
+    {
+        _feed.InitializeFeed();
+
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        Block firstBlock = _syncingFromBlockTree.FindBlock(req.Infos[0]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        Block secondBlock = _syncingFromBlockTree.FindBlock(req.Infos[1]!.BlockNumber, BlockTreeLookupOptions.None)!;
+        // A body whose uncles item is a byte string instead of a sequence, or one whose uncle decode fails otherwise.
+        byte[] malformedBody = rlpError ? [0xc2, 0xc0, 0x80] : ThrowingHeaderDecoder.BodyWithUncle();
+        req.Response = CreateEncodedResponse(
+            rlpError ? BlockBodyDecoder.Instance : ThrowingHeaderDecoder.BodyDecoder,
+            BlockBodyDecoder.Instance.Encode(firstBlock.Body), malformedBody);
+        req.ResponseSourcePeer = new PeerInfo(Substitute.For<ISyncPeer>());
+
+        SyncResponseHandlingResult result = _feed.HandleResponse(req);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(_syncingToBlockTree.FindBlock(firstBlock.Hash!, BlockTreeLookupOptions.None, firstBlock.Number), Is.Not.Null);
+            Assert.That(_syncingToBlockTree.FindBlock(secondBlock.Hash!, BlockTreeLookupOptions.None, secondBlock.Number), Is.Null);
+        }
+        _syncPeerPool.Received(1).ReportBreachOfProtocol(
+            Arg.Any<PeerInfo>(),
+            DisconnectReason.BreachOfProtocol,
+            Arg.Any<string>());
+    }
+
+    private static readonly BlockDecoder BlockDecoder = new();
+
+    private static OwnedBlockBodies CreateResponse(bool encodedBodies, params Block[] blocks) =>
+        encodedBodies
+            ? OwnedBlockBodies.FromEncodedBlocks([.. blocks.Select(static block => BlockDecoder.Encode(block))])
+            : new OwnedBlockBodies([.. blocks.Select(static block => block.Body)]);
+
+    private static OwnedBlockBodies CreateEncodedResponse(BlockBodyDecoder decoder, params byte[][] bodies)
+    {
+        IMemoryOwner<byte> memory = MemoryPool<byte>.Shared.Rent(bodies.Sum(static body => body.Length));
+        Range[] ranges = new Range[bodies.Length];
+        int offset = 0;
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            bodies[i].CopyTo(memory.Memory[offset..]);
+            ranges[i] = new Range(offset, offset + bodies[i].Length);
+            offset += bodies[i].Length;
+        }
+
+        return new OwnedBlockBodies(memory, ranges, decoder);
     }
 
     [Test]
@@ -266,6 +325,23 @@ public class BodiesSyncFeedTests
         _syncPointers.LowestInsertedBodyNumber = lowestInsertedBlockNumber;
 
         Assert.That(_feed.IsFinished, Is.EqualTo(shouldFinish));
+    }
+
+    // The history pruner reads this record to recognise a finished descent. The barrier is 10.
+    [TestCase(null, null, 10UL)] // no descent yet: records the barrier
+    [TestCase(null, 7UL, 10UL)] // no descent yet: replaces an older record
+    [TestCase(50UL, null, 10UL)] // a descent without a record: records the barrier
+    [TestCase(50UL, 7UL, 7UL)] // a descent with a record: keeps it
+    public void Records_the_barrier_the_descent_started_with(ulong? lowestInsertedBody, ulong? recorded, ulong expected)
+    {
+        _syncConfig.AncientBodiesBarrier = 10;
+        _syncPointers.LowestInsertedBodyNumber = lowestInsertedBody;
+        if (recorded is not null)
+            _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, recorded.Value.ToBigEndianByteArrayWithoutLeadingZeros());
+
+        _feed.InitializeFeed();
+
+        Assert.That(_metadataDb.Get(MetadataDbKeys.BodiesBarrierWhenStarted)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(expected));
     }
 
     [Test]

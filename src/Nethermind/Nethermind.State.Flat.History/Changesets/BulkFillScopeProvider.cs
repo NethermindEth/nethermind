@@ -12,12 +12,12 @@ using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat.History.Changesets;
 
 public sealed class BulkFillScopeProvider(
     BulkFillSession session,
-    ITrieNodeCache trieCache,
     IResourcePool resources,
     IFlatDbConfig config,
     ILogManager logs) : IWorldStateScopeProvider, IStateReader
@@ -46,8 +46,8 @@ public sealed class BulkFillScopeProvider(
             return false;
         }
 
-        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), isHistorical: true);
-        SnapshotBundle bundle = new(readOnly, trieCache, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
+        ReadOnlySnapshotBundle readOnly = new(new SnapshotPooledList(0), session.CreateReader(), false, PersistedSnapshotStack.Empty(), bufferPin: null, isHistorical: true);
+        SnapshotBundle bundle = new(readOnly, null, resources, ResourcePool.Usage.ReadOnlyProcessingEnv);
         try
         {
             scope = new Scope(new FlatWorldStateScope(session.CurrentState, bundle, session,
@@ -81,6 +81,8 @@ public sealed class BulkFillScopeProvider(
     public byte[]? GetCode(Hash256 codeHash) => session.GetCodeArray(codeHash.ValueHash256);
     public byte[]? GetCode(in ValueHash256 codeHash) => session.GetCodeArray(codeHash);
     public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
+        where TCtx : struct, INodeContext<TCtx> => throw new NotSupportedException("Bulk replay has no trie node store.");
+    public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx> => throw new NotSupportedException("Bulk replay has no trie node store.");
 
     private void RequireRoot(BlockHeader? header)

@@ -22,9 +22,12 @@ public class RecentRootStoreTests
     {
         ValueHash256 baseline = RecentRootStore.SourceId(Source, Salt);
 
-        Assert.That(RecentRootStore.SourceId(Source, Salt), Is.EqualTo(baseline));
-        Assert.That(RecentRootStore.SourceId(TestItem.AddressB, Salt), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.SourceId(Source, OtherRoot), Is.Not.EqualTo(baseline));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RecentRootStore.SourceId(Source, Salt), Is.EqualTo(baseline));
+            Assert.That(RecentRootStore.SourceId(TestItem.AddressB, Salt), Is.Not.EqualTo(baseline));
+            Assert.That(RecentRootStore.SourceId(Source, OtherRoot), Is.Not.EqualTo(baseline));
+        }
     }
 
     // Every concatenation in EIP-8272 is fixed-width, and an address is 20 bytes there, so the
@@ -81,10 +84,13 @@ public class RecentRootStoreTests
         ValueHash256 otherSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
         ValueHash256 baseline = RecentRootStore.EntryHash(sourceId, 100, Root);
 
-        Assert.That(RecentRootStore.EntryHash(sourceId, 100, Root), Is.EqualTo(baseline));
-        Assert.That(RecentRootStore.EntryHash(sourceId, 101, Root), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.EntryHash(sourceId, 100, OtherRoot), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.EntryHash(otherSource, 100, Root), Is.Not.EqualTo(baseline));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RecentRootStore.EntryHash(sourceId, 100, Root), Is.EqualTo(baseline));
+            Assert.That(RecentRootStore.EntryHash(sourceId, 101, Root), Is.Not.EqualTo(baseline));
+            Assert.That(RecentRootStore.EntryHash(sourceId, 100, OtherRoot), Is.Not.EqualTo(baseline));
+            Assert.That(RecentRootStore.EntryHash(otherSource, 100, Root), Is.Not.EqualTo(baseline));
+        }
     }
 
     [Test]
@@ -94,9 +100,12 @@ public class RecentRootStoreTests
         ValueHash256 otherSource = RecentRootStore.SourceId(TestItem.AddressB, Salt);
         ValueHash256 baseline = RecentRootStore.StorageKey(sourceId, 5);
 
-        Assert.That(RecentRootStore.StorageKey(sourceId, 5), Is.EqualTo(baseline));
-        Assert.That(RecentRootStore.StorageKey(sourceId, 6), Is.Not.EqualTo(baseline));
-        Assert.That(RecentRootStore.StorageKey(otherSource, 5), Is.Not.EqualTo(baseline));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RecentRootStore.StorageKey(sourceId, 5), Is.EqualTo(baseline));
+            Assert.That(RecentRootStore.StorageKey(sourceId, 6), Is.Not.EqualTo(baseline));
+            Assert.That(RecentRootStore.StorageKey(otherSource, 5), Is.Not.EqualTo(baseline));
+        }
     }
 
     [Test]

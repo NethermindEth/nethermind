@@ -14,11 +14,14 @@ namespace Nethermind.BeaconChain.P2P;
 /// The node does not attest, so the attestation subnet bitfields stay empty. The custody group count
 /// uses the same configuration as <see cref="Discovery.LocalCustody"/>.
 /// </remarks>
-public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainStore? store = null)
+/// <param name="config">Local custody settings, or the standard custody requirement when omitted.</param>
+/// <param name="store">Optional durable metadata storage.</param>
+/// <param name="validateStoreSchema">Validates the full beacon-state schema; disable only for a metadata-only networking store.</param>
+public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainStore? store = null, bool validateStoreSchema = true)
 {
     private readonly Lazy<MetaDataV3> _initial = new(() => new()
     {
-        SeqNumber = Sequence(config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement, store),
+        SeqNumber = Sequence(config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement, store, validateStoreSchema),
         Attnets = new BitArray(64),
         Syncnets = new BitArray(4),
         CustodyGroupCount = config?.CustodyGroupCount ?? Eip7594DasConstants.CustodyRequirement,
@@ -30,9 +33,10 @@ public class LocalMetadataSource(IBeaconChainConfig? config = null, BeaconChainS
         set;
     }
 
-    private static ulong Sequence(ulong count, BeaconChainStore? store)
+    private static ulong Sequence(ulong count, BeaconChainStore? store, bool validateStoreSchema)
     {
         if (store is null) return 1;
+        if (validateStoreSchema) store.EnsureSchemaVersion();
         const string key = "p2pMetadata";
         // Previously every configuration advertised sequence 1, so the first persisted version supersedes it.
         ulong sequence = 2;

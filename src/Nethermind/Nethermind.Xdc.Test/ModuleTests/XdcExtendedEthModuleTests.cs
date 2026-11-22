@@ -68,8 +68,11 @@ public class XdcExtendedEthModuleTests
 
         ResultWrapper<XdcEpochRewards> result =
             await module.eth_getRewardByHash(TestItem.KeccakA);
-        Assert.That(result.Data!.Rewards, Does.ContainKey(TestItem.AddressA.ToString()));
-        Assert.That(result.Data.Signers[TestItem.AddressA.ToString()].Sign, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data!.Rewards, Does.ContainKey(TestItem.AddressA.ToString()));
+            Assert.That(result.Data.Signers[TestItem.AddressA.ToString()].Sign, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -113,13 +116,16 @@ public class XdcExtendedEthModuleTests
 
         Assert.That(result.Data, Is.Not.Null);
         XdcTransactionAndReceiptProof proof = result.Data!;
-        Assert.That(proof.BlockHash, Is.EqualTo(blockHash));
-        Assert.That(proof.TxRoot, Is.EqualTo(block.Header.TxRoot));
-        Assert.That(proof.ReceiptRoot, Is.EqualTo(receiptsRoot));
-        Assert.That(proof.TxProofKeys, Has.Length.GreaterThan(0));
-        Assert.That(proof.TxProofValues, Has.Length.EqualTo(proof.TxProofKeys.Length));
-        Assert.That(proof.ReceiptProofKeys, Has.Length.GreaterThan(0));
-        Assert.That(proof.ReceiptProofValues, Has.Length.EqualTo(proof.ReceiptProofKeys.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof.BlockHash, Is.EqualTo(blockHash));
+            Assert.That(proof.TxRoot, Is.EqualTo(block.Header.TxRoot));
+            Assert.That(proof.ReceiptRoot, Is.EqualTo(receiptsRoot));
+            Assert.That(proof.TxProofKeys, Has.Length.GreaterThan(0));
+            Assert.That(proof.TxProofValues, Has.Length.EqualTo(proof.TxProofKeys.Length));
+            Assert.That(proof.ReceiptProofKeys, Has.Length.GreaterThan(0));
+            Assert.That(proof.ReceiptProofValues, Has.Length.EqualTo(proof.ReceiptProofKeys.Length));
+        }
     }
 
     [Test]

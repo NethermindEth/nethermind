@@ -18,14 +18,21 @@ public class EezHeadPublisherTests
     {
         Chain chain = new();
         BlockHeader header = chain.Commit(10);
+        Task next = chain.Publisher.NextHeadChange;
 
-        Assert.That(await chain.Publisher.UpdateAsync(L1(100), CancellationToken.None), Is.True);
+        bool updated = await chain.Publisher.UpdateAsync(L1(100), CancellationToken.None);
 
-        Assert.That(chain.Published, Has.Count.EqualTo(1));
-        Assert.That(chain.Published[0].Head.BlockHash, Is.EqualTo(header.Hash));
-        Assert.That(chain.Published[0].Head.Slot, Is.EqualTo(L1(100).Slot));
-        Assert.That(chain.Published[0].Timestamp, Is.EqualTo(header.Timestamp));
-        Assert.That(chain.Publisher.Current!.SettlementHead, Is.EqualTo(L1(100)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.True);
+            Assert.That(chain.Published, Is.EqualTo(new[]
+            {
+                (new VerifiedHead(L1(100).Slot, header.Number, header.Hash!, header.StateRoot!), header.Timestamp),
+            }));
+            Assert.That(chain.Publisher.Current?.SettlementHead, Is.EqualTo(L1(100)));
+            Assert.That(next.IsCompletedSuccessfully, Is.True);
+            Assert.That(chain.Publisher.NextHeadChange.IsCompleted, Is.False);
+        }
     }
 
     [Test]
@@ -36,10 +43,15 @@ public class EezHeadPublisherTests
         await chain.Publisher.UpdateAsync(L1(100), CancellationToken.None);
         int reads = chain.Settlement.StorageReads;
 
-        Assert.That(await chain.Publisher.UpdateAsync(L1(100), CancellationToken.None), Is.False);
-        Assert.That(await chain.Publisher.UpdateAsync(L1(99), CancellationToken.None), Is.False);
-        Assert.That(chain.Settlement.StorageReads, Is.EqualTo(reads));
-        Assert.That(chain.Published, Has.Count.EqualTo(1));
+        bool same = await chain.Publisher.UpdateAsync(L1(100), CancellationToken.None);
+        bool older = await chain.Publisher.UpdateAsync(L1(99), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(same, Is.False);
+            Assert.That(older, Is.False);
+            Assert.That(chain.Settlement.StorageReads, Is.EqualTo(reads));
+            Assert.That(chain.Published, Has.Count.EqualTo(1));
+        }
     }
 
     [Test]
@@ -49,11 +61,14 @@ public class EezHeadPublisherTests
         chain.Commit(10);
         await chain.Publisher.UpdateAsync(L1(100), CancellationToken.None);
 
-        Assert.That(await chain.Publisher.UpdateAsync(L1(101), CancellationToken.None), Is.True);
-
-        Assert.That(chain.Published, Has.Count.EqualTo(2));
-        Assert.That(chain.Published[1].Head.Number, Is.EqualTo(10));
-        Assert.That(chain.Published[1].Head.Slot, Is.EqualTo(L1(101).Slot));
+        bool updated = await chain.Publisher.UpdateAsync(L1(101), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.True);
+            Assert.That(chain.Published, Has.Count.EqualTo(2));
+            Assert.That(chain.Publisher.Current?.Head.Number, Is.EqualTo(10));
+            Assert.That(chain.Publisher.Current?.Head.Slot, Is.EqualTo(L1(101).Slot));
+        }
     }
 
     [Test]
@@ -67,8 +82,11 @@ public class EezHeadPublisherTests
         chain.Point(older);
 
         Assert.That(() => chain.Publisher.UpdateAsync(L1(101), CancellationToken.None), Throws.InstanceOf<InvalidDataException>());
-        Assert.That(chain.Publisher.Current, Is.SameAs(current));
-        Assert.That(chain.Published, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.Publisher.Current, Is.SameAs(current));
+            Assert.That(chain.Published, Has.Count.EqualTo(1));
+        }
     }
 
     [Test]
@@ -92,8 +110,12 @@ public class EezHeadPublisherTests
         EezCommittedHead current = chain.Publisher.Current!;
         chain.Settlement.Value = UInt256.Zero;
 
-        Assert.That(await chain.Publisher.UpdateAsync(L1(101), CancellationToken.None), Is.False);
-        Assert.That(chain.Publisher.Current, Is.SameAs(current));
+        bool updated = await chain.Publisher.UpdateAsync(L1(101), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.False);
+            Assert.That(chain.Publisher.Current, Is.SameAs(current));
+        }
     }
 
     [Test]
@@ -110,8 +132,12 @@ public class EezHeadPublisherTests
         Assert.That(chain.Publisher.Current!.Head.Number, Is.EqualTo(10));
 
         chain.Rollup.Headers[next.Hash!] = next;
-        Assert.That(await chain.Publisher.UpdateAsync(L1(101), CancellationToken.None), Is.True);
-        Assert.That(chain.Publisher.Current!.Head.Number, Is.EqualTo(16));
+        bool updated = await chain.Publisher.UpdateAsync(L1(101), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(updated, Is.True);
+            Assert.That(chain.Publisher.Current?.Head.Number, Is.EqualTo(16));
+        }
     }
 
     private static VerifiedHead L1(ulong number) =>

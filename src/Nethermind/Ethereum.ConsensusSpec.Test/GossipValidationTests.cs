@@ -28,7 +28,7 @@ namespace Ethereum.ConsensusSpec.Test;
 /// Verdict rows are checked both ways. Minimal containers are unsupported by mainnet SSZ bounds.
 /// </remarks>
 [TestFixture]
-public class GossipValidationTests
+public partial class GossipValidationTests
 {
     private const string Suite = "networking";
 
@@ -53,88 +53,105 @@ public class GossipValidationTests
         ("gloas", [.. UnroutedHandlers, "gossip_execution_payload_bid", "gossip_proposer_preferences"]),
     ];
 
-    /// <summary>Pins synchronous verdicts by topic/reason; every observed verdict needs a row and every row must be exercised.</summary>
-    internal static readonly IReadOnlyDictionary<string, (string Reason, RouterVerdict Verdict)[]> SynchronousVerdicts =
-        new Dictionary<string, (string, RouterVerdict)[]>(StringComparer.Ordinal)
+    /// <summary>Pins synchronous verdicts by fork, topic and reason; every row must be exercised in its own fork.</summary>
+    internal static readonly IReadOnlyDictionary<(string Fork, string Topic), (string Reason, RouterVerdict Verdict)[]> SynchronousVerdicts =
+        new Dictionary<(string, string), (string, RouterVerdict)[]>
         {
-            [GossipTopics.BeaconBlock] =
-            [
-                // phase0/p2p-interface.md: a future-slot message MAY be queued; the router holds an early next-slot block until its slot.
-                ("block is from a future slot", RouterVerdict.Deferred),
-                ("block is not from a slot greater than the latest finalized slot", RouterVerdict.Ignored(GossipDropReason.BeforeFinalized)),
-                ("block is not the first valid block for this slot and proposer", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
-                ("block's parent has not been seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
-                // gloas/p2p-interface.md: verify_block_body_operation_limits and verify_execution_requests_limits on the block.
-                ("block must not contain deposits", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many attestations", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many attester slashings", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many bls to execution changes", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many payload attestations", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many proposer slashings", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many voluntary exits", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many builder deposit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many builder exit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many consolidation requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("too many withdrawal requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                // Field REJECTs follow parent prerequisites proven by the published snapshot.
-                ("incorrect execution payload timestamp", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("too many blob kzg commitments", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("bid's parent does not equal block's parent", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("block is not from a higher slot than its parent", RouterVerdict.Rejected(GossipDropReason.NotAboveParentSlot)),
-            ],
-            [GossipTopics.BeaconAggregateAndProof] =
-            [
-                ("aggregate data index is non-zero", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("aggregate data index must be 0 or 1", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("aggregate committee bits must specify exactly one committee", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                // The only future-slot aggregate opens the next epoch, so the epoch-window IGNORE drops it before it could be held.
-                ("aggregate slot is from a future slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
-                ("aggregate epoch is not current or previous epoch", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
-                ("already seen aggregate for this data", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
-                ("already seen aggregate for this epoch and aggregator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
-                ("block being voted for has not been seen", RouterVerdict.Ignored(GossipDropReason.UnknownBlock)),
-                ("block being voted for failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                // REJECTs needing no state that the spec orders after store checks; gossip_validation.md lets them run in any order.
-                ("attestation epoch does not match target epoch", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("aggregate has no participants", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                // gloas/p2p-interface.md verify_attestation_payload_status follows the finalized-ancestry IGNORE.
-                ("same-slot attestation must attest with index 0", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-            ],
-            [GossipTopics.AttesterSlashing] =
+            [("fulu", GossipTopics.AttesterSlashing)] =
             [
                 ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
                 ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
                 ("attestation data is not slashable", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                // is_valid_indexed_attestation's sorted and unique indices need no state; its signature does.
                 ("invalid indexed attestation 1", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("invalid indexed attestation 2", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
             ],
-            // An envelope whose block is not held is raised, so "envelope's block has not been seen" has no row; neither has the
-            // signature, which needs the state.
-            [GossipTopics.ExecutionPayload] =
+            [("fulu", GossipTopics.BeaconAggregateAndProof)] =
             [
+                ("aggregate committee bits must specify exactly one committee", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("aggregate data index is non-zero", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("aggregate epoch is not current or previous epoch", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
+                ("aggregate has no participants", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("aggregate slot is from a future slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
+                ("already seen aggregate for this data", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("already seen aggregate for this epoch and aggregator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("attestation epoch does not match target epoch", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("block being voted for failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("block being voted for has not been seen", RouterVerdict.Ignored(GossipDropReason.UnknownBlock)),
+            ],
+            [("fulu", GossipTopics.BeaconBlock)] =
+            [
+                ("block is from a future slot", RouterVerdict.Deferred),
+                ("block is not from a higher slot than its parent", RouterVerdict.Rejected(GossipDropReason.NotAboveParentSlot)),
+                ("block is not from a slot greater than the latest finalized slot", RouterVerdict.Ignored(GossipDropReason.BeforeFinalized)),
+                ("block is not the first valid block for this slot and proposer", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("incorrect execution payload timestamp", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("too many blob kzg commitments", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+            ],
+            [("gloas", GossipTopics.AttesterSlashing)] =
+            [
+                ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("all attester slashing indices already seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                ("attestation data is not slashable", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("invalid indexed attestation 1", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("invalid indexed attestation 2", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+            ],
+            [("gloas", GossipTopics.BeaconAggregateAndProof)] =
+            [
+                ("aggregate committee bits must specify exactly one committee", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("aggregate data index must be 0 or 1", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("aggregate epoch is not current or previous epoch", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
+                ("aggregate has no participants", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("aggregate slot is from a future slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
+                ("already seen aggregate for this data", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("already seen aggregate for this epoch and aggregator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("attestation epoch does not match target epoch", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("block being voted for failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("block being voted for has not been seen", RouterVerdict.Ignored(GossipDropReason.UnknownBlock)),
+                ("same-slot attestation must attest with index 0", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+            ],
+            [("gloas", GossipTopics.BeaconBlock)] =
+            [
+                ("bid's parent does not equal block's parent", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("block is from a future slot", RouterVerdict.Deferred),
+                ("block is not from a higher slot than its parent", RouterVerdict.Rejected(GossipDropReason.NotAboveParentSlot)),
+                ("block is not from a slot greater than the latest finalized slot", RouterVerdict.Ignored(GossipDropReason.BeforeFinalized)),
+                ("block is not the first valid block for this slot and proposer", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("block must not contain deposits", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("block's parent has not been seen", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
+                ("too many attestations", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many attester slashings", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many blob kzg commitments", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many bls to execution changes", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many builder deposit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many builder exit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many consolidation requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many payload attestations", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many proposer slashings", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many voluntary exits", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+                ("too many withdrawal requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
+            ],
+            [("gloas", GossipTopics.ExecutionPayload)] =
+            [
+                ("already seen envelope for this block root from this builder", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
+                ("block's slot does not match payload's slot number", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("envelope is from a slot before the latest finalized slot", RouterVerdict.Ignored(GossipDropReason.BeforeFinalized)),
                 ("envelope's block failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                // gloas/p2p-interface.md: verify_execution_requests_limits on the envelope.
+                ("envelope's builder index does not match the bid's builder index", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("envelope's execution requests root does not match the bid's", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("payload's block hash does not match the bid's block hash", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("too many builder deposit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many builder exit requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many consolidation requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
                 ("too many withdrawal requests", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
-                ("envelope is from a slot before the latest finalized slot", RouterVerdict.Ignored(GossipDropReason.BeforeFinalized)),
-                ("already seen envelope for this block root from this builder", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
-                ("block's slot does not match payload's slot number", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("envelope's builder index does not match the bid's builder index", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("payload's block hash does not match the bid's block hash", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
-                ("envelope's execution requests root does not match the bid's", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("too many withdrawals", RouterVerdict.Rejected(GossipDropReason.LimitExceeded)),
             ],
-            // PTC membership and the signature need the state, so those votes are raised for fork choice to verify.
-            [GossipTopics.PayloadAttestationMessage] =
+            [("gloas", GossipTopics.PayloadAttestationMessage)] =
             [
                 ("already seen payload attestation from this validator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
-                ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.FutureSlot)),
-                ("payload attestation's block has not been seen", RouterVerdict.Ignored(GossipDropReason.UnknownBlock)),
+                ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("payload attestation's block failed validation", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
+                ("payload attestation's block has not been seen", RouterVerdict.Ignored(GossipDropReason.UnknownBlock)),
                 ("payload attestation's block is not at the assigned slot", RouterVerdict.Ignored(GossipDropReason.InvalidField)),
             ],
         };
@@ -165,8 +182,9 @@ public class GossipValidationTests
     [Test]
     public void Every_verdict_row_is_reached_and_every_unchecked_reject_is_reported_not_implemented()
     {
-        HashSet<(string Topic, string Reason, RouterVerdict Verdict)> reached = [];
+        HashSet<(string Fork, string Topic, string Reason, RouterVerdict Verdict)> reached = [];
         List<string> misreported = [];
+        List<string> supportedVectors = [];
         foreach (GossipValidationCase testCase in TestedCases())
         {
             List<Observation> observations = [];
@@ -174,6 +192,7 @@ public class GossipValidationTests
             try
             {
                 Run(testCase, observations);
+                supportedVectors.Add($"{testCase.Fork}/{testCase.Handler}/{Path.GetFileName(testCase.CasePath)}");
             }
             catch (NotImplementedInDriverException)
             {
@@ -183,7 +202,9 @@ public class GossipValidationTests
             foreach (Observation observed in observations)
             {
                 if (observed.Reason is not null && observed.Verdict != RouterVerdict.Raised)
-                    reached.Add((observed.Topic, observed.Reason, observed.Verdict));
+                {
+                    reached.Add((testCase.Fork, observed.Topic, observed.Reason, observed.Verdict));
+                }
             }
 
             bool hasUncheckedReject = observations.Any(static o => o.Expected == "reject" && o.Verdict.Action != RouterAction.Rejected);
@@ -191,10 +212,11 @@ public class GossipValidationTests
                 misreported.Add($"{testCase.VectorName} {(hasUncheckedReject ? "passed but has a reject the router does not reject" : "reported not-implemented")}");
         }
 
-        IEnumerable<(string, string, RouterVerdict)> rows = SynchronousVerdicts.SelectMany(static entry => entry.Value.Select(row => (entry.Key, row.Reason, row.Verdict)));
+        IEnumerable<(string, string, string, RouterVerdict)> rows = SynchronousVerdicts.SelectMany(static entry => entry.Value.Select(row => (entry.Key.Fork, entry.Key.Topic, row.Reason, row.Verdict)));
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(misreported, Is.Empty);
         Assert.That(reached, Is.EquivalentTo(rows));
+        Assert.That(supportedVectors, Is.SupersetOf(SupportedVectors), "a supported vector must not silently become not-implemented or disappear");
     }
     [Test]
     public void Every_unrouted_handler_has_vectors_and_its_topic_is_not_routed()
@@ -384,7 +406,7 @@ public class GossipValidationTests
             if (actual == RouterVerdict.Raised && message.Expected == "valid")
                 markVerified?.Invoke();
 
-            if (actual != RouterVerdict.Raised && (message.Reason is null || !IsSynchronousVerdict(meta.Topic, message.Reason, actual)))
+            if (actual != RouterVerdict.Raised && (message.Reason is null || !IsSynchronousVerdict(testCase.Fork, meta.Topic, message.Reason, actual)))
                 failures.Add($"{label} but the router's verdict {actual} has no row in {nameof(SynchronousVerdicts)}");
 
             switch (message.Expected)
@@ -449,8 +471,8 @@ public class GossipValidationTests
         return seeded;
     }
 
-    private static bool IsSynchronousVerdict(string topic, string reason, RouterVerdict verdict) =>
-        SynchronousVerdicts.TryGetValue(topic, out (string Reason, RouterVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
+    private static bool IsSynchronousVerdict(string fork, string topic, string reason, RouterVerdict verdict) =>
+        SynchronousVerdicts.TryGetValue((fork, topic), out (string Reason, RouterVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
 
     private static ForkChoiceSnapshotHolder SeedForkChoice(string casePath, SeededBlocks seeded, ulong finalizedEpoch)
     {
@@ -488,7 +510,7 @@ public class GossipValidationTests
         if (!File.Exists(configPath))
             return FuluDriverSupport.TransitionSpec(gloas ? 0 : Presets.FarFutureEpoch);
 
-        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(casePath);
+        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(casePath, gloas ? "gloas" : "fulu");
         if (FuluDriverSupport.ParseFlowMap(configPath).TryGetValue("SLOT_DURATION_MS", out string? slotDuration)
             && ulong.Parse(slotDuration) != spec.SecondsPerSlot * 1000)
         {

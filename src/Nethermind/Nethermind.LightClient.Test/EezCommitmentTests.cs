@@ -15,11 +15,9 @@ public class EezCommitmentTests
     private static readonly VerifiedHead SettlementHead = new(1_000, 23_000_000, Keccak.Compute("l1 block"), Keccak.Compute("l1 state"));
 
     [Test]
-    public void Root_slot_matches_mapping_layout()
-    {
+    public void Root_slot_matches_mapping_layout() =>
         Assert.That(EezCommitment.RootSlot(2),
             Is.EqualTo(UInt256.Parse("0x679795a0195a1b76cdebb7c51d74e058aee92919b8c3389af86ef24535e8a28d")));
-    }
 
     [Test]
     public async Task Committed_header_becomes_rollup_head()
@@ -30,11 +28,13 @@ public class EezCommitmentTests
 
         EezCommittedHead? result = await EezCommitment.ResolveAsync(settlement, rollup, Settlement, SettlementHead, CancellationToken.None);
 
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result!.Head, Is.EqualTo(new VerifiedHead(SettlementHead.Slot, 1_234, header.Hash!, header.StateRoot!)));
-        Assert.That(result.SettlementHead, Is.SameAs(SettlementHead));
-        Assert.That(settlement.RequestedHeads, Is.All.SameAs(SettlementHead));
-        Assert.That(settlement.RequestedKeys, Is.EqualTo(new[] { EezCommitment.RootSlot(2) }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.Head, Is.EqualTo(new VerifiedHead(SettlementHead.Slot, 1_234, header.Hash!, header.StateRoot!)));
+            Assert.That(result?.SettlementHead, Is.SameAs(SettlementHead));
+            Assert.That(settlement.RequestedHeads, Is.All.SameAs(SettlementHead));
+            Assert.That(settlement.RequestedKeys, Is.EqualTo(new[] { EezCommitment.RootSlot(2) }));
+        }
     }
 
     [Test]
@@ -43,9 +43,13 @@ public class EezCommitmentTests
         Source settlement = new() { Account = Account.TotallyEmpty };
         Source rollup = new() { Header = RollupHeader(1) };
 
-        Assert.That(await EezCommitment.ResolveAsync(settlement, rollup, Settlement, SettlementHead, CancellationToken.None), Is.Null);
-        Assert.That(settlement.RequestedKeys, Is.Empty);
-        Assert.That(rollup.HeaderRequests, Is.Zero);
+        EezCommittedHead? result = await EezCommitment.ResolveAsync(settlement, rollup, Settlement, SettlementHead, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(settlement.RequestedKeys, Is.Empty);
+            Assert.That(rollup.HeaderRequests, Is.Zero);
+        }
     }
 
     [Test]
@@ -54,8 +58,12 @@ public class EezCommitmentTests
         Source settlement = new();
         Source rollup = new() { Header = RollupHeader(1) };
 
-        Assert.That(await EezCommitment.ResolveAsync(settlement, rollup, Settlement, SettlementHead, CancellationToken.None), Is.Null);
-        Assert.That(rollup.HeaderRequests, Is.Zero);
+        EezCommittedHead? result = await EezCommitment.ResolveAsync(settlement, rollup, Settlement, SettlementHead, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(rollup.HeaderRequests, Is.Zero);
+        }
     }
 
     [Test]
@@ -65,8 +73,12 @@ public class EezCommitmentTests
         Source settlement = Source.WithCommitment(header.Hash!, EezCommitment.RootSlot(3));
         Source rollup = new() { Header = header };
 
-        Assert.That(await EezCommitment.ResolveAsync(settlement, rollup, Settlement, SettlementHead, CancellationToken.None), Is.Null);
-        Assert.That(rollup.HeaderRequests, Is.Zero);
+        EezCommittedHead? result = await EezCommitment.ResolveAsync(settlement, rollup, Settlement, SettlementHead, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(rollup.HeaderRequests, Is.Zero);
+        }
     }
 
     [Test]

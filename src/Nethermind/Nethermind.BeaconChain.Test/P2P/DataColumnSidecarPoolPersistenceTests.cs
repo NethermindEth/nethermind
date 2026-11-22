@@ -259,6 +259,7 @@ public class DataColumnSidecarPoolPersistenceTests
         }
 
         DataColumnSidecarPool restarted = new(store: store);
+        Assert.That(restarted.TryGetHeldColumns(root, CurrentSlot, required, out _), Is.False);
         restarted.Add(root, CurrentSlot, DataColumnSidecarTestFixture.BuildValidSidecar(required - 1, CurrentSlot));
 
         bool held = restarted.TryGetHeldColumns(root, CurrentSlot, required, out DataColumnSidecar[]? columns);
@@ -266,6 +267,44 @@ public class DataColumnSidecarPoolPersistenceTests
         Assert.That(held, Is.True);
         Assert.That(columns!.Select(static c => c.Index), Is.EqualTo(Enumerable.Range(0, required).Select(static i => (ulong)i)));
         Assert.That(restarted.TryGetHeldColumns(root, CurrentSlot, required + 1, out _), Is.False);
+    }
+
+    [Test]
+    public void Cached_membership_tracks_arrivals_and_checks_evicted_columns()
+    {
+        DataColumnSidecarPool pool = new(capacity: 2);
+        Hash256 root = RootOf(DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot));
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, 2, out _), Is.False);
+        for (ulong column = 0; column < 3; column++)
+            pool.Add(root, CurrentSlot, DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot));
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, 3, out _), Is.False);
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, 2, out DataColumnSidecar[]? held), Is.True);
+        Assert.That(held!.Select(c => c.Index), Is.EqualTo(new ulong[] { 1, 2 }));
+    }
+
+    [Test]
+    public void Below_threshold_membership_reads_storage_once_and_retries_a_failed_seed()
+    {
+        FaultyColumnsDb db = new();
+        BeaconChainStore store = new(db, Spec);
+        DataColumnSidecar sidecar = DataColumnSidecarTestFixture.BuildValidSidecar(0, CurrentSlot);
+        Hash256 root = RootOf(sidecar);
+        store.PutDataColumnSidecar(root, CurrentSlot, sidecar);
+        DataColumnSidecarPool pool = new(store: store);
+        db.FailReads = true;
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, 2, out _), Is.False);
+        db.FailReads = false;
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, 2, out _), Is.False);
+        int reads = db.SidecarReads;
+        for (int attempt = 0; attempt < 128; attempt++)
+            Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, 2, out _), Is.False);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(db.SidecarReads, Is.EqualTo(reads));
+        Assert.That(pool.TryGetHeldColumns(root, CurrentSlot, 1, out DataColumnSidecar[]? held), Is.True);
+        Assert.That(held!.Select(c => c.Index), Is.EqualTo(new ulong[] { 0 }));
     }
 
     [Test]

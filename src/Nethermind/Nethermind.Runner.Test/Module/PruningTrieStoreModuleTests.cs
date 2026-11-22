@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.IO.Abstractions;
 using Autofac;
+using Nethermind.Api;
+using Nethermind.Api.Monitoring;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.IO;
@@ -12,6 +16,7 @@ using Nethermind.Db;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using NSubstitute;
@@ -32,7 +37,8 @@ public class PruningTrieStoreModuleTests
         FlatHasData = 4,
         ImportFromPruningTrieState = 8,
         Repaired = 16,
-        WipedForSync = 32
+        WipedForSync = 32,
+        Migrating = 64
     }
 
     [TestCase(Flags.None, false, Description = "Flag off -> keep")]
@@ -43,6 +49,7 @@ public class PruningTrieStoreModuleTests
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.ImportFromPruningTrieState, true, Description = "Import finished and left configured -> drop; the fallback boundary stops reading the trie once flat is populated")]
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Repaired, false, Description = "Repaired flat may be wiped on this start -> keep")]
     [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.WipedForSync, false, Description = "Interrupted wipe is redone on this start -> keep")]
+    [TestCase(Flags.Drop | Flags.Enabled | Flags.FlatHasData | Flags.Migrating, false, Description = "Flat still reads what its migration has not copied -> keep")]
     public void Drops_only_when_flat_owns_a_populated_store(Flags flags, bool expected)
     {
         bool dropped = PruningTrieStoreModule.ShouldDropPruningTrieState(
@@ -176,6 +183,53 @@ public class PruningTrieStoreModuleTests
         }
     }
 
+    [TestCase(DiagnosticMode.MemDb, false)]
+    [TestCase(DiagnosticMode.None, true)]
+    [TestCase(DiagnosticMode.ReadOnlyDb, true)]
+    public void State_db_uses_the_on_disk_full_pruning_layout_only_outside_MemDb_mode(DiagnosticMode mode, bool usesDisk)
+    {
+        // A node decorates the factory with DbMonitoringModule, so the MemDbFactory is never seen by its own type.
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new InitConfig { DiagnosticMode = mode }, new MetricsConfig { Enabled = true }))
+            .AddSingleton(fileSystem)
+            .Build();
+
+        AssertStateDbLayout(container, fileSystem, usesDisk);
+    }
+
+    [TestCase(DiagnosticMode.MemDb, false)]
+    [TestCase(DiagnosticMode.None, true)]
+    [TestCase(DiagnosticMode.ReadOnlyDb, true)]
+    public void Module_without_an_init_config_reads_the_MemDb_mode_from_the_container(DiagnosticMode mode, bool usesDisk)
+    {
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new InitConfig { DiagnosticMode = mode }, new MetricsConfig { Enabled = true }))
+            // Registered last, so its state DB replaces the one of the node's own module, which is given the init config.
+            .AddModule(new PruningTrieStoreModule())
+            .AddSingleton(fileSystem)
+            .Build();
+
+        AssertStateDbLayout(container, fileSystem, usesDisk);
+    }
+
+    private static void AssertStateDbLayout(IContainer container, IFileSystem fileSystem, bool usesDisk)
+    {
+        fileSystem.ClearReceivedCalls();
+
+        IDb stateDb = container.ResolveKeyed<IDb>(DbNames.State);
+
+        KeyValuePair<string, IDbMeta>[] tracked = [.. container.Resolve<DbMonitoringModule.DbTracker>().GetAllDbMeta()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fileSystem.ReceivedCalls(), usesDisk ? Is.Not.Empty : Is.Empty);
+            Assert.That(tracked, Has.Length.EqualTo(1));
+            Assert.That(tracked[0].Key, Is.EqualTo("State"));
+            Assert.That(tracked[0].Value, Is.SameAs(stateDb), "the tracker must hold the full-pruning wrapper, not an inner DB");
+        }
+    }
+
     private static IContainer Container(Flags flags, IDbFactory dbFactory) => new ContainerBuilder()
         .AddModule(new TestNethermindModule())
         .Intercept<IFlatDbConfig>((cfg) =>
@@ -213,6 +267,8 @@ public class PruningTrieStoreModuleTests
         FlatStateActivationPolicyTests.SpyFlatColumnsDb flatDb = new() { WasRepairedOnOpen = flags.HasFlag(Flags.Repaired) };
         if (flags.HasFlag(Flags.FlatHasData))
             new RocksDbPersistence(flatDb, LimboLogs.Instance, NullTrieNodeLog.Instance).CreateWriteBatch(StateId.PreGenesis, new StateId(1, Keccak.Zero), WriteFlags.None).Dispose();
+        if (flags.HasFlag(Flags.Migrating))
+            BasePersistence.WriteMigrationCursor(flatDb.GetColumnDb(FlatDbColumns.Metadata), MigrationCursor.Start);
         if (flags.HasFlag(Flags.WipedForSync))
             FlatStateActivationPolicyTests.MarkWipedForSync(flatDb);
         return flatDb;

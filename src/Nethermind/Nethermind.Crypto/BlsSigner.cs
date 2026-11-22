@@ -43,9 +43,9 @@ public static class BlsSigner
     [SkipLocalsInit]
     public static bool Verify(G1Affine publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
-        // IETF BLS draft v4, CoreVerify (section 2.7): signatures must be in the prime-order subgroup.
+        // IETF BLS CoreVerify requires KeyValidate and a signature in the prime-order subgroup.
         G2Affine signaturePoint = signature.Point;
-        if (!signaturePoint.InGroup())
+        if (publicKey.IsInf() || !publicKey.InGroup() || !signaturePoint.InGroup())
         {
             return false;
         }

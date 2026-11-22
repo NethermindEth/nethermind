@@ -44,9 +44,12 @@ public class PeerSessionCloseTests
 
         await WaitUntilAsync(() => manager.PeerCount == 0, "rejected gossip did not drop the peer", token, ReplacementBound);
         await manager.DropForTest(peer, GoodbyeReason.Fault, "concurrent health check");
-        Assert.That(manager.IsBannedForTest(PeerIdentity.PeerId.ToString()), Is.True);
-        Assert.That(await manager.TryAddPeerAsync(PeerAddress, token), Is.False);
-        Assert.That(manager.GetPeerDiagnostics().Single().DisconnectCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(manager.IsBannedForTest(PeerIdentity.PeerId.ToString()), Is.True);
+            Assert.That(await manager.TryAddPeerAsync(PeerAddress, token), Is.False);
+            Assert.That(manager.GetPeerDiagnostics().Single().DisconnectCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -179,10 +182,13 @@ public class PeerSessionCloseTests
         IBeaconSyncPeer old = manager.AddPeerForTest(session, sameAddress ? address : $"/ip4/127.0.0.1/tcp/1/p2p/{remote.P2P.LocalPeerId}", Status, removeWhenSessionCloses: false);
         await session.DisconnectAsync();
 
-        Assert.That(session.Closed.IsCancellationRequested, Is.True);
-        Assert.That(manager.PeerCount, Is.EqualTo(1), "fixture: the closed session has not been removed");
-        Assert.That(await manager.TryAddPeerAsync(address, token), Is.True);
-        Assert.That(manager.GetBestPeers(0).Single(), Is.Not.SameAs(old), "success means a newly admitted session, not the stale entry");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.Closed.IsCancellationRequested, Is.True);
+            Assert.That(manager.PeerCount, Is.EqualTo(1), "fixture: the closed session has not been removed");
+            Assert.That(await manager.TryAddPeerAsync(address, token), Is.True);
+            Assert.That(manager.GetBestPeers(0).Single(), Is.Not.SameAs(old), "success means a newly admitted session, not the stale entry");
+        }
     }
 
     public enum Violation

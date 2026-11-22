@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.BeaconChain.P2P.Discovery;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
@@ -28,10 +29,10 @@ public class CustodyGroupCountEntryTests
         int keyLength = Rlp.LengthOf(entry.Key);
 
         byte[] buffer = new byte[keyLength + expectedValueRlp.Length + 8];
-        RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         entry.Encode(ref writer);
 
-        byte[] actualValueRlp = buffer[keyLength..writer.Position];
+        byte[] actualValueRlp = buffer[keyLength..writer.Length];
 
         Assert.That(actualValueRlp, Is.EqualTo(expectedValueRlp));
     }
@@ -45,13 +46,13 @@ public class CustodyGroupCountEntryTests
         {
             CustodyGroupCountEntry entry = new(value);
             int keyLength = Rlp.LengthOf(entry.Key);
-            byte[] expected = Rlp.Encode(value).Bytes;
+            byte[] expected = Rlp.Encode(value);
 
             byte[] buffer = new byte[keyLength + expected.Length + 8];
-            RlpWriter writer = new(buffer);
+            RlpWriter writer = RlpWriter.ContentWriter(buffer);
             entry.Encode(ref writer);
 
-            Assert.That(buffer[keyLength..writer.Position], Is.EqualTo(expected), $"value {value}");
+            Assert.That(buffer[keyLength..writer.Length], Is.EqualTo(expected), $"value {value}");
         }
     }
 }

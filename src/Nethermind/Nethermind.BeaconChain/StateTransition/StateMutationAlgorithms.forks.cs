@@ -18,14 +18,18 @@ public static partial class GloasStateAccessors
 public static partial class BeaconStateMutators
 #endif
 {
-    public static partial void IncreaseBalance(this AccessorState state, int index, ulong delta) =>
+    public static partial void IncreaseBalance(this AccessorState state, int index, ulong delta)
+    {
         state.Balances![index] += delta;
+        state.BlockChanges?.Balances.Add(index >> 2);
+    }
 
     /// <summary>Decreases a validator's balance by <paramref name="delta"/>, saturating at zero.</summary>
     public static partial void DecreaseBalance(this AccessorState state, int index, ulong delta)
     {
         ref ulong balance = ref state.Balances![index];
         balance -= Math.Min(balance, delta);
+        state.BlockChanges?.Balances.Add(index >> 2);
     }
 
     /// <summary>
@@ -48,7 +52,7 @@ public static partial class BeaconStateMutators
         {
             ulong balanceToProcess = exitBalance - exitBalanceToConsume;
             ulong additionalEpochs = (balanceToProcess - 1) / perEpochChurn + 1;
-            earliestExitEpoch += additionalEpochs;
+            earliestExitEpoch = CheckedEpochSum(earliestExitEpoch, additionalEpochs);
             exitBalanceToConsume += additionalEpochs * perEpochChurn;
         }
 
@@ -74,7 +78,7 @@ public static partial class BeaconStateMutators
         {
             ulong balanceToProcess = consolidationBalance - balanceToConsume;
             ulong additionalEpochs = (balanceToProcess - 1) / perEpochChurn + 1;
-            earliestConsolidationEpoch += additionalEpochs;
+            earliestConsolidationEpoch = CheckedEpochSum(earliestConsolidationEpoch, additionalEpochs);
             balanceToConsume += additionalEpochs * perEpochChurn;
         }
 
@@ -90,7 +94,7 @@ public static partial class BeaconStateMutators
     /// <exception cref="BeaconStateException">The withdrawable epoch overflows uint64.</exception>
     public static partial void InitiateValidatorExit(this AccessorState state, int index, EpochCache cache)
     {
-        Validator validator = state.Validators![index];
+        Validator validator = state.ReadOnlyValidators[index];
         if (validator.ExitEpoch != Presets.FarFutureEpoch)
             return;
 
@@ -99,7 +103,8 @@ public static partial class BeaconStateMutators
         Validator updated = validator.Clone();
         updated.ExitEpoch = exitQueueEpoch;
         updated.WithdrawableEpoch = CheckedEpochSum(exitQueueEpoch, Presets.MinValidatorWithdrawabilityDelay);
-        state.Validators[index] = updated;
+        state.Validators![index] = updated;
+        state.BlockChanges?.Validators.Add(index);
     }
 
     /// <summary>
@@ -109,7 +114,7 @@ public static partial class BeaconStateMutators
 #if GLOAS
     internal static partial ulong CheckedEpochSum(ulong epoch, ulong delta) =>
 #else
-    private static partial ulong CheckedEpochSum(ulong epoch, ulong delta) =>
+    internal static partial ulong CheckedEpochSum(ulong epoch, ulong delta) =>
 #endif
         epoch <= Presets.FarFutureEpoch - delta
             ? epoch + delta

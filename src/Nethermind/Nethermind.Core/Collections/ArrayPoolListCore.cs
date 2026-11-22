@@ -18,7 +18,7 @@ internal static class ArrayPoolListCore<T>
         int count,
         int itemsToAdd = 1)
     {
-        int newCount = count + itemsToAdd;
+        int newCount = checked(count + itemsToAdd);
 
         if (capacity == 0)
         {
@@ -27,14 +27,14 @@ internal static class ArrayPoolListCore<T>
         }
         else if (newCount > capacity)
         {
-            int newCapacity = capacity * 2;
-            if (newCapacity == 0) newCapacity = 1;
+            long newCapacity = capacity * 2L;
             while (newCount > newCapacity)
             {
                 newCapacity *= 2;
             }
 
-            T[] newArray = pool.Rent(newCapacity);
+            // Doubling stops at the largest array length; a count above it fails in Rent.
+            T[] newArray = pool.Rent((int)Math.Min(newCapacity, Math.Max(newCount, Array.MaxLength)));
             Array.Copy(array, 0, newArray, 0, count);
             T[] oldArray = Interlocked.Exchange(ref array, newArray);
             capacity = newArray.Length;
@@ -166,11 +166,7 @@ internal static class ArrayPoolListCore<T>
     public static bool Contains(T[] array, T item, int count) => IndexOf(array, count, item) >= 0;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int IndexOf(T[] array, int count, T item)
-    {
-        int indexOf = Array.IndexOf(array, item);
-        return indexOf < count ? indexOf : -1;
-    }
+    public static int IndexOf(T[] array, int count, T item) => Array.IndexOf(array, item, 0, count);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void CopyTo(T[] array, int count, T[] destination, int index) => array.AsMemory(0, count).CopyTo(destination.AsMemory(index));

@@ -59,16 +59,26 @@ public sealed class CustodySamplingAvailability(INodeColumnCustodySource custody
         foreach (ulong column in custody.SampledColumns)
             if (!Hold(column)) return false;
 
+        List<DataColumnSidecar>? uncheckedColumns = null;
         foreach ((ulong column, DataColumnSidecar sidecar) in held)
         {
             if (sidecar.Index != column || !DataColumnAvailability.MatchesBlock(sidecar, blockRoot, blobCommitments)) return false;
             if (!_verified.TryGetValue(sidecar, out _))
             {
-                if (!DataColumnSidecarVerifier.Verify(sidecar, spec)) return false;
-                _verified.GetOrCreateValue(sidecar);
+                if (!DataColumnSidecarVerifier.VerifyStructure(sidecar) || !DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec)
+                    || !DataColumnSidecarVerifier.VerifyInclusionProof(sidecar)) return false;
+                (uncheckedColumns ??= []).Add(sidecar);
             }
         }
 
+        if (uncheckedColumns is null) return true;
+        bool batchValid = DataColumnSidecarVerifier.VerifyColumnBatches(uncheckedColumns, blobCommitments, static c => new(c.Index, c.Column!, c.KzgProofs!));
+        if (!batchValid && uncheckedColumns.Count == 1) return false;
+        foreach (DataColumnSidecar sidecar in uncheckedColumns)
+        {
+            if (!batchValid && !DataColumnSidecarVerifier.VerifyKzgProofs(sidecar)) return false;
+            _verified.GetOrCreateValue(sidecar);
+        }
         return true;
     }
 }

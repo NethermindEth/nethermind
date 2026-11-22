@@ -246,9 +246,12 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
     public async Task Execution_payload_envelope_ssz_is_the_stored_envelope_encoding()
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{GloasSlot}", OctetStream);
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"));
-        Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(SignedExecutionPayloadEnvelope.Encode(_envelope)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"));
+            Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(SignedExecutionPayloadEnvelope.Encode(_envelope)));
+        }
     }
 
     [TestCase("not-a-block", Json, HttpStatusCode.BadRequest)]

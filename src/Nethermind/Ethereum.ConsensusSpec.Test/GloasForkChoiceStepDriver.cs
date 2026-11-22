@@ -52,7 +52,7 @@ internal static class GloasForkChoiceStepDriver
         BeaconStateGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_state.ssz_snappy")), out BeaconStateGloas anchorState);
         BeaconBlockGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_block.ssz_snappy")), out BeaconBlockGloas anchorBlock);
 
-        BeaconChainSpec spec = CaseSpec(casePath);
+        BeaconChainSpec spec = FuluDriverSupport.CaseSpec(casePath, "gloas");
         PubkeyCache pubkeys = FuluDriverSupport.BuildPubkeyCache(anchorState.Validators!);
         InMemoryStateProvider states = new();
         states.States[SszRoots.HashTreeRoot(anchorBlock)] = anchorState;
@@ -65,9 +65,6 @@ internal static class GloasForkChoiceStepDriver
 
         return runner;
     }
-
-    private static BeaconChainSpec CaseSpec(string casePath) =>
-        File.Exists(Path.Combine(casePath, "config.yaml")) ? FuluDriverSupport.CaseSpec(casePath) : FuluDriverSupport.TransitionSpec(0);
 
     private static void RunStep(Context context, YamlMappingNode step, int stepIndex)
     {

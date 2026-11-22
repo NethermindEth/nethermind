@@ -37,6 +37,7 @@ class SszType
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
     public required Kind Kind { get; init; }
+    public string? FixedSectionLengthDeclaration { get; private set; }
 
     private string? _typeReferenceName;
     /// <summary>
@@ -97,6 +98,10 @@ class SszType
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
+
+    /// <summary>Whether the struct declares its own parameterless constructor, which <c>new()</c> runs.</summary>
+    public bool HasExplicitParameterlessConstructor { get; private set; }
+
     public SszTypeConverterKind? ConverterKind { get; set; }
     public bool IsSszBasicType => ConverterKind == SszTypeConverterKind.BasicType;
     public SszType? EnumType { get; set; }
@@ -173,6 +178,13 @@ class SszType
             _ => null,
         };
 
+        if (type.GetMembers("GetSszFixedSectionLength").OfType<IMethodSymbol>()
+            .Any(method => method.IsPartialDefinition && method.IsStatic && method.Parameters.IsEmpty))
+        {
+            string modifier = type.BaseType?.GetMembers("GetSszFixedSectionLength").Length > 0 ? "new " : "";
+            result.FixedSectionLengthDeclaration = $"internal {modifier}static partial int GetSszFixedSectionLength()";
+        }
+
         switch (result.Kind)
         {
             case Kind.ProgressiveContainer:
@@ -187,6 +199,8 @@ class SszType
         if ((result.Kind & (Kind.Container | Kind.ProgressiveContainer | Kind.CompatibleUnion)) != Kind.None && type.TypeKind == TypeKind.Struct)
         {
             result.IsStruct = true;
+            result.HasExplicitParameterlessConstructor = type is INamedTypeSymbol namedType
+                && namedType.InstanceConstructors.Any(c => c is { Parameters.Length: 0, IsImplicitlyDeclared: false });
         }
 
         if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { Kind: Kind.List or Kind.ProgressiveList })

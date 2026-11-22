@@ -48,9 +48,12 @@ public class RandaoMixAndEpochCacheTests
         state.RandaoMixes![(int)(oldestInWindow % Presets.EpochsPerHistoricalVector)] = oldestMix;
         state.RandaoMixes[(int)(currentEpoch % Presets.EpochsPerHistoricalVector)] = currentMix;
 
-        Assert.That(state.GetRandaoMix(oldestInWindow), Is.EqualTo(oldestMix),
-            "the oldest epoch the vector still covers must resolve, and to its own mix");
-        Assert.That(state.GetRandaoMix(currentEpoch), Is.EqualTo(currentMix));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.GetRandaoMix(oldestInWindow), Is.EqualTo(oldestMix),
+                    "the oldest epoch the vector still covers must resolve, and to its own mix");
+            Assert.That(state.GetRandaoMix(currentEpoch), Is.EqualTo(currentMix));
+        }
     }
 
     [Test]
@@ -83,12 +86,15 @@ public class RandaoMixAndEpochCacheTests
 
         EpochCache cache = new();
         ulong balanceA = cache.GetTotalActiveBalance(branchA);
-        Assert.That(balanceA, Is.EqualTo(10UL * 32 * Gwei));
-        Assert.That(new EpochCache().GetTotalActiveBalance(branchB), Is.EqualTo(20UL * 32 * Gwei));
-        Assert.That(cache.GetTotalActiveBalance(branchA), Is.EqualTo(balanceA), "repeated calls for the same branch and epoch must not be treated as a conflict");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(balanceA, Is.EqualTo(10UL * 32 * Gwei));
+            Assert.That(new EpochCache().GetTotalActiveBalance(branchB), Is.EqualTo(20UL * 32 * Gwei));
+            Assert.That(cache.GetTotalActiveBalance(branchA), Is.EqualTo(balanceA), "repeated calls for the same branch and epoch must not be treated as a conflict");
 
-        Assert.That(() => cache.GetTotalActiveBalance(branchB), Throws.TypeOf<BeaconStateException>(),
-            "a second branch's state at the same epoch must be refused, not silently given branch A's balance");
+            Assert.That(() => cache.GetTotalActiveBalance(branchB), Throws.TypeOf<BeaconStateException>(),
+                "a second branch's state at the same epoch must be refused, not silently given branch A's balance");
+        }
     }
 
     [Test]

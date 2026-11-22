@@ -36,6 +36,6 @@ public class XdcSubnetModule : XdcModule
 
     protected override XdcChainSpecLoader CreateChainSpecLoader() => new XdcSubnetChainSpecLoader();
 
-    protected override void RegisterRewardCalculatorSource(ContainerBuilder builder) =>
-        builder.AddDecorator<IRewardCalculatorSource, XdcSubnetRewardCalculatorSource>();
+    protected override void RegisterRewardCalculator(ContainerBuilder builder) =>
+        builder.AddScoped<IRewardCalculator, XdcSubnetRewardCalculator>();
 }

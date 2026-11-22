@@ -169,7 +169,7 @@ public sealed class DataColumnSidecarsByRootProtocol(BeaconChainSpec spec, DataC
                 }
             }
 
-            ChargeRequest(context, totalRequestedColumns, MaxRequestDataColumnSidecars);
+            await ChargeRequestAsync(context, totalRequestedColumns, MaxRequestDataColumnSidecars, cts);
             foreach (DataColumnsByRootIdentifier identifier in identifiers)
             {
                 foreach (ulong column in identifier.Columns!)

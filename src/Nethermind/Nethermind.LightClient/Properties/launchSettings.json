@@ -23,6 +23,14 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "applicationUrl": "http://127.0.0.1:8545"
+    },
+    "Nethermind.LightClient (Gnosis)": {
+      "commandName": "Project",
+      "commandLineArgs": "--network gnosis",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://127.0.0.1:8545"
     }
   }
 }

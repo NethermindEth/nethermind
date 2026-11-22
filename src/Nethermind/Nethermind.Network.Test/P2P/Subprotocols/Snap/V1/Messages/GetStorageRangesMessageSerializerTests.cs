@@ -7,9 +7,11 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 using Nethermind.State.Snap;
@@ -28,7 +30,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 StorageRange = new()
                 {
                     RootHash = TestItem.KeccakA,
-                    Accounts = TestItem.Keccaks.Select(static k => new PathWithAccount(k, null)).ToPooledList(TestItem.Keccaks.Length),
+                    Accounts = TestItem.Keccaks.Select(static k => new PathWithAccount(k, default)).ToPooledList(TestItem.Keccaks.Length),
                     StartingHash = SnapSerializerGoldens.RangeStart,
                     LimitHash = SnapSerializerGoldens.RangeLimit
                 },
@@ -37,7 +39,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
 
             GetStorageRangesMessageSerializer serializer = new();
 
-            SerializerTester.TestZero(serializer, msg);
+            SerializerTester.Test(serializer, msg);
         }
 
         [Test]
@@ -50,15 +52,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                     RootHash = TestItem.KeccakC,
                     Accounts = new ArrayPoolList<PathWithAccount>(2)
                     {
-                        new(TestItem.KeccakA, null),
-                        new(TestItem.KeccakB, null)
+                        new(TestItem.KeccakA, default),
+                        new(TestItem.KeccakB, default)
                     }
                 },
                 ResponseBytes = 1000
             };
             GetStorageRangesMessageSerializer serializer = new();
             IOwnedReadOnlyList<PathWithAccount> decodedAccounts;
-            using (GetStorageRangeMessage decoded = serializer.Deserialize(serializer.Serialize(request)))
+            using (GetStorageRangeMessage decoded = serializer.Deserialize(serializer.SerializeToArray(request)))
             {
                 decodedAccounts = decoded.StorageRange.Accounts;
                 Assert.That(decodedAccounts.Select(account => account.Path), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakB }));
@@ -85,7 +87,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetStorageRangesMessageSerializer serializer = new();
 
             // The message encodes as [requestId, rootHash, accountPaths, startingHash, limitHash, responseBytes].
-            SerializerTester.TestZero(serializer, msg,
+            SerializerTester.Test(serializer, msg,
                 "f84a" + SnapSerializerGoldens.RequestId1111Rlp +
                 SnapSerializerGoldens.EmptyStringKeccakRlp +
                 "c0" +
@@ -111,7 +113,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetStorageRangesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Serialize(msg), Throws.InvalidOperationException);
+            Assert.That(() => serializer.SerializeToArray(msg), Throws.InvalidOperationException);
         }
 
         [Test]
@@ -129,7 +131,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
             GetStorageRangesMessageSerializer serializer = new();
 
-            GetStorageRangeMessage deserialized = serializer.Deserialize(serializer.Serialize(msg));
+            GetStorageRangeMessage deserialized = serializer.Deserialize(serializer.SerializeToArray(msg));
 
             using (Assert.EnterMultipleScope())
             {
@@ -144,7 +146,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             byte[] serialized = EncodeMessageWithNullHash(fieldName);
             GetStorageRangesMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(serialized), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -156,7 +158,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 StorageRange = new()
                 {
                     RootHash = TestItem.KeccakA,
-                    Accounts = Enumerable.Repeat(new PathWithAccount(TestItem.KeccakA, null), SnapMessageLimits.MaxRequestAccounts + 1).ToPooledList(SnapMessageLimits.MaxRequestAccounts + 1),
+                    Accounts = Enumerable.Repeat(new PathWithAccount(TestItem.KeccakA, default), SnapMessageLimits.MaxRequestAccounts + 1).ToPooledList(SnapMessageLimits.MaxRequestAccounts + 1),
                     StartingHash = TestItem.KeccakB,
                     LimitHash = TestItem.KeccakC
                 },
@@ -164,7 +166,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             GetStorageRangesMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(msg);
+            byte[] serialized = serializer.SerializeToArray(msg);
 
             Assert.Throws<RlpLimitException>(() => serializer.Deserialize(serialized));
         }
@@ -177,7 +179,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             ValueHash256 limitHash = ValueKeccak.MaxValue;
 
             int accountsContentLength = fieldName == "account-list"
-                ? Rlp.OfEmptyList.Length
+                ? RlpTestHelper.OfEmptyList.Length
                 : Rlp.LengthOf(accountPath);
             int contentLength = Rlp.LengthOf(1L)
                 + Rlp.LengthOf(rootHash)
@@ -186,14 +188,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 + Rlp.LengthOf(limitHash)
                 + Rlp.LengthOf(1000L);
             byte[] bytes = new byte[Rlp.LengthOfSequence(contentLength)];
-            RlpWriter writer = new(bytes);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
             writer.StartSequence(contentLength);
             writer.Encode(1L);
             writer.Encode(rootHash);
             writer.StartSequence(accountsContentLength);
             if (fieldName == "account-list")
             {
-                writer.Encode(Rlp.OfEmptyList);
+                writer.EncodeNullObject();
             }
             else
             {

@@ -60,8 +60,11 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         JsonElement allData = await ReadEnvelope(all, expectedFinalized: false);
         Assert.That(allData.EnumerateArray().Select(e => e.GetProperty("index").GetString()), Is.EquivalentTo(Enumerable.Range(0, 66).Select(i => i.ToString())));
         JsonElement third = allData.EnumerateArray().Single(e => e.GetProperty("index").GetString() == "3");
-        Assert.That(third.GetProperty("balance").GetString(), Is.EqualTo(BalanceOf(3).ToString()));
-        Assert.That(third.GetProperty("validator").GetProperty("pubkey").GetString(), Is.EqualTo(PubkeyOf(3).ToString()));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(third.GetProperty("balance").GetString(), Is.EqualTo(BalanceOf(3).ToString()));
+            Assert.That(third.GetProperty("validator").GetProperty("pubkey").GetString(), Is.EqualTo(PubkeyOf(3).ToString()));
+        }
 
         using HttpResponseMessage pending = await Post("validators", JsonSerializer.Serialize(new { ids, statuses = new[] { "pending_queued" } }));
         JsonElement pendingData = await ReadEnvelope(pending, expectedFinalized: false);
@@ -108,8 +111,11 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
     {
         using HttpResponseMessage response = await Post("validator_identities", "[\"7\",\"2\"]", Octet);
         byte[] body = await response.Content.ReadAsByteArrayAsync();
-        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Octet));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+            Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Octet));
+        }
 
         byte[] expected = new byte[2 * 64];
         int[] order = [7, 2];
@@ -205,8 +211,11 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
 
         JsonElement root = JsonDocument.Parse(raw).RootElement;
-        Assert.That(root.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-        Assert.That(root.GetProperty("finalized").GetBoolean(), Is.EqualTo(expectedFinalized));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.GetProperty("execution_optimistic").GetBoolean(), Is.True);
+            Assert.That(root.GetProperty("finalized").GetBoolean(), Is.EqualTo(expectedFinalized));
+        }
         return root.GetProperty("data");
     }
 

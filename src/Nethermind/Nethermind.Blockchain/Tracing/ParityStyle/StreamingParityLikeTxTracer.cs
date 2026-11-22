@@ -61,18 +61,20 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     private bool _hasStorage;
 
     // The words an operation pushes, packed into one buffer that is reused across operations.
-    private readonly ArrayPoolList<(int Offset, int Length)> _pushItems = new(4);
+    private readonly ArrayPoolList<(int Offset, int Length)> _pushItems = [with(4)];
     private byte[]? _pushBytes;
     private int _pushBytesUsed;
 
-    private readonly ArrayPoolList<VmFrame> _streamingFrames = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<VmFrame> _framePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<VmFrame> _streamingFrames = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<VmFrame> _framePool = [with(InitialFrameStackCapacity)];
 
-    private readonly ArrayPoolList<ParityTraceAction> _actionPool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<ParityAccountStateChange> _accountStateChangePool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<ParityStateChange<byte[]>> _byteStateChangePool = new(InitialFrameStackCapacity);
-    private readonly ArrayPoolList<ParityStateChange<UInt256?>> _uint256StateChangePool = new(InitialFrameStackCapacity);
+    private readonly ArrayPoolList<ParityTraceAction> _actionPool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<ParityAccountStateChange> _accountStateChangePool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<Dictionary<UInt256, ParityStateChange<byte[]>>> _storageDictPool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<ParityStateChange<byte[]>> _byteStateChangePool = [with(InitialFrameStackCapacity)];
+    private readonly ArrayPoolList<ParityStateChange<UInt256?>> _uint256StateChangePool = [with(InitialFrameStackCapacity)];
+    private readonly RetainingArrayPool<byte> _inputPool = new();
+    private readonly RetainingArrayPool<int> _traceAddressPool = new();
 
     private int _entriesSinceLastFlush;
     private bool _disposed;
@@ -176,6 +178,8 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         _byteStateChangePool.Dispose();
         _uint256StateChangePool.Dispose();
         _pushItems.Dispose();
+        _inputPool.Clear();
+        _traceAddressPool.Clear();
     }
 
     private static T PopLast<T>(ArrayPoolList<T> list)
@@ -199,14 +203,14 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     protected override CappedArray<int> RentTraceAddress(int length)
     {
         if (length == 0) return CappedArray<int>.Empty;
-        return new CappedArray<int>(ArrayPool<int>.Shared.Rent(length), length);
+        return new CappedArray<int>(_traceAddressPool.Rent(length), length);
     }
 
-    private static void ReturnTraceAddress(CappedArray<int> address)
+    private void ReturnTraceAddress(CappedArray<int> address)
     {
         if (address.IsNotNull && address.UnderlyingLength > 0)
         {
-            ArrayPool<int>.Shared.Return(address.UnderlyingArray!);
+            _traceAddressPool.Return(address.UnderlyingArray!);
         }
     }
 
@@ -243,7 +247,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     protected override CappedArray<byte> CopyInput(ReadOnlyMemory<byte> input)
     {
         if (input.IsEmpty) return CappedArray<byte>.Empty;
-        byte[] rented = ArrayPool<byte>.Shared.Rent(input.Length);
+        byte[] rented = _inputPool.Rent(input.Length);
         input.Span.CopyTo(rented);
         return new CappedArray<byte>(rented, input.Length);
     }
@@ -252,9 +256,11 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
     {
         if (input.IsNotNull && input.UnderlyingLength > 0)
         {
-            ArrayPool<byte>.Shared.Return(input.UnderlyingArray!);
+            _inputPool.Return(input.UnderlyingArray!);
         }
     }
+
+    protected override void ReturnExcludedAction(ParityTraceAction action) => ReturnActionTree(action);
 
     private void ReturnActionTree(ParityTraceAction action)
     {
@@ -430,7 +436,7 @@ public class StreamingParityLikeTxTracer : ParityLikeTxTracer
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
     }
 
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
         // Mirrors the base tracer, which adds the gas made available to a rejected creation to the operation's cost.

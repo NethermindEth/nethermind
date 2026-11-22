@@ -234,8 +234,11 @@ public static partial class EpochProcessing
         {
             int shuffledIndex = SwapOrNotShuffle.ComputeShuffledIndex((int)(i % (ulong)activeValidatorIndices.Length), activeValidatorIndices.Length, seed.Bytes);
             int candidateIndex = activeValidatorIndices[shuffledIndex];
-            BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 16);
-            SHA256.HashData(preimage, randomBytes);
+            if (i % 16 == 0)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(preimage[32..], i / 16);
+                SHA256.HashData(preimage, randomBytes);
+            }
             ulong randomValue = BinaryPrimitives.ReadUInt16LittleEndian(randomBytes[(int)(i % 16 * 2)..]);
             ulong effectiveBalance = state.Validators![candidateIndex].EffectiveBalance;
             if (effectiveBalance * BeaconStateAccessors.MaxRandomValue >= Presets.MaxEffectiveBalanceElectra * randomValue)

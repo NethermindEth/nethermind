@@ -139,6 +139,10 @@ public sealed class ExternalClDetector(
         if (_logger.IsWarn) _logger.Warn(config.DisableOnExternalCl
             ? "External consensus client detected on the engine API - disabling the embedded beacon chain driver until restart"
             : "External consensus client detected while the embedded beacon chain driver remains enabled; both clients may update the execution head");
-        if (config.DisableOnExternalCl) ExternalClDetected?.Invoke();
+        if (config.DisableOnExternalCl)
+        {
+            Metrics.BeaconChainDriverStopped = 2;
+            ExternalClDetected?.Invoke();
+        }
     }
 }

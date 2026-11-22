@@ -75,14 +75,20 @@ public class FrameTxBlockProductionTests
         Produced produced = Produce([unpayable, frameTx], (Observer, EmitFirstTopic));
 
         Assert.That(produced.Block.Transactions.Length, Is.EqualTo(1), "the producer sealed the unpayable frame transaction");
-        Assert.That(produced.Block.Transactions[0].Hash, Is.EqualTo(frameTx.Hash));
-        Assert.That(produced.Receipts, Has.Length.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(produced.Block.Transactions[0].Hash, Is.EqualTo(frameTx.Hash));
+            Assert.That(produced.Receipts, Has.Length.EqualTo(1));
+        }
         TxReceipt producedReceipt = produced.Receipts[0];
 
         // Without these the comparison below could hold over two identically empty runs.
-        Assert.That(producedReceipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
-        Assert.That(producedReceipt.Logs, Has.Length.EqualTo(1), "the SENDER frame's log must reach the produced receipt");
-        Assert.That(producedReceipt.FrameReceipts, Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(producedReceipt.StatusCode, Is.EqualTo(TxFrameReceipt.StatusSuccess));
+            Assert.That(producedReceipt.Logs, Has.Length.EqualTo(1), "the SENDER frame's log must reach the produced receipt");
+            Assert.That(producedReceipt.FrameReceipts, Has.Length.EqualTo(2));
+        }
 
         (TxReceipt[] validated, BlockHeader replayedHeader) = Validate(produced);
 

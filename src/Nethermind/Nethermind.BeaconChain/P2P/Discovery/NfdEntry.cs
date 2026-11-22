@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Network.Enr;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.BeaconChain.P2P.Discovery;
@@ -26,5 +27,5 @@ internal sealed class NfdEntry(byte[] nextForkDigest) : EnrContentEntry<byte[]>(
 
     public override string Key => "nfd";
     protected override int GetRlpLengthOfValue() => Rlp.LengthOf(Value);
-    protected override void EncodeValue<TWriter>(ref TWriter writer) => writer.Encode(Value);
+    protected override void EncodeValue(ref RlpWriter writer) => writer.Encode(Value);
 }

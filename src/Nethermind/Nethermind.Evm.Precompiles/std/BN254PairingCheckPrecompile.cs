@@ -16,8 +16,6 @@ public partial class BN254PairingCheckPrecompile
 
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
-        Metrics.Bn254PairingPrecompile++;
-
         if (!ValidateInputLength(inputData))
             return Errors.Bn254PairingInputLength;
 

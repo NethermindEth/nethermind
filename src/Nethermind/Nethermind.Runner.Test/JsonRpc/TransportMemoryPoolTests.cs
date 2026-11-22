@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -24,6 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Memory;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Hosting;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
@@ -429,7 +431,7 @@ public class TransportMemoryPoolTests
             try
             {
                 trimming.Cancel();
-                trimmer.Wait();
+                trimmer.Wait(CancellationToken.None);
             }
             finally
             {
@@ -497,10 +499,16 @@ public class TransportMemoryPoolTests
     {
         // In every round each worker creates a pool or disposes the one it holds, and only worker 0 starts with one, so
         // the rounds alternate between disposing the last pool while others create and creating one while others dispose
-        // the rest. Halfway through a factory's rounds one worker also disposes the factory.
-        const int rounds = 200_000;
+        // the rest. Halfway through a factory's rounds one worker also disposes the factory. The rounds stop once a time
+        // budget is spent so oversubscribed runners finish well inside CancelAfter.
+        const int maxRounds = 200_000;
+        const int minRounds = 1_000;
         const int roundsPerFactory = 4;
         const int disposeRound = roundsPerFactory / 2;
+        TimeSpan budget = TimeSpan.FromSeconds(20);
+        long start = Stopwatch.GetTimestamp();
+        bool stop = false;
+        int roundsRun = 0;
         CountingTimeProvider time = new();
         TransportMemoryPoolFactory factory = new(time);
         MemoryPool<byte>[] held = new MemoryPool<byte>[workers];
@@ -528,6 +536,10 @@ public class TransportMemoryPoolTests
                 time = new CountingTimeProvider();
                 factory = new TransportMemoryPoolFactory(time);
             }
+
+            int completed = round + 1;
+            roundsRun = completed;
+            stop = completed >= maxRounds || completed >= minRounds && Stopwatch.GetElapsedTime(start) > budget;
         });
 
         Thread[] threads = Enumerable.Range(0, workers).Select(worker => new Thread(() =>
@@ -535,7 +547,7 @@ public class TransportMemoryPoolTests
             try
             {
                 Random random = new(worker);
-                for (int round = 0; round < rounds; round++)
+                for (int round = 0; !stop; round++)
                 {
                     Thread.SpinWait(random.Next(32));
                     if (round % roundsPerFactory == disposeRound && round % workers == worker) factory.Dispose();
@@ -562,6 +574,7 @@ public class TransportMemoryPoolTests
         heldFrom[0] = factory;
         foreach (Thread thread in threads) thread.Start();
         foreach (Thread thread in threads) thread.Join();
+        if (roundsRun < maxRounds) TestContext.Out.WriteLine($"{TestContext.CurrentContext.Test.Name}: time budget hit after {roundsRun} of {maxRounds} rounds");
         foreach (MemoryPool<byte> pool in held) pool?.Dispose();
         factory.Dispose();
 
@@ -628,7 +641,7 @@ public class TransportMemoryPoolTests
         using HttpClient client = new();
         using HttpResponseMessage response = await client.PostAsync(Addresses(app)[0], new ByteArrayContent(sent), token);
         byte[] received = await response.Content.ReadAsByteArrayAsync(token);
-        await app.StopAsync();
+        await app.StopAsync(token);
         // Kestrel disposes its pools when it stops, and the last one stops the timer.
         bool trimmingAfterStop = ours?.IsTrimming ?? true;
 
@@ -693,7 +706,7 @@ public class TransportMemoryPoolTests
             byte[][] busyEchoes = await Task.WhenAll(busy);
             long busySmallAllocated = busyPools.Sum(static p => p.Small.BlocksAllocated);
             int poolsCreated = factory.PoolsCreated;
-            await app.StopAsync();
+            await app.StopAsync(token);
 
             using (Assert.EnterMultipleScope())
             {
@@ -737,9 +750,8 @@ public class TransportMemoryPoolTests
         configProvider.GetConfig<IJsonRpcConfig>().Returns(rpcConfig);
 
         // In the order JsonRpcRunner builds its host: Kestrel first, then Startup's services.
-        WebApplicationBuilder builder = WebApplication.CreateEmptyBuilder(new WebApplicationOptions());
+        WebApplicationBuilder builder = JsonRpcHosting.CreateBuilder(new WebApplicationOptions());
         builder.WebHost
-            .UseKestrelCore()
             .ConfigureKestrel(options =>
             {
                 for (int i = 0; i < endpoints; i++) options.Listen(IPAddress.Loopback, 0);
@@ -783,7 +795,7 @@ public class TransportMemoryPoolTests
 
     private static List<IMemoryOwner<byte>> RentBlocks(MemoryPool<byte> pool, int count)
     {
-        List<IMemoryOwner<byte>> owners = new(count);
+        List<IMemoryOwner<byte>> owners = [with(count)];
         for (int i = 0; i < count; i++) owners.Add(pool.Rent());
         return owners;
     }

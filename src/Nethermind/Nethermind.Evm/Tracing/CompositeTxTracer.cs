@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
+public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter, IFrameTxReceiptTracer, ITxOutputTracingFilter
 {
     internal readonly ITxTracer[] _txTracers;
 
@@ -43,6 +43,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             IsTracingCallOutputMemory |= t.IsTracingCallOutputMemory;
             IsTracingCode |= t.IsTracingCode;
             IsTracingStack |= t.IsTracingStack;
+            IsTracingStackPushes |= t.IsTracingStackPushes;
             IsTracingBlockHash |= t.IsTracingBlockHash;
             IsTracingStorage |= t.IsTracingStorage;
             IsTracingAccess |= t.IsTracingAccess;
@@ -79,6 +80,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
     public bool IsTracingCallOutputMemory { get; }
     public bool IsTracingCode { get; }
     public bool IsTracingStack { get; private set; }
+    public bool IsTracingStackPushes { get; }
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
@@ -97,6 +99,21 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
                 mask |= filter.InstructionMask;
             }
             return mask;
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Only the tracers that trace receipts get the output, so only they can read it.</remarks>
+    public bool IsTracingOutput
+    {
+        get
+        {
+            for (int index = 0; index < _txTracers.Length; index++)
+            {
+                ITxTracer tracer = _txTracers[index];
+                if (tracer.IsTracingReceipt && tracer is not ITxOutputTracingFilter { IsTracingOutput: false }) return true;
+            }
+            return false;
         }
     }
 
@@ -211,6 +228,34 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
             {
                 innerTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
             }
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingReceipt)
+            {
+                IFrameTxReceiptTracer.FindIn(innerTracer)?.ReportFrameTxReceipt(payer, frameReceipts);
+            }
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFrameEnd(int frameIndex, EvmExceptionType? error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            IFrameTxReceiptTracer.FindIn(_txTracers[index])?.ReportFrameEnd(frameIndex, error);
+        }
+    }
+
+    void IFrameTxReceiptTracer.ReportFramesRolledBack(int fromFrameIndex, int toFrameIndex)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            IFrameTxReceiptTracer.FindIn(_txTracers[index])?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
         }
     }
 
@@ -473,15 +518,32 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
     }
 
     /// <inheritdoc/>
-    public void ReportActionErrorDetails(string error)
+    public void ReportActionErrorDetails(string error) => ReportActionErrorDetails(error, actionOnly: false);
+
+    /// <inheritdoc/>
+    public void ReportActionErrorDetails(string error, bool actionOnly)
     {
         for (int index = 0; index < _txTracers.Length; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingActions)
             {
-                innerTracer.ReportActionErrorDetails(error);
+                if (actionOnly)
+                    innerTracer.ReportActionErrorDetails(error, actionOnly: true);
+                else
+                    innerTracer.ReportActionErrorDetails(error);
             }
+        }
+    }
+
+    /// <inheritdoc/>
+    public void ReportCodeDepositError(string error)
+    {
+        for (int index = 0; index < _txTracers.Length; index++)
+        {
+            ITxTracer innerTracer = _txTracers[index];
+            if (innerTracer.IsTracingActions)
+                innerTracer.ReportCodeDepositError(error);
         }
     }
 
@@ -509,7 +571,7 @@ public class CompositeTxTracer : ITxTracer, IInstructionTracingFilter
         }
     }
 
-    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to, ReadOnlyMemory<byte> input,
+    public void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
         for (int index = 0; index < _txTracers.Length; index++)

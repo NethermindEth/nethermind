@@ -40,12 +40,12 @@ public class PeerAdmissionMetadataTests
 
         bool admitted = await peerManager.TryAddPeerAsync(LoopbackAddress(other.P2P), token);
 
-        Assert.That(admitted, Is.True);
         Assert.That(announced, Has.Count.EqualTo(1));
         string statusProtocol = new StatusProtocolV2(other.StatusHolder).Id;
         IBeaconSyncPeer peer = announced[0].Peer;
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(admitted, Is.True);
             Assert.That(announced[0].InPool, Is.True);
             Assert.That(announced[0].CustodyKnown, Is.True, "the peer's MetaData was read before the announcement");
             Assert.That(peer.AdvertisedProtocols, Does.Contain(statusProtocol));
@@ -53,7 +53,8 @@ public class PeerAdmissionMetadataTests
 
         client.P2P.PeerInfoForTest(other.P2P.LocalPeerId!).SupportedProtocols = [];
         Assert.That(peer.AdvertisedProtocols, Is.Empty);
-        Assert.That(client.P2P.TryGetEstablishedSession(other.P2P.LocalPeerId!, out ISession? session), Is.True);
+        bool established = client.P2P.TryGetEstablishedSession(other.P2P.LocalPeerId!, out ISession? session);
+        Assert.That(established, Is.True);
         string wanted = new LightClientBootstrapProtocol(BeaconChainSpec.Mainnet).Id;
         string[] saturated = [.. Enumerable.Range(0, BeaconP2P.MaxIdentifyProtocols).Select(static i => $"/other/{i}")];
         client.P2P.RecordIdentify(session!, new IdentifyResult
@@ -164,4 +165,5 @@ public class PeerAdmissionMetadataTests
         Assert.That(admitted, Is.False, "the session closed before the admission ended");
         Assert.That(discovery.DialHistory.Quality(silentAddress), Is.EqualTo(-1), "the address stays backed off, one step for one failed dial");
     }
+
 }

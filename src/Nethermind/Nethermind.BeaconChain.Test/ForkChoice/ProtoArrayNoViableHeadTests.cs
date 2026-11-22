@@ -15,6 +15,78 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 public class ProtoArrayNoViableHeadTests
 {
     [Test]
+    public void Leaf_viability_is_refreshed_when_slot_or_checkpoints_change()
+    {
+        CheckpointRef genesis = new(0, GetRoot(0));
+        CheckpointRef first = new(1, GetRoot(0));
+        CheckpointRef second = new(2, GetRoot(0));
+        ProtoArray tree = new(32, 40);
+        tree.OnBlock(CreateProtoBlock(0, GetRoot(0), null, genesis, genesis, ExecutionStatus.Optimistic, GetRoot(0)), 32, genesis, genesis);
+        tree.OnBlock(CreateProtoBlock(32, GetRoot(1), GetRoot(0), genesis, genesis, ExecutionStatus.Optimistic, GetRoot(1),
+            unrealizedJustified: first), 32, genesis, genesis);
+
+        using System.IDisposable scope = Assert.EnterMultipleScope();
+        AssertHead(64, second, genesis, GetRoot(1));
+        AssertHead(128, second, genesis, GetRoot(0));
+        AssertHead(128, first, genesis, GetRoot(1));
+        AssertHead(128, first, new CheckpointRef(1, GetRoot(2)), GetRoot(0));
+        AssertHead(128, first, genesis, GetRoot(1));
+
+        void AssertHead(ulong slot, CheckpointRef justified, CheckpointRef finalized, Hash256 expected)
+        {
+            tree.ApplyScoreChanges(new ScoreDeltas(new long[2], new long[2], new long[2]), justified, finalized,
+                JustifiedBalances.FromEffectiveBalances([]), Hash256.Zero, slot);
+            Assert.That(tree.FindHead(GetRoot(0), slot, justified, finalized), Is.EqualTo(expected));
+        }
+    }
+
+    [Test]
+    public void Shared_leaf_viability_is_refreshed_after_status_changes_and_pruning([Values(16, 512)] int length)
+    {
+        CheckpointRef genesis = new(0, GetRoot(0));
+        ProtoArray tree = new(32, 40) { PruneThreshold = 0 };
+        for (int i = 0; i <= length; i++)
+        {
+            Hash256 root = GetRoot((ulong)i);
+            tree.OnBlock(CreateProtoBlock((ulong)i, root, i == 0 ? null : GetRoot((ulong)i - 1), genesis, genesis,
+                ExecutionStatus.Optimistic, root), (ulong)length + 1, genesis, genesis);
+        }
+
+        for (int i = 1; i <= length; i++)
+        {
+            Hash256 root = GetRoot((ulong)(length + i));
+            tree.OnBlock(CreateProtoBlock((ulong)length + 1, root, GetRoot((ulong)length), genesis, genesis,
+                ExecutionStatus.Invalid, root), (ulong)length + 1, genesis, genesis);
+        }
+
+        Hash256 terminalRoot = GetRoot((ulong)length);
+        Hash256 childRoot = GetRoot((ulong)length + 1);
+        using System.IDisposable scope = Assert.EnterMultipleScope();
+        AssertHead(terminalRoot);
+        AssertHead(terminalRoot);
+        tree.Nodes[tree.Indices[childRoot]].ExecutionStatus = ExecutionStatus.Optimistic;
+        AssertHead(childRoot);
+        tree.Nodes[tree.Indices[childRoot]].ExecutionStatus = ExecutionStatus.Invalid;
+        AssertHead(terminalRoot);
+        tree.Prune(GetRoot((ulong)length / 2));
+        AssertHead(terminalRoot);
+        tree.Nodes[tree.Indices[childRoot]].ExecutionStatus = ExecutionStatus.Valid;
+        AssertHead(childRoot);
+
+        void AssertHead(Hash256 expected)
+        {
+            int count = tree.Nodes.Count;
+            tree.ApplyScoreChanges(new ScoreDeltas(new long[count], new long[count], new long[count]), genesis, genesis,
+                JustifiedBalances.FromEffectiveBalances([]), Hash256.Zero, (ulong)length + 1);
+            Assert.That(tree.FindHead(tree.Nodes[0].Root, (ulong)length + 1, genesis, genesis), Is.EqualTo(expected));
+            for (int i = 0; i < tree.Indices[terminalRoot]; i++)
+            {
+                Assert.That(tree.Nodes[i].BestDescendant, Is.EqualTo(tree.Indices[expected]));
+            }
+        }
+    }
+
+    [Test]
     public void Head_excludes_an_interior_node_whose_only_child_lost_unrealized_justification()
     {
         UnsignedChain chain = UnsignedChain.Create();

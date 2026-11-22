@@ -23,6 +23,7 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 public class GossipLoopbackTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
+    private static readonly int[] GossipMessageSizes = [64, 300 * 1024, 1200 * 1024, 6 * 1024 * 1024, Nethermind.Network.Libp2p.Eth2MessageId.MaxCompressedGossipSize];
 
     // p2p-interface.md StrictNoSign: published messages omit from, seqno, signature and key.
     [Test]
@@ -92,8 +93,11 @@ public class GossipLoopbackTests
             columns.Handle(column, gloasTopic: false, Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(column, slot))));
         }
 
-        Assert.That(await received.Task, Is.EqualTo(Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(reconstructed, slot)))));
-        Assert.That(((PubsubRouter)reconstructing.RoutingStateForTest!).GetTopic(topicId, subscribe: false).IsSubscribed, Is.EqualTo(subscribed));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await received.Task, Is.EqualTo(Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(reconstructed, slot)))));
+            Assert.That(((PubsubRouter)reconstructing.RoutingStateForTest!).GetTopic(topicId, subscribe: false).IsSubscribed, Is.EqualTo(subscribed));
+        }
     }
 
     private static bool IsMeshNeighbor(BeaconP2P node, string topicId, PeerId peer, bool subscribed = true)
@@ -279,8 +283,11 @@ public class GossipLoopbackTests
             await Task.WhenAny(received.Task, Task.Delay(500, CancellationToken.None));
         }
 
-        Assert.That(received.Task.IsCompleted, Is.True, "no gossip crossed the admitted session");
-        Assert.That(await received.Task, Is.EqualTo(message));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(received.Task.IsCompleted, Is.True, "no gossip crossed the admitted session");
+            Assert.That(await received.Task, Is.EqualTo(message));
+        }
     }
 
     [Test]
@@ -302,8 +309,11 @@ public class GossipLoopbackTests
         await PeerSessionNodes.WaitUntilAsync(() => node.HasGossipChannel(remote.LocalPeerId!) && remote.HasGossipChannel(node.LocalPeerId!), "the remote's channel was never answered", token);
         PeerManager manager = CreatePeerManager(node);
         manager.GossipChannelCheckInterval = TimeSpan.FromSeconds(5);
-        Assert.That(await manager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(remote), token), Is.True, "the peer manager did not admit the session");
-        Assert.That(await DeliversAsync(topic, 1, received[1].Task, token), Is.True, "no gossip crossed the admitted session");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await manager.TryAddPeerAsync(PeerSessionNodes.LoopbackAddressText(remote), token), Is.True, "the peer manager did not admit the session");
+            Assert.That(await DeliversAsync(topic, 1, received[1].Task, token), Is.True, "no gossip crossed the admitted session");
+        }
 
         remoteChannel.Cancel();
         await PeerSessionNodes.WaitUntilAsync(() => !node.HasGossipChannel(remote.LocalPeerId!), "closing the remote's channel did not end the node's", token);
@@ -361,7 +371,7 @@ public class GossipLoopbackTests
     // p2p-interface.md permits compressed payloads up to max_compressed_len(10 MiB), spanning several yamux windows.
     [Test]
     [CancelAfter(60_000)]
-    public async Task A_gossip_message_of_any_legal_size_reaches_the_other_host([Values(64, 300 * 1024, 1200 * 1024, 6 * 1024 * 1024)] int size, CancellationToken token)
+    public async Task A_gossip_message_of_any_legal_size_reaches_the_other_host([ValueSource(nameof(GossipMessageSizes))] int size, CancellationToken token)
     {
         string topicId = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.DataColumnSidecarTopicName(0));
         await using BeaconP2P publisher = CreateHost();

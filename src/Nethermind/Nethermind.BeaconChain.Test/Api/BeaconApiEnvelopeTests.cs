@@ -14,6 +14,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
@@ -102,7 +103,7 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
 
     [Test]
     public async Task Pruned_history_requires_a_verified_checkpoint(
-        [Values] bool withSnapshot, [Values] bool checkpointVerified, [Values] bool newerStatus)
+        [Values] bool withSnapshot, [Values] bool checkpointVerified, [Values] bool newerStatus, [Values] bool rootOnly)
     {
         const ulong start = 13_200_000;
         Hash256 root = TestRoot(40);
@@ -127,11 +128,14 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         host.SetStatus(newerCheckpointRoot, newerStatus ? newerCheckpointRoot : checkpointRoot,
             checkpoint.Epoch + (newerStatus ? 1UL : 0UL));
 
-        using HttpResponseMessage response = await host.Client.GetAsync($"/eth/v1/beacon/headers/{root}");
+        MemDb blocks = (MemDb)host.Db.GetColumnDb(BeaconChainDbColumns.Blocks);
+        long reads = blocks.ReadsCount;
+        using HttpResponseMessage response = await host.Client.GetAsync(rootOnly ? $"/eth/v1/beacon/blocks/{root}/root" : $"/eth/v1/beacon/headers/{root}");
         using JsonDocument body = await BeaconApiTestHost.ReadJsonAsync(response);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((int)response.StatusCode, Is.EqualTo(200));
         Assert.That(body.RootElement.GetProperty("finalized").GetBoolean(), Is.True);
+        Assert.That(blocks.ReadsCount, Is.EqualTo(reads), "indexed roots and headers include the slot used for the response flags");
         Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(),
             Is.EqualTo(!withSnapshot || !checkpointVerified || newerStatus));
     }
@@ -221,14 +225,18 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         SignedBeaconBlock head = BeaconApiTestHost.MinimalBlock(start + (ulong)offset);
         head.Message!.ParentRoot = current;
         head.Message.StateRoot = TestRoot(34);
-        host.Store.PutBlock(previous, older);
-        host.Store.PutBlock(current, parent);
         host.Store.PutBlock(headRoot, head);
         ManualTimestamper time = new(DateTimeOffset.FromUnixTimeSeconds((long)Spec.GenesisTime).UtcDateTime);
         BeaconApiContext ctx = new(new BeaconChainConfig(), Spec, host.StatusHolder, new SlotClock(Spec, time), host.Store,
             new LocalMetadataSource(), new NoOpEngineDriver(), LimboLogs.Instance, null, null, null, snapshots);
 
         ctx = ctx.ForRequest();
+        EventsEndpoint.EventCache cache = new();
+        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.Null);
+        host.Store.PutBlock(previous, older);
+        host.Store.PutBlock(current, parent);
+        time.Add(TimeSpan.FromSeconds(Spec.SecondsPerSlot));
+        Assert.That(cache.Head(ctx, headRoot, start - 1), Is.Not.Null, "a missing ancestor is retried in the next slot after backfill");
         EventsEndpoint.HeadEventDto? payload = EventsEndpoint.CreateHeadEvent(ctx, headRoot, start - 1);
         Assert.That(payload, Is.Not.Null);
         using JsonDocument body = JsonDocument.Parse(JsonSerializer.Serialize(payload));
@@ -245,7 +253,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
             Assert.That(finalized.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(optimistic));
         }
         Assert.That(EventsEndpoint.CreateHeadEvent(ctx, headRoot, start)?.EpochTransition, Is.False);
-        EventsEndpoint.EventCache cache = new();
         EventsEndpoint.HeadEventDto? cached = cache.Head(ctx, headRoot, start - 1);
         host.Store.DeleteBlock(previous);
         host.Store.DeleteBlock(current);

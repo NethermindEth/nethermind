@@ -146,9 +146,12 @@ public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
 
         JsonElement root = JsonDocument.Parse(raw).RootElement;
-        Assert.That(root.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "execution_optimistic", "finalized", "data" }));
-        Assert.That(root.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-        Assert.That(root.GetProperty("finalized").GetBoolean(), Is.EqualTo(expectedFinalized));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "execution_optimistic", "finalized", "data" }));
+            Assert.That(root.GetProperty("execution_optimistic").GetBoolean(), Is.True);
+            Assert.That(root.GetProperty("finalized").GetBoolean(), Is.EqualTo(expectedFinalized));
+        }
         return root.GetProperty("data");
     }
 

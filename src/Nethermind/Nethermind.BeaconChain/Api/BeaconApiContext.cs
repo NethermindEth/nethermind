@@ -43,24 +43,23 @@ internal sealed record BeaconApiContext(
     DataColumnSidecarPool? ColumnPool = null)
 {
     /// <summary>Captures one get_head view for all reads in a request (fork-choice.md).</summary>
-    public BeaconApiContext ForRequest() => this with { StatusSource = CaptureHead(), ForkChoiceSnapshot = ForkChoiceSnapshots?.Current };
+    public BeaconApiContext ForRequest() => HeadSnapshots?.Current is { } snapshot
+        ? this with { StatusSource = new FrozenHead(snapshot), ForkChoiceSnapshot = snapshot.ForkChoice }
+        : this with { StatusSource = CaptureStartupHead(), ForkChoiceSnapshot = HeadSnapshots is null ? ForkChoiceSnapshots?.Current : null };
     /// <summary>The captured state of a checkpoint alias or the head's block post-state.</summary>
     internal ForkedBeaconState? GetHeldState(Hash256 blockRoot, string stateId) =>
         GetCheckpointState(stateId)?.State ?? (StatusSource as FrozenHead)?.GetState(blockRoot);
     internal CheckpointStateSnapshot? GetCheckpointState(string stateId) => (StatusSource as FrozenHead)?.GetCheckpointState(stateId);
     public ForkChoiceSnapshot? ForkChoiceSnapshot { get; private init; }
+    internal ValidatorIndexCache ValidatorIndices { get; } = new();
+    internal StateCommitteeCache Committees { get; } = new();
     /// <summary>Bounds the blob rebuilds of this host's getBlobs requests that run at once; a request past it is refused, never queued.</summary>
     public EventsEndpoint.EventCache Events { get; } = new();
     public ConcurrencyLimiter BlobRebuilds { get; } = new(new ConcurrencyLimiterOptions { PermitLimit = BlobsEndpoint.MaxConcurrentRebuilds, QueueLimit = 0 });
 
     /// <summary>Freezes the published get_head view, or the startup status before publication (fork-choice.md).</summary>
-    public IBeaconChainStatusSource CaptureHead()
+    private IBeaconChainStatusSource CaptureStartupHead()
     {
-        if (HeadSnapshots?.Current is { } snapshot)
-        {
-            return new FrozenHead(snapshot);
-        }
-
         (StatusMessageV2 status, Hash256? fullHeadRoot) = StatusSource.CurrentHead;
         return new FrozenHead(new HeadSnapshot(status, fullHeadRoot, StatusSource.JustifiedRoot, StatusSource.ExecutionInSync));
     }
@@ -72,6 +71,11 @@ internal sealed record BeaconApiContext(
         {
             if (stateId == "justified") return snapshot.JustifiedState;
             if (stateId == "finalized") return snapshot.FinalizedState;
+            if (ulong.TryParse(stateId, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out ulong slot))
+            {
+                if (snapshot.JustifiedState is { } justifiedAtSlot && justifiedAtSlot.State.Slot == slot) return justifiedAtSlot;
+                if (snapshot.FinalizedState is { } finalizedAtSlot && finalizedAtSlot.State.Slot == slot) return finalizedAtSlot;
+            }
             if (!HexConvert.TryParseHash(stateId, out Hash256? root)) return null;
             if (snapshot.JustifiedState is { } justified && justified.StateRoot == root) return justified;
             return snapshot.FinalizedState is { } finalized && finalized.StateRoot == root ? finalized : null;
