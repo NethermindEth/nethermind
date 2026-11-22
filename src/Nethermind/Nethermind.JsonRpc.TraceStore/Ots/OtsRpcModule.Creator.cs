@@ -38,18 +38,15 @@ public sealed partial class OtsRpcModule
         ct.ThrowIfCancellationRequested();
         hasCreationHistory = stateReader.TryGetAccount(head, address, out AccountStruct account) && account.HasCode;
         ct.ThrowIfCancellationRequested();
-        if (!blockFinder.IsMainChain(head)) return ChainChanged;
-        if (!hasCreationHistory) return null;
-        if (specProvider.GetSpec(head).IsEip7702Enabled)
+        if (hasCreationHistory && specProvider.GetSpec(head).IsEip7702Enabled)
         {
             byte[]? code = stateReader.GetCode(account.CodeHash);
             if (code is null) return "Current account code is unavailable.";
-            ct.ThrowIfCancellationRequested();
-            if (!blockFinder.IsMainChain(head)) return ChainChanged;
             // EIP-7702 delegation is installed by authorization, not by a CREATE transaction.
-            if (Eip7702Constants.IsDelegatedCode(code)) hasCreationHistory = false;
+            hasCreationHistory = !Eip7702Constants.IsDelegatedCode(code);
         }
-        return null;
+        ct.ThrowIfCancellationRequested();
+        return blockFinder.IsMainChain(head) ? null : ChainChanged;
     }
 
     private ResultWrapper<OtsContractCreator?> FindContractCreator(Address address, Block head, CancellationToken ct)
