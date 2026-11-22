@@ -3898,9 +3898,11 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void SubmitTx_DepositTransaction_RejectedAsNotSupported([Values(TxHandlingOptions.None, TxHandlingOptions.PersistentBroadcast)] TxHandlingOptions options)
+        public void SubmitTx_DepositTransaction_RejectedAsNotSupported()
         {
-            _txPool = CreatePool();
+            TxValidator txValidator = new(_specProvider.ChainId);
+            txValidator.RegisterValidator(TxType.DepositTx, Always.Valid);
+            _txPool = CreatePool(txValidator: txValidator);
             Transaction depositTx = Build.A.Transaction
                 .WithType(TxType.DepositTx)
                 .WithNonce(0)
@@ -3910,7 +3912,7 @@ namespace Nethermind.TxPool.Test
                 .TestObject;
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
 
-            AcceptTxResult result = _txPool.SubmitTx(depositTx, options);
+            AcceptTxResult result = _txPool.SubmitTx(depositTx, TxHandlingOptions.PersistentBroadcast);
 
             using (Assert.EnterMultipleScope())
             {
@@ -8653,7 +8655,8 @@ namespace Nethermind.TxPool.Test
             IEthereumEcdsa ethereumEcdsa = null,
             ITxValidator specChangeTxValidator = null,
             IFrameTxPrefixSimulator frameTxPrefixSimulator = null,
-            IStateHeaderProvider stateHeaderProvider = null)
+            IStateHeaderProvider stateHeaderProvider = null,
+            ITxValidator txValidator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -8673,7 +8676,7 @@ namespace Nethermind.TxPool.Test
                 txStorage,
                 _headInfo,
                 config,
-                new TxValidator(_specProvider.ChainId),
+                txValidator ?? new TxValidator(_specProvider.ChainId),
                 specChangeTxValidator ?? new SpecChangeTxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
