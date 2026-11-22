@@ -131,92 +131,81 @@ public class OptimismTransactionProcessorTests
         }
     }
 
-    [TestCase(0UL)]
-    [TestCase(500_000_000_000_000_000UL)]
-    public void System_flagged_deposit_after_Regolith_is_rejected_without_state_changes(ulong value)
+    [Test]
+    public void System_flagged_deposit_after_Regolith_is_rejected_without_state_changes([Values(0UL, 500_000_000_000_000_000UL)] ulong value)
     {
-        IReleaseSpec spec = Prague.Instance;
-        using IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0, RegolithTimestamp = 0 }, spec);
-        using ILifetimeScope lifetime = BeginLifetimeScope(container);
-        IWorldState state = lifetime.Resolve<IWorldState>();
-        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
-
-        Transaction tx = Build.A.Transaction
-            .WithType(TxType.DepositTx)
-            .WithSourceHash(TestItem.KeccakA)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithTo(TestItem.AddressB)
-            .WithValue(value)
-            .WithGasLimit(100_000)
-            .WithIsOPSystemTransaction(true)
-            .TestObject;
-        tx.Mint = 1.Ether;
-        BlockHeader header = Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject;
-
-        TransactionResult result = lifetime.Resolve<ITransactionProcessor>()
-            .Execute(tx, new BlockExecutionContext(header, spec), new CallOutputTracer());
+        using SystemDepositRun run = ExecuteSystemDeposit(regolithTimestamp: 0, value, gasLimit: 100_000);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-            Assert.That(state.AccountExists(TestItem.AddressA), Is.False);
-            Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
-            Assert.That(header.GasUsed, Is.Zero);
+            Assert.That(run.Result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(run.State.AccountExists(TestItem.AddressA), Is.False);
+            Assert.That(run.State.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+            Assert.That(run.Header.GasUsed, Is.Zero);
         }
     }
 
-    [TestCase(0UL)]
-    [TestCase(500_000_000_000_000_000UL)]
-    public void System_flagged_deposit_before_Regolith_mints_and_increments_nonce(ulong value)
+    [Test]
+    public void System_flagged_deposit_before_Regolith_mints_and_increments_nonce([Values(0UL, 500_000_000_000_000_000UL)] ulong value)
     {
-        IReleaseSpec spec = Prague.Instance;
-        using IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0 }, spec);
-        using ILifetimeScope lifetime = BeginLifetimeScope(container);
-        IWorldState state = lifetime.Resolve<IWorldState>();
-        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
-
-        Transaction tx = Build.A.Transaction
-            .WithType(TxType.DepositTx)
-            .WithSourceHash(TestItem.KeccakA)
-            .WithSenderAddress(TestItem.AddressA)
-            .WithTo(TestItem.AddressB)
-            .WithValue(value)
-            .WithGasLimit(100_000)
-            .WithIsOPSystemTransaction(true)
-            .TestObject;
-        tx.Mint = 1.Ether;
-        BlockHeader header = Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject;
-        CallOutputTracer tracer = new();
-
-        TransactionResult result = lifetime.Resolve<ITransactionProcessor>()
-            .Execute(tx, new BlockExecutionContext(header, spec), tracer);
+        using SystemDepositRun run = ExecuteSystemDeposit(regolithTimestamp: null, value, gasLimit: 100_000);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
-            Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether - value));
-            Assert.That(state.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
-            Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)value));
-            Assert.That(header.GasUsed, Is.Zero);
+            Assert.That(run.Result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(run.Tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(run.State.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether - value));
+            Assert.That(run.State.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            Assert.That(run.State.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)value));
+            Assert.That(run.Header.GasUsed, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void System_flagged_deposit_before_Regolith_is_not_limited_by_block_gas()
+    {
+        using SystemDepositRun run = ExecuteSystemDeposit(regolithTimestamp: null, value: 0, gasLimit: 150_000_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(run.Tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(run.State.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            Assert.That(run.Header.GasUsed, Is.Zero);
         }
     }
 
     [Test]
     public void Failed_system_flagged_deposit_before_Regolith_uses_no_block_gas()
     {
+        using SystemDepositRun run = ExecuteSystemDeposit(regolithTimestamp: null, value: 0, gasLimit: 1_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(run.Tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(run.Tracer.GasSpent, Is.Zero);
+            Assert.That(run.Header.GasUsed, Is.Zero);
+            Assert.That(run.State.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether));
+            Assert.That(run.State.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+        }
+    }
+
+    private static SystemDepositRun ExecuteSystemDeposit(ulong? regolithTimestamp, ulong value, ulong gasLimit)
+    {
         IReleaseSpec spec = Prague.Instance;
-        using IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0 }, spec);
-        using ILifetimeScope lifetime = BeginLifetimeScope(container);
+        IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0, RegolithTimestamp = regolithTimestamp }, spec);
+        ILifetimeScope lifetime = BeginLifetimeScope(container);
         IWorldState state = lifetime.Resolve<IWorldState>();
-        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
 
         Transaction tx = Build.A.Transaction
             .WithType(TxType.DepositTx)
             .WithSourceHash(TestItem.KeccakA)
             .WithSenderAddress(TestItem.AddressA)
             .WithTo(TestItem.AddressB)
-            .WithGasLimit(1_000)
+            .WithValue(value)
+            .WithGasLimit(gasLimit)
             .WithIsOPSystemTransaction(true)
             .TestObject;
         tx.Mint = 1.Ether;
@@ -225,15 +214,23 @@ public class OptimismTransactionProcessorTests
 
         TransactionResult result = lifetime.Resolve<ITransactionProcessor>()
             .Execute(tx, new BlockExecutionContext(header, spec), tracer);
+        return new SystemDepositRun(container, lifetime, scope, state, header, tracer, result);
+    }
 
-        using (Assert.EnterMultipleScope())
+    private sealed record SystemDepositRun(
+        IContainer Container,
+        ILifetimeScope Lifetime,
+        IDisposable Scope,
+        IWorldState State,
+        BlockHeader Header,
+        CallOutputTracer Tracer,
+        TransactionResult Result) : IDisposable
+    {
+        public void Dispose()
         {
-            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-            Assert.That(tracer.GasSpent, Is.Zero);
-            Assert.That(header.GasUsed, Is.Zero);
-            Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether));
-            Assert.That(state.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            Scope.Dispose();
+            Lifetime.Dispose();
+            Container.Dispose();
         }
     }
 

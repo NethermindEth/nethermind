@@ -78,6 +78,9 @@ public class OptimismTransactionProcessor(
 
     protected override bool UsesSystemTransactionProcessor(Transaction tx) => !tx.IsDeposit() && base.UsesSystemTransactionProcessor(tx);
 
+    protected override TransactionResult ValidateGas(Transaction tx, BlockHeader header, IReleaseSpec spec, in EthereumGasPolicy intrinsicGas, ulong minGasRequired, bool validate) =>
+        base.ValidateGas(tx, header, spec, in intrinsicGas, minGasRequired, validate && !(tx.IsDeposit() && tx.IsOPSystemTransaction));
+
     protected override TransactionResult BuyGas(Transaction tx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
         in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
