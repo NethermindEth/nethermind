@@ -18,16 +18,20 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
 
 public class InclusionListTxSourceTests
 {
-    private static InclusionListTxSource CreateSource() => new(
+    private static InclusionListTxSource CreateSource() => CreateSource(new TxValidator(MainnetSpecProvider.Instance.ChainId));
+
+    private static InclusionListTxSource CreateSource(ITxValidator txValidator) => new(
         new EthereumEcdsa(MainnetSpecProvider.Instance.ChainId),
         new CustomSpecProvider(((ForkActivation)0, Bogota.Instance)),
-        new TxValidator(MainnetSpecProvider.Instance.ChainId),
+        txValidator,
         LimboLogs.Instance);
 
     private static PayloadAttributes Attributes(byte[][] inclusionList) => new() { InclusionListTransactions = inclusionList };
@@ -179,20 +183,24 @@ public class InclusionListTxSourceTests
     }
 
     // A blob-carrying EIP-8141 frame transaction is type 6, so the type-3-only SupportsBlobs does not see it,
-    // yet it reaches production without a sidecar just the same.
+    // yet it reaches production without a sidecar just the same. The blob-free frame transaction is the
+    // negative control: the filter must drop entries for carrying blobs, not for being frame transactions.
     [Test]
     public void Blob_carrying_frame_transactions_are_filtered_out()
     {
-        InclusionListTxSource source = CreateSource();
+        ITxValidator acceptAll = Substitute.For<ITxValidator>();
+        acceptAll.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>()).Returns(ValidationResult.Success);
+        InclusionListTxSource source = CreateSource(acceptAll);
         Transaction normal = Build.A.Transaction.WithNonce(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction blobFrameTx = FrameTx(nonce: 2, blobVersionedHashes: [new byte[32]]);
-        byte[][] il = [Encode(normal), Encode(blobFrameTx)];
+        Transaction plainFrameTx = FrameTx(nonce: 3, blobVersionedHashes: null!);
+        byte[][] il = [Encode(normal), Encode(blobFrameTx), Encode(plainFrameTx)];
         PayloadAttributes attrs = Attributes(il);
 
         source.Set(il, Bogota.Instance);
         Assert.That(
             GetTransactions(source, attrs).Select(t => t.Nonce),
-            Is.EqualTo([1ul]));
+            Is.EquivalentTo([1ul, 3ul]));
     }
 
     private static Transaction FrameTx(ulong nonce, byte[][] blobVersionedHashes) => new()
