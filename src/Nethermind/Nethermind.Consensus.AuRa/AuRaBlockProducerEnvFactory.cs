@@ -35,8 +35,7 @@ namespace Nethermind.Consensus.AuRa;
 /// <remarks>
 /// On top of the standard producer wiring it registers the sealing <see cref="IAuRaValidator"/> (shared between
 /// <see cref="AuRaBlockProcessor"/> and the tx source), the producer tx filter, the block gas limit contract
-/// override and contract rewriter when configured, and wraps the tx pool source with posdao/randomness
-/// transaction sources.
+/// override when configured, and wraps the tx pool source with posdao/randomness transaction sources.
 /// </remarks>
 internal sealed class AuRaBlockProducerEnvFactory(
     ILifetimeScope rootLifetime,
