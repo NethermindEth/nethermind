@@ -392,7 +392,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 if (!_blockTree.CanAcceptNewBlocks) return null;
                 do
                 {
-                    HandleDependentBatches(cancellationToken);
+                    // Request sizing resumes this prepare call without another dependency pass.
+                    if (requestSize is null) HandleDependentBatches(cancellationToken);
                 } while (PendingIsEmpty && !ShouldBuildANewBatch() && HasDependencyToProcess);
 
                 HeadersSyncBatch? batch;
