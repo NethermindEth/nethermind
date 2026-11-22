@@ -68,6 +68,17 @@ public class CodeInfoRepositoryTests
         Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
     }
 
+    [Test]
+    public void Delegated_precompile_records_its_account_and_returns_empty_code()
+    {
+        Address target = IdentityPrecompile.Address;
+        IWorldState worldState = Substitute.For<IWorldState>();
+        CodeInfoRepository repository = new(worldState, NoPrecompiles());
+
+        Assert.That(repository.GetDelegatedCodeInfo(target, Prague.Instance), Is.SameAs(CodeInfo.Empty));
+        worldState.Received(1).RecordAccountAccess(target);
+    }
+
     private static IPrecompileProvider NoPrecompiles()
     {
         IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
