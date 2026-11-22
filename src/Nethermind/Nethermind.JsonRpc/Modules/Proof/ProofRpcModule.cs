@@ -40,7 +40,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
     {
         // Registry-resolved so AuRa chains encode headers with step + signature (see AuRaHeaderModule).
         private readonly IRlpDecoder<BlockHeader> _headerDecoder = Rlp.GetDecoderOrThrow<BlockHeader>();
-        private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
         private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, poSSwitcher, jsonRpcConfig);
 
         public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken = default) =>
@@ -251,6 +250,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index) => TxTrie.CalculateProof(txs, index);
 
-        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) => ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, _receiptEncoder);
+        private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index) =>
+            ReceiptTrie.CalculateReceiptProofs(specProvider.GetSpec(blockHeader), receipts, index, Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie));
     }
 }

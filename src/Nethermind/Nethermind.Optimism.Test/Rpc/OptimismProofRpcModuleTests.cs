@@ -1,15 +1,27 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State.OverridableEnv;
+using Nethermind.State.Proofs;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -20,6 +32,60 @@ public class OptimismProofRpcModuleTests
 {
     private static readonly Hash256 TxHash = TestItem.KeccakA;
     private static readonly Hash256 BlockHash = TestItem.KeccakB;
+
+    [Test, NonParallelizable]
+    public void Pre_canyon_deposit_receipt_proof_matches_the_header_root()
+    {
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
+        Transaction tx = Build.A.Transaction.WithType(TxType.DepositTx).WithHash(TxHash).WithSourceHash(TestItem.KeccakC)
+            .WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).TestObject;
+        Block block = Build.A.Block.WithTransactions(tx).TestObject;
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.GetNonce(TestItem.AddressA).Returns(5UL);
+        using OptimismBlockReceiptTracer receiptTracer = new(Substitute.For<IOptimismSpecHelper>(), worldState);
+        receiptTracer.StartNewBlockTrace(block);
+        receiptTracer.StartNewTxTrace(tx);
+        receiptTracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], []);
+        receiptTracer.EndTxTrace();
+        OptimismTxReceipt receipt = (OptimismTxReceipt)receiptTracer.LastReceipt;
+        Assert.That(receipt.DepositNonce, Is.EqualTo(4UL));
+        Assert.That(receipt.DepositReceiptVersion, Is.Null);
+        TxReceipt[] receipts = [receipt];
+
+        OptimismReceiptTrieDecoder trieDecoder = new();
+        block.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(London.Instance, receipts, trieDecoder);
+        IReceiptFinder receiptFinder = ReceiptFinderReturning(receipt);
+        receiptFinder.FindBlockHash(TxHash).Returns(block.Hash);
+        receiptFinder.Get(block).Returns(receipts);
+        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(block);
+
+        ITracer tracer = Substitute.For<ITracer>();
+        tracer.TraceReceipts(block).Returns(receipts);
+        IOverridableEnv<ITracer> tracerEnv = Substitute.For<IOverridableEnv<ITracer>>();
+        tracerEnv.TryBuildAndOverrideAtTarget(block.Header, null, null, out _).Returns(call =>
+        {
+            call[3] = new Scope<ITracer>(tracer, Substitute.For<IDisposable>());
+            return true;
+        });
+
+        RlpDecoderKey key = new(typeof(TxReceipt), RlpDecoderKey.Trie);
+        IRlpDecoder<TxReceipt> original = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
+        Rlp.RegisterDecoder(key, trieDecoder);
+        try
+        {
+            ProofRpcModule module = new(tracerEnv, Substitute.For<IBlockchainBridge>(), blockFinder, receiptFinder,
+                new TestSpecProvider(London.Instance), Substitute.For<IPoSSwitcher>(), new JsonRpcConfig());
+            ReceiptWithProof? proof = module.proof_getTransactionReceipt(TxHash, false).Data;
+
+            Assert.That(proof, Is.Not.Null);
+            Assert.That(Keccak.Compute(proof.ReceiptProof[0]), Is.EqualTo(block.Header.ReceiptsRoot));
+        }
+        finally
+        {
+            Rlp.RegisterDecoder(key, original);
+        }
+    }
 
     [Test]
     public void Deposit_transaction_takes_its_nonce_and_receipt_version_from_the_receipt()
