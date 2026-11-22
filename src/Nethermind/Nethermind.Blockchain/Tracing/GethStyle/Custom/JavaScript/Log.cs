@@ -20,12 +20,19 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public Stack stack { get; set; } = new();
         public Memory memory { get; set; } = new();
         public Contract contract { get; set; } = null!;
+        // Geth exposes these through the get* methods only, so JSON.stringify(log) leaves them out.
+        [NoScriptAccess]
         public long pc { get; set; }
 
+        [NoScriptAccess]
         public ulong gas { get; set; }
+        [NoScriptAccess]
         public ulong? gasCost { get; set; }
+        [NoScriptAccess]
         public int depth { get; set; }
+        [NoScriptAccess]
         public long refund { get; set; }
+        [NoScriptAccess]
         public string? error { get; set; }
 
         public ulong getPC() => (ulong)pc;

@@ -1465,7 +1465,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 enter: function(frame) { this.retVal.push(JSON.stringify(frame)); },
                 exit: function(result) { this.retVal.push(JSON.stringify(result)); },
                 fault: function(log, db) { },
-                result: function(ctx, db) { this.retVal.push(JSON.parse(JSON.stringify(ctx)).type); return this.retVal; }
+                result: function(ctx, db) { this.retVal.push(Object.keys(JSON.parse(JSON.stringify(ctx))).join()); return this.retVal; }
             }
             """;
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
@@ -1475,7 +1475,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         using GethLikeTxTrace traces = tracer.BuildResult().First();
 
         Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo(
-            """["{\"op\":{},\"stack\":{},\"memory\":{},\"contract\":{},\"pc\":0,\"gas\":79000,\"gasCost\":3,\"depth\":1,\"refund\":0,\"error\":null}","{}","{}","{}","{}","CALL"]"""));
+            """["{\"op\":{},\"stack\":{},\"memory\":{},\"contract\":{}}","{}","{}","{}","{}","type,from,to,coinbase,input,gas,gasUsed,gasPrice,value,block,output,blockHash,txIndex,txHash"]"""));
     }
 
     [Test]
