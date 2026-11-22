@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -15,6 +16,22 @@ namespace Nethermind.Consensus.Test.Tracing;
 
 public class BlockchainProcessorFacadeTests
 {
+    [Test]
+    public void Receipt_replay_returns_the_receipts_from_the_block_processor()
+    {
+        Block block = Build.A.Block.TestObject;
+        TxReceipt[] processorReceipts = [new()];
+        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
+        processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns((block, processorReceipts));
+        BlockchainProcessorFacade facade = new(processor, Substitute.For<ISpecProvider>(), []);
+        Tracer tracer = new(Substitute.For<IStateReader>(), facade, facade);
+
+        TxReceipt[] replayReceipts = tracer.TraceReceipts(block);
+
+        Assert.That(replayReceipts, Is.SameAs(processorReceipts));
+    }
+
     /// <remarks>
     /// Tracers read the sender when a transaction trace starts, before the transaction processor would recover it, so
     /// preprocessing may leave the senders only to an executor that recovers them before it runs each transaction.
