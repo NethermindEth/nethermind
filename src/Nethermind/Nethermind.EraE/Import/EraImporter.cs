@@ -120,7 +120,8 @@ public sealed class EraImporter(
         if (blockNumber + partitionSize < suggestFromBlock)
         {
             ulong firstPartitionStart = blockNumber;
-            ulong partitionCount = (Math.Min(suggestFromBlock, to) - blockNumber - 1) / partitionSize;
+            ulong partitionLimit = Math.Min(suggestFromBlock, to);
+            ulong partitionCount = partitionLimit > blockNumber ? (partitionLimit - blockNumber - 1) / partitionSize : 0;
             blockNumber += partitionCount * partitionSize;
             ulong nextPartition = 0;
 

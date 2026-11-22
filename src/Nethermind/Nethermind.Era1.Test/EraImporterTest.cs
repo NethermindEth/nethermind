@@ -98,6 +98,30 @@ public class EraImporterTest
         Assert.That(() => sut.Import(tempDirectory, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
     }
 
+    [Test]
+    public async Task Import_WhenRangeEndsAtEraBoundary_ImportsAllBlocks()
+    {
+        const int ChainLength = 17;
+        await using IContainer sourceCtx = await EraTestModule.CreateExportedEraEnv(ChainLength);
+        IBlockTree sourceTree = sourceCtx.Resolve<IBlockTree>();
+
+        await using IContainer targetCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true, SnapSync = true })
+            .Build();
+        targetCtx.Resolve<IBlockTree>().SuggestBlock(sourceTree.FindBlock(0, BlockTreeLookupOptions.None)!);
+        IBlockStore targetStore = targetCtx.Resolve<IBlockStore>();
+
+        await targetCtx.Resolve<IEraImporter>().Import(sourceCtx.ResolveTempDirPath(), 0, ulong.MaxValue, null, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < ChainLength; i++)
+            {
+                Assert.That(targetStore.Get(i, sourceTree.FindBlock(i, BlockTreeLookupOptions.None)!.Hash!), Is.Not.Null, $"block {i}");
+            }
+        }
+    }
+
     [TestCase(1UL << 62, "starts at block")]
     [TestCase(ulong.MaxValue, "Invalid starting block number")]
     public async Task Import_EraFileStartingAtWrongBlock_IsRefused(ulong startBlock, string expectedMessage)

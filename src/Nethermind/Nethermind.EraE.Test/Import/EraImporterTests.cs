@@ -89,6 +89,24 @@ public class EraImporterTests
     }
 
     [Test]
+    public async Task Import_WhenRangeEndsAtEraBoundary_ImportsAllBlocks()
+    {
+        const int chainLength = 17;
+        await using ImportEnvironment env = await CreateImportEnvironment(chainLength,
+            b => b.AddSingleton<ISyncConfig>(new SyncConfig { FastSync = true }));
+
+        await env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (ulong i = 1; i < chainLength; i++)
+            {
+                Assert.That(env.TargetTree.FindBlock(i, BlockTreeLookupOptions.None), Is.Not.Null, $"block {i}");
+            }
+        }
+    }
+
+    [Test]
     public async Task Import_WhenEraFileStartsOutsideItsEpoch_Throws()
     {
         await using ImportEnvironment env = await CreateImportEnvironment();
