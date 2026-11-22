@@ -39,22 +39,31 @@ public class EthereumL1BridgeTests
         }
     }
 
+    public enum SidecarChange { Swapped, OtherBlob, Missing, NullBlob, ShortBlob }
+
     [Test]
-    public void Step_fails_when_sidecar_commitments_do_not_match_the_versioned_hashes()
+    public void Step_fails_when_sidecars_do_not_match_the_versioned_hashes([Values] SidecarChange change)
     {
         ShardBlobNetworkWrapper wrapper = CreateBlobs(1, 2);
         BlobSidecar[] sidecars = ToSidecars(wrapper);
-        (sidecars[0], sidecars[1]) = (sidecars[1], sidecars[0]);
-
-        Assert.That(() => StepOverBlobTransaction(sidecars, GetVersionedHashes(wrapper)), Throws.InstanceOf<InvalidDataException>());
-    }
-
-    [Test]
-    public void Step_fails_when_a_blob_does_not_match_its_commitment()
-    {
-        ShardBlobNetworkWrapper wrapper = CreateBlobs(1, 2);
-        BlobSidecar[] sidecars = ToSidecars(wrapper);
-        sidecars[1].Blob = CreateBlobs(3, 1).Blobs[0];
+        switch (change)
+        {
+            case SidecarChange.Swapped:
+                (sidecars[0], sidecars[1]) = (sidecars[1], sidecars[0]);
+                break;
+            case SidecarChange.OtherBlob:
+                sidecars[1].Blob = CreateBlobs(3, 1).Blobs[0];
+                break;
+            case SidecarChange.Missing:
+                sidecars = [sidecars[0]];
+                break;
+            case SidecarChange.NullBlob:
+                sidecars[1].Blob = null!;
+                break;
+            case SidecarChange.ShortBlob:
+                sidecars[1].Blob = sidecars[1].Blob[..^1];
+                break;
+        }
 
         Assert.That(() => StepOverBlobTransaction(sidecars, GetVersionedHashes(wrapper)), Throws.InstanceOf<InvalidDataException>());
     }
@@ -114,12 +123,7 @@ public class EthereumL1BridgeTests
         BlobSidecar[] sidecars = new BlobSidecar[wrapper.Blobs.Length];
         for (int i = 0; i < sidecars.Length; i++)
         {
-            sidecars[i] = new BlobSidecar
-            {
-                Blob = wrapper.Blobs[i],
-                KzgCommitment = wrapper.Commitments[i],
-                KzgProof = wrapper.Proofs[(i * ShardBlobNetworkWrapper.BytesPerProof)..((i + 1) * ShardBlobNetworkWrapper.BytesPerProof)]
-            };
+            sidecars[i] = new BlobSidecar { Blob = wrapper.Blobs[i], KzgCommitment = wrapper.Commitments[i] };
         }
 
         return sidecars;

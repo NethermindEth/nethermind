@@ -7,6 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -178,28 +179,22 @@ public class EthereumL1Bridge : IL1Bridge
     {
         if (blobSidecars.Length != blobVersionedHashes.Length) return false;
 
-        byte[][] blobs = new byte[blobSidecars.Length][];
-        byte[][] commitments = new byte[blobSidecars.Length][];
-        byte[] proofs = new byte[blobSidecars.Length * ShardBlobNetworkWrapper.BytesPerProof];
+        Span<byte> commitment = stackalloc byte[Ckzg.BytesPerCommitment];
         Span<byte> versionedHash = stackalloc byte[Eip4844Constants.BytesPerBlobVersionedHash];
         for (int i = 0; i < blobSidecars.Length; i++)
         {
-            BlobSidecar sidecar = blobSidecars[i];
-            if (sidecar.Blob is null || sidecar.KzgCommitment is null || sidecar.KzgProof?.Length != ShardBlobNetworkWrapper.BytesPerProof
-                || !KzgPolynomialCommitments.TryComputeCommitmentHashV1(sidecar.KzgCommitment, versionedHash)
+            byte[]? blob = blobSidecars[i].Blob;
+            if (blob?.Length != Ckzg.BytesPerBlob) return false;
+
+            KzgPolynomialCommitments.ComputeCommitment(blob, commitment);
+            if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, versionedHash)
                 || !versionedHash.SequenceEqual(blobVersionedHashes[i]))
             {
                 return false;
             }
-
-            blobs[i] = sidecar.Blob;
-            commitments[i] = sidecar.KzgCommitment;
-            sidecar.KzgProof.CopyTo(proofs, i * ShardBlobNetworkWrapper.BytesPerProof);
         }
 
-        ShardBlobNetworkWrapper wrapper = new(blobs, commitments, proofs, ProofVersion.V0);
-        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V0);
-        return proofsManager.ValidateLengths(wrapper) && proofsManager.ValidateProofs(wrapper);
+        return true;
     }
 
     private DaDataSource ProcessCalldataBatcherTransaction(L1Transaction transaction, ulong blockNumber, CancellationToken token)
