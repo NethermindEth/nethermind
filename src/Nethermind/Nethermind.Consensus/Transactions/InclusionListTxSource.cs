@@ -81,23 +81,13 @@ public class InclusionListTxSource(
     }
 
     // Blob IL entries carry no ShardBlobNetworkWrapper, so including one would make getPayloadV6
-    // unusable for the consensus client.
+    // unusable for the consensus client. Ill-formed entries are dropped with the same check as the pool.
     private Transaction[] FilterUnusable(Transaction[] txs, IReleaseSpec spec)
     {
-        Span<bool> usable = txs.Length <= 256 ? stackalloc bool[txs.Length] : new bool[txs.Length];
         int kept = 0;
         for (int i = 0; i < txs.Length; i++)
-        {
-            usable[i] = !IsBlobCarrying(txs[i]) && txValidator.IsWellFormed(txs[i], spec);
-            if (usable[i]) kept++;
-        }
-        if (kept == txs.Length) return txs;
-
-        Transaction[] result = new Transaction[kept];
-        int j = 0;
-        for (int i = 0; i < txs.Length; i++)
-            if (usable[i]) result[j++] = txs[i];
-        return result;
+            if (!IsBlobCarrying(txs[i]) && txValidator.IsWellFormed(txs[i], spec)) txs[kept++] = txs[i];
+        return kept == txs.Length ? txs : txs[..kept];
     }
 
     /// <summary>Whether <paramref name="tx"/> would need a blob sidecar the inclusion list cannot carry.</summary>
