@@ -48,8 +48,11 @@ public class OptimismProofRpcModuleTests
         receiptTracer.MarkAsSuccess(TestItem.AddressB, new GasConsumed(21_000, 21_000), [], []);
         receiptTracer.EndTxTrace();
         OptimismTxReceipt receipt = (OptimismTxReceipt)receiptTracer.LastReceipt;
-        Assert.That(receipt.DepositNonce, Is.EqualTo(4UL));
-        Assert.That(receipt.DepositReceiptVersion, Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.DepositNonce, Is.EqualTo(4UL));
+            Assert.That(receipt.DepositReceiptVersion, Is.Null);
+        }
         TxReceipt[] receipts = [receipt];
 
         OptimismReceiptTrieDecoder trieDecoder = new();
@@ -77,9 +80,9 @@ public class OptimismProofRpcModuleTests
             ProofRpcModule module = new(tracerEnv, Substitute.For<IBlockchainBridge>(), blockFinder, receiptFinder,
                 new TestSpecProvider(London.Instance), Substitute.For<IPoSSwitcher>(), new JsonRpcConfig());
             ReceiptWithProof? proof = module.proof_getTransactionReceipt(TxHash, false).Data;
+            Hash256? proofRoot = proof?.ReceiptProof is { Length: > 0 } nodes ? Keccak.Compute(nodes[0]) : null;
 
-            Assert.That(proof, Is.Not.Null);
-            Assert.That(Keccak.Compute(proof.ReceiptProof[0]), Is.EqualTo(block.Header.ReceiptsRoot));
+            Assert.That(proofRoot, Is.EqualTo(block.Header.ReceiptsRoot));
         }
         finally
         {
