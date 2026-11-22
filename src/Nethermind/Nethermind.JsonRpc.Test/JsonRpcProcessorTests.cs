@@ -2454,14 +2454,14 @@ public class JsonRpcProcessorTests
             Assert.That(items, Has.Count.EqualTo(5));
             Assert.That(items.Take(4).Select(item => item.Id), Is.EqualTo(Enumerable.Range(1, 4).Select(id => new JsonRpcId(id))));
             Assert.That(items.Skip(2).Cast<JsonRpcErrorResponse>().Select(item => item.Error!.Code), Is.All.EqualTo(ErrorCodes.LimitExceeded));
-            Assert.That(items[^1].Id.IsNull, Is.True);
+            Assert.That(items[^1].Id, Is.EqualTo(new JsonRpcId(5)));
         }
     }
 
     [Test]
     public async Task Transport_batch_budget_suppresses_notification_tail_but_answers_later_request(
         [Values(RequestTransport.HttpMemory, RequestTransport.WsSegmentedPipe)] RequestTransport transport,
-        [Values] bool requestAtEnd)
+        [Values("notification", "request", "malformed")] string tail)
     {
         int calls = 0;
         IJsonRpcService service = CreateService(request =>
@@ -2470,20 +2470,26 @@ public class JsonRpcProcessorTests
             return new JsonRpcSuccessResponse { Id = request.Id };
         });
         string notification = """{"jsonrpc":"2.0","method":"eth_chainId"}""";
-        string body = CreateBatchRequest(Enumerable.Repeat(notification, 8)
-            .Concat(requestAtEnd ? [CreateRequest("99", "eth_chainId")] : Array.Empty<string>()).ToArray());
+        string last = tail switch
+        {
+            "request" => CreateRequest("99", "eth_chainId"),
+            "malformed" => """{"jsonrpc":"\ud800","id":99,"method":"eth_chainId"}""",
+            _ => notification,
+        };
+        string body = CreateBatchRequest([.. Enumerable.Repeat(notification, 8), last]);
         JsonRpcContext context = new(RpcEndpoint.Http) { BatchLimits = new(2, 4) };
         using CollectedJsonRpcResponses result = await ProcessAsync(CreateProcessor(service, new JsonRpcConfig { MaxBatchSize = int.MaxValue }),
             Encoding.UTF8.GetBytes(body), transport, context: context);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(calls, Is.EqualTo(2));
-            if (!requestAtEnd) Assert.That(result, Is.Empty);
+            if (tail == "notification") Assert.That(result, Is.Empty);
             else
             {
                 JsonRpcResponse response = AssertOnlyResult(result).BatchItems!.Single();
                 Assert.That(response, Is.TypeOf<JsonRpcErrorResponse>());
                 Assert.That(((JsonRpcErrorResponse)response).Error!.Code, Is.EqualTo(ErrorCodes.LimitExceeded));
+                Assert.That(response.Id, Is.EqualTo(tail == "malformed" ? JsonRpcId.Null : new JsonRpcId(99)));
             }
         }
     }

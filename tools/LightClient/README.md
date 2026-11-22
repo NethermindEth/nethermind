@@ -97,9 +97,9 @@ one outcome per HTTP RPC request: `completed`, `overloaded`, `too_large`,
 These HTTP outcomes are separate from the per-item RPC counters, so a rejected
 request does not inflate dispatched RPC traffic. HTTP and WebSocket batches
 process at most 128 envelopes individually and execute at most 32 items.
-Responses retain the IDs of those processed items; a remaining request tail
-receives one null-ID `-32005` limit error. A lightweight scan keeps
-notification-only tails response-free without executing them.
+Responses retain the IDs of those processed items. The batch ends with a
+`-32005` error for the first excess request, including its ID when readable.
+A lightweight scan keeps notification-only tails response-free.
 
 For example, paste this query into Grafana Explore to inspect p95 balance
 duration in seconds over the last five minutes:

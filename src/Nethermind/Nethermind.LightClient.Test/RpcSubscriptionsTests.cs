@@ -5,6 +5,8 @@ using System.Collections.Concurrent;
 using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading.Channels;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -204,6 +206,14 @@ public class RpcSubscriptionsTests
 
             await socket.CloseFrame.Task.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(socket.Output.Reader.TryRead(out _), Is.False);
+            if (termination == "deadline")
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(socket.CloseStatus, Is.EqualTo((WebSocketCloseStatus)1013));
+                    Assert.That(socket.CloseStatusDescription, Does.Contain("delivery deadline"));
+                }
+            }
         }
 
         await using ExecutionLoad subsequent = new();
@@ -951,6 +961,34 @@ public class RpcSubscriptionsTests
             Assert.That(heads.Disposed, Is.True);
             Assert.That(harness.Source.ActiveBlockReads, Is.Zero);
             Assert.That(harness.Tasks, Has.All.Property(nameof(Task.IsCompleted)).True);
+            Assert.That(harness.Contexts.Select(context => context.Features.Get<IHttpRequestLifetimeFeature>())
+                .Cast<RequestLifetimeFeature>().Select(feature => feature.Aborted), Is.All.False);
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Client_close_receives_a_matching_close_frame(CancellationToken token)
+    {
+        await using Harness harness = new();
+        WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
+        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        await using WebApplication app = builder.Build();
+        app.UseWebSockets();
+        app.MapGet("/ws", harness.Subscriptions.HandleAsync);
+        await app.StartAsync(token);
+        using ClientWebSocket socket = new();
+        Uri endpoint = new(app.Urls.Single().Replace("http://", "ws://", StringComparison.Ordinal) + "/ws");
+        await socket.ConnectAsync(endpoint, token);
+        const string reason = "wallet disconnected";
+        await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, reason, token);
+        WebSocketReceiveResult frame = await socket.ReceiveAsync(new ArraySegment<byte>(new byte[1]), token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(frame.MessageType, Is.EqualTo(WebSocketMessageType.Close));
+            Assert.That(frame.CloseStatus, Is.EqualTo(WebSocketCloseStatus.NormalClosure));
+            Assert.That(frame.CloseStatusDescription, Is.EqualTo(reason));
         }
     }
 
@@ -977,7 +1015,7 @@ public class RpcSubscriptionsTests
         internal Source Source { get; } = new();
         private readonly RpcBackend _rpc;
         private readonly RpcService _service;
-        private readonly RpcSubscriptions _subscriptions;
+        internal RpcSubscriptions Subscriptions { get; }
         internal List<Task> Tasks { get; } = [];
         internal List<HttpContext> Contexts { get; } = [];
 
@@ -987,8 +1025,8 @@ public class RpcSubscriptionsTests
                 isLatestHeadFresh: _ => Source.LatestFresh, waitForLatestHead: waitForLatest);
             _service = new(_rpc, Nethermind.Logging.NullLogManager.Instance);
             Nethermind.JsonRpc.IJsonRpcProcessor processor = _service.CreateProcessor(new RpcServiceDiagnostics(_service.Service, NullLogger.Instance, metrics));
-            _subscriptions = new(Source, _rpc, processor, NullLogger.Instance, clock);
-            _subscriptions.PublishHead(Head(Source.Current));
+            Subscriptions = new(Source, _rpc, processor, NullLogger.Instance, clock);
+            Subscriptions.PublishHead(Head(Source.Current));
         }
 
         internal FakeSocket Connect(CancellationToken requestAborted = default)
@@ -996,22 +1034,23 @@ public class RpcSubscriptionsTests
             FakeSocket socket = new();
             DefaultHttpContext context = new() { RequestAborted = requestAborted };
             context.Features.Set<IHttpWebSocketFeature>(new SocketFeature(socket));
+            context.Features.Set<IHttpRequestLifetimeFeature>(new RequestLifetimeFeature { RequestAborted = requestAborted });
             Contexts.Add(context);
-            Tasks.Add(_subscriptions.HandleAsync(context));
+            Tasks.Add(Subscriptions.HandleAsync(context));
             return socket;
         }
 
         internal void Publish(Block block)
         {
             Source.Current = block;
-            _subscriptions.PublishHead(Head(block));
+            Subscriptions.PublishHead(Head(block));
         }
 
-        internal Task StopAsync() => _subscriptions.DisposeAsync().AsTask();
+        internal Task StopAsync() => Subscriptions.DisposeAsync().AsTask();
 
         public async ValueTask DisposeAsync()
         {
-            await _subscriptions.DisposeAsync();
+            await Subscriptions.DisposeAsync();
             await Task.WhenAll(Tasks);
             _service.Dispose();
             _rpc.Dispose();
@@ -1094,6 +1133,13 @@ public class RpcSubscriptionsTests
             public void Dispose() => _disposed = true;
             public ValueTask DisposeAsync() { Dispose(); return ValueTask.CompletedTask; }
         }
+    }
+
+    private sealed class RequestLifetimeFeature : IHttpRequestLifetimeFeature
+    {
+        public CancellationToken RequestAborted { get; set; }
+        public bool Aborted { get; private set; }
+        public void Abort() => Aborted = true;
     }
 
     private sealed class SocketFeature(FakeSocket socket) : IHttpWebSocketFeature

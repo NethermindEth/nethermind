@@ -579,8 +579,11 @@ public class HostTests
         if (trailingRequest)
         {
             Assert.That(response.GetArrayLength(), Is.EqualTo(1));
-            JsonElement error = response[0].GetProperty("error");
-            Assert.That(error.GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response[0].GetProperty("id").GetInt32(), Is.EqualTo(999));
+                Assert.That(response[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            }
         }
     }
 
@@ -1285,6 +1288,33 @@ public class LightClientMetricsTests
             AssertRpc(scrape, "eth_chainId", "error", 1);
             AssertRpc(scrape, "other", "error", 2);
             Assert.That(scrape, Does.Not.Contain("private_unknown_method"));
+        }
+    }
+
+    [Test]
+    public async Task Batch_limit_errors_do_not_count_as_executed_methods()
+    {
+        LightClientStatus status = new(1, [], _ => false, _ => false);
+        LightClientMetrics metrics = new("mainnet", status.Read);
+        byte[] body = JsonSerializer.SerializeToUtf8Bytes(Enumerable.Range(0, 40)
+            .Select(id => new { jsonrpc = "2.0", id, method = "eth_chainId" }));
+        DefaultHttpContext context = new();
+        using MemoryStream input = new(body);
+        using MemoryStream output = new();
+        context.Request.Body = input;
+        context.Response.Body = output;
+
+        await RpcTestDriver.HandleAsync(context, static (_, _, _) => Task.FromResult<object>("0x1"),
+            NullLogger.Instance, metrics: metrics);
+
+        using JsonDocument response = JsonDocument.Parse(output.ToArray());
+        string scrape = await ScrapeAsync(metrics);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.RootElement[39].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
+            AssertRpc(scrape, "eth_chainId", "ok", RpcTestDriver.MaxBatchCount);
+            AssertRpc(scrape, "eth_chainId", "error", 0);
+            AssertRpc(scrape, "other", "error", 0);
         }
     }
 

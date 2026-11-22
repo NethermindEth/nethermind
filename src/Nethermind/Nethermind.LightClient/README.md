@@ -276,10 +276,12 @@ includes a scraper and Grafana dashboard. Keep these operational endpoints priva
 The `nethermind_light_client_` metrics cover startup/readiness, authenticated
 latest/finalized heights and freshness, beacon/execution/SNAP peers, hosted
 accounts and retained slots, and RPC item counts and duration histograms.
-RPC observations include HTTP and WebSocket items, batch items and
-notifications, initialization waits, failures and cancellation. Method labels
-are bounded; unknown methods share `other`, and account/peer identities are not
-metric labels. Standard `process_` metrics report CPU and process memory.
+RPC observations include dispatched HTTP and WebSocket items, including batch
+items and notifications, initialization waits, failures and cancellation.
+Batch limit errors do not count as executed methods. HTTP request outcomes are
+recorded separately in `nethermind_light_client_http_requests_total`. Unknown
+methods share the `other` label. Standard `process_` metrics report CPU and
+process memory.
 
 `nethermind_light_client_ready` requires the running stage, completed RPC
 initialization and a fresh authenticated latest head. HTTP health alone does
@@ -581,7 +583,9 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 ```
 
 JSON-RPC 2.0 batches and notifications are supported. A batch executes at most
-32 items; additional requests retain their IDs and receive `-32005` errors.
+32 items and handles up to 128 envelopes individually. Requests between those
+limits retain their IDs and receive `-32005`. The first excess request ends the
+batch with a limit error and its ID when readable.
 No request is forwarded without verification. Receipt/log queries fail when
 any block body or receipt set is unavailable; log ranges are capped at 512
 inclusive blocks and 10,000 matches.
@@ -633,7 +637,7 @@ Subscriptions start after their acknowledgement and belong to their connection.
 sync-status subscriptions are unavailable.
 
 The host permits 16 connections and 16 subscriptions per connection. Each
-connection has a 128-message, 1 MiB outbound queue, a 256 KiB message limit,
+connection has an eight-head backlog, a 128-message, 1 MiB outbound queue, a 256 KiB message limit,
 and a 10-second deadline to admit responses or a verified head's notifications.
 Healthy bursts wait for the sender to drain the bounded queue; a stalled client
 is disconnected independently of other clients. Shared authenticated header
@@ -646,8 +650,9 @@ Reconnect, recover the affected range with `eth_getLogs`, then resubscribe.
 Only logs matching that connection's active filters enter its retained history.
 A log data/history failure closes only that connection; other filtered log
 clients and independent `newHeads` clients continue. Affected clients receive
-WebSocket close code 1013, with a two-second transport close deadline. Fetching
-and verifying one update has a separate 90-second deadline from queue admission.
+WebSocket close code 1013. Clients receive code 1001 when the light client stops.
+The transport has two seconds to finish either close handshake. Fetching,
+verifying and queuing notifications for one head share a 90-second deadline.
 An individual request deadline or oversized result
 returns a JSON-RPC error without discarding the connection's subscriptions.
 WebSocket batches preserve prior acknowledgements and per-item IDs under the

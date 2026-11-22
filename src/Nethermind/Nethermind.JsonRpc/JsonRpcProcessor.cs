@@ -684,8 +684,9 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         cancellationToken.ThrowIfCancellationRequested();
                         if (request is null || !IsNotification(request, context))
                         {
+                            JsonRpcId id = request is { Id.IsMissing: false } ? request.Id : JsonRpcId.Null;
                             JsonRpcErrorResponse error = _jsonRpcService.GetErrorResponse(ErrorCodes.LimitExceeded,
-                                $"Batch exceeds {limits.MaxEnvelopes} envelopes; submit remaining requests separately.", in JsonRpcId.Null);
+                                $"Batch exceeds {limits.MaxEnvelopes} envelopes; submit this and remaining requests separately.", in id);
                             await WriteBatchEntryAsync(new(error, RpcReport.Error), ref batchStarted, sink, cancellationToken);
                             break;
                         }

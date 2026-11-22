@@ -496,7 +496,12 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
 
         public override async Task ReceiveLoopAsync(CancellationToken cancellationToken)
         {
-            try { await base.ReceiveLoopAsync(cancellationToken); }
+            try
+            {
+                await base.ReceiveLoopAsync(cancellationToken);
+                if (_socket.State == WebSocketState.CloseReceived)
+                    Close(_socket.CloseStatus ?? WebSocketCloseStatus.Empty, _socket.CloseStatusDescription ?? string.Empty);
+            }
             catch (InvalidOperationException exception)
             {
                 _owner._logger.LogWarning(exception, "Closing subscription connection after a framing or processing failure");
@@ -677,6 +682,11 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             catch (OperationCanceledException) when (_workCancellation.IsCancellationRequested)
             {
                 if (Volatile.Read(ref _closing) == 0) Terminate();
+            }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested)
+            {
+                _owner._logger.LogInformation("Closing subscription connection after its head delivery deadline");
+                Close((WebSocketCloseStatus)1013, "Head delivery deadline exceeded; reconnect and resubscribe.");
             }
             catch (Exception exception)
             {
