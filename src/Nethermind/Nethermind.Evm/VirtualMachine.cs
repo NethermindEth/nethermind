@@ -2008,7 +2008,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!Spec.UseHotAndColdStorage)
             return baseCost + extraCost;
 
-        bool isCold = !IsTracingAccess && VmState.AccessTracker.IsCold(address) && !Spec.IsPrecompile(address);
+        bool isCold = VmState.AccessTracker.IsCold(address) && !Spec.IsPrecompile(address);
         ulong accessCost = isCold
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdAccountAccess : GasCostOf.ColdAccountAccess
             : GasCostOf.WarmStateRead;
@@ -2021,7 +2021,7 @@ public partial class VirtualMachine<TGasPolicy>(
         if (!Spec.UseHotAndColdStorage)
             return Spec.GasCosts.SLoadCost;
 
-        return !IsTracingAccess && VmState.AccessTracker.IsCold(in cell)
+        return VmState.AccessTracker.IsCold(in cell)
             ? Spec.IsEip8038Enabled ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad
             : GasCostOf.WarmStateRead;
     }
