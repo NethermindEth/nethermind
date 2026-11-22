@@ -106,8 +106,9 @@ public class EraImporterTests
         }
     }
 
-    [Test]
-    public async Task Import_WhenEraFileStartsOutsideItsEpoch_Throws()
+    [TestCase(1L << 62)]
+    [TestCase(-1L)]
+    public async Task Import_WhenEraFileStartsOutsideItsEpoch_Throws(long startBlock)
     {
         await using ImportEnvironment env = await CreateImportEnvironment();
 
@@ -119,12 +120,13 @@ public class EraImporterTests
         int blockCount = (int)BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(bytes.Length - sizeof(long)));
         int componentCount = (int)BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(bytes.Length - 2 * sizeof(long)));
         int startBlockOffset = bytes.Length - 2 * sizeof(long) - blockCount * componentCount * sizeof(long) - sizeof(long);
-        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(startBlockOffset), 1L << 62);
+        BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(startBlockOffset), startBlock);
         await System.IO.File.WriteAllBytesAsync(lastEraFile, bytes);
 
         Assert.That(
             () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
-            Throws.TypeOf<EraVerificationException>().With.Message.Contains("outside the epoch"));
+            startBlock < 0 ? Throws.Exception : Throws.TypeOf<EraVerificationException>().With.Message.Contains("outside the epoch"));
+        Assert.That(() => System.IO.File.Open(lastEraFile, System.IO.FileMode.Open, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None).Dispose(), Throws.Nothing);
     }
 
     [Test]

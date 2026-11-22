@@ -146,6 +146,7 @@ public class EraImporterTest
         IEraImporter sut = inCtx.Resolve<IEraImporter>();
         Assert.That(() => sut.Import(destinationPath, 0, 0, null, CancellationToken.None),
             Throws.InstanceOf<EraException>().With.Message.Contains(expectedMessage));
+        Assert.That(() => fileSystem.File.Open(lastEraFile, FileMode.Open, FileAccess.ReadWrite, FileShare.None).Dispose(), Throws.Nothing);
     }
 
     [Test]
