@@ -47,16 +47,19 @@ if (vm == "openvm")
 
 foreach (var row in rows)
 {
-    var make = new List<string> { "-C", guest };
-    make.Add(vm switch
-    {
-        "zisk" => "stats",
-        "sp1" => "run",
-        "airbender" => "verify",
-        _ => throw new InvalidOperationException($"unknown guest {vm}")
-    });
-    make.Add($"INPUT={row.File}");
-    make.Add($"GUEST_INPUT={format}");
+    List<string> make =
+    [
+        "-C", guest,
+        vm switch
+        {
+            "zisk" => "stats",
+            "sp1" => "run",
+            "airbender" => "verify",
+            _ => throw new InvalidOperationException($"unknown guest {vm}")
+        },
+        $"INPUT={row.File}",
+        $"GUEST_INPUT={format}"
+    ];
     if (vm == "airbender") make.Add($"EXPECTED_DIGEST={row.Digest}");
     var (exit, log) = await Run("make", make.ToArray());
     var metric = vm switch
