@@ -3898,6 +3898,28 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void SubmitTx_DepositTransaction_RejectedAsNotSupported([Values(TxHandlingOptions.None, TxHandlingOptions.PersistentBroadcast)] TxHandlingOptions options)
+        {
+            _txPool = CreatePool();
+            Transaction depositTx = Build.A.Transaction
+                .WithType(TxType.DepositTx)
+                .WithNonce(0)
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(depositTx, options);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+            }
+        }
+
+        [Test]
         public void SubmitTx_FrameTransaction_AcceptedWhenEip8141Active()
         {
             // MAX_VERIFY_GAS disabled: this covers payer resolution, not the verify-gas bound.
