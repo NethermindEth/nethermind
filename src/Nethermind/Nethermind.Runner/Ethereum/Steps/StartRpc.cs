@@ -163,14 +163,22 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         return null;
     }
 
-    private static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
+    internal static void ConfigureJwtSecret(IKeyStoreConfig keyStoreConfig, IJsonRpcConfig jsonRpcConfig, ILogger logger)
     {
-        string newPath = Path.GetFullPath(Path.Join(keyStoreConfig.KeyStoreDirectory, "jwt-secret"));
+        string keyStoreDirectory = keyStoreConfig.KeyStoreDirectory;
+        bool sharedWorkingDirectory = IsWritableByOthers(Environment.CurrentDirectory);
+        if (sharedWorkingDirectory)
+        {
+            if (logger.IsWarn) logger.Warn("The working directory can be written by other users, so the JWT secret is not read from it.");
+            keyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
+        }
+
+        string newPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
         string oldPath = Path.GetFullPath("keystore/jwt-secret");
         jsonRpcConfig.JwtSecretFile = newPath;
 
         // check if jwt-secret file already exists in previous default directory
-        if (!File.Exists(newPath) && File.Exists(oldPath))
+        if (!File.Exists(newPath) && !sharedWorkingDirectory && File.Exists(oldPath))
         {
             try
             {
@@ -188,7 +196,10 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         // Existing secrets keep their working-directory paths, which consensus clients are configured with.
         else if (!File.Exists(newPath))
         {
-            jsonRpcConfig.JwtSecretFile = Path.GetFullPath("jwt-secret".GetApplicationResourcePath(keyStoreConfig.KeyStoreDirectory));
+            jsonRpcConfig.JwtSecretFile = Path.GetFullPath("jwt-secret".GetApplicationResourcePath(keyStoreDirectory));
         }
     }
+
+    private static bool IsWritableByOthers(string directory) =>
+        !OperatingSystem.IsWindows() && (File.GetUnixFileMode(directory) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0;
 }
