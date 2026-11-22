@@ -120,6 +120,13 @@ namespace Nethermind.Facade.Filters
             _blocks.Untrack(e.FilterId);
             _blockHashes.Untrack(e.FilterId);
             _pendingTransactions.Untrack(e.FilterId);
+            if (_recentCanonicalReceipts is { } recentReceipts)
+            {
+                lock (recentReceipts)
+                {
+                    if (!_blocks.IsTracking) recentReceipts.Clear();
+                }
+            }
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -140,8 +147,15 @@ namespace Nethermind.Facade.Filters
             BlockHeader header = e.Block.Header;
             if (header.Hash is { } hash && _pendingReceipts!.TryRemove(hash.ValueHash256, out TxReceipt[]? receipts))
             {
-                _recentCanonicalReceipts!.Set(hash.ValueHash256, receipts);
-                PublishReceipts(header, receipts, removed: false);
+                LruCache<ValueHash256, TxReceipt[]> recentReceipts = _recentCanonicalReceipts!;
+                lock (recentReceipts)
+                {
+                    if (_blocks.IsTracking)
+                    {
+                        recentReceipts.Set(hash.ValueHash256, receipts);
+                        PublishReceipts(header, receipts, removed: false);
+                    }
+                }
             }
             else
             {

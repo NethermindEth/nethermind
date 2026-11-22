@@ -584,13 +584,13 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Removing_the_last_log_filter_releases_recent_receipts_without_a_receipt_store()
+    public void Removing_the_last_log_filter_releases_recent_canonical_receipts_without_a_receipt_store()
     {
         LogFilter filter = BuildFilter(static _ => { });
         _filterStore.SaveFilter(filter);
         CreateFilterManager(storeReceipts: false);
 
-        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt(storeReceipts: false);
         Assert.That(IsCollected(receipt), Is.False);
 
         _filterStore.RemoveFilter(filter.Id);
@@ -704,10 +704,14 @@ public class FilterManagerTests
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private WeakReference RaiseBlockProcessedWithUnreferencedReceipt()
+    private WeakReference RaiseBlockProcessedWithUnreferencedReceipt(bool storeReceipts = true)
     {
         TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(1L));
-        RaiseBlockProcessed(receipt);
+        Block block = RaiseBlockProcessedOnly(receipt);
+        if (storeReceipts)
+            RaiseCanonicalReceipts(block, [receipt]);
+        else
+            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(block));
         return new WeakReference(receipt);
     }
 
