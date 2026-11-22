@@ -30,6 +30,7 @@ jobs:
       solutions: ${{ steps.solutions.outputs.solutions }}
       route_b: ${{ steps.plan.outputs.route_b }}
       route_b_id: ${{ steps.plan.outputs.route_b_id }}
+      skip_measure: ${{ steps.plan.outputs.skip_measure }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -121,7 +122,7 @@ jobs:
   measure:
     name: Build ${{ matrix.solution }}
     needs: [plan, route-b]
-    if: always() && needs.plan.result == 'success' && needs.route-b.result != 'failure' && needs.route-b.result != 'cancelled'
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.skip_measure != 'true' && needs.route-b.result != 'failure' && needs.route-b.result != 'cancelled'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:

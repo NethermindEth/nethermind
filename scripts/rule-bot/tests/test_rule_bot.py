@@ -460,6 +460,32 @@ class RouteB(unittest.TestCase):
             self.assertTrue(v[first].startswith("skip: rule-bot PR #42 closed without merge"))
             self.assertTrue(all(first not in pk["ids"] for pk in c["packages"]))
 
+    def test_plan_skips_the_measure_matrix_when_there_is_nothing_to_measure(self):
+        routes = rb.load(os.path.join(rb.HERE, "routes.json"))
+        a = next(k for k, r in routes.items() if r["route"] == "A")
+        b = next(k for k, r in routes.items() if r["route"] == "B")
+        open_pr = '[{"number": 7, "state": "OPEN", "headRefName": "rule-bot/x-1", "createdAt": "2020-01-01T00:00:00Z"}]'
+        cases = (
+            ("nothing", {}, "[]", "true"),
+            ("route a only", {a: 50}, "[]", "false"),
+            ("route b only", {b: 50}, "[]", "false"),
+            ("bot pr open", {a: 50, b: 49}, open_pr, "true"),
+        )
+        for name, prs, open_prs, expected in cases:
+            with self.subTest(name), tempfile.TemporaryDirectory() as d:
+                rb.save(os.path.join(d, "gates.json"), {k: dict(prs=n, **{"pass": True}) for k, n in prs.items()})
+                rb.save(os.path.join(d, "catalog.json"), {})
+                os.makedirs(os.path.join(d, os.path.dirname(UNSHIPPED)))
+                open(os.path.join(d, UNSHIPPED), "w").write("NETH011 | Usage | Warning | x\n")
+                out = os.path.join(d, "github_output")
+                real = rb.gh
+                rb.gh = lambda *x, **k: open_prs if "--label" in x else "[]"
+                try:
+                    rb.plan(argparse.Namespace(data=d, repo=d, offline=False, github_output=out, today="2026-11-12"))
+                finally:
+                    rb.gh = real
+                self.assertIn(f"skip_measure={expected}\n", open(out).read())
+
     def test_plan_attempts_no_analyzer_while_a_bot_pr_is_open(self):
         routes = rb.load(os.path.join(rb.HERE, "routes.json"))
         b = sorted(k for k, r in routes.items() if r["route"] == "B")[:2]

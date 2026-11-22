@@ -329,6 +329,7 @@ def plan(args):
     if args.github_output:
         with open(args.github_output, "a") as f:
             f.write(f"route_b={route_b or ''}\nroute_b_id={out['route_b_id'] or ''}\n")
+            f.write(f"skip_measure={'true' if bot_open or not (measure or route_b) else 'false'}\n")
 
 
 def overlay(ids, exclude_tests=False):
