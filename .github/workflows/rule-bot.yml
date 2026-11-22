@@ -268,7 +268,12 @@ jobs:
             jq -r '.packages[] | "package \(.slug) prod \(.prod)" + (if (.open_prs | length) > 0 then " duplicate of open #\(.open_prs | map(tostring) | join(", #"))" else "" end)' "$DATA/candidates.json"
             jq -r '"chosen \(.chosen.slug // "none")"' "$DATA/candidates.json"
             echo '```'
-            [ -f "$DATA/body.md" ] && { echo; echo '### Pull request body'; echo; cat "$DATA/body.md"; }
+            if [ -f "$DATA/body.md" ]; then
+              echo
+              echo '### Pull request body'
+              echo
+              cat "$DATA/body.md"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload data
