@@ -264,8 +264,6 @@ public partial class BlockAccessListManager
                 continue;
             }
 
-            // With coverage, BAL-backed storage reads reject undeclared accounts before completing.
-            // Generated-only storage-read tolerance therefore applies only to materialized reads.
             bool hasChargeableReads = !IsSystemContract(address) && gen.HasStorageReadsForOrdinal(ordinal);
             if (IsToleratedGeneratedOnlyAccount(address, index, hasNoChangesAtIndex: !gen.Lanes.HasAt(row, ordinal), hasChargeableReads)) continue;
 
@@ -330,8 +328,8 @@ public partial class BlockAccessListManager
     }
 
     /// <summary>
-    /// True iff any account in <paramref name="slice"/> has no state changes, isn't a tolerated
-    /// read-only entry (system-user at index 0 or any storage-read row), and isn't declared in
+    /// True iff any account in <paramref name="slice"/> has no state changes, isn't the tolerated
+    /// system-user read at index 0, and isn't declared in
     /// <paramref name="suggestedValidationIndex"/>. Such an account is invisible to the
     /// column-index fast path (no lane rows land for it on either side) but must still be
     /// rejected — <see cref="ValidateBlockAccessList"/>'s fallback walk catches it.
@@ -341,7 +339,7 @@ public partial class BlockAccessListManager
         foreach (AccountChangesAtIndex ac in slice.AccountChanges)
         {
             if (HasStateChanges(ac)) continue;
-            if (IsSystemUserReadAt0(ac, slice.Index) || ac.StorageReads.Count > 0) continue;
+            if (IsSystemUserReadAt0(ac, slice.Index)) continue;
             if (!suggestedValidationIndex.HasAccount(ac.Address)) return true;
         }
         return false;
@@ -386,8 +384,7 @@ public partial class BlockAccessListManager
     }
 
     private static bool IsToleratedGeneratedOnlyAccount(Address address, uint index, bool hasNoChangesAtIndex, bool hasChargeableReads)
-        => hasNoChangesAtIndex
-        && ((index == 0 && address == Address.SystemUser && !hasChargeableReads) || hasChargeableReads);
+        => hasNoChangesAtIndex && index == 0 && address == Address.SystemUser && !hasChargeableReads;
 
     /// <summary>
     /// Upper bound on the chargeable storage reads the post-execution request calls can add without spending block gas.
