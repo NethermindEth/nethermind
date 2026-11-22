@@ -194,7 +194,7 @@ public class PersistenceManagerTests
     }
 
     [Test]
-    public void RemoveFinalizedPersistedForks_RemovesDescendantsOfPrunedFork()
+    public void RemoveFinalizedPersistedForks_RemovesDescendantsOfPrunedFork([Values] bool compactedGrandchild)
     {
         StateId canonical1 = CreateStateId(1, 1);
         StateId canonical2 = CreateStateId(2, 1);
@@ -207,7 +207,7 @@ public class PersistenceManagerTests
         PersistBase(canonical2, tip);
         PersistBase(Block0, orphan1);
         PersistBase(orphan1, orphan2);
-        using Snapshot orphanSnapshot = CreateSnapshot(orphan2, orphan3);
+        using Snapshot orphanSnapshot = CreateSnapshot(orphan2, orphan3, compacted: compactedGrandchild);
         _snapshotRepository.SetLastCommittedStateId(tip);
         _finalizedStateProvider.SetFinalizedBlockNumber(1);
         _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(canonical1.StateRoot));
@@ -222,6 +222,7 @@ public class PersistenceManagerTests
             Assert.That(_snapshotRepository.HasState(orphan3), Is.False);
             Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.EqualTo(3));
             Assert.That(_snapshotRepository.SnapshotCount, Is.Zero);
+            Assert.That(_snapshotRepository.CompactedSnapshotCount, Is.Zero);
             Assert.That(assembled.Persisted.Count, Is.EqualTo(3));
         }
     }

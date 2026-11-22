@@ -799,28 +799,21 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         HashSet<ulong> unavailableHeights = [];
         bool ancestryVerified = false;
         int totalPruned = 0;
-        PooledSet<StateId>? pruned = null;
-        try
+        using PooledSet<StateId> pruned = [];
+        // Batched like RemoveSiblingAndDescendents: one unbounded range over a long-finality gap would
+        // build a LOH-sized dedupe set on every block.
+        ulong batchStart = firstBlock;
+        while (batchStart <= finalizedBlock)
         {
-            // Batched like RemoveSiblingAndDescendents: one unbounded range over a long-finality gap would
-            // build a LOH-sized dedupe set on every block.
-            ulong batchStart = firstBlock;
-            while (batchStart <= finalizedBlock)
-            {
-                ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, finalizedBlock);
-                using ArrayPoolList<StateId> states = GetPersistedStatesInRange(batchStart, batchEnd);
-                if (!PruneBatch(states)) break;
-                batchStart = batchEnd + 1;
-            }
+            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, finalizedBlock);
+            using ArrayPoolList<StateId> states = GetPersistedStatesInRange(batchStart, batchEnd);
+            if (!PruneBatch(states)) break;
+            batchStart = batchEnd + 1;
+        }
 
-            int descendantsPruned = pruned is null ? 0 : RemoveDescendantsOf(pruned);
-            if (totalPruned > 0 && _logger.IsInfo)
-                _logger.Info($"Pruned {totalPruned} finalized non-canonical persisted state(s) at or below block {finalizedBlock} and {descendantsPruned} of their descendant(s).");
-        }
-        finally
-        {
-            pruned?.Dispose();
-        }
+        int descendantsPruned = pruned.Count == 0 ? 0 : RemoveDescendantsOf(pruned);
+        if (totalPruned > 0 && _logger.IsInfo)
+            _logger.Info($"Pruned {totalPruned} finalized non-canonical persisted state(s) at or below block {finalizedBlock} and {descendantsPruned} of their descendant(s).");
 
         // False aborts the pass.
         bool PruneBatch(ArrayPoolList<StateId> states)
@@ -854,7 +847,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                 if (RemovePersistedStateExact(state))
                 {
                     totalPruned++;
-                    (pruned ??= []).Add(state);
+                    pruned.Add(state);
                 }
             }
             return true;
@@ -898,11 +891,7 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             {
                 if (removed.Contains(state)) continue;
 
-                StateId parent;
-                if (_snapshots.TryGetValue(state, out Snapshot? inMemoryBase)) parent = inMemoryBase.From;
-                else if (_base.TryGet(state, out PersistedSnapshot? persistedBase)) parent = persistedBase.From;
-                else continue;
-                if (!removed.Contains(parent)) continue;
+                if (!BuildsOnlyOnRemovedStates(state, removed)) continue;
 
                 removed.Add(state);
                 RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
@@ -915,6 +904,24 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         }
 
         return totalRemoved;
+    }
+
+    private bool BuildsOnlyOnRemovedStates(in StateId state, PooledSet<StateId> removed)
+    {
+        bool found = false;
+        if (_snapshots.TryGetValue(state, out Snapshot? inMemoryBase) && !BuildsOnRemoved(inMemoryBase.From)) return false;
+        if (_compactedSnapshots.TryGetValue(state, out Snapshot? inMemoryCompacted) && !BuildsOnRemoved(inMemoryCompacted.From)) return false;
+        if (_base.TryGet(state, out PersistedSnapshot? persistedBase) && !BuildsOnRemoved(persistedBase.From)) return false;
+        if (_smallCompacted.TryGet(state, out PersistedSnapshot? smallCompacted) && !BuildsOnRemoved(smallCompacted.From)) return false;
+        if (_largeCompacted.TryGet(state, out PersistedSnapshot? largeCompacted) && !BuildsOnRemoved(largeCompacted.From)) return false;
+        if (_compactSized.TryGet(state, out PersistedSnapshot? compactSized) && !BuildsOnRemoved(compactSized.From)) return false;
+        return found;
+
+        bool BuildsOnRemoved(in StateId from)
+        {
+            found = true;
+            return removed.Contains(from);
+        }
     }
 
     private Hash256? GetFinalizedRoot(ulong height, ref HashSet<ulong>? unavailableRoots)
