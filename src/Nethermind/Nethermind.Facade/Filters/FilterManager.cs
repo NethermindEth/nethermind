@@ -35,13 +35,15 @@ namespace Nethermind.Facade.Filters
     /// </remarks>
     public sealed class FilterManager
     {
-        // Bound the receipts held for canonical additions and reorg removals when receipt storage is disabled.
-        private const int RecentReceiptBlockLimit = 128;
+        // Bound outstanding additions and the recent canonical history independently.
+        private const int PendingReceiptBlockLimit = 128;
+        private const int RecentCanonicalReceiptBlockLimit = 128;
 
         private readonly FilterEventLog<BlockEvent> _blocks;
         private readonly FilterEventLog<Hash256> _blockHashes;
         private readonly FilterEventLog<PendingTransaction> _pendingTransactions;
-        private readonly LruCache<ValueHash256, TxReceipt[]>? _recentReceipts;
+        private readonly LruCache<ValueHash256, TxReceipt[]>? _pendingReceipts;
+        private readonly LruCache<ValueHash256, TxReceipt[]>? _recentCanonicalReceipts;
 
         private Hash256? _lastBlockHash;
         private readonly FilterStore _filterStore;
@@ -72,7 +74,8 @@ namespace Nethermind.Facade.Filters
             }
             else
             {
-                _recentReceipts = new(RecentReceiptBlockLimit, "live filter receipts");
+                _pendingReceipts = new(PendingReceiptBlockLimit, "pending filter receipts");
+                _recentCanonicalReceipts = new(RecentCanonicalReceiptBlockLimit, "canonical filter receipts");
                 blockTree.BlockAddedToMain += OnBlockAddedToMain;
                 blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
             }
@@ -125,27 +128,42 @@ namespace Nethermind.Facade.Filters
             Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             _lastBlockHash = blockHash;
             _blockHashes.Append(blockHash);
-            if (_recentReceipts is { } recentReceipts && e.TxReceipts.Length != 0)
+            if (_pendingReceipts is { } pendingReceipts && e.TxReceipts.Length != 0)
             {
-                recentReceipts.Set(blockHash.ValueHash256, e.TxReceipts);
+                pendingReceipts.Set(blockHash.ValueHash256, e.TxReceipts);
             }
         }
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            if (e.PreviousBlock is { } previous) AppendRecentReceipts(previous.Header, removed: true);
-            AppendRecentReceipts(e.Block.Header, removed: false);
+            if (e.PreviousBlock is { } previous) AppendCanonicalReceipts(previous.Header, removed: true);
+            BlockHeader header = e.Block.Header;
+            if (header.Hash is { } hash && _pendingReceipts!.TryRemove(hash.ValueHash256, out TxReceipt[]? receipts))
+            {
+                _recentCanonicalReceipts!.Set(hash.ValueHash256, receipts);
+                PublishReceipts(header, receipts, removed: false);
+            }
+            else
+            {
+                AppendCanonicalReceipts(header, removed: false);
+            }
         }
 
         private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) =>
-            AppendRecentReceipts(e.Header, removed: true);
+            AppendCanonicalReceipts(e.Header, removed: true);
 
-        private void AppendRecentReceipts(BlockHeader header, bool removed)
+        private void AppendCanonicalReceipts(BlockHeader header, bool removed)
         {
-            if (_blocks.IsTracking && header.Hash is { } hash && _recentReceipts!.TryGet(hash.ValueHash256, out TxReceipt[] receipts))
+            if (_blocks.IsTracking && header.Hash is { } hash && _recentCanonicalReceipts!.TryGet(hash.ValueHash256, out TxReceipt[] receipts))
             {
-                OnReceiptsInserted(this, new ReceiptsEventArgs(header, receipts, removed, _eip8116.IsEnabled(header.Number, header.Timestamp)));
+                PublishReceipts(header, receipts, removed);
             }
+        }
+
+        private void PublishReceipts(BlockHeader header, TxReceipt[] receipts, bool removed)
+        {
+            if (_blocks.IsTracking)
+                OnReceiptsInserted(this, new ReceiptsEventArgs(header, receipts, removed, _eip8116.IsEnabled(header.Number, header.Timestamp)));
         }
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)

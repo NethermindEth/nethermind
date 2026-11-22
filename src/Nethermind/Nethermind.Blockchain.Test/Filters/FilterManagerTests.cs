@@ -431,6 +431,28 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Canonical_receipt_history_does_not_evict_a_pending_addition()
+    {
+        LogFilter filter = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(filter);
+        CreateFilterManager(storeReceipts: false);
+        Block delayed = RaiseBlockProcessedOnly(BuildReceipt(static r => r.WithBlockNumber(1L)));
+
+        for (ulong number = 2; number <= 130; number++)
+        {
+            TxReceipt receipt = BuildReceipt(builder => builder.WithBlockNumber(number));
+            Block block = Build.A.Block.WithNumber(number).WithBloom(new Bloom(receipt.Logs ?? [])).TestObject;
+            _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, [receipt]));
+            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(block));
+        }
+        _filterManager.PollLogs(filter.Id).Dispose();
+
+        _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(delayed));
+
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)).Select(static log => log.BlockNumber), Is.EqualTo(new[] { 1UL }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void block_whose_bloom_excludes_the_filter_is_skipped()
     {
         LogFilter filter = BuildFilter(static f => f.WithAddress(TestItem.AddressA));
