@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using System.Reflection;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Nethermind.BeaconChain.Spec;
@@ -38,6 +39,8 @@ public class FuluFixtureTests
         LightClientBootstrap decodedBootstrap = LightClientWireCodec.DecodeBootstrap(LightClientWireCodec.EncodeBootstrap(bootstrap, spec), spec);
         LightClientFinalityUpdate decodedFinality = LightClientWireCodec.DecodeFinality(LightClientWireCodec.EncodeFinality(finality, spec), spec);
         LightClientStore store = new(spec, capture.Checkpoint, decodedBootstrap, decodedFinality.SignatureSlot);
+        Assert.That(SszRoots.HashTreeRoot(decodedBootstrap.CurrentSyncCommittee!),
+            Is.Not.EqualTo(decodedBootstrap.CurrentSyncCommitteeBranch![0]), "the captured current and next committees must be distinct");
         store.Process(decodedFinality, decodedFinality.SignatureSlot);
 
         using (Assert.EnterMultipleScope())
@@ -46,6 +49,32 @@ public class FuluFixtureTests
             Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(capture.OptimisticSlot));
             Assert.That(store.FinalizedHeader.Execution!.BlockHash, Is.EqualTo(new Hash256(capture.ExecutionHash)));
         }
+    }
+
+    [Test]
+    public void Captured_execution_hash_proofs_validate_a_pre_Gloas_header_in_Gloas_format(
+        [Values("mainnet", "hoodi")] string network, [Values] bool tamper)
+    {
+        Capture capture = Fixture(network);
+        using JsonDocument bootstrapJson = Read("bootstrap", network);
+        using JsonDocument proof = Read("execution-block-proof", network);
+        LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
+        LightClientHeader legacy = bootstrap.Header!;
+        Assert.That(capture.Spec.GetEpoch(legacy.Beacon!.Slot), Is.LessThan(capture.Spec.GloasForkEpoch));
+        LightClientStore store = new(capture.Spec, capture.Checkpoint, bootstrap, capture.OptimisticSlot);
+        LightClientHeader header = new()
+        {
+            Beacon = legacy.Beacon,
+            IsGloas = true,
+            ExecutionBlockHash = tamper ? Hash256.Zero : legacy.Execution!.BlockHash,
+            ExecutionBranch = Branch(proof.RootElement, "execution_branch"),
+        };
+        Action<LightClientHeader> validate = typeof(LightClientStore)
+            .GetMethod("ValidateHeader", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .CreateDelegate<Action<LightClientHeader>>(store);
+
+        if (tamper) Assert.That(() => validate(header), Throws.TypeOf<InvalidDataException>());
+        else Assert.That(() => validate(header), Throws.Nothing);
     }
 
     [Test]

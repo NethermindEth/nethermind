@@ -22,3 +22,15 @@ network and a changed finality proof without publishing invalid state. Journal
 replay must preserve the authenticated optimistic and finalized heads and the
 participation maximum. The checked-in responses have no live-network test
 dependency; their original freshness is irrelevant to these historical fixtures.
+
+Each `execution-block-proof.json` expands the captured execution-payload proof
+to its `block_hash` field using the Deneb `ExecutionPayloadHeader` SSZ field
+order from consensus-specs revision `aa16bb4c156184e9548a997d53efaf2a228a6304`
+([v1.7.0-beta.4](https://github.com/ethereum/consensus-specs/blob/aa16bb4c156184e9548a997d53efaf2a228a6304/specs/deneb/beacon-chain.md#executionpayloadheader)).
+The payload tree has 32 leaves; the five inner siblings precede the four
+captured body-proof siblings. Two leading zero nodes normalize the branch to
+the Gloas header format. Its root is the unchanged captured beacon body root,
+independent of the light-client store's generalized-index constants.
+Tests validate this old-slot Gloas header view and reject a changed execution
+hash; the captured current-committee proof also pins distinct sibling
+committee roots.
