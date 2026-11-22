@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -103,8 +104,7 @@ public class BranchProcessor(
 
         bool useBalForInclusionList = false;
         bool? boundaryInclusionListSatisfied = null;
-        // Production, tracing and simulation do not report inclusion-list compliance.
-        bool checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation);
+        bool checkInclusionList = false;
 
         // Subscribe to cancel background work (prewarmer, prefetch) once transactions finish,
         // freeing the thread pool for parallel post-tx work (blooms, receipts root, state root).
@@ -139,6 +139,7 @@ public class BranchProcessor(
             for (int i = 0; i < blocksCount; i++)
             {
                 suggestedBlock = suggestedBlocks[i];
+                checkInclusionList = !options.ContainsFlag(ProcessingOptions.NoValidation) || suggestedBlock is BlockToProduce;
                 boundaryInclusionListSatisfied = null;
                 using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)

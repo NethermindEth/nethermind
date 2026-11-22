@@ -52,6 +52,7 @@ namespace Nethermind.Consensus.Producers
 
         public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals)
         {
+            InclusionListTransactions = InclusionListTransactions,
             TransactionsExemptFromByteLimit = TransactionsExemptFromByteLimit,
             RequiredTransactions = RequiredTransactions,
         };

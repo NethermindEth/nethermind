@@ -1005,6 +1005,34 @@ public partial class EngineModuleTests
         Assert.That(emptyBlock!.Transactions.Select(t => t.Hash), Is.EqualTo(new[] { inclusionListTx.Hash }));
     }
 
+    [Test]
+    public async Task Block_producer_retries_an_inclusion_list_entry_after_its_sender_receives_funds([Values] bool fundingInMempool)
+    {
+        Address sender = TestItem.PrivateKeyD.Address;
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0" }, configurer: builder =>
+                builder.WithGenesisPostProcessor((_, state) => state.CreateAccount(sender, 0, nonce: 1)));
+        Hash256 parent = chain.BlockTree.HeadHash;
+        Transaction spend = Build.A.Transaction
+            .WithNonce(1).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithGasLimit(100_000).WithValue(0).WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyD).TestObject;
+        Transaction fund = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithGasLimit(1_000_000).WithValue(1.Ether).WithTo(sender).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        if (fundingInMempool)
+            Assert.That(chain.TxPool.SubmitTx(fund, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+        byte[][] inclusionList = fundingInMempool ? [Rlp.Encode(spend)] : [Rlp.Encode(spend), Rlp.Encode(fund)];
+        PayloadAttributes attributes = BuildBogotaPayloadAttributes(inclusionList);
+        await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(new(parent, Keccak.Zero, parent), attributes);
+
+        Block? block = await chain.BlockProducer!.BuildBlock(
+            chain.BlockTree.Head!.Header, payloadAttributes: attributes,
+            flags: fundingInMempool ? IBlockProducer.Flags.None : IBlockProducer.Flags.PrepareEmptyBlock);
+
+        Assert.That(block?.Transactions.Select(static tx => tx.Hash), Is.EqualTo(new[] { fund.Hash, spend.Hash }));
+    }
+
     // A late payload id makes the consensus client propose the payload of its previous update, built for an older list.
     [Test]
     [CancelAfter(30000)]

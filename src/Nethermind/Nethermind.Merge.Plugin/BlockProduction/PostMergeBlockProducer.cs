@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -12,6 +15,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.BlockProduction
 {
@@ -44,12 +48,18 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
             BlockToProduce blockToProduce = base.PrepareBlock(parent, payloadAttributes, flags);
-            if (inclusionListTxSource is not null && (flags & IBlockProducer.Flags.EmptyBlock) != 0)
+            if (inclusionListTxSource is not null && payloadAttributes?.InclusionListTransactions is { Length: > 0 })
             {
-                blockToProduce.Transactions = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
+                IEnumerable<Transaction> entries = inclusionListTxSource.GetTransactions(parent, blockToProduce.Header, blockToProduce.Header.GasLimit, payloadAttributes);
+                Transaction[] inclusionList = entries as Transaction[] ?? entries.ToArray();
+                blockToProduce.InclusionListTransactions = inclusionList;
+                if ((flags & IBlockProducer.Flags.EmptyBlock) != 0) blockToProduce.Transactions = inclusionList;
             }
             return blockToProduce;
         }
+
+        protected override Block? ProcessPreparedBlock(Block block, IBlockTracer? blockTracer, CancellationToken token = default) =>
+            base.ProcessPreparedBlock(block, blockTracer, token) is { IsInclusionListSatisfied: true } produced ? produced : null;
 
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {

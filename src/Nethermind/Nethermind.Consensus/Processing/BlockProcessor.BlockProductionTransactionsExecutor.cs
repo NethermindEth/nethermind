@@ -103,6 +103,33 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
+                if (blockToProduce?.InclusionListTransactions is { Length: > 0 } inclusionList && includedTx.Count > 0)
+                {
+                    // State changes can make an earlier inclusion-list entry valid. Retry only missing
+                    // entries and stop after a pass with no included transaction.
+                    consideredTx.Clear();
+                    foreach (Transaction tx in includedTx.AsSpan()) consideredTx.Add(tx);
+                    int countBeforeRetry;
+                    do
+                    {
+                        countBeforeRetry = includedTx.Count;
+                        foreach (Transaction tx in inclusionList)
+                        {
+                            if (token.IsCancellationRequested) break;
+                            if (consideredTx.Contains(tx)) continue;
+
+                            TxAction action = ProcessTransaction(block, tx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget);
+                            if (action == TxAction.Stop) break;
+                            if (action != TxAction.Add) continue;
+
+                            consideredTx.Add(tx);
+                            includedTx.Add(tx);
+                            blockToProduce.TxByteLength += tx.GetLength(false);
+                        }
+                    }
+                    while (includedTx.Count > countBeforeRetry && !token.IsCancellationRequested);
+                }
+
                 if (blockToProduce?.RequiredTransactions is { } required &&
                     (includedTx.Count < required.Length || !includedTx.AsSpan()[..required.Length].SequenceEqual(required)))
                 {
