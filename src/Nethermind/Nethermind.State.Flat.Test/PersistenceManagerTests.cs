@@ -194,6 +194,39 @@ public class PersistenceManagerTests
     }
 
     [Test]
+    public void RemoveFinalizedPersistedForks_RemovesDescendantsOfPrunedFork()
+    {
+        StateId canonical1 = CreateStateId(1, 1);
+        StateId canonical2 = CreateStateId(2, 1);
+        StateId tip = CreateStateId(3, 1);
+        StateId orphan1 = CreateStateId(1, 2);
+        StateId orphan2 = CreateStateId(2, 2);
+        StateId orphan3 = CreateStateId(3, 2);
+        PersistBase(Block0, canonical1);
+        PersistBase(canonical1, canonical2);
+        PersistBase(canonical2, tip);
+        PersistBase(Block0, orphan1);
+        PersistBase(orphan1, orphan2);
+        using Snapshot orphanSnapshot = CreateSnapshot(orphan2, orphan3);
+        _snapshotRepository.SetLastCommittedStateId(tip);
+        _finalizedStateProvider.SetFinalizedBlockNumber(1);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(canonical1.StateRoot));
+
+        _snapshotRepository.RemoveFinalizedPersistedForks(Block0);
+
+        using AssembledSnapshotResult assembled = _snapshotRepository.AssembleSnapshots(tip, Block0, 3);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_snapshotRepository.HasState(orphan1), Is.False);
+            Assert.That(_snapshotRepository.HasState(orphan2), Is.False);
+            Assert.That(_snapshotRepository.HasState(orphan3), Is.False);
+            Assert.That(_snapshotRepository.PersistedSnapshotCount, Is.EqualTo(3));
+            Assert.That(_snapshotRepository.SnapshotCount, Is.Zero);
+            Assert.That(assembled.Persisted.Count, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
     public async Task AddToPersistence_PrunesOnlyKnownFinalizedPersistedForks(
         [Values(0ul, 1ul, 2ul)] ulong finalizedBlock,
         [Values(0ul, 1ul, 2ul)] ulong rootLookupCeiling,
@@ -220,7 +253,7 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.TryLeaseBasePersistedSnapshot(orphan1, out PersistedSnapshot? reader), Is.True);
         ArenaReservation reservation = reader!.Reservation;
         bool pruneParent = finalizedBlock >= 1 && rootLookupCeiling >= 1;
-        bool pruneChild = finalizedBlock >= 2 && rootLookupCeiling >= 2;
+        bool pruneChild = pruneParent;
         int expectedCount = 6 - (pruneParent ? 1 : 0) - (pruneChild ? 1 : 0);
         using (reader)
         {

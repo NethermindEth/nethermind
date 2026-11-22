@@ -799,19 +799,28 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
         HashSet<ulong> unavailableHeights = [];
         bool ancestryVerified = false;
         int totalPruned = 0;
-        // Batched like RemoveSiblingAndDescendents: one unbounded range over a long-finality gap would
-        // build a LOH-sized dedupe set on every block.
-        ulong batchStart = firstBlock;
-        while (batchStart <= finalizedBlock)
+        PooledSet<StateId>? pruned = null;
+        try
         {
-            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, finalizedBlock);
-            using ArrayPoolList<StateId> states = GetPersistedStatesInRange(batchStart, batchEnd);
-            if (!PruneBatch(states)) break;
-            batchStart = batchEnd + 1;
-        }
+            // Batched like RemoveSiblingAndDescendents: one unbounded range over a long-finality gap would
+            // build a LOH-sized dedupe set on every block.
+            ulong batchStart = firstBlock;
+            while (batchStart <= finalizedBlock)
+            {
+                ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, finalizedBlock);
+                using ArrayPoolList<StateId> states = GetPersistedStatesInRange(batchStart, batchEnd);
+                if (!PruneBatch(states)) break;
+                batchStart = batchEnd + 1;
+            }
 
-        if (totalPruned > 0 && _logger.IsInfo)
-            _logger.Info($"Pruned {totalPruned} finalized non-canonical persisted state(s) at or below block {finalizedBlock}.");
+            int descendantsPruned = pruned is null ? 0 : RemoveDescendantsOf(pruned);
+            if (totalPruned > 0 && _logger.IsInfo)
+                _logger.Info($"Pruned {totalPruned} finalized non-canonical persisted state(s) at or below block {finalizedBlock} and {descendantsPruned} of their descendant(s).");
+        }
+        finally
+        {
+            pruned?.Dispose();
+        }
 
         // False aborts the pass.
         bool PruneBatch(ArrayPoolList<StateId> states)
@@ -842,7 +851,11 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
                     continue;
                 }
 
-                if (RemovePersistedStateExact(state)) totalPruned++;
+                if (RemovePersistedStateExact(state))
+                {
+                    totalPruned++;
+                    (pruned ??= []).Add(state);
+                }
             }
             return true;
         }
@@ -862,6 +875,46 @@ public class SnapshotRepository : ISnapshotRepository, IDisposable
             if (root is null) unavailableHeights.Add(height);
             return root;
         }
+    }
+
+    private int RemoveDescendantsOf(PooledSet<StateId> removed)
+    {
+        ulong firstBlock = ulong.MaxValue;
+        foreach (StateId state in removed) firstBlock = Math.Min(firstBlock, state.BlockNumber);
+        ulong maxBlock = GetLastSnapshotId()?.BlockNumber ?? 0;
+
+        int totalRemoved = 0;
+        for (ulong batchStart = firstBlock + 1; batchStart <= maxBlock;)
+        {
+            ulong batchEnd = Math.Min(batchStart + PruneBatchSize - 1, maxBlock);
+            using ArrayPoolList<StateId> states = GetPersistedStatesInRange(batchStart, batchEnd);
+            using (ArrayPoolListRef<StateId> inMemory = GetStatesInRange(batchStart, batchEnd))
+            {
+                states.AddRange(inMemory.AsSpan());
+            }
+            states.AsSpan().Sort();
+
+            foreach (StateId state in states)
+            {
+                if (removed.Contains(state)) continue;
+
+                StateId parent;
+                if (_snapshots.TryGetValue(state, out Snapshot? inMemoryBase)) parent = inMemoryBase.From;
+                else if (_base.TryGet(state, out PersistedSnapshot? persistedBase)) parent = persistedBase.From;
+                else continue;
+                if (!removed.Contains(parent)) continue;
+
+                removed.Add(state);
+                RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryCompacted);
+                RemoveAndReleaseInMemoryKnownState(state, SnapshotTier.InMemoryBase);
+                RemovePersistedStateExact(state);
+                totalRemoved++;
+            }
+
+            batchStart = batchEnd + 1;
+        }
+
+        return totalRemoved;
     }
 
     private Hash256? GetFinalizedRoot(ulong height, ref HashSet<ulong>? unavailableRoots)
