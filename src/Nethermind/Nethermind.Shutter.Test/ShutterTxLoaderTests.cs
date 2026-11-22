@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using NUnit.Framework;
 using System.Threading.Tasks;
@@ -75,6 +76,33 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
             IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
             lastPayload = payloads[0];
         }
+    }
+
+    [Test]
+    public async Task Loads_all_transactions_with_available_keys()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        ShutterEventSimulator events = ShutterTestsCommon.InitEventSimulator(rnd);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, eventSimulator: events).Build(ShutterTestsCommon.SpecProvider);
+        await ProduceBranchV1(chain.EngineRpcModule, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+
+        (List<ShutterEventSimulator.Event> submitted, Dto.DecryptionKeys decryptionKeys) = events.AdvanceSlot(eventCount: 3, keyCount: 2);
+        Block head = chain.BlockTree.Head!;
+        ShutterTransactions initial = chain.Api.TxLoader.LoadTransactions(head, head.Header, new IShutterKeyValidator.ValidatedKeys
+        {
+            Eon = decryptionKeys.Eon,
+            Slot = decryptionKeys.Gnosis.Slot - 1,
+            TxPointer = decryptionKeys.Gnosis.TxPointer,
+            Keys = new([], 0),
+        });
+        Assert.That(initial.Transactions, Is.Empty);
+        chain.Api.InsertShutterReceipts(head, submitted.Select(static transaction => transaction.LogEntry).ToArray());
+        IShutterKeyValidator.ValidatedKeys? keys = chain.Api.KeyValidator.ValidateKeys(decryptionKeys);
+        Assert.That(keys, Is.Not.Null);
+
+        ShutterTransactions transactions = chain.Api.TxLoader.LoadTransactions(head, head.Header, keys!.Value);
+
+        Assert.That(transactions.Transactions, Has.Length.EqualTo(2));
     }
 
     [Test]
