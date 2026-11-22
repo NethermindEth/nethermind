@@ -612,13 +612,13 @@ public class GuestOpcodeHandlerTests
 
     /// <remarks>
     /// An empty range touches no memory, so an offset past the memory charges no expansion. An offset of -1 pushes
-    /// 2^256 - 1.
+    /// 2^256 - 1. With a word written first, offsets 0 and 31 lie inside the memory.
     /// </remarks>
     [Test]
-    public void Keccak256_of_an_empty_range_leaves_the_empty_digest([Values(0L, 31L, 1024L, 1L << 32, -1L)] long offset) =>
+    public void Keccak256_of_an_empty_range_leaves_the_empty_digest([Values(0L, 31L, 1024L, 1L << 32, -1L)] long offset, [Values] bool written) =>
         AssertSucceedsOnExactlyItsGas(
-            Code([PUSH1, 0, PUSH32, .. Word(offset), KECCAK256, PUSH1, 0, MSTORE, STOP]),
-            (3 + 3 + GasCostOf.Sha3) + (3 + 3) + MemoryCost(1),
+            Code([.. written ? [PUSH1, 1, PUSH1, 0, MSTORE] : Array.Empty<byte>(), PUSH1, 0, PUSH32, .. Word(offset), KECCAK256, PUSH1, 0, MSTORE, STOP]),
+            (written ? 3 + 3 + 3 : 0UL) + (3 + 3 + GasCostOf.Sha3) + (3 + 3) + MemoryCost(1),
             ValueKeccak.OfAnEmptyString.Bytes.ToArray(),
             []);
 

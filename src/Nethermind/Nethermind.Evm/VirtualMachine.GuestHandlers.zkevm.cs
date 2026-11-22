@@ -3583,6 +3583,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, memoized);
                         }
 
+                        // Tested past the memo, which no empty range hits, and beside the call every other range takes.
+                        if (length == 0)
+                        {
+                            WriteEmptyKeccak(ref lengthLimbs);
+                            sp = ref Moved(ref sp, -1);
+                            ip = ref Unsafe.Add(ref ip, 1);
+                            nint emptyInside = NextHandler(handlers, ref ip);
+                            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, emptyInside);
+                        }
+
                         if (!EvmPooledMemory.IsSwizzled)
                             KeccakCache.ComputeTo(MemoryMarshal.CreateReadOnlySpan(ref data, (int)length), out Unsafe.As<ulong, ValueHash256>(ref lengthLimbs));
                         else if ((offset & (sizeof(uint) - 1)) == 0)
@@ -3614,16 +3624,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 }
 
                 // An empty range touches no memory, so its offset may lie past it or past 2^32. Checked only here to keep
-                // the common case unchanged; an empty range inside the memory hashes above.
+                // the common case unchanged; an empty range inside the memory takes the digest above.
                 if ((length | Unsafe.Add(ref lengthLimbs, 1) | Unsafe.Add(ref lengthLimbs, 2) | Unsafe.Add(ref lengthLimbs, 3)) == 0 &&
                     Covers(gas, GasCostOf.Sha3))
                 {
                     gas -= (nuint)GasCostOf.Sha3;
                     head--;
-                    lengthLimbs = EmptyKeccakLimb0;
-                    Unsafe.Add(ref lengthLimbs, 1) = EmptyKeccakLimb1;
-                    Unsafe.Add(ref lengthLimbs, 2) = EmptyKeccakLimb2;
-                    Unsafe.Add(ref lengthLimbs, 3) = EmptyKeccakLimb3;
+                    WriteEmptyKeccak(ref lengthLimbs);
                     sp = ref Moved(ref sp, -1);
                     ip = ref Unsafe.Add(ref ip, 1);
                     nint empty = NextHandler(handlers, ref ip);
@@ -3640,6 +3647,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         private const ulong EmptyKeccakLimb1 = 0xe500b653ca82273b;
         private const ulong EmptyKeccakLimb2 = 0x927e7db2dcc703c0;
         private const ulong EmptyKeccakLimb3 = 0xc5d2460186f7233c;
+
+        /// <summary>Writes the digest of the empty input to the stack slot at <paramref name="limbs"/>, in limb layout.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void WriteEmptyKeccak(ref ulong limbs)
+        {
+            limbs = EmptyKeccakLimb0;
+            Unsafe.Add(ref limbs, 1) = EmptyKeccakLimb1;
+            Unsafe.Add(ref limbs, 2) = EmptyKeccakLimb2;
+            Unsafe.Add(ref limbs, 3) = EmptyKeccakLimb3;
+        }
 
         /// <summary>The bits of the index of an entry of <see cref="s_wordKeccakMemo"/>.</summary>
         private const int WordKeccakMemoBits = 12;
