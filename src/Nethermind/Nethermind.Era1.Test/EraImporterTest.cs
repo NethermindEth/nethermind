@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Builders;
+using System.Buffers.Binary;
 using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Consensus;
@@ -95,6 +96,32 @@ public class EraImporterTest
 
         IEraImporter sut = testContext.Resolve<IEraImporter>();
         Assert.That(() => sut.Import(tempDirectory, 0, 0, null, CancellationToken.None), Throws.TypeOf<EraFormatException>());
+    }
+
+    [TestCase(1UL << 62, "starts at block")]
+    [TestCase(ulong.MaxValue, "Invalid starting block number")]
+    public async Task Import_EraFileStartingAtWrongBlock_IsRefused(ulong startBlock, string expectedMessage)
+    {
+        await using IContainer outputCtx = await EraTestModule.CreateExportedEraEnv(64);
+        IFileSystem fileSystem = outputCtx.Resolve<IFileSystem>();
+        string destinationPath = outputCtx.ResolveTempDirPath();
+
+        string lastEraFile = fileSystem.Directory.GetFiles(destinationPath, "*.era1").Order(StringComparer.Ordinal).Last();
+        byte[] bytes = await fileSystem.File.ReadAllBytesAsync(lastEraFile);
+        int blockCount = (int)BinaryPrimitives.ReadUInt64LittleEndian(bytes.AsSpan(bytes.Length - sizeof(ulong)));
+        int startBlockOffset = bytes.Length - sizeof(ulong) - blockCount * sizeof(ulong) - sizeof(ulong);
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(startBlockOffset), startBlock);
+        await fileSystem.File.WriteAllBytesAsync(lastEraFile, bytes);
+
+        BlockTree inTree = Build.A.BlockTree()
+            .WithBlocks(outputCtx.Resolve<IBlockTree>().FindBlock(0, BlockTreeLookupOptions.None)!).TestObject;
+        await using IContainer inCtx = EraTestModule.BuildContainerBuilder()
+            .AddSingleton<IBlockTree>(inTree)
+            .Build();
+
+        IEraImporter sut = inCtx.Resolve<IEraImporter>();
+        Assert.That(() => sut.Import(destinationPath, 0, 0, null, CancellationToken.None),
+            Throws.InstanceOf<EraException>().With.Message.Contains(expectedMessage));
     }
 
     [Test]

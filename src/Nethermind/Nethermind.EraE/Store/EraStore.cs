@@ -144,9 +144,22 @@ public sealed class EraStore : IEraStore
 
     private long GetEpochNumber(ulong blockNumber) => (long)(blockNumber / _maxEraSize);
 
-    private EraReader GetReader(long epoch) => !_epochs.TryGetValue(epoch, out string? path)
-        ? throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.")
-        : new EraReader(new E2StoreReader(path));
+    private EraReader GetReader(long epoch)
+    {
+        if (!_epochs.TryGetValue(epoch, out string? path))
+            throw new ArgumentOutOfRangeException(nameof(epoch), epoch, "Epoch not available.");
+
+        EraReader reader = new(new E2StoreReader(path));
+        ulong firstBlock = reader.FirstBlock;
+        ulong lastBlock = reader.LastBlock;
+        if (GetEpochNumber(firstBlock) != epoch || GetEpochNumber(lastBlock) != epoch)
+        {
+            reader.Dispose();
+            throw new EraVerificationException($"Era file of epoch {epoch} holds blocks {firstBlock} to {lastBlock}, outside the epoch.");
+        }
+
+        return reader;
+    }
 
     private async ValueTask EnsureEpochVerified(long epoch, EraReader reader, CancellationToken cancellation)
     {
