@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
@@ -88,6 +89,18 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
 
         (List<ShutterEventSimulator.Event> submitted, Dto.DecryptionKeys decryptionKeys) = events.AdvanceSlot(eventCount: 3, keyCount: 2);
         Block head = chain.BlockTree.Head!;
+        SwitchLoaderToReceipts(chain, head, decryptionKeys);
+        chain.Api.InsertShutterReceipts(head, submitted.Select(static transaction => transaction.LogEntry).ToArray());
+        IShutterKeyValidator.ValidatedKeys? keys = chain.Api.KeyValidator.ValidateKeys(decryptionKeys);
+        Assert.That(keys, Is.Not.Null);
+
+        ShutterTransactions transactions = chain.Api.TxLoader.LoadTransactions(head, head.Header, keys!.Value);
+
+        Assert.That(transactions.Transactions.Select(static transaction => transaction.Hash), Is.EqualTo(submitted.Take(2).Select(static transaction => Keccak.Compute(transaction.Transaction))));
+    }
+
+    private static void SwitchLoaderToReceipts(ShutterTestBlockchain chain, Block head, Dto.DecryptionKeys decryptionKeys)
+    {
         ShutterTransactions initial = chain.Api.TxLoader.LoadTransactions(head, head.Header, new IShutterKeyValidator.ValidatedKeys
         {
             Eon = decryptionKeys.Eon,
@@ -96,13 +109,6 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
             Keys = new([], 0),
         });
         Assert.That(initial.Transactions, Is.Empty);
-        chain.Api.InsertShutterReceipts(head, submitted.Select(static transaction => transaction.LogEntry).ToArray());
-        IShutterKeyValidator.ValidatedKeys? keys = chain.Api.KeyValidator.ValidateKeys(decryptionKeys);
-        Assert.That(keys, Is.Not.Null);
-
-        ShutterTransactions transactions = chain.Api.TxLoader.LoadTransactions(head, head.Header, keys!.Value);
-
-        Assert.That(transactions.Transactions, Has.Length.EqualTo(2));
     }
 
     [Test]
