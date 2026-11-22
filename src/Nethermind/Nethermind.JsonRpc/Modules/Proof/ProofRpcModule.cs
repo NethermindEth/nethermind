@@ -13,7 +13,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
-using Nethermind.Blockchain.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
@@ -112,11 +111,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             using Scope<ITracer> _ = scope;
 
-            BlockReceiptsTracer receiptsTracer = new();
-            receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
-            scope.Component.Trace(block, receiptsTracer);
-
-            TxReceipt[] tracedReceipts = receiptsTracer.TxReceipts.ToArray();
+            TxReceipt[] tracedReceipts = scope.Component.TraceReceipts(block);
             // Backstop: a retrace that does not reproduce every transaction would still yield a proof of the wrong trie.
             if (tracedReceipts.Length != txs.Length)
             {
@@ -127,11 +122,6 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
             ReceiptWithProof receiptWithProof = new();
             IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            if (spec.IsEip8116Enabled)
-            {
-                tracedReceipts.SetEip8116GasUsed();
-            }
-
             int logIndexStart = spec.IsEip8116Enabled ? 0 : GetLogIndexStart(txs, storedReceipts, txIndex);
 
             TxReceipt provenReceipt = new(receipt) { Index = txIndex, BlockHash = block.Hash, BlockNumber = block.Number };

@@ -1,15 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Optimism.Rpc;
+using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -20,6 +26,22 @@ public class OptimismProofRpcModuleTests
 {
     private static readonly Hash256 TxHash = TestItem.KeccakA;
     private static readonly Hash256 BlockHash = TestItem.KeccakB;
+
+    [Test]
+    public void Receipt_proof_replay_keeps_the_block_processors_deposit_receipt()
+    {
+        Block block = Build.A.Block.TestObject;
+        TxReceipt[] processorReceipts = [new OptimismTxReceipt { DepositNonce = 7, DepositReceiptVersion = 1 }];
+        IBlockProcessor processor = Substitute.For<IBlockProcessor>();
+        processor.ProcessOne(Arg.Any<Block>(), Arg.Any<ProcessingOptions>(), Arg.Any<IBlockTracer>(), Arg.Any<IReleaseSpec>(), Arg.Any<CancellationToken>())
+            .Returns((block, processorReceipts));
+        BlockchainProcessorFacade facade = new(processor, Substitute.For<ISpecProvider>(), []);
+        Tracer tracer = new(Substitute.For<IStateReader>(), facade, facade);
+
+        TxReceipt[] replayReceipts = tracer.TraceReceipts(block);
+
+        Assert.That(replayReceipts, Is.SameAs(processorReceipts));
+    }
 
     [Test]
     public void Deposit_transaction_takes_its_nonce_and_receipt_version_from_the_receipt()
