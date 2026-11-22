@@ -21,6 +21,7 @@ env:
   DATA: ${{ github.workspace }}/rule-bot/data
   LOGS: ${{ github.workspace }}/rule-bot/logs
   DRY_RUN: ${{ inputs.dry_run || 'false' }}
+  CLAUDE_CODE_VERSION: 2.1.330
 
 jobs:
   plan:
@@ -96,7 +97,7 @@ jobs:
         uses: ./.github/actions/setup-dotnet
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}
 
       - name: Download data
         uses: actions/download-artifact@v8
@@ -225,7 +226,7 @@ jobs:
 
       - name: Install Claude Code
         if: needs.plan.outputs.route_b != ''
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}
 
       - name: Check analyzer precision
         if: needs.plan.outputs.route_b != ''
@@ -295,7 +296,7 @@ jobs:
         uses: ./.github/actions/setup-dotnet
 
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@${{ env.CLAUDE_CODE_VERSION }}
 
       - name: Download data
         uses: actions/download-artifact@v8
