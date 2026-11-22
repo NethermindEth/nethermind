@@ -794,23 +794,66 @@ public class OtsRpcModuleTests
         Assert.That(json.RootElement.GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(expected));
     }
 
-    [Test]
-    public async Task Creator_no_code_fast_path_honors_cancellation_after_account_read()
+    private static IEnumerable<TestCaseData> CreatorEligibilityReadCases()
     {
-        using NonceFixture f = await NonceFixture.Create();
+        (string Account, bool DelegationEnabled, bool CodeRead)[] cases =
+        [
+            ("empty", false, false),
+            ("contract", false, false),
+            ("empty", true, false),
+            ("contract", true, false),
+            ("contract", true, true),
+            ("delegation", true, false),
+            ("delegation", true, true)
+        ];
+        foreach ((string account, bool enabled, bool codeRead) in cases)
+        {
+            yield return new TestCaseData(account, enabled, codeRead, false);
+            yield return new TestCaseData(account, enabled, codeRead, true);
+        }
+    }
+
+    [TestCaseSource(nameof(CreatorEligibilityReadCases))]
+    public async Task Creator_eligibility_checks_cancellation_and_canonicality_after_reads(
+        string account, bool delegationEnabled, bool codeRead, bool cancel)
+    {
+        RecordingStateReader? reader = null;
+        using BasicTestBlockchain chain = await CreateExecutionChain(delegationEnabled ? Prague.Instance : Shanghai.Instance,
+            configure: builder => builder.AddDecorator<IStateReader>((_, inner) => reader ??= new RecordingStateReader(inner)));
+        Transaction transaction = account == "delegation" ? DelegationTransaction(chain) : ExecutionTransaction(0, TestItem.AddressF, [], 0);
+        Block block = await chain.AddBlock(transaction);
+        Block parent = chain.BlockTree.FindBlock(block.ParentHash!)!;
+        Block sibling = await chain.AddBlockFromParent(parent.Header);
+        Assert.That(chain.BlockTree.IsMainChain(block.Header), Is.True);
+        Address address = account switch { "empty" => TestItem.AddressF, "delegation" => TestItem.AddressC, _ => TestItem.AddressA };
+        IOtsRpcModule module = chain.Container.Resolve<IRpcModuleFactory<IOtsRpcModule>>().Create();
         using CancellationTokenSource timeout = new();
-        f.RpcConfig.Timeout = Timeout.Infinite;
+        chain.Container.Resolve<IJsonRpcConfig>().Timeout = Timeout.Infinite;
         JsonRpcConfigExtension.UseForNextTimeoutInFlow(timeout);
+        Action afterRead = () =>
+        {
+            if (cancel) timeout.Cancel();
+            else Assert.That(chain.BlockTree.TryUpdateMainChain(sibling.Header, true, true, sibling), Is.True);
+        };
+        if (codeRead) reader!.AfterCodeRead = afterRead;
+        else reader!.AfterRead = afterRead;
+        bool returned;
         try
         {
-            f.StateReader.AfterRead = timeout.Cancel;
-            Assert.Throws<OperationCanceledException>(() =>
+            if (cancel)
+                Assert.Throws<OperationCanceledException>(() =>
+                {
+                    using ResultWrapper<OtsContractCreator?> response = module.ots_getContractCreator(address);
+                });
+            else
             {
-                using ResultWrapper<OtsContractCreator?> response = f.Module.ots_getContractCreator(TestItem.AddressF);
-            });
-            Assert.That(() => _ = timeout.Token, Throws.TypeOf<ObjectDisposedException>());
+                using ResultWrapper<OtsContractCreator?> response = module.ots_getContractCreator(address);
+                Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            }
+            if (cancel) Assert.That(() => _ = timeout.Token, Throws.TypeOf<ObjectDisposedException>());
         }
-        finally { JsonRpcConfigExtension.EndTimeoutInFlow(timeout); }
+        finally { returned = JsonRpcConfigExtension.EndTimeoutInFlow(timeout); }
+        Assert.That(returned, Is.EqualTo(!cancel));
     }
 
     [Test]
@@ -1152,12 +1195,7 @@ public class OtsRpcModuleTests
     public async Task Delegation_has_code_but_no_create_transaction_even_without_trace_history()
     {
         using BasicTestBlockchain chain = await CreateExecutionChain(Prague.Instance);
-        ulong chainId = chain.Container.Resolve<ISpecProvider>().ChainId;
-        EthereumEcdsa ecdsa = new(chainId);
-        Transaction delegation = Build.A.Transaction.WithType(TxType.SetCode).WithTo(TestItem.AddressF).WithNonce(0)
-            .WithGasLimit(500_000).WithGasPrice(2_000_000_000).WithMaxFeePerGas(2_000_000_000)
-            .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyC, chainId, TestItem.AddressA, 0))
-            .SignedAndResolved(ecdsa, TestItem.PrivateKeyB).TestObject;
+        Transaction delegation = DelegationTransaction(chain);
         Block block = await chain.AddBlock(delegation);
         byte[] code = chain.StateReader.GetCode(block.Header, TestItem.AddressC);
         Assert.That(Eip7702Constants.IsDelegatedCode(code), Is.True);
@@ -1180,6 +1218,15 @@ public class OtsRpcModuleTests
             Assert.That(creator.Result.ResultType, Is.EqualTo(ResultType.Success), creator.Result.Error);
             Assert.That(creator.Data, Is.Null);
         }
+    }
+
+    private static Transaction DelegationTransaction(BasicTestBlockchain chain)
+    {
+        IEthereumEcdsa ecdsa = chain.Container.Resolve<IEthereumEcdsa>();
+        return Build.A.Transaction.WithType(TxType.SetCode).WithTo(TestItem.AddressF).WithNonce(0)
+            .WithGasLimit(500_000).WithGasPrice(2_000_000_000).WithMaxFeePerGas(2_000_000_000)
+            .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyC, ecdsa.ChainId, TestItem.AddressA, 0))
+            .SignedAndResolved(ecdsa, TestItem.PrivateKeyB).TestObject;
     }
 
     private static async Task<BasicTestBlockchain> CreateIndexedCreatorChain(IndexEnvironment env, int fromBlock = 1, int lag = 0)
@@ -2619,6 +2666,7 @@ public class OtsRpcModuleTests
     private sealed class RecordingStateReader(IStateReader inner) : IStateReader
     {
         public Action? AfterRead { get; set; }
+        public Action? AfterCodeRead { get; set; }
         public Hash256? MissingCodeHash { get; set; }
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
         {
@@ -2627,8 +2675,13 @@ public class OtsRpcModuleTests
             return found;
         }
         public bool HasStateForBlock(BlockHeader? baseBlock) => inner.HasStateForBlock(baseBlock);
-        public byte[]? GetCode(Hash256 codeHash) => codeHash == MissingCodeHash ? null : inner.GetCode(codeHash);
-        public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == MissingCodeHash?.ValueHash256 ? null : inner.GetCode(in codeHash);
+        public byte[]? GetCode(Hash256 codeHash) => RecordCodeRead(codeHash == MissingCodeHash ? null : inner.GetCode(codeHash));
+        public byte[]? GetCode(in ValueHash256 codeHash) => RecordCodeRead(codeHash == MissingCodeHash?.ValueHash256 ? null : inner.GetCode(in codeHash));
+        private byte[]? RecordCodeRead(byte[]? code)
+        {
+            AfterCodeRead?.Invoke();
+            return code;
+        }
         public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
             inner.GetStorage(baseBlock, address, in index, out value);
         public void RunTreeVisitor<TCtx>(Nethermind.Trie.ITreeVisitor<TCtx> visitor, BlockHeader? baseBlock,
