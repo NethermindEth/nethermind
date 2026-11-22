@@ -28,6 +28,7 @@ namespace Nethermind.Db.FullPruning
             _dbFactory = dbFactory;
             _fileSystem = fileSystem;
             _path = path;
+            FinishInterruptedDeletes(path);
             _index = GetStartingIndex(path); // we need to read the current state of inner DB's
         }
 
@@ -99,6 +100,44 @@ namespace Nethermind.Db.FullPruning
             // so we skip tracking these indexed sub-DBs to avoid stale references after pruning.
             dbSettings.SkipMetricsTracking = true;
             return dbSettings;
+        }
+
+        private void FinishInterruptedDeletes(string path)
+        {
+            string fullPath = _dbFactory.GetFullDbPath(new DbSettings(string.Empty, path));
+            IDirectoryInfo directory = _fileSystem.DirectoryInfo.New(fullPath);
+            if (!directory.Exists) return;
+
+            if (DeleteFilesIfMarked(directory))
+            {
+                foreach (IFileInfo marker in directory.EnumerateFiles(DbSettings.DeletingMarkerFileName))
+                {
+                    marker.Delete();
+                }
+            }
+
+            foreach (IDirectoryInfo subDirectory in directory.EnumerateDirectories())
+            {
+                if (int.TryParse(subDirectory.Name, out int index) && index >= 0 && DeleteFilesIfMarked(subDirectory))
+                {
+                    subDirectory.Delete(true);
+                }
+            }
+        }
+
+        private static bool DeleteFilesIfMarked(IDirectoryInfo directory)
+        {
+            if (!directory.EnumerateFiles(DbSettings.DeletingMarkerFileName).Any()) return false;
+
+            foreach (IFileInfo file in directory.EnumerateFiles())
+            {
+                if (file.Name != DbSettings.DeletingMarkerFileName)
+                {
+                    file.Delete();
+                }
+            }
+
+            return true;
         }
 
         /// <summary>

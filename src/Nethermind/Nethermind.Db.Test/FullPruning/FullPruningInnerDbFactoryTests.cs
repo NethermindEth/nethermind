@@ -5,9 +5,11 @@ using System;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq.Expressions;
+using Nethermind.Core.Test.IO;
 using Nethermind.Db.FullPruning;
 using NSubstitute;
 using NUnit.Framework;
+using Testably.Abstractions;
 
 namespace Nethermind.Db.Test.FullPruning
 {
@@ -132,6 +134,57 @@ namespace Nethermind.Db.Test.FullPruning
             test.Directory.EnumerateDirectories().Returns(_ => throw new DirectoryNotFoundException());
 
             Assert.That(test.TestedDbFactory.DeleteStaleInnerDbs(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void opens_the_newer_indexed_db_when_deleting_the_older_one_did_not_finish()
+        {
+            using TempPath tempPath = TempPath.GetTempDirectory();
+            string older = Path.Combine(tempPath.Path, "0");
+            string newer = Path.Combine(tempPath.Path, "1");
+            Directory.CreateDirectory(older);
+            Directory.CreateDirectory(newer);
+            File.WriteAllText(Path.Combine(older, "000001.sst"), "data");
+            File.WriteAllText(Path.Combine(older, DbSettings.DeletingMarkerFileName), "marker");
+            File.WriteAllText(Path.Combine(newer, "000002.sst"), "data");
+            IDbFactory dbFactory = CreatePassThroughDbFactory();
+
+            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path).CreateDb(new DbSettings("name", tempPath.Path));
+
+            dbFactory.Received(1).CreateDb(Arg.Is<DbSettings>(s => s.DbPath == newer));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.Exists(older), Is.False);
+                Assert.That(File.Exists(Path.Combine(newer, "000002.sst")), Is.True);
+            }
+        }
+
+        [Test]
+        public void opens_the_indexed_db_when_deleting_the_main_one_did_not_finish()
+        {
+            using TempPath tempPath = TempPath.GetTempDirectory();
+            string indexed = Path.Combine(tempPath.Path, "0");
+            Directory.CreateDirectory(indexed);
+            File.WriteAllText(Path.Combine(tempPath.Path, "000001.sst"), "data");
+            File.WriteAllText(Path.Combine(tempPath.Path, DbSettings.DeletingMarkerFileName), "marker");
+            File.WriteAllText(Path.Combine(indexed, "000002.sst"), "data");
+            IDbFactory dbFactory = CreatePassThroughDbFactory();
+
+            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path).CreateDb(new DbSettings("name", tempPath.Path));
+
+            dbFactory.Received(1).CreateDb(Arg.Is<DbSettings>(s => s.DbPath == indexed));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Directory.EnumerateFiles(tempPath.Path), Is.Empty);
+                Assert.That(File.Exists(Path.Combine(indexed, "000002.sst")), Is.True);
+            }
+        }
+
+        private static IDbFactory CreatePassThroughDbFactory()
+        {
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(static c => c.Arg<DbSettings>().DbPath);
+            return dbFactory;
         }
 
         private static IDirectoryInfo Dir(string name)

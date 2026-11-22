@@ -85,25 +85,34 @@ public sealed class RocksDbInstance(
         fatalShutdown();
     }
 
-    internal void Delete() => Delete(fullPath, settings, logger);
+    internal void Delete() => Delete(fullPath, settings, fileSystem, logger);
 
-    internal static void Delete(string fullPath, DbSettings settings, ILogger logger)
+    internal static string DeletingMarkerPath(string fullPath) => Path.Join(fullPath, DbSettings.DeletingMarkerFileName);
+
+    internal static void Delete(string fullPath, DbSettings settings, IFileSystem fileSystem, ILogger logger)
     {
         try
         {
-            if (Directory.Exists(fullPath))
+            if (fileSystem.Directory.Exists(fullPath))
             {
+                string markerPath = DeletingMarkerPath(fullPath);
+                fileSystem.File.WriteAllText(markerPath, "marker");
+                foreach (string file in fileSystem.Directory.EnumerateFiles(fullPath))
+                {
+                    if (Path.GetFileName(file) != DbSettings.DeletingMarkerFileName)
+                    {
+                        fileSystem.File.Delete(file);
+                    }
+                }
+
                 // We want to keep the folder if it can have subfolders with copied databases from pruning
                 if (settings.CanDeleteFolder)
                 {
-                    Directory.Delete(fullPath, true);
+                    fileSystem.Directory.Delete(fullPath, true);
                 }
                 else
                 {
-                    foreach (string file in Directory.EnumerateFiles(fullPath))
-                    {
-                        File.Delete(file);
-                    }
+                    fileSystem.File.Delete(markerPath);
                 }
             }
         }

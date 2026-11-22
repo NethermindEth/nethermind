@@ -111,7 +111,7 @@ public class RocksDbFactory : IDbFactory
         }
         else if (settings.DeleteOnStart)
         {
-            RocksDbInstance.Delete(fullPath, settings, _logger);
+            RocksDbInstance.Delete(fullPath, settings, _fileSystem, _logger);
         }
 
         try
