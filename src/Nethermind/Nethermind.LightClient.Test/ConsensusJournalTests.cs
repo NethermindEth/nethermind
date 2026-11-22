@@ -175,6 +175,72 @@ public class ConsensusJournalTests
     }
 
     [Test]
+    public async Task Forced_replay_uses_the_recorded_candidate_after_restart(
+        [Values] bool keepCandidate, [Values] bool carriesCommittee)
+    {
+        BeaconChainSpec spec = ConsensusTests.Spec;
+        LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
+        LightClientStore store = new(spec, checkpoint, bootstrap, 1);
+        ConsensusJournal journal = Journal(spec, checkpoint);
+        await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
+        ConsensusTests.RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + 4 * spec.SecondsPerSlot)));
+        using SemaphoreSlim gate = new(1, 1);
+        int published = 0, stopped = 0;
+        ConsensusSync.Processor Processor(LightClientStore current, ConsensusJournal currentJournal) =>
+            new(current, currentJournal, spec, clock, gate, () => published++, () => stopped++, _logger, CancellationToken.None);
+
+        LightClientUpdate strong = ConsensusTests.Update(1, 3, 4, 1, participants: 300);
+        await Processor(store, journal).ProcessAsync(AsOptimistic(strong), CancellationToken.None);
+        if (!keepCandidate) File.Delete(Directory.GetFiles(_directory, "*.best").Single());
+        journal = Journal(spec, checkpoint);
+        store = (await journal.LoadAsync(6, CancellationToken.None))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.HasBestUpdate, Is.EqualTo(keepCandidate));
+            Assert.That(store.CurrentMaxParticipants, Is.EqualTo(300));
+        }
+
+        clock.Advance(TimeSpan.FromSeconds(2 * spec.SecondsPerSlot));
+        ConsensusSync.Processor processor = Processor(store, journal);
+        LightClientUpdate weak = ConsensusTests.Update(1, 5, 6, 1, participants: 1, nextKey: carriesCommittee ? (byte)2 : null);
+        if (carriesCommittee) await processor.ProcessAsync(weak, CancellationToken.None);
+        else await processor.ProcessAsync(AsOptimistic(weak), CancellationToken.None);
+        Assert.That(store.BestUpdate!.AttestedHeader!.Beacon!.Slot, Is.EqualTo(keepCandidate ? 3UL : 5UL));
+        clock.Advance(TimeSpan.FromSeconds((8194 - 6) * spec.SecondsPerSlot));
+
+        Assert.That(await processor.ForceUpdateAsync(CancellationToken.None), Is.True);
+
+        ulong targetSlot = keepCandidate ? 3UL : 5UL;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(targetSlot));
+            Assert.That(store.NextSyncCommitteeKnown, Is.EqualTo(!keepCandidate && carriesCommittee));
+            Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(store.BestUpdate, Is.Null);
+        }
+        ulong replaySlot = 8194;
+        if (!keepCandidate && carriesCommittee)
+        {
+            clock.Advance(TimeSpan.FromSeconds(2 * spec.SecondsPerSlot));
+            LightClientUpdate nextPeriod = ConsensusTests.Update(8192, 8195, 8196, 2, nextKey: 3);
+            await processor.ProcessAsync(nextPeriod, CancellationToken.None);
+            Assert.That(store.Period, Is.EqualTo(1));
+            replaySlot = 8196;
+        }
+        LightClientStore replay = (await Journal(spec, checkpoint).LoadAsync(replaySlot, CancellationToken.None))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replay.HasSameAuthenticatedState(store), Is.True);
+            Assert.That(replay.BestUpdate, Is.Null);
+            Assert.That(stopped, Is.Zero);
+            Assert.That(published, Is.EqualTo(replaySlot == 8196 ? 4 : 3));
+            Assert.That(gate.CurrentCount, Is.EqualTo(1));
+            Assert.That(_logger.Entries.Where(entry => entry.Level >= LogLevel.Warning), Is.Empty);
+        }
+    }
+
+    [Test]
     public async Task A_saved_forced_update_cannot_claim_a_future_timeout()
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);

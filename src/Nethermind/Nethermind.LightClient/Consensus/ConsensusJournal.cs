@@ -509,6 +509,8 @@ internal sealed class ConsensusJournal
                 if (encoded.Length < 10) throw new InvalidDataException("Saved forced update is truncated.");
                 ulong forceSlot = BinaryPrimitives.ReadUInt64LittleEndian(encoded);
                 if (forceSlot > currentSlot) throw new InvalidDataException("Saved forced update is in the future.");
+                // Replay the recorded force decision without reranking it against an earlier candidate.
+                store.RestoreBestUpdate(null, forceSlot);
                 if (encoded[8] == 1)
                     store.Process(LightClientWireCodec.DecodeOptimistic(encoded.AsSpan(9), _spec), forceSlot);
                 else if (encoded[8] == 0)
