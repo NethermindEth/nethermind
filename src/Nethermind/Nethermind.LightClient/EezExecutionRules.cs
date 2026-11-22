@@ -6,6 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Eez.Execution;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.LightClient.Rpc;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.LightClient;
@@ -22,7 +24,7 @@ internal sealed class EezExecutionRules(EezChainRules rules, bool decorateSpecs)
     internal static EezExecutionRules FromGenesis(string genesisFile)
     {
         EezChainRules rules = EezChainRules.FromGenesisFile(genesisFile);
-        RegisterDecoders(rules);
+        RegisterTransactionTypes(rules);
         return new(rules, decorateSpecs: true);
     }
 
@@ -35,7 +37,7 @@ internal sealed class EezExecutionRules(EezChainRules rules, bool decorateSpecs)
         builder.AddScoped<ITransactionProcessor, EezTransactionProcessor>();
     }
 
-    private static void RegisterDecoders(EezChainRules rules)
+    private static void RegisterTransactionTypes(EezChainRules rules)
     {
         lock (_decoderRegistration)
         {
@@ -48,7 +50,21 @@ internal sealed class EezExecutionRules(EezChainRules rules, bool decorateSpecs)
             TxDecoder.Instance.RegisterDecoder(EezTxType.CreateDecoder(rules));
             if (rules.UsesNativeContract)
                 TxDecoder.Instance.RegisterDecoder(new EezNativeHistoryTxDecoder(rules.NativeFormat));
+            RegisterRpcTransactionTypes(rules);
             _registeredRules = rules;
         }
+    }
+
+    internal static void RegisterRpcTransactionTypes(EezChainRules rules)
+    {
+        if (rules.UsesNativeContract)
+        {
+            TransactionForRpc.RegisterTransactionType<EezNativeContractTransactionForRpc>();
+            TransactionForRpc.RegisterTransactionType<EezNativeHistoryTransactionForRpc>();
+        }
+        else if (rules.UsesNativeSystemTransactions)
+            TransactionForRpc.RegisterTransactionType<EezNativeSystemTransactionForRpc>();
+        else
+            TransactionForRpc.RegisterTransactionType<EezSystemTransactionForRpc>();
     }
 }
