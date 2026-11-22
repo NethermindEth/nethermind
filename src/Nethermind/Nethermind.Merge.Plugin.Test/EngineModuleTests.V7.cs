@@ -944,7 +944,6 @@ public partial class EngineModuleTests
         CountingTransactionPicker.Counter counter = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
             configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
-        Hash256 startingHead = chain.BlockTree.HeadHash;
 
         Transaction unfunded = Build.A.Transaction
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
@@ -956,7 +955,7 @@ public partial class EngineModuleTests
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
             .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
         PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(unfunded), Rlp.Encode(spend), Rlp.Encode(fund)]);
-        await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), payloadAttributes);
+        chain.InclusionListTxSource!.Set(payloadAttributes.InclusionListTransactions!, Bogota.Instance);
 
         Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
 
