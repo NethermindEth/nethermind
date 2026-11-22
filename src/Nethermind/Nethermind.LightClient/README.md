@@ -13,7 +13,7 @@ consensus and execution data come from P2P peers, never an upstream JSON-RPC end
 
 ## Run
 
-For a VPS, use the [Docker Compose deployment](../../../tools/LightClient/README.md).
+For a VPS, use the [Docker Compose deployment](Deployment/README.md).
 It includes a persistent light client, Prometheus and provisioned Grafana
 dashboards. RPC and dashboards bind to the host's loopback interface; only
 P2P ports are public. The image has its own release version:
@@ -270,7 +270,7 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 ## Metrics
 
 `GET /metrics` exports Prometheus metrics on the same HTTP listener, under the
-same Host/origin policy. The [Docker deployment](../../../tools/LightClient/README.md)
+same Host/origin policy. The [Docker deployment](Deployment/README.md)
 includes a scraper and Grafana dashboard. Keep these operational endpoints private.
 
 The `nethermind_light_client_` metrics cover startup/readiness, authenticated

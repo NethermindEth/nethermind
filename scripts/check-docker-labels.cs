@@ -13,6 +13,8 @@ using System.Text.Json.Nodes;
 // The default stub build context checks final-stage labels without compiling the client.
 var full = false;
 var dockerfiles = new List<string>();
+const string lightClientDirectory = "src/Nethermind/Nethermind.LightClient";
+const string lightClientDeployment = lightClientDirectory + "/Deployment";
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -70,14 +72,14 @@ try
     foreach (var dockerfile in dockerfiles)
     {
         var bootnode = dockerfile == "tools/Bootnode/Dockerfile";
-        var lightClient = dockerfile == "tools/LightClient/Dockerfile";
+        var lightClient = dockerfile == lightClientDeployment + "/Dockerfile";
         if (!bootnode && !lightClient && dockerfile is not ("Dockerfile" or "Dockerfile.chiseled"))
         {
             Console.Error.WriteLine($"error: '{dockerfile}' has no expected labels here. Add them, or exclude it in check-docker-labels.cs if it is not released.");
             return 2;
         }
         var version = ScriptVersion.Read(Path.Combine(root, bootnode ? "tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj"
-            : lightClient ? "src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj" : "src/Nethermind/Directory.Build.props"));
+            : lightClient ? lightClientDirectory + "/Nethermind.LightClient.csproj" : "src/Nethermind/Directory.Build.props"));
         var tag = "nethermind-label-check:" + dockerfile.Replace('/', '-').Replace('.', '-');
         List<string> build = ["buildx", "build", root, "-f", Path.Combine(root, dockerfile), "-t", tag,
             "--build-arg", $"COMMIT_HASH={commit}", "--build-arg", $"VERSION={version}", "--build-arg", $"BUILD_TIMESTAMP={timestamp}", "--load"];
@@ -93,8 +95,8 @@ try
             ("title", bootnode ? "Nethermind Bootnode" : lightClient ? "Nethermind Light Client" : "Nethermind"),
             ("description", bootnode ? "Standalone discovery bootnode for discv4 and discv5." : lightClient ? "Ethereum light client with verified P2P state and local JSON-RPC." : "A robust execution client for Ethereum node operators."),
             ("vendor", "Demerzel Solutions Limited"), ("licenses", "LGPL-3.0-only"),
-            ("url", bootnode ? "https://github.com/NethermindEth/nethermind/tree/master/tools/Bootnode" : lightClient ? "https://github.com/NethermindEth/nethermind/tree/master/tools/LightClient" : "https://nethermind.io/nethermind-client"),
-            ("documentation", bootnode ? "https://github.com/NethermindEth/nethermind/blob/master/tools/Bootnode/README.md" : lightClient ? "https://github.com/NethermindEth/nethermind/blob/master/tools/LightClient/README.md" : "https://docs.nethermind.io"),
+            ("url", bootnode ? "https://github.com/NethermindEth/nethermind/tree/master/tools/Bootnode" : lightClient ? $"https://github.com/NethermindEth/nethermind/tree/master/{lightClientDeployment}" : "https://nethermind.io/nethermind-client"),
+            ("documentation", bootnode ? "https://github.com/NethermindEth/nethermind/blob/master/tools/Bootnode/README.md" : lightClient ? $"https://github.com/NethermindEth/nethermind/blob/master/{lightClientDeployment}/README.md" : "https://docs.nethermind.io"),
             ("source", "https://github.com/NethermindEth/nethermind"), ("version", version), ("revision", commit), ("created", timestamp)
         })
         {

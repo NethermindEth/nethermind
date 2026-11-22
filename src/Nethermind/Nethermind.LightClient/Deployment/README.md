@@ -13,17 +13,20 @@ metrics, and Grafana to display them. All three are configured together; no
 separate monitoring installation is needed.
 
 The client follows authenticated beacon heads, verifies execution data from P2P
-peers and runs JSON-RPC locally. See the [light-client guide](../../src/Nethermind/Nethermind.LightClient/README.md)
+peers and runs JSON-RPC locally. See the [light-client guide](../README.md)
 for the verification model, supported RPC methods and current limitations.
 
 ## Start the stack
 
-From a checkout containing this deployment:
+From the repository root:
 
 ```sh
-cd tools/LightClient
-cp .env.example .env
+cd src/Nethermind/Nethermind.LightClient/Deployment
 ```
+
+For an existing stack, copy its `.env` here to reuse its settings and Grafana
+credentials. Compose keeps the same project and volume names. For a new stack,
+copy `.env.example` to `.env`.
 
 Edit `.env` and set `GRAFANA_ADMIN_PASSWORD` to a strong password. For example,
 `openssl rand -hex 24` generates one. Review `LC_CHECKPOINT_URL` before starting:
@@ -266,7 +269,7 @@ existing installation's password through Grafana's administration interface.
 Run from the repository root. The build context must contain the source tree:
 
 ```sh
-docker build --file tools/LightClient/Dockerfile \
+docker build --file src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile \
   --build-arg VERSION=1.0.1 \
   --tag nethermindeth/nethermind:light-client-1.0.1 .
 ```
@@ -275,7 +278,7 @@ For both supported architectures with a configured Buildx builder:
 
 ```sh
 docker buildx build --platform linux/amd64,linux/arm64 \
-  --file tools/LightClient/Dockerfile --build-arg VERSION=1.0.1 \
+  --file src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile --build-arg VERSION=1.0.1 \
   --tag your-registry/light-client:1.0.1 --push .
 ```
 
@@ -309,13 +312,13 @@ and identities. To use it from Compose, explicitly add an override file with
 Compose project volumes likewise need their actual name. The Compose defaults
 continue to use the same project-scoped volumes.
 
-The repository's [Publish Docker image workflow](../../.github/workflows/publish-docker.yml)
+The repository's [Publish Docker image workflow](../../../../.github/workflows/publish-docker.yml)
 publishes the release using these inputs:
 
 ```sh
 gh workflow run publish-docker.yml --ref YOUR_RELEASE_REF \
   -f image-name=nethermind -f tag=light-client-1.0.1 \
-  -f dockerfile=tools/LightClient/Dockerfile \
+  -f dockerfile=src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile \
   -f version-file=src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj
 ```
 
@@ -324,17 +327,18 @@ workflow publishes `nethermindeth/nethermind:light-client-1.0.1` using the repos
 configured registry credentials. The action couples this Dockerfile to its
 independent project version and requires `light-client-<version>`; omitting the
 version-file input derives the LC project automatically. It rejects EL version
-files and execution-client tags for LC builds, and reserves the LC tag prefix
-for this Dockerfile.
+files and execution-client tags for LC builds, and reserves versioned LC release
+tags for this Dockerfile.
 
 ## Check the deployment
 
-Offline checks need the .NET SDK selected by [global.json](../../global.json)
+Run the offline checks from the repository root. They need the .NET SDK selected
+by [global.json](../../../../global.json)
 (11.0.100 or a compatible later feature band), Docker Compose and a POSIX shell,
 and do not start containers or contact the chain:
 
 ```sh
-dotnet run tools/LightClient/tests/test-deployment.cs
+dotnet run --file src/Nethermind/Nethermind.LightClient/Deployment/tests/test-deployment.cs
 ```
 
 After starting the stack, export `GRAFANA_ADMIN_PASSWORD` with the same password
@@ -351,7 +355,7 @@ allow 95 seconds for the client's 90-second request deadline and transport margi
 an unavailable-data response still fails the check instead of being hidden by retries.
 
 ```sh
-dotnet run tools/LightClient/tests/smoke.cs -- --network mainnet
+dotnet run --file src/Nethermind/Nethermind.LightClient/Deployment/tests/smoke.cs -- --network mainnet
 ```
 
 Use `--network gnosis` when checking a Gnosis stack; the probe requires chain ID

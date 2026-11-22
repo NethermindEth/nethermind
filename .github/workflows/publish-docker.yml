@@ -6,7 +6,9 @@ on:
 
   push:
     branches: [master, release/*, performance]
-    paths: [src/Nethermind/**]
+    paths:
+      - 'src/Nethermind/**'
+      - '!src/Nethermind/Nethermind.LightClient/Deployment/**'
 
   workflow_dispatch:
     inputs:

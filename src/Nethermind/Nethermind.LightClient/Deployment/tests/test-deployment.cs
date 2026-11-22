@@ -133,7 +133,7 @@ internal static partial class DeploymentTests
 
     private static Task CheckBaseImagesAsync()
     {
-        string repository = Path.GetFullPath(Path.Combine(Deployment, "../.."));
+        string repository = Path.GetFullPath(Path.Combine(Deployment, "../../../.."));
         Version sdk = Version.Parse(JsonNode.Parse(File.ReadAllText(Path.Combine(repository, "global.json")))!["sdk"]!["version"]!.GetValue<string>());
         string framework = XDocument.Load(Path.Combine(repository, "Directory.Build.props")).Descendants("TargetFramework").Single().Value;
         Version runtime = Version.Parse(framework["net".Length..]);

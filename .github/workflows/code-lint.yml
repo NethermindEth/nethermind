@@ -94,7 +94,7 @@ jobs:
         run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/ci
 
       - name: Check light-client deployment
-        run: dotnet run --file tools/LightClient/tests/test-deployment.cs
+        run: dotnet run --file src/Nethermind/Nethermind.LightClient/Deployment/tests/test-deployment.cs
 
   zisk-bench-scripts:
     name: Test zkVM benchmark scripts

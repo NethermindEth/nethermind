@@ -2,7 +2,7 @@
   <PropertyGroup>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <DefaultItemExcludes>$(DefaultItemExcludes);src/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);src/**;Deployment/**</DefaultItemExcludes>
     <VersionPrefix>1.0.1</VersionPrefix>
     <VersionSuffix></VersionSuffix>
   </PropertyGroup>

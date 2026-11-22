@@ -47,7 +47,7 @@ jobs:
             "Dockerfile.pgo"
             "scripts/build/Dockerfile"
             "tools/Bootnode/Dockerfile"
-            "tools/LightClient/Dockerfile"
+            "src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile"
           )
 
           for file in "${dockerfiles[@]}"; do
@@ -64,7 +64,7 @@ jobs:
           sed -i \
             -e "s|\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*-resolute@[^[:space:]]*|\1${runtime_tag}@${runtime_digest}|" \
             -e "s|\(mcr\.microsoft\.com/dotnet/aspnet:\)[^[:space:]]*-resolute-chiseled@[^[:space:]]*|\1${runtime_chiseled_tag}@${runtime_chiseled_digest}|" \
-            tools/LightClient/Dockerfile
+            src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile
 
           # Get the number of modified files
           file_count=$(git status --porcelain | wc -l)

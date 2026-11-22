@@ -13,6 +13,7 @@ var temporary = Directory.CreateTempSubdirectory("publish-docker-");
 var saved = new Dictionary<string, string?>();
 var passed = 0;
 const string clientProject = "src/Nethermind/Nethermind.LightClient/Nethermind.LightClient.csproj";
+const string clientDockerfile = "src/Nethermind/Nethermind.LightClient/Deployment/Dockerfile";
 var clientVersion = ScriptVersion.Read(Path.Combine(root, clientProject));
 var clientTag = $"light-client-{clientVersion}";
 var executionVersion = ScriptVersion.Read(Path.Combine(root, "src/Nethermind/Directory.Build.props"));
@@ -22,9 +23,9 @@ try
     foreach (var (project, dockerfile, tag, expected) in new[]
     {
         ("src/Nethermind/Directory.Build.props", "Dockerfile", "test", executionVersion),
-        (clientProject, "tools/LightClient/Dockerfile", clientTag, clientVersion),
-        ("./" + clientProject, "./tools/LightClient/Dockerfile", clientTag, clientVersion),
-        ("", "./tools/../tools/LightClient/Dockerfile", clientTag, clientVersion)
+        (clientProject, clientDockerfile, clientTag, clientVersion),
+        ("./" + clientProject, "./" + clientDockerfile, clientTag, clientVersion),
+        ("", "./src/../" + clientDockerfile, clientTag, clientVersion)
     })
     {
         var result = await Publish(project, dockerfile, tag);
@@ -34,16 +35,16 @@ try
     }
     foreach (var tag in new[] { "latest", "performance", "test", "master", "master-abcdef0", "nightly", "light-client-wrong-version", "" })
         foreach (var reference in new[] { "refs/heads/test", "refs/heads/master" })
-            Rejected(await Publish(clientProject, "tools/LightClient/Dockerfile", tag, reference), $"LC tag isolation {tag}/{reference}");
+            Rejected(await Publish(clientProject, clientDockerfile, tag, reference), $"LC tag isolation {tag}/{reference}");
     foreach (var (dockerfile, project, tag) in new[]
     {
-        ("tools/LightClient/Dockerfile", "src/Nethermind/Directory.Build.props", executionVersionAsClientTag),
+        (clientDockerfile, "src/Nethermind/Directory.Build.props", executionVersionAsClientTag),
         ("Dockerfile", clientProject, "test"), ("Dockerfile", clientProject, "nightly"),
         ("Dockerfile", "", clientTag), ("tools/Bootnode/Dockerfile", "", clientTag),
         ("Dockerfile", "", executionVersionAsClientTag)
     })
         Rejected(await Publish(project, dockerfile, tag, "refs/heads/master"), $"product version isolation {dockerfile}/{project}/{tag}");
-    var clientPush = await Publish(clientProject, "tools/LightClient/Dockerfile", clientTag, "refs/heads/master", "push");
+    var clientPush = await Publish(clientProject, clientDockerfile, clientTag, "refs/heads/master", "push");
     Check(clientPush.Code == 0 && !clientPush.Output.Contains("DOCKER_ARG=nethermindeth/nethermind:master-", StringComparison.Ordinal),
         "LC master push does not add execution alias", clientPush);
     foreach (var (tag, reference, eventName, allowed, masterAlias) in new[]

@@ -14,7 +14,6 @@ WORKDIR /nethermind
 COPY src/Nethermind src/Nethermind
 COPY Directory.*.props .
 COPY Directory.Build.targets global.json nuget.config ./
-COPY tools/LightClient/trim-publish.sh tools/LightClient/
 
 # The source-only build context has no Git repository for Source Link to query.
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
@@ -23,7 +22,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     -c "$BUILD_CONFIG" -a "$arch" -o /publish --no-restore --no-self-contained \
     -p:SaveDiskSpace=true -p:SourceRevisionId="$COMMIT_HASH" \
     -p:EnableSourceControlManagerQueries=false -p:EnableSourceLink=false -warnaserror && \
-  sh tools/LightClient/trim-publish.sh /publish
+  sh src/Nethermind/Nethermind.LightClient/Deployment/trim-publish.sh /publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:11.0.0-resolute@sha256:bc0d6653979efba491ab3d6f589d691f96c309c3c3ef81325efa6978e7b7f242 AS native-deps
 
@@ -49,8 +48,8 @@ LABEL org.opencontainers.image.title="Nethermind Light Client" \
   org.opencontainers.image.description="Ethereum light client with verified P2P state and local JSON-RPC." \
   org.opencontainers.image.vendor="Demerzel Solutions Limited" \
   org.opencontainers.image.licenses="LGPL-3.0-only" \
-  org.opencontainers.image.url="https://github.com/NethermindEth/nethermind/tree/master/tools/LightClient" \
-  org.opencontainers.image.documentation="https://github.com/NethermindEth/nethermind/blob/master/tools/LightClient/README.md" \
+  org.opencontainers.image.url="https://github.com/NethermindEth/nethermind/tree/master/src/Nethermind/Nethermind.LightClient/Deployment" \
+  org.opencontainers.image.documentation="https://github.com/NethermindEth/nethermind/blob/master/src/Nethermind/Nethermind.LightClient/Deployment/README.md" \
   org.opencontainers.image.source="https://github.com/NethermindEth/nethermind" \
   org.opencontainers.image.version="$VERSION" \
   org.opencontainers.image.revision="$COMMIT_HASH" \
