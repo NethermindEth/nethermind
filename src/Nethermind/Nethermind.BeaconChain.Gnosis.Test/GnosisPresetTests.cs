@@ -115,6 +115,7 @@ public class GnosisPresetTests
             Assert.That(update.SignatureSlot, Is.EqualTo(fixture.Slot("update_signature_slot")));
         }
 
+        // This update attests to an older header than the bootstrap and supplies the next committee.
         store.Process(update, fixture.Slot("signature_slot"));
         using (Assert.EnterMultipleScope())
         {
@@ -260,6 +261,9 @@ public class GnosisPresetTests
         return new Hash256(bytes);
     }
 
+    // SSZ captured from https://rpc-gbc.gnosischain.com on 2026-11-17.
+    // expected.json pins routes, digests, independent header roots, and gnosischain/configs and gnosischain/specs revisions.
+    // update.ssz omits the response's 8-byte length prefix and 4-byte fork digest.
     private sealed class LightClientFixture : IDisposable
     {
         private static readonly string Directory = Path.Combine(AppContext.BaseDirectory, "TestData", "LightClient");

@@ -57,6 +57,8 @@ public class FuluFixtureTests
     {
         Capture capture = Fixture(network);
         using JsonDocument bootstrapJson = Read("bootstrap", network);
+        // The fixture uses the Deneb ExecutionPayloadHeader field order at its pinned spec_revision.
+        // The branch starts with two zero nodes for Gloas, then five block_hash siblings and the four captured body siblings.
         using JsonDocument proof = Read("execution-block-proof", network);
         LightClientBootstrap bootstrap = Bootstrap(bootstrapJson.RootElement.GetProperty("data"));
         LightClientHeader legacy = bootstrap.Header!;
@@ -167,6 +169,9 @@ public class FuluFixtureTests
 
     private sealed record Capture(BeaconChainSpec Spec, Hash256 Checkpoint, ulong FinalizedSlot, ulong OptimisticSlot, string ExecutionHash);
 
+    // Historical bootstrap/{root} and finality_update responses under /eth/v1/beacon/light_client.
+    // Mainnet was captured on 2026-10-08 from https://ethereum-beacon-api.publicnode.com.
+    // Hoodi was captured on 2026-10-12 from https://ethereum-hoodi-beacon-api.publicnode.com.
     private static Capture Fixture(string network) => network switch
     {
         "mainnet" => new(BeaconChainSpec.Mainnet, Checkpoint, 15384736, 15384813,

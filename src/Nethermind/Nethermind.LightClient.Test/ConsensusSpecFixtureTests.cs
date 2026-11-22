@@ -14,6 +14,9 @@ namespace Nethermind.LightClient.Test;
 [TestFixture]
 public class ConsensusSpecFixtureTests
 {
+    // Unmodified SSZ from consensus-specs v1.7.0-beta.4 at aa16bb4c156184e9548a997d53efaf2a228a6304.
+    // In mainnet.tar.gz, use tests/mainnet/{electra,fulu,gloas}/ssz_static/LightClient*/ssz_random/case_0/serialized.ssz_snappy.
+    // expected.json pins file digests, roots.yaml roots and selected value.yaml fields.
     [Test]
     public void Official_message_roots_fields_and_wire_bytes_match(
         [Values("electra", "fulu", "gloas")] string fork,
@@ -27,6 +30,7 @@ public class ConsensusSpecFixtureTests
         byte[] canonical = Snappy.DecompressToArray(compressed);
         Hash256 expectedRoot = new(expected.GetProperty("root").GetString()!);
         bool gloas = fork == "gloas";
+        // The random vector slots require selecting the wire fork explicitly.
         BeaconChainSpec spec = BeaconChainSpec.Mainnet with { GloasForkEpoch = gloas ? 0UL : ulong.MaxValue };
         LightClientHeader header;
         ulong? signatureSlot = null;
