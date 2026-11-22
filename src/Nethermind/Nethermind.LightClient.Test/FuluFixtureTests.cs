@@ -112,13 +112,13 @@ public class FuluFixtureTests
         LightClientStore store = new(capture.Spec, capture.Checkpoint, bootstrap, finality.SignatureSlot);
         string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
             "NethermindLightClientFixtureJournal", Guid.NewGuid().ToString("N"));
-        VerifiedConsensusJournal journal = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
+        ConsensusJournal journal = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
         try
         {
             await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
             store.Process(finality, finality.SignatureSlot);
             await journal.AppendAsync(finality, store, CancellationToken.None);
-            VerifiedConsensusJournal reader = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
+            ConsensusJournal reader = new(directory, capture.Spec, network, capture.Checkpoint, NullLogger.Instance);
             LightClientStore? resumed = await reader.LoadAsync(finality.SignatureSlot, CancellationToken.None);
             Assert.That(resumed, Is.Not.Null);
             using (Assert.EnterMultipleScope())

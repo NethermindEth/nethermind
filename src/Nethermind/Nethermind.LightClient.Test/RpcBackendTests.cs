@@ -24,7 +24,7 @@ using static Nethermind.LightClient.Test.ExecutionProofFixtures;
 namespace Nethermind.LightClient.Test;
 
 [TestFixture]
-public class VerifiedRpcTests
+public class RpcBackendTests
 {
     private static readonly Address AccountAddress = new("0x1234567890123456789012345678901234567890");
     private static readonly Hash256 BlockHash = Keccak.Compute("verified block");
@@ -55,7 +55,7 @@ public class VerifiedRpcTests
     {
         using Provider provider = new(new Account(7, 123)) { CurrentSlot = 111 };
         TaskCompletionSource<VerifiedHead> recovered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        using VerifiedRpc rpc = provider.CreateRpc(waitForLatestHead: token => recovered.Task.WaitAsync(token));
+        using RpcBackend rpc = provider.CreateRpc(waitForLatestHead: token => recovered.Task.WaitAsync(token));
         using CancellationTokenSource stop = new();
         Task<object>[] waiting = Enumerable.Range(0, 4)
             .Select(_ => rpc.InvokeAsync(method, method == "eth_getProof" ? Parameters(AccountAddress.ToString(), Array.Empty<string>()) : Parameters(), stop.Token)).ToArray();
@@ -185,7 +185,7 @@ public class VerifiedRpcTests
         provider.BlockGate = release;
         Task<object>[] active = saturated ? Enumerable.Range(0, 4).Select(_ => provider.Rpc.InvokeAsync("eth_getBlockByNumber",
             Parameters("finalized", false), CancellationToken.None)).ToArray() : [];
-        using VerifiedRpc rpc = provider.CreateRpc(waitForLatestHead: _ => throw new AssertionException("Malformed selector must not wait for a head."));
+        using RpcBackend rpc = provider.CreateRpc(waitForLatestHead: _ => throw new AssertionException("Malformed selector must not wait for a head."));
         provider.CurrentSlot = 111;
         int before = provider.Requests.Count + provider.HeaderByHashFetches + provider.CanonicalHeaderFetches;
         JsonElement parameters = method switch
@@ -262,8 +262,8 @@ public class VerifiedRpcTests
         [Values("eth_getBalance", "eth_getStorageAt", "eth_getCode", "eth_getProof", "eth_call", "eth_estimateGas", "eth_feeHistory")] string method)
     {
         using Provider provider = new(new Account(7, 123)) { StateUnavailable = true };
-        using VerifiedCall calls = new(provider, MainnetSpecProvider.Instance, LimboLogs.Instance);
-        using VerifiedRpc rpc = provider.CreateRpc(calls);
+        using EvmExecutor calls = new(provider, MainnetSpecProvider.Instance, LimboLogs.Instance);
+        using RpcBackend rpc = provider.CreateRpc(calls);
         JsonElement parameters = method switch
         {
             "eth_getStorageAt" => Parameters(AccountAddress.ToString(), "0x0", "latest"),
@@ -444,7 +444,7 @@ public class VerifiedRpcTests
     public async Task Fee_history_clamps_requests_to_the_supported_range()
     {
         LogRangeSource source = new(0, 20);
-        using VerifiedRpc rpc = new(source, () => source.Head(20), 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(20));
+        using RpcBackend rpc = new(source, () => source.Head(20), 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(20));
 
         JsonElement result = (JsonElement)await rpc.InvokeAsync("eth_feeHistory", Parameters("0x20", "latest", Array.Empty<double>()), CancellationToken.None);
 
@@ -590,7 +590,7 @@ public class VerifiedRpcTests
     public async Task Latest_without_an_authenticated_optimistic_head_errors()
     {
         using Provider provider = new(new Account(7, 123));
-        using VerifiedRpc rpc = new(provider, () => provider.Head, 1);
+        using RpcBackend rpc = new(provider, () => provider.Head, 1);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_blockNumber", Parameters(), CancellationToken.None));
         Assert.That(error!.Code, Is.EqualTo(-32001));
@@ -617,7 +617,7 @@ public class VerifiedRpcTests
     {
         using Provider provider = new(new Account(7, 123));
         if (missingAtConstruction) provider.LatestHead = null;
-        using VerifiedRpc rpc = provider.CreateRpc();
+        using RpcBackend rpc = provider.CreateRpc();
         provider.LatestHead = null;
 
         object status = await rpc.InvokeAsync("eth_syncing", Parameters(), CancellationToken.None);
@@ -634,7 +634,7 @@ public class VerifiedRpcTests
     {
         using Provider provider = new(new Account(7, 123)) { CurrentSlot = 4101 };
         int finalizedReads = 0;
-        using VerifiedRpc rpc = provider.CreateRpc(getHead: () =>
+        using RpcBackend rpc = provider.CreateRpc(getHead: () =>
         {
             finalizedReads++;
             throw new RpcException(-32000, "Finality is stale.");
@@ -684,9 +684,9 @@ public class VerifiedRpcTests
         using Provider provider = new(new Account(7, 1_000_000_000),
             headNumber: key is null ? 10UL : 20_000_000UL, accountAddress: key?.Address)
         { CurrentSlot = 111 };
-        using VerifiedCall? calls = method is "eth_call" or "eth_estimateGas"
+        using EvmExecutor? calls = method is "eth_call" or "eth_estimateGas"
             ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
-        using VerifiedRpc rpc = provider.CreateRpc(calls);
+        using RpcBackend rpc = provider.CreateRpc(calls);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
             await rpc.InvokeAsync(method, parameters, CancellationToken.None));
@@ -699,9 +699,9 @@ public class VerifiedRpcTests
     public async Task Explicit_block_data_and_calls_remain_available_while_latest_is_stale(string method, JsonElement parameters)
     {
         using Provider provider = new(new Account(7, 123)) { CurrentSlot = 111 };
-        using VerifiedCall? calls = method is "eth_call" or "eth_estimateGas"
+        using EvmExecutor? calls = method is "eth_call" or "eth_estimateGas"
             ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
-        using VerifiedRpc rpc = provider.CreateRpc(calls);
+        using RpcBackend rpc = provider.CreateRpc(calls);
 
         object result = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
 
@@ -753,11 +753,11 @@ public class VerifiedRpcTests
         using Provider provider = new(new Account(7, 1_000_000_000),
             headNumber: key is null ? 10UL : 20_000_000UL, accountAddress: key?.Address)
         { CurrentSlot = 111 };
-        using VerifiedCall? calls = method is "eth_call" or "eth_estimateGas"
+        using EvmExecutor? calls = method is "eth_call" or "eth_estimateGas"
             ? new(provider, MainnetSpecProvider.Instance, NullLogManager.Instance) : null;
         TaskCompletionSource<VerifiedHead> recovery = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int waiting = 0;
-        using VerifiedRpc rpc = provider.CreateRpc(calls, waitForLatestHead: cancellation =>
+        using RpcBackend rpc = provider.CreateRpc(calls, waitForLatestHead: cancellation =>
         {
             Interlocked.Increment(ref waiting);
             return recovery.Task.WaitAsync(cancellation);
@@ -800,7 +800,7 @@ public class VerifiedRpcTests
     public async Task A_recovery_callback_cannot_bypass_latest_freshness()
     {
         using Provider provider = new(new Account(7, 123)) { CurrentSlot = 111 };
-        using VerifiedRpc rpc = provider.CreateRpc(waitForLatestHead: _ => Task.FromResult(provider.Head));
+        using RpcBackend rpc = provider.CreateRpc(waitForLatestHead: _ => Task.FromResult(provider.Head));
 
         Assert.That(async () => await rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), "latest"), CancellationToken.None),
             Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32001));
@@ -916,7 +916,7 @@ public class VerifiedRpcTests
     {
         using Provider provider = new(new Account(7, 123));
         int finalizedReads = 0;
-        using VerifiedRpc rpc = new(provider, () =>
+        using RpcBackend rpc = new(provider, () =>
         {
             finalizedReads++;
             throw new RpcException(-32000, "Finality is stale.");
@@ -951,7 +951,7 @@ public class VerifiedRpcTests
         [Values("eth_getBalance", "eth_getBlockByNumber", "eth_getLogs", "eth_getProof", "eth_feeHistory")] string method)
     {
         using Provider provider = new(new Account(7, 123));
-        using VerifiedRpc rpc = new(provider, () => provider.Head, 1,
+        using RpcBackend rpc = new(provider, () => provider.Head, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => provider.Head, isFinalizedHeadFresh: _ => false);
         JsonElement parameters = method switch
         {
@@ -979,12 +979,12 @@ public class VerifiedRpcTests
         BlockHeader header = provider.HistoricalHeader!;
         object selector = selectorKind switch
         {
-            0 => VerifiedRpc.Quantity(header.Number),
-            1 => new { blockNumber = VerifiedRpc.Quantity(header.Number) },
+            0 => RpcBackend.Quantity(header.Number),
+            1 => new { blockNumber = RpcBackend.Quantity(header.Number) },
             2 => header.Hash!.ToString(),
             _ => new { blockHash = header.Hash!.ToString(), requireCanonical = true },
         };
-        using VerifiedRpc rpc = new(provider, () => provider.Head, 1,
+        using RpcBackend rpc = new(provider, () => provider.Head, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => provider.LatestHead, isFinalizedHeadFresh: _ => false);
         JsonElement parameters = method == "eth_getProof"
             ? Parameters(AccountAddress.ToString(), Array.Empty<string>(), selector) : Parameters(AccountAddress.ToString(), selector);
@@ -1012,11 +1012,11 @@ public class VerifiedRpcTests
         if (!optimistic)
             provider.HistoricalHeader = Provider.CreateHeader(299, Keccak.Compute("retained finalized block"), provider.Head.StateRoot);
         BlockHeader header = provider.HistoricalHeader!;
-        using VerifiedRpc rpc = new(provider, () => provider.Head, 1,
+        using RpcBackend rpc = new(provider, () => provider.Head, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => provider.LatestHead, isFinalizedHeadFresh: _ => false);
 
         JsonElement block = (JsonElement)await rpc.InvokeAsync(byHash ? "eth_getBlockByHash" : "eth_getBlockByNumber",
-            Parameters(byHash ? header.Hash!.ToString() : VerifiedRpc.Quantity(header.Number), false), CancellationToken.None);
+            Parameters(byHash ? header.Hash!.ToString() : RpcBackend.Quantity(header.Number), false), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1029,12 +1029,12 @@ public class VerifiedRpcTests
     public async Task Stale_finality_keeps_authenticated_log_ranges_available([Values] bool optimistic)
     {
         LogRangeSource source = new();
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325), isFinalizedHeadFresh: _ => false);
         ulong last = optimistic ? 325UL : 320UL;
 
         JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs",
-            Parameters(new { fromBlock = "0x13f", toBlock = VerifiedRpc.Quantity(last), address = AccountAddress.ToString() }), CancellationToken.None);
+            Parameters(new { fromBlock = "0x13f", toBlock = RpcBackend.Quantity(last), address = AccountAddress.ToString() }), CancellationToken.None);
 
         AssertRangeLogs(logs, source, 319, last);
     }
@@ -1045,7 +1045,7 @@ public class VerifiedRpcTests
     {
         LogRangeSource source = new(first: 285, signTransactions: true);
         int finalizedReads = 0;
-        using VerifiedRpc rpc = new(source, () => { finalizedReads++; return source.Head(300); }, 1,
+        using RpcBackend rpc = new(source, () => { finalizedReads++; return source.Head(300); }, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325), isFinalizedHeadFresh: _ => false);
         string hash = source[300].Transactions[1].Hash!.ToString();
 
@@ -1055,7 +1055,7 @@ public class VerifiedRpcTests
         {
             Assert.That(transaction.GetProperty(method == "eth_getTransactionByHash" ? "hash" : "transactionHash").GetString(), Is.EqualTo(hash));
             Assert.That(transaction.GetProperty("blockHash").GetString(), Is.EqualTo(source.Head(300).BlockHash.ToString()));
-            Assert.That(transaction.GetProperty("blockNumber").GetString(), Is.EqualTo(VerifiedRpc.Quantity(300)));
+            Assert.That(transaction.GetProperty("blockNumber").GetString(), Is.EqualTo(RpcBackend.Quantity(300)));
             Assert.That(finalizedReads, Is.EqualTo(1));
         }
     }
@@ -1069,15 +1069,15 @@ public class VerifiedRpcTests
     public async Task Recent_log_ranges_follow_one_authenticated_chain(string scenario, ulong first, ulong last)
     {
         LogRangeSource source = new();
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
         object filter = scenario switch
         {
-            "finalized" => new { fromBlock = VerifiedRpc.Quantity(first), toBlock = "finalized", address = AccountAddress.ToString() },
+            "finalized" => new { fromBlock = RpcBackend.Quantity(first), toBlock = "finalized", address = AccountAddress.ToString() },
             "crossing" => new { fromBlock = "finalized", toBlock = "latest", address = AccountAddress.ToString() },
-            "numeric-latest" => new { fromBlock = VerifiedRpc.Quantity(first), toBlock = "latest", address = AccountAddress.ToString() },
-            "omitted-to" => new { fromBlock = VerifiedRpc.Quantity(first), address = AccountAddress.ToString() },
-            _ => new { fromBlock = VerifiedRpc.Quantity(first), toBlock = VerifiedRpc.Quantity(last), address = AccountAddress.ToString() },
+            "numeric-latest" => new { fromBlock = RpcBackend.Quantity(first), toBlock = "latest", address = AccountAddress.ToString() },
+            "omitted-to" => new { fromBlock = RpcBackend.Quantity(first), address = AccountAddress.ToString() },
+            _ => new { fromBlock = RpcBackend.Quantity(first), toBlock = RpcBackend.Quantity(last), address = AccountAddress.ToString() },
         };
 
         JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(filter), CancellationToken.None);
@@ -1090,11 +1090,11 @@ public class VerifiedRpcTests
     public async Task Log_range_width_is_bounded([Values] bool optimistic, [Values(256, 257, 498, 511, 512)] int depth)
     {
         LogRangeSource source = new(143, 655);
-        using VerifiedRpc rpc = new(source, () => source.Head(optimistic ? 645UL : 655UL), 1,
+        using RpcBackend rpc = new(source, () => source.Head(optimistic ? 645UL : 655UL), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(655));
         JsonElement parameters = Parameters(new
         {
-            fromBlock = VerifiedRpc.Quantity(655UL - (ulong)depth),
+            fromBlock = RpcBackend.Quantity(655UL - (ulong)depth),
             toBlock = optimistic ? "latest" : "finalized",
             address = AccountAddress.ToString(),
         });
@@ -1119,7 +1119,7 @@ public class VerifiedRpcTests
     {
         LogRangeSource source = new(100, 605);
         ulong number = 600UL - (ulong)depth;
-        using VerifiedRpc rpc = new(source, () => source.Head(600), 1,
+        using RpcBackend rpc = new(source, () => source.Head(600), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(605));
         string hash = source[number].Hash!.ToString();
 
@@ -1164,11 +1164,11 @@ public class VerifiedRpcTests
             "ancestor-tail" => [.. hashes[..^1], Keccak.Compute("forged ancestor tail")],
             _ => hashes,
         };
-        using VerifiedRpc rpc = new(source, () => finalized, 1,
+        using RpcBackend rpc = new(source, () => finalized, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getLogs",
-            Parameters(new { fromBlock = VerifiedRpc.Quantity(310), toBlock = "latest" }), CancellationToken.None));
+            Parameters(new { fromBlock = RpcBackend.Quantity(310), toBlock = "latest" }), CancellationToken.None));
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(error!.Code, Is.EqualTo(-32000));
@@ -1186,7 +1186,7 @@ public class VerifiedRpcTests
     public async Task Log_range_rejects_unavailable_or_invalid_bounds_before_network(string from, string to, int code)
     {
         LogRangeSource source = new(300, 400);
-        using VerifiedRpc rpc = new(source, () => source.Head(390), 1,
+        using RpcBackend rpc = new(source, () => source.Head(390), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(400));
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getLogs",
@@ -1202,11 +1202,11 @@ public class VerifiedRpcTests
     public async Task Reversed_recent_log_range_is_invalid_without_network([Values] bool omittedFrom)
     {
         LogRangeSource source = new();
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
 
-        object filter = omittedFrom ? new { toBlock = VerifiedRpc.Quantity(324) }
-            : new { fromBlock = "latest", toBlock = VerifiedRpc.Quantity(324) };
+        object filter = omittedFrom ? new { toBlock = RpcBackend.Quantity(324) }
+            : new { fromBlock = "latest", toBlock = RpcBackend.Quantity(324) };
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getLogs",
             Parameters(filter), CancellationToken.None));
 
@@ -1220,11 +1220,11 @@ public class VerifiedRpcTests
     public async Task Log_range_without_latest_distinguishes_unavailable_latest_from_a_numeric_future([Values] bool semanticLatest)
     {
         LogRangeSource source = new();
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => null);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getLogs",
-            Parameters(new { fromBlock = "finalized", toBlock = semanticLatest ? "latest" : VerifiedRpc.Quantity(321) }), CancellationToken.None));
+            Parameters(new { fromBlock = "finalized", toBlock = semanticLatest ? "latest" : RpcBackend.Quantity(321) }), CancellationToken.None));
 
         using IDisposable assertions = Assert.EnterMultipleScope();
         Assert.That(error!.Code, Is.EqualTo(semanticLatest ? -32001 : -32602));
@@ -1240,7 +1240,7 @@ public class VerifiedRpcTests
         VerifiedHead finalized = source.Head(320);
         VerifiedHead latest = source.Head(325);
         int finalizedReads = 0, latestReads = 0;
-        using VerifiedRpc rpc = new(source, () => { finalizedReads++; return finalized; }, 1,
+        using RpcBackend rpc = new(source, () => { finalizedReads++; return finalized; }, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => { latestReads++; return latest; });
         latestReads = 0;
 
@@ -1274,7 +1274,7 @@ public class VerifiedRpcTests
     {
         LogRangeSource source = new() { AncestorGate = new(TaskCreationOptions.RunContinuationsAsynchronously) };
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
 
         Task<object> request = rpc.InvokeAsync("eth_getLogs",
@@ -1305,7 +1305,7 @@ public class VerifiedRpcTests
         string otherTopic = Keccak.Compute("another topic").ToString();
         string unusedAddress = "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd";
         object?[] topics = empty ? [new[] { topic, otherTopic }, null] : [new[] { topic, otherTopic }];
-        using VerifiedRpc rpc = new(source, () => finalized, 1,
+        using RpcBackend rpc = new(source, () => finalized, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
         JsonElement first = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(new
         {
@@ -1343,7 +1343,7 @@ public class VerifiedRpcTests
     {
         LogRangeSource source = new();
         string topic = Keccak.Compute("recent range log").ToString();
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
         JsonElement originalParameters = Parameters(new
         {
@@ -1380,14 +1380,14 @@ public class VerifiedRpcTests
     {
         LogRangeSource source = new();
         VerifiedHead finalized = source.Head(320);
-        using VerifiedRpc rpc = new(source, () => finalized, 1,
+        using RpcBackend rpc = new(source, () => finalized, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
         JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
         await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
         if (change == "header")
             source.TransformHeader = header => { BlockHeader forged = header.Clone(); forged.Number++; return forged; };
         else if (change == "finality") finalized = finalized with { BlockHash = Keccak.Compute("conflicting finality") };
-        else finalized = finalized with { Number = 310 + VerifiedLogHeaders.HistoryCapacity };
+        else finalized = finalized with { Number = 310 + LogHeaderChain.HistoryCapacity };
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None));
 
@@ -1402,7 +1402,7 @@ public class VerifiedRpcTests
     public async Task Log_result_cache_is_bound_to_finalized_canonical_block_hashes()
     {
         LogRangeSource source = new();
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
         JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
         JsonElement before = (JsonElement)await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
@@ -1423,7 +1423,7 @@ public class VerifiedRpcTests
     {
         LogRangeSource source = new();
         VerifiedHead finalized = source.Head(309);
-        using VerifiedRpc rpc = new(source, () => finalized, 1,
+        using RpcBackend rpc = new(source, () => finalized, 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
         JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
         for (int repeat = 0; repeat < 2; repeat++) await rpc.InvokeAsync("eth_getLogs", parameters, CancellationToken.None);
@@ -1450,7 +1450,7 @@ public class VerifiedRpcTests
                 return Task.CompletedTask;
             },
         };
-        using VerifiedRpc rpc = new(source, () => source.Head(320), 1,
+        using RpcBackend rpc = new(source, () => source.Head(320), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(325));
         JsonElement parameters = Parameters(new { fromBlock = "0x136", toBlock = "0x138", address = AccountAddress.ToString() });
         if (cancel)
@@ -1502,10 +1502,10 @@ public class VerifiedRpcTests
         ulong last = sparse ? 315UL : 307UL;
         bool Includes(ulong number) => !sparse || number % 2 == 0;
         LogRangeSource source = new(300, last, includeLogs: Includes);
-        using VerifiedRpc rpc = new(source, () => source.Head(last), 1, specProvider: MainnetSpecProvider.Instance);
+        using RpcBackend rpc = new(source, () => source.Head(last), 1, specProvider: MainnetSpecProvider.Instance);
         JsonElement logs = (JsonElement)await rpc.InvokeAsync("eth_getLogs", Parameters(new
         {
-            fromBlock = VerifiedRpc.Quantity(300),
+            fromBlock = RpcBackend.Quantity(300),
             toBlock = "finalized",
             address = AccountAddress.ToString(),
         }), CancellationToken.None);
@@ -1537,10 +1537,10 @@ public class VerifiedRpcTests
             },
         };
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        using VerifiedRpc rpc = new(source, () => source.Head(304), 1, specProvider: MainnetSpecProvider.Instance);
+        using RpcBackend rpc = new(source, () => source.Head(304), 1, specProvider: MainnetSpecProvider.Instance);
         Task<object> request = rpc.InvokeAsync("eth_getLogs", Parameters(new
         {
-            fromBlock = VerifiedRpc.Quantity(300),
+            fromBlock = RpcBackend.Quantity(300),
             toBlock = "finalized",
             address = AccountAddress.ToString(),
         }), caller.Token);
@@ -1592,11 +1592,11 @@ public class VerifiedRpcTests
             },
         };
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        using VerifiedRpc rpc = new(source, () => source.Head(last), 1,
+        using RpcBackend rpc = new(source, () => source.Head(last), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(last));
         Task<object> request = rpc.InvokeAsync("eth_getLogs", Parameters(new
         {
-            fromBlock = VerifiedRpc.Quantity(300),
+            fromBlock = RpcBackend.Quantity(300),
             toBlock = "finalized",
             address = AccountAddress.ToString(),
         }), caller.Token);
@@ -1679,11 +1679,11 @@ public class VerifiedRpcTests
             BeforeReceiptRead = receipts ? WaitForPayloadAsync : null,
         };
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
-        using VerifiedRpc rpc = new(source, () => source.Head(307), 1,
+        using RpcBackend rpc = new(source, () => source.Head(307), 1,
             specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Head(307));
         Task<object> request = rpc.InvokeAsync("eth_getLogs", Parameters(new
         {
-            fromBlock = VerifiedRpc.Quantity(300),
+            fromBlock = RpcBackend.Quantity(300),
             toBlock = "finalized",
             address = AccountAddress.ToString(),
         }), caller.Token);
@@ -1732,8 +1732,8 @@ public class VerifiedRpcTests
         {
             if (includeBlock is not null && !includeBlock(number)) continue;
             for (int transaction = 0; transaction < 2; transaction++)
-                expected.Add((VerifiedRpc.Quantity(number), source[number].Hash!.ToString(), source[number].Transactions[transaction].Hash!.ToString(),
-                    VerifiedRpc.Quantity((ulong)transaction), VerifiedRpc.Quantity((ulong)(2 * transaction + 1)), $"0x{number % 256:x2}{transaction:x2}"));
+                expected.Add((RpcBackend.Quantity(number), source[number].Hash!.ToString(), source[number].Transactions[transaction].Hash!.ToString(),
+                    RpcBackend.Quantity((ulong)transaction), RpcBackend.Quantity((ulong)(2 * transaction + 1)), $"0x{number % 256:x2}{transaction:x2}"));
         }
         Assert.That(logs.EnumerateArray().Select(log => (
             log.GetProperty("blockNumber").GetString(), log.GetProperty("blockHash").GetString(), log.GetProperty("transactionHash").GetString(),
@@ -1787,7 +1787,7 @@ public class VerifiedRpcTests
         header.ReceiptsRoot = ReceiptTrie.CalculateRoot(spec, [receipt], new ReceiptMessageDecoder());
         ExecutionPeerTransport.VerifyReceipts(header, [receipt], specs);
         Bloom authenticatedBloom = receipt.Bloom;
-        using VerifiedExecutionData data = new(provider, specs, 1, new BlockForRpcFactory());
+        using ExecutionData data = new(provider, specs, 1, new BlockForRpcFactory());
 
         JsonElement projected = single
             ? (await data.FindTransactionAsync(header, transaction.Hash, receipt: true, CancellationToken.None))!.Value
@@ -1809,8 +1809,8 @@ public class VerifiedRpcTests
     public async Task Warm_block_reads_reuse_the_transaction_index()
     {
         using Provider provider = ReceiptProjectionProvider();
-        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
-        VerifiedMemoryCache index = (VerifiedMemoryCache)typeof(VerifiedExecutionData)
+        using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
+        BoundedMemoryCache index = (BoundedMemoryCache)typeof(ExecutionData)
             .GetField("_transactionIndex", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(data)!;
         object key = (provider.Header.Hash!, "transactions");
         Hash256 hash = provider.Transactions[1].Hash!;
@@ -1838,7 +1838,7 @@ public class VerifiedRpcTests
         [Values(0, 1, 2)] int index, [Values] bool warm)
     {
         using Provider provider = ReceiptProjectionProvider();
-        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
+        using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
         Hash256 hash = provider.Transactions[index].Hash!;
         if (warm) await data.FindTransactionAsync(provider.Header, hash, receipt: true, CancellationToken.None);
 
@@ -1849,11 +1849,11 @@ public class VerifiedRpcTests
             Assert.That(provider.Transactions[index].SenderAddress, Is.Not.Null);
             Assert.That(provider.Transactions.Where((_, i) => i != index).Select(transaction => transaction.SenderAddress), Is.All.Null);
             Assert.That(receipt.GetProperty("transactionHash").GetString(), Is.EqualTo(hash.ToString()));
-            Assert.That(receipt.GetProperty("transactionIndex").GetString(), Is.EqualTo(VerifiedRpc.Quantity((ulong)index)));
+            Assert.That(receipt.GetProperty("transactionIndex").GetString(), Is.EqualTo(RpcBackend.Quantity((ulong)index)));
             Assert.That(receipt.GetProperty("gasUsed").GetString(), Is.EqualTo("0x5208"));
-            Assert.That(receipt.GetProperty("cumulativeGasUsed").GetString(), Is.EqualTo(VerifiedRpc.Quantity((ulong)((index + 1) * 21_000))));
+            Assert.That(receipt.GetProperty("cumulativeGasUsed").GetString(), Is.EqualTo(RpcBackend.Quantity((ulong)((index + 1) * 21_000))));
             Assert.That(receipt.GetProperty("logs").EnumerateArray().Select(log => log.GetProperty("logIndex").GetString()),
-                Is.EqualTo(provider.Receipts[index].Logs!.Select((_, i) => VerifiedRpc.Quantity((ulong)(offsets[index] + i)))));
+                Is.EqualTo(provider.Receipts[index].Logs!.Select((_, i) => RpcBackend.Quantity((ulong)(offsets[index] + i)))));
         }
 
         JsonElement all = await data.GetBlockReceiptsAsync(provider.Header, CancellationToken.None);
@@ -1873,7 +1873,7 @@ public class VerifiedRpcTests
             provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header),
                 provider.Receipts, new ReceiptMessageDecoder());
         }
-        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
+        using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
             receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
@@ -1886,7 +1886,7 @@ public class VerifiedRpcTests
         provider.Receipts = provider.Receipts[..2];
         provider.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(MainnetSpecProvider.Instance.GetSpec(provider.Header),
             provider.Receipts, new ReceiptMessageDecoder());
-        using VerifiedExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
+        using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
             receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
@@ -2139,7 +2139,7 @@ public class VerifiedRpcTests
         older.ReceiptsRoot = provider.Header.ReceiptsRoot;
         older.GasLimit = provider.Header.GasLimit;
         older.GasUsed = provider.Header.GasUsed;
-        using VerifiedExecutionData execution = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
+        using ExecutionData execution = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         JsonElement one = await execution.GetLogsAsync([provider.Header], null, [], CancellationToken.None);
         Assert.That(one.GetArrayLength(), Is.EqualTo(3));
@@ -2500,7 +2500,7 @@ public class VerifiedRpcTests
     {
         using Provider provider = new(new Account(7, 123));
         int reads = 0;
-        using VerifiedRpc rpc = new(provider, () => ++reads == 1 ? provider.Head : throw new InvalidOperationException("Snapshot read twice."), 1);
+        using RpcBackend rpc = new(provider, () => ++reads == 1 ? provider.Head : throw new InvalidOperationException("Snapshot read twice."), 1);
 
         object balance = await rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), "finalized"), CancellationToken.None);
 
@@ -2591,7 +2591,7 @@ public class VerifiedRpcTests
         new EthereumEcdsa(1).Sign(key, transaction);
         transaction.Hash = transaction.CalculateHash();
         LookupSource source = new(transaction);
-        using VerifiedRpc rpc = new(source, () => source.Finalized, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Latest);
+        using RpcBackend rpc = new(source, () => source.Finalized, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Latest);
         string method = receipt ? "eth_getTransactionReceipt" : "eth_getTransactionByHash";
         JsonElement parameters = Parameters(Keccak.Compute("not included yet").ToString());
 
@@ -2617,12 +2617,12 @@ public class VerifiedRpcTests
         new EthereumEcdsa(1).Sign(key, transaction);
         transaction.Hash = transaction.CalculateHash();
         LookupSource source = new(transaction, transactionBlock, 20_000_050);
-        using VerifiedRpc rpc = new(source, () => source.Finalized, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Latest);
+        using RpcBackend rpc = new(source, () => source.Finalized, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Latest);
         string method = receipt ? "eth_getTransactionReceipt" : "eth_getTransactionByHash";
         JsonElement parameters = Parameters(transaction.Hash.ToString());
 
         JsonElement before = (JsonElement)await rpc.InvokeAsync(method, parameters, CancellationToken.None);
-        Assert.That(before.GetProperty("blockNumber").GetString(), Is.EqualTo(VerifiedRpc.Quantity(transactionBlock)));
+        Assert.That(before.GetProperty("blockNumber").GetString(), Is.EqualTo(RpcBackend.Quantity(transactionBlock)));
         int priorReads = source.BlockReads;
         source.Reorg();
         JsonElement after = (JsonElement)await rpc.InvokeAsync(method, parameters, CancellationToken.None);
@@ -2717,7 +2717,7 @@ public class VerifiedRpcTests
         });
         try
         {
-            using VerifiedRpc rpc = provider.CreateRpc(sendPolicy: rules == "none" ? null : new SendPolicyRelay(rulesPath, 1, LimboLogs.Instance));
+            using RpcBackend rpc = provider.CreateRpc(sendPolicy: rules == "none" ? null : new SendPolicyRelay(rulesPath, 1, LimboLogs.Instance));
             Transaction transaction = new() { Nonce = 7, GasLimit = 21_000, GasPrice = 2, To = AccountAddress, Value = 3 };
             new EthereumEcdsa(1).Sign(key, transaction, true);
             transaction.Hash = transaction.CalculateHash();
@@ -2756,7 +2756,7 @@ public class VerifiedRpcTests
         await File.WriteAllTextAsync(rulesPath, $"from {key.Address}\nto {AccountAddress} 3\ncap 42003 3600\n");
         try
         {
-            using VerifiedRpc rpc = provider.CreateRpc(sendPolicy: new SendPolicyRelay(rulesPath, 1, LimboLogs.Instance));
+            using RpcBackend rpc = provider.CreateRpc(sendPolicy: new SendPolicyRelay(rulesPath, 1, LimboLogs.Instance));
             JsonElement Submit(ulong nonce)
             {
                 Transaction transaction = new() { Nonce = nonce, GasLimit = 21_000, GasPrice = 2, To = AccountAddress, Value = 3 };
@@ -2799,7 +2799,7 @@ public class VerifiedRpcTests
     [Test]
     public async Task Blob_submission_validates_kzg_sidecar_before_relay([Values] bool tamper)
     {
-        await KzgPolynomialCommitments.InitializeAsync(Nethermind.Logging.LimboLogs.Instance.GetClassLogger<VerifiedRpcTests>());
+        await KzgPolynomialCommitments.InitializeAsync(Nethermind.Logging.LimboLogs.Instance.GetClassLogger<RpcBackendTests>());
         IBlobProofsManager proofs = IBlobProofsManager.For(ProofVersion.V1);
         ShardBlobNetworkWrapper wrapper = proofs.AllocateWrapper(new byte[131_072]);
         proofs.ComputeProofsAndCommitments(wrapper);
@@ -3023,11 +3023,11 @@ public class VerifiedRpcTests
             Rpc = CreateRpc();
         }
 
-        public VerifiedRpc Rpc { get; }
+        public RpcBackend Rpc { get; }
         public VerifiedHead Head { get; }
         public VerifiedHead? LatestHead { get; set; }
         public ulong? CurrentSlot { get; set; }
-        public VerifiedRpc CreateRpc(VerifiedCall? calls = null, Func<VerifiedHead>? getHead = null,
+        public RpcBackend CreateRpc(EvmExecutor? calls = null, Func<VerifiedHead>? getHead = null,
             Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, SendPolicyRelay? sendPolicy = null) => new(this, getHead ?? (() => Head), 1,
             calls, _specProvider, () => LatestHead, head => head.IsFresh(CurrentSlot ?? head.Slot, 10),
             waitForLatestHead: waitForLatestHead, sendPolicy: sendPolicy);

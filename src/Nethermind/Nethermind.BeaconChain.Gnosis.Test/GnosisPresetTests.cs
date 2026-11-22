@@ -227,11 +227,11 @@ public class GnosisPresetTests
         using LightClientFixture fixture = new();
         string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
             "NethermindLightClientGnosisJournal", Guid.NewGuid().ToString("N"));
-        VerifiedConsensusJournal Journal() => new(directory, BeaconChainSpec.Gnosis, "gnosis", fixture.Checkpoint, NullLogger.Instance);
+        ConsensusJournal Journal() => new(directory, BeaconChainSpec.Gnosis, "gnosis", fixture.Checkpoint, NullLogger.Instance);
         try
         {
             LightClientStore store = fixture.CreateStore();
-            VerifiedConsensusJournal journal = Journal();
+            ConsensusJournal journal = Journal();
             await journal.InitializeAsync(fixture.Bootstrap(), store, CancellationToken.None);
             LightClientUpdate update = fixture.Update();
             store.Process(update, fixture.Slot("signature_slot"));

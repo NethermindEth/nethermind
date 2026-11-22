@@ -7,7 +7,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.LightClient.Rpc;
 
 [RpcModule(ModuleType.Net)]
-internal interface IVerifiedNetRpcModule : IRpcModule
+internal interface INetRpcModule : IRpcModule
 {
     ResultWrapper<string> net_version();
     ResultWrapper<bool> net_listening();

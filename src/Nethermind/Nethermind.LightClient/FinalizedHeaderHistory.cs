@@ -17,7 +17,7 @@ using Testably.Abstractions;
 namespace Nethermind.LightClient;
 
 /// <summary>Backfills and retains a bounded execution-header chain authenticated by finalized consensus.</summary>
-internal sealed class VerifiedHeaderHistory : IAsyncDisposable
+internal sealed class FinalizedHeaderHistory : IAsyncDisposable
 {
     internal const int PageSize = 128;
     internal const int WireBatchSize = 4 * PageSize;
@@ -59,15 +59,15 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
 
     internal HistoryProgress Progress => Volatile.Read(ref _progress);
 
-    internal VerifiedHeaderHistory(IDb db, Hash256 genesis, IHeaderDecoder decoder,
+    internal FinalizedHeaderHistory(IDb db, Hash256 genesis, IHeaderDecoder decoder,
         Func<VerifiedHead, CancellationToken, Task<BlockHeader>> getAnchor,
         Func<BlockHeader, int, CancellationToken, Task<BlockHeader[]>> fetchPage, Nethermind.Logging.ILogger logger,
-        TimeProvider? clock = null, int capacity = VerifiedLogHeaders.HistoryCapacity,
+        TimeProvider? clock = null, int capacity = LogHeaderChain.HistoryCapacity,
         TimeSpan? runBudget = null, string? directory = null,
         Func<ulong, int, CancellationToken, PageRequest[]>? prefetchPages = null)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(capacity, 2);
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, VerifiedLogHeaders.HistoryCapacity);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(capacity, LogHeaderChain.HistoryCapacity);
         _db = db;
         _decoder = decoder;
         _getAnchor = getAnchor;
@@ -113,7 +113,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (first > last || last > finalized.Number) throw new ArgumentOutOfRangeException(nameof(first));
-        if (last - first >= VerifiedLogHeaders.MaxBlocks || finalized.Number - first >= (ulong)_hashes.Length)
+        if (last - first >= LogHeaderChain.MaxBlocks || finalized.Number - first >= (ulong)_hashes.Length)
             throw new RpcException(-32001, "Block is outside the verified log history window.");
         lock (_state)
         {
@@ -252,7 +252,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         finally { _access.Release(); }
 
         BlockHeader cursor = cachedAnchor ?? await _getAnchor(target, cancellationToken);
-        VerifiedLogHeaders.Verify(cursor, target.Number, target.BlockHash);
+        LogHeaderChain.Verify(cursor, target.Number, target.BlockHash);
         if (cursor.StateRoot != target.StateRoot)
             throw new InvalidDataException("Finalized log anchor has an inconsistent state root.");
         await SaveAsync([cursor], cancellationToken, persist: cachedAnchor is null);
@@ -423,7 +423,7 @@ internal sealed class VerifiedHeaderHistory : IAsyncDisposable
         for (int i = count - 1; i >= 0; i--)
         {
             BlockHeader header = page[i];
-            VerifiedLogHeaders.Verify(header, cursor.Number - (ulong)(count - i), hash);
+            LogHeaderChain.Verify(header, cursor.Number - (ulong)(count - i), hash);
             hash = header.ParentHash!;
         }
     }

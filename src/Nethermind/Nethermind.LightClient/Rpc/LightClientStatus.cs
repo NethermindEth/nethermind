@@ -36,7 +36,7 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
     internal bool Listening => (StartupStage)Volatile.Read(ref _stage) is not (StartupStage.Stopping or StartupStage.Failed)
         && Volatile.Read(ref _runtime) is not null;
 
-    internal void Initialize(VerifiedRpc backend, Func<HttpContext, Task> handleWebSocket,
+    internal void Initialize(RpcBackend backend, Func<HttpContext, Task> handleWebSocket,
         Func<VerifiedHead?> getLatest, Func<VerifiedHead?> getFinalized,
         Func<VerifiedHead?, HostedAccountProgress[]> getHostedAccounts, Func<HistoryProgress> getHistory)
     {
@@ -58,7 +58,7 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
         return new() { IsSyncing = true };
     }
 
-    internal ValueTask<VerifiedRpc> GetBackendAsync(CancellationToken token, bool waitForStartup)
+    internal ValueTask<RpcBackend> GetBackendAsync(CancellationToken token, bool waitForStartup)
     {
         token.ThrowIfCancellationRequested();
         StartupStage stage = (StartupStage)Volatile.Read(ref _stage);
@@ -70,7 +70,7 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
         return WaitForBackendAsync(token);
     }
 
-    private async ValueTask<VerifiedRpc> WaitForBackendAsync(CancellationToken token)
+    private async ValueTask<RpcBackend> WaitForBackendAsync(CancellationToken token)
     {
         await _startupCompleted.Task.WaitAsync(token);
         return await GetBackendAsync(token, waitForStartup: false);
@@ -114,7 +114,7 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
         return context.Response.WriteAsJsonAsync(Read(), context.RequestAborted);
     }
 
-    private sealed record Runtime(VerifiedRpc Backend, Func<HttpContext, Task> HandleWebSocket,
+    private sealed record Runtime(RpcBackend Backend, Func<HttpContext, Task> HandleWebSocket,
         Func<VerifiedHead?> GetLatest, Func<VerifiedHead?> GetFinalized,
         Func<VerifiedHead?, HostedAccountProgress[]> GetHostedAccounts, Func<HistoryProgress> GetHistory);
 }

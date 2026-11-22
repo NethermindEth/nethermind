@@ -25,12 +25,14 @@ using Nethermind.TxPool;
 namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
-internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
+internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
     ulong? secondsPerSlot = null) : IDisposable
 {
+    // Preserve existing log filters when the implementation class is renamed.
+    internal const string LogCategory = "LightClient.Rpc.VerifiedCall";
     private const ulong GasCap = 10_000_000;
     private const int CodeCacheCapacity = 256;
-    private readonly VerifiedMemoryCache _cache = new();
+    private readonly BoundedMemoryCache _cache = new();
     private readonly TimeProvider _clock = clock ?? TimeProvider.System;
     private readonly ICodeCache _codeCache = new StaticCodeCache(CodeCacheCapacity);
     private readonly IContainer _processing = CreateExecutionBuilder(specs, logs)
@@ -39,7 +41,7 @@ internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpe
         .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
         .Build();
     private readonly SemaphoreSlim _slots = new(4);
-    private readonly Nethermind.Logging.ILogger _logger = logs.GetClassLogger<VerifiedCall>();
+    private readonly Nethermind.Logging.ILogger _logger = logs.GetLogger(LogCategory);
 
     internal async Task<string> ExecuteAsync(VerifiedHead head, TransactionForRpc request, bool estimateGas, CancellationToken cancellationToken)
     {
@@ -203,7 +205,7 @@ internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpe
         .AddScoped<ICodeCache, ILifetimeScope>(static scope => ((ExecutionState)scope.Tag).CodeCache);
 
     /// <param name="SimulatedHashes">The hashes of the blocks simulated so far on top of <paramref name="Head"/>, by number.</param>
-    private sealed record ExecutionState(VerifiedHead Head, VerifiedMemoryCache Cache, ICodeCache CodeCache,
+    private sealed record ExecutionState(VerifiedHead Head, BoundedMemoryCache Cache, ICodeCache CodeCache,
         IReadOnlyDictionary<ulong, Hash256>? SimulatedHashes = null);
 
     private async Task<string> ExecuteCoreAsync(VerifiedHead head, TransactionForRpc model, bool estimateGas, bool trace, CancellationToken token)
@@ -404,7 +406,7 @@ internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpe
         public IReadOnlyList<Address>? KnownAccounts { get; init; }
     }
 
-    private sealed class CallState(VerifiedHead head, VerifiedMemoryCache cache) : IWorldStateScopeProvider
+    private sealed class CallState(VerifiedHead head, BoundedMemoryCache cache) : IWorldStateScopeProvider
     {
         public bool HasRoot(BlockHeader? baseBlock) => baseBlock?.StateRoot == head.StateRoot;
         public bool HasStateForTargetBlock(BlockHeader targetBlock) => false;
@@ -424,7 +426,7 @@ internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpe
         /// earlier blocks' changes. The scope never rehashes, so its root stays the authenticated base root and storage
         /// roots are not authoritative.
         /// </remarks>
-        private sealed class Scope(VerifiedHead head, VerifiedMemoryCache cache) : IWorldStateScopeProvider.IScope, IWorldStateScopeProvider.ICodeDb
+        private sealed class Scope(VerifiedHead head, BoundedMemoryCache cache) : IWorldStateScopeProvider.IScope, IWorldStateScopeProvider.ICodeDb
         {
             private readonly Dictionary<ValueHash256, byte[]> _newCode = [];
             private readonly HashSet<Address> _accounts = [];
@@ -502,7 +504,7 @@ internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpe
             public Dictionary<UInt256, UInt256> Slots { get; } = [];
         }
 
-        private sealed class Storage(Address address, Hash256 root, VerifiedMemoryCache cache, WrittenStorage? written = null) : IWorldStateScopeProvider.IStorageTree
+        private sealed class Storage(Address address, Hash256 root, BoundedMemoryCache cache, WrittenStorage? written = null) : IWorldStateScopeProvider.IStorageTree
         {
             public Hash256 RootHash => root;
             public void Get(in UInt256 index, out UInt256 value)
@@ -522,7 +524,7 @@ internal sealed partial class VerifiedCall(IExecutionStateSource execution, ISpe
         }
     }
 
-    private sealed class VerifiedBlockhashes(VerifiedHead head, VerifiedMemoryCache cache,
+    private sealed class VerifiedBlockhashes(VerifiedHead head, BoundedMemoryCache cache,
         IReadOnlyDictionary<ulong, Hash256>? simulated) : IBlockhashProvider
     {
         public Hash256? GetBlockhash(BlockHeader currentBlock, ulong number, IReleaseSpec spec)

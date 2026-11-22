@@ -349,7 +349,7 @@ public class SharedHostingTests
         }
     }
 
-    private sealed class TestHost(SharedWebHost host, VerifiedRpcService rpc, ApplicationLifetime lifetime,
+    private sealed class TestHost(SharedWebHost host, RpcService rpc, ApplicationLifetime lifetime,
         DisposalProbe disposal) : IAsyncDisposable
     {
         internal SharedWebHost Host => host;
@@ -375,7 +375,7 @@ public class SharedHostingTests
             builder.Services.AddRouting();
             LightClientStatus status = new(1, [], _ => false, _ => false);
             LightClientMetrics metrics = new("mainnet", status.Read);
-            VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+            RpcService rpc = new(status, NullLogManager.Instance);
             rpc.Config.AllowedHosts = allowedHosts ?? ["*"];
             rpc.Config.CorsOrigins = [];
             JsonRpcUrlCollection urls = new(NullLogManager.Instance, new JsonRpcConfig(), includeWebSockets: true);

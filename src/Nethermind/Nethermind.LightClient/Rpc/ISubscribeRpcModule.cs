@@ -8,7 +8,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.LightClient.Rpc;
 
 [RpcModule(ModuleType.Subscribe)]
-internal interface IVerifiedSubscribeRpcModule : IRpcModule
+internal interface ISubscribeRpcModule : IRpcModule
 {
     [JsonRpcMethod(IsImplemented = true, IsSharable = true, Availability = Nethermind.JsonRpc.Modules.RpcEndpoint.Ws)]
     ResultWrapper<string> eth_subscribe(string subscriptionName, JsonElement? filter = null);

@@ -87,8 +87,8 @@ public class GnosisExecutionTests
         byte[] code = [opcode, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3];
         Account account = new(1, 0, Keccak.EmptyTreeHash, Keccak.Compute(code));
         ExecutionSource source = new(new Block(header, [], []), contract, account, code);
-        using VerifiedCall calls = new(source, transport.SpecProvider, LimboLogs.Instance);
-        using VerifiedRpc rpc = new(source, () => head, transport.SpecProvider.ChainId, calls, transport.SpecProvider);
+        using EvmExecutor calls = new(source, transport.SpecProvider, LimboLogs.Instance);
+        using RpcBackend rpc = new(source, () => head, transport.SpecProvider.ChainId, calls, transport.SpecProvider);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = contract.ToString() }, "finalized" });
 
         object result = await rpc.InvokeAsync("eth_call", parameters, CancellationToken.None);
@@ -131,11 +131,11 @@ public class GnosisExecutionTests
             "gnosis-log-history-" + Guid.NewGuid().ToString("N"));
         try
         {
-            await using (VerifiedHeaderHistory history = Open(allowFetch: true))
+            await using (FinalizedHeaderHistory history = Open(allowFetch: true))
                 Assert.That((await history.GetHeadersAsync(anchor, 0, 1, CancellationToken.None)).Select(header => header.Hash),
                     Is.EqualTo(headers.Take(2).Select(header => header.Hash)));
 
-            await using VerifiedHeaderHistory resumed = Open(allowFetch: false);
+            await using FinalizedHeaderHistory resumed = Open(allowFetch: false);
             BlockHeader[] restored = await resumed.GetHeadersAsync(anchor, 0, 1, CancellationToken.None);
             Assert.That(restored, Has.Length.EqualTo(2));
             Assert.That(restored, Is.All.TypeOf<AuRaBlockHeader>());
@@ -148,16 +148,16 @@ public class GnosisExecutionTests
         }
         finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
 
-        VerifiedHeaderHistory Open(bool allowFetch)
+        FinalizedHeaderHistory Open(bool allowFetch)
         {
-            IDb db = VerifiedHeaderHistory.OpenDb(directory, LimboLogs.Instance);
+            IDb db = FinalizedHeaderHistory.OpenDb(directory, LimboLogs.Instance);
             try
             {
                 return new(db, KnownHashes.GnosisGenesis, decoder, (_, _) => Task.FromResult(headers[2]),
                     (cursor, count, _) => allowFetch
                         ? Task.FromResult(headers.AsSpan(checked((int)cursor.Number - count), count).ToArray())
                         : throw new AssertionException("Persisted AuRa headers must not be downloaded again."),
-                    LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(), capacity: 128, directory: directory);
+                    LimboLogs.Instance.GetClassLogger<FinalizedHeaderHistory>(), capacity: 128, directory: directory);
             }
             catch { db.Dispose(); throw; }
         }
@@ -177,14 +177,14 @@ public class GnosisExecutionTests
             AuRaSignature = new byte[65],
         };
         int overhead = decoder.GetLength(header, RlpBehaviors.None) - header.ExtraData.Length;
-        header.ExtraData = new byte[VerifiedHeaderHistory.MaxHeaderBytes + overLimit - overhead];
+        header.ExtraData = new byte[FinalizedHeaderHistory.MaxHeaderBytes + overLimit - overhead];
         header.Hash = new Hash256(header.CalculateHash());
-        Assert.That(decoder.GetLength(header, RlpBehaviors.None), Is.EqualTo(VerifiedHeaderHistory.MaxHeaderBytes + overLimit));
+        Assert.That(decoder.GetLength(header, RlpBehaviors.None), Is.EqualTo(FinalizedHeaderHistory.MaxHeaderBytes + overLimit));
 
         if (overLimit > 0)
-            Assert.That(() => VerifiedLogHeaders.Verify(header, 1, header.Hash!), Throws.TypeOf<InvalidDataException>());
+            Assert.That(() => LogHeaderChain.Verify(header, 1, header.Hash!), Throws.TypeOf<InvalidDataException>());
         else
-            Assert.That(() => VerifiedLogHeaders.Verify(header, 1, header.Hash!), Throws.Nothing);
+            Assert.That(() => LogHeaderChain.Verify(header, 1, header.Hash!), Throws.Nothing);
     }
 
     internal static BlockHeader CallHeader(VerifiedHead head) => new(Keccak.Zero, Keccak.OfAnEmptySequenceRlp,

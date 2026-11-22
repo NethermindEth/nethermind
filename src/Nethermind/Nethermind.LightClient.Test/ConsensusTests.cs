@@ -38,7 +38,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         using BootstrapFixture fixture = new(checkpoint);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         TaskCompletionSource fetching = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<LightClientBootstrap> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -161,7 +161,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         using BootstrapFixture fixture = new(checkpoint);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         LightClientStore store = new(Spec, checkpoint, bootstrap, fixture.CurrentSlot);
         await journal.InitializeAsync(bootstrap, store, token);
         LightClientUpdate update = Update(2, 3, 4, 1);
@@ -479,7 +479,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         LightClientStore store = Store(bootstrap);
         using BootstrapFixture fixture = new(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), initialSlot: 8101);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate learning = Update(1, 1, 2, 1, nextKey: 2);
         store.Process(learning, fixture.CurrentSlot);
@@ -532,7 +532,7 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         LightClientStore store = Store(bootstrap);
         using BootstrapFixture fixture = new(SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), initialSlot: 8201);
-        VerifiedConsensusJournal journal = fixture.OpenJournal();
+        ConsensusJournal journal = fixture.OpenJournal();
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         foreach (LightClientUpdate update in new[] { Update(1, 1, 2, 1, nextKey: 2), Update(1, 8200, 8201, 2) })
         {
@@ -921,7 +921,7 @@ public class ConsensusTests
         LightClientStore store = new(spec, checkpoint, bootstrap, 8188);
         string directory = Path.Combine(OperatingSystem.IsWindows() ? "C:/Temp" : Path.GetTempPath(),
             "NethermindLightClientGloasRollover", Guid.NewGuid().ToString("N"));
-        VerifiedConsensusJournal journal = new(directory, spec, "sepolia", checkpoint, NullLogger.Instance);
+        ConsensusJournal journal = new(directory, spec, "sepolia", checkpoint, NullLogger.Instance);
         try
         {
             await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
@@ -1469,7 +1469,7 @@ public class ConsensusTests
         {
             await entered.Task;
             PublicationSource source = new();
-            using VerifiedRpc rpc = new(source, () => harness.Publisher.Heads.Finalized!, 1,
+            using RpcBackend rpc = new(source, () => harness.Publisher.Heads.Finalized!, 1,
                 getLatestHead: () => harness.Publisher.Heads.Latest,
                 isLatestHeadFresh: head => head.IsFresh(200, 10));
             object syncing = await rpc.InvokeAsync("eth_syncing", default, CancellationToken.None);
@@ -1959,7 +1959,7 @@ public class ConsensusTests
             "NethermindLightClientBootstrapTests", Guid.NewGuid().ToString("N"));
         internal RepairClock Clock { get; } = new(DateTimeOffset.FromUnixTimeSeconds((long)(Spec.GenesisTime + initialSlot * Spec.SecondsPerSlot)));
         internal ulong CurrentSlot => Spec.GetSlotAtTime((ulong)Clock.GetUtcNow().ToUnixTimeSeconds());
-        internal VerifiedConsensusJournal OpenJournal() => new(_directory, Spec, "mainnet", checkpoint, NullLogger.Instance);
+        internal ConsensusJournal OpenJournal() => new(_directory, Spec, "mainnet", checkpoint, NullLogger.Instance);
         public void Dispose()
         {
             if (Directory.Exists(_directory)) Directory.Delete(_directory, recursive: true);

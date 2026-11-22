@@ -7,11 +7,11 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.LightClient;
 
 /// <summary>Retains verified payloads and shares bounded downloads independently of caller cancellation.</summary>
-internal sealed class VerifiedPayloadCache<T>(Func<T, long> size, CancellationToken stoppingToken) : IAsyncDisposable
+internal sealed class PayloadCache<T>(Func<T, long> size, CancellationToken stoppingToken) : IAsyncDisposable
 {
-    internal const long Capacity = VerifiedMemoryCache.Capacity;
+    internal const long Capacity = BoundedMemoryCache.Capacity;
     internal const int MaxDownloads = 4;
-    private readonly VerifiedMemoryCache _cache = new();
+    private readonly BoundedMemoryCache _cache = new();
     private readonly CancellationTokenSource _stop = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
     private readonly Lock _gate = new();
     private readonly Dictionary<Hash256, TaskCompletionSource<T>> _downloads = [];

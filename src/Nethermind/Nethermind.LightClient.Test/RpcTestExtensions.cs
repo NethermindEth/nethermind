@@ -12,15 +12,15 @@ using RpcTransport = Nethermind.JsonRpc.Modules.RpcEndpoint;
 
 namespace Nethermind.LightClient.Test;
 
-internal static class VerifiedRpcTestExtensions
+internal static class RpcTestExtensions
 {
-    internal static async Task<object> InvokeAsync(this VerifiedRpc rpc, string method, JsonElement parameters, CancellationToken token)
+    internal static async Task<object> InvokeAsync(this RpcBackend rpc, string method, JsonElement parameters, CancellationToken token)
     {
-        using VerifiedRpcService service = new(rpc, NullLogManager.Instance);
+        using RpcService service = new(rpc, NullLogManager.Instance);
         return await service.InvokeAsync(method, parameters, token);
     }
 
-    internal static async Task<object> InvokeAsync(this VerifiedRpcService service, string method, JsonElement parameters, CancellationToken token)
+    internal static async Task<object> InvokeAsync(this RpcService service, string method, JsonElement parameters, CancellationToken token)
     {
         using JsonRpcResponse response = await service.Service.SendRequestAsync(
             new JsonRpcRequest { JsonRpc = "2.0", Method = method, Params = parameters, Id = new JsonRpcId(1L) },
@@ -40,7 +40,7 @@ internal static class VerifiedRpcTestExtensions
         };
     }
 
-    internal static Task<string> ExecuteAsync(this VerifiedCall call, VerifiedHead head, JsonElement request,
+    internal static Task<string> ExecuteAsync(this EvmExecutor call, VerifiedHead head, JsonElement request,
         bool estimateGas, CancellationToken token)
     {
         TransactionForRpc model = new EthereumJsonSerializer().Deserialize<TransactionForRpc>(request.GetRawText())

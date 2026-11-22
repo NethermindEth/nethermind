@@ -6,7 +6,7 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class VerifiedWeb3RpcModule : IVerifiedWeb3RpcModule
+internal sealed class Web3RpcModule : IWeb3RpcModule
 {
     public ResultWrapper<string> web3_clientVersion() => ResultWrapper<string>.Success(ProductInfo.ClientId);
 }

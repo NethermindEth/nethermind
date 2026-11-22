@@ -20,8 +20,8 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<VerifiedHead> getHead, ulong chainId,
-    VerifiedCall? calls = null, ISpecProvider? specProvider = null, Func<VerifiedHead?>? getLatestHead = null,
+internal sealed class RpcBackend(IExecutionStateSource execution, Func<VerifiedHead> getHead, ulong chainId,
+    EvmExecutor? calls = null, ISpecProvider? specProvider = null, Func<VerifiedHead?>? getLatestHead = null,
     Func<VerifiedHead, bool>? isLatestHeadFresh = null, Func<VerifiedHead, bool>? isFinalizedHeadFresh = null,
     Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, IBlockForRpcFactory? blockForRpcFactory = null,
     SendPolicyRelay? sendPolicy = null)
@@ -31,7 +31,7 @@ internal sealed class VerifiedRpc(IExecutionStateSource execution, Func<Verified
     private const long LogResultCacheCapacity = 32 * 1024 * 1024;
     private readonly ulong _startingBlock = getLatestHead?.Invoke()?.Number ?? 0;
     private static readonly SemaphoreSlim ActiveExecutionData = new(4, 4);
-    private readonly VerifiedExecutionData? _data = specProvider is null ? null
+    private readonly ExecutionData? _data = specProvider is null ? null
         : new(execution, specProvider, chainId, blockForRpcFactory ?? new BlockForRpcFactory(), sendPolicy);
     private readonly SemaphoreSlim _historicalStateRequests = new(2, 2);
     private readonly SemaphoreSlim _proofRequests = new(2, 2);

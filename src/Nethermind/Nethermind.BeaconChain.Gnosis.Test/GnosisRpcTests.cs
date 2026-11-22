@@ -64,7 +64,7 @@ public class GnosisRpcTests
         Block block = new(header, transactions, []);
         VerifiedHead head = new(1, header.Number, header.Hash!, header.StateRoot!);
         GnosisExecutionTests.ExecutionSource source = new(block);
-        using VerifiedRpc rpc = new(source, () => head, 100, specProvider: transport.SpecProvider,
+        using RpcBackend rpc = new(source, () => head, 100, specProvider: transport.SpecProvider,
             getLatestHead: () => head, blockForRpcFactory: factory);
         string method = byHash ? "eth_getBlockByHash" : "eth_getBlockByNumber";
         string selector = byHash ? header.Hash!.ToString() : $"0x{header.Number:x}";

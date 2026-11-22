@@ -23,7 +23,7 @@ internal interface IExecutionStateSource
     Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken) => throw new NotSupportedException();
     Task<BlockHeader[]> GetLogHeadersAsync(VerifiedHead anchor, VerifiedHead finalized, ulong firstNumber,
         ulong lastNumber, CancellationToken cancellationToken) =>
-        VerifiedLogHeaders.GetAsync(this, anchor, finalized, firstNumber, lastNumber, cancellationToken);
+        LogHeaderChain.GetAsync(this, anchor, finalized, firstNumber, lastNumber, cancellationToken);
     Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken) => throw new NotSupportedException();
     /// <summary>Authenticates the complete receipt list, using the exact transaction count when known.</summary>
     Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null) => throw new NotSupportedException();

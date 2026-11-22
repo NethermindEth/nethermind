@@ -16,7 +16,7 @@ using Nethermind.Sockets;
 namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Streams authenticated execution heads and logs over bounded, connection-owned WebSocket subscriptions.</summary>
-internal sealed class VerifiedSubscriptions : IAsyncDisposable
+internal sealed class RpcSubscriptions : IAsyncDisposable
 {
     internal const int MaxClients = 16;
     internal const int MaxSubscriptions = 16;
@@ -27,7 +27,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     private const int JsonReservationSlack = 6 * MaxMessageBytes;
     private const int MaxHistoryBytes = 16 * 1024 * 1024;
     private readonly IExecutionStateSource _source;
-    private readonly VerifiedRpc _rpc;
+    private readonly RpcBackend _rpc;
     private readonly ILogger _logger;
     private readonly TimeProvider _clock;
     private static readonly EthereumJsonSerializer SocketSerializer = new();
@@ -46,7 +46,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
     private long _sequence;
     private bool _disposing;
 
-    internal VerifiedSubscriptions(IExecutionStateSource source, VerifiedRpc rpc, IJsonRpcProcessor processor, ILogger logger,
+    internal RpcSubscriptions(IExecutionStateSource source, RpcBackend rpc, IJsonRpcProcessor processor, ILogger logger,
         TimeProvider? clock = null, Nethermind.Logging.ILogManager? logManager = null)
     {
         _source = source;
@@ -330,7 +330,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
 
     private sealed class Client : SocketClient<WebSocketMessageStream>, IJsonRpcDuplexClient
     {
-        private readonly VerifiedSubscriptions _owner;
+        private readonly RpcSubscriptions _owner;
         private readonly WebSocket _socket;
         private readonly Lock _lock = new();
         private readonly Dictionary<string, Subscription> _subscriptions = [];
@@ -354,7 +354,7 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
         private WebSocketCloseStatus _closeStatus;
         private int _queuedBytes;
 
-        internal Client(VerifiedSubscriptions owner, WebSocket socket, CancellationToken requestAborted)
+        internal Client(RpcSubscriptions owner, WebSocket socket, CancellationToken requestAborted)
             : base(string.Empty, new WebSocketMessageStream(socket, owner._logManager, textOnly: true),
                 SocketSerializer, RpcEndpoint.StandardRequestBodySize + 1, processEmptyMessages: true)
         {
@@ -551,8 +551,8 @@ internal sealed class VerifiedSubscriptions : IAsyncDisposable
                     {
                         switch (property.Name)
                         {
-                            case "address": addresses = property.Value.ValueKind == JsonValueKind.Null ? null : VerifiedRpc.ParseAddresses(property.Value); break;
-                            case "topics": topics = property.Value.ValueKind == JsonValueKind.Null ? [] : VerifiedRpc.ParseTopics(property.Value); break;
+                            case "address": addresses = property.Value.ValueKind == JsonValueKind.Null ? null : RpcBackend.ParseAddresses(property.Value); break;
+                            case "topics": topics = property.Value.ValueKind == JsonValueKind.Null ? [] : RpcBackend.ParseTopics(property.Value); break;
                             default: throw new RpcException(-32602, "Subscription filters accept only address and topics.");
                         }
                     }

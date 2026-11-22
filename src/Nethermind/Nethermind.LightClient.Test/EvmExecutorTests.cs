@@ -25,7 +25,7 @@ using NSubstitute;
 namespace Nethermind.LightClient.Test;
 
 [TestFixture]
-public class VerifiedCallTests
+public class EvmExecutorTests
 {
     private static readonly Address Contract = new("0x1234567890123456789012345678901234567890");
 
@@ -47,8 +47,8 @@ public class VerifiedCallTests
         };
         FakeSource source = new(code, contractBalance: 1_000_000_000) { BaseFee = (UInt256)(scenario == "execution-fee" ? 10 : 1) };
         SingleReleaseSpecProvider spec = new(new KeyedFrameSpec(), 1, 1);
-        using VerifiedCall calls = new(source, spec, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
         ulong executionGas = scenario switch
         {
             "verify-gas-below" => 299_999,
@@ -151,8 +151,8 @@ public class VerifiedCallTests
         await File.WriteAllTextAsync(rulesPath, $"from {(guarded ? Contract : new Address("0x00000000000000000000000000000000000000aa"))}\n");
         try
         {
-            using VerifiedCall calls = new(source, spec, NullLogManager.Instance);
-            using VerifiedRpc rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head,
+            using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+            using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head,
                 sendPolicy: new SendPolicyRelay(rulesPath, 1, NullLogManager.Instance));
             Transaction transaction = CreateFrameSubmission();
             source.BlockGasLimit = 30_000_000;
@@ -208,8 +208,8 @@ public class VerifiedCallTests
         transaction.MaxFee = extra < 0 ? required - UInt256.One : required + (UInt256)extra;
         byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { "0x" + Convert.ToHexString(encoded).ToLowerInvariant() });
-        using VerifiedCall calls = new(source, specs, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, calls, specs, () => source.Head);
+        using EvmExecutor calls = new(source, specs, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, specs, () => source.Head);
 
         if (extra < 0)
         {
@@ -259,7 +259,7 @@ public class VerifiedCallTests
 
     private static async Task AddFrameBlobAsync(Transaction transaction)
     {
-        await KzgPolynomialCommitments.InitializeAsync(NullLogManager.Instance.GetClassLogger<VerifiedCallTests>());
+        await KzgPolynomialCommitments.InitializeAsync(NullLogManager.Instance.GetClassLogger<EvmExecutorTests>());
         IBlobProofsManager proofs = IBlobProofsManager.For(ProofVersion.V1);
         ShardBlobNetworkWrapper wrapper = proofs.AllocateWrapper(new byte[131_072]);
         proofs.ComputeProofsAndCommitments(wrapper);
@@ -278,8 +278,8 @@ public class VerifiedCallTests
     {
         // BLOBHASH(0), MSTORE(0), RETURN(0,32).
         FakeSource source = new([0x60, 0x00, 0x49, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3], contractBalance: 1_000_000_000);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         string versionedHash = "0x01" + new string('0', 62);
         Dictionary<string, object> transaction = new()
         {
@@ -306,8 +306,8 @@ public class VerifiedCallTests
     {
         FakeSource source = new([0x60, 0x03, 0x60, 0x00, 0x60, 0x00, 0xaa, 0x00], contractBalance: 1_000_000_000);
         SingleReleaseSpecProvider spec = new(new KeyedFrameSpec(), 1, 1);
-        using VerifiedCall call = new(source, spec, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new
         {
             type = "0x6", from = Contract.ToString(), nonce = "0x2a", nonceKeys = new[] { "0x7" },
@@ -327,8 +327,8 @@ public class VerifiedCallTests
     {
         // Return the 32-byte word 42.
         FakeSource source = new([0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" });
 
         object first = await rpc.InvokeAsync("eth_call", parameters, CancellationToken.None);
@@ -354,8 +354,8 @@ public class VerifiedCallTests
         FakeSource source = new([0x48, 0x60, expected, 0x14, 0x60, 0x0c, 0x57, 0x60, 0x00, 0x60, 0x00, 0xfd,
             0x5b, 0x48, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3], contractBalance: 1_000_000_000)
         { BaseFee = 7 };
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         Dictionary<string, string> transaction = new() { ["from"] = Contract.ToString(), ["to"] = Contract.ToString() };
         if (fees.StartsWith("legacy", StringComparison.Ordinal)) transaction["gasPrice"] = fees == "legacy" ? "0x7" : "0x0";
         if (fees.StartsWith("dynamic", StringComparison.Ordinal))
@@ -384,8 +384,8 @@ public class VerifiedCallTests
         [Values("world", "storage", "empty-storage", "code", "deleted")] string change)
     {
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" });
 
         object first = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
@@ -427,8 +427,8 @@ public class VerifiedCallTests
         [Values("eth_call", "eth_estimateGas")] string method)
     {
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" });
         await rpc.InvokeAsync(method, parameters, CancellationToken.None);
         source.Head = new(source.Head.Slot + 1, source.Head.Number + 1, Keccak.Compute("unproven block"), Keccak.Compute("unproven state"));
@@ -463,7 +463,7 @@ public class VerifiedCallTests
             await release.Task.WaitAsync(token);
             return (UInt256)(head == firstHead ? 42 : 84);
         };
-        using VerifiedCall calls = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor calls = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(10));
         using CancellationTokenSource interrupted = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token);
         JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
@@ -503,8 +503,8 @@ public class VerifiedCallTests
             0x60, 0x20, 0x60, 0x00, 0x60, 0x01, 0x60, 0x00, 0x60, 0x00, 0x30, 0x5a, 0xf1,
             0x60, 0x2d, 0x57, 0x60, 0x00, 0x60, 0x00, 0xfd, 0x5b,
             0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" });
 
         object first = await rpc.InvokeAsync(method, parameters, CancellationToken.None);
@@ -525,8 +525,8 @@ public class VerifiedCallTests
     {
         // SLOAD(0), MSTORE(0), RETURN(0, 32).
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
 
         object result = await rpc.InvokeAsync("eth_call", JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None);
 
@@ -543,8 +543,8 @@ public class VerifiedCallTests
         // Return SLOAD(0) + 1 after writing it; the next call must still read the finalized 42.
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x01, 0x01, 0x80, 0x60, 0x00, 0x55,
             0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" });
 
         object first = await rpc.InvokeAsync("eth_call", parameters, CancellationToken.None);
@@ -562,8 +562,8 @@ public class VerifiedCallTests
     public async Task Estimate_uses_verified_state_and_reuses_fetched_proofs()
     {
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" });
 
         object first = await rpc.InvokeAsync("eth_estimateGas", parameters, CancellationToken.None);
@@ -590,8 +590,8 @@ public class VerifiedCallTests
             _ => [0x60, 0x00, 0x60, 0x00, 0xfd],
         };
         FakeSource source = new(code);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None));
@@ -617,8 +617,8 @@ public class VerifiedCallTests
         FakeSource source = new([0x63, 0x01, 0x8c, 0xba, 0x7e, 0x40, 0x60, 0x00, 0x52,
             0x60, 0x20, 0x60, 0x00, 0xf3]);
         ISpecProvider specs = fromState ? new SingleReleaseSpecProvider(new StateBlockhashSpec(), 1, 1) : MainnetSpecProvider.Instance;
-        using VerifiedCall call = new(source, specs, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, specs, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
 
         object result = await rpc.InvokeAsync("eth_call", JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None);
 
@@ -645,7 +645,7 @@ public class VerifiedCallTests
             ? "600060015b8043034090911890600101806100c9116004575060005260206000f3"
             : "600060c85b804303409091189060019003806004575060005260206000f3");
         FakeSource source = new(code);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         byte[] expected = new byte[32];
         for (ulong depth = 1; depth <= 200; depth++)
         {
@@ -669,7 +669,7 @@ public class VerifiedCallTests
     {
         FakeSource source = new([0x43, 0x61, (byte)(depth >> 8), (byte)depth, 0x90, 0x03, 0x40,
             0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
 
         string result = await call.ExecuteAsync(source.Head,
             JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, CancellationToken.None);
@@ -686,7 +686,7 @@ public class VerifiedCallTests
     public async Task Blockhash_cache_is_bound_to_the_authenticated_branch()
     {
         FakeSource source = new([0x43, 0x60, 0x02, 0x90, 0x03, 0x40, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
         VerifiedHead first = source.Head;
         string original = await call.ExecuteAsync(first, transaction, false, CancellationToken.None);
@@ -709,7 +709,7 @@ public class VerifiedCallTests
         FakeSource source = new([0x60, 0x20, 0x60, 0x00, 0x60, 0x00, 0x60, 0x00, 0x73, .. second.Bytes,
             0x5a, 0xfa, 0x50, 0x60, 0x20, 0x60, 0x00, 0xf3]);
         source.ExtraContracts.Add(second, [0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
 
         string result = await call.ExecuteAsync(source.Head,
             JsonSerializer.SerializeToElement(new { to = Contract.ToString() }), false, CancellationToken.None);
@@ -725,7 +725,7 @@ public class VerifiedCallTests
     public async Task Execution_gas_is_capped_even_when_the_request_asks_for_more()
     {
         FakeSource source = new([0x5a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         string result = await call.ExecuteAsync(source.Head,
             JsonSerializer.SerializeToElement(new { to = Contract.ToString(), gas = "0xe4e1c0" }), false, CancellationToken.None);
         Assert.That(UInt256.Parse(result), Is.InRange((UInt256)9_900_000, (UInt256)10_000_000));
@@ -743,7 +743,7 @@ public class VerifiedCallTests
             code[i * 5 + 4] = 0x50;
         }
         FakeSource source = new(code);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
         if (accounts == 123)
             Assert.That(await call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None), Is.EqualTo("0x"));
@@ -758,15 +758,15 @@ public class VerifiedCallTests
     [Test]
     public void Verified_cache_admits_large_entries_after_warming_and_evicts_least_recently_used()
     {
-        using VerifiedMemoryCache cache = new();
-        for (int i = 0; i < 32; i++) cache.Set(i, i, VerifiedMemoryCache.Capacity / 32);
+        using BoundedMemoryCache cache = new();
+        for (int i = 0; i < 32; i++) cache.Set(i, i, BoundedMemoryCache.Capacity / 32);
         bool foundFirst = cache.TryGetValue(0, out int first);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(foundFirst, Is.True);
             Assert.That(first, Is.Zero);
         }
-        cache.Set("large", 42, VerifiedMemoryCache.Capacity / 2);
+        cache.Set("large", 42, BoundedMemoryCache.Capacity / 2);
         bool foundRetained = cache.TryGetValue(0, out int retained);
         bool foundEvicted = cache.TryGetValue(1, out int _);
         bool foundLarge = cache.TryGetValue("large", out int large);
@@ -778,8 +778,8 @@ public class VerifiedCallTests
             Assert.That(foundLarge, Is.True);
             Assert.That(large, Is.EqualTo(42));
         }
-        cache.Set("large", 43, VerifiedMemoryCache.Capacity);
-        cache.Set("oversized", 99, VerifiedMemoryCache.Capacity + 1);
+        cache.Set("large", 43, BoundedMemoryCache.Capacity);
+        cache.Set("oversized", 99, BoundedMemoryCache.Capacity + 1);
         bool foundOld = cache.TryGetValue(0, out int _);
         bool foundReplaced = cache.TryGetValue("large", out int replaced);
         bool foundOversized = cache.TryGetValue("oversized", out int _);
@@ -798,7 +798,7 @@ public class VerifiedCallTests
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
         Address warm = new("0x3234567890123456789012345678901234567890");
         source.ExtraContracts.Add(warm, [0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
         JsonElement warmRequest = JsonSerializer.SerializeToElement(new { to = warm.ToString() });
         string expected = await call.ExecuteAsync(source.Head, warmRequest, false, CancellationToken.None);
         TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -844,8 +844,8 @@ public class VerifiedCallTests
             return UInt256.Zero;
         };
         CallClock clock = new();
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance, clock);
-        SemaphoreSlim slots = (SemaphoreSlim)typeof(VerifiedCall).GetField("_slots", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(call)!;
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance, clock);
+        SemaphoreSlim slots = (SemaphoreSlim)typeof(EvmExecutor).GetField("_slots", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(call)!;
         using CancellationTokenSource caller = new();
         int held = 0;
         Task<string>? request = null;
@@ -911,8 +911,8 @@ public class VerifiedCallTests
     public async Task Header_must_match_the_authenticated_snapshot([Values("hash", "number", "state")] string corruption)
     {
         FakeSource source = new([0x00]) { HeaderCorruption = corruption };
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_call",
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, "finalized" }), CancellationToken.None));
@@ -929,8 +929,8 @@ public class VerifiedCallTests
         [Values("latest", "pending")] string selector)
     {
         FakeSource source = new([0x00]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call);
 
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, selector }), CancellationToken.None));
@@ -946,8 +946,8 @@ public class VerifiedCallTests
     public async Task Execution_defaults_missing_selector_to_latest([Values("eth_call", "eth_estimateGas")] string method)
     {
         FakeSource source = new([0x00]);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => throw new AssertionException("The finalized head must not be selected."),
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => throw new AssertionException("The finalized head must not be selected."),
             1, call, getLatestHead: () => source.Head);
 
         object result = await rpc.InvokeAsync(method,
@@ -972,8 +972,8 @@ public class VerifiedCallTests
             2 => new { blockHash = source.Head.BlockHash.ToString(), requireCanonical = true },
             _ => new { blockNumber = $"0x{source.Head.Number:x}" },
         };
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => finalized, 1, call, getLatestHead: () => latest);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => finalized, 1, call, getLatestHead: () => latest);
 
         object result = await rpc.InvokeAsync(method, JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() }, selector }), CancellationToken.None);
 
@@ -1000,7 +1000,7 @@ public class VerifiedCallTests
         FakeSource source = new(code);
         ConcurrentQueue<string> entries = new();
         ILogManager logs = DiagnosticLogs(debug, entries);
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, logs);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, logs);
         using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
         Activity? observed = null;
         source.ContractAccountResponse = _ =>
@@ -1065,7 +1065,7 @@ public class VerifiedCallTests
             await release.Task.WaitAsync(token);
             return (UInt256)42;
         };
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(true, entries));
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(true, entries));
         using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
         JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
         Task<string>[] requests = [call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None),
@@ -1099,7 +1099,7 @@ public class VerifiedCallTests
         FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
         ConcurrentQueue<string> entries = new();
         source.StorageResponse = (_, _) => Task.FromException<UInt256>(new InvalidDataException("test state failure"));
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(true, entries));
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(true, entries));
         using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
         JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
 
@@ -1136,15 +1136,15 @@ public class VerifiedCallTests
             await release.Task.WaitAsync(token);
             return (UInt256)42;
         };
-        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(false, entries));
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, DiagnosticLogs(false, entries));
         using Activity parent = new Activity("test-wallet-request").SetIdFormat(ActivityIdFormat.W3C).Start();
         JsonElement transaction = JsonSerializer.SerializeToElement(new { to = Contract.ToString() });
         Task<string> request = call.ExecuteAsync(source.Head, transaction, false, CancellationToken.None);
         try
         {
             await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
-            FieldInfo logger = typeof(VerifiedCall).GetField("_logger", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            logger.SetValue(call, DiagnosticLogs(true, entries).GetClassLogger<VerifiedCall>());
+            FieldInfo logger = typeof(EvmExecutor).GetField("_logger", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            logger.SetValue(call, DiagnosticLogs(true, entries).GetLogger(EvmExecutor.LogCategory));
             Assert.That(((Nethermind.Logging.ILogger)logger.GetValue(call)!).IsDebug, Is.True);
         }
         finally
@@ -1192,8 +1192,8 @@ public class VerifiedCallTests
             source.ExtraContracts[Eip8282Constants.BuilderExitRequestPredeployAddress] = [0x00];
         }
         SingleReleaseSpecProvider spec = new(fork switch { "prague" => Prague.Instance, "amsterdam" => Amsterdam.Instance, _ => Shanghai.Instance }, 1, 1);
-        using VerifiedCall call = new(source, spec, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
+        using EvmExecutor call = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
         object payload = new
         {
             blockStateCalls = new object[]
@@ -1250,8 +1250,8 @@ public class VerifiedCallTests
     {
         FakeSource source = new([0x00]);
         SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using VerifiedCall call = new(source, spec, NullLogManager.Instance);
-        using VerifiedRpc rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
+        using EvmExecutor call = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
         object payload = scenario switch
         {
             "empty" => new { blockStateCalls = Array.Empty<object>() },
@@ -1280,7 +1280,7 @@ public class VerifiedCallTests
         sink.When(logger => logger.Debug(Arg.Any<string>())).Do(call => entries.Enqueue(call.Arg<string>()));
         ILogManager logs = Substitute.For<ILogManager>();
         Nethermind.Logging.ILogger logger = new(sink);
-        logs.GetClassLogger<VerifiedCall>().Returns(logger);
+        logs.GetLogger(EvmExecutor.LogCategory).Returns(logger);
         return logs;
     }
 

@@ -6,11 +6,11 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class VerifiedSubscribeRpcModule : IVerifiedSubscribeRpcModule
+internal sealed class SubscribeRpcModule : ISubscribeRpcModule
 {
     public ResultWrapper<string> eth_subscribe(string subscriptionName, JsonElement? filter = null) =>
-        VerifiedSubscriptions.Subscribe(JsonRpcContext.Current?.DuplexClient, subscriptionName, filter);
+        RpcSubscriptions.Subscribe(JsonRpcContext.Current?.DuplexClient, subscriptionName, filter);
 
     public ResultWrapper<bool> eth_unsubscribe(string subscriptionId) =>
-        VerifiedSubscriptions.Unsubscribe(JsonRpcContext.Current?.DuplexClient, subscriptionId);
+        RpcSubscriptions.Unsubscribe(JsonRpcContext.Current?.DuplexClient, subscriptionId);
 }

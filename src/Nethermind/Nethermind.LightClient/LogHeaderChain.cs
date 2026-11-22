@@ -9,7 +9,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.LightClient;
 
-internal static class VerifiedLogHeaders
+internal static class LogHeaderChain
 {
     internal const int MaxBlocks = 512;
     internal const int HistoryCapacity = 262_144;
@@ -95,7 +95,7 @@ internal static class VerifiedLogHeaders
     internal static void Verify(BlockHeader? header, ulong number, Hash256 hash)
     {
         if (header is null || header.Number != number || header.Hash != hash
-            || Rlp.GetDecoderOrThrow<BlockHeader>().GetLength(header, RlpBehaviors.None) > VerifiedHeaderHistory.MaxHeaderBytes
+            || Rlp.GetDecoderOrThrow<BlockHeader>().GetLength(header, RlpBehaviors.None) > FinalizedHeaderHistory.MaxHeaderBytes
             || header.CalculateHash() != hash)
             throw new InvalidDataException("A log header differs from the authenticated chain.");
     }

@@ -20,12 +20,12 @@ using Nethermind.Logging;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId,
+internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider specProvider, ulong chainId,
     IBlockForRpcFactory blockForRpcFactory, SendPolicyRelay? sendPolicy = null) : IDisposable
 {
     private const int LogPrefetchLimit = 4;
     private readonly EthereumEcdsa _ecdsa = new(chainId);
-    private readonly VerifiedMemoryCache _transactionIndex = new();
+    private readonly BoundedMemoryCache _transactionIndex = new();
 
     internal JsonElement GetHeader(BlockHeader header) =>
         BoundedJson.ToElement(blockForRpcFactory.CreateHeader(header, specProvider));
@@ -246,7 +246,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         _transactionIndex.Set((block.Hash!, "transactions"), hashes, 1024L + 128L * hashes.Count);
     }
 
-    internal async Task<Hash256> SendRawTransactionAsync(VerifiedHead head, byte[] raw, VerifiedCall? frameVerifier,
+    internal async Task<Hash256> SendRawTransactionAsync(VerifiedHead head, byte[] raw, EvmExecutor? frameVerifier,
         CancellationToken cancellationToken)
     {
         if (raw.Length == 0) throw new RpcException(-32003, "Invalid transaction encoding.");
@@ -265,7 +265,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         {
             if (transaction.NetworkWrapper is not ShardBlobNetworkWrapper wrapper || !wrapper.HasFullBlobs())
                 throw new RpcException(-32003, "Blob transaction submission requires a complete sidecar.");
-            await KzgPolynomialCommitments.InitializeAsync(NullLogManager.Instance.GetClassLogger<VerifiedExecutionData>()).WaitAsync(cancellationToken);
+            await KzgPolynomialCommitments.InitializeAsync(NullLogManager.Instance.GetClassLogger<ExecutionData>()).WaitAsync(cancellationToken);
         }
         BlockHeader header = await source.GetHeaderAsync(head, cancellationToken);
         IReleaseSpec spec = specProvider.GetSpec(header);
@@ -336,12 +336,12 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         {
             BlockHeader header = headers[i];
             IReleaseSpec spec = specProvider.GetSpec(header);
-            baseFees[i] = VerifiedRpc.Quantity(header.BaseFeePerGas);
+            baseFees[i] = RpcBackend.Quantity(header.BaseFeePerGas);
             gasRatios[i] = header.GasLimit == 0 ? 0 : header.GasUsed / (double)header.GasLimit;
             UInt256 blobFee = UInt256.Zero;
             if (header.ExcessBlobGas is not null && !BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out blobFee))
                 throw new InvalidDataException("Blob base fee exceeds the supported integer range.");
-            blobFees[i] = VerifiedRpc.Quantity(blobFee);
+            blobFees[i] = RpcBackend.Quantity(blobFee);
             blobRatios[i] = spec.GasCosts.MaxBlobGasPerBlock == 0 ? 0 : (header.BlobGasUsed ?? 0) / (double)spec.GasCosts.MaxBlobGasPerBlock;
             if (rewards is not null)
             {
@@ -353,16 +353,16 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         }
         BlockHeader newest = headers[^1];
         IReleaseSpec newestSpec = specProvider.GetSpec(newest);
-        baseFees[^1] = VerifiedRpc.Quantity(BaseFeeCalculator.Calculate(newest, specProvider.GetSpecFor1559(newest.Number + 1)));
+        baseFees[^1] = RpcBackend.Quantity(BaseFeeCalculator.Calculate(newest, specProvider.GetSpecFor1559(newest.Number + 1)));
         ulong? nextExcess = BlobGasCalculator.CalculateExcessBlobGas(newest, newestSpec);
         UInt256 nextBlobFee = UInt256.Zero;
         if (nextExcess is ulong excess && !BlobGasCalculator.TryCalculateFeePerBlobGas(excess, newestSpec.BlobBaseFeeUpdateFraction, out nextBlobFee))
             throw new InvalidDataException("Blob base fee exceeds the supported integer range.");
-        blobFees[^1] = VerifiedRpc.Quantity(nextBlobFee);
+        blobFees[^1] = RpcBackend.Quantity(nextBlobFee);
         object result = rewards is null
             ? new
             {
-                oldestBlock = VerifiedRpc.Quantity(headers[0].Number),
+                oldestBlock = RpcBackend.Quantity(headers[0].Number),
                 baseFeePerGas = baseFees,
                 gasUsedRatio = gasRatios,
                 baseFeePerBlobGas = blobFees,
@@ -370,7 +370,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
             }
             : new
             {
-                oldestBlock = VerifiedRpc.Quantity(headers[0].Number),
+                oldestBlock = RpcBackend.Quantity(headers[0].Number),
                 baseFeePerGas = baseFees,
                 gasUsedRatio = gasRatios,
                 baseFeePerBlobGas = blobFees,
@@ -402,7 +402,7 @@ internal sealed class VerifiedExecutionData(IExecutionStateSource source, ISpecP
         {
             ulong threshold = (ulong)(previous * percentiles[i] / 100);
             while (index + 1 < ordered.Length && consumed < threshold) consumed += ordered[++index].Gas;
-            result[i] = VerifiedRpc.Quantity(ordered.Length == 0 ? UInt256.Zero : ordered[index].Tip);
+            result[i] = RpcBackend.Quantity(ordered.Length == 0 ? UInt256.Zero : ordered[index].Tip);
         }
         return result;
     }

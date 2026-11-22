@@ -424,7 +424,7 @@ public class HostTests
         string[] parts = ("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"" + method + "\",\"params\":" + parameters + "}").Split("INVALID");
         byte[] invalid = invalidUtf8 ? [0xff] : Encoding.UTF8.GetBytes("\\ud800");
         byte[] payload = [.. Encoding.UTF8.GetBytes(parts[0]), .. invalid, .. Encoding.UTF8.GetBytes(parts[1])];
-        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Parameters must be checked before fetching a head."), 1,
+        using RpcBackend rpc = new(null!, () => throw new AssertionException("Parameters must be checked before fetching a head."), 1,
             specProvider: MainnetSpecProvider.Instance);
         ILogger logger = Substitute.For<ILogger>();
 
@@ -701,7 +701,7 @@ public class HostTests
         LightClientMetrics metrics = new("mainnet", status.Read);
         app.MapGet("/status", status.Read);
         app.MapGet("/metrics", metrics.WriteAsync);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         IJsonRpcProcessor processor = rpc.CreateProcessor(new RpcServiceDiagnostics(rpc.Service, NullLogger.Instance, metrics));
         app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, processor, NullLogger.Instance, metrics: metrics));
         await app.StartAsync();
@@ -746,7 +746,7 @@ public class HostTests
     {
         await using WebApplication app = CreateApp("http://127.0.0.1:0");
         LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
-        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using RpcBackend rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         app.MapPost("/", (HttpContext context) => RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance));
         await app.StartAsync();
         using HttpClient client = new();
@@ -875,7 +875,7 @@ public class HostTests
         LightClientHost.ConfigureRequestPolicy(app, "http://127.0.0.1:0");
         app.UseWebSockets();
         app.MapGet("/status", status.Read);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         app.MapPost("/", (HttpContext context) => RpcEndpoint.HandleAsync(context, rpc.Processor, NullLogger.Instance));
         app.MapGet("/ws", status.HandleWebSocketAsync);
         TaskCompletionSource initialized = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -991,8 +991,8 @@ public class HostTests
             queried.Add((call.ArgAt<VerifiedHead>(0), call.ArgAt<Address>(1)));
             return Task.FromResult(new Account(7, 42));
         });
-        using VerifiedRpc backend = new(source, () => head, 11155111, getLatestHead: () => head);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => head, 11155111, getLatestHead: () => head);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         IJsonRpcProcessor processor = rpc.CreateProcessor(new StartedRpcService(rpc.Service, entered));
         Task pending = RpcEndpoint.HandleAsync(context, processor, NullLogger.Instance, clock,
             outcome == "mixed-cancel" ? token : stopping.Token);
@@ -1258,7 +1258,7 @@ public class LightClientMetricsTests
     {
         LightClientStatus status = new(1, [], _ => false, _ => false);
         LightClientMetrics metrics = new("mainnet", status.Read);
-        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using RpcBackend rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         DefaultHttpContext context = new();
         using MemoryStream input = new(Encoding.UTF8.GetBytes("""
             [
@@ -1665,8 +1665,8 @@ public class LightClientStatusTests
             Head.StateRoot.ToString(), 3, 4, true, "complete", null, null);
         HistoryProgress history = new(100, 200, 50, 200, true, null);
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
-        using VerifiedRpc backend = new(source, () => Head, 11155111, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 11155111, getLatestHead: () => Head);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         status.Initialize(backend, _ => Task.CompletedTask, () => Head, () => Head, target =>
         {
             Assert.That(target, Is.EqualTo(Head));
@@ -1725,8 +1725,8 @@ public class LightClientStatusTests
     {
         internal LightClientStatus Status { get; } = new(11155111, [], _ => true, _ => true);
         internal IExecutionStateSource Source { get; } = Substitute.For<IExecutionStateSource>();
-        internal VerifiedRpc Backend { get; }
-        internal VerifiedRpcService Rpc { get; }
+        internal RpcBackend Backend { get; }
+        internal RpcService Rpc { get; }
 
         internal Runtime()
         {

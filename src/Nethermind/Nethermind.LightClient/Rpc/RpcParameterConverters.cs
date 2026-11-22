@@ -10,7 +10,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal static class VerifiedRpcParameterConverters
+internal static class RpcParameterConverters
 {
     public sealed class StrictAddressConverter : JsonConverter<Address>
     {

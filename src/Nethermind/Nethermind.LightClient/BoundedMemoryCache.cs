@@ -3,7 +3,7 @@
 
 namespace Nethermind.LightClient;
 
-internal sealed class VerifiedMemoryCache : IDisposable
+internal sealed class BoundedMemoryCache : IDisposable
 {
     internal const long Capacity = 32 * 1024 * 1024;
     private readonly Lock _gate = new();

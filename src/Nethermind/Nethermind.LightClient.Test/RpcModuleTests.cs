@@ -16,7 +16,7 @@ using RpcTransport = Nethermind.JsonRpc.Modules.RpcEndpoint;
 
 namespace Nethermind.LightClient.Test;
 
-public class VerifiedRpcModuleTests
+public class RpcModuleTests
 {
     private static readonly Address Address = new("0x1000000000000000000000000000000000000001");
     private static readonly VerifiedHead Head = new(400, 200, Keccak.Compute("typed head"), Keccak.Compute("typed state"));
@@ -26,8 +26,8 @@ public class VerifiedRpcModuleTests
     {
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
         source.GetAccountAsync(Head, Address, Arg.Any<CancellationToken>()).Returns(Task.FromResult(new Account(7, 42)));
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(backend, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(backend, NullLogManager.Instance);
         JsonRpcRequest request = Request("eth_getBalance", JsonSerializer.SerializeToElement(new[] { Address.ToString(), "latest" }));
 
         using JsonRpcResponse response = await rpc.Service.SendRequestAsync(request, new JsonRpcContext(RpcTransport.Http));
@@ -59,8 +59,8 @@ public class VerifiedRpcModuleTests
     public async Task Invalid_typed_parameters_are_rejected_before_reading_state(string method, string parameters)
     {
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(backend, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(backend, NullLogManager.Instance);
         using JsonDocument input = JsonDocument.Parse(parameters);
 
         using JsonRpcResponse response = await rpc.Service.SendRequestAsync(Request(method, input.RootElement),
@@ -79,8 +79,8 @@ public class VerifiedRpcModuleTests
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
         source.GetAccountAsync(Head, Address, Arg.Any<CancellationToken>()).Returns(Task.FromResult(new Account(7, 42)));
         source.GetStorageAsync(Head, Address, Arg.Any<Account>(), (UInt256)1, Arg.Any<CancellationToken>()).Returns(Task.FromResult((UInt256)5));
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(backend, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(backend, NullLogManager.Instance);
         using JsonDocument input = JsonDocument.Parse("""["\u0030x1000000000000000000000000000000000000001","\u0030x01"]""");
 
         object result = await rpc.InvokeAsync("eth_getStorageAt", input.RootElement, CancellationToken.None);
@@ -92,7 +92,7 @@ public class VerifiedRpcModuleTests
     public async Task Invalid_versions_are_rejected_before_waiting_for_startup([Values(null, "", "1.0")] string? version)
     {
         LightClientStatus status = new(1, [], _ => false, _ => false);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         JsonRpcRequest request = Request("eth_getBalance", default);
         request.JsonRpc = version!;
         ValueTask<JsonRpcResponse> pending = rpc.Service.SendRequestAsync(request, new JsonRpcContext(RpcTransport.Http));
@@ -112,7 +112,7 @@ public class VerifiedRpcModuleTests
     public async Task Missing_method_is_rejected_before_waiting_for_startup()
     {
         LightClientStatus status = new(1, [], _ => false, _ => false);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         JsonRpcRequest request = Request(null!, default);
 
         using JsonRpcResponse response = await rpc.Service.SendRequestAsync(request, new JsonRpcContext(RpcTransport.Http));
@@ -128,8 +128,8 @@ public class VerifiedRpcModuleTests
     public async Task Method_names_are_used_literally([Values("", " eth_chainId", "eth_chainId ", "\teth_chainId")] string method)
     {
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(backend, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(backend, NullLogManager.Instance);
         JsonRpcRequest request = Request(method, default);
 
         using JsonRpcResponse response = await rpc.Service.SendRequestAsync(request, new JsonRpcContext(RpcTransport.Http));
@@ -146,8 +146,8 @@ public class VerifiedRpcModuleTests
     public async Task Proof_key_limit_is_applied_before_typed_array_decoding()
     {
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(backend, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(backend, NullLogManager.Instance);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { Address.ToString(), Enumerable.Repeat("0x0", 65).ToArray() });
 
         using JsonRpcResponse response = await rpc.Service.SendRequestAsync(Request("eth_getProof", parameters), new JsonRpcContext(RpcTransport.Http));
@@ -163,8 +163,8 @@ public class VerifiedRpcModuleTests
     public void Composition_exposes_only_supported_modules_and_endpoint_methods()
     {
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(backend, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(backend, NullLogManager.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -187,8 +187,8 @@ public class VerifiedRpcModuleTests
             call.ArgAt<CancellationToken>(2).ThrowIfCancellationRequested();
             return Account.TotallyEmpty;
         });
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(backend, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(backend, NullLogManager.Instance);
         JsonRpcContext context = new(RpcTransport.Ws) { RequestAborted = deadline.Token };
 
         using JsonRpcResponse response = await rpc.Service.SendRequestAsync(
@@ -202,7 +202,7 @@ public class VerifiedRpcModuleTests
     public async Task Context_deadline_expires_while_waiting_for_backend_initialization(CancellationToken token)
     {
         LightClientStatus status = new(1, [], _ => false, _ => false);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         using CancellationTokenSource deadline = new();
         JsonRpcContext context = new(RpcTransport.Ws) { RequestAborted = deadline.Token };
         Task<JsonRpcResponse> pending = rpc.Service.SendRequestAsync(
@@ -226,8 +226,8 @@ public class VerifiedRpcModuleTests
     {
         LightClientStatus status = new(1, [], _ => true, _ => true);
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
-        using VerifiedRpc backend = new(source, () => Head, 1, getLatestHead: () => Head);
-        using VerifiedRpcService rpc = new(status, NullLogManager.Instance);
+        using RpcBackend backend = new(source, () => Head, 1, getLatestHead: () => Head);
+        using RpcService rpc = new(status, NullLogManager.Instance);
         IJsonRpcProcessor defaultProcessor = rpc.Processor;
         RecordingService observer = new(rpc.Service);
         IJsonRpcProcessor processor = rpc.CreateProcessor(observer);

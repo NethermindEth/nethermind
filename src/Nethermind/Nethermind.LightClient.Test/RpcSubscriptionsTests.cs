@@ -22,7 +22,7 @@ using Nethermind.State.Proofs;
 namespace Nethermind.LightClient.Test;
 
 [TestFixture]
-public class VerifiedSubscriptionsTests
+public class RpcSubscriptionsTests
 {
     private static readonly Address Address = new("0x1234567890123456789012345678901234567890");
     private static readonly Hash256 Topic = Keccak.Compute("subscription topic");
@@ -122,7 +122,7 @@ public class VerifiedSubscriptionsTests
     public async Task Subscription_logs_have_capacity_reserved_from_external_admission([Values] bool cancel)
     {
         using Source source = new();
-        using VerifiedRpc rpc = new(source, () => Harness.Head(source.Current), 1, specProvider: MainnetSpecProvider.Instance);
+        using RpcBackend rpc = new(source, () => Harness.Head(source.Current), 1, specProvider: MainnetSpecProvider.Instance);
         await using ExecutionLoad load = new();
         await load.Entered;
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { source.Current.Hash!.ToString(), false });
@@ -561,7 +561,7 @@ public class VerifiedSubscriptionsTests
             Assert.That(failed[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
             Assert.That(failed[1].GetProperty("id").GetInt32(), Is.EqualTo(1));
         }
-        for (int i = 2; i < VerifiedSubscriptions.MaxSubscriptions; i++)
+        for (int i = 2; i < RpcSubscriptions.MaxSubscriptions; i++)
             acknowledged.Add((await socket.Request("eth_subscribe", "newHeads")).GetProperty("result").GetString()!);
 
         Block next = harness.Source.Add(11, harness.Source.Current, 1);
@@ -627,7 +627,7 @@ public class VerifiedSubscriptionsTests
             Assert.That(response[0].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32005));
             Assert.That(response.GetArrayLength(), Is.EqualTo(notification ? 1 : 2));
         }
-        for (int i = 0; i < VerifiedSubscriptions.MaxSubscriptions; i++)
+        for (int i = 0; i < RpcSubscriptions.MaxSubscriptions; i++)
             Assert.That((await socket.Request("eth_subscribe", "newHeads")).TryGetProperty("result", out _), Is.True);
     }
 
@@ -826,10 +826,10 @@ public class VerifiedSubscriptionsTests
     {
         await using Harness harness = new();
         FakeSocket first = harness.Connect();
-        for (int i = 0; i < VerifiedSubscriptions.MaxSubscriptions; i++)
+        for (int i = 0; i < RpcSubscriptions.MaxSubscriptions; i++)
             Assert.That((await first.Request("eth_subscribe", "newHeads")).TryGetProperty("result", out _), Is.True);
         Assert.That((await first.Request("eth_subscribe", "newHeads")).GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(-32000));
-        for (int i = 1; i < VerifiedSubscriptions.MaxClients; i++)
+        for (int i = 1; i < RpcSubscriptions.MaxClients; i++)
         {
             FakeSocket socket = harness.Connect();
             await socket.Request("eth_chainId");
@@ -975,9 +975,9 @@ public class VerifiedSubscriptionsTests
     private sealed class Harness : IAsyncDisposable
     {
         internal Source Source { get; } = new();
-        private readonly VerifiedRpc _rpc;
-        private readonly VerifiedRpcService _service;
-        private readonly VerifiedSubscriptions _subscriptions;
+        private readonly RpcBackend _rpc;
+        private readonly RpcService _service;
+        private readonly RpcSubscriptions _subscriptions;
         internal List<Task> Tasks { get; } = [];
         internal List<HttpContext> Contexts { get; } = [];
 
@@ -1025,7 +1025,7 @@ public class VerifiedSubscriptionsTests
     {
         private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly Source _source;
-        private readonly VerifiedRpc _rpc;
+        private readonly RpcBackend _rpc;
         private readonly Task<object>[] _requests;
         internal Task Entered => _source.BlocksStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
@@ -1135,7 +1135,7 @@ public class VerifiedSubscriptionsTests
         internal void ResumeSend() => _resume.Writer.TryWrite(true);
         internal async Task<JsonElement> Request(string method, params object[] parameters)
         {
-            Push(VerifiedSubscriptionsTests.Request(method, parameters));
+            Push(RpcSubscriptionsTests.Request(method, parameters));
             return await Next();
         }
         internal async Task<JsonElement> Next()

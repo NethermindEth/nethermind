@@ -15,7 +15,7 @@ internal static class ConsensusSync
 
     /// <summary>Serializes live authentication, durable persistence and head publication.</summary>
     /// <remarks>The caller owns the gate and disposes it after gossip handlers and repair workers have joined.</remarks>
-    internal sealed class Processor(LightClientStore store, VerifiedConsensusJournal journal, BeaconChainSpec spec,
+    internal sealed class Processor(LightClientStore store, ConsensusJournal journal, BeaconChainSpec spec,
         TimeProvider clock, SemaphoreSlim gate, Action publish, Action stopApplication, ILogger logger,
         CancellationToken stoppingToken)
     {
@@ -114,7 +114,7 @@ internal static class ConsensusSync
     }
 
     internal static async Task<(LightClientStore Store, bool Resumed)> BootstrapAsync(
-        BeaconChainSpec spec, Hash256 checkpoint, VerifiedConsensusJournal journal,
+        BeaconChainSpec spec, Hash256 checkpoint, ConsensusJournal journal,
         Func<Hash256, Func<LightClientBootstrap, CancellationToken, Task>, CancellationToken, Task<LightClientBootstrap>> fetchBootstrap,
         TimeProvider clock, CancellationToken cancellationToken)
     {

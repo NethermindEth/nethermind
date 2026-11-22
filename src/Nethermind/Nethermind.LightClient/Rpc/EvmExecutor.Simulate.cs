@@ -46,7 +46,7 @@ using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed partial class VerifiedCall
+internal sealed partial class EvmExecutor
 {
     // Every state item a simulation touches first costs a proof round trip, so the limits stay far below a full node's.
     private readonly JsonRpcConfig _simulateConfig = new()
@@ -252,7 +252,7 @@ internal sealed partial class VerifiedCall
     }
 
     /// <summary>The part of <see cref="IBlockchainBridge"/> that <see cref="SimulateTxExecutor{TTrace}"/> uses.</summary>
-    private sealed class SimulationBridge(VerifiedCall owner, ILifetimeScope environment, Dictionary<ulong, Hash256> simulatedHashes, ulong chainId)
+    private sealed class SimulationBridge(EvmExecutor owner, ILifetimeScope environment, Dictionary<ulong, Hash256> simulatedHashes, ulong chainId)
         : IBlockchainBridge
     {
         public ulong GetChainId() => chainId;

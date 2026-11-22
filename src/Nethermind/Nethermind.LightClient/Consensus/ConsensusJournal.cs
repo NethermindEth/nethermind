@@ -15,7 +15,7 @@ namespace Nethermind.LightClient.Consensus;
 /// retained update is verified again; the saved files never become a new trust anchor. One synchronization owner
 /// calls the mutating methods after successful <see cref="LightClientStore.Process(LightClientUpdate, ulong)"/>.
 /// </remarks>
-internal sealed class VerifiedConsensusJournal
+internal sealed class ConsensusJournal
 {
     private const int MaxRecordBytes = 256 * 1024;
     private const int MaxChainBytes = 128 * 1024 * 1024;
@@ -47,7 +47,7 @@ internal sealed class VerifiedConsensusJournal
     private int _previousMaxParticipants;
     private int _currentMaxParticipants;
 
-    internal VerifiedConsensusJournal(string directory, BeaconChainSpec spec, string network, Hash256 trustedCheckpoint, ILogger logger)
+    internal ConsensusJournal(string directory, BeaconChainSpec spec, string network, Hash256 trustedCheckpoint, ILogger logger)
     {
         _spec = spec;
         _checkpoint = trustedCheckpoint;

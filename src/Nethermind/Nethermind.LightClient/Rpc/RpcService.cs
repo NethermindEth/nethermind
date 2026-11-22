@@ -16,15 +16,15 @@ using Testably.Abstractions;
 namespace Nethermind.LightClient.Rpc;
 
 /// <summary>Hosts the supported typed RPC modules over the shared JSON-RPC service and processor.</summary>
-internal sealed class VerifiedRpcService : IDisposable
+internal sealed class RpcService : IDisposable
 {
-    private readonly VerifiedRpc? _backend;
+    private readonly RpcBackend? _backend;
     private readonly LightClientStatus? _status;
     private readonly IContainer _container;
     private readonly Lock _processorLock = new();
     private IJsonRpcProcessor? _processor;
 
-    internal VerifiedRpcService(VerifiedRpc backend, ILogManager logs)
+    internal RpcService(RpcBackend backend, ILogManager logs)
     {
         _backend = backend;
         ChainId = backend.ChainId;
@@ -33,7 +33,7 @@ internal sealed class VerifiedRpcService : IDisposable
         Service = _container.Resolve<IJsonRpcService>();
     }
 
-    internal VerifiedRpcService(LightClientStatus status, ILogManager logs)
+    internal RpcService(LightClientStatus status, ILogManager logs)
     {
         _status = status;
         ChainId = status.ChainId;
@@ -72,7 +72,7 @@ internal sealed class VerifiedRpcService : IDisposable
 
     internal SyncingResult GetSyncing() => _status?.GetSyncing() ?? _backend!.GetSyncing();
 
-    internal ValueTask<VerifiedRpc> GetBackendAsync(CancellationToken token, bool waitForStartup = true)
+    internal ValueTask<RpcBackend> GetBackendAsync(CancellationToken token, bool waitForStartup = true)
     {
         token.ThrowIfCancellationRequested();
         return _status is null ? ValueTask.FromResult(_backend!) : _status.GetBackendAsync(token, waitForStartup);
@@ -86,10 +86,10 @@ internal sealed class VerifiedRpcService : IDisposable
         .AddSingleton<IJsonSerializer, EthereumJsonSerializer>()
         .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
         .AddSingleton<GCKeeper>()
-        .RegisterSingletonJsonRpcModule<IVerifiedEthRpcModule, VerifiedEthRpcModule>()
-        .RegisterSingletonJsonRpcModule<IVerifiedNetRpcModule, VerifiedNetRpcModule>()
-        .RegisterSingletonJsonRpcModule<IVerifiedWeb3RpcModule, VerifiedWeb3RpcModule>()
-        .RegisterSingletonJsonRpcModule<IVerifiedSubscribeRpcModule, VerifiedSubscribeRpcModule>()
+        .RegisterSingletonJsonRpcModule<IEthRpcModule, EthRpcModule>()
+        .RegisterSingletonJsonRpcModule<INetRpcModule, NetRpcModule>()
+        .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
+        .RegisterSingletonJsonRpcModule<ISubscribeRpcModule, SubscribeRpcModule>()
         .AddSingleton<IRpcModuleProvider, RpcModuleProvider>()
         .AddSingleton<IJsonRpcService, JsonRpcService>()
         .AddDecorator<IJsonRpcService, PolicyService>()
@@ -98,7 +98,7 @@ internal sealed class VerifiedRpcService : IDisposable
 
     public void Dispose() => _container.Dispose();
 
-    private sealed class PolicyService(IJsonRpcService inner, VerifiedRpcService owner) : IJsonRpcService
+    private sealed class PolicyService(IJsonRpcService inner, RpcService owner) : IJsonRpcService
     {
         public async ValueTask<JsonRpcResponse> SendRequestAsync(JsonRpcRequest request, JsonRpcContext context, CancellationToken token)
         {
@@ -111,7 +111,7 @@ internal sealed class VerifiedRpcService : IDisposable
                 requestToken.ThrowIfCancellationRequested();
                 if (owner._status is not null && !IsLocal(request.Method))
                 {
-                    ValueTask<VerifiedRpc> startup = owner.GetBackendAsync(requestToken, waitForStartup: request.Method != "eth_sendRawTransaction");
+                    ValueTask<RpcBackend> startup = owner.GetBackendAsync(requestToken, waitForStartup: request.Method != "eth_sendRawTransaction");
                     if (!startup.IsCompletedSuccessfully) await startup.AsTask().WaitAsync(token);
                 }
                 bool enabled = owner.Modules.Check(request.Method, context, out _, out RpcModuleProvider.ResolvedMethodInfo? method) == ModuleResolution.Enabled;
@@ -120,7 +120,7 @@ internal sealed class VerifiedRpcService : IDisposable
                     return inner.GetErrorResponse(-32601, "Method is not supported by the verified RPC.", request.Id, request.Method);
                 if (enabled && request.Method == "eth_unsubscribe" && IsEmptySubscriptionId(request))
                 {
-                    ResultWrapper<bool> removed = VerifiedSubscriptions.Unsubscribe(context.DuplexClient, string.Empty);
+                    ResultWrapper<bool> removed = RpcSubscriptions.Unsubscribe(context.DuplexClient, string.Empty);
                     removed.Id = request.Id;
                     return removed;
                 }

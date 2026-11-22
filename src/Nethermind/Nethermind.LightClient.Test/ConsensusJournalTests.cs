@@ -13,7 +13,7 @@ using Nethermind.LightClient.Consensus;
 namespace Nethermind.LightClient.Test;
 
 [TestFixture]
-public class VerifiedConsensusJournalTests
+public class ConsensusJournalTests
 {
     private string _directory = null!;
     private RecordingLogger _logger = null!;
@@ -35,13 +35,13 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientOptimisticUpdate first = AsOptimistic(ConsensusTests.Update(1, 2, 3, 1, participants: 1));
         store.Process(first, 3);
         await journal.AppendAsync(first, store, CancellationToken.None);
-        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(VerifiedConsensusJournal)
+        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(ConsensusJournal)
             .GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(journal)!;
         while (records.Count < 4096) records.Add(records[0]);
         LightClientOptimisticUpdate second = AsOptimistic(ConsensusTests.Update(1, 3, 4, 1, participants: 2));
@@ -65,7 +65,7 @@ public class VerifiedConsensusJournalTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(spec, checkpoint);
+        ConsensusJournal journal = Journal(spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         for (byte period = 0; period < 4; period++)
         {
@@ -101,7 +101,7 @@ public class VerifiedConsensusJournalTests
             Assert.That(store.CurrentMaxParticipants, Is.Zero);
         }
 
-        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(VerifiedConsensusJournal)
+        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(ConsensusJournal)
             .GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(journal)!;
         LightClientFinalityUpdate repeated = LightClientWireCodec.DecodeFinality(records[^1].Data, spec);
         store.Process(repeated, repeated.SignatureSlot);
@@ -124,7 +124,7 @@ public class VerifiedConsensusJournalTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         foreach (LightClientUpdate update in new[]
         {
@@ -180,7 +180,7 @@ public class VerifiedConsensusJournalTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate update = ConsensusTests.Update(2, 3, 4, 1, participants: 341);
         store.Process(update, 4);
@@ -218,7 +218,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate initial = ConsensusTests.Update(2, 3, 4, 1);
@@ -227,7 +227,7 @@ public class VerifiedConsensusJournalTests
         LightClientFinalityUpdate finality = AsFinality(ConsensusTests.Update(5, 6, 7, 1));
         store.Process(finality, 7);
         await journal.AppendAsync(finality, store, CancellationToken.None);
-        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(VerifiedConsensusJournal)
+        List<(byte Kind, byte[] Data)> records = (List<(byte, byte[])>)typeof(ConsensusJournal)
             .GetField("_updates", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(journal)!;
         while (records.Count < 4096) records.Add(records[0]);
         LightClientOptimisticUpdate peak = AsOptimistic(ConsensusTests.Update(1, 8, 9, 1, participants: 512));
@@ -250,7 +250,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(8190, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         Assert.That(await journal.LoadAsync(8190, CancellationToken.None), Is.Null);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 8190);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
@@ -283,7 +283,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientOptimisticUpdate participation = AsOptimistic(ConsensusTests.Update(1, 2, 3, 1));
@@ -313,7 +313,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(8190, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 8190);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate learning = ConsensusTests.Update(8190, 8190, 8191, 1, nextKey: 2);
@@ -355,7 +355,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(8188, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 8188);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate learning = ConsensusTests.Update(8188, 8188, 8189, 1, participants: 342, nextKey: 2);
@@ -389,7 +389,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientOptimisticUpdate participation = AsOptimistic(ConsensusTests.Update(1, 2, 3, 1));
@@ -416,7 +416,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate update = ConsensusTests.Update(2, 3, 4, 1, nextKey: 2);
@@ -458,7 +458,7 @@ public class VerifiedConsensusJournalTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(spec, checkpoint);
+        ConsensusJournal journal = Journal(spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate update = ConsensusTests.Update(2, 3, 4, 1);
         store.Process(update, 4);
@@ -477,7 +477,7 @@ public class VerifiedConsensusJournalTests
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientOptimisticUpdate participation = AsOptimistic(ConsensusTests.Update(1, 2, 3, 1));
@@ -504,7 +504,7 @@ public class VerifiedConsensusJournalTests
     public async Task Latest_optimistic_progress_survives_restart_and_a_later_committee_record(
         [Values("full", "finality", "optimistic")] string shape)
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
         LightClientUpdate later = ConsensusTests.Update(4, 7, 8, 1);
         switch (shape)
         {
@@ -555,7 +555,7 @@ public class VerifiedConsensusJournalTests
     public async Task Authenticated_future_records_survive_a_clock_correction(
         [Values("head", "optimistic", "best")] string record)
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = record == "best"
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = record == "best"
             ? await JournalWithWeakCandidateAsync()
             : await JournalWithOptionalFinalizedHeadAsync();
         ulong currentSlot = 5, correctedSlot = 6;
@@ -577,7 +577,7 @@ public class VerifiedConsensusJournalTests
             correctedSlot = 200;
         }
         Dictionary<string, byte[]> files = Directory.GetFiles(_directory).ToDictionary(static path => path, File.ReadAllBytes);
-        VerifiedConsensusJournal replay = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal replay = Journal(ConsensusTests.Spec, checkpoint);
 
         Assert.That(async () => await replay.LoadAsync(currentSlot, CancellationToken.None), Throws.InstanceOf<LightClientFutureUpdateException>());
         foreach ((string path, byte[] data) in files)
@@ -600,7 +600,7 @@ public class VerifiedConsensusJournalTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(2, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 2);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
 
         Assert.That(async () => await journal.LoadAsync(1, CancellationToken.None), Throws.TypeOf<LightClientClockException>());
@@ -615,7 +615,7 @@ public class VerifiedConsensusJournalTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate candidate = ConsensusTests.Update(2, 3, 4, 1, participants: 1, nextKey: 2);
         store.Process(candidate, 4);
@@ -676,7 +676,7 @@ public class VerifiedConsensusJournalTests
     [Test]
     public async Task Live_finality_processing_reports_only_actual_finalized_progress([Values] bool advances)
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
         ConsensusTests.RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds((long)(ConsensusTests.Spec.GenesisTime + 8 * ConsensusTests.Spec.SecondsPerSlot)));
         using SemaphoreSlim gate = new(1, 1);
         int published = 0;
@@ -723,7 +723,7 @@ public class VerifiedConsensusJournalTests
     [Test]
     public async Task Corrupt_optimistic_head_preserves_the_latest_authenticated_finalized_head()
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
         LightClientOptimisticUpdate optimistic = AsOptimistic(ConsensusTests.Update(4, 7, 8, 1));
         store.Process(optimistic, 8);
         await journal.AppendAsync(optimistic, store, CancellationToken.None);
@@ -755,7 +755,7 @@ public class VerifiedConsensusJournalTests
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(spec, checkpoint);
+        ConsensusJournal journal = Journal(spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientOptimisticUpdate peak = AsOptimistic(ConsensusTests.Update(1, 2, 3, 1));
         store.Process(peak, 3);
@@ -773,7 +773,7 @@ public class VerifiedConsensusJournalTests
     public async Task A_better_committee_candidate_survives_restart_and_later_optimistic_progress(
         [Values] bool advanceOptimistic)
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
         if (advanceOptimistic)
         {
             LightClientOptimisticUpdate later = AsOptimistic(ConsensusTests.Update(1, 200, 201, 1, participants: 100));
@@ -803,7 +803,7 @@ public class VerifiedConsensusJournalTests
     [Test]
     public async Task A_candidate_received_after_the_optional_finalized_head_restores_without_changing_other_state()
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
         LightClientUpdate weak = ConsensusTests.Update(5, 50, 51, 1, participants: 100, nextKey: 2);
         store.Process(weak, 51);
         await journal.AppendAsync(weak, store, CancellationToken.None);
@@ -830,7 +830,7 @@ public class VerifiedConsensusJournalTests
     [Test]
     public async Task A_candidate_cleared_by_finality_cannot_be_resurrected_by_a_stale_side_file()
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithOptionalFinalizedHeadAsync();
         LightClientUpdate weak = ConsensusTests.Update(5, 50, 51, 1, participants: 100, nextKey: 2);
         store.Process(weak, 51);
         await journal.AppendAsync(weak, store, CancellationToken.None);
@@ -857,7 +857,7 @@ public class VerifiedConsensusJournalTests
     [Test]
     public async Task A_candidate_cannot_survive_an_interrupted_optimistic_generation_change()
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
         string path = Directory.GetFiles(_directory, "*.best").Single();
         byte[] previous = await File.ReadAllBytesAsync(path);
         LightClientOptimisticUpdate later = AsOptimistic(ConsensusTests.Update(1, 200, 201, 1, participants: 100));
@@ -878,7 +878,7 @@ public class VerifiedConsensusJournalTests
     public async Task Candidate_signature_and_committee_proof_are_reverified_even_with_a_valid_checksum(
         [Values] bool signature)
     {
-        (LightClientStore _, VerifiedConsensusJournal _, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
+        (LightClientStore _, ConsensusJournal _, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
         string path = Directory.GetFiles(_directory, "*.best").Single();
         byte[] file = await File.ReadAllBytesAsync(path);
         LightClientUpdate candidate = LightClientWireCodec.DecodeUpdate(file.AsSpan(140, file.Length - 172), ConsensusTests.Spec);
@@ -902,7 +902,7 @@ public class VerifiedConsensusJournalTests
     [Test]
     public async Task Candidate_replacements_remain_bounded_without_growing_the_committee_chain()
     {
-        (LightClientStore store, VerifiedConsensusJournal journal, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
+        (LightClientStore store, ConsensusJournal journal, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
         string chainPath = Directory.GetFiles(_directory, "*.chain").Single();
         byte[] chain = await File.ReadAllBytesAsync(chainPath);
         for (ulong attested = 49; attested >= 40; attested--)
@@ -924,8 +924,8 @@ public class VerifiedConsensusJournalTests
     [Test]
     public async Task A_saved_candidate_is_folded_into_the_chain_before_timeout_recovery()
     {
-        (LightClientStore _, VerifiedConsensusJournal _, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        (LightClientStore _, ConsensusJournal _, Hash256 checkpoint) = await JournalWithWeakCandidateAsync();
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         LightClientStore resumed = (await journal.LoadAsync(8194, CancellationToken.None))!;
         LightClientUpdate candidate = resumed.BestUpdate!;
         Assert.That(resumed.ForceUpdate(8194), Is.True);
@@ -942,12 +942,12 @@ public class VerifiedConsensusJournalTests
         }
     }
 
-    private async Task<(LightClientStore Store, VerifiedConsensusJournal Journal, Hash256 Checkpoint)> JournalWithWeakCandidateAsync()
+    private async Task<(LightClientStore Store, ConsensusJournal Journal, Hash256 Checkpoint)> JournalWithWeakCandidateAsync()
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientOptimisticUpdate optimistic = AsOptimistic(ConsensusTests.Update(1, 100, 101, 1, participants: 100));
         store.Process(optimistic, 101);
@@ -958,15 +958,15 @@ public class VerifiedConsensusJournalTests
         return (store, journal, checkpoint);
     }
 
-    private VerifiedConsensusJournal Journal(BeaconChainSpec spec, Hash256 checkpoint, string network = "mainnet") =>
+    private ConsensusJournal Journal(BeaconChainSpec spec, Hash256 checkpoint, string network = "mainnet") =>
         new(_directory, spec, network, checkpoint, _logger);
 
-    private async Task<(LightClientStore Store, VerifiedConsensusJournal Journal, Hash256 Checkpoint)> JournalWithOptionalFinalizedHeadAsync()
+    private async Task<(LightClientStore Store, ConsensusJournal Journal, Hash256 Checkpoint)> JournalWithOptionalFinalizedHeadAsync()
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         LightClientStore store = new(ConsensusTests.Spec, checkpoint, bootstrap, 1);
-        VerifiedConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
+        ConsensusJournal journal = Journal(ConsensusTests.Spec, checkpoint);
         await journal.InitializeAsync(bootstrap, store, CancellationToken.None);
         LightClientUpdate peak = ConsensusTests.Update(2, 3, 4, 1);
         store.Process(peak, 4);

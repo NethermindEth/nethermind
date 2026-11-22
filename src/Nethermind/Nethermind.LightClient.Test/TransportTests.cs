@@ -79,7 +79,7 @@ public class TransportTests
     [CancelAfter(30_000)]
     public async Task Payload_downloads_are_shared_without_sharing_caller_cancellation([Values] bool cancelLeader, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        await using PayloadCache<int> cache = new(static _ => 1024, token);
         using CancellationTokenSource leader = CancellationTokenSource.CreateLinkedTokenSource(token);
         using CancellationTokenSource follower = CancellationTokenSource.CreateLinkedTokenSource(token);
         TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -121,7 +121,7 @@ public class TransportTests
     [CancelAfter(30_000)]
     public async Task Payload_cache_does_not_retain_failed_downloads([Values] bool canceled, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        await using PayloadCache<int> cache = new(static _ => 1024, token);
         int fetched = 0;
         Task<int> Fetch(CancellationToken _) => ++fetched == 1
             ? canceled ? Task.FromCanceled<int>(new CancellationToken(true)) : Task.FromException<int>(new InvalidDataException("Invalid payload."))
@@ -144,9 +144,9 @@ public class TransportTests
     [Test]
     [CancelAfter(30_000)]
     public async Task Payload_cache_returns_oversized_values_without_retaining_them(
-        [Values(VerifiedPayloadCache<int>.Capacity, VerifiedPayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
+        [Values(PayloadCache<int>.Capacity, PayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(_ => bytes, token);
+        await using PayloadCache<int> cache = new(_ => bytes, token);
         int fetched = 0;
         Task<int> Fetch(CancellationToken _) => Task.FromResult(++fetched);
         Hash256 hash = Keccak.Compute("bounded verified payload");
@@ -156,8 +156,8 @@ public class TransportTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(first, Is.EqualTo(1));
-            Assert.That(second, Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
-            Assert.That(fetched, Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
+            Assert.That(second, Is.EqualTo(bytes > PayloadCache<int>.Capacity ? 2 : 1));
+            Assert.That(fetched, Is.EqualTo(bytes > PayloadCache<int>.Capacity ? 2 : 1));
         }
     }
 
@@ -165,7 +165,7 @@ public class TransportTests
     [CancelAfter(30_000)]
     public async Task Payload_download_capacity_bounds_distinct_hashes_and_allows_shared_waiters([Values] bool cancelQueued, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        await using PayloadCache<int> cache = new(static _ => 1024, token);
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int fetched = 0;
@@ -174,7 +174,7 @@ public class TransportTests
             Interlocked.Increment(ref fetched);
             return release.Task.WaitAsync(cancellation);
         }
-        Task<int>[] active = Enumerable.Range(0, VerifiedPayloadCache<int>.MaxDownloads)
+        Task<int>[] active = Enumerable.Range(0, PayloadCache<int>.MaxDownloads)
             .Select(i => cache.GetAsync(Keccak.Compute($"payload {i}"), Fetch, token)).ToArray();
         Task<int> queued = cache.GetAsync(Keccak.Compute("queued payload"), Fetch, caller.Token);
         Task<int> shared = cache.GetAsync(Keccak.Compute("payload 0"), Fetch, token);
@@ -182,7 +182,7 @@ public class TransportTests
         {
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(fetched, Is.EqualTo(VerifiedPayloadCache<int>.MaxDownloads));
+                Assert.That(fetched, Is.EqualTo(PayloadCache<int>.MaxDownloads));
                 Assert.That(queued.IsCompleted, Is.False);
                 Assert.That(shared.IsCompleted, Is.False);
             }
@@ -200,7 +200,7 @@ public class TransportTests
                 Assert.That(completed, Is.All.EqualTo(42));
                 Assert.That(sharedResult, Is.EqualTo(42));
                 if (!cancelQueued) Assert.That(queuedResult, Is.EqualTo(42));
-                Assert.That(fetched, Is.EqualTo(VerifiedPayloadCache<int>.MaxDownloads + (cancelQueued ? 0 : 1)));
+                Assert.That(fetched, Is.EqualTo(PayloadCache<int>.MaxDownloads + (cancelQueued ? 0 : 1)));
             }
         }
         finally { release.TrySetResult(42); }
@@ -211,7 +211,7 @@ public class TransportTests
     public async Task Payload_shutdown_cancels_waiters_and_joins_unwinding_owners([Values] bool externalStop, CancellationToken token)
     {
         using CancellationTokenSource stopping = CancellationTokenSource.CreateLinkedTokenSource(token);
-        VerifiedPayloadCache<int> cache = new(static _ => 1024, stopping.Token);
+        PayloadCache<int> cache = new(static _ => 1024, stopping.Token);
         TaskCompletionSource<int> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         async Task<int> Fetch(CancellationToken cancellation)
@@ -219,7 +219,7 @@ public class TransportTests
             using CancellationTokenRegistration registration = cancellation.Register(() => canceled.TrySetResult());
             return await release.Task;
         }
-        Task<int>[] active = Enumerable.Range(0, VerifiedPayloadCache<int>.MaxDownloads)
+        Task<int>[] active = Enumerable.Range(0, PayloadCache<int>.MaxDownloads)
             .Select(i => cache.GetAsync(Keccak.Compute($"stopping payload {i}"), Fetch, token)).ToArray();
         Task<int> queued = cache.GetAsync(Keccak.Compute("stopping queued payload"), Fetch, token);
         try
@@ -738,8 +738,8 @@ public class TransportTests
         BlockHeader[] other = HistoryChain(700, 1);
         bool speculative = true;
         ServeHistoryPages(peers, peer => forked && ReferenceEquals(peer, peers.Ordered[0]) && speculative ? other : canonical);
-        VerifiedHeaderHistory.PageRequest[] group = BeginHistoryPages(peers, 600, groupCount, token);
-        VerifiedHeaderHistory.PageRequest pending = group[0];
+        FinalizedHeaderHistory.PageRequest[] group = BeginHistoryPages(peers, 600, groupCount, token);
+        FinalizedHeaderHistory.PageRequest pending = group[0];
         await Task.WhenAll(group.Select(page => page.Fetch));
         speculative = false;
         PeerInfo original = peers.Pool.GetPeer(peers.Ordered[0].SyncPeer.Node)!;
@@ -800,7 +800,7 @@ public class TransportTests
                     chain.AsSpan(checked((int)first), call.ArgAt<int>(1)).ToArray(),
                     () => Interlocked.Increment(ref peers.Ordered[0].ResponsesDisposed));
             });
-        VerifiedHeaderHistory.PageRequest[] pending = [
+        FinalizedHeaderHistory.PageRequest[] pending = [
             BeginHistoryPages(peers, 1000, 128, stopping.Token)[0],
             BeginHistoryPages(peers, 872, 128, stopping.Token)[0],
             BeginHistoryPages(peers, 744, 128, stopping.Token)[0],
@@ -839,8 +839,8 @@ public class TransportTests
         peers.Ordered[0].BeforeResponse = (context, cancellation) => context == AllocationContexts.Bodies
             ? release.Task.WaitAsync(cancellation) : Task.CompletedTask;
         Task[] bulk = Enumerable.Range(1, 3).Select(identity => peers.RequestPayload(AllocationContexts.Bodies, identity, stopping.Token)).ToArray();
-        VerifiedHeaderHistory.PageRequest[]? group = null;
-        VerifiedHeaderHistory.PageRequest? pending = null;
+        FinalizedHeaderHistory.PageRequest[]? group = null;
+        FinalizedHeaderHistory.PageRequest? pending = null;
         try
         {
             for (int i = 0; i < 3; i++) await peers.Started.Reader.ReadAsync(token);
@@ -889,7 +889,7 @@ public class TransportTests
         await using ExecutionPeers peers = new(2);
         BlockHeader[] chain = HistoryChain(700);
         ServeHistoryPages(peers, _ => chain);
-        VerifiedHeaderHistory.PageRequest pending = BeginHistoryPages(peers, 472, 128, token)[0];
+        FinalizedHeaderHistory.PageRequest pending = BeginHistoryPages(peers, 472, 128, token)[0];
         await pending.Fetch;
         await peers.Transport.GetHeaderByHashAsync(peers.Header.Hash!, token);
         PreferredHistoryPeers(peers).TryGetValue(AllocationContexts.Headers, out PeerInfo? preferred);
@@ -914,8 +914,8 @@ public class TransportTests
         peers.Ordered[0].BeforeResponse = (context, cancellation) => context == AllocationContexts.Headers
             ? release.Task.WaitAsync(cancellation) : Task.CompletedTask;
         Task[] headers = Enumerable.Range(1, 4).Select(identity => peers.RequestPayload(AllocationContexts.Headers, identity, stopping.Token)).ToArray();
-        VerifiedHeaderHistory.PageRequest[]? group = null;
-        VerifiedHeaderHistory.PageRequest? pending = null;
+        FinalizedHeaderHistory.PageRequest[]? group = null;
+        FinalizedHeaderHistory.PageRequest? pending = null;
         Task<BlockHeader[]>? leading = null;
         try
         {
@@ -993,7 +993,7 @@ public class TransportTests
                 return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new TrackedResponse<BlockHeader>(
                     chain.AsSpan(checked((int)number), count).ToArray(), () => Interlocked.Increment(ref peer.ResponsesDisposed)));
             });
-        VerifiedHeaderHistory.PageRequest[] pages = BeginHistoryPages(peers, 1200, 512, token);
+        FinalizedHeaderHistory.PageRequest[] pages = BeginHistoryPages(peers, 1200, 512, token);
         await Task.WhenAll(pages.Select(page => page.Fetch));
         using (Assert.EnterMultipleScope())
         {
@@ -1049,7 +1049,7 @@ public class TransportTests
                     chain.AsSpan(checked((int)call.ArgAt<ulong>(0)), call.ArgAt<int>(1)).ToArray(),
                     () => Interlocked.Increment(ref peers.Ordered[0].ResponsesDisposed));
             });
-        VerifiedHeaderHistory.PageRequest[] pages = BeginHistoryPages(peers, 1200, groupCount, stopping.Token);
+        FinalizedHeaderHistory.PageRequest[] pages = BeginHistoryPages(peers, 1200, groupCount, stopping.Token);
         Task<BlockHeader[]>? leading = null;
         try
         {
@@ -1166,8 +1166,8 @@ public class TransportTests
                 });
     }
 
-    private static VerifiedHeaderHistory.PageRequest[] BeginHistoryPages(ExecutionPeers peers, ulong number, int count,
-        CancellationToken token) => (VerifiedHeaderHistory.PageRequest[])typeof(ExecutionPeerTransport)
+    private static FinalizedHeaderHistory.PageRequest[] BeginHistoryPages(ExecutionPeers peers, ulong number, int count,
+        CancellationToken token) => (FinalizedHeaderHistory.PageRequest[])typeof(ExecutionPeerTransport)
         .GetMethod("BeginLogHeaderPages", BindingFlags.Instance | BindingFlags.NonPublic)!
         .Invoke(peers.Transport, [number, count, token])!;
 
@@ -1324,7 +1324,7 @@ public class TransportTests
                 });
             });
         }
-        using VerifiedRpc rpc = new(peers.Transport, () => head, 11155111);
+        using RpcBackend rpc = new(peers.Transport, () => head, 11155111);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { ExecutionPeers.SnapAddress.ToString(), "finalized" });
         object first = await rpc.InvokeAsync("eth_getBalance", parameters, token);
         int fetched = requests.Sum();
@@ -1388,7 +1388,7 @@ public class TransportTests
                 });
             });
         }
-        using VerifiedRpc rpc = new(peers.Transport, () => head, 11155111);
+        using RpcBackend rpc = new(peers.Transport, () => head, 11155111);
         JsonElement parameters = JsonSerializer.SerializeToElement(new object[] { ExecutionPeers.SnapAddress.ToString(), "0x1", "finalized" });
         object first = await rpc.InvokeAsync("eth_getStorageAt", parameters, token);
         int fetched = requests.Sum();
@@ -3851,7 +3851,7 @@ public class TransportTests
     [CancelAfter(30_000)]
     public async Task Payload_batches_reserve_only_missing_hashes_and_keep_shared_owners(CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        await using PayloadCache<int> cache = new(static _ => 1024, token);
         Hash256[] hashes = Enumerable.Range(0, 4).Select(i => Keccak.Compute($"batch {i}")).ToArray();
         TaskCompletionSource<int> joined = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource<int[]> release = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -3905,7 +3905,7 @@ public class TransportTests
     [CancelAfter(30_000)]
     public async Task Payload_batch_shutdown_joins_the_shared_download_before_disposal([Values] bool prefix, CancellationToken token)
     {
-        VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        PayloadCache<int> cache = new(static _ => 1024, token);
         TaskCompletionSource canceled = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource drain = new(TaskCreationOptions.RunContinuationsAsynchronously);
         async Task<int[]> Fetch(Hash256[] hashes, CancellationToken stopping)
@@ -3949,9 +3949,9 @@ public class TransportTests
     [Test]
     [CancelAfter(30_000)]
     public async Task Payload_batch_retention_preserves_per_value_size_bounds(
-        [Values(VerifiedPayloadCache<int>.Capacity / 2, VerifiedPayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
+        [Values(PayloadCache<int>.Capacity / 2, PayloadCache<int>.Capacity + 1)] long bytes, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(_ => bytes, token);
+        await using PayloadCache<int> cache = new(_ => bytes, token);
         Hash256[] hashes = [Keccak.Compute("bounded batch0"), Keccak.Compute("bounded batch1")];
         int fetches = 0;
         Task<int>[] Fetch(Hash256[] requested, CancellationToken stopping)
@@ -3965,7 +3965,7 @@ public class TransportTests
         {
             Assert.That(first, Is.EqualTo(new[] { 10, 11 }));
             Assert.That(second, Is.EqualTo(new[] { 10, 11 }));
-            Assert.That(fetches, Is.EqualTo(bytes > VerifiedPayloadCache<int>.Capacity ? 2 : 1));
+            Assert.That(fetches, Is.EqualTo(bytes > PayloadCache<int>.Capacity ? 2 : 1));
         }
     }
 
@@ -3973,7 +3973,7 @@ public class TransportTests
     [CancelAfter(30_000)]
     public async Task Payload_batch_factory_failures_release_reserved_owners([Values] bool synchronous, CancellationToken token)
     {
-        await using VerifiedPayloadCache<int> cache = new(static _ => 1024, token);
+        await using PayloadCache<int> cache = new(static _ => 1024, token);
         Hash256[] hashes = Enumerable.Range(0, 4).Select(i => Keccak.Compute($"batch failure {i}")).ToArray();
         Task<int>[] Fail(Hash256[] requested, CancellationToken stopping)
         {
@@ -5368,7 +5368,7 @@ public class TransportTests
         DefaultHttpContext context = new();
         context.Request.Body = requestBody;
         context.Response.Body = responseBody;
-        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using RpcBackend rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         await RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, NullLogger.Instance);
         Assert.That(context.Response.StatusCode, Is.EqualTo(transaction ? 200 : StatusCodes.Status413PayloadTooLarge));
         if (transaction)
@@ -5391,7 +5391,7 @@ public class TransportTests
         context.Response.Body = responseBody;
         RecordingLogger logger = new();
 
-        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using RpcBackend rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         await RpcTestDriver.HandleAsync(context, rpc.InvokeAsync, logger);
 
         using IDisposable scope = Assert.EnterMultipleScope();
@@ -5408,7 +5408,7 @@ public class TransportTests
         Task[] active = new Task[64];
         BlockingBody[] bodies = new BlockingBody[active.Length];
         MemoryStream[] responses = new MemoryStream[active.Length];
-        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using RpcBackend rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         try
         {
             for (int i = 0; i < active.Length; i++)
@@ -5446,7 +5446,7 @@ public class TransportTests
     {
         WaitingExecutionSource source = new();
         ManualDeadlineClock clock = new();
-        using VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
+        using RpcBackend rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
         using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(
             "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"],\"id\":1},{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":2}]"));
         using MemoryStream responseBody = new();
@@ -5485,7 +5485,7 @@ public class TransportTests
     {
         WaitingExecutionSource source = new(ignoreCancellation: true);
         ManualDeadlineClock clock = new();
-        using VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
+        using RpcBackend rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
         using MemoryStream requestBody = new(Encoding.UTF8.GetBytes(
             "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"]}"));
         using MemoryStream responseBody = new();
@@ -5516,7 +5516,7 @@ public class TransportTests
 
     private static async Task<DefaultHttpContext> InvokeAsync(Stream requestBody, Stream responseBody, ILogger? logger = null)
     {
-        using VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
+        using RpcBackend rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
         DefaultHttpContext context = new();
         context.Request.Body = requestBody;
         context.Response.Body = responseBody;

@@ -147,7 +147,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds));
     LightClientMetrics metrics = new(network, status.Read);
     string rpcUrl = LightClientHost.ReadRpcUrls(builder.Configuration);
-    using VerifiedRpcService rpcService = new(status, logManager);
+    using RpcService rpcService = new(status, logManager);
     rpcService.Config.AllowedHosts = builder.Configuration["AllowedHosts"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? ["*"];
     rpcService.Config.CorsOrigins = [];
     IJsonRpcProcessor processor = rpcService.CreateProcessor(new RpcServiceDiagnostics(rpcService.Service,
@@ -224,7 +224,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         using IFullDb beaconPeersDb = BoundedEnrStorage.OpenDb(Path.Combine(dataDirectory, "cl", spec.ChainId.ToString(), "discovery"), logManager, beacon: true);
         await using BeaconPeerTransport beacon = new(spec, logManager, beaconDb, new BoundedEnrStorage(new NetworkStorage(beaconPeersDb, logManager)),
             p2pPort: beaconPort, discoveryPort: beaconPort, time: clock, quicPort: quicPort);
-        VerifiedConsensusJournal journal = new(dataDirectory, spec, network, checkpoint, logger);
+        ConsensusJournal journal = new(dataDirectory, spec, network, checkpoint, logger);
         using CancellationTokenSource startupStop = CancellationTokenSource.CreateLinkedTokenSource(startupToken);
         Task executionStartup = StartExecutionAsync();
         LightClientStore store;
@@ -315,12 +315,12 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             VerifiedHead? snapshot = GetLatestHead();
             return IsHeadFresh(snapshot, OptimisticHeadMaxAgeSeconds) ? snapshot : null;
         }
-        using VerifiedCall calls = new(execution, execution.SpecProvider, logManager, secondsPerSlot: spec.SecondsPerSlot);
-        using VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
+        using EvmExecutor calls = new(execution, execution.SpecProvider, logManager, secondsPerSlot: spec.SecondsPerSlot);
+        using RpcBackend rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
             latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
                 () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory, sendPolicy: sendPolicy);
-        VerifiedSubscriptions subscriptions = new(execution, rpc, processor, logger, logManager: logManager);
+        RpcSubscriptions subscriptions = new(execution, rpc, processor, logger, logManager: logManager);
         ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
             PublishPersistedHeaders, lifetime.StopApplication, logger, lifetime.ApplicationStopping);
         bool rpcInitialized = false;

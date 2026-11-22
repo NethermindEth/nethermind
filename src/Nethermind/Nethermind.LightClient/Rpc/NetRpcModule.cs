@@ -6,7 +6,7 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class VerifiedNetRpcModule(VerifiedRpcService service) : IVerifiedNetRpcModule
+internal sealed class NetRpcModule(RpcService service) : INetRpcModule
 {
     public ResultWrapper<string> net_version() => ResultWrapper<string>.Success(service.ChainId.ToString(CultureInfo.InvariantCulture));
     public ResultWrapper<bool> net_listening() => ResultWrapper<bool>.Success(service.Listening);

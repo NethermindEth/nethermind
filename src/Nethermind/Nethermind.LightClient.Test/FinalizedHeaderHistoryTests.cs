@@ -20,7 +20,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.LightClient.Test;
 
-public class VerifiedHeaderHistoryTests
+public class FinalizedHeaderHistoryTests
 {
     [Test]
     public async Task Invalid_or_wholly_optimistic_queries_do_not_open_history_storage([Values] bool optimistic)
@@ -40,7 +40,7 @@ public class VerifiedHeaderHistoryTests
                 Assert.That(async () => await request, Throws.InstanceOf<OperationCanceledException>());
             }
             else Assert.That(async () => await request, Throws.TypeOf<RpcException>());
-            Lazy<VerifiedHeaderHistory> history = (Lazy<VerifiedHeaderHistory>)typeof(ExecutionPeerTransport)
+            Lazy<FinalizedHeaderHistory> history = (Lazy<FinalizedHeaderHistory>)typeof(ExecutionPeerTransport)
                 .GetField("_logHistory", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(transport)!;
             using (Assert.EnterMultipleScope())
             {
@@ -94,7 +94,7 @@ public class VerifiedHeaderHistoryTests
     public async Task Backfill_saves_pages_once_and_reuses_complete_verified_ranges()
     {
         Chain chain = new(700);
-        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        await using FinalizedHeaderHistory history = Create(chain, new MemDb());
         BlockHeader[] first = await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
         AssertHeaders(first, chain, 100, 598);
         int requests = chain.PageRequests;
@@ -115,7 +115,7 @@ public class VerifiedHeaderHistoryTests
         [Values(50UL, 101UL)] ulong secondFirst)
     {
         Chain chain = new(700) { PausePage = 2 };
-        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        await using FinalizedHeaderHistory history = Create(chain, new MemDb());
         using CancellationTokenSource firstStop = new();
         Task<BlockHeader[]> first = history.GetHeadersAsync(chain.Head(600), 100, 598, firstStop.Token);
         await chain.PagePaused.Task.WaitAsync(TimeSpan.FromSeconds(10));
@@ -139,7 +139,7 @@ public class VerifiedHeaderHistoryTests
     {
         Chain chain = new(700) { PausePage = 2 };
         DeadlineClock clock = new();
-        VerifiedHeaderHistory history = Create(chain, new MemDb(), clock: clock);
+        FinalizedHeaderHistory history = Create(chain, new MemDb(), clock: clock);
         Task<BlockHeader[]> request = history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
         try
         {
@@ -166,7 +166,7 @@ public class VerifiedHeaderHistoryTests
     {
         Chain chain = new(700) { PausePage = 2 };
         MemDb db = new();
-        await using VerifiedHeaderHistory history = Create(chain, db);
+        await using FinalizedHeaderHistory history = Create(chain, db);
         using CancellationTokenSource firstStop = new();
         using CancellationTokenSource secondStop = new();
         Task<BlockHeader[]> first = history.GetHeadersAsync(chain.Head(600), 100, 598, firstStop.Token);
@@ -176,7 +176,7 @@ public class VerifiedHeaderHistoryTests
         db.Set(key, [0xc0]);
         Task<BlockHeader[]> second = history.GetHeadersAsync(chain.Head(600), 550, 550, secondStop.Token);
         Assert.That(history.Progress.FirstVerifiedBlock, Is.Null, "A corrupt read must revoke cached coverage.");
-        Task worker = (Task)typeof(VerifiedHeaderHistory).GetField("_worker", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(history)!;
+        Task worker = (Task)typeof(FinalizedHeaderHistory).GetField("_worker", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(history)!;
         firstStop.Cancel();
         secondStop.Cancel();
         Assert.That(async () => await first, Throws.InstanceOf<OperationCanceledException>());
@@ -199,7 +199,7 @@ public class VerifiedHeaderHistoryTests
         Chain chain = new(700);
         if (failure == "page") chain.CorruptPage = 2;
         FailCommitDb db = new() { FailAt = failure == "commit" ? 3 : 0 };
-        await using VerifiedHeaderHistory history = Create(chain, db);
+        await using FinalizedHeaderHistory history = Create(chain, db);
         Assert.That(async () => await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None),
             Throws.TypeOf<RpcException>());
         Assert.That(history.Progress.FirstVerifiedBlock, Is.EqualTo(472));
@@ -213,7 +213,7 @@ public class VerifiedHeaderHistoryTests
     {
         Chain chain = new(800);
         MemDb db = new();
-        await using VerifiedHeaderHistory history = Create(chain, db, capacity: 512);
+        await using FinalizedHeaderHistory history = Create(chain, db, capacity: 512);
         await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
         int requests = chain.PageRequests;
         AssertHeaders(await history.GetHeadersAsync(chain.Head(700), 200, 698, CancellationToken.None), chain, 200, 698);
@@ -233,7 +233,7 @@ public class VerifiedHeaderHistoryTests
     {
         Chain chain = new(700);
         MemDb db = new();
-        await using (VerifiedHeaderHistory original = Create(chain, db))
+        await using (FinalizedHeaderHistory original = Create(chain, db))
             await original.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
         if (change == "format")
         {
@@ -241,9 +241,9 @@ public class VerifiedHeaderHistoryTests
             identity[0] ^= 1;
             db.Set([0xff], identity);
         }
-        Assert.That(() => new VerifiedHeaderHistory(db,
+        Assert.That(() => new FinalizedHeaderHistory(db,
             change == "network" ? Keccak.Zero : chain.Headers[0].Hash!, new HeaderDecoder(MainnetSpecProvider.Instance),
-            chain.GetHeaderAsync, chain.FetchPageAsync, LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(),
+            chain.GetHeaderAsync, chain.FetchPageAsync, LimboLogs.Instance.GetClassLogger<FinalizedHeaderHistory>(),
             capacity: change == "capacity" ? 512 : 1024), Throws.TypeOf<InvalidDataException>());
     }
 
@@ -251,7 +251,7 @@ public class VerifiedHeaderHistoryTests
     public async Task Conflicting_finality_at_the_same_height_does_not_replace_the_verified_anchor()
     {
         Chain chain = new(700);
-        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        await using FinalizedHeaderHistory history = Create(chain, new MemDb());
         await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
         int requests = chain.AnchorRequests;
         Assert.That(async () => await history.GetHeadersAsync(chain.Head(600) with { BlockHash = Keccak.Zero },
@@ -268,7 +268,7 @@ public class VerifiedHeaderHistoryTests
     public async Task Older_pinned_finality_does_not_move_the_backfill_anchor_backwards()
     {
         Chain chain = new(700);
-        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        await using FinalizedHeaderHistory history = Create(chain, new MemDb());
         await history.GetHeadersAsync(chain.Head(700), 300, 699, CancellationToken.None);
         AssertHeaders(await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None), chain, 100, 598);
         using (Assert.EnterMultipleScope())
@@ -282,7 +282,7 @@ public class VerifiedHeaderHistoryTests
     public async Task Anchor_state_root_must_match_the_authenticated_checkpoint()
     {
         Chain chain = new(700);
-        await using VerifiedHeaderHistory history = Create(chain, new MemDb());
+        await using FinalizedHeaderHistory history = Create(chain, new MemDb());
         Assert.That(async () => await history.GetHeadersAsync(chain.Head(600) with { StateRoot = Keccak.Zero },
             100, 598, CancellationToken.None), Throws.TypeOf<RpcException>());
         Assert.That(history.Progress.LastVerifiedBlock, Is.Null);
@@ -297,11 +297,11 @@ public class VerifiedHeaderHistoryTests
         Chain chain = new(700);
         try
         {
-            await using (VerifiedHeaderHistory history = Create(chain, VerifiedHeaderHistory.OpenDb(dbPath, LimboLogs.Instance)))
+            await using (FinalizedHeaderHistory history = Create(chain, FinalizedHeaderHistory.OpenDb(dbPath, LimboLogs.Instance)))
                 await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
             if (corruption != "none")
             {
-                using IDb db = VerifiedHeaderHistory.OpenDb(dbPath, LimboLogs.Instance);
+                using IDb db = FinalizedHeaderHistory.OpenDb(dbPath, LimboLogs.Instance);
                 Span<byte> key = stackalloc byte[4];
                 BinaryPrimitives.WriteInt32BigEndian(key, 200);
                 BlockHeader changed = chain.Headers[200].Clone();
@@ -311,7 +311,7 @@ public class VerifiedHeaderHistoryTests
             chain.PageRequests = 0;
             chain.AnchorRequests = 0;
             if (corruption == "none") chain.ForbidNetwork = true;
-            await using VerifiedHeaderHistory resumed = Create(chain, VerifiedHeaderHistory.OpenDb(dbPath, LimboLogs.Instance));
+            await using FinalizedHeaderHistory resumed = Create(chain, FinalizedHeaderHistory.OpenDb(dbPath, LimboLogs.Instance));
             Assert.That(resumed.Progress.FirstVerifiedBlock, Is.Null, "Disk metadata cannot restore authenticated coverage.");
             AssertHeaders(await resumed.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None), chain, 100, 598);
             using (Assert.EnterMultipleScope())
@@ -328,7 +328,7 @@ public class VerifiedHeaderHistoryTests
     {
         Chain chain = new(700);
         MemDb db = new();
-        await using VerifiedHeaderHistory history = Create(chain, db);
+        await using FinalizedHeaderHistory history = Create(chain, db);
         await history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
         Span<byte> key = stackalloc byte[4];
         BinaryPrimitives.WriteInt32BigEndian(key, 200);
@@ -357,7 +357,7 @@ public class VerifiedHeaderHistoryTests
                 if (corruption == "rlp") page[0].ExtraData = [0xff];
                 break;
         }
-        Assert.That(() => VerifiedHeaderHistory.VerifyPage(chain.Headers[200], 128, page), Throws.TypeOf<InvalidDataException>());
+        Assert.That(() => FinalizedHeaderHistory.VerifyPage(chain.Headers[200], 128, page), Throws.TypeOf<InvalidDataException>());
     }
 
     [TestCaseSource(nameof(HeaderPageLimits))]
@@ -492,7 +492,7 @@ public class VerifiedHeaderHistoryTests
                         return Task.FromCanceled<IOwnedReadOnlyList<BlockHeader>?>(stop.Token);
                     case "null-header": headers[0] = null!; break;
                     case "number": headers[0] = headers[0].Clone(); headers[0].Number++; break;
-                    case "oversize": headers[0] = headers[0].Clone(); headers[0].ExtraData = new byte[VerifiedHeaderHistory.MaxHeaderBytes]; break;
+                    case "oversize": headers[0] = headers[0].Clone(); headers[0].ExtraData = new byte[FinalizedHeaderHistory.MaxHeaderBytes]; break;
                     case "hash": headers[0] = headers[0].Clone(); headers[0].Hash = Keccak.Zero; break;
                 }
             }
@@ -552,7 +552,7 @@ public class VerifiedHeaderHistoryTests
         List<int> lead = [];
         List<int> batches = [];
         bool forbidPrefetch = false;
-        VerifiedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token)
+        FinalizedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token)
         {
             batches.Add(count);
             return CreatePages(number, count, (pageNumber, pageCount) =>
@@ -569,12 +569,12 @@ public class VerifiedHeaderHistoryTests
                     Span<byte> key = stackalloc byte[4];
                     BinaryPrimitives.WriteInt32BigEndian(key, (int)(cursor.Number % 4096));
                     Assert.That(db.KeyExists(key), Is.True, "The upper canonical cursor must have committed first.");
-                    VerifiedHeaderHistory.VerifyPage(cursor, pageCount, page);
+                    FinalizedHeaderHistory.VerifyPage(cursor, pageCount, page);
                     return Task.FromResult(page);
                 });
             });
         }
-        await using VerifiedHeaderHistory history = Create(chain, db, capacity: 4096, prefetch: Prefetch);
+        await using FinalizedHeaderHistory history = Create(chain, db, capacity: 4096, prefetch: Prefetch);
         AssertHeaders(await history.GetHeadersAsync(chain.Head(2900), 100, 598, CancellationToken.None), chain, 100, 598);
         Assert.That(lead, Has.Count.EqualTo(21));
         using (Assert.EnterMultipleScope())
@@ -598,7 +598,7 @@ public class VerifiedHeaderHistoryTests
         Chain chain = new(1200);
         MemDb db = new();
         List<ulong> prefetched = [];
-        VerifiedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
+        FinalizedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
             CreatePages(number, count, (pageNumber, pageCount) =>
             {
                 token.ThrowIfCancellationRequested();
@@ -610,7 +610,7 @@ public class VerifiedHeaderHistoryTests
                     return Task.FromResult(page);
                 });
             });
-        VerifiedHeaderHistory history = Create(chain, db, capacity: 512, prefetch: Prefetch);
+        FinalizedHeaderHistory history = Create(chain, db, capacity: 512, prefetch: Prefetch);
         try
         {
             await history.GetHeadersAsync(chain.Head(600), 89, 600, CancellationToken.None);
@@ -638,7 +638,7 @@ public class VerifiedHeaderHistoryTests
         MemDb db = new();
         HeaderDecoder decoder = new(MainnetSpecProvider.Instance);
         List<ulong> prefetched = [];
-        VerifiedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
+        FinalizedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
             CreatePages(number, count, (pageNumber, pageCount) =>
             {
                 token.ThrowIfCancellationRequested();
@@ -647,11 +647,11 @@ public class VerifiedHeaderHistoryTests
                 return new(Task.CompletedTask, (cursor, cancellation) =>
                 {
                     cancellation.ThrowIfCancellationRequested();
-                    VerifiedHeaderHistory.VerifyPage(cursor, pageCount, page);
+                    FinalizedHeaderHistory.VerifyPage(cursor, pageCount, page);
                     return Task.FromResult(page);
                 });
             });
-        await using VerifiedHeaderHistory history = Create(chain, db, prefetch: Prefetch);
+        await using FinalizedHeaderHistory history = Create(chain, db, prefetch: Prefetch);
         for (int number = 344; number < 472; number++)
         {
             byte[] key = new byte[4];
@@ -688,7 +688,7 @@ public class VerifiedHeaderHistoryTests
                 await drain.Task;
             }
         }
-        VerifiedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
+        FinalizedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
             CreatePages(number, count, (pageNumber, pageCount) =>
             {
                 Task fetch = Fetch(token);
@@ -703,7 +703,7 @@ public class VerifiedHeaderHistoryTests
                 }
 
             });
-        VerifiedHeaderHistory history = Create(chain, db, prefetch: Prefetch);
+        FinalizedHeaderHistory history = Create(chain, db, prefetch: Prefetch);
         Task<BlockHeader[]> query = history.GetHeadersAsync(chain.Head(600), 100, 598, CancellationToken.None);
         Task? disposing = null;
         try
@@ -753,7 +753,7 @@ public class VerifiedHeaderHistoryTests
         MemDb db = new();
         BlockHeader[] Page(ulong number, int count) => (forked ? fork : chain.Headers)
             .Skip(checked((int)(number - (ulong)count))).Take(count).ToArray();
-        VerifiedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
+        FinalizedHeaderHistory.PageRequest[] Prefetch(ulong number, int count, CancellationToken token) =>
             CreatePages(number, count, (pageNumber, pageCount) =>
             {
                 token.ThrowIfCancellationRequested();
@@ -761,14 +761,14 @@ public class VerifiedHeaderHistoryTests
                 return new(Task.CompletedTask, (cursor, cancellation) =>
                 {
                     cancellation.ThrowIfCancellationRequested();
-                    VerifiedHeaderHistory.VerifyPage(cursor, pageCount, page);
+                    FinalizedHeaderHistory.VerifyPage(cursor, pageCount, page);
                     return Task.FromResult(page);
                 });
             });
-        await using VerifiedHeaderHistory history = new(db, chain.Headers[0].Hash!, new HeaderDecoder(MainnetSpecProvider.Instance),
+        await using FinalizedHeaderHistory history = new(db, chain.Headers[0].Hash!, new HeaderDecoder(MainnetSpecProvider.Instance),
             (head, _) => Task.FromResult((forked ? fork : chain.Headers)[head.Number]),
             (cursor, count, _) => Task.FromResult(Page(cursor.Number, count)),
-            LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(), capacity: 1024, prefetchPages: Prefetch);
+            LimboLogs.Instance.GetClassLogger<FinalizedHeaderHistory>(), capacity: 1024, prefetchPages: Prefetch);
         AssertHeaders(await history.GetHeadersAsync(chain.Head(300), 100, 298, CancellationToken.None), chain, 100, 298);
         byte[] key = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(key, 300);
@@ -786,19 +786,19 @@ public class VerifiedHeaderHistoryTests
         }
     }
 
-    private static VerifiedHeaderHistory Create(Chain chain, IDb db, int capacity = 1024, TimeProvider? clock = null,
-        Func<ulong, int, CancellationToken, VerifiedHeaderHistory.PageRequest[]>? prefetch = null) =>
+    private static FinalizedHeaderHistory Create(Chain chain, IDb db, int capacity = 1024, TimeProvider? clock = null,
+        Func<ulong, int, CancellationToken, FinalizedHeaderHistory.PageRequest[]>? prefetch = null) =>
         new(db, chain.Headers[0].Hash!, new HeaderDecoder(MainnetSpecProvider.Instance), chain.GetHeaderAsync, chain.FetchPageAsync,
-            LimboLogs.Instance.GetClassLogger<VerifiedHeaderHistory>(), clock, capacity, prefetchPages: prefetch);
+            LimboLogs.Instance.GetClassLogger<FinalizedHeaderHistory>(), clock, capacity, prefetchPages: prefetch);
 
-    private static VerifiedHeaderHistory.PageRequest[] CreatePages(ulong number, int count,
-        Func<ulong, int, VerifiedHeaderHistory.PageRequest> create)
+    private static FinalizedHeaderHistory.PageRequest[] CreatePages(ulong number, int count,
+        Func<ulong, int, FinalizedHeaderHistory.PageRequest> create)
     {
-        VerifiedHeaderHistory.PageRequest[] pages = new VerifiedHeaderHistory.PageRequest[
-            (count + VerifiedHeaderHistory.PageSize - 1) / VerifiedHeaderHistory.PageSize];
+        FinalizedHeaderHistory.PageRequest[] pages = new FinalizedHeaderHistory.PageRequest[
+            (count + FinalizedHeaderHistory.PageSize - 1) / FinalizedHeaderHistory.PageSize];
         for (int i = 0; i < pages.Length; i++)
         {
-            int pageCount = Math.Min(VerifiedHeaderHistory.PageSize, count);
+            int pageCount = Math.Min(FinalizedHeaderHistory.PageSize, count);
             pages[i] = create(number, pageCount);
             number -= (ulong)pageCount;
             count -= pageCount;

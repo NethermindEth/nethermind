@@ -7,7 +7,7 @@ using Nethermind.JsonRpc.Modules;
 namespace Nethermind.LightClient.Rpc;
 
 [RpcModule(ModuleType.Web3)]
-internal interface IVerifiedWeb3RpcModule : IRpcModule
+internal interface IWeb3RpcModule : IRpcModule
 {
     ResultWrapper<string> web3_clientVersion();
 }

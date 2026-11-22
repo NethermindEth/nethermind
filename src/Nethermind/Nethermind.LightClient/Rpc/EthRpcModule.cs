@@ -15,9 +15,10 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class VerifiedEthRpcModule(VerifiedRpcService service, ILogManager logs) : IVerifiedEthRpcModule
+internal sealed class EthRpcModule(RpcService service, ILogManager logs) : IEthRpcModule
 {
-    private readonly Nethermind.Logging.ILogger _logger = logs.GetClassLogger<VerifiedEthRpcModule>();
+    // Preserve existing log filters when the implementation class is renamed.
+    private readonly Nethermind.Logging.ILogger _logger = logs.GetLogger("LightClient.Rpc.VerifiedEthRpcModule");
 
     public ResultWrapper<ulong> eth_chainId() => ResultWrapper<ulong>.Success(service.ChainId);
     public ResultWrapper<Address[]> eth_accounts() => ResultWrapper<Address[]>.Success([]);
@@ -67,19 +68,19 @@ internal sealed class VerifiedEthRpcModule(VerifiedRpcService service, ILogManag
     public Task<ResultWrapper<JsonElement>> eth_getLogs(JsonElement filter) =>
         Execute((rpc, token) => rpc.GetLogsDataAsync(filter, token));
 
-    private Task<ResultWrapper<T>> Execute<T>(Func<VerifiedRpc, CancellationToken, Task<T>> invoke, bool waitForStartup = true)
+    private Task<ResultWrapper<T>> Execute<T>(Func<RpcBackend, CancellationToken, Task<T>> invoke, bool waitForStartup = true)
     {
         // Current is thread-static and only belongs to this request before the first await.
         CancellationToken token = JsonRpcContext.Current?.RequestAborted ?? default;
         return ExecuteAsync(invoke, token, waitForStartup);
     }
 
-    private async Task<ResultWrapper<T>> ExecuteAsync<T>(Func<VerifiedRpc, CancellationToken, Task<T>> invoke,
+    private async Task<ResultWrapper<T>> ExecuteAsync<T>(Func<RpcBackend, CancellationToken, Task<T>> invoke,
         CancellationToken token, bool waitForStartup)
     {
         try
         {
-            VerifiedRpc backend = await service.GetBackendAsync(token, waitForStartup);
+            RpcBackend backend = await service.GetBackendAsync(token, waitForStartup);
             return ResultWrapper<T>.Success(await invoke(backend, token));
         }
         catch (RpcException exception)
