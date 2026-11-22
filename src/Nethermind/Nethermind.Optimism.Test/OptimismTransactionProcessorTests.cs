@@ -165,6 +165,78 @@ public class OptimismTransactionProcessorTests
         }
     }
 
+    [TestCase(0UL)]
+    [TestCase(500_000_000_000_000_000UL)]
+    public void System_flagged_deposit_before_Regolith_mints_and_increments_nonce(ulong value)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0 }, spec);
+        using ILifetimeScope lifetime = BeginLifetimeScope(container);
+        IWorldState state = lifetime.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithSourceHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(TestItem.AddressB)
+            .WithValue(value)
+            .WithGasLimit(100_000)
+            .WithIsOPSystemTransaction(true)
+            .TestObject;
+        tx.Mint = 1.Ether;
+        BlockHeader header = Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject;
+        CallOutputTracer tracer = new();
+
+        TransactionResult result = lifetime.Resolve<ITransactionProcessor>()
+            .Execute(tx, new BlockExecutionContext(header, spec), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether - value));
+            Assert.That(state.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            Assert.That(state.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)value));
+            Assert.That(header.GasUsed, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void Failed_system_flagged_deposit_before_Regolith_uses_no_block_gas()
+    {
+        IReleaseSpec spec = Prague.Instance;
+        using IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0 }, spec);
+        using ILifetimeScope lifetime = BeginLifetimeScope(container);
+        IWorldState state = lifetime.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.DepositTx)
+            .WithSourceHash(TestItem.KeccakA)
+            .WithSenderAddress(TestItem.AddressA)
+            .WithTo(TestItem.AddressB)
+            .WithGasLimit(1_000)
+            .WithIsOPSystemTransaction(true)
+            .TestObject;
+        tx.Mint = 1.Ether;
+        BlockHeader header = Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject;
+        CallOutputTracer tracer = new();
+
+        TransactionResult result = lifetime.Resolve<ITransactionProcessor>()
+            .Execute(tx, new BlockExecutionContext(header, spec), tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(tracer.GasSpent, Is.Zero);
+            Assert.That(header.GasUsed, Is.Zero);
+            Assert.That(state.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether));
+            Assert.That(state.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+        }
+    }
+
     private static IContainer BuildContainer(OptimismChainSpecEngineParameters parameters, IReleaseSpec spec)
     {
         ChainSpec chainSpec = new()
