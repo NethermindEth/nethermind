@@ -144,6 +144,86 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
+    public async Task Saves_body_progress_only_after_flushing_bodies_when_skipping_existing_blocks()
+    {
+        const ulong chainLength = 7_600;
+        const ulong presentBodies = 7_400;
+        BlockTree syncingFrom = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
+        Block pivot = syncingFrom.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
+
+        using TestMemDb blocksDb = new();
+        IBlockTree syncingTo = Build.A.BlockTree().WithBlocksDb(blocksDb).TestObject;
+        for (ulong i = 1; i < chainLength; i++)
+        {
+            Block block = syncingFrom.FindBlock(i, BlockTreeLookupOptions.None)!;
+            syncingTo.Insert(block.Header);
+            if (i > pivot.Number - presentBodies)
+            {
+                syncingTo.Insert(block);
+            }
+        }
+
+        syncingTo.SyncPivot = (pivot.Number, pivot.Hash!);
+        TestSyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotHash = pivot.Hash!.ToString(),
+            PivotNumber = pivot.Number,
+            AncientBodiesBarrier = 0,
+            DownloadBodiesInFastSync = true,
+        };
+        FlushTrackingSyncPointers syncPointers = new(blocksDb);
+
+        using BodiesSyncFeed feed = new(
+            MainnetSpecProvider.Instance,
+            syncingTo,
+            CreateBlockValidator(),
+            syncPointers,
+            _syncPeerPool,
+            syncConfig,
+            new NullSyncReport(),
+            _historyPruner,
+            blocksDb,
+            _metadataDb,
+            LimboLogs.Instance);
+        feed.InitializeFeed();
+
+        using BodiesSyncBatch? batch = await feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncPointers.LowestInsertedBodyNumber, Is.LessThan(pivot.Number - presentBodies / 2));
+            Assert.That(syncPointers.SavedWithoutFlush, Is.False);
+        }
+    }
+
+    private sealed class FlushTrackingSyncPointers(TestMemDb blocksDb) : ISyncPointers
+    {
+        private ulong? _lowestInsertedBodyNumber;
+        private int _flushCountAtLastSave = blocksDb.FlushCount;
+
+        public bool SavedWithoutFlush { get; private set; }
+
+        public ulong? LowestInsertedBodyNumber
+        {
+            get => _lowestInsertedBodyNumber;
+            set
+            {
+                if (value != _lowestInsertedBodyNumber)
+                {
+                    SavedWithoutFlush |= blocksDb.FlushCount == _flushCountAtLastSave;
+                    _flushCountAtLastSave = blocksDb.FlushCount;
+                }
+
+                _lowestInsertedBodyNumber = value;
+            }
+        }
+
+        public ulong? LowestInsertedReceiptBlockNumber { get; set; }
+        public ulong? LowestInsertedBlockAccessListBlockNumber { get; set; }
+    }
+
+    [Test]
     public async Task ShouldNotReDownloadExistingBlock()
     {
         _feed.InitializeFeed();
