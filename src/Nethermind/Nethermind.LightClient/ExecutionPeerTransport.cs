@@ -113,6 +113,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
     internal int PeerCount => _services.Resolve<ISyncPeerPool>().PeerCount;
     internal Nethermind.Core.Specs.ISpecProvider SpecProvider => _services.Resolve<Nethermind.Core.Specs.ISpecProvider>();
     internal Nethermind.Facade.Eth.IBlockForRpcFactory BlockForRpcFactory => _services.Resolve<Nethermind.Facade.Eth.IBlockForRpcFactory>();
+    internal IForkInfo ForkInfo => _services.Resolve<IForkInfo>();
     internal int SnapPeerCount
     {
         get
@@ -688,6 +689,10 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         }
     }
 
+    internal event Action<Transaction>? TransactionAnnounced;
+
+    public ulong GetPendingNonce(Address address, Account account) => _transactionRelay.GetPendingNonce(address, account);
+
     public async Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
     {
         _transactionRelay.AddVerified(transaction);
@@ -705,7 +710,11 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                     if (_logger.IsDebug) _logger.Debug($"Transaction relay to {peer.SyncPeer.Node:c} failed: {exception.Message}");
                 }
             }
-            if (sent != 0) return;
+            if (sent != 0)
+            {
+                if (_transactionRelay.TryMarkAnnounced(transaction.Hash!)) TransactionAnnounced?.Invoke(transaction);
+                return;
+            }
             await Task.Delay(TimeSpan.FromMilliseconds(250), deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
         cancellationToken.ThrowIfCancellationRequested();

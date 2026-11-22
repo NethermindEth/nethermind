@@ -171,7 +171,8 @@ public class RpcModuleTests
             Assert.That(rpc.Modules.Check("eth_getBalance", new JsonRpcContext(RpcTransport.Http)), Is.EqualTo(ModuleResolution.Enabled));
             Assert.That(rpc.Modules.Check("eth_subscribe", new JsonRpcContext(RpcTransport.Ws)), Is.EqualTo(ModuleResolution.Enabled));
             Assert.That(rpc.Modules.Check("eth_subscribe", new JsonRpcContext(RpcTransport.Http)), Is.Not.EqualTo(ModuleResolution.Enabled));
-            Assert.That(rpc.Modules.Check("debug_traceTransaction", new JsonRpcContext(RpcTransport.Http)), Is.Not.EqualTo(ModuleResolution.Enabled));
+            Assert.That(rpc.Modules.Check("debug_traceTransaction", new JsonRpcContext(RpcTransport.Http)), Is.EqualTo(ModuleResolution.Enabled));
+            Assert.That(rpc.Modules.Check("debug_traceBlockByNumber", new JsonRpcContext(RpcTransport.Http)), Is.Not.EqualTo(ModuleResolution.Enabled));
             Assert.That(rpc.Modules.Check("admin_addPeer", new JsonRpcContext(RpcTransport.Http)), Is.Not.EqualTo(ModuleResolution.Enabled));
         }
     }

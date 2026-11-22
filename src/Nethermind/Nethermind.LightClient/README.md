@@ -382,26 +382,36 @@ Nethermind SendPolicy plugin. Without the option, submissions are relayed as bef
 | --- | --- |
 | `eth_chainId` | Locally selected network |
 | `net_version`, `web3_clientVersion` | Local network ID and client version |
+| `net_peerCount`, `web3_sha3` | Connected execution peer count and local Keccak-256 |
 | `eth_accounts`, `net_listening` | Empty local signing-account list; `net_listening` is true after P2P initialization and does not measure connected peers |
 | `eth_blockNumber` | Last authenticated optimistic execution height, including while synchronizing |
 | `eth_syncing` | Consensus freshness: `false` for a fresh authenticated optimistic head; otherwise standard progress quantities |
 | `eth_getBalance` | Account RLP authenticated against the execution state root |
-| `eth_getTransactionCount` | The same authenticated account's nonce |
+| `eth_getTransactionCount` | Authenticated account nonce. With `pending`, it also counts consecutive locally retained submissions. |
 | `eth_getStorageAt` | Requested storage key authenticated against that account's storage root; 32-byte DATA result |
+| `eth_getAccount`, `eth_getAccountInfo`, `eth_getStorageValues` | Authenticated account metadata, bytecode and ordered storage reads at one selected state root |
 | `eth_getCode` | Bytes whose Keccak hash matches that account's authenticated code hash |
 | `eth_getProof` | Standard [EIP-1186](https://eips.ethereum.org/EIPS/eip-1186) account and storage path witnesses, reconstructed from verified SNAP ranges and verified again before export |
 | `eth_call` | Local Nethermind EVM execution over proof-backed selected state; no execution RPC |
 | `eth_estimateGas` | Local Nethermind gas estimator over the same proof-backed selected state |
+| `eth_createAccessList`, `debug_traceCall` | Local access-list generation and bounded `callTracer` output over authenticated state |
+| `debug_traceTransaction` | Bounded `callTracer` output from replaying the transaction and its predecessors on authenticated parent state |
 | `eth_simulateV1` | Local Nethermind block simulation over the same proof-backed selected state |
 | `eth_getBlockByNumber`, `eth_getBlockByHash` | Authenticated execution header, transaction root, withdrawals root and block body |
+| `eth_getHeaderByNumber`, `eth_getHeaderByHash` | Authenticated execution header without a block body download |
+| `eth_getBlockAccessList` | EIP-7928 access list authenticated against the selected header's commitment on supported forks |
 | `eth_getBlockTransactionCountByNumber`, `eth_getBlockTransactionCountByHash` | Transaction count from the authenticated block body |
 | `eth_getTransactionByBlockNumberAndIndex`, `eth_getTransactionByBlockHashAndIndex` | Transaction from the authenticated block body |
 | `eth_getTransactionByHash`, `eth_getTransactionReceipt` | Bounded observed transaction index and recent authenticated block scan; body and receipt roots are verified locally |
+| `eth_getRawTransactionByHash`, `eth_getRawTransactionByBlockNumberAndIndex`, `eth_getRawTransactionByBlockHashAndIndex` | Canonical transaction envelope from the authenticated block body |
 | `eth_getBlockReceipts`, `eth_getLogs` | Receipt trie and bloom authenticated by the block header; log results are complete within the accepted range |
+| `eth_newFilter`, `eth_newBlockFilter`, `eth_newPendingTransactionFilter`, `eth_getFilterChanges`, `eth_getFilterLogs`, `eth_uninstallFilter` | Polling filters for authenticated logs and blocks or for this client's local submissions |
 | `eth_feeHistory` | Authenticated headers and complete verified receipts for gas-weighted effective tips |
 | `eth_gasPrice`, `eth_maxPriorityFeePerGas` | Local fee suggestion from the authenticated latest block; gas price adds the derived next-block base fee |
 | `eth_blobBaseFee` | Blob base fee derived from the authenticated latest execution header and its fork |
+| `eth_baseFee`, `eth_config`, `eth_capabilities` | Next-block base fee derived from the authenticated head, chain fork configuration and enabled execution data resources |
 | `eth_sendRawTransaction` | Local envelope, signature, fork and authenticated state checks, followed by execution P2P relay; blob sidecars are KZG verified |
+| `eth_sendRawTransactionSync` | Local readiness checks and execution P2P relay, followed by a bounded wait for an authenticated receipt |
 
 State methods default to `"latest"` when their block parameter is omitted. They accept an explicit `"finalized"` or `"latest"` selector,
 an authenticated block number, or an EIP-1898 object naming its hash/number.
@@ -426,6 +436,8 @@ This status is available before checkpoint bootstrap; unknown execution heights
 are initially zero.
 A `false` result describes consensus freshness, not hosted-cache completeness or
 historical log coverage; requested data still has to be fetched and verified.
+`eth_capabilities` reports the authenticated head and supported resource types.
+It omits `oldestBlock` because actual retention depends on the supplying peers.
 Historical state selectors are limited to 32 ancestors of either the finalized
 head or the authenticated optimistic head. A wallet's pinned prior
 optimistic hash remains usable when the native head advances, provided it is
@@ -492,21 +504,20 @@ the requested target, backfill activity and errors. A cold old-history request
 can exceed the HTTP deadline while backfill continues; retry after coverage
 reaches the requested range. Shutdown cancels and joins the worker before
 closing its database.
-`pending`, `safe` and `earliest` return an explicit unavailable error (`-32001`):
-execution peers do not authenticate pending state, a distinct safe execution head
-is not available, and genesis is outside the bounded history.
-This includes `eth_getTransactionCount(..., "pending")`: the relay is a bounded
-cache of local submissions, not an authenticated pending-state view. Wallets
-can use the confirmed `"latest"` nonce and track their own signed submissions;
-libraries that prepare transactions with a pending nonce need an explicit nonce
-or a local nonce manager.
+`safe` and `earliest` return `-32001`. The beacon light-client protocol supplies
+optimistic and finalized heads. Genesis falls outside the bounded history.
+`eth_getTransactionCount(..., "pending")` starts at the latest authenticated
+nonce and advances over consecutive, affordable transactions this client has
+announced to execution peers. Pending account state and pending block construction
+are unavailable.
 The optimistic head can be reorganized,
 whereas the finalized head is stable. Each state or block request pins its selected authenticated head,
 including during a concurrent consensus update. Returned account and storage values are not
 trusted until their ranges reconstruct the selected state/storage root. Authenticated account/storage absence
 returns zero or empty code; an incomplete proof fails.
 
-`eth_call` and `eth_estimateGas` accept a transaction object and an optional authenticated selector.
+`eth_call` and `eth_estimateGas` accept a transaction object, an optional authenticated selector,
+and optional state and block overrides applied to the local execution only.
 Omitting the selector uses the authenticated optimistic `"latest"` head, which must be available.
 They fetch the selected execution header by its authenticated hash, then run
 Nethermind's EVM against the corresponding state root. Accounts, storage slots
@@ -525,8 +536,14 @@ with their return data. An estimate of a reverting transaction returns the same
 error rather than a gas quantity. Blob and frame transactions use the selected
 execution fork's existing conversion and EVM rules. Frame estimates fill omitted
 execution/state limits through local replay; explicitly supplied limits determine
-the fixed frame gas reservation. State overrides, pending state and
-`eth_createAccessList` are unavailable.
+the fixed frame gas reservation. `eth_createAccessList` uses the same verified
+state and returns the access list and gas used. `debug_traceCall` supports the
+native `callTracer` with `onlyTopCall` and `withLog`. The default tracing deadline
+is five seconds and the maximum is 60 seconds. The caller must select `callTracer`
+explicitly.
+`debug_traceTransaction` uses `callTracer` and the same deadline. It replays up
+to 64 transactions and 10 million cumulative gas in a recent authenticated block.
+Proof suppliers must still have the authenticated parent state.
 
 `eth_simulateV1` accepts the standard simulation payload and an optional authenticated selector,
 and runs Nethermind's block processor with the same simulation rules as a full node over the same
@@ -601,7 +618,8 @@ remaining items are not executed. Notifications still produce no response, and i
 envelopes retain their standard errors. Oversized results fail explicitly rather
 than returning incomplete data.
 Normal HTTP requests, batches and WebSocket messages have a 64 KiB body limit.
-A single HTTP `eth_sendRawTransaction`, `eth_call`, `eth_estimateGas` or `eth_simulateV1` request may
+A single HTTP `eth_sendRawTransaction`, `eth_sendRawTransactionSync`, `eth_call`,
+`eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` or `debug_traceCall` request may
 use up to 4 MiB plus 64 KiB of JSON text, so permitted contract-initcode inputs
 fit. Submitted raw envelopes/sidecars are limited to 2 MiB; at most four such large
 requests run concurrently. Peer responses and proof nodes have separate size limits.
@@ -617,6 +635,26 @@ The console shows each JSON-RPC method, its result, and its handling time. Batch
 items are logged individually; malformed requests and oversized bodies are
 logged without their contents. Routine ASP.NET Core request logs are suppressed.
 
+## Polling filters and synchronous submissions
+
+Create an `eth_newBlockFilter` to poll for block hashes, an `eth_newFilter` to
+poll for logs, or an `eth_newPendingTransactionFilter` for hashes of submissions
+announced by this client. `eth_getFilterChanges` consumes changes since the last
+poll and includes `removed: true` for previously returned logs on a replaced
+branch. `eth_getFilterLogs` reads the authenticated canonical range without
+advancing the cursor. The client retains up to 32 filters, expires them after
+five minutes without a change poll, and keeps up to 32 authenticated head publications.
+If a client falls behind that window, create a new filter and use `eth_getLogs`
+to recover logs. Use HTTP for large polling results.
+
+`eth_sendRawTransactionSync` takes a signed transaction and an optional timeout
+in milliseconds. The default is 20 seconds and the maximum is 60 seconds. It
+returns an authenticated receipt when available, or error `4` with the submitted
+hash if the wait expires. A gap from the authenticated nonce returns error `6`
+with the expected nonce. A valid transaction that exceeds the available balance
+or falls below the next block's fee requirements returns error `5` with its hash.
+Up to eight synchronous submissions may wait at once.
+
 ## WebSocket subscriptions
 
 Connect to `ws://127.0.0.1:8545/ws` and send standard JSON-RPC requests:
@@ -624,6 +662,7 @@ Connect to `ws://127.0.0.1:8545/ws` and send standard JSON-RPC requests:
 ```json
 {"jsonrpc":"2.0","id":1,"method":"eth_subscribe","params":["newHeads"]}
 {"jsonrpc":"2.0","id":2,"method":"eth_subscribe","params":["logs",{"address":"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2"}]}
+{"jsonrpc":"2.0","id":3,"method":"eth_subscribe","params":["newPendingTransactions",false]}
 ```
 
 `newHeads` publishes authenticated optimistic execution headers. `logs` accepts
@@ -633,8 +672,10 @@ orphaned logs have `removed: true` before replacement logs are sent. Missing
 blocks are verified by tracing parents from the next authenticated head; a
 catch-up emits each intervening block's logs and only the newest head.
 Subscriptions start after their acknowledgement and belong to their connection.
-`eth_unsubscribe` takes the returned subscription ID. Pending transaction and
-sync-status subscriptions are unavailable.
+`eth_unsubscribe` takes the returned subscription ID. `newPendingTransactions`
+streams transactions this client announces to execution peers, as hashes by default or
+objects when the second parameter is `true`. Sync-status subscriptions are
+unavailable.
 
 The host permits 16 connections and 16 subscriptions per connection. Each
 connection has an eight-head backlog, a 128-message, 1 MiB outbound queue, a 256 KiB message limit,

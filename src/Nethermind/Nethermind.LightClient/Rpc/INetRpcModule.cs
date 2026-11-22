@@ -11,4 +11,5 @@ internal interface INetRpcModule : IRpcModule
 {
     ResultWrapper<string> net_version();
     ResultWrapper<bool> net_listening();
+    ResultWrapper<long> net_peerCount();
 }

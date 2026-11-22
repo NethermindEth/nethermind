@@ -338,8 +338,11 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         using RpcBackend rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead,
             latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds), finalized => IsHeadFresh(finalized, FinalizedHeadMaxAgeSeconds),
             token => publisher.WaitForFreshLatestAsync(latest => IsHeadFresh(latest, OptimisticHeadMaxAgeSeconds),
-                () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory, sendPolicy: sendPolicy);
-        RpcSubscriptions subscriptions = new(execution, rpc, processor, logger, logManager: logManager);
+                () => optimisticRequests.Writer.TryWrite(true), token), blockForRpcFactory: execution.BlockForRpcFactory, sendPolicy: sendPolicy,
+            getExecutionPeerCount: () => execution.PeerCount, forkInfo: execution.ForkInfo,
+            getNextHeadChange: () => publisher.NextHeadChange);
+        RpcSubscriptions subscriptions = new(execution, rpc, processor, logger, logManager: logManager, secondsPerSlot: spec.SecondsPerSlot);
+        execution.TransactionAnnounced += subscriptions.PublishPendingTransaction;
         ConsensusSync.Processor consensus = new(store, journal, spec, clock, consensusGate,
             PublishPersistedHeaders, lifetime.StopApplication, logger, lifetime.ApplicationStopping);
         bool rpcInitialized = false;
@@ -354,6 +357,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         {
             status.SetStage(StartupStage.Stopping);
             lifetime.StopApplication();
+            execution.TransactionAnnounced -= subscriptions.PublishPendingTransaction;
             try { await subscriptions.DisposeAsync(); }
             finally { await app.StopAsync(CancellationToken.None); }
         }

@@ -5,6 +5,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -1340,6 +1341,246 @@ public class EvmExecutorTests
         Assert.That(error!.Code, Is.EqualTo(expectedCode));
     }
 
+    [Test]
+    public async Task Call_uses_the_request_overrides_without_changing_the_authenticated_state([Values] bool replaceStorage)
+    {
+        byte[] readStorage = Bytes.FromHexString("0x60005460005260206000f3");
+        FakeSource source = new(readStorage);
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        Dictionary<string, string> storage = new() { [Hash256.Zero.ToString()] = "0x" + 7.ToString("x64") };
+        Dictionary<string, object> account = new()
+        {
+            [replaceStorage ? "state" : "stateDiff"] = storage,
+            // Return the sum of TIME and storage slot zero.
+            ["code"] = "0x426000540160005260206000f3",
+        };
+        var transaction = new { to = Contract.ToString() };
+        object overridden = await rpc.InvokeAsync("eth_call", JsonSerializer.SerializeToElement(new object[]
+        {
+            transaction, "latest", new Dictionary<string, object> { [Contract.ToString()] = account }, new { time = "0x10" },
+        }), CancellationToken.None);
+        object normal = await rpc.InvokeAsync("eth_call", JsonSerializer.SerializeToElement(new[] { transaction }), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(overridden, Is.EqualTo("0x" + 23.ToString("x64")));
+            Assert.That(normal, Is.EqualTo("0x" + 42.ToString("x64")));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+            Assert.That(source.CodeFetches, Is.EqualTo(1));
+            Assert.That(source.LastQueriedHead, Is.EqualTo(source.Head));
+        }
+    }
+
+    [Test]
+    public async Task EstimateGas_uses_overridden_code_and_reuses_the_overlay_for_every_probe()
+    {
+        FakeSource source = new([0x60, 0x00, 0x60, 0x00, 0xfd]);
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        var tx = new { to = Contract.ToString() };
+        Dictionary<string, object> state = new() { [Contract.ToString()] = new { code = "0x00" } };
+
+        object estimate = await rpc.InvokeAsync("eth_estimateGas", JsonSerializer.SerializeToElement(new object?[] { tx, null, state }),
+            CancellationToken.None);
+        RpcException? original = await Assert.ThrowsAsync<RpcException>(async () =>
+            await rpc.InvokeAsync("eth_estimateGas", JsonSerializer.SerializeToElement(new[] { tx }), CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Convert.ToUInt64((string)estimate, 16), Is.InRange(21_000UL, 22_000UL));
+            Assert.That(original!.Code, Is.EqualTo(3));
+            Assert.That(source.CodeFetches, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Block_only_override_supports_null_state_and_keeps_the_original_header()
+    {
+        FakeSource source = new(Bytes.FromHexString("0x4360005260206000f3"));
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        var tx = new { to = Contract.ToString() };
+        object result = await rpc.InvokeAsync("eth_call", JsonSerializer.SerializeToElement(new object?[] { tx, "latest", null,
+            new { number = "0x2a" } }), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("0x" + 42.ToString("x64")));
+            Assert.That(source.LastHeader!.Number, Is.EqualTo(source.Head.Number));
+        }
+    }
+
+    [Test]
+    public async Task CreateAccessList_reports_authenticated_storage_and_the_converged_gas([Values] bool optimize)
+    {
+        FakeSource source = new(Bytes.FromHexString("0x6001545000"));
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        JsonElement parameters = JsonSerializer.SerializeToElement(new object?[] { new { to = Contract.ToString() }, "latest", null, optimize });
+
+        JsonElement result = (JsonElement)await rpc.InvokeAsync("eth_createAccessList", parameters, CancellationToken.None);
+        JsonElement entry = result.GetProperty("accessList").EnumerateArray().Single(item => item.GetProperty("address").GetString() == Contract.ToString());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entry.GetProperty("storageKeys")[0].GetString(), Is.EqualTo("0x" + 1.ToString("x64")));
+            Assert.That(result.GetProperty("gasUsed").GetString(), Does.StartWith("0x"));
+            Assert.That(result.TryGetProperty("error", out _), Is.False);
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task CreateAccessList_rejects_pre_Berlin_calls()
+    {
+        FakeSource source = new([0x00]);
+        SingleReleaseSpecProvider spec = new(Istanbul.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_createAccessList",
+            JsonSerializer.SerializeToElement(new[] { new { to = Contract.ToString() } }), CancellationToken.None));
+
+        Assert.That(error!.Message, Does.Contain("before Berlin"));
+    }
+
+    [Test]
+    public async Task TraceCall_reports_local_call_frames_and_validates_options([Values("ok", "txIndex", "timeout", "tracer", "budget")] string scenario)
+    {
+        byte[] code = scenario == "budget"
+            ? Enumerable.Repeat<byte[]>([0x61, 0x80, 0x00, 0x60, 0x00, 0xa0], 17).SelectMany(static instruction => instruction).Append((byte)0).ToArray()
+            : Bytes.FromHexString("0x60005460005260206000f3");
+        FakeSource source = new(code);
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        object options = scenario switch
+        {
+            "txIndex" => new { tracer = "callTracer", txIndex = "0x0" },
+            "timeout" => new { tracer = "callTracer", timeout = "bad-duration" },
+            "tracer" => new { tracer = "prestateTracer" },
+            "budget" => new { tracer = "callTracer", tracerConfig = new { withLog = true } },
+            _ => new { tracer = "callTracer", timeout = "15s", tracerConfig = new { onlyTopCall = true } },
+        };
+        JsonElement parameters = JsonSerializer.SerializeToElement(new[] { new { to = Contract.ToString() }, "latest", options });
+        if (scenario != "ok")
+        {
+            RpcException? failure = await Assert.ThrowsAsync<RpcException>(async () =>
+                await rpc.InvokeAsync("debug_traceCall", parameters, CancellationToken.None));
+            Assert.That(failure!.Code, Is.EqualTo(scenario == "budget" ? -32005 : -32602));
+            return;
+        }
+
+        JsonElement trace = (JsonElement)await rpc.InvokeAsync("debug_traceCall", parameters, CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.GetProperty("type").GetString(), Is.EqualTo("CALL"));
+            Assert.That(trace.GetProperty("to").GetString(), Is.EqualTo(Contract.ToString()));
+            Assert.That(trace.GetProperty("output").GetString(), Is.EqualTo("0x" + 42.ToString("x64")));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Unpriced_traceCall_simulates_zero_base_fee_even_with_a_base_fee_override()
+    {
+        FakeSource source = new(Bytes.FromHexString("0x4860005260206000f3"));
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+
+        JsonElement trace = (JsonElement)await rpc.InvokeAsync("debug_traceCall", JsonSerializer.SerializeToElement(new object[]
+        {
+            new { to = Contract.ToString() }, "latest", new { tracer = "callTracer", blockOverrides = new { baseFeePerGas = "0xa" } },
+        }), CancellationToken.None);
+
+        Assert.That(trace.GetProperty("output").GetString(), Is.EqualTo(Hash256.Zero.ToString()));
+    }
+
+    [Test]
+    public async Task TraceTransaction_replays_the_signed_prefix_against_authenticated_parent_state()
+    {
+        // An input word writes slot zero. An empty input returns the slot, then the parent and grandparent block hashes.
+        FakeSource source = new(Bytes.FromHexString("0x3660215760005460005243600190034060205243600290034060405260606000f35b60003560005500"));
+        using PrivateKey signer = new("0x" + 1.ToString("x64"));
+        EthereumEcdsa ecdsa = new(1);
+        Transaction Transaction(ulong nonce, ReadOnlyMemory<byte> data)
+        {
+            Transaction tx = new() { To = Contract, Nonce = nonce, GasLimit = 100_000, GasPrice = 2, Data = data };
+            ecdsa.Sign(signer, tx);
+            tx.Hash = tx.CalculateHash();
+            return tx;
+        }
+        byte[] word = new byte[32];
+        word[^1] = 7;
+        Transaction write = Transaction(0, word);
+        Transaction read = Transaction(1, ReadOnlyMemory<byte>.Empty);
+        BlockHeader parent = new(Keccak.Compute("trace grandparent"), Keccak.OfAnEmptySequenceRlp, Address.Zero,
+            UInt256.Zero, source.Head.Number - 1, 30_000_000, 1_790_000_000, [])
+        {
+            StateRoot = Keccak.Compute("trace parent state"), BaseFeePerGas = 1, IsPostMerge = true,
+        };
+        parent.Hash = parent.CalculateHash();
+        BlockHeader header = new(parent.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero,
+            UInt256.Zero, source.Head.Number, 30_000_000, 1_790_000_012, [])
+        {
+            Hash = source.Head.BlockHash, StateRoot = source.Head.StateRoot, BaseFeePerGas = 1, IsPostMerge = true, GasUsed = 55_000,
+        };
+        source.ReplayBlock = new(header, new BlockBody([write, read], []));
+        source.ReplayParent = parent;
+        source.ReplayReceipts = [new() { GasUsedTotal = 30_000 }, new() { GasUsedTotal = 55_000 }];
+        source.ExtraAccounts[signer.Address] = new(0, 1_000_000);
+        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
+        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+
+        JsonElement trace = (JsonElement)await rpc.InvokeAsync("debug_traceTransaction",
+            JsonSerializer.SerializeToElement(new object[] { read.Hash!.ToString(), new { tracer = "callTracer", timeout = "30s" } }), CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.GetProperty("output").GetString(), Is.EqualTo("0x" + 7.ToString("x64") + parent.Hash!.ToString()[2..] + parent.ParentHash!.ToString()[2..]));
+            Assert.That(source.LastQueriedHead?.StateRoot, Is.EqualTo(parent.StateRoot));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+            Assert.That(source.AncestorFetches, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Transaction_trace_deadline_includes_the_transaction_lookup()
+    {
+        FakeSource source = new([0x00]);
+        CallClock clock = new();
+        using EvmExecutor calls = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance, clock);
+        using CancellationTokenSource caller = new();
+        TimeSpan timeout = TimeSpan.FromSeconds(3);
+        Task<GethLikeTxTrace> request = calls.TraceTransactionAsync(new() { Tracer = "callTracer" }, timeout, async token =>
+        {
+            await Task.Delay(Timeout.Infinite, token);
+            return null;
+        }, caller.Token);
+        try
+        {
+            clock.Expire();
+            RpcException? error = await Assert.ThrowsAsync<RpcException>(async () => await request);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(error!.Code, Is.EqualTo(-32002));
+                Assert.That(clock.DueTime, Is.EqualTo(timeout));
+                Assert.That(source.Fetches, Is.Zero);
+            }
+        }
+        finally
+        {
+            caller.Cancel();
+            await ((Task)request).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     private static ILogManager DiagnosticLogs(bool debug, ConcurrentQueue<string> entries)
     {
         InterfaceLogger sink = Substitute.For<InterfaceLogger>();
@@ -1363,6 +1604,10 @@ public class EvmExecutorTests
         public int ContractAccountFetches { get; private set; }
         public string? HeaderCorruption { get; init; }
         public Dictionary<Address, byte[]> ExtraContracts { get; } = [];
+        public Dictionary<Address, Account> ExtraAccounts { get; } = [];
+        public Block? ReplayBlock { get; set; }
+        public BlockHeader? ReplayParent { get; set; }
+        public TxReceipt[]? ReplayReceipts { get; set; }
         public ulong? FirstAncestorNumber { get; private set; }
         public UInt256 BaseFee { get; init; } = 1;
         public BlockHeader? LastHeader { get; private set; }
@@ -1384,6 +1629,7 @@ public class EvmExecutorTests
         public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken)
         {
             Fetches++;
+            if (ReplayBlock is { } replay && replay.Hash == head.BlockHash) return Task.FromResult(replay.Header);
             BlockHeader header = new(HashAt(head, head.Number - 1), Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
                 head.Number + (HeaderCorruption == "number" ? 1UL : 0), BlockGasLimit, 1_790_000_000, [])
             {
@@ -1403,6 +1649,7 @@ public class EvmExecutorTests
         {
             Fetches++;
             LastQueriedHead = head;
+            if (ExtraAccounts.TryGetValue(address, out Account? account)) return Task.FromResult(account);
             if (ExtraContracts.TryGetValue(address, out byte[]? extra))
                 return Task.FromResult(new Account(1, 0, Keccak.EmptyTreeHash, Keccak.Compute(extra)));
             if (contractBalance != UInt256.Zero && address == Eip8250Constants.NonceManagerAddress)
@@ -1439,7 +1686,8 @@ public class EvmExecutorTests
             FirstAncestorNumber = firstNumber;
             Assert.That(head.Number - firstNumber, Is.LessThanOrEqualTo(256));
             return Task.FromResult(Enumerable.Range(0, checked((int)(head.Number - firstNumber + 1)))
-                .Select(index => HashAt(head, firstNumber + (ulong)index)).ToArray());
+                .Select(index => ReplayParent is { } parent && parent.Hash == head.BlockHash && firstNumber + (ulong)index == parent.Number - 1
+                    ? parent.ParentHash! : HashAt(head, firstNumber + (ulong)index)).ToArray());
         }
 
         internal static Hash256 HashAt(VerifiedHead head, ulong number) => number == head.Number ? head.BlockHash
@@ -1448,7 +1696,14 @@ public class EvmExecutorTests
             : Keccak.Compute($"ancestor:{head.BlockHash}:{number}");
 
         public Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken) =>
-            hash == Head.BlockHash ? GetHeaderAsync(Head, cancellationToken) : throw new NotSupportedException();
+            hash == Head.BlockHash ? GetHeaderAsync(Head, cancellationToken)
+                : ReplayParent is { } parent && parent.Hash == hash ? Task.FromResult(parent) : throw new NotSupportedException();
+
+        public Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken) =>
+            ReplayBlock is { } block && block.Hash == header.Hash ? Task.FromResult(block) : throw new NotSupportedException();
+
+        public Task<TxReceipt[]> GetReceiptsAsync(BlockHeader header, CancellationToken cancellationToken, int? transactionCount = null) =>
+            ReplayReceipts is { } receipts && ReplayBlock?.Hash == header.Hash ? Task.FromResult(receipts) : throw new NotSupportedException();
 
         public Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken)
         {

@@ -1498,6 +1498,8 @@ public class LightClientStatusTests
     }
 
     [TestCase("eth_chainId", "[]", "\"0xaa36a7\"")]
+    [TestCase("net_peerCount", "[]", "\"0x0\"")]
+    [TestCase("web3_sha3", "[\"0x\"]", "\"0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470\"")]
     [TestCase("eth_syncing", "[]", "{\"startingBlock\":\"0x0\",\"currentBlock\":\"0x0\",\"highestBlock\":\"0x0\"}")]
     public async Task Startup_metadata_preserves_standard_rpc_shapes(string method, string parameters, string expected)
     {

@@ -70,7 +70,7 @@ internal static class BoundedJson
 }
 
 /// <summary>Bounds committed UTF-8 output while allowing temporary JSON-writer reservations.</summary>
-internal sealed class BoundedJsonBuffer(int limit, int reservationSlack = 4096) : IBufferWriter<byte>, IDisposable
+internal sealed class BoundedJsonBuffer(int limit, int reservationSlack = 4096, string? limitMessage = null) : IBufferWriter<byte>, IDisposable
 {
     private byte[] _buffer = [];
     private int _written;
@@ -79,7 +79,7 @@ internal sealed class BoundedJsonBuffer(int limit, int reservationSlack = 4096) 
 
     public void Advance(int count)
     {
-        if (count < 0 || count > limit - _written) throw BoundedJson.TooLarge();
+        if (count < 0 || count > limit - _written) throw TooLarge();
         _written += count;
     }
 
@@ -99,7 +99,7 @@ internal sealed class BoundedJsonBuffer(int limit, int reservationSlack = 4096) 
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         int maximum = limit + reservationSlack;
-        if (sizeHint < 0 || sizeHint > maximum - _written) throw BoundedJson.TooLarge();
+        if (sizeHint < 0 || sizeHint > maximum - _written) throw TooLarge();
         int needed = _written + Math.Max(1, sizeHint);
         if (needed <= _buffer.Length) return;
         byte[] replacement = ArrayPool<byte>.Shared.Rent(Math.Min(maximum, Math.Max(needed, Math.Max(4096, _buffer.Length * 2))));
@@ -107,6 +107,8 @@ internal sealed class BoundedJsonBuffer(int limit, int reservationSlack = 4096) 
         if (_buffer.Length != 0) ArrayPool<byte>.Shared.Return(_buffer);
         _buffer = replacement;
     }
+
+    private RpcException TooLarge() => limitMessage is null ? BoundedJson.TooLarge() : new(-32005, limitMessage);
 
     public void Dispose()
     {

@@ -38,6 +38,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
@@ -56,10 +57,9 @@ internal sealed partial class EvmExecutor
         MaxSimulateCallsCap = 64,
         MaxSimulateCallsPerBlockCap = 64,
     };
-    private readonly IContainer _simulation = CreateExecutionBuilder(specs, logs)
-        .AddScoped<IBlockProcessor, StandardBlockProcessor>()
+    private static ContainerBuilder CreateBlockExecutionBuilder(ISpecProvider specs, ILogManager logs, ulong? secondsPerSlot) =>
+        CreateExecutionBuilder(specs, logs)
         .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockValidationTransactionsExecutor>()
-        // Runs blocks with access lists (EIP-7928); a simulated block has none, so it stays on the sequential path.
         .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.ParallelBlockValidationTransactionsExecutor>()
         .AddScoped<IBeaconBlockRootHandler, BeaconBlockRootHandler>()
         .AddScoped<IBlockhashStore, BlockhashStore>()
@@ -68,10 +68,16 @@ internal sealed partial class EvmExecutor
         .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
         .AddScoped<BalTxProcessorFactory>()
         .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
+        // A BAL processor needs code for its own world state, not the main processor's repository.
+        .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>(static (precompiles, codeCache) =>
+            worldState => new CacheCodeInfoRepository(worldState, precompiles, codeCache))
         .AddSingleton<IBlocksConfig>(secondsPerSlot is { } slotSeconds ? new BlocksConfig { SecondsPerSlot = slotSeconds } : new BlocksConfig())
         .AddSingleton<IRewardCalculator>(NoBlockRewards.Instance)
         .AddSingleton<IBlockValidator>(Always.Valid)
-        .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
+        .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance);
+
+    private readonly IContainer _simulation = CreateBlockExecutionBuilder(specs, logs, secondsPerSlot)
+        .AddScoped<IBlockProcessor, StandardBlockProcessor>()
         // The simulation pieces of SimulateReadOnlyBlocksProcessingEnvFactory and OverridableEnvFactory.
         .AddScoped<CodeOverrideStore>()
         .AddDecorator<ICodeInfoRepository, OverridableCodeInfoRepository>()
@@ -82,10 +88,6 @@ internal sealed partial class EvmExecutor
         .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
         .Intercept<ITransactionProcessor>(SkipSenderChecksTransactionProcessorFactory.Apply)
         .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderChecksTransactionProcessorFactory(inner))
-        // Registered explicitly: Autofac would otherwise generate these delegates from the scope's single adapter and code
-        // repository, so the processor that runs blocks with access lists (EIP-7928) would share the main one's.
-        .AddScoped<CodeInfoRepositoryFactory, IPrecompileProvider, ICodeCache>(static (precompiles, codeCache) =>
-            worldState => new CacheCodeInfoRepository(worldState, precompiles, codeCache))
         .AddDecorator<CodeInfoRepositoryFactory>(static (context, inner) =>
         {
             CodeOverrideStore overrides = context.Resolve<CodeOverrideStore>();

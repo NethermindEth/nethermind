@@ -19,7 +19,12 @@ internal sealed class LightClientMetrics
         "eth_getBlockByNumber", "eth_getBlockByHash", "eth_getBlockTransactionCountByNumber", "eth_getBlockTransactionCountByHash",
         "eth_getTransactionByBlockNumberAndIndex", "eth_getTransactionByBlockHashAndIndex", "eth_getTransactionByHash",
         "eth_getTransactionReceipt", "eth_getBlockReceipts", "eth_getLogs", "eth_feeHistory", "eth_gasPrice",
-        "eth_maxPriorityFeePerGas", "eth_blobBaseFee", "eth_sendRawTransaction", "eth_subscribe", "eth_unsubscribe", "other",
+        "eth_maxPriorityFeePerGas", "eth_blobBaseFee", "eth_sendRawTransaction", "eth_subscribe", "eth_unsubscribe",
+        "net_peerCount", "web3_sha3", "eth_createAccessList", "debug_traceCall", "eth_getHeaderByNumber", "eth_getHeaderByHash",
+        "eth_getAccountInfo", "eth_getAccount", "eth_getStorageValues", "eth_getBlockAccessList", "eth_baseFee", "eth_config", "eth_capabilities",
+        "eth_getRawTransactionByHash", "eth_getRawTransactionByBlockNumberAndIndex", "eth_getRawTransactionByBlockHashAndIndex",
+        "eth_newFilter", "eth_newBlockFilter", "eth_newPendingTransactionFilter", "eth_getFilterChanges", "eth_getFilterLogs", "eth_uninstallFilter",
+        "eth_sendRawTransactionSync", "debug_traceTransaction", "other",
     ];
 
     private readonly Func<ClientProgress> _readStatus;

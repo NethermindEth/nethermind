@@ -16,16 +16,52 @@ namespace Nethermind.LightClient;
 internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
 {
     private readonly MemoryCache _transactions = new(new MemoryCacheOptions { SizeLimit = 32 * 1024 * 1024 });
+    private readonly Lock _admission = new();
 
-    internal void AddVerified(Transaction transaction)
+    internal bool AddVerified(Transaction transaction)
     {
         Hash256 hash = transaction.Hash!;
-        long size = transaction.GetLength() * 2L + 1024;
-        Transaction retained = new();
-        transaction.CopyTo(retained, copyHash: true);
-        _transactions.Set(hash, retained, new MemoryCacheEntryOptions { Size = size, AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10) });
-        if (!_transactions.TryGetValue(hash, out _))
-            throw new RpcException(-32005, "The bounded transaction relay is full.");
+        lock (_admission)
+        {
+            long size = transaction.GetLength() * 2L + 1024;
+            bool added = !_transactions.TryGetValue(hash, out Entry? entry);
+            if (added)
+            {
+                Transaction retained = new();
+                transaction.CopyTo(retained, copyHash: true);
+                entry = new(retained);
+            }
+            _transactions.Set(hash, entry!, new MemoryCacheEntryOptions { Size = size, AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10) });
+            if (!_transactions.TryGetValue(hash, out _))
+                throw new RpcException(-32005, "The bounded transaction relay is full.");
+            return added;
+        }
+    }
+
+    internal bool TryMarkAnnounced(Hash256 hash) =>
+        _transactions.TryGetValue(hash, out Entry? entry) && entry!.TryMarkAnnounced();
+
+    internal ulong GetPendingNonce(Address address, Account account)
+    {
+        ulong nonce = account.Nonce;
+        UInt256 balance = account.Balance;
+        Dictionary<ulong, UInt256>? local = null;
+        foreach (object key in _transactions.Keys)
+        {
+            if (_transactions.TryGetValue(key, out Entry? entry) && entry is { IsAnnounced: true, Transaction: { } tx } && tx.SenderAddress == address
+                && tx.NonceKeys is null && tx.Nonce >= nonce && ExecutionData.TryGetRelayCost(tx, out UInt256 cost))
+            {
+                local ??= [];
+                if (!local.TryGetValue(tx.Nonce, out UInt256 existing) || cost < existing) local[tx.Nonce] = cost;
+            }
+        }
+        if (local is null) return nonce;
+        while (nonce != ulong.MaxValue && local.TryGetValue(nonce, out UInt256 cost) && cost <= balance)
+        {
+            balance -= cost;
+            nonce++;
+        }
+        return nonce;
     }
 
     public new bool SupportsBlobs => true;
@@ -34,7 +70,13 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
     public new bool IsKnown(in ValueHash256 hash) => IsKnown(hash.ToCommitment());
     public new bool ContainsTx(Hash256 hash, TxType txType) => TryGetPendingTransaction(hash, out Transaction? transaction) && transaction.Type == txType;
     public new bool TryGetPendingTransaction(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
-        _transactions.TryGetValue(hash.ToCommitment(), out transaction);
+        TryGetTransaction(hash.ToCommitment(), out transaction);
+
+    private bool TryGetTransaction(object hash, [NotNullWhen(true)] out Transaction? transaction)
+    {
+        transaction = _transactions.TryGetValue(hash, out Entry? entry) ? entry!.Transaction : null;
+        return transaction is not null;
+    }
     public new bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
     {
         if (TryGetPendingTransaction(hash, out blobTransaction) && blobTransaction.CarriesBlobs) return true;
@@ -46,7 +88,7 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
     {
         List<Transaction> result = [];
         foreach (object key in _transactions.Keys)
-            if (_transactions.TryGetValue(key, out Transaction? tx) && tx is not null && !tx.CarriesBlobs) result.Add(tx);
+            if (TryGetTransaction(key, out Transaction? tx) && !tx.CarriesBlobs) result.Add(tx);
         return result.ToArray();
     }
 
@@ -70,7 +112,7 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
         Dictionary<AddressAsKey, List<Transaction>> groups = [];
         foreach (object key in _transactions.Keys)
         {
-            if (!_transactions.TryGetValue(key, out Transaction? tx) || tx is null || tx.SenderAddress is null || tx.CarriesBlobs != blobs) continue;
+            if (!TryGetTransaction(key, out Transaction? tx) || tx.SenderAddress is null || tx.CarriesBlobs != blobs) continue;
             AddressAsKey sender = tx.SenderAddress;
             if (!groups.TryGetValue(sender, out List<Transaction>? bucket)) groups[sender] = bucket = [];
             bucket.Add(blobs ? WithoutBlobs(tx) : tx);
@@ -188,7 +230,7 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
     {
         foreach (object key in _transactions.Keys)
         {
-            if (!_transactions.TryGetValue(key, out Transaction? tx) || tx?.NetworkWrapper is not ShardBlobNetworkWrapper candidate
+            if (!TryGetTransaction(key, out Transaction? tx) || tx.NetworkWrapper is not ShardBlobNetworkWrapper candidate
                 || candidate.Version != version || tx.BlobVersionedHashes is not { } hashes) continue;
             for (int i = 0; i < hashes.Length; i++)
                 if (hash.AsSpan().SequenceEqual(hashes[i])) { wrapper = candidate; index = i; return true; }
@@ -199,4 +241,12 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
     }
 
     public void Dispose() => _transactions.Dispose();
+
+    private sealed class Entry(Transaction transaction)
+    {
+        private int _announced;
+        internal Transaction Transaction { get; } = transaction;
+        internal bool IsAnnounced => Volatile.Read(ref _announced) != 0;
+        internal bool TryMarkAnnounced() => Interlocked.Exchange(ref _announced, 1) == 0;
+    }
 }

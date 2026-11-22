@@ -11,6 +11,7 @@ namespace Nethermind.LightClient;
 
 internal interface IExecutionStateSource
 {
+    /// <summary>Returns the authenticated account, or the <see cref="Account.TotallyEmpty"/> instance for a proven absence.</summary>
     Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken);
     Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken);
     Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken);
@@ -54,6 +55,7 @@ internal interface IExecutionStateSource
         async Task<TxReceipt[]> FetchAsync(BlockHeader header) => await GetReceiptsAsync(header, cancellationToken);
     }
     Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken) => throw new NotSupportedException();
+    ulong GetPendingNonce(Address address, Account account) => account.Nonce;
     Task<ExecutionAccountProof> GetProofAsync(VerifiedHead head, Address address, UInt256[] storageKeys,
         CancellationToken cancellationToken) => throw new NotSupportedException();
 }

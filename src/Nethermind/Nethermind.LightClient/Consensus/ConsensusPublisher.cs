@@ -23,6 +23,11 @@ internal sealed class ConsensusPublisher(
 
     internal PublishedHeads Heads => Volatile.Read(ref _heads);
 
+    internal Task NextHeadChange
+    {
+        get { lock (_commit) return _changed.Task; }
+    }
+
     internal void NotifyPersistedHeadsChanged() =>
         Interlocked.Exchange(ref _persistedChanged, new(TaskCreationOptions.RunContinuationsAsynchronously)).TrySetResult();
 

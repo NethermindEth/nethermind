@@ -15,7 +15,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.LightClient.Rpc;
 
-internal sealed class EthRpcModule(RpcService service, ILogManager logs) : IEthRpcModule
+internal sealed partial class EthRpcModule(RpcService service, ILogManager logs) : IEthRpcModule
 {
     // Preserve existing log filters when the implementation class is renamed.
     private readonly Nethermind.Logging.ILogger _logger = logs.GetLogger("LightClient.Rpc.VerifiedEthRpcModule");
@@ -39,10 +39,9 @@ internal sealed class EthRpcModule(RpcService service, ILogManager logs) : IEthR
         Execute((rpc, token) => rpc.GetProofAsync(address, storageKeys, blockParameter ?? default, token));
     public Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction) =>
         Execute((rpc, token) => rpc.SendRawTransactionAsync(transaction, token), waitForStartup: false);
-    public Task<ResultWrapper<string>> eth_call(TransactionForRpc transaction, JsonElement? blockParameter = null) =>
-        Execute((rpc, token) => rpc.CallAsync(transaction, blockParameter ?? default, false, token));
-    public Task<ResultWrapper<string>> eth_estimateGas(TransactionForRpc transaction, JsonElement? blockParameter = null) =>
-        Execute((rpc, token) => rpc.CallAsync(transaction, blockParameter ?? default, true, token));
+    public Task<ResultWrapper<JsonElement>> eth_sendRawTransactionSync(byte[] transaction, JsonElement? timeoutMs = null) =>
+        Execute((rpc, token) => rpc.SendRawTransactionSyncAsync(transaction, timeoutMs is { ValueKind: JsonValueKind.Number } timeout
+            && timeout.TryGetUInt64(out ulong milliseconds) ? milliseconds : null, token), waitForStartup: false);
     public Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null) =>
         Execute((rpc, token) => rpc.SimulateAsync(payload, blockParameter ?? default, token));
     public Task<ResultWrapper<JsonElement>> eth_feeHistory(UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles) =>
@@ -60,9 +59,9 @@ internal sealed class EthRpcModule(RpcService service, ILogManager logs) : IEthR
     public Task<ResultWrapper<JsonElement>> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 position) =>
         Execute((rpc, token) => rpc.GetTransactionAsync(HashParameter(blockHash), true, position, token));
     public Task<ResultWrapper<JsonElement>> eth_getTransactionByHash(Hash256 transactionHash) =>
-        Execute((rpc, token) => rpc.GetTransactionByHashAsync(transactionHash, false, token));
+        Execute((rpc, token) => rpc.GetTransactionByHashAsync(transactionHash, ExecutionData.TransactionResult.Transaction, token));
     public Task<ResultWrapper<JsonElement>> eth_getTransactionReceipt(Hash256 transactionHash) =>
-        Execute((rpc, token) => rpc.GetTransactionByHashAsync(transactionHash, true, token));
+        Execute((rpc, token) => rpc.GetTransactionByHashAsync(transactionHash, ExecutionData.TransactionResult.Receipt, token));
     public Task<ResultWrapper<JsonElement>> eth_getBlockReceipts(JsonElement blockParameter) =>
         Execute((rpc, token) => rpc.GetBlockReceiptsAsync(blockParameter, token));
     public Task<ResultWrapper<JsonElement>> eth_getLogs(JsonElement filter) =>

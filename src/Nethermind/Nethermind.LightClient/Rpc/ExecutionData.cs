@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
@@ -12,6 +13,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
@@ -29,6 +31,14 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
 
     internal JsonElement GetHeader(BlockHeader header) =>
         BoundedJson.ToElement(blockForRpcFactory.CreateHeader(header, specProvider));
+
+    internal async Task<JsonElement> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken)
+    {
+        if (header.BlockAccessListHash is null)
+            throw new RpcException(ErrorCodes.BlockAccessListResourceNotFound, "Resource not found");
+        ReadOnlyBlockAccessList accessList = await source.GetBlockAccessListAsync(header, cancellationToken);
+        return BoundedJson.ToElement(AccountAccessForRpc.FromBlockAccessList(accessList));
+    }
 
     internal async Task<JsonElement> GetBlockAsync(BlockHeader header, bool fullTransactions, CancellationToken cancellationToken)
     {
@@ -50,15 +60,16 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         return JsonSerializer.SerializeToElement($"0x{block.Transactions.Length:x}");
     }
 
-    internal async Task<JsonElement> GetTransactionAsync(BlockHeader header, int index, CancellationToken cancellationToken)
+    internal async Task<JsonElement> GetTransactionAsync(BlockHeader header, int index, CancellationToken cancellationToken, bool raw = false)
     {
         Block block = await source.GetBlockAsync(header, cancellationToken);
         Index(block);
         if ((uint)index >= (uint)block.Transactions.Length) return JsonSerializer.SerializeToElement<object?>(null);
         Transaction transaction = block.Transactions[index];
+        RefreshTransactionLocation(transaction.Hash ??= transaction.CalculateHash(), block.Header);
+        if (raw) return EncodeRawTransaction(transaction);
         ValidatePayloadBytes(PayloadBytes(transaction));
         RecoverSender(transaction);
-        RefreshTransactionLocation(transaction.Hash ??= transaction.CalculateHash(), block.Header);
         TransactionForRpcContext context = new(chainId, header.Hash!, header.Number, index, header.Timestamp, header.BaseFeePerGas,
             specProvider.GetSpec(header), excessBlobGas: header.ExcessBlobGas);
         return BoundedJson.ToElement(TransactionForRpc.FromTransaction(transaction, context));
@@ -77,7 +88,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
 
     internal async Task<JsonElement> GetLogsAsync(BlockHeader[] headers, HashSet<Address>? addresses,
         IReadOnlyList<HashSet<Hash256>?> topics, CancellationToken cancellationToken,
-        Func<Address, Hash256[], bool>? includeLog = null)
+        Func<Address, Hash256[], bool>? includeLog = null, bool removed = false)
     {
         List<LogEntryForRpc> result = [];
         long payloadBytes = 2;
@@ -179,7 +190,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                     if (payloadBytes > BoundedJson.ResultLimit) throw BoundedJson.TooLarge();
                     result.Add(new LogEntryForRpc
                     {
-                        Removed = false,
+                        Removed = removed,
                         LogIndex = index,
                         TransactionIndex = i,
                         TransactionHash = transaction.Hash!,
@@ -201,8 +212,36 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
     internal bool TryLocateTransaction(Hash256 hash, out BlockHeader? header) =>
         _transactionIndex.TryGetValue(hash, out header);
 
-    internal async Task<JsonElement?> FindTransactionAsync(BlockHeader header, Hash256 hash, bool receipt,
+    internal enum TransactionResult { Transaction, Receipt, Raw }
+
+    internal async Task<JsonElement?> FindTransactionAsync(BlockHeader header, Hash256 hash, TransactionResult result,
         CancellationToken cancellationToken)
+    {
+        if (await FindTransactionInBlockAsync(header, hash, cancellationToken) is not { } located) return null;
+        (Block block, int index) = located;
+        Transaction transaction = block.Transactions[index];
+        if (result == TransactionResult.Raw) return EncodeRawTransaction(transaction);
+        if (result == TransactionResult.Receipt)
+        {
+            TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
+            ValidateReceipts(block, receipts);
+            int logIndex = 0;
+            for (int previous = 0; previous < index; previous++)
+                logIndex = checked(logIndex + (receipts[previous].Logs?.Length ?? 0));
+            long payloadBytes = 0;
+            ValidateLogPayload(receipts[index], ref payloadBytes);
+            ReceiptForRpc receipt = BuildReceipt(block, receipts[index], index,
+                index == 0 ? 0 : receipts[index - 1].GasUsedTotal, logIndex, specProvider.GetSpec(block.Header));
+            return BoundedJson.ToElement(receipt);
+        }
+        ValidatePayloadBytes(PayloadBytes(transaction));
+        RecoverSender(transaction);
+        return BoundedJson.ToElement(TransactionForRpc.FromTransaction(transaction,
+            new(chainId, header.Hash!, header.Number, index, header.Timestamp, header.BaseFeePerGas,
+                specProvider.GetSpec(header), excessBlobGas: header.ExcessBlobGas)));
+    }
+
+    internal async Task<(Block Block, int Index)?> FindTransactionInBlockAsync(BlockHeader header, Hash256 hash, CancellationToken cancellationToken)
     {
         if (_transactionIndex.TryGetValue((header.Hash!, "transactions"), out HashSet<Hash256>? indexed) && !indexed!.Contains(hash))
             return null;
@@ -213,26 +252,17 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
             Transaction transaction = block.Transactions[i];
             if ((transaction.Hash ??= transaction.CalculateHash()) != hash) continue;
             RefreshTransactionLocation(hash, block.Header);
-            if (receipt)
-            {
-                TxReceipt[] receipts = await source.GetReceiptsAsync(block.Header, cancellationToken, block.Transactions.Length);
-                ValidateReceipts(block, receipts);
-                int logIndex = 0;
-                for (int previous = 0; previous < i; previous++)
-                    logIndex = checked(logIndex + (receipts[previous].Logs?.Length ?? 0));
-                long payloadBytes = 0;
-                ValidateLogPayload(receipts[i], ref payloadBytes);
-                ReceiptForRpc result = BuildReceipt(block, receipts[i], i,
-                    i == 0 ? 0 : receipts[i - 1].GasUsedTotal, logIndex, specProvider.GetSpec(block.Header));
-                return BoundedJson.ToElement(result);
-            }
-            ValidatePayloadBytes(PayloadBytes(transaction));
-            RecoverSender(transaction);
-            return BoundedJson.ToElement(TransactionForRpc.FromTransaction(transaction,
-                new(chainId, header.Hash!, header.Number, i, header.Timestamp, header.BaseFeePerGas,
-                    specProvider.GetSpec(header), excessBlobGas: header.ExcessBlobGas)));
+            return (block, i);
         }
         return null;
+    }
+
+    private static JsonElement EncodeRawTransaction(Transaction transaction)
+    {
+        const RlpBehaviors encoding = RlpBehaviors.SkipTypedWrapping;
+        if (TxDecoder.Instance.GetLength(transaction, encoding) * 2L + 4 > BoundedJson.ResultLimit)
+            throw BoundedJson.TooLarge();
+        return BoundedJson.ToElement(TxDecoder.Instance.Encode(transaction, encoding));
     }
 
     private void RefreshTransactionLocation(Hash256 hash, BlockHeader header)
@@ -257,7 +287,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
     }
 
     internal async Task<Hash256> SendRawTransactionAsync(VerifiedHead head, byte[] raw, EvmExecutor? frameVerifier,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool requireReady = false)
     {
         if (raw.Length == 0) throw new RpcException(-32003, "Invalid transaction encoding.");
         Transaction transaction;
@@ -285,28 +315,28 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         {
             if (!FrameTxValidation.TryCalculateBlockGasReservations(transaction, spec, out ulong executionGas, out ulong stateGas)
                 || executionGas > header.GasLimit || stateGas > header.GasLimit)
-                throw new RpcException(-32003, "Frame transaction gas reservation exceeds the authenticated block gas limit.");
+                throw Unready("Frame transaction gas reservation exceeds the authenticated block gas limit.");
         }
         else if (transaction.GasLimit > header.GasLimit)
-            throw new RpcException(-32003, "Transaction gas exceeds the authenticated block gas limit.");
+            throw Unready("Transaction gas exceeds the authenticated block gas limit.");
         UInt256 feeCap = transaction.Supports1559 ? transaction.MaxFeePerGas : transaction.GasPrice;
         UInt256 nextBaseFee = BaseFeeCalculator.Calculate(header, specProvider.GetSpecFor1559(checked(header.Number + 1)));
         if (!transaction.SupportsFrames && spec.IsEip1559Enabled && feeCap < nextBaseFee)
-            throw new RpcException(-32003, "Transaction fee cap is below the next block base fee.");
+            throw Unready("Transaction fee cap is below the next block base fee.");
         UInt256 nextBlobBaseFee = UInt256.Zero;
         if (transaction.CarriesBlobs)
         {
             ulong nextExcess = BlobGasCalculator.CalculateExcessBlobGas(header, spec) ?? 0;
             if (!BlobGasCalculator.TryCalculateFeePerBlobGas(nextExcess, spec.BlobBaseFeeUpdateFraction, out nextBlobBaseFee)
                 || !transaction.SupportsFrames && transaction.MaxFeePerBlobGas < nextBlobBaseFee)
-                throw new RpcException(-32003, "Transaction blob fee cap is below the next block blob base fee.");
+                throw Unready("Transaction blob fee cap is below the next block blob base fee.");
         }
         if (transaction.Type == TxType.FrameTx)
         {
             if (!FrameTxValidation.CoversRequiredMaxFee(transaction, spec, nextBaseFee, nextBlobBaseFee))
-                throw new RpcException(-32003, "Frame transaction max fee is below the next block's required fee budget.");
+                throw Unready("Frame transaction max fee is below the next block's required fee budget.");
             if (frameVerifier is null) throw new RpcException(-32601, "Verified frame admission is unavailable.");
-            await frameVerifier.ValidateFrameAdmissionAsync(head, transaction, header, spec, cancellationToken);
+            await frameVerifier.ValidateFrameAdmissionAsync(head, transaction, header, spec, cancellationToken, requireReady);
             transaction.Hash ??= transaction.CalculateHash();
             await RelayAsync(transaction, spec, cancellationToken);
             return transaction.Hash!;
@@ -314,12 +344,9 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         try { RecoverSender(transaction); }
         catch (InvalidDataException) { throw new RpcException(-32003, "Invalid transaction signature: the sender cannot be recovered."); }
         Account sender = await source.GetAccountAsync(head, transaction.SenderAddress!, cancellationToken);
-        if (transaction.Nonce < sender.Nonce) throw new RpcException(-32003, "Transaction nonce is below authenticated state.");
-        if (UInt256.MultiplyOverflow(feeCap, transaction.GasLimit, out UInt256 gasCost)
-            || UInt256.AddOverflow(gasCost, transaction.Value, out UInt256 cost)
-            || transaction.CarriesBlobs && (!BlobGasCalculator.TryCalculateBlobMaxFee(transaction.GetBlobCount(), transaction.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobCost)
-                || UInt256.AddOverflow(cost, blobCost, out cost)) || cost > sender.Balance)
-            throw new RpcException(-32003, "Transaction exceeds the sender's authenticated balance.");
+        ValidateRelayNonce(transaction.Nonce, sender.Nonce, requireReady);
+        if (!TryGetRelayCost(transaction, out UInt256 cost) || cost > sender.Balance)
+            throw Unready("Transaction exceeds the sender's authenticated balance.");
         if (sender.HasCode)
         {
             byte[] code = await source.GetCodeAsync(sender, cancellationToken);
@@ -329,11 +356,37 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         transaction.Hash ??= transaction.CalculateHash();
         await RelayAsync(transaction, spec, cancellationToken);
         return transaction.Hash!;
+
+        RpcException Unready(string message) => requireReady
+            ? new(5, message, (transaction.Hash ??= transaction.CalculateHash()).ToString())
+            : new(-32003, message);
     }
 
     private Task RelayAsync(Transaction transaction, IReleaseSpec spec, CancellationToken cancellationToken) => sendPolicy is null
         ? source.BroadcastTransactionAsync(transaction, cancellationToken)
         : sendPolicy.RelayAsync(transaction, spec, relayed => source.BroadcastTransactionAsync(relayed, cancellationToken));
+
+    internal static void ValidateRelayNonce(ulong submitted, ulong expected, bool requireReady)
+    {
+        if (submitted < expected) throw new RpcException(-32003, "Transaction nonce is below authenticated state.");
+        if (requireReady && submitted > expected)
+            throw new RpcException(6, "Transaction nonce has a gap from authenticated state.", RpcBackend.Quantity(expected));
+    }
+
+    internal static bool TryGetRelayCost(Transaction transaction, out UInt256 cost)
+    {
+        cost = default;
+        if (transaction.SupportsFrames)
+        {
+            cost = transaction.MaxFee;
+            return true;
+        }
+        UInt256 feeCap = transaction.Supports1559 ? transaction.MaxFeePerGas : transaction.GasPrice;
+        return !UInt256.MultiplyOverflow(feeCap, transaction.GasLimit, out UInt256 gasCost)
+            && !UInt256.AddOverflow(gasCost, transaction.Value, out cost)
+            && (!transaction.CarriesBlobs || BlobGasCalculator.TryCalculateBlobMaxFee(transaction.GetBlobCount(),
+                transaction.MaxFeePerBlobGas ?? UInt256.Zero, out UInt256 blobCost) && !UInt256.AddOverflow(cost, blobCost, out cost));
+    }
 
     internal async Task<JsonElement> GetFeeHistoryAsync(BlockHeader[] headers, double[]? percentiles, CancellationToken cancellationToken)
     {
@@ -469,7 +522,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         return result;
     }
 
-    private static void ValidateReceipts(Block block, TxReceipt[] receipts)
+    internal static void ValidateReceipts(Block block, TxReceipt[] receipts)
     {
         if (receipts.Length != block.Transactions.Length)
             throw new InvalidDataException("Verified receipt count does not match the block transaction count.");

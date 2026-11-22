@@ -35,6 +35,7 @@ internal sealed class LightClientStatus(ulong chainId, Address[] accounts,
     internal ulong ChainId => chainId;
     internal bool Listening => (StartupStage)Volatile.Read(ref _stage) is not (StartupStage.Stopping or StartupStage.Failed)
         && Volatile.Read(ref _runtime) is not null;
+    internal int PeerCount => Listening ? Volatile.Read(ref _runtime)?.Backend.PeerCount ?? 0 : 0;
 
     internal void Initialize(RpcBackend backend, Func<HttpContext, Task> handleWebSocket,
         Func<VerifiedHead?> getLatest, Func<VerifiedHead?> getFinalized,

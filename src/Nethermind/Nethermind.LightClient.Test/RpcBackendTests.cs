@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Threading.Channels;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -15,9 +16,12 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.LightClient.Rpc;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
+using Nethermind.Synchronization;
 using NSubstitute;
 using static Nethermind.LightClient.Test.ExecutionProofFixtures;
 
@@ -28,6 +32,200 @@ public class RpcBackendTests
 {
     private static readonly Address AccountAddress = new("0x1234567890123456789012345678901234567890");
     private static readonly Hash256 BlockHash = Keccak.Compute("verified block");
+
+    [Test]
+    public async Task Header_rpc_reuses_the_verified_header_without_fetching_a_body([Values] bool byHash)
+    {
+        using Provider provider = new(new Account(7, 123));
+        string method = byHash ? "eth_getHeaderByHash" : "eth_getHeaderByNumber";
+        string selector = byHash ? BlockHash.ToString() : "finalized";
+        JsonElement header = (JsonElement)await provider.Rpc.InvokeAsync(method, Parameters(selector), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(header.GetProperty("hash").GetString(), Is.EqualTo(BlockHash.ToString()));
+            Assert.That(header.GetProperty("stateRoot").GetString(), Is.EqualTo(provider.Head.StateRoot.ToString()));
+            Assert.That(header.TryGetProperty("transactions", out _), Is.False);
+            Assert.That(provider.BlockFetches, Is.Zero);
+        }
+    }
+
+    [TestCase("eth_getHeaderByNumber")]
+    [TestCase("eth_getBlockAccessList")]
+    public async Task Header_and_access_list_queries_for_pending_return_null(string method)
+    {
+        using Provider provider = new(new Account(7, 123));
+        JsonElement result = (JsonElement)await provider.Rpc.InvokeAsync(method, Parameters("pending"), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(provider.Requests, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Access_list_rpc_uses_the_header_commitment_and_rejects_pre_fork_blocks([Values] bool committed)
+    {
+        using Provider provider = new(new Account(7, 123));
+        ReadOnlyBlockAccessList list = new([new(AccountAddress, [new(1, [new(1, 42)])], [], [], [], [])], 2);
+        provider.EncodedAccessList = BlockAccessListDecoder.EncodeToBytes(list);
+        provider.Header.BlockAccessListHash = committed ? Keccak.Compute(provider.EncodedAccessList) : null;
+        if (!committed)
+        {
+            Assert.That(async () => await provider.Rpc.InvokeAsync("eth_getBlockAccessList", Parameters("finalized"), CancellationToken.None),
+                Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32001));
+            return;
+        }
+        JsonElement result = (JsonElement)await provider.Rpc.InvokeAsync("eth_getBlockAccessList", Parameters("finalized"), CancellationToken.None);
+        JsonElement account = result[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.GetProperty("address").GetString(), Is.EqualTo(AccountAddress.ToString()));
+            Assert.That(account.GetProperty("storageChanges")[0].GetProperty("changes")[0].GetProperty("value").GetString(),
+                Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(provider.BlockFetches, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Balance_nonce_code_and_account_presence_use_one_authenticated_state([Values] bool exists)
+    {
+        byte[] code = [0x5b, 0x00];
+        using Provider provider = new(new Account(7, 123, Keccak.EmptyTreeHash, Keccak.Compute(code)),
+            code: exists ? code : []);
+        string address = (exists ? AccountAddress : Address.Zero).ToString();
+        JsonElement account = (JsonElement)await provider.Rpc.InvokeAsync("eth_getAccount", Parameters(address), CancellationToken.None);
+        JsonElement info = (JsonElement)await provider.Rpc.InvokeAsync("eth_getAccountInfo", Parameters(address), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(account.ValueKind, Is.EqualTo(exists ? JsonValueKind.Object : JsonValueKind.Null));
+            Assert.That(info.GetProperty("balance").GetString(), Is.EqualTo(exists ? "0x7b" : "0x0"));
+            Assert.That(info.GetProperty("nonce").GetString(), Is.EqualTo(exists ? "0x7" : "0x0"));
+            Assert.That(info.GetProperty("code").GetString(), Is.EqualTo(exists ? "0x5b00" : "0x"));
+            Assert.That(provider.LastQueriedHead, Is.EqualTo(provider.LatestHead));
+        }
+    }
+
+    [Test]
+    public async Task Raw_transaction_rpc_returns_the_typed_envelope_for_each_lookup(
+        [Values("eth_getRawTransactionByHash", "eth_getRawTransactionByBlockHashAndIndex", "eth_getRawTransactionByBlockNumberAndIndex")] string method)
+    {
+        using Provider provider = new(new Account(7, 123));
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        Transaction tx = new() { Type = TxType.EIP1559, ChainId = 1, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
+        new EthereumEcdsa(1).Sign(key, tx);
+        tx.Hash = tx.CalculateHash();
+        provider.Transactions = [tx];
+        provider.Header.TxRoot = TxTrie.CalculateRoot(provider.Transactions);
+        JsonElement parameters = method switch
+        {
+            "eth_getRawTransactionByHash" => Parameters(tx.Hash.ToString()),
+            "eth_getRawTransactionByBlockHashAndIndex" => Parameters(BlockHash.ToString(), "0x0"),
+            _ => Parameters("finalized", "0x0"),
+        };
+
+        JsonElement result = (JsonElement)await provider.Rpc.InvokeAsync(method, parameters, CancellationToken.None);
+        string expected = "0x" + Convert.ToHexStringLower(TxDecoder.Instance.Encode(tx, RlpBehaviors.SkipTypedWrapping));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetString(), Is.EqualTo(expected));
+            Assert.That(result.GetString(), Does.StartWith("0x02"));
+            Assert.That(provider.ReceiptFetches, Is.Zero);
+        }
+    }
+
+    [Test]
+    public async Task Capabilities_report_the_authenticated_head_and_omit_unknown_retention()
+    {
+        using Provider provider = new(new Account(7, 123), headNumber: 1000);
+        provider.LatestHead = new(103, 1034, Keccak.Compute("latest capability head"), provider.Head.StateRoot);
+        JsonElement result = (JsonElement)await provider.Rpc.InvokeAsync("eth_capabilities", Parameters(), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("head").GetProperty("hash").GetString(), Is.EqualTo(provider.LatestHead.BlockHash.ToString()));
+            foreach (string resource in new[] { "state", "stateproofs", "blocks", "tx", "receipts", "logs" })
+            {
+                JsonElement availability = result.GetProperty(resource);
+                Assert.That(availability.GetProperty("disabled").GetBoolean(), Is.False, resource);
+                Assert.That(availability.TryGetProperty("oldestBlock", out _), Is.False, resource);
+                Assert.That(availability.TryGetProperty("deleteStrategy", out _), Is.False, resource);
+            }
+            Assert.That(provider.Requests, Is.Empty);
+        }
+    }
+
+    [Test]
+    public async Task Batch_storage_preserves_slot_order_and_pins_every_read_to_one_root()
+    {
+        UInt256 key = 1;
+        byte[] storageLeaf = Leaf(Keccak.Compute(key.ToBigEndian()), Rlp.Encode((UInt256)42));
+        using Provider provider = new(new Account(7, 123, Keccak.Compute(storageLeaf), Keccak.OfAnEmptyString), storageLeaf);
+        Dictionary<string, string[]> request = new()
+        {
+            [AccountAddress.ToString()] = ["0x2", "0x1", "0x01"],
+            [Address.Zero.ToString()] = ["0x1"],
+        };
+
+        JsonElement result = (JsonElement)await provider.Rpc.InvokeAsync("eth_getStorageValues", Parameters(request, "finalized"), CancellationToken.None);
+        string zero = "0x" + new string('0', 64);
+        string value = "0x" + new string('0', 62) + "2a";
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty(AccountAddress.ToString()).EnumerateArray().Select(slot => slot.GetString()), Is.EqualTo(new[] { zero, value, value }));
+            Assert.That(result.GetProperty(Address.Zero.ToString())[0].GetString(), Is.EqualTo(zero));
+            Assert.That(provider.Requests.Count(request => request.Kind == "account"), Is.EqualTo(2));
+            Assert.That(provider.Requests.Select(request => request.BlockHash), Is.All.EqualTo(provider.Head.BlockHash));
+        }
+    }
+
+    [TestCase("{}")]
+    [TestCase("{\"0x1234567890123456789012345678901234567890\": []}")]
+    [TestCase("{\"1234567890123456789012345678901234567890\": [\"0x1\"]}")]
+    [TestCase("{\"0x1234567890123456789012345678901234567890\": [\"0xgg\"]}")]
+    [TestCase("{\"0x1234567890123456789012345678901234567890\": \"0x1\"}")]
+    public void Invalid_batch_storage_fails_before_requesting_peer_data(string requests)
+    {
+        using Provider provider = new(new Account(7, 123));
+        using JsonDocument json = JsonDocument.Parse($"[{requests},\"finalized\"]");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(async () => await provider.Rpc.InvokeAsync("eth_getStorageValues", json.RootElement, CancellationToken.None),
+                Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32602));
+            Assert.That(provider.Requests, Is.Empty);
+        }
+    }
+
+    [TestCase(12_964_998UL, null)]
+    [TestCase(12_964_999UL, "0x3b9aca00")]
+    public async Task Base_fee_reflects_the_next_block_at_the_london_boundary(ulong number, string? expected)
+    {
+        using Provider provider = new(new Account(7, 123), headNumber: number);
+        object? result = await provider.Rpc.InvokeAsync("eth_baseFee", Parameters(), CancellationToken.None);
+        if (expected is null)
+            Assert.That(((JsonElement)result!).ValueKind, Is.EqualTo(JsonValueKind.Null));
+        else
+            Assert.That(result, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public async Task Fork_config_is_tied_to_the_authenticated_header()
+    {
+        using Provider provider = new(new Account(7, 123), headNumber: 12_965_000);
+        provider.Header.Timestamp = 1_628_166_822;
+        ISyncServer syncServer = Substitute.For<ISyncServer>();
+        BlockHeader genesis = Provider.CreateHeader(0, KnownHashes.MainnetGenesis, provider.Head.StateRoot);
+        syncServer.Genesis.Returns(genesis);
+        ForkInfo forkInfo = new(MainnetSpecProvider.Instance, syncServer);
+        using RpcBackend rpc = provider.CreateRpc(forkInfo: forkInfo);
+
+        JsonElement result = (JsonElement)await rpc.InvokeAsync("eth_config", Parameters(), CancellationToken.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("current").GetProperty("activationBlock").GetUInt64(), Is.EqualTo(provider.Header.Number));
+            Assert.That(result.GetProperty("current").GetProperty("forkId").GetString(), Is.EqualTo("0xb715077d"));
+            Assert.That(result.GetProperty("next").ValueKind, Is.EqualTo(JsonValueKind.Object));
+            Assert.That(provider.Requests, Is.EqualTo(new[] { ("header", provider.Head.BlockHash) }));
+        }
+    }
 
     [Test]
     public async Task Optional_state_block_parameter_defaults_to_latest(
@@ -1790,7 +1988,7 @@ public class RpcBackendTests
         using ExecutionData data = new(provider, specs, 1, new BlockForRpcFactory());
 
         JsonElement projected = single
-            ? (await data.FindTransactionAsync(header, transaction.Hash, receipt: true, CancellationToken.None))!.Value
+            ? (await data.FindTransactionAsync(header, transaction.Hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None))!.Value
             : (await data.GetBlockReceiptsAsync(header, CancellationToken.None))[0];
         TxReceipt fullNodeReceipt = new(receipt) { Bloom = spec.IsEip7668Enabled ? Bloom.ZeroLength : authenticatedBloom };
         JsonElement expected = BoundedJson.ToElement(new ReceiptForRpc(transaction.Hash, fullNodeReceipt, header.Timestamp,
@@ -1819,7 +2017,7 @@ public class RpcBackendTests
         await data.GetBlockAsync(provider.Header, false, CancellationToken.None);
         index.TryGetValue(key, out HashSet<Hash256>? first);
         await data.GetBlockAsync(provider.Header, false, CancellationToken.None);
-        await data.FindTransactionAsync(provider.Header, hash, receipt: false, CancellationToken.None);
+        await data.FindTransactionAsync(provider.Header, hash, ExecutionData.TransactionResult.Transaction, CancellationToken.None);
         index.TryGetValue(key, out HashSet<Hash256>? reused);
 
         using (Assert.EnterMultipleScope())
@@ -1842,9 +2040,9 @@ public class RpcBackendTests
         using Provider provider = ReceiptProjectionProvider();
         using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
         Hash256 hash = provider.Transactions[index].Hash!;
-        if (warm) await data.FindTransactionAsync(provider.Header, hash, receipt: true, CancellationToken.None);
+        if (warm) await data.FindTransactionAsync(provider.Header, hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None);
 
-        JsonElement receipt = (await data.FindTransactionAsync(provider.Header, hash, receipt: true, CancellationToken.None))!.Value;
+        JsonElement receipt = (await data.FindTransactionAsync(provider.Header, hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None))!.Value;
         int[] offsets = [0, 2, 3];
         using (Assert.EnterMultipleScope())
         {
@@ -1878,7 +2076,7 @@ public class RpcBackendTests
         using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
-            receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+            ExecutionData.TransactionResult.Receipt, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
     }
 
     [Test]
@@ -1891,7 +2089,7 @@ public class RpcBackendTests
         using ExecutionData data = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
         Assert.That(async () => await data.FindTransactionAsync(provider.Header, provider.Transactions[1].Hash!,
-            receipt: true, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
+            ExecutionData.TransactionResult.Receipt, CancellationToken.None), Throws.TypeOf<InvalidDataException>());
     }
 
     private static Provider ReceiptProjectionProvider() => LogsProvider(
@@ -2887,6 +3085,99 @@ public class RpcBackendTests
         }
     }
 
+    [TestCase("timeout", 4)]
+    [TestCase("unready", 5)]
+    [TestCase("gap", 6)]
+    public async Task Synchronous_submission_reports_timeout_or_unreadiness_over_rpc(string outcome, int code)
+    {
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        using Provider provider = new(new Account(7, outcome == "unready" ? UInt256.Zero : 1_000_000), headNumber: 20_000_000, accountAddress: key.Address);
+        Transaction transaction = new() { Nonce = outcome == "gap" ? 8UL : 7UL, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
+        new EthereumEcdsa(1).Sign(key, transaction, true);
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+
+        RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
+            await provider.Rpc.InvokeAsync("eth_sendRawTransactionSync", Parameters("0x" + Convert.ToHexString(encoded), 5), CancellationToken.None));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.Code, Is.EqualTo(code));
+            Assert.That(error!.RevertData, Is.EqualTo(outcome == "gap" ? "0x7" : transaction.CalculateHash().ToString()));
+            Assert.That(provider.Broadcasts, Has.Count.EqualTo(outcome == "timeout" ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public async Task Synchronous_submission_finds_a_receipt_at_the_new_authenticated_head([Values] bool unavailableOnce)
+    {
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        Transaction transaction = new() { Nonce = 7, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
+        new EthereumEcdsa(1).Sign(key, transaction, true);
+        transaction.Hash = transaction.CalculateHash();
+        byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
+        LogRangeSource headers = new(20_000_000, 20_000_001);
+        VerifiedHead start = headers.Head(20_000_000);
+        VerifiedHead next = headers.Head(20_000_001);
+        VerifiedHead latest = start;
+        BlockHeader newHeader = headers[20_000_001].Header.Clone();
+        newHeader.GasUsed = 21_000;
+        Block included = new(newHeader, new BlockBody([transaction], [], []));
+        IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
+        CancellationToken token = CancellationToken.None;
+        source.GetAccountAsync(start, key.Address, Arg.Any<CancellationToken>()).Returns(new Account(7, 1_000_000));
+        source.GetHeaderAsync(start, Arg.Any<CancellationToken>()).Returns(headers[20_000_000].Header);
+        source.GetHeaderAsync(next, Arg.Any<CancellationToken>()).Returns(newHeader);
+        source.GetRecentHeadersAsync(newHeader, 2, Arg.Any<CancellationToken>()).Returns(new[] { headers[20_000_000].Header, newHeader });
+        if (unavailableOnce)
+            source.GetBlockAsync(newHeader, Arg.Any<CancellationToken>()).Returns(
+                Task.FromException<Block>(new RpcException(-32000, "No execution peer supplied authenticated block data.")), Task.FromResult(included));
+        else source.GetBlockAsync(newHeader, Arg.Any<CancellationToken>()).Returns(included);
+        source.GetReceiptsAsync(newHeader, Arg.Any<CancellationToken>(), 1).Returns(new[] { new TxReceipt { StatusCode = 1, GasUsedTotal = 21_000, Logs = [] } });
+        source.BroadcastTransactionAsync(Arg.Any<Transaction>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            latest = next;
+            return Task.CompletedTask;
+        });
+        using RpcBackend rpc = new(source, () => start, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => latest);
+
+        JsonElement receipt = await rpc.SendRawTransactionSyncAsync(encoded, 2_000, token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.GetProperty("transactionHash").GetString(), Is.EqualTo(transaction.Hash.ToString()));
+            Assert.That(receipt.GetProperty("blockHash").GetString(), Is.EqualTo(next.BlockHash.ToString()));
+            Assert.That(receipt.GetProperty("status").GetString(), Is.EqualTo("0x1"));
+        }
+    }
+
+    [Test]
+    public void Pending_nonce_advances_only_over_contiguous_local_unkeyed_submissions()
+    {
+        using BoundedTransactionRelay relay = new();
+        Hash256 first = Keccak.Compute("pending first");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(relay.AddVerified(new Transaction { Nonce = 8, Value = 60, SenderAddress = AccountAddress, Hash = first }), Is.True);
+            Assert.That(relay.AddVerified(new Transaction { Nonce = 8, Value = 60, SenderAddress = AccountAddress, Hash = first }), Is.False);
+            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 120)), Is.EqualTo(7));
+            Assert.That(relay.TryMarkAnnounced(first), Is.True);
+            Assert.That(relay.TryMarkAnnounced(first), Is.False);
+        }
+        Hash256 preceding = Keccak.Compute("pending preceding");
+        relay.AddVerified(new Transaction { Nonce = 7, Value = 60, SenderAddress = AccountAddress, Hash = preceding });
+        relay.AddVerified(new Transaction { Nonce = 9, SenderAddress = Address.Zero, Hash = Keccak.Compute("pending other") });
+        relay.AddVerified(new Transaction { Nonce = 9, SenderAddress = AccountAddress, Hash = Keccak.Compute("pending keyed"), NonceKeys = [1] });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 120)), Is.EqualTo(7));
+            Assert.That(relay.TryMarkAnnounced(preceding), Is.True);
+            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 120)), Is.EqualTo(9));
+            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 119)), Is.EqualTo(8));
+            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(9, 120)), Is.EqualTo(9));
+            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(10, 120)), Is.EqualTo(10));
+        }
+    }
+
     [Test]
     public async Task Signed_submission_follows_send_policy_rules_before_relay([Values("none", "listed", "unlisted", "over-value")] string rules)
     {
@@ -3219,9 +3510,9 @@ public class RpcBackendTests
         public VerifiedHead? LatestHead { get; set; }
         public ulong? CurrentSlot { get; set; }
         public RpcBackend CreateRpc(EvmExecutor? calls = null, Func<VerifiedHead>? getHead = null,
-            Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, SendPolicyRelay? sendPolicy = null) => new(this, getHead ?? (() => Head), 1,
+            Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, SendPolicyRelay? sendPolicy = null, IForkInfo? forkInfo = null) => new(this, getHead ?? (() => Head), 1,
             calls, _specProvider, () => LatestHead, head => head.IsFresh(CurrentSlot ?? head.Slot, 10),
-            waitForLatestHead: waitForLatestHead, sendPolicy: sendPolicy);
+            waitForLatestHead: waitForLatestHead, sendPolicy: sendPolicy, forkInfo: forkInfo);
         public BlockHeader Header { get; }
         public BlockHeader? HistoricalHeader { get; set; }
         public BlockHeader? OptimisticHeader { get; set; }
@@ -3235,6 +3526,7 @@ public class RpcBackendTests
         public int CanonicalHeaderFetches { get; private set; }
         public Transaction[] Transactions { get; set; } = [];
         public TxReceipt[] Receipts { get; set; } = [];
+        public byte[] EncodedAccessList { get; set; } = [];
         public int BlockFetches { get; private set; }
         public int ReceiptFetches { get; private set; }
         public TaskCompletionSource? BlockGate { get; set; }
@@ -3347,6 +3639,8 @@ public class RpcBackendTests
             LatestHead = new(102, OptimisticHeader.Number, OptimisticHeader.Hash, OptimisticHeader.StateRoot!);
         }
         public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<ReadOnlyBlockAccessList> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken) =>
+            Task.FromResult(ExecutionPeerTransport.VerifyBlockAccessList(header, EncodedAccessList));
         public async Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken)
         {
             BlockFetches++;

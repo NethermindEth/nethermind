@@ -44,11 +44,12 @@ internal sealed class RpcService : IDisposable
 
     internal ulong ChainId { get; }
     internal bool Listening => _status?.Listening ?? true;
+    internal int PeerCount => _status?.PeerCount ?? _backend?.PeerCount ?? 0;
     internal IRpcModuleProvider Modules { get; }
     internal IJsonRpcService Service { get; }
     internal IJsonRpcConfig Config { get; } = new JsonRpcConfig
     {
-        EnabledModules = [ModuleType.Eth, ModuleType.Net, ModuleType.Web3, ModuleType.Subscribe],
+        EnabledModules = [ModuleType.Eth, ModuleType.Net, ModuleType.Web3, ModuleType.Subscribe, ModuleType.Debug],
         CallsFilterFilePath = string.Empty,
         Timeout = 90_000,
         MaxBatchSize = int.MaxValue,
@@ -87,6 +88,7 @@ internal sealed class RpcService : IDisposable
         .AddSingleton<IGCStrategy>(NoGCStrategy.Instance)
         .AddSingleton<GCKeeper>()
         .RegisterSingletonJsonRpcModule<IEthRpcModule, EthRpcModule>()
+        .RegisterSingletonJsonRpcModule<IDebugRpcModule, EthRpcModule>()
         .RegisterSingletonJsonRpcModule<INetRpcModule, NetRpcModule>()
         .RegisterSingletonJsonRpcModule<IWeb3RpcModule, Web3RpcModule>()
         .RegisterSingletonJsonRpcModule<ISubscribeRpcModule, SubscribeRpcModule>()
@@ -111,7 +113,8 @@ internal sealed class RpcService : IDisposable
                 requestToken.ThrowIfCancellationRequested();
                 if (owner._status is not null && !IsLocal(request.Method))
                 {
-                    ValueTask<RpcBackend> startup = owner.GetBackendAsync(requestToken, waitForStartup: request.Method != "eth_sendRawTransaction");
+                    ValueTask<RpcBackend> startup = owner.GetBackendAsync(requestToken,
+                        waitForStartup: request.Method is not ("eth_sendRawTransaction" or "eth_sendRawTransactionSync"));
                     if (!startup.IsCompletedSuccessfully) await startup.AsTask().WaitAsync(token);
                 }
                 bool enabled = owner.Modules.Check(request.Method, context, out _, out RpcModuleProvider.ResolvedMethodInfo? method) == ModuleResolution.Enabled;
@@ -169,7 +172,7 @@ internal sealed class RpcService : IDisposable
         }
 
         private static bool IsLocal(string method) => method is "eth_chainId" or "net_version" or "web3_clientVersion"
-            or "eth_accounts" or "net_listening" or "eth_syncing";
+            or "eth_accounts" or "net_listening" or "net_peerCount" or "web3_sha3" or "eth_syncing";
 
         private static void ValidateParameters(JsonRpcRequest request, RpcModuleProvider.ResolvedMethodInfo? method)
         {
@@ -181,7 +184,8 @@ internal sealed class RpcService : IDisposable
                 int argument = 0;
                 while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
                 {
-                    if (reader.TokenType == JsonTokenType.Null || reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(ReadOnlySpan<byte>.Empty) && request.Method != "eth_unsubscribe")
+                    if (reader.TokenType == JsonTokenType.Null && !AllowsNull(request.Method, argument) ||
+                        reader.TokenType == JsonTokenType.String && reader.ValueTextEquals(ReadOnlySpan<byte>.Empty) && request.Method != "eth_unsubscribe")
                         throw InvalidParameters();
                     if (argument < method.ExpectedParameters.Length)
                         ValidateArgument(method.ExpectedParameters[argument].ParameterType, reader.TokenType);
@@ -207,7 +211,8 @@ internal sealed class RpcService : IDisposable
             int index = 0;
             foreach (JsonElement argument in parameters.EnumerateArray())
             {
-                if (argument.ValueKind == JsonValueKind.Null || argument.ValueKind == JsonValueKind.String && argument.ValueEquals(ReadOnlySpan<byte>.Empty) && request.Method != "eth_unsubscribe")
+                if (argument.ValueKind == JsonValueKind.Null && !AllowsNull(request.Method, index) ||
+                    argument.ValueKind == JsonValueKind.String && argument.ValueEquals(ReadOnlySpan<byte>.Empty) && request.Method != "eth_unsubscribe")
                     throw InvalidParameters();
                 if (index < method.ExpectedParameters.Length)
                     ValidateArgument(method.ExpectedParameters[index].ParameterType, argument.ValueKind switch
@@ -223,6 +228,14 @@ internal sealed class RpcService : IDisposable
                 index++;
             }
         }
+
+        private static bool AllowsNull(string method, int argument) => method switch
+        {
+            "eth_call" or "eth_estimateGas" => argument is >= 1 and <= 3,
+            "eth_sendRawTransactionSync" => argument == 1,
+            "eth_createAccessList" or "debug_traceCall" => argument is 1 or 2,
+            _ => false,
+        };
 
         private static void ValidateArgument(Type type, JsonTokenType token)
         {

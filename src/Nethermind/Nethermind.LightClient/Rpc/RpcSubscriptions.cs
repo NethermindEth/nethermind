@@ -30,6 +30,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
     private readonly RpcBackend _rpc;
     private readonly ILogger _logger;
     private readonly TimeProvider _clock;
+    private readonly ulong _secondsPerSlot;
     private static readonly EthereumJsonSerializer SocketSerializer = new();
     private readonly IJsonRpcProcessor _processor;
     private readonly Nethermind.Logging.ILogManager _logManager;
@@ -43,16 +44,17 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
     private readonly Task _publisher;
     private readonly List<Snapshot> _history = [];
     private Publication? _overflow;
-    private long _sequence;
+    private long _pendingSequence;
     private bool _disposing;
 
     internal RpcSubscriptions(IExecutionStateSource source, RpcBackend rpc, IJsonRpcProcessor processor, ILogger logger,
-        TimeProvider? clock = null, Nethermind.Logging.ILogManager? logManager = null)
+        TimeProvider? clock = null, Nethermind.Logging.ILogManager? logManager = null, ulong secondsPerSlot = 12)
     {
         _source = source;
         _rpc = rpc;
         _logger = logger;
         _clock = clock ?? TimeProvider.System;
+        _secondsPerSlot = secondsPerSlot;
         _processor = processor;
         _logManager = logManager ?? Nethermind.Logging.NullLogManager.Instance;
         _publisher = PublishLoopAsync();
@@ -73,13 +75,21 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
         return ResultWrapper<bool>.Success(client.Unsubscribe(id));
     }
 
+    internal void PublishPendingTransaction(Transaction transaction)
+    {
+        _rpc.Filters.PublishPending(transaction.Hash!);
+        PendingDelivery delivery = new(Interlocked.Increment(ref _pendingSequence), transaction);
+        foreach (Client client in Clients()) client.EnqueuePending(delivery);
+    }
+
     /// <summary>Enqueues the final authenticated latest head without waiting for execution data or consumers.</summary>
     internal void PublishHead(VerifiedHead head)
     {
-        long sequence = Interlocked.Increment(ref _sequence);
+        long sequence = _rpc.Filters.StartPublication();
         if (!_heads.Writer.TryWrite((sequence, head)) && !_stopping.IsCancellationRequested)
         {
             Volatile.Write(ref _overflow, new(sequence, head));
+            _rpc.Filters.LoseHeadHistory(sequence);
             CloseClients((WebSocketCloseStatus)1013, "Authenticated head queue overflowed; reconnect and resubscribe.");
         }
     }
@@ -208,7 +218,8 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                     bool heads = false;
                     bool logs = false;
                     foreach (Client client in clients) client.Interests(sequence, ref heads, ref logs);
-                    if (!heads && !logs)
+                    bool polling = _rpc.Filters.HeadInterests(sequence, ref logs);
+                    if (!heads && !logs && !polling)
                     {
                         if (_history.Count > 0 && _history[^1].Head.BlockHash == head.BlockHash) continue;
                         if (_history.Count > 0 && head.Number <= _history[^1].Head.Number) _history.Clear();
@@ -218,12 +229,13 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                     }
                     using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(90), _clock);
                     using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, _stopping.Token);
-                    await ProcessHeadAsync(head, sequence, clients, heads, logs, cancellation.Token);
+                    await ProcessHeadAsync(head, sequence, clients, heads, logs, polling, cancellation.Token);
                 }
                 catch (Exception exception) when (!_stopping.IsCancellationRequested)
                 {
                     _logger.LogWarning(exception, "Unable to maintain an authenticated subscription stream");
                     CloseClients((WebSocketCloseStatus)1013, "Verified history or execution data is unavailable; reconnect and resubscribe.");
+                    _rpc.Filters.LoseHeadHistory(sequence);
                     _history.Clear();
                     _history.Add(new(head, sequence, default, null));
                 }
@@ -232,7 +244,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
         catch (OperationCanceledException) when (_stopping.IsCancellationRequested) { }
     }
 
-    private async Task ProcessHeadAsync(VerifiedHead head, long sequence, Client[] clients, bool needsHeads, bool needsLogs,
+    private async Task ProcessHeadAsync(VerifiedHead head, long sequence, Client[] clients, bool needsHeads, bool needsLogs, bool polling,
         CancellationToken cancellationToken)
     {
         if (_history.Count > 0 && _history[^1].Head.BlockHash == head.BlockHash) return;
@@ -278,6 +290,14 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
         if (common + 1 < _history.Count) _history.RemoveRange(common + 1, _history.Count - common - 1);
         _history.AddRange(added);
         if (_history.Count > MaxHistory) _history.RemoveRange(0, _history.Count - MaxHistory);
+        if (polling)
+        {
+            _rpc.Filters.RecordHead(new(sequence,
+                [.. removed.Where(snapshot => snapshot.ExecutionHeader is not null)
+                    .Select(snapshot => new RpcFilters.LogBlock(snapshot.Sequence, snapshot.ExecutionHeader!))],
+                [.. added.Select(snapshot => snapshot.Head.BlockHash)],
+                [.. added.Where(snapshot => snapshot.ExecutionHeader is not null).Select(snapshot => snapshot.ExecutionHeader!)]));
+        }
         HashSet<Hash256> canonical = [];
         foreach (Snapshot snapshot in _history) canonical.Add(snapshot.Head.BlockHash);
         Delivery delivery = new(sequence, removed, added, tip, canonical);
@@ -310,8 +330,10 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
     private sealed record Snapshot(VerifiedHead Head, long Sequence, JsonElement Header, BlockHeader? ExecutionHeader);
     private sealed record RetainedLogs(Snapshot Snapshot, LogData[] Logs, int Bytes);
     private sealed record Publication(long Sequence, VerifiedHead Head);
+    private abstract record PublicationDelivery(long Sequence);
     private sealed record Delivery(long Sequence, IReadOnlyList<Snapshot> Removed, IReadOnlyList<Snapshot> Added,
-        Snapshot? Tip, IReadOnlySet<Hash256> Canonical);
+        Snapshot? Tip, IReadOnlySet<Hash256> Canonical) : PublicationDelivery(Sequence);
+    private sealed record PendingDelivery(long Sequence, Transaction Transaction) : PublicationDelivery(Sequence);
     private readonly record struct LogData(JsonElement Json, Address Address, Hash256[] Topics);
     private static bool Matches(Address address, Hash256[] topics, Subscription subscription)
     {
@@ -321,8 +343,12 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             if (subscription.Topics[i] is { } choices && !choices.Contains(topics[i])) return false;
         return true;
     }
-    private sealed record Subscription(string Id, bool Logs, HashSet<Address>? Addresses, List<HashSet<Hash256>?> Topics)
+    private enum SubscriptionKind { Heads, Logs, PendingHashes, PendingTransactions }
+
+    private sealed record Subscription(string Id, SubscriptionKind Kind, HashSet<Address>? Addresses, List<HashSet<Hash256>?> Topics)
     {
+        internal bool Logs => Kind == SubscriptionKind.Logs;
+        internal bool Pending => Kind is SubscriptionKind.PendingHashes or SubscriptionKind.PendingTransactions;
         internal long StartSequence { get; set; }
         internal bool Active { get; set; }
         internal bool ResponseAccepted { get; set; }
@@ -340,8 +366,8 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
         private int _retainedFilterGeneration;
         private readonly Channel<byte[]> _outgoing = Channel.CreateBounded<byte[]>(
             new BoundedChannelOptions(128) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
-        private readonly Channel<Delivery> _deliveries = Channel.CreateBounded<Delivery>(
-            new BoundedChannelOptions(8) { SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
+        private readonly Channel<PublicationDelivery> _deliveries = Channel.CreateBounded<PublicationDelivery>(
+            new BoundedChannelOptions(8) { SingleReader = true, FullMode = BoundedChannelFullMode.Wait });
         private readonly CancellationTokenSource _cancellation;
         private readonly CancellationToken _token;
         private readonly CancellationTokenSource _workCancellation;
@@ -405,6 +431,21 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             if (Volatile.Read(ref _closing) != 0 || _deliveries.Writer.TryWrite(delivery)) return;
             _owner._logger.LogWarning("Closing this connection because its authenticated head queue overflowed");
             Close((WebSocketCloseStatus)1013, "Authenticated head queue overflowed; reconnect and resubscribe.");
+        }
+
+        internal void EnqueuePending(PendingDelivery delivery)
+        {
+            lock (_lock)
+            {
+                if (IsClosed) return;
+                foreach (Subscription subscription in _subscriptions.Values)
+                {
+                    if (!subscription.Pending || !subscription.Active || delivery.Sequence <= subscription.StartSequence) continue;
+                    if (!_deliveries.Writer.TryWrite(delivery))
+                        Close((WebSocketCloseStatus)1013, "Subscription queue overflowed; reconnect and resubscribe.");
+                    return;
+                }
+            }
         }
 
         internal async Task RunAsync()
@@ -546,10 +587,18 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
         {
             lock (_lock)
             {
-                if (name is not ("newHeads" or "logs")) throw new RpcException(-32602, "Only authenticated newHeads and logs subscriptions are available.");
+                SubscriptionKind kind = name switch
+                {
+                    "newHeads" => SubscriptionKind.Heads,
+                    "logs" => SubscriptionKind.Logs,
+                    "newPendingTransactions" when filter?.ValueKind is null or JsonValueKind.False => SubscriptionKind.PendingHashes,
+                    "newPendingTransactions" when filter?.ValueKind == JsonValueKind.True => SubscriptionKind.PendingTransactions,
+                    "newPendingTransactions" => throw new RpcException(-32602, "A pending transaction subscription accepts a boolean full transaction flag."),
+                    _ => throw new RpcException(-32602, "Only newHeads, logs and newPendingTransactions subscriptions are available."),
+                };
                 HashSet<Address>? addresses = null;
                 List<HashSet<Hash256>?> topics = [];
-                if (filter is { } value)
+                if (filter is { } value && kind is SubscriptionKind.Heads or SubscriptionKind.Logs)
                 {
                     if (name != "logs" || value.ValueKind != JsonValueKind.Object) throw new RpcException(-32602, "Invalid subscription filter.");
                     foreach (JsonProperty property in value.EnumerateObject())
@@ -564,7 +613,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
                 }
                 if (_subscriptions.Count >= MaxSubscriptions) throw new RpcException(-32000, "Connection reached its 16-subscription limit.");
                 string id = "0x" + Guid.NewGuid().ToString("N");
-                _subscriptions.Add(id, new(id, name == "logs", addresses, topics));
+                _subscriptions.Add(id, new(id, kind, addresses, topics));
                 ResultWrapper<string> response = ResultWrapper<string>.Success(id);
                 response.AddDisposable(() =>
                 {
@@ -617,7 +666,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             {
                 foreach (Subscription subscription in _subscriptions.Values)
                 {
-                    if (!subscription.Active || sequence <= subscription.StartSequence) continue;
+                    if (subscription.Pending || !subscription.Active || sequence <= subscription.StartSequence) continue;
                     if (subscription.Logs) logs = true;
                     else heads = true;
                 }
@@ -638,10 +687,32 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
         {
             try
             {
-                await foreach (Delivery delivery in _deliveries.Reader.ReadAllAsync(_workCancellation.Token))
-                    await DeliverAsync(delivery);
+                await foreach (PublicationDelivery delivery in _deliveries.Reader.ReadAllAsync(_workCancellation.Token))
+                {
+                    if (delivery is PendingDelivery pending) await DeliverPendingAsync(pending);
+                    else await DeliverAsync((Delivery)delivery);
+                }
             }
             catch (OperationCanceledException) when (_workCancellation.IsCancellationRequested) { }
+        }
+
+        private async Task DeliverPendingAsync(PendingDelivery delivery)
+        {
+            try
+            {
+                JsonElement hash = JsonSerializer.SerializeToElement(delivery.Transaction.Hash!.ToString());
+                await NotifyAsync(delivery.Sequence, hash, null, false, _workCancellation.Token, SubscriptionKind.PendingHashes);
+                lock (_lock)
+                    if (!_subscriptions.Values.Any(subscription => subscription.Kind == SubscriptionKind.PendingTransactions
+                            && subscription.Active && delivery.Sequence > subscription.StartSequence)) return;
+                JsonElement full = await _owner._rpc.GetPendingTransactionViewAsync(delivery.Transaction, _owner._secondsPerSlot, _workCancellation.Token);
+                await NotifyAsync(delivery.Sequence, full, null, false, _workCancellation.Token, SubscriptionKind.PendingTransactions);
+            }
+            catch (Exception exception) when (!_workCancellation.IsCancellationRequested)
+            {
+                _owner._logger.LogDebug(exception, "Unable to render a pending transaction notification");
+                Close((WebSocketCloseStatus)1013, "Pending transaction data exceeds the response budget or is unavailable.");
+            }
         }
 
         private async Task DeliverAsync(Delivery delivery)
@@ -733,15 +804,17 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             foreach (LogData log in logs) await NotifyAsync(snapshot.Sequence, log.Json, log, removed, cancellationToken);
         }
 
-        private async Task NotifyAsync(long sequence, JsonElement result, LogData? log, bool removed, CancellationToken cancellationToken)
+        private async Task NotifyAsync(long sequence, JsonElement result, LogData? log, bool removed, CancellationToken cancellationToken,
+            SubscriptionKind? kind = null)
         {
             bool logs = log is not null;
+            SubscriptionKind expected = kind ?? (logs ? SubscriptionKind.Logs : SubscriptionKind.Heads);
             Subscription[] subscriptions;
             lock (_lock) subscriptions = [.. _subscriptions.Values];
             foreach (Subscription subscription in subscriptions)
             {
                 bool eligible;
-                lock (_lock) eligible = subscription.Active && subscription.Logs == logs && sequence > subscription.StartSequence;
+                lock (_lock) eligible = subscription.Active && subscription.Kind == expected && sequence > subscription.StartSequence;
                 if (!eligible || log is { } entry && !Matches(entry.Address, entry.Topics, subscription)) continue;
                 JsonElement payload = logs ? WithRemoved(result, removed) : result;
                 using JsonRpcResult notification = JsonRpcResult.Single(new JsonRpcSubscriptionResponse<JsonElement>
@@ -812,7 +885,7 @@ internal sealed class RpcSubscriptions : IAsyncDisposable
             foreach (Subscription subscription in _subscriptions.Values)
             {
                 if (subscription.Active || !subscription.ResponseAccepted) continue;
-                subscription.StartSequence = Volatile.Read(ref _owner._sequence);
+                subscription.StartSequence = subscription.Pending ? Volatile.Read(ref _owner._pendingSequence) : _owner._rpc.Filters.PublicationSequence;
                 subscription.Active = true;
                 if (subscription.Logs) _filterGeneration++;
             }

@@ -16,7 +16,7 @@ using Nethermind.State.Proofs;
 namespace Nethermind.LightClient.Rpc;
 
 [RpcModule(ModuleType.Eth)]
-internal interface IEthRpcModule : IRpcModule
+internal partial interface IEthRpcModule : IRpcModule
 {
     ResultWrapper<ulong> eth_chainId();
     ResultWrapper<Address[]> eth_accounts();
@@ -31,8 +31,9 @@ internal interface IEthRpcModule : IRpcModule
     Task<ResultWrapper<byte[]>> eth_getStorageAt([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictAddressConverter))] Address address, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StorageIndexParameterConverter))] StorageIndex position, JsonElement? blockParameter = null);
     Task<ResultWrapper<AccountProof>> eth_getProof([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictAddressConverter))] Address address, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StorageKeysConverter))] StorageIndex[] storageKeys, JsonElement? blockParameter = null);
     Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictDataConverter))] byte[] transaction);
-    Task<ResultWrapper<string>> eth_call(TransactionForRpc transaction, JsonElement? blockParameter = null);
-    Task<ResultWrapper<string>> eth_estimateGas(TransactionForRpc transaction, JsonElement? blockParameter = null);
+    Task<ResultWrapper<JsonElement>> eth_sendRawTransactionSync(
+        [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictDataConverter))] byte[] transaction,
+        JsonElement? timeoutMs = null);
     Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null);
     Task<ResultWrapper<JsonElement>> eth_feeHistory([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictQuantityConverter))] UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles);
     Task<ResultWrapper<JsonElement>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects);
