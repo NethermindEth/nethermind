@@ -227,15 +227,19 @@ namespace Nethermind.Db.Test.LogIndex
             {
                 using CancellationTokenSource cancellation = new();
                 Task cancelledWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), cancellation.Token);
-                Task completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
+                Task<bool> completedWait = compressor.WaitUntilEmptyAsync(TimeSpan.FromSeconds(30), CancellationToken.None);
                 Assert.That(completedWait.IsCompleted, Is.False);
                 cancellation.Cancel();
                 Assert.That(async () => await cancelledWait, Throws.InstanceOf<OperationCanceledException>());
 
-                await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
-                Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                bool drainedWithinZero = await compressor.WaitUntilEmptyAsync(TimeSpan.Zero, CancellationToken.None);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(drainedWithinZero, Is.False);
+                    Assert.That(completedWait.IsCompleted, Is.False, "a timeout or cancellation must not signal queue completion");
+                }
                 compressor.Start();
-                await completedWait.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(await completedWait.WaitAsync(TimeSpan.FromSeconds(5)), Is.True);
 
                 await Task.WhenAll(Enumerable.Range(0, 4).Select(async _ =>
                 {

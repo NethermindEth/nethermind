@@ -18,6 +18,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -330,6 +331,56 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", boolArg);
             string expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"result\":\"", serialized.Substring(serialized.Length - 44, 34), "\",\"id\":67}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
+        }
+
+        [TestCase("1")]
+        [TestCase("[true]")]
+        public async Task NewHeadSubscription_with_an_option_of_another_kind_returns_invalid_params(string option)
+        {
+            using JsonDocument args = JsonDocument.Parse(option);
+
+            string serialized = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", args.RootElement);
+            string subscribed = await RpcTest.TestSerializedRequest(_subscribeRpcModule, "eth_subscribe", "newHeads", true);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","error":{"code":-32602,"message":"invalid argument 1: expected a boolean or an object with includeTransactions"},"id":67}"""));
+                Assert.That(subscribed, Does.Match("""^\{"jsonrpc":"2\.0","result":"0x[0-9a-f]{32}","id":67\}$"""), "a valid subscription still follows");
+            }
+        }
+
+        /// <remarks>An empty string stands for an undefined element, the one kind no JSON text parses to.</remarks>
+        [TestCase("true", true)]
+        [TestCase("false", false)]
+        [TestCase("\"TRUE\"", true)]
+        [TestCase("\"False\"", false)]
+        [TestCase("{\"includeTransactions\":true}", true)]
+        [TestCase("{}", false)]
+        [TestCase("{\"includeTransactions\":1}", false)]
+        [TestCase("\"yes\"", null)]
+        [TestCase("1", null)]
+        [TestCase("[true]", null)]
+        [TestCase("null", null)]
+        [TestCase("", null)]
+        public void TransactionsOption_reads_a_boolean_its_string_or_an_object(string json, bool? expected)
+        {
+            using JsonDocument? document = json.Length == 0 ? null : JsonDocument.Parse(json);
+            TransactionsOption option = new();
+
+            void Read() => option.ReadJson(document?.RootElement ?? default, EthereumJsonSerializer.JsonOptions);
+
+            if (expected is null)
+            {
+                Assert.That(Read, Throws.TypeOf<SafePublicMessageFormatException>()
+                    .With.Message.EqualTo("expected a boolean or an object with includeTransactions"));
+                return;
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Read, Throws.Nothing);
+                Assert.That(option.IncludeTransactions, Is.EqualTo(expected));
+            }
         }
 
         [Test]

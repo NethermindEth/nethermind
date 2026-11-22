@@ -776,9 +776,11 @@ namespace Nethermind.Network.Rlpx
                 {
                     _session.MarkDisconnected(DisconnectReason.AppClosing, DisconnectType.Local, "shutdown");
                 }
-                catch (InvalidOperationException)
+                catch (InvalidOperationException e)
                 {
                     // Session may already be disposed or in a state that doesn't allow disposal
+                    ILogger logger = _rlpxHost._logger;
+                    if (logger.IsDebug) logger.Debug($"Could not disconnect {_session:hide} on shutdown: {e.Message}");
                 }
             }
 
@@ -825,7 +827,7 @@ namespace Nethermind.Network.Rlpx
 
             protected override void InitChannel(IChannel channel)
             {
-                Session session = new(_rlpxHost.LocalPort, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
+                Session session = new(_rlpxHost.LocalPort, new NettyRlpxConnection(channel, _rlpxHost._logManager), _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
                 IPEndPoint? ipEndPoint = channel.RemoteAddress.ToIPEndpoint();
                 IPAddress remoteIp = ipEndPoint.Address.NormalizeMappedIPv4();
                 session.RemoteHost = remoteIp.ToString();
@@ -842,7 +844,7 @@ namespace Nethermind.Network.Rlpx
 
             protected override void InitChannel(IChannel channel)
             {
-                Session session = new(_rlpxHost.LocalPort, _node, channel, _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
+                Session session = new(_rlpxHost.LocalPort, _node, new NettyRlpxConnection(channel, _rlpxHost._logManager), _rlpxHost._disconnectsAnalyzer, _rlpxHost._logManager);
                 _rlpxHost.InitializeOutboundChannel(channel, session, _attempt);
             }
         }

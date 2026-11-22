@@ -171,6 +171,9 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         {
             if (!TryGetSignatureV(out ulong v))
                 return RpcTransactionErrors.NoEip155V(ChainId ?? 0);
+            // A signature carries a v of 27 or more: the request gave none, or one that is no y-parity either.
+            if (v < Signature.VOffset)
+                return RpcTransactionErrors.InvalidSignatureV;
 
             tx.Signature = new(R ?? UInt256.Zero, S ?? UInt256.Zero, v);
         }
@@ -187,7 +190,8 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         if (V is not { } value) return true;
         if (value > 1)
         {
-            v = value.ToUInt64(null); // non protected
+            // Non protected. No signature carries a v above a ulong; 0 has the caller report it as unusable.
+            v = value.IsUint64 ? value.ToUInt64(null) : 0;
             return true;
         }
 

@@ -57,26 +57,20 @@ namespace Nethermind.Blockchain.Data
         private void SetupWatcher(string filePath)
         {
             _data = new DataSnapshot(DefaultValue);
-            IFileInfo? fileInfo = null;
             try
             {
-                fileInfo = _fileSystem.FileInfo.New(filePath);
+                _fileSystem.FileInfo.New(filePath);
             }
-            catch (ArgumentException) { }
-            catch (PathTooLongException) { }
-            catch (NotSupportedException) { }
-
-            if (fileInfo is null)
+            catch (Exception e) when (e is ArgumentException or PathTooLongException or NotSupportedException)
             {
                 // file name is not valid
-                if (_logger.IsError) _logger.Error($"Invalid file path to watch: {filePath:hide}.");
+                if (_logger.IsError) _logger.Error($"Invalid file path to watch: {filePath:hide}.", SensitiveLogMasking.Enabled ? null : e);
+                return;
             }
-            else
-            {
-                // file name is valid
-                FilePath = filePath;
-                if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath:hide}.");
-            }
+
+            // file name is valid
+            FilePath = filePath;
+            if (_logger.IsInfo) _logger.Info($"Watching file for changes: {filePath:hide}.");
         }
 
         // Started only once the initial load has run, so polling cannot race it.

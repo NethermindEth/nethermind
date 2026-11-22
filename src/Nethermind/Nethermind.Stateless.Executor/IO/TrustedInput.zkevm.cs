@@ -130,4 +130,6 @@ public static partial class TrustedInput
 
         return new ItemList(ReadItems(data, StateNodesList, 0));
     }
+
+    private static partial bool RetainHints => AirbenderFlag.IsActive;
 }

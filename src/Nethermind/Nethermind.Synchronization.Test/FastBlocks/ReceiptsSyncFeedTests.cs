@@ -44,7 +44,7 @@ public class ReceiptsSyncFeedTests
     {
         public Scenario(ISpecProvider specProvider, int nonEmptyBlocks, int txPerBlock, int emptyBlocks = 0)
         {
-            int pivot = checked((int)_pivotNumber);
+            int pivot = checked((int)ScenarioPivotNumber);
             Blocks = new Block[pivot + 1];
             Blocks[0] = Build.A.Block.Genesis.TestObject;
 
@@ -88,7 +88,9 @@ public class ReceiptsSyncFeedTests
     private IDb _metadataDb;
     private IHistoryPruner _historyPruner;
 
-    private static ulong _pivotNumber = 1024;
+    private const ulong ScenarioPivotNumber = 1024;
+    // Per test: NUnit reuses the fixture instance, and a test may raise it.
+    private ulong _pivotNumber;
 
     private static readonly Scenario _1024BodiesWithOneTxEach;
     private static readonly Scenario _256BodiesWithOneTxEach;
@@ -109,6 +111,7 @@ public class ReceiptsSyncFeedTests
     [SetUp]
     public void Setup()
     {
+        _pivotNumber = ScenarioPivotNumber;
         _receiptStorage = Substitute.For<IReceiptStorage>();
         _insertBatch = Substitute.For<IReceiptsInsertBatch>();
         _receiptStorage.StartInsertBatch().Returns(_insertBatch);

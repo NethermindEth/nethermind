@@ -21,4 +21,6 @@ public static partial class TrustedInput
     }
 
     private static unsafe partial IOwnedReadOnlyList<byte[]> ReadStateNodes(ReadOnlySpan<byte> data) => new ItemList(ReadItems(data, StateNodesList, 0));
+
+    private static partial bool RetainHints => true;
 }
