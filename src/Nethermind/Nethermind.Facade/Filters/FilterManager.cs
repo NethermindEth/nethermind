@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -23,7 +24,7 @@ namespace Nethermind.Facade.Filters
     /// Serves <c>eth_getFilterChanges</c> for installed filters.
     /// </summary>
     /// <remarks>
-    /// Filters do not buffer results. Processed blocks with their receipts and reorg removals (for log filters),
+    /// Filters do not buffer results. Canonical blocks with their receipts and reorg removals (for log filters),
     /// block hashes (for block filters) and new pending transactions are each appended once to a log shared by all
     /// filters of that kind, every filter holds only a cursor into it, and its results are matched when it is polled.
     /// Memory is therefore independent of the number of filters and of how many results they match: a log keeps what
@@ -37,6 +38,7 @@ namespace Nethermind.Facade.Filters
         private readonly FilterEventLog<BlockEvent> _blocks;
         private readonly FilterEventLog<Hash256> _blockHashes;
         private readonly FilterEventLog<PendingTransaction> _pendingTransactions;
+        private readonly LruCache<ValueHash256, TxReceipt[]>? _recentReceipts;
 
         private Hash256? _lastBlockHash;
         private readonly FilterStore _filterStore;
@@ -49,7 +51,9 @@ namespace Nethermind.Facade.Filters
             ITxPool txPool,
             IReceiptMonitor receiptMonitor,
             ILogManager logManager,
-            ISpecProvider specProvider)
+            ISpecProvider specProvider,
+            IBlockTree blockTree,
+            IReceiptConfig receiptConfig)
         {
             _eip8116 = new Eip8116Schedule(specProvider);
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
@@ -60,7 +64,17 @@ namespace Nethermind.Facade.Filters
             _blockHashes = new FilterEventLog<Hash256>(filterStore);
             _pendingTransactions = new FilterEventLog<PendingTransaction>(filterStore);
             mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
-            receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
+            if (receiptConfig.StoreReceipts)
+            {
+                receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
+            }
+            else
+            {
+                // Retain recent receipts for live filters on nodes without a receipt store.
+                _recentReceipts = new(128, "live filter receipts");
+                blockTree.BlockAddedToMain += OnBlockAddedToMain;
+                blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
+            }
             _filterStore.FilterSaved += OnFilterSaved;
             _filterStore.FilterRemoved += OnFilterRemoved;
             txPool.NewPending += OnNewPendingTransaction;
@@ -109,22 +123,35 @@ namespace Nethermind.Facade.Filters
             Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             _lastBlockHash = blockHash;
             _blockHashes.Append(blockHash);
-            if (_blocks.IsTracking)
+            if (_recentReceipts is not null && _blocks.IsTracking && e.TxReceipts.Length != 0)
             {
-                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false,
-                    _eip8116.IsEnabled(block.Number, block.Timestamp)));
+                _recentReceipts.Set(blockHash.ValueHash256, e.TxReceipts);
+            }
+        }
+
+        private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        {
+            if (e.PreviousBlock is { } previous) AppendRecentReceipts(previous.Header, removed: true);
+            AppendRecentReceipts(e.Block.Header, removed: false);
+        }
+
+        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) =>
+            AppendRecentReceipts(e.Header, removed: true);
+
+        private void AppendRecentReceipts(BlockHeader header, bool removed)
+        {
+            if (_blocks.IsTracking && header.Hash is { } hash && _recentReceipts!.TryGet(hash.ValueHash256, out TxReceipt[] receipts))
+            {
+                OnReceiptsInserted(this, new ReceiptsEventArgs(header, receipts, removed, _eip8116.IsEnabled(header.Number, header.Timestamp)));
             }
         }
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)
         {
-            if (!e.WasRemoved || e.TxReceipts is null || e.TxReceipts.Length == 0 || !_blocks.IsTracking)
+            if (_blocks.IsTracking && e.TxReceipts is { Length: > 0 } receipts)
             {
-                return;
+                _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, receipts, e.WasRemoved, e.LogIndexPerReceipt));
             }
-
-            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true,
-                _eip8116.IsEnabled(e.BlockHeader.Number, e.BlockHeader.Timestamp)));
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
