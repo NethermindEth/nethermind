@@ -100,6 +100,11 @@ public partial class BlockProcessor
             }
         }
 
+        public void ClearTransactionProcessedEvents()
+        {
+            if (ExecutionMetricsFlag.IsActive) _txTimings = null;
+        }
+
         [DoesNotReturn, StackTraceHidden]
         internal static void ThrowInvalidTransactionException(TransactionResult result, BlockHeader header, Transaction currentTx, int index) => throw new InvalidTransactionException(header, $"Transaction {currentTx.Hash} at index {index} failed with error {result.ErrorDescription}", result);
 
