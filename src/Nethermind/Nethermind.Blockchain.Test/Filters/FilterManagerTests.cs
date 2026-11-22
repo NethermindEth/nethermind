@@ -417,6 +417,20 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Log_filter_installed_after_processing_sees_canonical_addition_without_receipt_storage()
+    {
+        CreateFilterManager(storeReceipts: false);
+        TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(1L));
+        Block block = RaiseBlockProcessedOnly(receipt);
+        LogFilter filter = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(filter);
+
+        _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(block));
+
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)), Has.Length.EqualTo(1));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void block_whose_bloom_excludes_the_filter_is_skipped()
     {
         LogFilter filter = BuildFilter(static f => f.WithAddress(TestItem.AddressA));

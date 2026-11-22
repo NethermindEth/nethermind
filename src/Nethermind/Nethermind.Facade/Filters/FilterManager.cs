@@ -35,7 +35,7 @@ namespace Nethermind.Facade.Filters
     /// </remarks>
     public sealed class FilterManager
     {
-        // Bound the memory used for reorg logs when the receipt store is disabled.
+        // Bound the receipts held for canonical additions and reorg removals when receipt storage is disabled.
         private const int RecentReceiptBlockLimit = 128;
 
         private readonly FilterEventLog<BlockEvent> _blocks;
@@ -117,13 +117,6 @@ namespace Nethermind.Facade.Filters
             _blocks.Untrack(e.FilterId);
             _blockHashes.Untrack(e.FilterId);
             _pendingTransactions.Untrack(e.FilterId);
-            if (_recentReceipts is { } recentReceipts)
-            {
-                lock (recentReceipts)
-                {
-                    if (!_blocks.IsTracking) recentReceipts.Clear();
-                }
-            }
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -134,10 +127,7 @@ namespace Nethermind.Facade.Filters
             _blockHashes.Append(blockHash);
             if (_recentReceipts is { } recentReceipts && e.TxReceipts.Length != 0)
             {
-                lock (recentReceipts)
-                {
-                    if (_blocks.IsTracking) recentReceipts.Set(blockHash.ValueHash256, e.TxReceipts);
-                }
+                recentReceipts.Set(blockHash.ValueHash256, e.TxReceipts);
             }
         }
 
