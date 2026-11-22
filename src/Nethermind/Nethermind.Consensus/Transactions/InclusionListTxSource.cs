@@ -11,12 +11,14 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Transactions;
 
 public class InclusionListTxSource(
     IEthereumEcdsa ecdsa,
     ISpecProvider specProvider,
+    ITxValidator txValidator,
     ILogManager logManager) : IInclusionListTxSource
 {
     // Lazy<T> defaults to ExecutionAndPublication: constructed once even under racing FCUs.
@@ -56,7 +58,7 @@ public class InclusionListTxSource(
     /// a forkchoice update that never starts a build pays nothing.</remarks>
     public void Set(byte[][] inclusionListTransactions, IReleaseSpec spec)
         => _decodedByAttributes.AddOrUpdate(inclusionListTransactions,
-            new Lazy<Transaction[]>(() => OrderForProduction(FilterBlobs(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec)))));
+            new Lazy<Transaction[]>(() => OrderForProduction(FilterUnusable(_decoder.Value.DecodeAndRecover(inclusionListTransactions, spec), spec))));
 
     // The producer offers each IL tx once, so a shuffled IL would skip a nonce that arrives after its
     // dependent. Ordering by first-appearance rather than address avoids favouring low-address senders.
@@ -80,17 +82,21 @@ public class InclusionListTxSource(
 
     // Blob IL entries carry no ShardBlobNetworkWrapper, so including one would make getPayloadV6
     // unusable for the consensus client.
-    private static Transaction[] FilterBlobs(Transaction[] txs)
+    private Transaction[] FilterUnusable(Transaction[] txs, IReleaseSpec spec)
     {
+        Span<bool> usable = txs.Length <= 256 ? stackalloc bool[txs.Length] : new bool[txs.Length];
         int kept = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!IsBlobCarrying(txs[i])) kept++;
+        {
+            usable[i] = !IsBlobCarrying(txs[i]) && txValidator.IsWellFormed(txs[i], spec);
+            if (usable[i]) kept++;
+        }
         if (kept == txs.Length) return txs;
 
         Transaction[] result = new Transaction[kept];
         int j = 0;
         for (int i = 0; i < txs.Length; i++)
-            if (!IsBlobCarrying(txs[i])) result[j++] = txs[i];
+            if (usable[i]) result[j++] = txs[i];
         return result;
     }
 
