@@ -74,6 +74,35 @@ public class ExecutionPayloadV4Tests
     }
 
     [Test]
+    public void TryGetBlock_checks_the_item_limit_of_a_cached_block_access_list()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject,
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(0).TestObject)
+            .TestObject;
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(bal),
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 6 * Eip7928Constants.ItemCost,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        Result<Block> withinLimit = payload.TryGetBlock();
+        payload.GasLimit = 5 * Eip7928Constants.ItemCost;
+        Result<Block> overLimit = payload.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withinLimit.IsError, Is.False);
+            Assert.That(overLimit.Error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
+    [Test]
     public void TryGetBlock_reuses_cached_block_access_list_for_wire_hash()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
