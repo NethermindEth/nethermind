@@ -19,4 +19,7 @@ public struct BlobSidecar
 
     [JsonPropertyName("kzg_commitment")]
     public byte[] KzgCommitment;
+
+    [JsonPropertyName("kzg_proof")]
+    public byte[] KzgProof;
 }

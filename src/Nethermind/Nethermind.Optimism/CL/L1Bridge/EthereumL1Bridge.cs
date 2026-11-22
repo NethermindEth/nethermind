@@ -3,12 +3,14 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Optimism.CL.Decoding;
@@ -159,12 +161,45 @@ public class EthereumL1Bridge : IL1Bridge
             throw new ArgumentNullException(nameof(blobSidecars));
         }
 
+        if (!AreSidecarsValid(blobSidecars, transaction.BlobVersionedHashes))
+        {
+            throw new InvalidDataException($"Blob sidecars for slot {slotNumber} do not match the versioned hashes of transaction {transaction.Hash}.");
+        }
+
         DaDataSource[] result = new DaDataSource[transaction.BlobVersionedHashes.Length];
         for (int i = 0; i < transaction.BlobVersionedHashes.Length; i++)
         {
             result[i] = new DaDataSource { DataOrigin = blockNumber, Data = blobSidecars[i].Blob, DataType = DaDataType.Blob };
         }
         return result;
+    }
+
+    private static bool AreSidecarsValid(BlobSidecar[] blobSidecars, byte[][] blobVersionedHashes)
+    {
+        if (blobSidecars.Length != blobVersionedHashes.Length) return false;
+
+        byte[][] blobs = new byte[blobSidecars.Length][];
+        byte[][] commitments = new byte[blobSidecars.Length][];
+        byte[] proofs = new byte[blobSidecars.Length * ShardBlobNetworkWrapper.BytesPerProof];
+        Span<byte> versionedHash = stackalloc byte[Eip4844Constants.BytesPerBlobVersionedHash];
+        for (int i = 0; i < blobSidecars.Length; i++)
+        {
+            BlobSidecar sidecar = blobSidecars[i];
+            if (sidecar.Blob is null || sidecar.KzgCommitment is null || sidecar.KzgProof?.Length != ShardBlobNetworkWrapper.BytesPerProof
+                || !KzgPolynomialCommitments.TryComputeCommitmentHashV1(sidecar.KzgCommitment, versionedHash)
+                || !versionedHash.SequenceEqual(blobVersionedHashes[i]))
+            {
+                return false;
+            }
+
+            blobs[i] = sidecar.Blob;
+            commitments[i] = sidecar.KzgCommitment;
+            sidecar.KzgProof.CopyTo(proofs, i * ShardBlobNetworkWrapper.BytesPerProof);
+        }
+
+        ShardBlobNetworkWrapper wrapper = new(blobs, commitments, proofs, ProofVersion.V0);
+        IBlobProofsManager proofsManager = IBlobProofsManager.For(ProofVersion.V0);
+        return proofsManager.ValidateLengths(wrapper) && proofsManager.ValidateProofs(wrapper);
     }
 
     private DaDataSource ProcessCalldataBatcherTransaction(L1Transaction transaction, ulong blockNumber, CancellationToken token)

@@ -22,6 +22,7 @@ public class EthereumBeaconApiTests
         {
             Assert.That(response.Data[0].Blob, Is.EqualTo(new byte[] { 1, 2 }));
             Assert.That(response.Data[0].KzgCommitment, Is.EqualTo(new byte[] { 3, 4 }));
+            Assert.That(response.Data[0].KzgProof, Is.EqualTo(new byte[] { 5 }));
         }
     }
 }
