@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Autofac.Core;
@@ -190,6 +191,29 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         }
     }
 
+    [Test]
+    public async Task Produced_block_applies_chainspec_bytecode_rewrite()
+    {
+        Address rewritten = TestItem.AddressD;
+        byte[] code = Bytes.FromHexString("0x60016000");
+        MergeAuRaTestBlockchain blockchain = new()
+        {
+            ParallelExecutionOverride = Parallel,
+            RewriteBytecode = new Dictionary<ulong, IDictionary<Address, byte[]>> { [1] = new Dictionary<Address, byte[]> { [rewritten] = code } }
+        };
+        using MergeTestBlockchain chain = await blockchain.BuildMergeTestBlockchain(configurer: builder =>
+            builder.AddSingleton<ISpecProvider>(new TestSingleReleaseSpecProvider(Amsterdam.Instance)));
+
+        await AddNewBlockV6(chain.EngineRpcModule, chain);
+
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(head.Number, Is.EqualTo(1UL));
+            Assert.That(chain.StateReader.GetCode(head, rewritten), Is.EqualTo(code));
+        }
+    }
+
     protected override BlockBuilder BuildNewBlock(Block head)
         => base.BuildNewBlock(head).WithAura(0, []);
 
@@ -201,6 +225,8 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null)
             : base(mergeConfig) =>
             SealEngineType = Core.SealEngineType.AuRa;
+
+        public IDictionary<ulong, IDictionary<Address, byte[]>>? RewriteBytecode { get; init; }
 
         // Install AuRaMergeModule below (after AuRaModule, so its last-wins registrations take effect)
         // rather than via TestMergeModule, so BaseMergePluginModule loads exactly once (as in production).
@@ -250,7 +276,8 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
                 {
                     WithdrawalContractAddress = new(_auraWithdrawalContractAddress),
                     StepDuration = { { 0, 3 } },
-                    ValidatorsJson = validatorsJson
+                    ValidatorsJson = validatorsJson,
+                    RewriteBytecode = RewriteBytecode ?? new Dictionary<ulong, IDictionary<Address, byte[]>>()
                 });
             baseChainSpec.Parameters = new ChainParameters();
             return baseChainSpec;

@@ -76,13 +76,6 @@ internal sealed class AuRaBlockProducerEnvFactory(
             builder.AddScoped(gasLimitOverride);
         }
 
-        IDictionary<ulong, IDictionary<Address, byte[]>> rewriteBytecode = parameters.RewriteBytecode;
-        (ulong, Address, byte[])[] rewriteBytecodeTimestamp = [.. parameters.RewriteBytecodeTimestampParsed];
-        if (rewriteBytecode?.Count > 0 || rewriteBytecodeTimestamp?.Length > 0)
-        {
-            builder.AddScoped(new ContractRewriter(rewriteBytecode, rewriteBytecodeTimestamp));
-        }
-
         return builder;
     }
 
