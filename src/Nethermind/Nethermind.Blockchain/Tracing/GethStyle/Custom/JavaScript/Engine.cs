@@ -35,6 +35,7 @@ public partial class Engine : IDisposable
     private NullThrowObserver? _availableNullThrowObserver;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
+    private dynamic _toUint8Array;
     private int _disposed;
     private int _externalInterruptRequested;
     private readonly Lock _interruptGate = new();
@@ -126,6 +127,7 @@ public partial class Engine : IDisposable
 
         _bigInteger = V8Engine.Evaluate(_runtime.BigInteger);
         _createUint8Array = V8Engine.Evaluate(_runtime.CreateUint8Array);
+        _toUint8Array = V8Engine.Evaluate(_runtime.ToUint8Array);
     }
 
     /// <summary>
@@ -270,6 +272,19 @@ public partial class Engine : IDisposable
         }
 
         return array;
+    }
+
+    /// <summary>
+    /// Converts the elements of a script array to bytes the way <c>Uint8Array.from</c> does.
+    /// </summary>
+    /// <remarks>
+    /// As goja's <c>toUint8</c> in Geth, each element goes through JavaScript numeric coercion (so <c>'0x10'</c> and
+    /// objects with <c>valueOf</c> count), is truncated and wraps into a byte, and NaN and infinities become 0.
+    /// </remarks>
+    internal byte[] ToBytes(ScriptObject values)
+    {
+        ITypedArray<byte> array = _toUint8Array(values);
+        return array.Length == 0 ? [] : array.ToArray();
     }
 
     /// <summary>

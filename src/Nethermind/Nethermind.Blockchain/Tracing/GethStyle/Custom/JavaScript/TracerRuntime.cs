@@ -48,6 +48,7 @@ internal sealed partial class TracerRuntime : IDisposable
     private const string GethLegacySuffix = "Legacy";
     private const string BigIntegerJavaScript = "_bigInteger.js";
     private const string CreateUint8ArrayCode = "(function (U) {return function (length) {return new U(length);};})(Uint8Array)";
+    private const string ToUint8ArrayCode = "(function (U) {return function (values) {return U.from(values);};})(Uint8Array)";
 
     // PublicationOnly does not cache a failed load, so a later request retries it instead of rethrowing it for the process lifetime.
     private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources, LazyThreadSafetyMode.PublicationOnly);
@@ -86,6 +87,8 @@ internal sealed partial class TracerRuntime : IDisposable
             : throw new FileNotFoundException($"JavaScript tracer helper '{BigIntegerJavaScript}' is missing from {TracersPath}"));
 
     public V8Script CreateUint8Array => GetScript(nameof(CreateUint8ArrayCode), CreateUint8ArrayCode);
+
+    public V8Script ToUint8Array => GetScript(nameof(ToUint8ArrayCode), ToUint8ArrayCode);
 
     /// <summary>
     /// Compiles the tracer given as inline code or as the name of a tracer shipped under <c>Data/JSTracers</c>.

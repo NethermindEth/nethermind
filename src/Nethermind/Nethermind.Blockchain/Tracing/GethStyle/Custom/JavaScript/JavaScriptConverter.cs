@@ -6,6 +6,7 @@ using System.Collections;
 using System.Globalization;
 using System.Linq;
 using System.Numerics;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -22,22 +23,20 @@ public static class JavaScriptConverter
         ITypedArray<byte> typedArray => typedArray.Length == 0 ? [] : typedArray.ToArray(),
         IArrayBuffer arrayBuffer => arrayBuffer.GetBytes(),
         IArrayBufferView arrayBufferView => arrayBufferView.GetBytes(),
-        IList list => list.ToEnumerable().Select(ToWrappedByte).ToArray(),
+        ScriptObject values and IList => CurrentEngine.ToBytes(values),
+        IList list => ToWrappedBytes(list),
         _ => throw new ArgumentException("Unsupported input type.", nameof(input))
     };
 
-    /// <remarks>
-    /// Geth truncates each element to an integer and wraps it into a byte; an element that is not a number counts as 0.
-    /// </remarks>
-    private static byte ToWrappedByte(object? item)
+    private static byte[] ToWrappedBytes(IList list)
     {
-        double value = item switch
+        byte[] bytes = new byte[list.Count];
+        for (int i = 0; i < bytes.Length; i++)
         {
-            string text => double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsed) ? parsed : 0,
-            IConvertible convertible => convertible.ToDouble(CultureInfo.InvariantCulture),
-            _ => 0
-        };
-        return double.IsFinite(value) ? unchecked((byte)(long)value) : (byte)0;
+            double value = list[i] is IConvertible convertible ? convertible.ToDouble(CultureInfo.InvariantCulture) : 0;
+            bytes[i] = double.IsFinite(value) ? unchecked((byte)(long)value) : (byte)0;
+        }
+        return bytes;
     }
 
     public static byte[] ToWord(this object input) => input switch
