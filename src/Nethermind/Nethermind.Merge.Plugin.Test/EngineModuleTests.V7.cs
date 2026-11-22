@@ -884,12 +884,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        Transaction spend = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
-        Transaction fund = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
-            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        (Transaction spend, Transaction fund) = BuildSpendFundedByLaterTransaction();
         byte[] spendBytes = Rlp.Encode(spend);
         byte[] fundBytes = Rlp.Encode(fund);
         byte[][] inclusionList = [spendBytes, fundBytes];
@@ -948,12 +943,7 @@ public partial class EngineModuleTests
         Transaction unfunded = Build.A.Transaction
             .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
             .WithTo(TestItem.AddressA).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
-        Transaction spend = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
-            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
-        Transaction fund = Build.A.Transaction
-            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
-            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        (Transaction spend, Transaction fund) = BuildSpendFundedByLaterTransaction();
         PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(unfunded), Rlp.Encode(spend), Rlp.Encode(fund)]);
         chain.InclusionListTxSource!.Set(payloadAttributes.InclusionListTransactions!, Bogota.Instance);
 
@@ -964,6 +954,17 @@ public partial class EngineModuleTests
             Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { fund.Hash, spend.Hash }));
             Assert.That(counter.OffersPerBlock(unfunded.Hash!), Is.EqualTo(counter.OffersPerBlock(spend.Hash!)));
         }
+    }
+
+    private static (Transaction Spend, Transaction Fund) BuildSpendFundedByLaterTransaction()
+    {
+        Transaction spend = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
+        Transaction fund = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
+            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        return (spend, fund);
     }
 
     private sealed class CountingTransactionPicker(BlockProcessor.IBlockProductionTransactionPicker inner, CountingTransactionPicker.Counter counter)
