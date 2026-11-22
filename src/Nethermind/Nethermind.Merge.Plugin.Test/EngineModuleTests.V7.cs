@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
@@ -935,6 +936,61 @@ public partial class EngineModuleTests
         Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
 
         Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { tx0.Hash, tx1.Hash }));
+    }
+
+    [Test]
+    public async Task Should_not_offer_inclusion_list_transaction_again_while_its_sender_is_unchanged()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+
+        Transaction unfunded = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(Build.A.PrivateKey.TestObject).TestObject;
+        Transaction spend = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
+        Transaction fund = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
+            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(unfunded), Rlp.Encode(spend), Rlp.Encode(fund)]);
+        await chain.EngineRpcModule.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), payloadAttributes);
+
+        Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { fund.Hash, spend.Hash }));
+            Assert.That(counter.OffersPerBlock(unfunded.Hash!), Is.EqualTo(counter.OffersPerBlock(spend.Hash!)));
+        }
+    }
+
+    private sealed class CountingTransactionPicker(BlockProcessor.IBlockProductionTransactionPicker inner, CountingTransactionPicker.Counter counter)
+        : BlockProcessor.IBlockProductionTransactionPicker
+    {
+        public sealed class Counter
+        {
+            private readonly ConcurrentDictionary<(int Block, Hash256 Tx), int> _offers = new();
+
+            public void Add(Block block, Hash256 tx) => _offers.AddOrUpdate((RuntimeHelpers.GetHashCode(block), tx), 1, static (_, count) => count + 1);
+
+            public Dictionary<int, int> OffersPerBlock(Hash256 tx) => _offers.Where(entry => entry.Key.Tx == tx).ToDictionary(static entry => entry.Key.Block, static entry => entry.Value);
+        }
+
+        public event EventHandler<BlockProcessor.AddingTxEventArgs>? AddingTransaction
+        {
+            add => inner.AddingTransaction += value;
+            remove => inner.AddingTransaction -= value;
+        }
+
+        public BlockProcessor.AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock,
+            IReadOnlyStateProvider stateProvider, ulong cumulativeBlockExecutionGas, ulong cumulativeBlockStateGas)
+        {
+            if (currentTx.Hash is not null) counter.Add(block, currentTx.Hash);
+            return inner.CanAddTransaction(block, currentTx, transactionsInBlock, stateProvider, cumulativeBlockExecutionGas, cumulativeBlockStateGas);
+        }
     }
 
     [Test]
