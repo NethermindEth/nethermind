@@ -23,7 +23,7 @@ partial class Program
 {
     static int Main()
     {
-        ReadOnlySpan<byte> input = IO.ReadInput();
+        ReadOnlySpan<byte> input = Nethermind.Core.AirbenderFlag.IsActive ? AirbenderRuntime.ReadPrehashedInput() : IO.ReadInput();
         ReadOnlySpan<byte> output = Execute(input);
 
         WriteOutput(output);

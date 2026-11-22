@@ -11,7 +11,7 @@ class Program
 {
     static int Main()
     {
-        IO.ReadInput();
+        AirbenderRuntime.ReadPrehashedInput();
         if (!CheckWitnessFallback()) return 1;
         // The fixture repeats each hint so we can check both acceptance and the public fallback.
         if (!Check(23, 5, true) || !Check(23, 5, false) || !Check(23, 5, false)
