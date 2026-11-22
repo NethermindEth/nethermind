@@ -35,6 +35,9 @@ namespace Nethermind.Facade.Filters
     /// </remarks>
     public sealed class FilterManager
     {
+        // Bound the memory used for reorg logs when the receipt store is disabled.
+        private const int RecentReceiptBlockLimit = 128;
+
         private readonly FilterEventLog<BlockEvent> _blocks;
         private readonly FilterEventLog<Hash256> _blockHashes;
         private readonly FilterEventLog<PendingTransaction> _pendingTransactions;
@@ -63,18 +66,17 @@ namespace Nethermind.Facade.Filters
             _blocks = new FilterEventLog<BlockEvent>(filterStore);
             _blockHashes = new FilterEventLog<Hash256>(filterStore);
             _pendingTransactions = new FilterEventLog<PendingTransaction>(filterStore);
-            mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             if (receiptConfig.StoreReceipts)
             {
                 receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
             }
             else
             {
-                // Retain recent receipts for live filters on nodes without a receipt store.
-                _recentReceipts = new(128, "live filter receipts");
+                _recentReceipts = new(RecentReceiptBlockLimit, "live filter receipts");
                 blockTree.BlockAddedToMain += OnBlockAddedToMain;
                 blockTree.BlockRemovedFromMain += OnBlockRemovedFromMain;
             }
+            mainProcessingContext.BranchProcessor.BlockProcessed += OnBlockProcessed;
             _filterStore.FilterSaved += OnFilterSaved;
             _filterStore.FilterRemoved += OnFilterRemoved;
             txPool.NewPending += OnNewPendingTransaction;
@@ -115,6 +117,13 @@ namespace Nethermind.Facade.Filters
             _blocks.Untrack(e.FilterId);
             _blockHashes.Untrack(e.FilterId);
             _pendingTransactions.Untrack(e.FilterId);
+            if (_recentReceipts is { } recentReceipts)
+            {
+                lock (recentReceipts)
+                {
+                    if (!_blocks.IsTracking) recentReceipts.Clear();
+                }
+            }
         }
 
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
@@ -123,9 +132,12 @@ namespace Nethermind.Facade.Filters
             Hash256 blockHash = block.Hash ?? throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
             _lastBlockHash = blockHash;
             _blockHashes.Append(blockHash);
-            if (_recentReceipts is not null && _blocks.IsTracking && e.TxReceipts.Length != 0)
+            if (_recentReceipts is { } recentReceipts && e.TxReceipts.Length != 0)
             {
-                _recentReceipts.Set(blockHash.ValueHash256, e.TxReceipts);
+                lock (recentReceipts)
+                {
+                    if (_blocks.IsTracking) recentReceipts.Set(blockHash.ValueHash256, e.TxReceipts);
+                }
             }
         }
 

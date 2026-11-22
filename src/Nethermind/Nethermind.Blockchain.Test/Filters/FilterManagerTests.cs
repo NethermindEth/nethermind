@@ -372,6 +372,31 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Reorg_reports_removed_logs_without_a_receipt_store([Values] bool replaceAtSameHeight)
+    {
+        LogFilter filter = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(filter);
+        CreateFilterManager(storeReceipts: false);
+        TxReceipt receipt = BuildReceipt(static r => r.WithBlockNumber(2L));
+        Block block = RaiseBlockProcessedOnly(receipt);
+        _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(block));
+
+        if (replaceAtSameHeight)
+        {
+            Block replacement = Build.A.Block.WithNumber(block.Number).WithExtraData([1]).TestObject;
+            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(replacement, block));
+        }
+        else
+        {
+            _blockTree.BlockRemovedFromMain += Raise.EventWith(_blockTree, new BlockHeaderEventArgs(block.Header));
+        }
+
+        using ArrayPoolList<FilterLog> logs = _filterManager.PollLogs(filter.Id);
+        Assert.That(logs.Select(static l => (l.Removed, l.LogIndex, l.BlockNumber)),
+            Is.EqualTo(new[] { (false, 0L, 2UL), (true, 0L, 2UL) }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Log_filter_waits_for_the_block_to_become_canonical([Values] bool storeReceipts)
     {
         LogFilter filter = BuildFilter(static _ => { });
@@ -519,6 +544,20 @@ public class FilterManagerTests
         Assert.That(IsCollected(receipt), Is.False, "the lagging filter has not read the block yet");
 
         _filterStore.RemoveFilter(lagging.Id);
+        Assert.That(IsCollected(receipt), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Removing_the_last_log_filter_releases_recent_receipts_without_a_receipt_store()
+    {
+        LogFilter filter = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(filter);
+        CreateFilterManager(storeReceipts: false);
+
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt();
+        Assert.That(IsCollected(receipt), Is.False);
+
+        _filterStore.RemoveFilter(filter.Id);
         Assert.That(IsCollected(receipt), Is.True);
     }
 
