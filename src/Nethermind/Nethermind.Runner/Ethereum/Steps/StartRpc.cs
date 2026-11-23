@@ -171,8 +171,10 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
         if (sharedWorkingDirectory)
         {
             string appKeyStoreDirectory = Path.GetFullPath(keyStoreDirectory, PathUtils.ExecutingDirectory);
-            if (logger.IsWarn && (appKeyStoreDirectory != Path.GetFullPath(keyStoreDirectory) || File.Exists(oldPath)))
-                logger.Warn("The working directory can be written by its group or by other users, so the JWT secret is not read from it.");
+            string appSecretPath = Path.GetFullPath(Path.Join(appKeyStoreDirectory, "jwt-secret"));
+            string workingDirectorySecretPath = Path.GetFullPath(Path.Join(keyStoreDirectory, "jwt-secret"));
+            if (logger.IsWarn && (SecretMovedAway(workingDirectorySecretPath, appSecretPath) || SecretMovedAway(oldPath, appSecretPath)))
+                logger.Warn($"The working directory can be written by its group or by other users, so the JWT secret path changed to {appSecretPath:hide}. Set JsonRpc.JwtSecretFile to keep the previous path.");
             keyStoreDirectory = appKeyStoreDirectory;
         }
 
@@ -201,6 +203,9 @@ public class StartRpc(INethermindApi api, Lazy<IJsonRpcServiceConfigurer[]> serv
             jsonRpcConfig.JwtSecretFile = Path.GetFullPath("jwt-secret".GetApplicationResourcePath(keyStoreDirectory));
         }
     }
+
+    private static bool SecretMovedAway(string previousPath, string newPath) =>
+        previousPath != newPath && File.Exists(previousPath);
 
     private static bool IsWritableByOthers(string directory) =>
         !OperatingSystem.IsWindows() && (File.GetUnixFileMode(directory) & (UnixFileMode.GroupWrite | UnixFileMode.OtherWrite)) != 0;

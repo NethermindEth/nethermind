@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Runtime.Versioning;
+using Nethermind.Core.Test;
 using Nethermind.JsonRpc;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -66,14 +67,40 @@ public class StartRpcJwtSecretTests
                 : UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute);
             Directory.SetCurrentDirectory(workingDirectory.FullName);
             JsonRpcConfig jsonRpcConfig = new();
+            TestLogger logger = new();
 
-            StartRpc.ConfigureJwtSecret(new KeyStoreConfig { KeyStoreDirectory = keyStoreDirectory }, jsonRpcConfig, LimboLogs.Instance.GetClassLogger<StartRpcJwtSecretTests>());
+            StartRpc.ConfigureJwtSecret(new KeyStoreConfig { KeyStoreDirectory = keyStoreDirectory }, jsonRpcConfig, new ILogger(logger));
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(jsonRpcConfig.JwtSecretFile, Is.EqualTo(appSecretPath));
                 Assert.That(File.Exists(legacySecret), Is.True);
+                Assert.That(logger.LogList, Has.One.Contains("Set JsonRpc.JwtSecretFile to keep the previous path."));
             }
+        }
+        finally
+        {
+            Directory.SetCurrentDirectory(previousWorkingDirectory);
+            workingDirectory.Delete(recursive: true);
+        }
+    }
+
+    [Test, NonParallelizable, Platform(Exclude = "Win")]
+    [UnsupportedOSPlatform("windows")]
+    public void ConfigureJwtSecret_does_not_warn_when_no_secret_is_moved_away_from_a_shared_working_directory()
+    {
+        string keyStoreDirectory = $"keystore-{Guid.NewGuid():N}";
+        string previousWorkingDirectory = Directory.GetCurrentDirectory();
+        DirectoryInfo workingDirectory = Directory.CreateTempSubdirectory();
+        try
+        {
+            File.SetUnixFileMode(workingDirectory.FullName, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute);
+            Directory.SetCurrentDirectory(workingDirectory.FullName);
+            TestLogger logger = new();
+
+            StartRpc.ConfigureJwtSecret(new KeyStoreConfig { KeyStoreDirectory = keyStoreDirectory }, new JsonRpcConfig(), new ILogger(logger));
+
+            Assert.That(logger.LogList, Is.Empty);
         }
         finally
         {
