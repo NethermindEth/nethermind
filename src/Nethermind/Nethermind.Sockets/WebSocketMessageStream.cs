@@ -13,7 +13,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.Sockets;
 
-public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager) : Stream, IMessageBorderPreservingStream
+public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logManager, bool textOnly = false) : Stream, IMessageBorderPreservingStream
 {
     private readonly WebSocket _socket = socket;
     private readonly ILogger _logger = logManager.GetClassLogger<WebSocketMessageStream>();
@@ -98,6 +98,8 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
         try
         {
             ValueWebSocketReceiveResult result = await _socket.ReceiveAsync(buffer.AsMemory(), cancellationToken);
+            if (textOnly && result.MessageType == WebSocketMessageType.Binary)
+                throw new InvalidDataException("JSON-RPC requests must use WebSocket text messages.");
             return new ReceiveResult()
             {
                 Closed = result.MessageType == WebSocketMessageType.Close,

@@ -69,6 +69,11 @@ public static unsafe partial class Bytes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination) => source.CopyTo(destination);
 
+    /// <summary>Whether <paramref name="first"/> and <paramref name="second"/> hold the same bytes.</summary>
+    /// <remarks>Corelib's comparison on the host. See <c>Bytes.zkevm.cs</c> for the guest form.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool SequenceEqualAtAnyAlignment(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second) => first.SequenceEqual(second);
+
     /// <summary>Compares the 32 bytes at <paramref name="a"/> with the 32 bytes at <paramref name="b"/>.</summary>
     /// <remarks>
     /// Loads are unaligned, so a caller may pass any byte offset.

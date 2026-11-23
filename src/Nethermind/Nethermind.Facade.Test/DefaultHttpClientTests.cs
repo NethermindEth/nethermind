@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Net;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -60,14 +61,74 @@ public class DefaultHttpClientTests
         }
     }
 
+    // A wait the client must not make would outlast the limit, which cancels it and fails the test.
+    [TestCase(0, 60_000, 1)]
+    [TestCase(-1, 60_000, 1)]
+    [TestCase(2, -1, 2)]
+    [TestCase(2, -2, 2)]
+    [TestCase(2, int.MinValue, 2)]
+    public async Task Should_send_at_least_once_and_not_wait_a_negative_delay(int retries, int retryDelayMilliseconds, int expectedCalls)
+    {
+        using CancellationTokenSource limit = new(TimeSpan.FromSeconds(10));
+        using StubHandler handler = new(_ => Task.FromException<HttpResponseMessage>(new HttpRequestException("Connection refused")));
+        using DefaultHttpClient client = CreateClient(handler, retries, retryDelayMilliseconds);
+
+        object? result = await client.PostJsonAsync<object>(Endpoint, cancellationToken: limit.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(handler.CallCount, Is.EqualTo(expectedCalls));
+        }
+    }
+
+    [TestCase(HttpStatusCode.OK, "")]
+    [TestCase(HttpStatusCode.OK, "not json")]
+    [TestCase(HttpStatusCode.OK, "{")]
+    [TestCase(HttpStatusCode.RequestTimeout, "[1,2]")]
+    [TestCase(HttpStatusCode.TooManyRequests, "[1,2]")]
+    [TestCase(HttpStatusCode.InternalServerError, "[1,2]")]
+    [TestCase(HttpStatusCode.ServiceUnavailable, "[1,2]")]
+    public async Task Should_not_send_again_after_a_response(HttpStatusCode status, string body)
+    {
+        using StubHandler handler = new(_ => Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body) }));
+        using DefaultHttpClient client = CreateClient(handler, 3);
+
+        object? result = await client.PostJsonAsync<object>(Endpoint, cancellationToken: CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(handler.CallCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task Should_send_again_after_a_transport_failure()
+    {
+        int sends = 0;
+        using StubHandler handler = new(_ => ++sends == 1
+            ? Task.FromException<HttpResponseMessage>(new HttpRequestException("Connection refused"))
+            : Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("[1,2]") }));
+        using DefaultHttpClient client = CreateClient(handler, 3);
+
+        object? result = await client.PostJsonAsync<object>(Endpoint, cancellationToken: CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.ToString(), Is.EqualTo("[1,2]"));
+            Assert.That(handler.CallCount, Is.EqualTo(2));
+        }
+    }
+
     private static readonly Exception[] TransportExceptions =
     [
         new HttpRequestException("Connection refused"),
         new OperationCanceledException(),
     ];
 
-    private static DefaultHttpClient CreateClient(HttpMessageHandler handler, int retries) =>
-        new(new HttpClient(handler), new EthereumJsonSerializer(), LimboLogs.Instance, retries, RetryDelayMilliseconds);
+    private static DefaultHttpClient CreateClient(HttpMessageHandler handler, int retries, int retryDelayMilliseconds = RetryDelayMilliseconds) =>
+        new(new HttpClient(handler), new EthereumJsonSerializer(), LimboLogs.Instance, retries, retryDelayMilliseconds);
 
     private sealed class StubHandler(Func<CancellationToken, Task<HttpResponseMessage>> send) : HttpMessageHandler
     {

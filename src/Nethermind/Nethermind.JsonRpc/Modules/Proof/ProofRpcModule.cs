@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -43,8 +44,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private static readonly IRlpDecoder<TxReceipt> _receiptEncoder = Rlp.GetDecoder<TxReceipt>();
         private readonly WitnessCall _witnessCall = new(blockFinder, blockchainBridge, specProvider, poSSwitcher, jsonRpcConfig);
 
-        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter) =>
-            _witnessCall.Execute(tx, blockParameter);
+        public ResultWrapper<CallResultWithProof> proof_call(TransactionForRpc tx, BlockParameter blockParameter, CancellationToken cancellationToken = default) =>
+            _witnessCall.Execute(tx, blockParameter, cancellationToken);
 
         public ResultWrapper<TransactionForRpcWithProof?> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
@@ -151,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter)
+        public ResultWrapper<AccountProofWithMeta> proof_getProofWithMeta(Address accountAddress, StorageKeys storageKeys, BlockParameter? blockParameter, CancellationToken cancellationToken = default)
         {
             if (storageKeys.Count > EthRpcModule.GetProofStorageKeyLimit)
             {
@@ -175,8 +176,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
                     ErrorCodes.ResourceUnavailable);
             }
 
-            using RentedTimeout timeout = jsonRpcConfig.RentTimeout();
-            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, timeout.Token);
+            AccountProofCollector accountProofCollector = new(accountAddress, storageKeys, cancellationToken);
             VisitingStats diagnostics = new();
             blockchainBridge.RunTreeVisitor(accountProofCollector, header!, diagnostics: diagnostics);
 

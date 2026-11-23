@@ -179,7 +179,14 @@ public sealed class TaikoBeaconHeadAdvancer : IDisposable
 
     public void Dispose()
     {
-        try { _cts.Cancel(); } catch { /* swallow */ }
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"[TaikoHeadAdvancer] Cancellation on dispose failed: {e.Message}");
+        }
         _cts.Dispose();
     }
 }

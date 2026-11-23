@@ -60,9 +60,9 @@ public sealed class ProcessStallWatchdog(ILogManager logManager) : IDisposable
                 Tick();
                 if (WaitForTick(_stop, TickInterval)) return;
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                ReportFailure();
+                ReportFailure(e);
                 if (_stop.WaitOne(TickInterval)) return;
             }
         }
@@ -152,21 +152,22 @@ public sealed class ProcessStallWatchdog(ILogManager logManager) : IDisposable
             }
             if (probe.Tracked) Interlocked.Exchange(ref _probeCompletedAt, now.Ticks);
         }
-        catch (Exception)
+        catch (Exception e)
         {
-            ReportFailure();
+            ReportFailure(e);
         }
     }
 
-    private void ReportFailure()
+    private void ReportFailure(Exception failure)
     {
         try
         {
-            if (_logger.IsDebug) _logger.Debug("Process stall watchdog tick failed.");
+            if (_logger.IsDebug) _logger.Debug($"Process stall watchdog tick failed: {failure.GetType().Name}: {failure.Message}");
         }
-        catch (Exception)
+        catch (Exception loggerFailure)
         {
             // A failing logger must not terminate the diagnostic thread.
+            Trace.TraceWarning($"Process stall watchdog tick failed ({failure.GetType().Name}: {failure.Message}) and its log entry failed: {loggerFailure.GetType().Name}: {loggerFailure.Message}");
         }
     }
 

@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -53,7 +54,7 @@ Console.Title = ProductInfo.Name;
 Regex.CacheSize = 128;
 BlocksConfig.SetDefaultExtraDataWithVersion();
 
-ManualResetEventSlim exit = new(true);
+int cancellationExitCode = ExitCodes.SigInt;
 ILogger logger = new(SimpleConsoleLogger.Instance);
 ProcessExitSource? processExitSource = default;
 string unhandledError = "A critical error has occurred";
@@ -132,11 +133,8 @@ async Task<int> ConfigureAsync(string[] args)
         logger.Info($"Version: {ProductInfo.Version}");
     }
 
-    AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-    {
-        processExitSource?.Exit(ExitCodes.SigTerm);
-        exit.Wait();
-    };
+    // Does not wait for the runner to stop: the thread that called Environment.Exit can be one the stop waits for.
+    AppDomain.CurrentDomain.ProcessExit += (_, _) => processExitSource?.Exit(ExitCodes.SigTerm);
     GlobalDiagnosticsContext.Set("version", ProductInfo.Version);
 
     PluginLoader pluginLoader = new(
@@ -159,7 +157,8 @@ async Task<int> ConfigureAsync(string[] args)
 
         AddConfigurationOptions(rootCommand);
 
-        rootCommand.SetAction((result, token) => RunAsync(result, pluginLoader, token));
+        Task<int>? runner = null;
+        rootCommand.SetAction((result, token) => runner = RunUntilExitAsync(result, pluginLoader, token));
 
         parseResult = rootCommand.Parse(args);
         parseResult.InvocationConfiguration.EnableDefaultExceptionHandler = false;
@@ -173,13 +172,32 @@ async Task<int> ConfigureAsync(string[] args)
             return BasicOptions.ReportParseErrors(parseResult, logger);
         }
 
-        return await parseResult.InvokeAsync();
+        int exitCode = await parseResult.InvokeAsync();
+
+        // A signal during the runner's synchronous start ends the invocation with the signal's code while the runner
+        // still runs, so the runner's own result is awaited and reported instead.
+        return runner is null ? exitCode : await runner;
     }
     finally
     {
         pluginLoader.LogDiagnostics();
-        exit.Wait();
     }
+}
+
+async Task<int> RunUntilExitAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
+{
+    // The handlers of a signal run from the last registered to the first, so these run before the handlers that
+    // System.CommandLine registered before invoking this action, which cancel the token. After a signal during the
+    // synchronous start, System.CommandLine returns early and removes its handlers while the runner still stops;
+    // cancelling the default handling here keeps a later signal from ending the process before the stop completes.
+    using PosixSignalRegistration sigTerm = PosixSignalRegistration.Create(PosixSignal.SIGTERM, context =>
+    {
+        Volatile.Write(ref cancellationExitCode, ExitCodes.SigTerm);
+        context.Cancel = true;
+    });
+    using PosixSignalRegistration sigInt = PosixSignalRegistration.Create(PosixSignal.SIGINT, static context => context.Cancel = true);
+
+    return await RunAsync(parseResult, pluginLoader, cancellationToken);
 }
 
 async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, CancellationToken cancellationToken)
@@ -264,7 +282,12 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 
     if (logger.IsInfo) logger.Info($"RocksDB: v{DbOnTheRocks.GetRocksDbVersion()}");
 
-    processExitSource = new(cancellationToken);
+    ProcessExitSource exitSource = new(CancellationToken.None);
+    processExitSource = exitSource;
+    // Runs at once if the token is already cancelled; reads the code when the token is cancelled, after the runner's
+    // SIGTERM handler has recorded it.
+    using CancellationTokenRegistration onCancel =
+        cancellationToken.Register(() => exitSource.Exit(Volatile.Read(ref cancellationExitCode)));
     ApiBuilder apiBuilder = new(processExitSource!, configProvider, logManager);
     IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, apiBuilder.ChainSpec);
     EthereumRunner ethereumRunner = apiBuilder.CreateEthereumRunner(plugins, parseResult.GetValue(BasicOptions.Command));
@@ -290,8 +313,6 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
     await ethereumRunner.StopAsync();
 
     logger.Info("Nethermind is shut down");
-
-    exit.Set();
 
     return processExitSource.ExitCode;
 }
