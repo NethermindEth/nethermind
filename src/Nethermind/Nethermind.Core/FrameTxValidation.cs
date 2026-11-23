@@ -789,11 +789,12 @@ public static class FrameTxValidation
                              + (ulong)frames.Length * (ulong)Eip8141Constants.PerFrameGasCost
                              + signatureVerificationCost
                              + valueTransferCost
-                             + keyedNonceAccessCost
-                             + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
+                             + keyedNonceAccessCost;
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
-        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
+        // EIP-8288 adds the dependency proof gas to the intrinsic gas only, so the calldata floor leaves it out.
+        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero
+                       + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
 
         ulong standardGas = intrinsicGas.SaturatingAdd(totalFrameGas);
         ulong floorReservation = floorGas.SaturatingAdd(totalStateGas);
