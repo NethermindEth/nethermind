@@ -143,6 +143,9 @@ jobs:
           persist-credentials: false
           submodules: ${{ matrix.solution == 'src/Nethermind/EthereumTests.slnx' }}
 
+      - name: Keep bot files out of git
+        run: echo /rule-bot/ >> .git/info/exclude
+
       - name: Set up .NET
         uses: ./.github/actions/setup-dotnet
 

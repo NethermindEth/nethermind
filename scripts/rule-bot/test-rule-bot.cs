@@ -513,6 +513,22 @@ var tests = new (string Name, Func<Task> Body)[]
         Equal(3, applies.Count);
         True(applies.All(line => line.TrimStart().StartsWith("git apply --index ", StringComparison.Ordinal)));
     })),
+    ("test_workflow_excludes_bot_files_before_git_add", Sync(() =>
+    {
+        var excluded = false;
+        var intentToAddCount = 0;
+        foreach (var line in File.ReadLines(Path.Combine(repositoryRoot, ".github", "workflows", "rule-bot.yml")))
+        {
+            if (line.StartsWith("  ", StringComparison.Ordinal) && line[2] != ' ' && line.EndsWith(':'))
+                excluded = false;
+            excluded |= line.Contains("echo /rule-bot/ >> .git/info/exclude", StringComparison.Ordinal);
+            if (!line.TrimStart().StartsWith("git add -N", StringComparison.Ordinal))
+                continue;
+            True(excluded);
+            intentToAddCount++;
+        }
+        Equal(4, intentToAddCount);
+    })),
 
     ("test_route_b_stops_at_first_cluster_that_passes", async () =>
     {
