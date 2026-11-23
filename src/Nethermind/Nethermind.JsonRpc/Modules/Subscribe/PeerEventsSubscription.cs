@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
@@ -15,6 +16,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private readonly IPeerPool _peerPool;
         private readonly IRlpxHost _rlpxHost;
         private readonly ISessionMonitor _sessionMonitor;
+        private readonly Func<PeerEventResponse, Task> _sendPeerEvent;
 
         public PeerEventsSubscription(
             IJsonRpcDuplexClient jsonRpcDuplexClient,
@@ -27,6 +29,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             _logger = logManager?.GetClassLogger<PeerEventsSubscription>() ?? throw new ArgumentNullException(nameof(logManager));
             _peerPool = peerPool ?? throw new ArgumentNullException(nameof(peerPool));
             _rlpxHost = rlpxHost ?? throw new ArgumentNullException(nameof(rlpxHost));
+            _sendPeerEvent = SendPeerEvent;
 
             _peerPool.PeerAdded += OnPeerAdded;
             _peerPool.PeerRemoved += OnPeerRemoved;
@@ -55,12 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 Remote = node.Address.ToString(),
             };
 
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed new peer.");
-            });
+            ScheduleAction(_sendPeerEvent, response);
         }
 
         private void OnPeerRemoved(object? sender, PeerEventArgs args)
@@ -74,12 +72,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 Remote = node.Address.ToString(),
             };
 
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed dropped peer.");
-            });
+            ScheduleAction(_sendPeerEvent, response);
         }
 
         private void OnMsgReceived(object? sender, PeerEventArgs args)
@@ -96,12 +89,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 MsgSize = args.MessageInfo.Size,
             };
 
-            ScheduleAction(async () =>
-            {
-                using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed message received.");
-            });
+            ScheduleAction(_sendPeerEvent, response);
         }
 
         private void OnMsgDelivered(object? sender, PeerEventArgs args)
@@ -118,12 +106,25 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 MsgSize = args.MessageInfo.Size,
             };
 
-            ScheduleAction(async () =>
+            ScheduleAction(_sendPeerEvent, response);
+        }
+
+        private async Task SendPeerEvent(PeerEventResponse response)
+        {
+            using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
+            await JsonRpcDuplexClient.SendJsonRpcResult(result);
+            if (_logger.IsTrace)
             {
-                using JsonRpcResult result = CreateSubscriptionMessage(response, SubscriptionMethodName.AdminSubscription);
-                await JsonRpcDuplexClient.SendJsonRpcResult(result);
-                if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} printed message sent.");
-            });
+                string? printed = response.Type switch
+                {
+                    PeerEventType.Add => "new peer",
+                    PeerEventType.Drop => "dropped peer",
+                    PeerEventType.MsgRecv => "message received",
+                    PeerEventType.MsgSend => "message sent",
+                    _ => response.Type
+                };
+                _logger.Trace($"admin_subscription {Id} printed {printed}.");
+            }
         }
 
         private void OnSessionCreated(object? sender, SessionEventArgs args)
