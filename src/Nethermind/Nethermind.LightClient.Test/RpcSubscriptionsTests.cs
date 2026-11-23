@@ -80,7 +80,7 @@ public class RpcSubscriptionsTests
     }
 
     [Test]
-    public async Task Cancelled_filter_poll_keeps_changes_for_retry_and_does_not_admit_a_concurrent_poll()
+    public async Task Cancelled_filter_poll_keeps_changes_for_retry_while_a_concurrent_poll_sees_none()
     {
         await using Harness harness = new();
         FakeSocket socket = harness.Connect();
@@ -94,14 +94,14 @@ public class RpcSubscriptionsTests
         using CancellationTokenSource cancellation = new();
         Task<JsonElement> first = harness.HttpRequest("eth_getFilterChanges", [id], cancellation.Token);
         await harness.Source.FirstBodyStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        JsonElement concurrent = (await harness.HttpRequest("eth_getFilterChanges", [id])).GetProperty("error");
+        JsonElement concurrent = (await harness.HttpRequest("eth_getFilterChanges", [id])).GetProperty("result");
         await cancellation.CancelAsync();
         await Assert.ThatAsync(async () => { await first; }, Throws.InstanceOf<OperationCanceledException>());
         harness.Source.BlockGate = null;
         JsonElement retry = (await harness.HttpRequest("eth_getFilterChanges", [id])).GetProperty("result");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(concurrent.GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.LimitExceeded));
+            Assert.That(concurrent.GetArrayLength(), Is.Zero);
             Assert.That(retry.GetArrayLength(), Is.EqualTo(1));
             Assert.That(retry[0].GetProperty("blockHash").GetString(), Is.EqualTo(next.Hash!.ToString()));
         }
@@ -232,6 +232,29 @@ public class RpcSubscriptionsTests
             Assert.That(retired.GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.InvalidInput));
             Assert.That(logs.GetProperty("code").GetInt32(), Is.EqualTo(Nethermind.JsonRpc.ErrorCodes.LimitExceeded));
             Assert.That(logs.GetProperty("message").GetString(), Does.Contain("10000-log"));
+        }
+    }
+
+    [Test]
+    public async Task Polls_of_one_filter_in_a_batch_return_its_changes_once()
+    {
+        await using Harness harness = new();
+        FakeSocket socket = harness.Connect();
+        await socket.Request("eth_subscribe", "newHeads");
+        string filter = (await harness.HttpRequest("eth_newBlockFilter", [])).GetProperty("result").GetString()!;
+        Block next = harness.Source.Add(11, harness.Source.Current, 1);
+        harness.Publish(next);
+        AssertHead(await socket.Next(), next);
+
+        socket.Push(new[] { Request("eth_getFilterChanges", filter), Request("eth_getFilterChanges", filter) });
+        JsonElement batch = await socket.Next();
+        JsonElement later = (await harness.HttpRequest("eth_getFilterChanges", [filter])).GetProperty("result");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(batch[0].GetProperty("result").EnumerateArray().Select(hash => hash.GetString()), Is.EqualTo(new[] { next.Hash!.ToString() }));
+            Assert.That(batch[1].GetProperty("result").GetArrayLength(), Is.Zero);
+            Assert.That(later.GetArrayLength(), Is.Zero);
         }
     }
 

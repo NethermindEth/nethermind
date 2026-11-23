@@ -11,13 +11,13 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.JsonRpc.Data;
 
 /// <summary>Creates the execution fork configuration returned by JSON-RPC.</summary>
-public static class ForkConfigFactory
+internal static class ForkConfigFactory
 {
     private static readonly JsonSerializerOptions UnchangedDictionaryKeyOptions =
         new(EthereumJsonSerializer.JsonOptionsIndented) { DictionaryKeyPolicy = null };
 
     /// <summary>Serializes the active, next and last scheduled execution forks for <c>eth_config</c>.</summary>
-    public static JsonNode CreateSummary(ForkActivationsSummary forks, ISpecProvider specProvider) =>
+    internal static JsonNode CreateSummary(ForkActivationsSummary forks, ISpecProvider specProvider) =>
         JsonSerializer.SerializeToNode(new ForkConfigSummary
         {
             Current = Create(forks.Current, specProvider),

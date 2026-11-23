@@ -42,7 +42,9 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
     internal bool TryMarkAnnounced(Hash256 hash) =>
         _transactions.TryGetValue(hash, out Entry? entry) && entry!.TryMarkAnnounced();
 
-    internal ulong GetPendingNonce(Address address, Account account)
+    /// <summary>The sender's account after the announced local transactions that continue its nonce and fit its balance.</summary>
+    /// <param name="nonceLimit">The first nonce not applied, so a submission can replace or repeat a pending transaction.</param>
+    internal Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue)
     {
         ulong nonce = account.Nonce;
         UInt256 balance = account.Balance;
@@ -56,13 +58,13 @@ internal sealed class BoundedTransactionRelay : NullTxPool, ITxPool, IDisposable
                 if (!local.TryGetValue(tx.Nonce, out UInt256 existing) || cost < existing) local[tx.Nonce] = cost;
             }
         }
-        if (local is null) return nonce;
-        while (nonce != ulong.MaxValue && local.TryGetValue(nonce, out UInt256 cost) && cost <= balance)
+        if (local is null) return account;
+        while (nonce < nonceLimit && local.TryGetValue(nonce, out UInt256 cost) && cost <= balance)
         {
             balance -= cost;
             nonce++;
         }
-        return nonce;
+        return account.WithChangedNonce(nonce).WithChangedBalance(balance);
     }
 
     public new bool SupportsBlobs => true;

@@ -344,8 +344,10 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         try { RecoverSender(transaction); }
         catch (InvalidDataException) { throw new RpcException(-32003, "Invalid transaction signature: the sender cannot be recovered."); }
         Account sender = await source.GetAccountAsync(head, transaction.SenderAddress!, cancellationToken);
-        ValidateRelayNonce(transaction.Nonce, sender.Nonce, requireReady);
-        if (!TryGetSenderCost(transaction, out UInt256 cost) || cost > sender.Balance)
+        // A ready submission may follow the sender's announced local transactions, as eth_getTransactionCount("pending") reports.
+        Account expected = requireReady ? source.GetPendingAccount(transaction.SenderAddress!, sender, transaction.Nonce) : sender;
+        ValidateRelayNonce(transaction.Nonce, expected.Nonce, requireReady);
+        if (!TryGetSenderCost(transaction, out UInt256 cost) || cost > expected.Balance)
             throw Unready("Transaction exceeds the sender's authenticated balance.");
         if (sender.HasCode)
         {

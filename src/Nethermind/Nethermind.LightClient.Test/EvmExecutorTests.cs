@@ -180,7 +180,7 @@ public class EvmExecutorTests
             Assert.That(retained, Is.True);
             Assert.That(admitted?.PayerAddress, Is.EqualTo(payer));
             Assert.That(pending, Is.EqualTo("0x2"));
-            Assert.That(relay.GetPendingNonce(Contract, new Account(transaction.Nonce, 0)), Is.EqualTo(sponsored ? 2UL : 1UL));
+            Assert.That(relay.GetPendingAccount(Contract, new Account(transaction.Nonce, 0)).Nonce, Is.EqualTo(sponsored ? 2UL : 1UL));
         }
     }
 
@@ -197,11 +197,11 @@ public class EvmExecutorTests
         Account sender = new(transaction.Nonce, 0);
         relay.AddVerified(transaction);
         relay.TryMarkAnnounced(transaction.Hash);
-        ulong before = relay.GetPendingNonce(Contract, sender);
+        ulong before = relay.GetPendingAccount(Contract, sender).Nonce;
 
         transaction.PayerAddress = sponsoredFirst ? Contract : sponsor;
         bool added = relay.AddVerified(transaction);
-        ulong after = relay.GetPendingNonce(Contract, sender);
+        ulong after = relay.GetPendingAccount(Contract, sender).Nonce;
         bool announcedAgain = relay.TryMarkAnnounced(transaction.Hash);
 
         using (Assert.EnterMultipleScope())
@@ -1385,9 +1385,8 @@ public class EvmExecutorTests
     public async Task Simulate_rejects_invalid_requests_with_the_simulate_error_codes(string scenario, int expectedCode)
     {
         FakeSource source = new([0x00]);
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor call = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, call, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
         object payload = scenario switch
         {
             "empty" => new { blockStateCalls = Array.Empty<object>() },
@@ -1416,9 +1415,8 @@ public class EvmExecutorTests
     {
         byte[] readStorage = Bytes.FromHexString("0x60005460005260206000f3");
         FakeSource source = new(readStorage);
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
         Dictionary<string, string> storage = new() { [Hash256.Zero.ToString()] = "0x" + 7.ToString("x64") };
         Dictionary<string, object> account = new()
         {
@@ -1447,9 +1445,8 @@ public class EvmExecutorTests
     public async Task EstimateGas_uses_overridden_code_and_reuses_the_overlay_for_every_probe()
     {
         FakeSource source = new([0x60, 0x00, 0x60, 0x00, 0xfd]);
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
         var tx = new { to = Contract.ToString() };
         Dictionary<string, object> state = new() { [Contract.ToString()] = new { code = "0x00" } };
 
@@ -1470,9 +1467,8 @@ public class EvmExecutorTests
     public async Task Block_only_override_supports_null_state_and_keeps_the_original_header()
     {
         FakeSource source = new(Bytes.FromHexString("0x4360005260206000f3"));
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
         var tx = new { to = Contract.ToString() };
         object result = await rpc.InvokeAsync("eth_call", JsonSerializer.SerializeToElement(new object?[] { tx, "latest", null,
             new { number = "0x2a" } }), CancellationToken.None);
@@ -1487,9 +1483,8 @@ public class EvmExecutorTests
     public async Task CreateAccessList_reports_authenticated_storage_and_the_converged_gas([Values] bool optimize)
     {
         FakeSource source = new(Bytes.FromHexString("0x6001545000"));
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
         JsonElement parameters = JsonSerializer.SerializeToElement(new object?[] { new { to = Contract.ToString() }, "latest", null, optimize });
 
         JsonElement result = (JsonElement)await rpc.InvokeAsync("eth_createAccessList", parameters, CancellationToken.None);
@@ -1525,9 +1520,8 @@ public class EvmExecutorTests
             ? Enumerable.Repeat<byte[]>([0x61, 0x80, 0x00, 0x60, 0x00, 0xa0], 17).SelectMany(static instruction => instruction).Append((byte)0).ToArray()
             : Bytes.FromHexString("0x60005460005260206000f3");
         FakeSource source = new(code);
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
         object options = scenario switch
         {
             "txIndex" => new { tracer = "callTracer", txIndex = "0x0" },
@@ -1556,19 +1550,22 @@ public class EvmExecutorTests
     }
 
     [Test]
-    public async Task Unpriced_traceCall_simulates_zero_base_fee_even_with_a_base_fee_override()
+    public async Task Unpriced_call_simulates_zero_base_fee_even_with_a_base_fee_override([Values("eth_call", "debug_traceCall")] string method)
     {
+        // Returns BASEFEE.
         FakeSource source = new(Bytes.FromHexString("0x4860005260206000f3"));
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
+        object transaction = new { to = Contract.ToString() };
+        object blockOverrides = new { baseFeePerGas = "0xa" };
+        object[] parameters = method == "eth_call"
+            ? [transaction, "latest", new { }, blockOverrides]
+            : [transaction, "latest", new { tracer = "callTracer", blockOverrides }];
 
-        JsonElement trace = (JsonElement)await rpc.InvokeAsync("debug_traceCall", JsonSerializer.SerializeToElement(new object[]
-        {
-            new { to = Contract.ToString() }, "latest", new { tracer = "callTracer", blockOverrides = new { baseFeePerGas = "0xa" } },
-        }), CancellationToken.None);
+        object result = await rpc.InvokeAsync(method, JsonSerializer.SerializeToElement(parameters), CancellationToken.None);
 
-        Assert.That(trace.GetProperty("output").GetString(), Is.EqualTo(Hash256.Zero.ToString()));
+        string? output = method == "eth_call" ? (string)result : ((JsonElement)result).GetProperty("output").GetString();
+        Assert.That(output, Is.EqualTo(Hash256.Zero.ToString()));
     }
 
     [Test]
@@ -1604,9 +1601,8 @@ public class EvmExecutorTests
         source.ReplayParent = parent;
         source.ReplayReceipts = [new() { GasUsedTotal = 30_000 }, new() { GasUsedTotal = 55_000 }];
         source.ExtraAccounts[signer.Address] = new(0, 1_000_000);
-        SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
-        using EvmExecutor calls = new(source, spec, NullLogManager.Instance);
-        using RpcBackend rpc = new(source, () => source.Head, 1, calls, spec, () => source.Head);
+        using ShanghaiBackend backend = new(source);
+        RpcBackend rpc = backend.Rpc;
 
         JsonElement trace = (JsonElement)await rpc.InvokeAsync("debug_traceTransaction",
             JsonSerializer.SerializeToElement(new object[] { read.Hash!.ToString(), new { tracer = "callTracer", timeout = "30s" } }), CancellationToken.None);
@@ -1662,6 +1658,27 @@ public class EvmExecutorTests
         return logs;
     }
 
+    /// <summary>An executor over <see cref="FakeSource"/> on Shanghai, with the RPC backend that serves it.</summary>
+    private sealed class ShanghaiBackend : IDisposable
+    {
+        private readonly EvmExecutor _calls;
+
+        internal ShanghaiBackend(FakeSource source)
+        {
+            SingleReleaseSpecProvider spec = new(Shanghai.Instance, 1, 1);
+            _calls = new(source, spec, NullLogManager.Instance);
+            Rpc = new(source, () => source.Head, 1, _calls, spec, () => source.Head);
+        }
+
+        internal RpcBackend Rpc { get; }
+
+        public void Dispose()
+        {
+            Rpc.Dispose();
+            _calls.Dispose();
+        }
+    }
+
     private sealed class FakeSource(byte[] code, UInt256 contractBalance = default) : IExecutionStateSource
     {
         public Account ContractAccount { get; set; } = new(1, contractBalance, Keccak.Compute("storage root"), Keccak.Compute(code));
@@ -1691,7 +1708,8 @@ public class EvmExecutorTests
         public Func<VerifiedHead, Account>? ContractAccountResponse { get; set; }
         public int Broadcasts { get; private set; }
         public BoundedTransactionRelay? TransactionRelay { get; init; }
-        public ulong GetPendingNonce(Address address, Account account) => TransactionRelay?.GetPendingNonce(address, account) ?? account.Nonce;
+        public Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue) =>
+            TransactionRelay?.GetPendingAccount(address, account, nonceLimit) ?? account;
         public Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
         {
             Broadcasts++;

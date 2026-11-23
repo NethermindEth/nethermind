@@ -55,7 +55,7 @@ internal interface IExecutionStateSource
         async Task<TxReceipt[]> FetchAsync(BlockHeader header) => await GetReceiptsAsync(header, cancellationToken);
     }
     Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken) => throw new NotSupportedException();
-    ulong GetPendingNonce(Address address, Account account) => account.Nonce;
+    Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue) => account;
     Task<ExecutionAccountProof> GetProofAsync(VerifiedHead head, Address address, UInt256[] storageKeys,
         CancellationToken cancellationToken) => throw new NotSupportedException();
 }

@@ -145,7 +145,14 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
                                 foreach (UInt256 key in keys)
                                     ExecutionData.ValidateRelayNonce(transaction.Nonce, KeyedNonceManager.CurrentNonceSeq(state, transaction.SenderAddress!, key), requireReady);
                             }
-                            else ExecutionData.ValidateRelayNonce(transaction.Nonce, state.GetNonce(transaction.SenderAddress!), requireReady);
+                            else
+                            {
+                                Address sender = transaction.SenderAddress!;
+                                ulong expected = state.GetNonce(sender);
+                                if (requireReady)
+                                    expected = execution.GetPendingAccount(sender, new Account(expected, state.GetBalance(sender)), transaction.Nonce).Nonce;
+                                ExecutionData.ValidateRelayNonce(transaction.Nonce, expected, requireReady);
+                            }
                             ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
                             BlockExecutionContext context = new(contextHeader, spec);
                             processor.SetBlockExecutionContext(in context);
@@ -245,8 +252,9 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
         BlockHeader header = await GetHeaderAsync(head, trace, token);
         BlockHeader callHeader = header.Clone();
         bool noBaseFee = !model.ShouldSetBaseFee();
-        if (noBaseFee && kind != SingleCallKind.TraceCall) callHeader.BaseFeePerGas = 0;
         blockOverrides?.ApplyOverrides(callHeader);
+        // An unpriced call runs at a zero base fee even when the block overrides set one, as on a full node.
+        if (noBaseFee && kind != SingleCallKind.TraceCall) callHeader.BaseFeePerGas = 0;
         callHeader.IsPostMerge = true;
         IReleaseSpec spec = specs.GetSpec(callHeader);
         if (kind == SingleCallKind.AccessList && !spec.IsEip2930Enabled)

@@ -103,7 +103,7 @@ internal sealed partial class RpcBackend(IExecutionStateSource execution, Func<V
     {
         bool pending = block.ValueKind == JsonValueKind.String && block.ValueEquals("pending"u8);
         Account account = await GetAccountAsync(address, pending ? default : block, cancellationToken);
-        return pending ? execution.GetPendingNonce(address, account) : account.Nonce;
+        return pending ? execution.GetPendingAccount(address, account).Nonce : account.Nonce;
     }
 
     internal async Task<byte[]> GetCodeAsync(Address address, JsonElement block, CancellationToken cancellationToken) =>

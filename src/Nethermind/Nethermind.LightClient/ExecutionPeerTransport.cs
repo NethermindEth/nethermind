@@ -700,7 +700,8 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
 
     internal event Action<Transaction>? TransactionAnnounced;
 
-    public ulong GetPendingNonce(Address address, Account account) => _transactionRelay.GetPendingNonce(address, account);
+    public Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue) =>
+        _transactionRelay.GetPendingAccount(address, account, nonceLimit);
 
     public async Task BroadcastTransactionAsync(Transaction transaction, CancellationToken cancellationToken)
     {

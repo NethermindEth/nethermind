@@ -282,7 +282,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
   --tag your-registry/light-client:1.0.1 --push .
 ```
 
-The chiseled .NET runtime includes the native libraries for beacon QUIC.
+The image copies Microsoft's `libmsquic` and its `libnuma` dependency into the chiseled runtime for beacon QUIC; without them beacon P2P falls back to TCP.
 Docker runs the client and its healthcheck directly.
 The image removes JavaScript tracer scripts, native V8 and its ICU payload, and
 the RPC source-generator build executable. Verified calls and gas estimation

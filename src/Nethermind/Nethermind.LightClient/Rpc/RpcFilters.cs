@@ -132,8 +132,9 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
             token.ThrowIfCancellationRequested();
             long now = _clock.GetTimestamp();
             filter = GetFilter(id, now);
-            if (filter.Polling) throw new RpcException(ErrorCodes.LimitExceeded, "A poll for this filter is already active.");
             filter.LastPoll = now;
+            // The poll in flight owns the changes so far, and leaves them for the next poll if its response is not sent.
+            if (filter.Polling) return ResultWrapper<JsonElement>.Success(Empty);
             if (filter.Pending is { } pending)
             {
                 if (filter.PendingOverflow) throw RemoveOverflowedFilter(id);
@@ -213,7 +214,7 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
     internal readonly record struct LogBlock(long AddedAt, BlockHeader Header);
     internal sealed record HeadChange(long Sequence, LogBlock[] Removed, Hash256[] AddedHashes, BlockHeader[] AddedLogHeaders);
 
-    // The response owns the poll until the transport accepts it into the outgoing frame.
+    /// <summary>A poll result that commits the filter's cursor only once the transport accepts it into the outgoing frame.</summary>
     internal sealed class PollResponse : ResultWrapper<JsonElement>
     {
         private Action<bool>? _complete;

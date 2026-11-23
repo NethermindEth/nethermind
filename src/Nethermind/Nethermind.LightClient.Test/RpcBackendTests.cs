@@ -3086,13 +3086,26 @@ public class RpcBackendTests
     }
 
     [TestCase("timeout", 4)]
+    [TestCase("after-pending", 4)]
     [TestCase("unready", 5)]
+    [TestCase("pending-balance", 5)]
     [TestCase("gap", 6)]
     public async Task Synchronous_submission_reports_timeout_or_unreadiness_over_rpc(string outcome, int code)
     {
         using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
-        using Provider provider = new(new Account(7, outcome == "unready" ? UInt256.Zero : 1_000_000), headNumber: 20_000_000, accountAddress: key.Address);
-        Transaction transaction = new() { Nonce = outcome == "gap" ? 8UL : 7UL, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
+        using BoundedTransactionRelay relay = new();
+        using Provider provider = new(new Account(7, outcome == "unready" ? UInt256.Zero : 1_000_000), headNumber: 20_000_000, accountAddress: key.Address)
+        {
+            TransactionRelay = relay,
+        };
+        if (outcome is "after-pending" or "pending-balance")
+        {
+            // An announced local transaction at the state nonce, leaving 999_999 or 20_000 of the balance.
+            Transaction pending = new() { Nonce = 7, Value = (UInt256)(outcome == "after-pending" ? 1 : 980_000), SenderAddress = key.Address, Hash = Keccak.Compute(outcome) };
+            relay.AddVerified(pending);
+            relay.TryMarkAnnounced(pending.Hash);
+        }
+        Transaction transaction = new() { Nonce = outcome == "timeout" || outcome == "unready" ? 7UL : 8UL, GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
         new EthereumEcdsa(1).Sign(key, transaction, true);
         byte[] encoded = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.InMempoolForm);
 
@@ -3103,7 +3116,7 @@ public class RpcBackendTests
         {
             Assert.That(error!.Code, Is.EqualTo(code));
             Assert.That(error!.RevertData, Is.EqualTo(outcome == "gap" ? "0x7" : transaction.CalculateHash().ToString()));
-            Assert.That(provider.Broadcasts, Has.Count.EqualTo(outcome == "timeout" ? 1 : 0));
+            Assert.That(provider.Broadcasts, Has.Count.EqualTo(code == 4 ? 1 : 0));
         }
     }
 
@@ -3166,6 +3179,7 @@ public class RpcBackendTests
         IExecutionStateSource source = Substitute.For<IExecutionStateSource>();
         CancellationToken token = CancellationToken.None;
         source.GetAccountAsync(start, key.Address, Arg.Any<CancellationToken>()).Returns(new Account(7, 1_000_000));
+        source.GetPendingAccount(Arg.Any<Address>(), Arg.Any<Account>(), Arg.Any<ulong>()).Returns(call => call.ArgAt<Account>(1));
         source.GetHeaderAsync(start, Arg.Any<CancellationToken>()).Returns(headers[20_000_000].Header);
         source.GetHeaderAsync(next, Arg.Any<CancellationToken>()).Returns(newHeader);
         source.GetRecentHeadersAsync(newHeader, 2, Arg.Any<CancellationToken>()).Returns(new[] { headers[20_000_000].Header, newHeader });
@@ -3200,7 +3214,7 @@ public class RpcBackendTests
         {
             Assert.That(relay.AddVerified(new Transaction { Nonce = 8, Value = 60, SenderAddress = AccountAddress, Hash = first }), Is.True);
             Assert.That(relay.AddVerified(new Transaction { Nonce = 8, Value = 60, SenderAddress = AccountAddress, Hash = first }), Is.False);
-            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 120)), Is.EqualTo(7));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(7, 120)).Nonce, Is.EqualTo(7));
             Assert.That(relay.TryMarkAnnounced(first), Is.True);
             Assert.That(relay.TryMarkAnnounced(first), Is.False);
         }
@@ -3210,12 +3224,15 @@ public class RpcBackendTests
         relay.AddVerified(new Transaction { Nonce = 9, SenderAddress = AccountAddress, Hash = Keccak.Compute("pending keyed"), NonceKeys = [1] });
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 120)), Is.EqualTo(7));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(7, 120)).Nonce, Is.EqualTo(7));
             Assert.That(relay.TryMarkAnnounced(preceding), Is.True);
-            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 120)), Is.EqualTo(9));
-            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(7, 119)), Is.EqualTo(8));
-            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(9, 120)), Is.EqualTo(9));
-            Assert.That(relay.GetPendingNonce(AccountAddress, new Account(10, 120)), Is.EqualTo(10));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(7, 120)).Nonce, Is.EqualTo(9));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(7, 119)).Nonce, Is.EqualTo(8));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(9, 120)).Nonce, Is.EqualTo(9));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(10, 120)).Nonce, Is.EqualTo(10));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(7, 120)).Balance, Is.EqualTo((UInt256)0));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(7, 120), nonceLimit: 8).Nonce, Is.EqualTo(8));
+            Assert.That(relay.GetPendingAccount(AccountAddress, new Account(7, 120), nonceLimit: 8).Balance, Is.EqualTo((UInt256)60));
         }
     }
 
@@ -3549,6 +3566,9 @@ public class RpcBackendTests
         public RpcBackend Rpc { get; }
         public VerifiedHead Head { get; }
         public VerifiedHead? LatestHead { get; set; }
+        public BoundedTransactionRelay? TransactionRelay { get; init; }
+        public Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue) =>
+            TransactionRelay?.GetPendingAccount(address, account, nonceLimit) ?? account;
         public ulong? CurrentSlot { get; set; }
         public RpcBackend CreateRpc(EvmExecutor? calls = null, Func<VerifiedHead>? getHead = null,
             Func<CancellationToken, Task<VerifiedHead>>? waitForLatestHead = null, SendPolicyRelay? sendPolicy = null, IForkInfo? forkInfo = null) => new(this, getHead ?? (() => Head), 1,

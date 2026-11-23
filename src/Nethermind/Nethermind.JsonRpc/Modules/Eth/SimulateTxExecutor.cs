@@ -123,19 +123,14 @@ public class SimulateTxExecutor<TTrace>(
 
         foreach (BlockStateCall<TransactionForRpc>? block in call.BlockStateCalls)
         {
-            if (block is null)
-                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated blocks must not be null.", ErrorCodes.InvalidParams);
+            if (block is null || block.Calls is { } calls && Array.IndexOf(calls, null) >= 0)
+                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(
+                    block is null ? SimulateErrorMessages.NullBlock : SimulateErrorMessages.NullCall, ErrorCodes.InvalidParams);
         }
 
         string? callsLimitError = GetCallsLimitError(call.BlockStateCalls);
         if (callsLimitError is not null)
             return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail(callsLimitError, ErrorCodes.ClientLimitExceededError);
-
-        foreach (BlockStateCall<TransactionForRpc> block in call.BlockStateCalls)
-        {
-            if (block.Calls is { } calls && Array.IndexOf(calls, null) >= 0)
-                return ResultWrapper<IReadOnlyList<SimulateBlockResult<TTrace>>>.Fail("Simulated calls must not be null.", ErrorCodes.InvalidParams);
-        }
 
         searchResult ??= _blockFinder.SearchForHeader(blockParameter);
 
@@ -358,4 +353,16 @@ internal static class SimulateErrorMessages
     /// (error code <see cref="ErrorCodes.InvalidParams"/>).
     /// </summary>
     public const string EmptyBlockStateCalls = "empty input";
+
+    /// <summary>
+    /// Returned when an entry of <c>blockStateCalls</c> is <c>null</c>
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string NullBlock = "Simulated blocks must not be null.";
+
+    /// <summary>
+    /// Returned when an entry of a block's <c>calls</c> is <c>null</c>
+    /// (error code <see cref="ErrorCodes.InvalidParams"/>).
+    /// </summary>
+    public const string NullCall = "Simulated calls must not be null.";
 }
