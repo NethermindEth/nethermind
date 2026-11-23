@@ -176,8 +176,10 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         if (CurrentTraceEntry is not null)
         {
             CurrentTraceEntry.GasCost = gasCost;
-            // The remaining gas report is skipped once the cost is set, so sample the refund here as Geth does after its gas calculation.
-            CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
+            // The remaining gas report is skipped once the cost is set; a tracer that shows the refund after the
+            // opcode samples it here, while the struct logger keeps the snapshot taken when the step started.
+            if (ReportsRefundAfterOperation)
+                CurrentTraceEntry.Refund = CurrentRefund != 0 ? CurrentRefund : null;
             _gasCostAlreadySetForCurrentOp = true;
             _gasCostReportedForCurrentOp = true;
         }
@@ -220,6 +222,9 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         if (CurrentTraceEntry is not null)
             CurrentTraceEntry.Refund = CurrentRefund + refund;
     }
+
+    /// <summary>Whether an entry shows the refund counter after its opcode rather than before it.</summary>
+    protected virtual bool ReportsRefundAfterOperation => false;
 
     public override void SetOperationMemorySize(ulong newSize) => CurrentTraceEntry?.UpdateMemorySize(newSize);
 

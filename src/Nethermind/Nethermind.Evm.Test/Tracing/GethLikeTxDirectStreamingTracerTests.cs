@@ -110,6 +110,21 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     }
 
     [Test]
+    public void Streams_restoring_sstore_refund_on_the_next_step_on_Amsterdam()
+    {
+        List<StructLog> logs = StreamLogs(GethLikeTxMemoryTracerTests.RestoredSlotCode, GethTraceOptions.Default, 1_000_000, MainnetSpecProvider.AmsterdamActivation);
+        int restore = logs.FindLastIndex(l => l.Op == "SSTORE");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[restore].GasCost, Is.EqualTo(GasCostOf.WarmStateRead));
+            Assert.That(logs[restore].Refund, Is.Null);
+            Assert.That(logs[restore + 1].Op, Is.EqualTo("STOP"));
+            Assert.That(logs[restore + 1].Refund, Is.EqualTo((long)Eip8038Constants.StorageWrite));
+        }
+    }
+
+    [Test]
     public void Streams_callee_out_of_gas_without_an_error_on_the_calling_step([Values] bool precompile)
     {
         List<StructLog> logs = StreamLogs(CalleeOutOfGasCode(precompile), GethTraceOptions.Default);

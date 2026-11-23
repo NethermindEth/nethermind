@@ -201,6 +201,30 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         }
     }
 
+    /// <summary>Restores a slot to its original value: the refund counter is zero when the restoring SSTORE starts.</summary>
+    internal static byte[] RestoredSlotCode =>
+        Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+
+    [Test]
+    public void Restoring_sstore_shows_its_refund_on_the_next_step_on_Amsterdam()
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.AmsterdamActivation, 1_000_000, RestoredSlotCode);
+        GethLikeTxMemoryTracer tracer = new(transaction, GethTraceOptions.Default);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        using GethLikeTxTrace trace = tracer.BuildResult();
+        GethTxTraceEntry[] entries = [.. trace.Entries];
+        int restore = Array.FindLastIndex(entries, e => e.Opcode == "SSTORE");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[restore].GasCost, Is.EqualTo(GasCostOf.WarmStateRead));
+            Assert.That(entries[restore].Refund, Is.Null);
+            Assert.That(entries[restore + 1].Opcode, Is.EqualTo("STOP"));
+            Assert.That(entries[restore + 1].Refund, Is.EqualTo((long)Eip8038Constants.StorageWrite));
+        }
+    }
+
     internal static TestCaseData[] AmsterdamStateGasOperations()
     {
         Address newAccount = new("0x1000000000000000000000000000000000000001");
@@ -208,8 +232,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
         [
             new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, "SSTORE",
                 Eip8038Constants.ColdStorageAccess + Eip8038Constants.StorageWrite, null).SetArgDisplayNames("SSTORE new slot"),
-            new TestCaseData(Prepare.EvmCode.PushData(1).PushData(0).Op(Instruction.SSTORE).PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done, "SSTORE",
-                GasCostOf.WarmStateRead, (long)Eip8038Constants.StorageWrite).SetArgDisplayNames("SSTORE restored slot"),
+            new TestCaseData(RestoredSlotCode, "SSTORE", GasCostOf.WarmStateRead, null).SetArgDisplayNames("SSTORE restored slot"),
             new TestCaseData(Prepare.EvmCode.PushData(0).PushData(0).PushData(0).Op(Instruction.CREATE).Op(Instruction.STOP).Done, "CREATE",
                 Eip8038Constants.CreateAccess, null).SetArgDisplayNames("CREATE new account"),
             new TestCaseData(Prepare.EvmCode.PushData(0).PushData(32).PushData(0).PushData(0).Op(Instruction.CREATE2).Op(Instruction.STOP).Done, "CREATE2",
