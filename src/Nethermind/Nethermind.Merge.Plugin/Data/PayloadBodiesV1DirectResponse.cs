@@ -175,7 +175,7 @@ internal static class PayloadBodiesDirectResponseWriter
         WriteWithdrawalsFromBlockRlp(writer, ref ctx, blockEnd);
         if (ctx.Position < blockEnd)
         {
-            ReadOnlySpan<byte> proof = ctx.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, "StarkProof"));
+            ReadOnlySpan<byte> proof = ctx.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.DependencyProof)));
             WriteStarkProof(writer, proof);
         }
         ctx.Check(blockEnd);
@@ -273,7 +273,7 @@ internal static class PayloadBodiesDirectResponseWriter
         ctx.SkipItem(); // uncles
         Withdrawal[]? withdrawals = ctx.Position < blockEnd && ctx.PeekByte() >= Rlp.EmptyListByte ? WithdrawalDecoder.DecodeNonNullArray(ref ctx) : null;
         byte[]? proof = ctx.Position < blockEnd
-            ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, "StarkProof")) : null;
+            ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.DependencyProof))) : null;
         ctx.Check(blockEnd);
         return (transactions, withdrawals, proof);
     }

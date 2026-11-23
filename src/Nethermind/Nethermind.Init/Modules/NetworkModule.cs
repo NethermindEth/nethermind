@@ -43,7 +43,7 @@ public class NetworkModule(IConfigProvider configProvider) : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
-        // Without the aggregator, received wrappers are still verified, admitted and relayed by the transport.
+        // Without the aggregator, received wrappers are still verified, admitted and relayed by the broadcaster.
         if (configProvider.GetConfig<ITxPoolConfig>().AggregateProofs) builder.AddSingleton<V73.ProofWrapperProducer>();
         builder
             .AddModule(new SynchronizerModule(configProvider.GetConfig<ISyncConfig>()))

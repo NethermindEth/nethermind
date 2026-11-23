@@ -171,7 +171,7 @@ public class Eip8437ClientCaseTests
     // Omitting encodings previously sent in full, and retrying in full after eviction, are covered by
     // ProofWrapperOmissionTests.
 
-    // A complete wrapper can be validated without envelope requests: the transport has no other request than GetProofWrappers.
+    // A complete wrapper can be validated without envelope requests: the broadcaster has no other request than GetProofWrappers.
     // leanSTARK dependencies are carried like leanSPHINCS ones.
     [Test]
     public async Task Complete_wrapper_is_validated_without_envelope_requests([Values] bool mixed)

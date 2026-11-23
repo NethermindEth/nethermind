@@ -159,7 +159,7 @@ public class BlockHeader
         if (DependencyProofCommitment is not null)
         {
             builder.AppendLine($"{indent}BlockDepsHash: {DependencyProofCommitment.BlockDepsHash}");
-            builder.AppendLine($"{indent}StarkProofHash: {DependencyProofCommitment.DependencyProofHash}");
+            builder.AppendLine($"{indent}DependencyProofHash: {DependencyProofCommitment.DependencyProofHash}");
         }
 
         return builder.ToString();

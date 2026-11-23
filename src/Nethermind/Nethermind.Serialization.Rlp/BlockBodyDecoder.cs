@@ -128,7 +128,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             }
 
             byte[]? starkProof = ctx.Position < lastPosition
-                ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, "StarkProof"))
+                ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.DependencyProof)))
                 : null;
             ctx.Check(lastPosition);
             return new BlockBody(transactions, uncles, withdrawals, starkProof);

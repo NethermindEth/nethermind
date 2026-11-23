@@ -79,7 +79,7 @@ public class ProofWrapperBroadcasterTests
         }
     }
 
-    // EIP-8288 aggregation is optional: without it no wrapper is produced, but the transport still relays what it validates.
+    // EIP-8288 aggregation is optional: without it no wrapper is produced, but the broadcaster still relays what it validates.
     [Test]
     public void Aggregator_is_registered_only_when_the_node_aggregates_proofs([Values] bool aggregate)
     {
@@ -891,7 +891,7 @@ public class ProofWrapperBroadcasterTests
     private static ISpecProvider UpgradingChain() => new CustomSpecProvider(((ForkActivation)0, Eip8288Prototype.Instance),
         (new ForkActivation(0, 1_000), new OverridableReleaseSpec(Eip8288Prototype.Instance) { Eip8288AggregatedVk = UpgradedVk }));
 
-    /// <summary>Moves the local head so the next slot's fork changes the verifier, and lets the transport apply it.</summary>
+    /// <summary>Moves the local head so the next slot's fork changes the verifier, and lets the broadcaster apply it.</summary>
     private static void CrossVerifierFork(WrapperTestNode node, ulong number = 10)
     {
         node.SetHead(number, 990);
@@ -1025,7 +1025,7 @@ public class ProofWrapperBroadcasterTests
     }
 
     // An invalid verdict is remembered under the verifier the service judged it with, even when validation itself applied the
-    // verifier change the transport had not yet seen.
+    // verifier change the broadcaster had not yet seen.
     [Test]
     public async Task Invalid_verdict_is_scoped_to_the_verifier_validation_used()
     {

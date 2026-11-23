@@ -50,7 +50,7 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [1];
 }
 
-/// <summary>Records what the transport sends to one peer and the penalties it applies.</summary>
+/// <summary>Records what the broadcaster sends to one peer and the penalties it applies.</summary>
 internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
 {
     private readonly List<P2PMessage> _sent = [];
@@ -71,7 +71,7 @@ internal sealed class FakeWrapperLink(string name = "peer") : IWrapperLink
     public void Clear() { lock (_sent) _sent.Clear(); }
 }
 
-/// <summary>A transport over substitute chain components, with valid-by-default proofs and a manual clock.</summary>
+/// <summary>A broadcaster over substitute chain components, with valid-by-default proofs and a manual clock.</summary>
 internal sealed class WrapperTestNode : IDisposable
 {
     public WrapperTestNode(ISpecProvider? specProvider = null)

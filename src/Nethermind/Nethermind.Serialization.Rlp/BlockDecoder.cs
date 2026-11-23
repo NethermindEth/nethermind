@@ -193,7 +193,7 @@ namespace Nethermind.Serialization.Rlp
             }
             if (header.DependencyProofCommitment is not null)
             {
-                decoderContext.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, "StarkProof"));
+                decoderContext.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.DependencyProof)));
             }
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {

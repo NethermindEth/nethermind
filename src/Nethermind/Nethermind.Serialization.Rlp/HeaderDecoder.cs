@@ -276,6 +276,6 @@ namespace Nethermind.Serialization.Rlp
 
         [DoesNotReturn]
         private static Hash256 ThrowMissingBlockDepsHash() =>
-            throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in RecursiveStark");
+            throw new RlpException($"Missing {nameof(DependencyProofCommitment.BlockDepsHash)} in {nameof(BlockHeader.DependencyProofCommitment)}");
     }
 }

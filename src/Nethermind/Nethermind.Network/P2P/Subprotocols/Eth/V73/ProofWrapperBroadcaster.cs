@@ -68,7 +68,7 @@ public sealed partial class ProofWrapperBroadcaster : IDisposable
             : null;
     }
 
-    /// <summary>Whether the head activates EIP-8288; the transport is inert otherwise.</summary>
+    /// <summary>Whether the head activates EIP-8288; the broadcaster is inert otherwise.</summary>
     public bool IsEnabled => _wrappers.IsEnabled;
 
     internal int PeerCount { get { lock (_gate) return _peers.Count; } }
