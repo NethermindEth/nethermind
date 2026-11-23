@@ -26,11 +26,16 @@ public class EthereumL1BridgeTests
     public Task OneTimeSetUp() => KzgPolynomialCommitments.InitializeAsync();
 
     [Test]
-    public async Task Step_returns_the_blobs_of_a_batcher_transaction()
+    public async Task Step_returns_the_blobs_of_a_batcher_transaction([Values] bool afterAnotherBlobTransaction)
     {
         ShardBlobNetworkWrapper wrapper = CreateBlobs(1, 2);
+        L1Transaction batcherTransaction = BatcherTransaction(GetVersionedHashes(wrapper));
+        L1Transaction[] transactions = afterAnotherBlobTransaction
+            ? [OtherBlobTransaction(), batcherTransaction]
+            : [batcherTransaction];
+        int firstIndex = afterAnotherBlobTransaction ? 1 : 0;
 
-        L1BridgeStepResult result = await StepOverBlobTransaction([BatcherTransaction(GetVersionedHashes(wrapper))], ToSidecars(wrapper), 0, 1);
+        L1BridgeStepResult result = await StepOverBlobTransaction(transactions, ToSidecars(wrapper), firstIndex, firstIndex + 1);
 
         Assert.That(result.NewData, Is.Not.Null);
         Assert.That(result.NewData!, Has.Length.EqualTo(2));
@@ -41,30 +46,14 @@ public class EthereumL1BridgeTests
         }
     }
 
-    [Test]
-    public async Task Step_requests_sidecars_after_the_blobs_of_earlier_transactions()
+    private static L1Transaction OtherBlobTransaction() => new()
     {
-        ShardBlobNetworkWrapper other = CreateBlobs(5, 1);
-        ShardBlobNetworkWrapper wrapper = CreateBlobs(1, 2);
-        L1Transaction otherTransaction = new()
-        {
-            Hash = TestItem.KeccakE,
-            Type = TxType.Blob,
-            From = TestItem.AddressC,
-            To = TestItem.AddressD,
-            BlobVersionedHashes = GetVersionedHashes(other)
-        };
-
-        L1BridgeStepResult result = await StepOverBlobTransaction([otherTransaction, BatcherTransaction(GetVersionedHashes(wrapper))], ToSidecars(wrapper), 1, 2);
-
-        Assert.That(result.NewData, Is.Not.Null);
-        Assert.That(result.NewData!, Has.Length.EqualTo(2));
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.NewData![0].Data, Is.SameAs(wrapper.Blobs[0]));
-            Assert.That(result.NewData![1].Data, Is.SameAs(wrapper.Blobs[1]));
-        }
-    }
+        Hash = TestItem.KeccakE,
+        Type = TxType.Blob,
+        From = TestItem.AddressC,
+        To = TestItem.AddressD,
+        BlobVersionedHashes = GetVersionedHashes(CreateBlobs(5, 1))
+    };
 
     public enum SidecarChange { Swapped, OtherBlob, Missing, NullBlob, ShortBlob, NonCanonicalBlob }
 
