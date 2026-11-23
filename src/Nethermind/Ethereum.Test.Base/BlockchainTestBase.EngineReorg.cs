@@ -252,9 +252,12 @@ public abstract partial class BlockchainTestBase
             bool build = step.TryGetProperty("payloadAttributes", out JsonElement attributes);
             RpcResult response = await Call($"engine_forkchoiceUpdatedV{ParseInt(step.GetProperty("version"))}",
                 $"[{state},{(build ? attributes.GetRawText() : "null")}]");
-            _build = !response.IsError && OptionalString(response.Result, "payloadId") is { } payloadId
-                ? (payloadId, build ? attributes : null)
-                : null;
+            if (!response.IsError)
+            {
+                _build = OptionalString(response.Result, "payloadId") is { } payloadId
+                    ? (payloadId, build ? attributes : null)
+                    : null;
+            }
 
             await FollowOutcome(step, response, response.IsError ? default : response.Result.GetProperty("payloadStatus"), head, where, path);
         }
@@ -509,11 +512,12 @@ public abstract partial class BlockchainTestBase
             return hash!;
         }
 
-        /// <summary>The hash of the block <c>eth_getBlockByNumber</c> finds, or null when it finds none or fails.</summary>
+        /// <summary>The hash of the block <c>eth_getBlockByNumber</c> finds, or null when it finds none.</summary>
         private async Task<Hash256?> BlockHashAt(string blockParameter)
         {
             RpcResult block = await Call("eth_getBlockByNumber", $"[{blockParameter},false]");
-            return block.IsError || block.Result.ValueKind == JsonValueKind.Null ? null : new Hash256(block.Result.GetProperty("hash").GetString()!);
+            Assert.That(block.IsError, Is.False, $"eth_getBlockByNumber({blockParameter}): {block.Describe()}");
+            return block.Result.ValueKind == JsonValueKind.Null ? null : new Hash256(block.Result.GetProperty("hash").GetString()!);
         }
 
         private async Task<RpcResult> Call(string method, string parameters)
