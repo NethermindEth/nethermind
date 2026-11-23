@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
@@ -180,6 +181,54 @@ public class LogIndexRpcModuleTests
 
         Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"));
     }
+
+    [TestCase(3, 5, "0x1", "0xa", """["0x4"]""", TestName = "Range wider than index on both sides")]
+    [TestCase(0, 5, "0x7", "0xa", "[]", TestName = "Range entirely above index")]
+    [TestCase(6, 10, "0x1", "0x5", "[]", TestName = "Range entirely below index")]
+    public async Task logIndex_blockNumbers_returns_only_blocks_within_indexed_range(int indexFrom, int indexTo, string fromBlock, string toBlock, string expected)
+    {
+        // Postings outside the indexed range, such as ones left behind by a reorg, must not be returned
+        ILogIndexStorage storage = EnabledStorage();
+        storage.MinBlockNumber.Returns((int?)indexFrom);
+        storage.MaxBlockNumber.Returns((int?)indexTo);
+        ReturnPostings(storage, 2, 4, 8);
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"{{fromBlock}}","toBlock":"{{toBlock}}","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Is.EqualTo($$"""{"jsonrpc":"2.0","result":{{expected}},"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_applies_result_limit_after_clamping_to_indexed_range()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.MaxBlockNumber.Returns((int?)6);
+        ReturnPostings(storage, 2, 4, 6, 8, 10);
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0xa","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":["0x2","0x4","0x6"],"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_without_min_indexed_block_returns_error()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.MinBlockNumber.Returns((int?)null);
+        ReturnPostings(storage, 2, 4);
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0x5","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"));
+    }
+
+    // Mimics storage: yields the postings within the requested range, whatever the indexed range is
+    private static void ReturnPostings(ILogIndexStorage storage, params int[] blocks) =>
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(info => blocks.Where(b => b >= info.ArgAt<int>(1) && b <= info.ArgAt<int>(2)).GetEnumerator());
 
     private static ILogIndexStorage EnabledStorage()
     {

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
@@ -20,7 +21,7 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
             return ResultWrapper<IEnumerable<long>>.Fail("Log index is disabled.", ErrorCodes.ResourceUnavailable);
 
         // Null when nothing is indexed yet or the index stopped at a reorg it could not revert and may hold stale blocks
-        if (storage.MaxBlockNumber is null)
+        if (storage.MinBlockNumber is not { } indexFrom || storage.MaxBlockNumber is not { } indexTo)
             return ResultWrapper<IEnumerable<long>>.Fail("Log index is not available.", ErrorCodes.ResourceUnavailable);
 
         LogFilter logFilter = blockchainBridge.GetFilter(filter.FromBlock, filter.ToBlock, filter.Address, filter.Topics);
@@ -34,6 +35,11 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
 
         if (GetBlockNumber(logFilter.ToBlock) is not { } to)
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
+
+        // Clamped to the indexed range, as eth_getLogs does: postings outside it are not guaranteed to be canonical.
+        // A range entirely outside the index ends up with from > to and yields no blocks.
+        from = Math.Max(from, indexFrom);
+        to = Math.Min(to, indexTo);
 
         // Enumerated here so storage failures become JSON-RPC errors instead of breaking response serialization,
         // stopping one block past the limit so a long indexed range is not loaded in full
