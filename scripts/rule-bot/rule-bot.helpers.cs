@@ -1222,7 +1222,7 @@ static partial class RuleBot
                 continue;
             }
             if (path is null) continue;
-            if (line.StartsWith("new file mode", StringComparison.Ordinal)) status = Words(line)[^1] == "100644" ? "A" : "X";
+            if (line.StartsWith("new file mode", StringComparison.Ordinal)) status = line == "new file mode 100644" ? "A" : "X";
             else if (line.StartsWith("deleted file mode", StringComparison.Ordinal)) status = "D";
             else if (StartsWithAny(line, ["old mode", "new mode", "rename ", "copy ", "similarity index", "GIT binary patch", "Binary files"])) status = "X";
             else if (IndexMode().IsMatch(line)) status = "X";
@@ -1275,6 +1275,24 @@ static partial class RuleBot
         return NumstatPaths(output).Where(path => !seen.Contains(path)).Select(path => $"{path}: git applies it but the guard did not parse it").ToList();
     }
 
+    private static async Task<List<string>?> AppendedEditorConfigLines(string baseRef, string? patch, CancellationToken token)
+    {
+        var directory = Directory.CreateTempSubdirectory("rule-bot-guard-").FullName;
+        try
+        {
+            var copy = Path.Combine(directory, EditorConfig);
+            if ((await Exec(["bash", "-c", "git cat-file blob \"$1\" > \"$2\"", "guard", $"{baseRef}:{EditorConfig}", copy], false, token)).Code != 0) return null;
+            var before = File.ReadAllBytes(copy);
+            if (patch is not null && (await Exec(["git", "-C", directory, "apply", $"--include={EditorConfig}", Path.GetFullPath(patch)], false, token)).Code != 0) return null;
+            var result = patch is null ? EditorConfig : copy;
+            if (!File.Exists(result)) return null;
+            var after = File.ReadAllBytes(result);
+            if (after.Length <= before.Length || !after.AsSpan().StartsWith(before) || (before.Length > 0 && before[^1] != (byte)'\n')) return null;
+            return FileLines(LenientUtf8.GetString(after, before.Length, after.Length - before.Length)).Select(line => "+" + line).ToList();
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
     internal static async Task<int> Guard(string baseRef, string? patch, string? newId, string? files, string? idList, CancellationToken token)
     {
         List<(string Status, string Path)> changes;
@@ -1299,6 +1317,8 @@ static partial class RuleBot
             foreach (var line in SplitLines(await Git(["diff", "--summary", baseRef], true, token)))
                 if (RiskyMode().IsMatch(line)) changes.Add(("X", Words(line)[^1]));
         }
+        if (changes.Contains(("M", EditorConfig)))
+            edits = await AppendedEditorConfigLines(baseRef, string.IsNullOrEmpty(patch) ? null : patch, token) ?? ["-"];
         var ids = (idList ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
         var bad = CheckPaths(changes, unshipped, newId, FixFilesOf(files), edits, ids);
         bad.AddRange(changes.Where(change => change.Status == "X").Select(change => $"{change.Path}: symlink, mode, rename, binary or unlisted header change"));

@@ -507,6 +507,27 @@ var tests = new (string Name, Func<Task> Body)[]
         True(output.Contains("Nethermind.Analyzers/M.cs: symlink, mode, rename"));
     }),
     ("test_guard_fails_on_applied_ignored_file", () => IgnoredFileFails(repositoryRoot)),
+    ("test_guard_passes_overlay_appended_at_end_of_file", async () =>
+    {
+        var (patchCode, appliedCode) = await EditorConfigEdit(text => text + Overlay(["CA1510"], true));
+        Equal(0, patchCode);
+        Equal(0, appliedCode);
+    }),
+    ("test_guard_fails_on_mid_file_section_insert", async () =>
+    {
+        var (patchCode, appliedCode) = await EditorConfigEdit(text => text.Replace("[*.cs]\n", "[*.cs]\n[src/Nethermind/{*Test*,*Benchmark*}/**.cs]\ndotnet_diagnostic.CA1510.severity = none\n"));
+        Equal(1, patchCode);
+        Equal(1, appliedCode);
+    }),
+    ("test_guard_fails_on_earlier_edit_with_end_of_file_overlay", async () =>
+    {
+        var (patchCode, appliedCode) = await EditorConfigEdit(text => text.Replace("CA1822.severity = error", "CA1822.severity = none ") + Overlay(["CA1510"], true));
+        Equal(1, patchCode);
+        Equal(1, appliedCode);
+    }),
+    ("test_guard_patch_fails_on_symlink_mode_with_second_token", () => NewFileMode("120000 100644", 1)),
+    ("test_guard_patch_fails_on_executable_mode_with_second_token", () => NewFileMode("100755 100644", 1)),
+    ("test_guard_patch_passes_regular_file_mode", () => NewFileMode("100644", 0)),
     ("test_workflow_applies_patches_to_the_index", Sync(() =>
     {
         var applies = File.ReadAllLines(Path.Combine(repositoryRoot, ".github", "workflows", "rule-bot.yml")).Where(line => line.TrimStart().StartsWith("git apply", StringComparison.Ordinal)).ToList();
@@ -672,14 +693,14 @@ static class RuleBotTestSupport
         finally { Environment.CurrentDirectory = previous; }
     }
 
-    private static async Task<(int Code, string Output)> GuardIn(string directory, string? patch)
+    private static async Task<(int Code, string Output)> GuardIn(string directory, string? patch, string? ids = null)
     {
         var previous = Environment.CurrentDirectory;
         Environment.CurrentDirectory = directory;
         try
         {
             var code = 0;
-            var output = await Quiet(async () => code = await Guard("HEAD", patch, "NETH012", null, null, default));
+            var output = await Quiet(async () => code = await Guard("HEAD", patch, "NETH012", null, ids, default));
             return (code, output);
         }
         finally { Environment.CurrentDirectory = previous; }
@@ -698,6 +719,36 @@ static class RuleBotTestSupport
         var (code, output) = await GuardPatch($"x{separator}@@ -1,1 +1,2 @@\ndiff --git a/.github/workflows/evil.yml b/.github/workflows/evil.yml\nnew file mode 100644\n--- /dev/null\n+++ b/.github/workflows/evil.yml\n@@ -0,0 +1 @@\n+on: push\n");
         Equal(1, code);
         True(output.Contains("guard: FAIL .github/workflows/evil.yml"));
+    }
+
+    internal static async Task NewFileMode(string mode, int expected)
+    {
+        const string analyzer = "src/Nethermind/Nethermind.Analyzers/New.cs";
+        var (code, _) = await GuardPatch($"diff --git a/{analyzer} b/{analyzer}\nnew file mode {mode}\n--- /dev/null\n+++ b/{analyzer}\n@@ -0,0 +1 @@\n+x\n");
+        Equal(expected, code);
+    }
+
+    internal static async Task<(int PatchCode, int AppliedCode)> EditorConfigEdit(Func<string, string> edit)
+    {
+        using var directory = new TempDirectory();
+        var tree = Path.Combine(directory.Path, "tree");
+        var patch = Path.Combine(directory.Path, "editorconfig.patch");
+        var file = Path.Combine(tree, ".editorconfig");
+        const string original = "root = true\n\n[*.cs]\ndotnet_diagnostic.CA1822.severity = error\ndotnet_diagnostic.CA1851.severity = warning\n";
+        Directory.CreateDirectory(tree);
+        await Checked("git", ["init", "-q"], tree);
+        File.WriteAllText(file, original);
+        await Checked("git", ["add", "."], tree);
+        await Checked("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "base"], tree);
+        File.WriteAllText(file, edit(original));
+        var diff = await ScriptProcess.Run("git", ["diff", "HEAD"], default, workingDirectory: tree);
+        File.WriteAllText(patch, diff.Output);
+        await Checked("git", ["checkout", "--", ".editorconfig"], tree);
+        var (patchCode, _) = await GuardIn(tree, patch, "CA1510");
+        await Checked("git", ["apply", "--index", patch], tree);
+        await Checked("git", ["add", "-N", "."], tree);
+        var (appliedCode, _) = await GuardIn(tree, null, "CA1510");
+        return (patchCode, appliedCode);
     }
 
     internal static async Task IgnoredFileFails(string repositoryRoot)
