@@ -25,5 +25,6 @@ public interface IGuestSlotStore
 
     /// <summary>Reads the transient storage of <paramref name="address"/> at <paramref name="index"/>, as <see cref="IWorldState.GetTransientState"/> does.</summary>
     /// <remarks>Builds the storage cell, which hashes it, only when the store holds any value: TLOAD of an empty store reads zero.</remarks>
+    /// <param name="value">The value read. It may be the same variable as <paramref name="index"/>: read the index before writing the value.</param>
     void ReadTransient(Address address, in UInt256 index, out UInt256 value);
 }

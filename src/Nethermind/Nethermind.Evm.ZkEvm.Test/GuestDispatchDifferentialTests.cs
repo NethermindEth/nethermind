@@ -1300,7 +1300,7 @@ public class GuestDispatchDifferentialTests
     /// TSTORE faults instead.
     /// </remarks>
     [Test]
-    public void Transient_storage_matches_the_shared_handlers([Values] bool isStatic)
+    public void Transient_storage_matches_the_shared_handlers([Values] bool isStatic, [Values] bool slotStore)
     {
         byte[] code =
         [
@@ -1313,13 +1313,13 @@ public class GuestDispatchDifferentialTests
         List<string> mismatches = [];
         for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
         {
-            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic);
-            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, loadsStorage: true, isStatic: isStatic);
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic, slotStore: slotStore);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, loadsStorage: true, isStatic: isStatic, slotStore: slotStore);
             if (!Matches(untraced, traced))
                 mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
         }
 
-        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic);
+        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic, slotStore: slotStore);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
@@ -1721,10 +1721,11 @@ public class GuestDispatchDifferentialTests
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     /// <param name="txContext">The transaction's context, which holds the versioned blob hashes; without it BLOBHASH runs as INVALID.</param>
+    /// <param name="slotStore">Whether the world state is a <see cref="IGuestSlotStore"/> for transient storage, which TLOAD then reads through.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
         ICodeInfoRepository? codeInfoRepository = null, BlockExecutionContext? context = null, TxExecutionContext? txContext = null,
-        FrameTxContext? frameTxContext = null, bool advanceFrameAfterWrite = false, UInt256? balance = null)
+        FrameTxContext? frameTxContext = null, bool advanceFrameAfterWrite = false, UInt256? balance = null, bool slotStore = false)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (context is { } blockContext)
@@ -1745,6 +1746,7 @@ public class GuestDispatchDifferentialTests
             }
         }
         IWorldState stateSubstitute = vm.WorldState;
+        if (slotStore) vm.UseTransientSlotStore();
         BalanceWorldState? balanceState = balance is { } value ? vm.UseBalance(value) : null;
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
         if (txContext is not null) vm.SetTxExecutionContext(txContext.Value);
@@ -1913,6 +1915,18 @@ public class GuestDispatchDifferentialTests
             typeof(VirtualMachine<EthereumGasPolicy>).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(this, repository);
 
         public void Trace(ITxTracer tracer) => _txTracer = tracer;
+
+        public void UseTransientSlotStore() => _worldState = new TransientSlotStoreWorldState(_worldState);
+    }
+
+    /// <summary>A world state that is a <see cref="IGuestSlotStore"/> for transient storage only, so TLOAD reads through <see cref="IGuestSlotStore.ReadTransient"/>.</summary>
+    private sealed class TransientSlotStoreWorldState(IWorldState state) : WorldStateDecorator(state), IGuestSlotStore
+    {
+        public int ReadForStore(in StorageCell storageCell, out UInt256 current, out UInt256 original) => throw new NotSupportedException();
+
+        public void WriteAt(int slot, in StorageCell storageCell, in UInt256 current, in UInt256 newValue) => throw new NotSupportedException();
+
+        public void ReadTransient(Address address, in UInt256 index, out UInt256 value) => GetTransientState(new StorageCell(address, in index), out value);
     }
 
     private sealed class BalanceWorldState(IWorldState state, UInt256 balance) : WorldStateDecorator(state)
