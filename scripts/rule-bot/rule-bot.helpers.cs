@@ -2,129 +2,79 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Globalization;
-using System.Numerics;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using Obj = System.Collections.Generic.OrderedDictionary<string, object?>;
 
 sealed class BotExit(int code, string? message = null) : Exception(message)
 {
     internal int Code { get; } = code;
 }
 
-sealed class PyRandom
+sealed record ApiUser(string? Login, string? Type);
+sealed record ApiComment(long Id, string PullRequestUrl, ApiUser? User, string? AuthorAssociation, long? InReplyToId, string Path, long? Line, long? OriginalLine, string CreatedAt, string Body, string HtmlUrl);
+sealed record Comment(long Id, long Pr, string Author, bool Bot, string? Association, long? ReplyTo, string Path, long? Line, string Created, string Body, string Url);
+sealed record CommentFile(string Since, List<Comment> Comments);
+sealed record PrThreads(string Author, Dictionary<string, bool[]> Threads);
+sealed record ReviewThread(bool IsResolved, bool IsOutdated, List<(string Author, string Body)> Comments);
+sealed record Finding(long Pr, string Author, bool Bot, string Path, long? Line, string Created, string Body, string Url, string? Association, string Valid);
+sealed record Example(string Url, string Author, string Path, long? Line, string Body);
+sealed record Gate(long N, long Prs, long Commenters, long Human, long Valid, double Validity, List<string>? Fails, bool Pass, List<Example>? Examples = null);
+sealed record RouteConfig(string Route, List<string> Ids, string? Why);
+sealed record CatalogEntry(bool Enforced);
+sealed record EditorRule(string Id, string Severity, string? Section, long Line);
+sealed record BotPr(long Number, string State, string HeadRefName, string? CreatedAt, string? ClosedAt);
+sealed record TitledPr(string Title);
+sealed record NumberedPr(long Number);
+sealed record QueuedCluster(string Cluster, string? Why);
+sealed record PlanFile(List<string> MeasureIds, Dictionary<string, long>? RejectedIds, string? RouteB, string? RouteBId, List<QueuedCluster>? RouteBQueue);
+sealed record HitCounts(long Prod, long Test, long Generated);
+sealed record HitsFile(Dictionary<string, HitCounts> Counts, List<Hit> Hits, List<string>? Solutions);
+sealed record Decision(string Cluster, string Id, string Route, long Prod, long Test, string Verdict);
+sealed record Package(string Route, string Cluster, List<string> Ids, long Prod, long Test, string? Analyzer = null, string Slug = "", List<long>? OpenPrs = null);
+sealed record CandidatesFile(List<Decision> Decisions, List<Package> Packages, List<long>? BotOpenPrs, Package? Chosen);
+sealed record Label(string? LabelName, string? File, long? Line, string? Reason)
 {
-    private const int Size = 624;
-    private const int Shift = 397;
-    private readonly uint[] _state = new uint[Size];
-    private int _index = Size;
+    [JsonPropertyName("label")] public string? LabelName { get; init; } = LabelName;
+}
+sealed record PrecisionResult(long TruePositive, long Labelled, long Needed, bool Ok);
+sealed record Attempt(string Cluster, string Result);
+sealed record AnalyzerResult(string? TestClass, string? Analyzer, string? Summary, string? Skip);
+sealed record GraphQlAuthor(string? Login);
+sealed record GraphQlPageInfo(bool HasNextPage, string? EndCursor);
+sealed record GraphQlId(long DatabaseId);
+sealed record GraphQlComments(List<GraphQlId> Nodes);
+sealed record GraphQlThread(bool IsResolved, bool IsOutdated, GraphQlComments Comments);
+sealed record GraphQlThreads(GraphQlPageInfo PageInfo, List<GraphQlThread> Nodes);
+sealed record GraphQlPr(GraphQlAuthor? Author, GraphQlThreads ReviewThreads);
+sealed record GraphQlData(Dictionary<string, GraphQlPr?> Repository);
+sealed record GraphQlResponse(GraphQlData Data, JsonElement? Errors);
 
-    internal PyRandom(BigInteger seed)
-    {
-        var rest = BigInteger.Abs(seed);
-        var key = new List<uint>();
-        do
-        {
-            key.Add((uint)(rest & uint.MaxValue));
-            rest >>= 32;
-        } while (rest > 0);
-        Init(19650218);
-        int i = 1, j = 0;
-        for (var k = Math.Max(Size, key.Count); k > 0; k--)
-        {
-            _state[i] = (_state[i] ^ ((_state[i - 1] ^ (_state[i - 1] >> 30)) * 1664525)) + key[j] + (uint)j;
-            i++;
-            j++;
-            if (i >= Size) { _state[0] = _state[Size - 1]; i = 1; }
-            if (j >= key.Count) j = 0;
-        }
-        for (var k = Size - 1; k > 0; k--)
-        {
-            _state[i] = (_state[i] ^ ((_state[i - 1] ^ (_state[i - 1] >> 30)) * 1566083941)) - (uint)i;
-            i++;
-            if (i >= Size) { _state[0] = _state[Size - 1]; i = 1; }
-        }
-        _state[0] = 0x80000000;
-    }
-
-    private void Init(uint seed)
-    {
-        _state[0] = seed;
-        for (var i = 1; i < Size; i++) _state[i] = 1812433253 * (_state[i - 1] ^ (_state[i - 1] >> 30)) + (uint)i;
-    }
-
-    private uint Next()
-    {
-        if (_index >= Size)
-        {
-            for (var k = 0; k < Size; k++)
-            {
-                var y = (_state[k] & 0x80000000) | (_state[(k + 1) % Size] & 0x7fffffff);
-                _state[k] = _state[(k + Shift) % Size] ^ (y >> 1) ^ ((y & 1) != 0 ? 0x9908b0dfu : 0);
-            }
-            _index = 0;
-        }
-        var value = _state[_index++];
-        value ^= value >> 11;
-        value ^= (value << 7) & 0x9d2c5680;
-        value ^= (value << 15) & 0xefc60000;
-        return value ^ (value >> 18);
-    }
-
-    private int Below(int limit)
-    {
-        var bits = 32 - BitOperations.LeadingZeroCount((uint)limit);
-        int value;
-        do value = (int)(Next() >> (32 - bits)); while (value >= limit);
-        return value;
-    }
-
-    internal List<T> Sample<T>(IReadOnlyList<T> population, int count)
-    {
-        var size = population.Count;
-        var result = new List<T>(count);
-        var setSize = 21;
-        if (count > 5) setSize += (int)Math.Pow(4, Math.Ceiling(Math.Log(count * 3) / Math.Log(4)));
-        if (size <= setSize)
-        {
-            var pool = population.ToArray();
-            for (var i = 0; i < count; i++)
-            {
-                var j = Below(size - i);
-                result.Add(pool[j]);
-                pool[j] = pool[size - i - 1];
-            }
-            return result;
-        }
-        var selected = new HashSet<int>();
-        for (var i = 0; i < count; i++)
-        {
-            int j;
-            do j = Below(size); while (!selected.Add(j));
-            result.Add(population[j]);
-        }
-        return result;
-    }
+sealed record Hit(string Id, string File, long Line, long Col, string Scope, string Msg)
+{
+    public string? Solution { get; set; }
+    public List<string>? Solutions { get; set; }
+    public string? Context { get; set; }
 }
 
-sealed class CodePointOrder : IComparer<string>
+sealed class RouteBState
 {
-    internal static readonly CodePointOrder Instance = new();
-
-    public int Compare(string? left, string? right)
-    {
-        var a = left ?? "";
-        var b = right ?? "";
-        for (var i = 0; i < a.Length && i < b.Length; i++)
-        {
-            if (a[i] == b[i]) continue;
-            var x = char.IsSurrogate(a[i]) ? a[i] + 0x10000 : a[i];
-            var y = char.IsSurrogate(b[i]) ? b[i] + 0x10000 : b[i];
-            return x.CompareTo(y);
-        }
-        return a.Length.CompareTo(b.Length);
-    }
+    public string? Id { get; set; }
+    public string? Cluster { get; set; }
+    public List<Attempt>? Attempts { get; set; }
+    public string? Why { get; set; }
+    public string? Analyzer { get; set; }
+    public string? Summary { get; set; }
+    public bool? GuardOk { get; set; }
+    public bool? TestsOk { get; set; }
+    public bool? RedOk { get; set; }
+    public string? TestsSummary { get; set; }
+    public string? RedSummary { get; set; }
+    public string? Skip { get; set; }
+    public PrecisionResult? Precision { get; set; }
+    [JsonExtensionData] public Dictionary<string, JsonElement>? Other { get; set; }
 }
 
 static partial class RuleBot
@@ -144,14 +94,11 @@ static partial class RuleBot
     private const string ThreadNodes = "pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated comments(first:1) { nodes { databaseId } } }";
     private const string ThreadFields = "author { login } reviewThreads(first:100) { " + ThreadNodes + " }";
 
-    private const string Word = @"[\p{L}\p{N}_]";
-    private const string Edge = "(?:(?<=" + Word + ")(?!" + Word + ")|(?<!" + Word + ")(?=" + Word + "))";
-    private const string Space = @"[\s\x1c-\x1f]";
     private const string NotSpace = @"[^\s\x1c-\x1f]";
-    private const string Digits = @"(?:\d|[\uD800-\uDBFF][\uDC00-\uDFFF])+";
+    private const string NotSpaceNoParen = @"[^\s\x1c-\x1f(]";
     private const RegexOptions Ignore = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
 
-    private static readonly (string Gate, double Min)[] GateMinimums = [("prs", 10), ("commenters", 3), ("human", 5), ("validity", 0.6)];
+    private static readonly char[] Blank = [.. Enumerable.Range(0, 0x3001).Select(c => (char)c).Where(c => char.IsWhiteSpace(c) || c is >= '\x1c' and <= '\x1f')];
     private static readonly Dictionary<string, string> OverlaySections = new()
     {
         ["[*.cs]"] = "warning",
@@ -171,36 +118,50 @@ static partial class RuleBot
     private static readonly HashSet<string> Bots = ["claude", "copilot-pull-request-reviewer", "github-actions", "coderabbitai", "gemini-code-assist", "cursor", "chatgpt-codex-connector", "dependabot", "codecov"];
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private static readonly UTF8Encoding LenientUtf8 = new(false, false);
+    private static readonly JsonSerializerOptions FileJson = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+        DictionaryKeyPolicy = null,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        WriteIndented = true,
+        IndentSize = 1,
+        MaxDepth = 512
+    };
+    private static readonly JsonSerializerOptions LineJson = new(FileJson) { WriteIndented = false };
+    private static readonly JsonSerializerOptions GitHubJson = new(JsonSerializerDefaults.Web) { MaxDepth = 512 };
 
-    [GeneratedRegex(Edge + "(fixed|done|addressed|good catch|nice catch|agreed|agree|updated|changed|resolved|thanks|applied|removed|reverted|will fix|yep|yes)" + Edge, Ignore)]
+    [GeneratedRegex(@"\b(fixed|done|addressed|good catch|nice catch|agreed|agree|updated|changed|resolved|thanks|applied|removed|reverted|will fix|yep|yes)\b", Ignore)]
     private static partial Regex Agree();
 
-    [GeneratedRegex(Edge + "(not (an issue|needed|applicable|relevant|true|correct)|false positive|intended|intentional|by design|won'?t fix|no need|disagree|not necessary|this is fine|irrelevant|incorrect|wrong)" + Edge, Ignore)]
+    [GeneratedRegex(@"\b(not (an issue|needed|applicable|relevant|true|correct)|false positive|intended|intentional|by design|won'?t fix|no need|disagree|not necessary|this is fine|irrelevant|incorrect|wrong)\b", Ignore)]
     private static partial Regex Rebut();
 
-    [GeneratedRegex(@"\A(?<path>" + NotSpaceNoParen + @"[^(]*)\((?<line>" + Digits + "),(?<col>" + Digits + @")\): (?<sev>warning|error) (?<id>[A-Z]+\d+): (?<msg>.*?)(?: \[(?<proj>[^\]]+)\])?$")]
-    private static partial Regex Diagnostic();
-    private const string NotSpaceNoParen = @"[^\s\x1c-\x1f(]";
+    [GeneratedRegex(@"\r\n|[\n\r\v\f\x1c-\x1e\x85  ]")]
+    private static partial Regex LineBreak();
 
-    [GeneratedRegex("^" + Space + @"*dotnet_diagnostic\.([A-Z]+\d+)\.severity" + Space + "*=" + Space + "*(" + Word + "+)", RegexOptions.Multiline)]
+    [GeneratedRegex(@"\A(?<path>" + NotSpaceNoParen + @"[^(]*)\((?<line>[0-9]+),(?<col>[0-9]+)\): (?<sev>warning|error) (?<id>[A-Z]+\d+): (?<msg>.*?)(?: \[(?<proj>[^\]]+)\])?$")]
+    private static partial Regex Diagnostic();
+
+    [GeneratedRegex(@"^\s*dotnet_diagnostic\.([A-Z]+\d+)\.severity\s*=\s*(\w+)", RegexOptions.Multiline)]
     private static partial Regex Severity();
 
-    [GeneratedRegex(@"^NETH(\d{3})" + Edge, RegexOptions.Multiline)]
+    [GeneratedRegex(@"^NETH([0-9]{3})\b", RegexOptions.Multiline)]
     private static partial Regex ReleaseId();
 
-    [GeneratedRegex(@"NETH(\d{3})")]
+    [GeneratedRegex("NETH([0-9]{3})")]
     private static partial Regex TitleId();
 
-    [GeneratedRegex("^" + Space + @"*solution:" + Space + @"*\[([^\]]*)\]", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^\s*solution:\s*\[([^\]]*)\]", RegexOptions.Multiline)]
     private static partial Regex SolutionMatrix();
 
-    [GeneratedRegex("^" + Space + "+-" + Space + @"+((?:" + Word + @"|[./-])+\.slnx)" + Space + "*$", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^\s+-\s+((?:\w|[./-])+\.slnx)\s*$", RegexOptions.Multiline)]
     private static partial Regex ToolSolution();
 
-    [GeneratedRegex(@"\Adotnet_diagnostic\.([A-Z]+\d+)\.severity = (" + Word + @"+)\z")]
+    [GeneratedRegex(@"\Adotnet_diagnostic\.([A-Z]+\d+)\.severity = (\w+)\z")]
     private static partial Regex OverlayRow();
 
-    [GeneratedRegex(@"\A@@ -(" + Digits + @")(?:,(" + Digits + @"))? \+(" + Digits + @")(?:,(" + Digits + "))? @@")]
+    [GeneratedRegex(@"\A@@ -([0-9]+)(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@")]
     private static partial Regex HunkHeader();
 
     [GeneratedRegex(@"\Adiff --git a/(" + NotSpace + "+) b/(" + NotSpace + "+)$")]
@@ -215,13 +176,13 @@ static partial class RuleBot
     [GeneratedRegex("mode (120000|100755)|mode change")]
     private static partial Regex RiskyMode();
 
-    [GeneratedRegex(@"public" + Space + "+override" + Space + "+void" + Space + "+Initialize" + Space + @"*\(" + Space + "*AnalysisContext" + Space + "+(" + Word + "+)" + Space + @"*\)" + Space + @"*(=>[^;]*;|\{)")]
+    [GeneratedRegex(@"public\s+override\s+void\s+Initialize\s*\(\s*AnalysisContext\s+(\w+)\s*\)\s*(=>[^;]*;|\{)")]
     private static partial Regex InitializeMethod();
 
     [GeneratedRegex(@"\A[A-Za-z_][A-Za-z0-9_]*\z")]
     private static partial Regex TestClassName();
 
-    [GeneratedRegex(@"[Ff]ailed:" + Space + @"*(\d+)")]
+    [GeneratedRegex(@"[Ff]ailed:\s*([0-9]+)")]
     private static partial Regex FailedCount();
 
     [GeneratedRegex(": error |failed:|total:")]
@@ -230,7 +191,7 @@ static partial class RuleBot
     [GeneratedRegex("total: [0-9]+|Passed!|Failed!")]
     private static partial Regex TestRunSummary();
 
-    [GeneratedRegex(@"\{\{((?:" + Word + @"|[\uD800-\uDBFF][\uDC00-\uDFFF])+)\}\}")]
+    [GeneratedRegex(@"\{\{(\w+)\}\}")]
     private static partial Regex TemplateKey();
 
     [GeneratedRegex(@"\A-\d+\z|\A-\d*\.\d+\z")]
@@ -239,157 +200,8 @@ static partial class RuleBot
     internal static string Home = AppContext.BaseDirectory;
     internal static Func<string[], bool, CancellationToken, Task<(int Code, string Output, string Error)>> Exec =
         (argv, echo, token) => ScriptProcess.Run(argv[0], argv[1..], token, echo, capture: !echo);
-    internal static Func<string[], CancellationToken, Task<object?>> Api = RealApi;
+    internal static Func<string[], CancellationToken, Task<string>> Api = RealApi;
     internal static Func<TimeSpan, CancellationToken, Task> Delay = Task.Delay;
-
-    internal static Obj D(params (string Key, object? Value)[] items)
-    {
-        var obj = new Obj();
-        foreach (var (key, value) in items) obj[key] = value;
-        return obj;
-    }
-
-    internal static List<object?> L(IEnumerable<object?> items) => [.. items];
-    private static Obj O(object? value) => (Obj)value!;
-    internal static List<object?> A(object? value) => (List<object?>)value!;
-    private static object? G(Obj obj, string key) => obj.TryGetValue(key, out var value) ? value : null;
-    private static Obj Child(Obj obj, string key) => G(obj, key) as Obj ?? [];
-    internal static string S(object? value) => (string)value!;
-    private static long N(object? value) => Convert.ToInt64(value, CultureInfo.InvariantCulture);
-    private static IEnumerable<string> Strings(object? value) => A(value).Select(S);
-
-    internal static bool Truthy(object? value) => value switch
-    {
-        null => false,
-        bool b => b,
-        string s => s.Length > 0,
-        long n => n != 0,
-        int n => n != 0,
-        BigInteger n => !n.IsZero,
-        double d => d != 0,
-        Obj o => o.Count > 0,
-        List<object?> l => l.Count > 0,
-        _ => true
-    };
-
-    private static string Text(object? value) => value switch
-    {
-        null => "None",
-        bool b => b ? "True" : "False",
-        string s => s,
-        double d => FloatText(d),
-        IFormattable f => f.ToString(null, CultureInfo.InvariantCulture),
-        _ => Dumps(value)
-    };
-
-    private static string FloatText(double value)
-    {
-        var text = value.ToString("R", CultureInfo.InvariantCulture);
-        return text.Contains('E') ? text.ToLowerInvariant() : text.Contains('.') ? text : text + ".0";
-    }
-
-    internal static object? Loads(string text)
-    {
-        using var document = JsonDocument.Parse(text, new JsonDocumentOptions { MaxDepth = 512 });
-        return FromElement(document.RootElement);
-    }
-
-    private static object? FromElement(JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.Object:
-                var obj = new Obj();
-                foreach (var property in element.EnumerateObject()) obj[property.Name] = FromElement(property.Value);
-                return obj;
-            case JsonValueKind.Array:
-                return element.EnumerateArray().Select(FromElement).ToList();
-            case JsonValueKind.String:
-                return element.GetString();
-            case JsonValueKind.True:
-                return true;
-            case JsonValueKind.False:
-                return false;
-            case JsonValueKind.Number:
-                var raw = element.GetRawText();
-                if (raw.AsSpan().IndexOfAny('.', 'e', 'E') >= 0) return double.Parse(raw, CultureInfo.InvariantCulture);
-                return long.TryParse(raw, CultureInfo.InvariantCulture, out var number) ? (object)number : BigInteger.Parse(raw, CultureInfo.InvariantCulture);
-            default:
-                return null;
-        }
-    }
-
-    internal static string Dumps(object? value, int? indent = null)
-    {
-        var output = new StringBuilder();
-        WriteJson(output, value, indent, 0);
-        return output.ToString();
-    }
-
-    private static void WriteJson(StringBuilder output, object? value, int? indent, int depth)
-    {
-        switch (value)
-        {
-            case null: output.Append("null"); break;
-            case bool b: output.Append(b ? "true" : "false"); break;
-            case string s: WriteString(output, s); break;
-            case double d: output.Append(FloatText(d)); break;
-            case Obj obj:
-                WriteItems(output, '{', '}', obj.Count, indent, depth, obj.Select<KeyValuePair<string, object?>, Action>(item => () =>
-                {
-                    WriteString(output, item.Key);
-                    output.Append(": ");
-                    WriteJson(output, item.Value, indent, depth + 1);
-                }));
-                break;
-            case List<object?> list:
-                WriteItems(output, '[', ']', list.Count, indent, depth, list.Select<object?, Action>(item => () => WriteJson(output, item, indent, depth + 1)));
-                break;
-            case IFormattable number: output.Append(number.ToString(null, CultureInfo.InvariantCulture)); break;
-            default: throw new InvalidOperationException($"not JSON: {value.GetType()}");
-        }
-    }
-
-    private static void WriteItems(StringBuilder output, char open, char close, int count, int? indent, int depth, IEnumerable<Action> items)
-    {
-        output.Append(open);
-        if (count > 0)
-        {
-            var first = true;
-            foreach (var item in items)
-            {
-                if (!first) output.Append(indent is null ? ", " : ",");
-                first = false;
-                if (indent is { } width) output.Append('\n').Append(' ', width * (depth + 1));
-                item();
-            }
-            if (indent is { } closing) output.Append('\n').Append(' ', closing * depth);
-        }
-        output.Append(close);
-    }
-
-    private static void WriteString(StringBuilder output, string text)
-    {
-        output.Append('"');
-        foreach (var c in text)
-        {
-            switch (c)
-            {
-                case '"': output.Append("\\\""); break;
-                case '\\': output.Append("\\\\"); break;
-                case '\n': output.Append("\\n"); break;
-                case '\r': output.Append("\\r"); break;
-                case '\t': output.Append("\\t"); break;
-                case '\f': output.Append("\\f"); break;
-                case '\b': output.Append("\\b"); break;
-                default:
-                    if (c is >= ' ' and <= '~') output.Append(c);
-                    else output.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture));
-                    break;
-            }
-        }
-        output.Append('"');
-    }
 
     private static string Universal(string text) => text.Contains('\r') ? text.Replace("\r\n", "\n").Replace('\r', '\n') : text;
     internal static string ReadText(string path, bool replace = false) => Universal((replace ? LenientUtf8 : StrictUtf8).GetString(File.ReadAllBytes(path)));
@@ -402,130 +214,37 @@ static partial class RuleBot
         return lines;
     }
 
-    internal static object? Load(string path, object? fallback = null) =>
-        fallback is not null && !File.Exists(path) ? fallback : Loads(ReadText(path));
-
-    internal static void Save(string path, object? data)
+    internal static List<string> Lines(string text)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
-        WriteText(path, Dumps(data, 1));
-    }
-
-    internal static List<string> SplitLines(string text)
-    {
-        var lines = new List<string>();
-        int start = 0, i = 0;
-        while (i < text.Length)
-        {
-            var c = text[i];
-            if (c is '\n' or '\r' or '\v' or '\f' or '\u001c' or '\u001d' or '\u001e' or '\u0085' or '\u2028' or '\u2029')
-            {
-                lines.Add(text[start..i]);
-                if (c == '\r' && i + 1 < text.Length && text[i + 1] == '\n') i++;
-                start = ++i;
-            }
-            else i++;
-        }
-        if (start < text.Length) lines.Add(text[start..]);
+        var lines = LineBreak().Split(text).ToList();
+        if (lines[^1].Length == 0) lines.RemoveAt(lines.Count - 1);
         return lines;
     }
 
-    private static bool IsSpace(char c) => char.IsWhiteSpace(c) || c is >= '\u001c' and <= '\u001f';
+    internal static T Parse<T>(string json) => JsonSerializer.Deserialize<T>(json, FileJson)!;
+    private static T ParseGitHub<T>(string json) => JsonSerializer.Deserialize<T>(json, GitHubJson)!;
+    internal static T Load<T>(string path) => Parse<T>(ReadText(path));
+    private static T LoadOr<T>(string path) where T : new() => File.Exists(path) ? Load<T>(path) : new T();
+    internal static string Dumps<T>(T value) => JsonSerializer.Serialize(value, LineJson);
 
-    private static string Strip(string text)
+    internal static void Save<T>(string path, T data)
     {
-        int start = 0, end = text.Length;
-        while (start < end && IsSpace(text[start])) start++;
-        while (end > start && IsSpace(text[end - 1])) end--;
-        return text[start..end];
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+        WriteText(path, JsonSerializer.Serialize(data, FileJson));
     }
 
-    private static List<string> Words(string text)
+    private static string Cut(string text, int length)
     {
-        var words = new List<string>();
-        var start = -1;
-        for (var i = 0; i <= text.Length; i++)
-        {
-            var space = i == text.Length || IsSpace(text[i]);
-            if (space && start >= 0) { words.Add(text[start..i]); start = -1; }
-            else if (!space && start < 0) start = i;
-        }
-        return words;
+        var end = 0;
+        for (var count = 0; count < length && end < text.Length; count++) end += char.IsSurrogatePair(text, end) ? 2 : 1;
+        return text[..end];
     }
 
-    internal static string Head(string text, int count)
-    {
-        var i = 0;
-        for (var seen = 0; seen < count && i < text.Length; seen++)
-            i += char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]) ? 2 : 1;
-        return text[..i];
-    }
-
-    private static string Flat(string text)
-    {
-        var output = new StringBuilder(text.Length);
-        for (var i = 0; i < text.Length; i++)
-        {
-            var c = text[i];
-            if (char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
-            {
-                var category = CharUnicodeInfo.GetUnicodeCategory(text, i);
-                output.Append(category <= UnicodeCategory.OtherLetter || category is UnicodeCategory.DecimalDigitNumber or UnicodeCategory.LetterNumber or UnicodeCategory.OtherNumber ? '\uA000' : '\uE000');
-                i++;
-            }
-            else output.Append(c switch { '\u017F' => 's', '\u212A' => 'k', '\u0131' or '\u0130' => 'i', _ => c });
-        }
-        return output.ToString();
-    }
-
-    private static bool Search(Regex pattern, string text) => pattern.IsMatch(Flat(text));
-
-    internal static string TranslatePattern(string pattern)
-    {
-        var output = new StringBuilder();
-        var inClass = false;
-        for (var i = 0; i < pattern.Length; i++)
-        {
-            var c = pattern[i];
-            if (c == '\\' && i + 1 < pattern.Length)
-            {
-                var next = pattern[++i];
-                output.Append((next, inClass) switch
-                {
-                    ('b', false) => Edge,
-                    ('w', false) => Word,
-                    ('s', false) => Space,
-                    ('S', false) => NotSpace,
-                    ('w', true) => @"\p{L}\p{N}_",
-                    ('s', true) => @"\s\x1c-\x1f",
-                    _ => $"\\{next}"
-                });
-                continue;
-            }
-            if (c == '[') inClass = true;
-            else if (c == ']') inClass = false;
-            output.Append(c);
-        }
-        return output.ToString();
-    }
-
+    private static string Show(object? value) => value?.ToString() ?? "None";
+    private static long Number(string digits) => long.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out var value) ? value : long.MaxValue;
     private static List<(string Key, Regex Pattern)> Clusters() =>
-        O(Load(Path.Combine(Home, "clusters.json"))).Select(item => (item.Key, new Regex(TranslatePattern(S(item.Value)), Ignore))).ToList();
-
-    private static BigInteger PyInt(string digits)
-    {
-        if (digits.Length > 4300) throw new BotExit(1, "integer string too long");
-        var value = BigInteger.Zero;
-        foreach (var rune in digits.EnumerateRunes()) value = value * 10 + (int)Rune.GetNumericValue(rune);
-        return value;
-    }
-
-    private static bool AllDigits(Match match, params int[] groups) =>
-        groups.All(group => !match.Groups[group].Success || match.Groups[group].Value.EnumerateRunes().All(rune => Rune.GetUnicodeCategory(rune) == UnicodeCategory.DecimalDigitNumber));
-
-    private static object Compact(BigInteger value) => value >= long.MinValue && value <= long.MaxValue ? (object)(long)value : value;
-
-    private static BigInteger Big(object? value) => value is BigInteger big ? big : N(value);
+        Load<Dictionary<string, string>>(Path.Combine(Home, "clusters.json")).Select(item => (item.Key, new Regex(item.Value, Ignore))).ToList();
+    internal static Dictionary<string, RouteConfig> Routes() => Load<Dictionary<string, RouteConfig>>(Path.Combine(Home, "routes.json"));
 
     internal static double Round2(double value)
     {
@@ -575,207 +294,173 @@ static partial class RuleBot
         return output;
     }
 
-    private static string Cut(string text, int length) => Head(text, length);
-
-    internal static async Task<object?> RealApi(string[] args, CancellationToken token)
+    internal static async Task<string> RealApi(string[] args, CancellationToken token)
     {
         string[] argv = ["gh", "api", .. args];
         for (var attempt = 0; attempt < 5; attempt++)
         {
             var (code, output, _) = await Exec(argv, false, token);
-            if (code == 0) return Loads(output);
+            if (code == 0) return output;
             if (output.StartsWith("{\"data\":{", StringComparison.Ordinal))
             {
-                var data = O(Loads(output));
-                if (Truthy(G(data, "errors"))) Console.Error.WriteLine($"collect: partial GraphQL response: {Cut(Dumps(data["errors"]), 300)}");
-                return data;
+                if (ParseGitHub<GraphQlResponse>(output).Errors is { ValueKind: JsonValueKind.Array } errors && errors.GetArrayLength() > 0)
+                    Console.Error.WriteLine($"collect: partial GraphQL response: {Cut(errors.GetRawText(), 300)}");
+                return output;
             }
             await Delay(TimeSpan.FromSeconds(20 * (attempt + 1)), token);
         }
         throw new BotExit(1, $"collect: GitHub API failed: {string.Join(' ', args.Take(3))}");
     }
 
-    private static string Login(Obj node) => G(node, "author") is Obj author && Truthy(G(author, "login")) ? S(author["login"]) : "ghost";
     internal static bool IsBot(string name) => Bots.Contains(name) || name.EndsWith("[bot]", StringComparison.Ordinal);
 
-    internal static Obj Slim(Obj comment)
-    {
-        var user = G(comment, "user") as Obj ?? [];
-        var url = S(comment["pull_request_url"]);
-        var line = G(comment, "line");
-        return D(("id", comment["id"]), ("pr", (long)PyInt(url[(url.LastIndexOf('/') + 1)..])),
-            ("author", Truthy(G(user, "login")) ? user["login"] : "ghost"), ("bot", Equals(G(user, "type"), "Bot")),
-            ("association", G(comment, "author_association")), ("reply_to", G(comment, "in_reply_to_id")), ("path", comment["path"]),
-            ("line", Truthy(line) ? line : G(comment, "original_line")), ("created", comment["created_at"]), ("body", comment["body"]), ("url", comment["html_url"]));
-    }
+    internal static Comment Slim(ApiComment comment) => new(comment.Id, long.Parse(comment.PullRequestUrl[(comment.PullRequestUrl.LastIndexOf('/') + 1)..], CultureInfo.InvariantCulture),
+        string.IsNullOrEmpty(comment.User?.Login) ? "ghost" : comment.User.Login, comment.User?.Type == "Bot", comment.AuthorAssociation, comment.InReplyToId, comment.Path,
+        comment.Line is null or 0 ? comment.OriginalLine : comment.Line, comment.CreatedAt, comment.Body, comment.HtmlUrl);
 
-    internal static OrderedDictionary<long, Obj> InWindow(IEnumerable<object?> comments, string since)
+    internal static Dictionary<long, Comment> InWindow(IEnumerable<ApiComment> comments, string since)
     {
-        var output = new OrderedDictionary<long, Obj>();
-        foreach (var comment in comments.Select(O))
-            if (CodePointOrder.Instance.Compare(Head(S(comment["created_at"]), 10), since) >= 0)
-                output.TryAdd(N(comment["id"]), Slim(comment));
+        var output = new Dictionary<long, Comment>();
+        foreach (var comment in comments)
+            if (string.CompareOrdinal(Cut(comment.CreatedAt, 10), since) >= 0) output.TryAdd(comment.Id, Slim(comment));
         return output;
     }
 
-    private static List<long> MatchedPrs(IEnumerable<Obj> comments, List<Regex> patterns) =>
-        comments.Where(c => !Truthy(c["reply_to"]) && patterns.Any(rx => Search(rx, Head(S(c["body"]), 400)))).Select(c => N(c["pr"])).Distinct().Order().ToList();
+    private static List<long> MatchedPrs(IEnumerable<Comment> comments, List<Regex> patterns) =>
+        comments.Where(c => c.ReplyTo is null or 0 && patterns.Any(pattern => pattern.IsMatch(Cut(c.Body, 400)))).Select(c => c.Pr).Distinct().Order().ToList();
 
     internal static async Task Collect(string data, int days, string? today, CancellationToken token)
     {
         var started = System.Diagnostics.Stopwatch.StartNew();
         var since = TodayOf(today).AddDays(-days).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
-        var comments = new OrderedDictionary<long, Obj>();
+        var comments = new Dictionary<long, Comment>();
         var page = 0;
         while (true)
         {
             page++;
-            var batch = A(await Api(["-X", "GET", $"repos/{Repo}/pulls/comments", "-f", $"since={since}T00:00:00Z", "-f", "sort=created", "-f", "direction=asc", "-f", $"per_page={Page}", "-f", $"page={page}"], token));
+            var batch = Parse<List<ApiComment>>(await Api(["-X", "GET", $"repos/{Repo}/pulls/comments", "-f", $"since={since}T00:00:00Z", "-f", "sort=created", "-f", "direction=asc", "-f", $"per_page={Page}", "-f", $"page={page}"], token));
             foreach (var (key, comment) in InWindow(batch, since)) comments.TryAdd(key, comment);
             if (batch.Count < Page) break;
         }
         var numbers = MatchedPrs(comments.Values, Clusters().Select(cluster => cluster.Pattern).ToList());
-        var prs = new Obj();
+        var prs = new Dictionary<string, PrThreads>();
         var queries = 0;
         var parts = Repo.Split('/');
         var (owner, name) = (parts[0], parts[1]);
         foreach (var chunk in numbers.Chunk(25))
         {
             var query = string.Join(' ', chunk.Select(n => $"p{n}: pullRequest(number:{n}) {{ {ThreadFields} }}"));
-            var result = O(await Api(["graphql", "-f", $"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ {query} }} }}"], token));
+            var result = ParseGitHub<GraphQlResponse>(await Api(["graphql", "-f", $"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ {query} }} }}"], token));
             queries++;
-            foreach (var (key, value) in O(O(result["data"])["repository"]))
+            foreach (var (key, pr) in result.Data.Repository)
             {
-                if (!Truthy(value)) continue;
-                var pr = O(value);
-                var threads = new Obj();
-                var connection = O(pr["reviewThreads"]);
+                if (pr is null) continue;
+                var threads = new Dictionary<string, bool[]>();
+                var connection = pr.ReviewThreads;
                 while (true)
                 {
-                    foreach (var thread in A(connection["nodes"]).Select(O))
-                        foreach (var node in A(O(thread["comments"])["nodes"]).Select(O))
-                            threads[Text(node["databaseId"])] = L([thread["isResolved"], thread["isOutdated"]]);
-                    var info = O(connection["pageInfo"]);
-                    if (!Truthy(info["hasNextPage"])) break;
-                    var more = O(await Api(["graphql", "-f", $"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ pullRequest(number:{key[1..]}) {{ reviewThreads(first:100, after:\"{Text(info["endCursor"])}\") {{ {ThreadNodes} }} }} }} }}"], token));
+                    foreach (var thread in connection.Nodes)
+                        foreach (var node in thread.Comments.Nodes)
+                            threads[node.DatabaseId.ToString(CultureInfo.InvariantCulture)] = [thread.IsResolved, thread.IsOutdated];
+                    if (!connection.PageInfo.HasNextPage) break;
+                    var more = ParseGitHub<GraphQlResponse>(await Api(["graphql", "-f", $"query=query {{ repository(owner:\"{owner}\", name:\"{name}\") {{ pullRequest(number:{key[1..]}) {{ reviewThreads(first:100, after:\"{connection.PageInfo.EndCursor}\") {{ {ThreadNodes} }} }} }} }}"], token));
                     queries++;
-                    var followUp = O(O(more["data"])["repository"])["pullRequest"];
-                    if (!Truthy(followUp)) throw new BotExit(1, $"collect: review threads of PR {key[1..]} missing in the follow-up page");
-                    connection = O(O(followUp)["reviewThreads"]);
+                    connection = more.Data.Repository.GetValueOrDefault("pullRequest")?.ReviewThreads ?? throw new BotExit(1, $"collect: review threads of PR {key[1..]} missing in the follow-up page");
                 }
-                prs[key[1..]] = D(("author", Login(pr)), ("threads", threads));
+                prs[key[1..]] = new(string.IsNullOrEmpty(pr.Author?.Login) ? "ghost" : pr.Author.Login, threads);
             }
         }
-        Save(Path.Combine(data, "comments.json"), D(("since", since), ("comments", L(comments.OrderBy(item => item.Key).Select(item => (object?)item.Value)))));
+        Save(Path.Combine(data, "comments.json"), new CommentFile(since, comments.OrderBy(item => item.Key).Select(item => item.Value).ToList()));
         Save(Path.Combine(data, "prs.json"), prs);
         Console.WriteLine($"collect: {comments.Count} inline review comments since {since}, {page} REST pages, {numbers.Count} PRs with a matching comment in {queries} GraphQL queries, {Math.Round(started.Elapsed.TotalSeconds, MidpointRounding.ToEven):0}s");
     }
 
-    internal static string Classify(Obj thread, string prAuthor)
+    internal static string Classify(ReviewThread thread, string prAuthor)
     {
-        var comments = A(O(thread["comments"])["nodes"]).Select(O).ToList();
-        var replies = string.Join(" \n", comments.Skip(1).Where(c => Login(c) == prAuthor).Select(c => S(c["body"])));
-        var agreed = Search(Agree(), replies);
-        if (Search(Rebut(), replies) && !Search(Agree(), Head(replies, 60))) return "invalid";
-        if (Truthy(thread["isOutdated"]) || agreed) return "valid";
-        return Truthy(thread["isResolved"]) ? "likely" : "unknown";
+        var replies = string.Join(" \n", thread.Comments.Skip(1).Where(c => c.Author == prAuthor).Select(c => c.Body));
+        var agreed = Agree().IsMatch(replies);
+        if (Rebut().IsMatch(replies) && !Agree().IsMatch(Cut(replies, 60))) return "invalid";
+        if (thread.IsOutdated || agreed) return "valid";
+        return thread.IsResolved ? "likely" : "unknown";
     }
 
-    internal static IEnumerable<Obj> FindingsFrom(IReadOnlyList<Obj> comments, Obj prs)
+    internal static IEnumerable<Finding> FindingsFrom(IReadOnlyList<Comment> comments, IReadOnlyDictionary<string, PrThreads> prs)
     {
-        var replies = new Dictionary<string, List<Obj>>();
-        foreach (var comment in comments.OrderBy(c => S(c["created"]), CodePointOrder.Instance))
-        {
-            if (!Truthy(comment["reply_to"])) continue;
-            var key = Text(comment["reply_to"]);
-            if (!replies.TryGetValue(key, out var list)) replies[key] = list = [];
-            list.Add(comment);
-        }
+        var replies = comments.Where(c => c.ReplyTo is not (null or 0)).OrderBy(c => c.Created, StringComparer.Ordinal).ToLookup(c => c.ReplyTo);
         foreach (var root in comments)
         {
-            if (Truthy(root["reply_to"]) || !prs.TryGetValue(Text(root["pr"]), out var value) || !Truthy(value)) continue;
-            var pr = O(value);
-            if (Equals(root["author"], pr["author"])) continue;
-            var state = O(pr["threads"]).TryGetValue(Text(root["id"]), out var found) ? A(found) : [false, false];
-            var chain = new List<Obj> { root };
-            if (replies.TryGetValue(Text(root["id"]), out var answers)) chain.AddRange(answers);
-            var nodes = L(chain.Select(c => (object?)D(("author", D(("login", c["author"]))), ("body", c["body"]))));
-            var thread = D(("isResolved", state[0]), ("isOutdated", state[1]), ("comments", D(("nodes", nodes))));
-            yield return D(("pr", root["pr"]), ("author", root["author"]), ("bot", Truthy(root["bot"]) || IsBot(S(root["author"]))), ("path", root["path"]), ("line", root["line"]),
-                ("created", root["created"]), ("body", root["body"]), ("url", root["url"]), ("association", root["association"]), ("valid", Classify(thread, S(pr["author"]))));
+            if (root.ReplyTo is not (null or 0) || !prs.TryGetValue(root.Pr.ToString(CultureInfo.InvariantCulture), out var pr) || root.Author == pr.Author) continue;
+            var state = pr.Threads.GetValueOrDefault(root.Id.ToString(CultureInfo.InvariantCulture)) ?? [false, false];
+            var chain = replies[root.Id].Prepend(root).Select(c => (c.Author, c.Body)).ToList();
+            yield return new(root.Pr, root.Author, root.Bot || IsBot(root.Author), root.Path, root.Line, root.Created, root.Body, root.Url, root.Association, Classify(new(state[0], state[1], chain), pr.Author));
         }
     }
 
     private static void Findings(string data)
     {
-        var comments = O(Load(Path.Combine(data, "comments.json")));
-        var rows = FindingsFrom(A(comments["comments"]).Select(O).ToList(), O(Load(Path.Combine(data, "prs.json")))).ToList();
+        var comments = Load<CommentFile>(Path.Combine(data, "comments.json"));
+        var rows = FindingsFrom(comments.Comments, Load<Dictionary<string, PrThreads>>(Path.Combine(data, "prs.json"))).ToList();
         WriteText(Path.Combine(data, "findings.jsonl"), string.Concat(rows.Select(row => Dumps(row) + "\n")));
-        Console.WriteLine($"findings: {rows.Count} review threads opened since {Text(comments["since"])} on PRs with a matching comment");
+        Console.WriteLine($"findings: {rows.Count} review threads opened since {comments.Since} on PRs with a matching comment");
     }
 
-    private static bool CountedValid(Obj row) => Truthy(row["bot"]) ? Equals(row["valid"], "valid") : row["valid"] is "valid" or "likely";
+    private static bool CountedValid(Finding row) => row.Bot ? row.Valid == "valid" : row.Valid is "valid" or "likely";
 
-    internal static Obj GateCluster(IReadOnlyList<Obj> rows)
+    internal static Gate GateCluster(IReadOnlyList<Finding> rows)
     {
-        var st = D(("n", (long)rows.Count), ("prs", (long)rows.Select(r => N(r["pr"])).Distinct().Count()), ("commenters", (long)rows.Select(r => S(r["author"])).Distinct().Count()),
-            ("human", (long)rows.Count(r => !Truthy(r["bot"]))), ("valid", (long)rows.Count(CountedValid)));
-        st["validity"] = rows.Count > 0 ? Round2((double)N(st["valid"]) / rows.Count) : 0.0;
-        var fails = GateMinimums.Where(gate => Convert.ToDouble(st[gate.Gate], CultureInfo.InvariantCulture) < gate.Min).Select(gate => (object?)gate.Gate).ToList();
-        st["fails"] = fails;
-        st["pass"] = fails.Count == 0;
-        return st;
+        long prs = rows.Select(r => r.Pr).Distinct().Count(), commenters = rows.Select(r => r.Author).Distinct().Count(), human = rows.Count(r => !r.Bot), valid = rows.Count(CountedValid);
+        var validity = rows.Count > 0 ? Round2((double)valid / rows.Count) : 0.0;
+        var fails = new (string Name, bool Ok)[] { ("prs", prs >= 10), ("commenters", commenters >= 3), ("human", human >= 5), ("validity", validity >= 0.6) }
+            .Where(gate => !gate.Ok).Select(gate => gate.Name).ToList();
+        return new(rows.Count, prs, commenters, human, valid, validity, fails, fails.Count == 0);
     }
 
-    internal static List<object?> TrustedExamples(IEnumerable<Obj> rows, int count = 5) =>
-        L(rows.Where(r => CountedValid(r) && !Truthy(r["bot"]) && G(r, "association") is string association && TrustedAssociations.Contains(association)).Take(count)
-            .Select(r => (object?)D(("url", r["url"]), ("author", r["author"]), ("path", r["path"]), ("line", r["line"]), ("body", Head(S(r["body"]), 500)))));
+    internal static List<Example> TrustedExamples(IEnumerable<Finding> rows, int count = 5) =>
+        rows.Where(r => CountedValid(r) && !r.Bot && r.Association is not null && TrustedAssociations.Contains(r.Association)).Take(count)
+            .Select(r => new Example(r.Url, r.Author, r.Path, r.Line, Cut(r.Body, 500))).ToList();
 
     private static void Gates(string data)
     {
         var path = Path.Combine(data, "findings.jsonl");
-        var rows = File.Exists(path) ? FileLines(ReadText(path)).Select(line => O(Loads(line))).ToList() : [];
-        var output = new Obj();
+        var rows = File.Exists(path) ? FileLines(ReadText(path)).Select(Parse<Finding>).ToList() : [];
+        var output = new Dictionary<string, Gate>();
         foreach (var (key, pattern) in Clusters())
         {
-            var mine = rows.Where(r => Search(pattern, Head(S(r["body"]), 400))).ToList();
-            var gate = GateCluster(mine);
-            gate["examples"] = TrustedExamples(mine);
-            output[key] = gate;
+            var mine = rows.Where(r => pattern.IsMatch(Cut(r.Body, 400))).ToList();
+            output[key] = GateCluster(mine) with { Examples = TrustedExamples(mine) };
         }
         Save(Path.Combine(data, "gates.json"), output);
-        foreach (var (key, value) in output.OrderByDescending(item => N(O(item.Value)["prs"])))
+        foreach (var (key, gate) in output.OrderByDescending(item => item.Value.Prs))
         {
-            var s = O(value);
-            var verdict = Truthy(s["pass"]) ? "PASS" : "FAIL " + string.Join(',', Strings(s["fails"]));
-            Console.WriteLine($"gates: {key,-11} PRs {N(s["prs"]),4} commenters {N(s["commenters"]),3} human {N(s["human"]),4} validity {((double)s["validity"]!).ToString("F2", CultureInfo.InvariantCulture)} {verdict}");
+            var verdict = gate.Pass ? "PASS" : "FAIL " + string.Join(',', gate.Fails ?? []);
+            Console.WriteLine($"gates: {key,-11} PRs {gate.Prs,4} commenters {gate.Commenters,3} human {gate.Human,4} validity {gate.Validity.ToString("F2", CultureInfo.InvariantCulture)} {verdict}");
         }
     }
 
-    internal static List<Obj> EditorConfigRules(string text)
+    internal static List<EditorRule> EditorConfigRules(string text)
     {
         string? section = null;
-        var rows = new List<Obj>();
+        var rows = new List<EditorRule>();
         var number = 0;
-        foreach (var line in SplitLines(text))
+        foreach (var line in Lines(text))
         {
             number++;
-            var stripped = Strip(line);
+            var stripped = line.Trim(Blank);
             if (stripped.StartsWith('[') && stripped.EndsWith(']'))
             {
                 section = stripped.Length >= 2 ? stripped[1..^1] : "";
                 continue;
             }
             var match = Severity().Match(line);
-            if (match.Success && match.Index == 0) rows.Add(D(("id", match.Groups[1].Value), ("severity", match.Groups[2].Value), ("section", section), ("line", (long)number)));
+            if (match.Success && match.Index == 0) rows.Add(new(match.Groups[1].Value, match.Groups[2].Value, section, number));
         }
         return rows;
     }
 
-    internal static bool EnforcedOnMaster(string ruleId, IReadOnlyList<Obj> rows, IReadOnlyDictionary<string, string> sdkDefaults)
+    internal static bool EnforcedOnMaster(string ruleId, IReadOnlyList<EditorRule> rows, IReadOnlyDictionary<string, string> sdkDefaults)
     {
-        var general = rows.Where(r => Equals(r["id"], ruleId) && r["section"] is "*" or "*.cs" or "*.{cs,vb}" && Equals(r["id"], ruleId)).ToList();
-        if (general.Count > 0) return general[^1]["severity"] is "warning" or "error";
+        var general = rows.Where(r => r.Id == ruleId && r.Section is "*" or "*.cs" or "*.{cs,vb}" && r.Id == ruleId).ToList();
+        if (general.Count > 0) return general[^1].Severity is "warning" or "error";
         return sdkDefaults.TryGetValue(ruleId, out var severity) && severity is "warning" or "error";
     }
 
@@ -786,51 +471,46 @@ static partial class RuleBot
         foreach (var file in GlobIn(Path.Combine(sdk, "analyzers/build/config"), "analysislevel_", "_default.globalconfig"))
             foreach (Match match in Severity().Matches(ReadText(file))) sdkDefaults[match.Groups[1].Value] = match.Groups[2].Value;
         foreach (var file in GlobTree(repo, ".globalconfig"))
-            foreach (Match match in Severity().Matches(ReadText(file))) rows.Add(D(("id", match.Groups[1].Value), ("severity", match.Groups[2].Value), ("section", "*"), ("line", 0L)));
-        var routes = O(Load(Path.Combine(Home, "routes.json")));
-        var ids = routes.Values.SelectMany(route => Strings(O(route)["ids"])).Distinct().Order(CodePointOrder.Instance).ToList();
-        var output = new Obj();
-        foreach (var id in ids) output[id] = D(("enforced", EnforcedOnMaster(id, rows, sdkDefaults)));
+            foreach (Match match in Severity().Matches(ReadText(file))) rows.Add(new(match.Groups[1].Value, match.Groups[2].Value, "*", 0));
+        var ids = Routes().Values.SelectMany(route => route.Ids).Distinct().Order(StringComparer.Ordinal).ToList();
+        var output = ids.ToDictionary(id => id, id => new CatalogEntry(EnforcedOnMaster(id, rows, sdkDefaults)));
         Save(Path.Combine(data, "catalog.json"), output);
-        var enforced = string.Join(' ', ids.Where(id => Truthy(O(output[id])["enforced"])));
+        var enforced = string.Join(' ', ids.Where(id => output[id].Enforced));
         Console.WriteLine($"catalog: already enforced on master: {(enforced.Length > 0 ? enforced : "none")}");
     }
 
-    private static HashSet<BigInteger> NethIds(string repo)
+    private static HashSet<int> NethIds(string repo)
     {
-        var ids = new HashSet<BigInteger>();
+        var ids = new HashSet<int>();
         foreach (var file in GlobIn(Path.Combine(repo, "src/Nethermind/Nethermind.Analyzers"), "AnalyzerReleases.", ".md"))
-            foreach (Match match in ReleaseId().Matches(ReadText(file))) ids.Add(PyInt(match.Groups[1].Value));
+            foreach (Match match in ReleaseId().Matches(ReadText(file))) ids.Add(int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
         return ids;
     }
 
-    internal static string NextNethId(IEnumerable<BigInteger> taken, IEnumerable<BigInteger> reserved) =>
-        $"NETH{taken.Concat(reserved).Append(BigInteger.Zero).Max() + 1:D3}";
+    internal static string NextNethId(IEnumerable<int> taken, IEnumerable<int> reserved) => $"NETH{taken.Concat(reserved).Append(0).Max() + 1:D3}";
 
-    private static int DaysSince(DateOnly today, object? stamp) => today.DayNumber - IsoDate(Head(S(stamp), 10)).DayNumber;
+    private static int DaysSince(DateOnly today, string? stamp) => today.DayNumber - IsoDate(Cut(stamp!, 10)).DayNumber;
 
-    internal static HashSet<string> RecentlyTried(IEnumerable<Obj> botPrs, IEnumerable<string> clusters, DateOnly today)
+    internal static HashSet<string> RecentlyTried(IEnumerable<BotPr> botPrs, IEnumerable<string> clusters, DateOnly today)
     {
         var keys = clusters.ToList();
-        return botPrs.Where(pr => DaysSince(today, pr["createdAt"]) < CooldownDays)
-            .SelectMany(pr => keys.Where(k => S(pr["headRefName"]).StartsWith($"rule-bot/{k}-", StringComparison.Ordinal))).ToHashSet();
+        return botPrs.Where(pr => DaysSince(today, pr.CreatedAt) < CooldownDays)
+            .SelectMany(pr => keys.Where(k => pr.HeadRefName.StartsWith($"rule-bot/{k}-", StringComparison.Ordinal))).ToHashSet();
     }
 
-    internal static Obj RejectedIds(IEnumerable<Obj> botPrs, Obj routes, DateOnly today)
+    internal static Dictionary<string, long> RejectedIds(IEnumerable<BotPr> botPrs, IReadOnlyDictionary<string, RouteConfig> routes, DateOnly today)
     {
-        var output = new Obj();
+        var output = new Dictionary<string, long>();
         foreach (var pr in botPrs)
         {
-            if (!Equals(pr["state"], "CLOSED") || DaysSince(today, pr["closedAt"]) >= CooldownDays) continue;
-            foreach (var (key, value) in routes)
+            if (pr.State != "CLOSED" || DaysSince(today, pr.ClosedAt) >= CooldownDays) continue;
+            foreach (var (key, route) in routes)
             {
-                var route = O(value);
                 var prefix = $"rule-bot/{key}-";
-                var head = S(pr["headRefName"]);
-                if (!Equals(route["route"], "A") || !head.StartsWith(prefix, StringComparison.Ordinal)) continue;
-                var tokens = head[prefix.Length..].Split('-').ToHashSet();
-                foreach (var id in Strings(route["ids"]))
-                    if (tokens.Contains(id.ToLowerInvariant())) output[id] = pr["number"];
+                if (route.Route != "A" || !pr.HeadRefName.StartsWith(prefix, StringComparison.Ordinal)) continue;
+                var tokens = pr.HeadRefName[prefix.Length..].Split('-').ToHashSet();
+                foreach (var id in route.Ids)
+                    if (tokens.Contains(id.ToLowerInvariant())) output[id] = pr.Number;
             }
         }
         return output;
@@ -844,46 +524,40 @@ static partial class RuleBot
 
     internal static async Task Plan(string repo, string data, string? todayText, bool offline, string? githubOutput, CancellationToken token)
     {
-        var gates = O(Load(Path.Combine(data, "gates.json")));
-        var catalog = O(Load(Path.Combine(data, "catalog.json")));
-        var routes = O(Load(Path.Combine(Home, "routes.json")));
+        var gates = Load<Dictionary<string, Gate>>(Path.Combine(data, "gates.json"));
+        var catalog = Load<Dictionary<string, CatalogEntry>>(Path.Combine(data, "catalog.json"));
+        var routes = Routes();
         var today = TodayOf(todayText);
-        var botPrs = offline ? [] : A(Loads(await Gh(["pr", "list", "-R", Repo, "--state", "all", "--label", BotLabel, "--json", "number,state,headRefName,createdAt,closedAt", "--limit", "100"], token))).Select(O).ToList();
+        var botPrs = offline ? [] : ParseGitHub<List<BotPr>>(await Gh(["pr", "list", "-R", Repo, "--state", "all", "--label", BotLabel, "--json", "number,state,headRefName,createdAt,closedAt", "--limit", "100"], token));
         var tried = RecentlyTried(botPrs, routes.Keys, today);
         var rejected = RejectedIds(botPrs, routes, today);
         var measure = new List<string>();
         var queue = new List<string>();
-        foreach (var (key, value) in gates.OrderByDescending(item => N(O(item.Value)["prs"])))
+        foreach (var (key, gate) in gates.OrderByDescending(item => item.Value.Prs))
         {
-            var route = routes.TryGetValue(key, out var found) ? O(found) : D(("route", "?"), ("ids", new List<object?>()));
-            if (!Truthy(O(value)["pass"])) continue;
-            if (Equals(route["route"], "A"))
-            {
-                foreach (var id in Strings(route["ids"]).ToList())
-                    if (!measure.Contains(id) && !rejected.ContainsKey(id) && !Truthy(G(Child(catalog, id), "enforced"))) measure.Add(id);
-            }
-            else if (Equals(route["route"], "B") && !tried.Contains(key)) queue.Add(key);
+            if (!gate.Pass || !routes.TryGetValue(key, out var route)) continue;
+            if (route.Route == "A")
+                measure.AddRange(route.Ids.Where(id => !measure.Contains(id) && !rejected.ContainsKey(id) && catalog.GetValueOrDefault(id)?.Enforced != true));
+            else if (route.Route == "B" && !tried.Contains(key)) queue.Add(key);
         }
-        var botOpen = botPrs.Where(pr => Equals(pr["state"], "OPEN")).ToList();
+        var botOpen = botPrs.Where(pr => pr.State == "OPEN").ToList();
         if (botOpen.Count > 0)
         {
-            Console.WriteLine($"plan: no analyzer attempted, bot PR already open: #{Text(botOpen[0]["number"])}");
+            Console.WriteLine($"plan: no analyzer attempted, bot PR already open: #{botOpen[0].Number}");
             queue = [];
         }
         queue = Rotate(queue, today).Take(RouteBTries).ToList();
         var routeB = queue.FirstOrDefault();
-        var reserved = new HashSet<BigInteger>();
+        var reserved = new HashSet<int>();
         if (!offline)
-            foreach (var pr in A(Loads(await Gh(["pr", "list", "-R", Repo, "--state", "open", "--search", "NETH0 in:title", "--json", "title", "--limit", "50"], token))).Select(O))
-                foreach (Match match in TitleId().Matches(S(pr["title"]))) reserved.Add(PyInt(match.Groups[1].Value));
+            foreach (var pr in ParseGitHub<List<TitledPr>>(await Gh(["pr", "list", "-R", Repo, "--state", "open", "--search", "NETH0 in:title", "--json", "title", "--limit", "50"], token)))
+                foreach (Match match in TitleId().Matches(pr.Title)) reserved.Add(int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture));
         var routeBId = routeB is null ? null : NextNethId(NethIds(repo), reserved);
-        var output = D(("measure_ids", L(measure)), ("rejected_ids", rejected), ("route_b", routeB), ("route_b_id", routeBId),
-            ("route_b_queue", L(queue.Select(k => (object?)D(("cluster", k), ("why", O(routes[k])["why"]))))));
-        Save(Path.Combine(data, "plan.json"), output);
+        Save(Path.Combine(data, "plan.json"), new PlanFile(measure, rejected, routeB, routeBId, queue.Select(k => new QueuedCluster(k, routes[k].Why)).ToList()));
         WriteText(Path.Combine(data, "measure_ids.txt"), string.Join('\n', measure) + "\n");
         Console.WriteLine($"plan: route A ids to measure: {(measure.Count > 0 ? string.Join(' ', measure) : "none")}");
         if (rejected.Count > 0)
-            Console.WriteLine($"plan: route A ids cooling down after a closed rule-bot PR: {string.Join(' ', rejected.OrderBy(item => item.Key, CodePointOrder.Instance).Select(item => $"{item.Key} (#{Text(item.Value)})"))}");
+            Console.WriteLine($"plan: route A ids cooling down after a closed rule-bot PR: {string.Join(' ', rejected.OrderBy(item => item.Key, StringComparer.Ordinal).Select(item => $"{item.Key} (#{item.Value})"))}");
         Console.WriteLine($"plan: route B clusters to try: {(queue.Count > 0 ? string.Join(' ', queue) : "none")} {routeBId ?? ""}");
         if (!string.IsNullOrEmpty(githubOutput))
             File.AppendAllText(githubOutput, $"route_b={routeB ?? ""}\nroute_b_id={routeBId ?? ""}\nskip_measure={(botOpen.Count > 0 || !(measure.Count > 0 || routeB is not null) ? "true" : "false")}\n", StrictUtf8);
@@ -905,7 +579,7 @@ static partial class RuleBot
 
     private static void ApplyOverlay(string repo, string idsPath, IReadOnlyList<string> extra, bool excludeTests)
     {
-        var ids = Words(ReadText(idsPath)).Concat(extra).ToList();
+        var ids = ReadText(idsPath).Split(Blank, StringSplitOptions.RemoveEmptyEntries).Concat(extra).ToList();
         File.AppendAllText(Path.Combine(repo, ".editorconfig"), Overlay(ids, excludeTests), StrictUtf8);
         Console.WriteLine($"overlay: {string.Join(' ', ids)} at warning{(excludeTests ? " (tests and benchmarks excluded)" : "")}");
     }
@@ -918,30 +592,21 @@ static partial class RuleBot
         return project.Contains("Test", StringComparison.Ordinal) || project.Contains("Benchmark", StringComparison.Ordinal) ? "test" : "prod";
     }
 
-    private static int CompareHits(Obj a, Obj b)
-    {
-        var order = CodePointOrder.Instance.Compare(S(a["id"]), S(b["id"]));
-        if (order == 0) order = CodePointOrder.Instance.Compare(S(a["file"]), S(b["file"]));
-        if (order == 0) order = Big(a["line"]).CompareTo(Big(b["line"]));
-        return order != 0 ? order : Big(a["col"]).CompareTo(Big(b["col"]));
-    }
+    private static List<Hit> SortHits(IEnumerable<Hit> hits) => hits.OrderBy(h => h.Id, StringComparer.Ordinal).ThenBy(h => h.File, StringComparer.Ordinal).ThenBy(h => h.Line).ThenBy(h => h.Col).ToList();
 
-    private static List<Obj> SortHits(IEnumerable<Obj> hits) => hits.Order(Comparer<Obj>.Create(CompareHits)).ToList();
-
-    internal static List<Obj> ParseDiagnostics(IEnumerable<string> lines, string root, IReadOnlySet<string> ids)
+    internal static List<Hit> ParseDiagnostics(IEnumerable<string> lines, string root, IReadOnlySet<string> ids)
     {
         var prefix = root.TrimEnd('/') + "/";
-        var seen = new OrderedDictionary<string, Obj>();
+        var seen = new Dictionary<(string, long, long, string), Hit>();
         foreach (var raw in lines)
         {
             var match = Diagnostic().Match(raw.TrimEnd('\n'));
-            if (!match.Success || !ids.Contains(match.Groups["id"].Value) || !AllDigits(match, Diagnostic().GroupNumberFromName("line"), Diagnostic().GroupNumberFromName("col"))) continue;
+            if (!match.Success || !ids.Contains(match.Groups["id"].Value)) continue;
             var path = match.Groups["path"].Value.Replace('\\', '/');
             var relative = path.StartsWith(prefix, StringComparison.Ordinal) ? path[prefix.Length..] : path;
             if (relative.StartsWith('/')) continue;
-            var line = PyInt(match.Groups["line"].Value);
-            var col = PyInt(match.Groups["col"].Value);
-            seen.TryAdd($"{relative}\0{line}\0{col}\0{match.Groups["id"].Value}", D(("id", match.Groups["id"].Value), ("file", relative), ("line", Compact(line)), ("col", Compact(col)), ("scope", Scope(relative)), ("msg", match.Groups["msg"].Value)));
+            var (line, col) = (Number(match.Groups["line"].Value), Number(match.Groups["col"].Value));
+            seen.TryAdd((relative, line, col, match.Groups["id"].Value), new(match.Groups["id"].Value, relative, line, col, Scope(relative), match.Groups["msg"].Value));
         }
         return SortHits(seen.Values);
     }
@@ -958,14 +623,14 @@ static partial class RuleBot
     {
         var output = new List<string>();
         var matrix = SolutionMatrix().Match(ReadText(Path.Combine(workflows, "build-solutions.yml")));
-        if (matrix.Success) output.AddRange(matrix.Groups[1].Value.Split(',').Select(s => $"src/Nethermind/{Strip(s)}.slnx"));
+        if (matrix.Success) output.AddRange(matrix.Groups[1].Value.Split(',').Select(s => $"src/Nethermind/{s.Trim(Blank)}.slnx"));
         output.AddRange(ToolSolution().Matches(ReadText(Path.Combine(workflows, "build-tools.yml"))).Select(m => $"tools/{m.Groups[1].Value}"));
         return output;
     }
 
     private static void SolutionsCommand(string workflows, string? githubOutput)
     {
-        var solutions = Dumps(L(CiSolutions(workflows)));
+        var solutions = Dumps(CiSolutions(workflows));
         Console.WriteLine(solutions);
         if (!string.IsNullOrEmpty(githubOutput)) File.AppendAllText(githubOutput, $"solutions={solutions}\n", StrictUtf8);
     }
@@ -977,56 +642,48 @@ static partial class RuleBot
         if (generatedLogs is null != generatedId is null) throw new BotExit(2, "rule-bot hits: --generated-logs and --generated-id must be used together");
         var ids = idList.Split(',').ToHashSet();
         if (generatedId is not null && !ids.Contains(generatedId)) throw new BotExit(2, $"rule-bot hits: --generated-id {generatedId} is not in --ids");
-        var files = GlobTree(logs, ".log").Order(CodePointOrder.Instance).ToList();
-        var generatedFiles = generatedLogs is null ? [] : GlobTree(generatedLogs, ".log").Order(CodePointOrder.Instance).ToList();
-        var unique = new OrderedDictionary<string, Obj>();
+        var files = GlobTree(logs, ".log").Order(StringComparer.Ordinal).ToList();
+        var generatedFiles = generatedLogs is null ? [] : GlobTree(generatedLogs, ".log").Order(StringComparer.Ordinal).ToList();
+        var unique = new Dictionary<(string, long, long, string), Hit>();
         void Read(IEnumerable<string> sources, IReadOnlySet<string> accepted)
         {
             foreach (var file in sources)
                 foreach (var hit in ParseDiagnostics(FileLines(ReadText(file, replace: true)), root, accepted))
                 {
-                    hit["solution"] = SolutionOf(file);
-                    var key = $"{S(hit["file"])}\0{Text(hit["line"])}\0{Text(hit["col"])}\0{S(hit["id"])}";
-                    if (!unique.TryGetValue(key, out var kept))
-                    {
-                        kept = new Obj(hit) { ["solutions"] = new List<object?>() };
-                        unique[key] = kept;
-                    }
-                    A(kept["solutions"]).Add(hit["solution"]);
+                    var solution = SolutionOf(file);
+                    var key = (hit.File, hit.Line, hit.Col, hit.Id);
+                    if (!unique.TryGetValue(key, out var kept)) unique[key] = kept = hit with { Solution = solution, Solutions = [] };
+                    kept.Solutions!.Add(solution);
                 }
         }
         Read(files, generatedId is null ? ids : ids.Where(id => id != generatedId).ToHashSet());
-        if (generatedId is not null) Read(generatedFiles, new HashSet<string> { generatedId });
-        if (generatedId is not null) files = files.Concat(generatedFiles).DistinctBy(SolutionOf).OrderBy(file => file, CodePointOrder.Instance).ToList();
-        var found = SortHits(unique.Values);
-        var counts = new Obj();
-        foreach (var id in ids.Order(CodePointOrder.Instance)) counts[id] = D(("prod", 0L), ("test", 0L), ("generated", 0L));
-        foreach (var hit in found)
+        if (generatedId is not null)
         {
-            var bucket = O(counts[S(hit["id"])]);
-            bucket[S(hit["scope"])] = N(bucket[S(hit["scope"])]) + 1;
+            Read(generatedFiles, new HashSet<string> { generatedId });
+            files = files.Concat(generatedFiles).DistinctBy(SolutionOf).Order(StringComparer.Ordinal).ToList();
         }
-        Save(outPath, D(("counts", counts), ("hits", L(found)), ("solutions", L(files.Select(SolutionOf)))));
+        var found = SortHits(unique.Values);
+        var counts = ids.Order(StringComparer.Ordinal).ToDictionary(id => id, id => new HitCounts(
+            found.Count(h => h.Id == id && h.Scope == "prod"), found.Count(h => h.Id == id && h.Scope == "test"), found.Count(h => h.Id == id && h.Scope == "generated")));
+        Save(outPath, new HitsFile(counts, found, files.Select(SolutionOf).ToList()));
         Console.WriteLine($"hits: {files.Count} build logs: {string.Join(' ', files.Select(SolutionOf))}");
-        foreach (var (id, value) in counts)
-            Console.WriteLine($"hits: {id,-8} prod {N(O(value)["prod"]),6} test {N(O(value)["test"]),6}");
+        foreach (var (id, count) in counts) Console.WriteLine($"hits: {id,-8} prod {count.Prod,6} test {count.Test,6}");
     }
 
-    internal static List<string> RebuildSet(Obj hitsData, IReadOnlyCollection<string> ids) =>
-        A(hitsData["hits"]).Select(O).Where(h => ids.Contains(S(h["id"])) && Equals(h["scope"], "prod")).SelectMany(h => Strings(h["solutions"])).Distinct().Order(CodePointOrder.Instance).ToList();
+    internal static List<string> RebuildSet(HitsFile hits, IReadOnlyCollection<string> ids) =>
+        hits.Hits.Where(h => ids.Contains(h.Id) && h.Scope == "prod").SelectMany(h => h.Solutions ?? []).Distinct().Order(StringComparer.Ordinal).ToList();
 
     private static void PackageCommand(string data, string? githubOutput)
     {
-        var chosen = O(O(Load(Path.Combine(data, "candidates.json")))["chosen"] ?? throw new BotExit(1, "package: no chosen candidate"));
-        var hits = O(Load(Path.Combine(data, "hits.json")));
-        var ids = Strings(chosen["ids"]).ToList();
-        var mine = A(hits["hits"]).Select(O).Where(x => ids.Contains(S(x["id"])) && Equals(x["scope"], "prod")).ToList();
-        WriteText(Path.Combine(data, "fix-hits.txt"), string.Concat(mine.Select(x => $"{Text(x["id"])}\t{Text(x["file"])}:{Text(x["line"])}:{Text(x["col"])}\t{Text(x["msg"])}\n")));
-        WriteText(Path.Combine(data, "package-ids.txt"), string.Join('\n', ids) + "\n");
-        var rebuild = RebuildSet(hits, ids);
-        Console.WriteLine($"package: {Text(chosen["slug"])} {mine.Count} prod hits to fix, rebuild {string.Join(' ', rebuild)}");
+        var chosen = Load<CandidatesFile>(Path.Combine(data, "candidates.json")).Chosen ?? throw new BotExit(1, "package: no chosen candidate");
+        var hits = Load<HitsFile>(Path.Combine(data, "hits.json"));
+        var mine = hits.Hits.Where(x => chosen.Ids.Contains(x.Id) && x.Scope == "prod").ToList();
+        WriteText(Path.Combine(data, "fix-hits.txt"), string.Concat(mine.Select(x => $"{x.Id}\t{x.File}:{x.Line}:{x.Col}\t{x.Msg}\n")));
+        WriteText(Path.Combine(data, "package-ids.txt"), string.Join('\n', chosen.Ids) + "\n");
+        var rebuild = RebuildSet(hits, chosen.Ids);
+        Console.WriteLine($"package: {chosen.Slug} {mine.Count} prod hits to fix, rebuild {string.Join(' ', rebuild)}");
         if (!string.IsNullOrEmpty(githubOutput))
-            File.AppendAllText(githubOutput, $"rebuild={string.Join(' ', rebuild)}\nids={string.Join(',', ids)}\n", StrictUtf8);
+            File.AppendAllText(githubOutput, $"rebuild={string.Join(' ', rebuild)}\nids={string.Join(',', chosen.Ids)}\n", StrictUtf8);
     }
 
     internal static string Verdict(long prod, bool enforced)
@@ -1059,75 +716,70 @@ static partial class RuleBot
     private static async Task<List<long>> OpenPrsFor(string ruleId, CancellationToken token)
     {
         var output = await Gh(["pr", "list", "-R", Repo, "--state", "open", "--search", $"{ruleId} in:title,body", "--json", "number", "--limit", "20"], token, check: false);
-        return A(Loads(output.Length > 0 ? output : "[]")).Select(x => N(O(x)["number"])).Order().ToList();
+        return ParseGitHub<List<NumberedPr>>(output.Length > 0 ? output : "[]").Select(x => x.Number).Order().ToList();
     }
-
-    private static long CountOf(Obj counts, string id, string key) => G(Child(counts, id), key) is { } value ? N(value) : 0;
 
     internal static async Task Propose(string data, bool offline, string? githubOutput, CancellationToken token)
     {
-        var gates = O(Load(Path.Combine(data, "gates.json")));
-        var catalog = O(Load(Path.Combine(data, "catalog.json")));
-        var routes = O(Load(Path.Combine(Home, "routes.json")));
-        var plan = O(Load(Path.Combine(data, "plan.json")));
-        var counts = O(O(Load(Path.Combine(data, "hits.json")))["counts"]);
-        var routeB = O(Load(Path.Combine(data, "route_b.json"), new Obj()));
-        var decisions = new List<Obj>();
-        var packages = new List<Obj>();
-        foreach (var (key, value) in gates.OrderByDescending(item => N(O(item.Value)["prs"])))
+        var gates = Load<Dictionary<string, Gate>>(Path.Combine(data, "gates.json"));
+        var catalog = Load<Dictionary<string, CatalogEntry>>(Path.Combine(data, "catalog.json"));
+        var routes = Routes();
+        var plan = Load<PlanFile>(Path.Combine(data, "plan.json"));
+        var counts = Load<HitsFile>(Path.Combine(data, "hits.json")).Counts;
+        var routeB = LoadOr<RouteBState>(Path.Combine(data, "route_b.json"));
+        long Prod(string id) => counts.GetValueOrDefault(id)?.Prod ?? 0;
+        long Tests(string id) => counts.GetValueOrDefault(id)?.Test ?? 0;
+        var decisions = new List<Decision>();
+        var packages = new List<Package>();
+        foreach (var (key, gate) in gates.OrderByDescending(item => item.Value.Prs))
         {
-            var route = Child(routes, key);
-            if (!Truthy(O(value)["pass"]) || !Equals(G(route, "route"), "A")) continue;
+            if (!gate.Pass || !routes.TryGetValue(key, out var route) || route.Route != "A") continue;
             var accepted = new List<string>();
-            var rejected = Child(plan, "rejected_ids");
-            foreach (var id in Strings(route["ids"]))
+            foreach (var id in route.Ids)
             {
-                var prod = CountOf(counts, id, "prod");
-                var verdict = Verdict(prod, Truthy(G(Child(catalog, id), "enforced")));
-                if (rejected.TryGetValue(id, out var number)) verdict = $"skip: rule-bot PR #{Text(number)} closed without merge in the last {CooldownDays} days";
-                decisions.Add(D(("cluster", key), ("id", id), ("route", "A"), ("prod", prod), ("test", CountOf(counts, id, "test")), ("verdict", verdict)));
+                var verdict = Verdict(Prod(id), catalog.GetValueOrDefault(id)?.Enforced == true);
+                if (plan.RejectedIds?.TryGetValue(id, out var number) == true) verdict = $"skip: rule-bot PR #{number} closed without merge in the last {CooldownDays} days";
+                decisions.Add(new(key, id, "A", Prod(id), Tests(id), verdict));
                 if (verdict == "propose") accepted.Add(id);
             }
-            foreach (var group in GroupByCap(accepted, accepted.ToDictionary(id => id, id => N(O(counts[id])["prod"]))))
-                packages.Add(D(("route", "A"), ("cluster", key), ("ids", L(group)), ("prod", group.Sum(id => N(O(counts[id])["prod"]))), ("test", group.Sum(id => N(O(counts[id])["test"])))));
+            foreach (var group in GroupByCap(accepted, accepted.ToDictionary(id => id, Prod)))
+                packages.Add(new("A", key, group, group.Sum(Prod), group.Sum(Tests)));
         }
-        if (Truthy(G(plan, "route_b")))
+        if (!string.IsNullOrEmpty(plan.RouteB))
         {
-            var id = S(plan["route_b_id"]);
-            var cluster = routeB.TryGetValue("cluster", out var named) ? named : plan["route_b"];
-            var prod = CountOf(counts, id, "prod");
-            var fails = new (string Name, object? Ok)[] { ("analyzer tests", G(routeB, "tests_ok")), ("red control", G(routeB, "red_ok")), ("path guard", G(routeB, "guard_ok")), ("precision sample", G(Child(routeB, "precision"), "ok")) }
-                .Where(check => !Truthy(check.Ok)).Select(check => check.Name).ToList();
-            var verdict = Truthy(G(routeB, "analyzer")) ? Verdict(prod, false) : "propose";
+            var id = plan.RouteBId!;
+            var cluster = routeB.Cluster ?? plan.RouteB;
+            var fails = new (string Name, bool? Ok)[] { ("analyzer tests", routeB.TestsOk), ("red control", routeB.RedOk), ("path guard", routeB.GuardOk), ("precision sample", routeB.Precision?.Ok) }
+                .Where(check => check.Ok != true).Select(check => check.Name).ToList();
+            var verdict = !string.IsNullOrEmpty(routeB.Analyzer) ? Verdict(Prod(id), false) : "propose";
             if (verdict == "propose" && fails.Count > 0)
-                verdict = "skip: " + (Truthy(G(routeB, "skip")) ? Text(routeB["skip"]) : string.Join(", ", fails) + " failed");
-            decisions.Add(D(("cluster", cluster), ("id", id), ("route", "B"), ("prod", prod), ("test", CountOf(counts, id, "test")), ("verdict", verdict)));
-            if (verdict == "propose")
-                packages.Add(D(("route", "B"), ("cluster", cluster), ("ids", L([id])), ("prod", prod), ("test", CountOf(counts, id, "test")), ("analyzer", G(routeB, "analyzer"))));
+                verdict = "skip: " + (!string.IsNullOrEmpty(routeB.Skip) ? routeB.Skip : string.Join(", ", fails) + " failed");
+            decisions.Add(new(cluster, id, "B", Prod(id), Tests(id), verdict));
+            if (verdict == "propose") packages.Add(new("B", cluster, [id], Prod(id), Tests(id), routeB.Analyzer));
         }
-        foreach (var package in packages)
+        for (var i = 0; i < packages.Count; i++)
         {
-            package["slug"] = $"{Text(package["cluster"])}-{string.Join('-', Strings(package["ids"]).Select(i => i.ToLowerInvariant()))}";
+            var package = packages[i];
             var open = new SortedSet<long>();
-            if (!offline && !Equals(package["route"], "B"))
-                foreach (var id in Strings(package["ids"])) open.UnionWith(await OpenPrsFor(id, token));
-            package["open_prs"] = L(open.Select(n => (object?)n));
+            if (!offline && package.Route != "B")
+                foreach (var id in package.Ids) open.UnionWith(await OpenPrsFor(id, token));
+            packages[i] = package with { Slug = $"{package.Cluster}-{string.Join('-', package.Ids.Select(id => id.ToLowerInvariant()))}", OpenPrs = [.. open] };
         }
-        var botOpen = offline ? [] : A(Loads(await Gh(["pr", "list", "-R", Repo, "--state", "open", "--label", BotLabel, "--json", "number"], token))).Select(O).ToList();
-        var chosen = packages.FirstOrDefault(p => !Truthy(p["open_prs"]) && Equals(p["route"], "B")) ?? packages.FirstOrDefault(p => !Truthy(p["open_prs"]));
+        var botOpen = offline ? [] : ParseGitHub<List<NumberedPr>>(await Gh(["pr", "list", "-R", Repo, "--state", "open", "--label", BotLabel, "--json", "number"], token));
+        var chosen = packages.FirstOrDefault(p => p.OpenPrs!.Count == 0 && p.Route == "B") ?? packages.FirstOrDefault(p => p.OpenPrs!.Count == 0);
         if (botOpen.Count > 0) chosen = null;
-        Save(Path.Combine(data, "candidates.json"), D(("decisions", L(decisions)), ("packages", L(packages)), ("bot_open_prs", L(botOpen.Select(x => x["number"]))), ("chosen", chosen)));
+        Save(Path.Combine(data, "candidates.json"), new CandidatesFile(decisions, packages, botOpen.Select(x => x.Number).ToList(), chosen));
         foreach (var d in decisions)
-            Console.WriteLine($"propose: route {Text(d["route"])} {Text(d["cluster"]),-11} {Text(d["id"]),-8} prod {N(d["prod"]),6} -> {Text(d["verdict"])}");
+            Console.WriteLine($"propose: route {d.Route} {d.Cluster,-11} {d.Id,-8} prod {d.Prod,6} -> {d.Verdict}");
         foreach (var p in packages)
         {
-            var duplicate = Truthy(p["open_prs"]) ? $" duplicate of open #{string.Join(", #", A(p["open_prs"]).Select(Text))}" : "";
-            Console.WriteLine($"package: route {Text(p["route"])} {Text(p["slug"])} prod {Text(p["prod"])} test {Text(p["test"])}{duplicate}");
+            var duplicate = p.OpenPrs!.Count > 0 ? $" duplicate of open #{string.Join(", #", p.OpenPrs)}" : "";
+            Console.WriteLine($"package: route {p.Route} {p.Slug} prod {p.Prod} test {p.Test}{duplicate}");
         }
-        if (botOpen.Count > 0) Console.WriteLine($"package: none opened, bot PR already open: #{Text(botOpen[0]["number"])}");
-        Console.WriteLine($"package: chosen {(chosen is null ? "none" : Text(chosen["slug"]))}");
+        if (botOpen.Count > 0) Console.WriteLine($"package: none opened, bot PR already open: #{botOpen[0].Number}");
+        Console.WriteLine($"package: chosen {chosen?.Slug ?? "none"}");
         if (!string.IsNullOrEmpty(githubOutput))
-            File.AppendAllText(githubOutput, $"slug={(chosen is null ? "" : Text(chosen["slug"]))}\nroute={(chosen is null ? "" : Text(chosen["route"]))}\n", StrictUtf8);
+            File.AppendAllText(githubOutput, $"slug={chosen?.Slug ?? ""}\nroute={chosen?.Route ?? ""}\n", StrictUtf8);
     }
 
     internal static bool OverlayOnly(IEnumerable<string> diff, IReadOnlyCollection<string> ids)
@@ -1136,7 +788,7 @@ static partial class RuleBot
         foreach (var line in diff)
         {
             if (line.StartsWith('-')) return false;
-            var text = Strip(line.Length > 0 ? line[1..] : "");
+            var text = (line.Length > 0 ? line[1..] : "").Trim(Blank);
             if (text.Length == 0) continue;
             if (text.StartsWith('['))
             {
@@ -1195,7 +847,7 @@ static partial class RuleBot
         string? path = null;
         var status = "";
         bool inUnshipped = false, inEditorConfig = false;
-        BigInteger oldLeft = 0, newLeft = 0;
+        long oldLeft = 0, newLeft = 0;
         foreach (var rawLine in FileLines(text))
         {
             var line = rawLine.EndsWith('\r') ? rawLine[..^1] : rawLine;
@@ -1208,10 +860,10 @@ static partial class RuleBot
                 continue;
             }
             var match = HunkHeader().Match(line);
-            if (match.Success && AllDigits(match, 1, 2, 3, 4))
+            if (match.Success)
             {
-                oldLeft = match.Groups[2].Success ? PyInt(match.Groups[2].Value) : 1;
-                newLeft = match.Groups[4].Success ? PyInt(match.Groups[4].Value) : 1;
+                oldLeft = match.Groups[2].Success ? Number(match.Groups[2].Value) : 1;
+                newLeft = match.Groups[4].Success ? Number(match.Groups[4].Value) : 1;
                 continue;
             }
             match = DiffHeader().Match(line);
@@ -1314,17 +966,17 @@ static partial class RuleBot
         else
         {
             changes = [];
-            foreach (var line in SplitLines(await Git(["diff", "--name-status", "--no-renames", baseRef], true, token)).Where(l => l.Length > 0))
+            foreach (var line in Lines(await Git(["diff", "--name-status", "--no-renames", baseRef], true, token)).Where(l => l.Length > 0))
             {
                 var tab = line.IndexOf('\t');
                 if (tab < 0) throw new BotExit(1, $"guard: unparsable git status line: {line}");
                 changes.Add((line[..tab], line[(tab + 1)..]));
             }
-            unshipped = SplitLines(await Git(["diff", "-U0", baseRef, "--", Unshipped], false, token));
-            edits = SplitLines(await Git(["diff", "-U0", baseRef, "--", EditorConfig], false, token))
+            unshipped = Lines(await Git(["diff", "-U0", baseRef, "--", Unshipped], false, token));
+            edits = Lines(await Git(["diff", "-U0", baseRef, "--", EditorConfig], false, token))
                 .Where(l => TagIn(l, "+-") && !l.StartsWith("+++", StringComparison.Ordinal) && !l.StartsWith("---", StringComparison.Ordinal)).ToList();
-            foreach (var line in SplitLines(await Git(["diff", "--summary", baseRef], true, token)))
-                if (RiskyMode().IsMatch(line)) changes.Add(("X", Words(line)[^1]));
+            foreach (var line in Lines(await Git(["diff", "--summary", baseRef], true, token)))
+                if (RiskyMode().IsMatch(line)) changes.Add(("X", line.Split(Blank, StringSplitOptions.RemoveEmptyEntries)[^1]));
         }
         if (changes.Contains(("M", EditorConfig)))
             edits = await AppendedEditorConfigLines(baseRef, string.IsNullOrEmpty(patch) ? null : patch, token) ?? ["-"];
@@ -1337,37 +989,37 @@ static partial class RuleBot
         return bad.Count == 0 ? 0 : 1;
     }
 
-    private static void SampleCommand(string hitsPath, string id, string repo, BigInteger seed, string outPath)
+    private static void SampleCommand(string hitsPath, string id, string repo, long seed, string outPath)
     {
-        var hits = A(O(Load(hitsPath))["hits"]).Select(O).Where(x => Equals(x["id"], id) && Equals(x["scope"], "prod")).ToList();
-        var picked = new PyRandom(seed).Sample(hits, Math.Min(SampleSize, hits.Count));
+        var hits = Load<HitsFile>(hitsPath).Hits.Where(x => x.Id == id && x.Scope == "prod").ToArray();
+        new Random(seed.GetHashCode()).Shuffle(hits);
+        var picked = hits.Take(SampleSize).ToList();
         foreach (var hit in picked)
         {
-            var lines = SplitLines(ReadText(Path.Combine(repo, S(hit["file"])), replace: true));
-            var line = Big(hit["line"]);
-            var low = (int)BigInteger.Max(0, line - 8);
-            var high = (int)BigInteger.Min(lines.Count, line + 7);
-            hit["context"] = string.Join('\n', Enumerable.Range(low, Math.Max(0, high - low)).Select(n => $"{n + 1,5}{(n + 1 == line ? '>' : ' ')} {lines[n]}"));
+            var lines = Lines(ReadText(Path.Combine(repo, hit.File), replace: true));
+            var low = (int)Math.Max(0, hit.Line - 8);
+            var high = (int)Math.Min(lines.Count, hit.Line + 7);
+            hit.Context = string.Join('\n', Enumerable.Range(low, Math.Max(0, high - low)).Select(n => $"{n + 1,5}{(n + 1 == hit.Line ? '>' : ' ')} {lines[n]}"));
         }
-        Save(outPath, L(picked));
-        Console.WriteLine($"sample: {picked.Count} of {hits.Count} prod hits of {id}, seed {seed}");
+        Save(outPath, picked);
+        Console.WriteLine($"sample: {picked.Count} of {hits.Length} prod hits of {id}, seed {seed}");
     }
 
-    internal static (int TruePositive, int Need, bool Ok) Precision(IReadOnlyList<Obj> labels, int hitCount)
+    internal static (int TruePositive, int Need, bool Ok) Precision(IReadOnlyList<Label> labels, int hitCount)
     {
         var need = Math.Min(SampleSize, hitCount);
-        var truePositive = labels.Count(l => Equals(G(l, "label"), "true_positive"));
+        var truePositive = labels.Count(l => l.LabelName == "true_positive");
         var ok = need > 0 && labels.Count == need && (need == SampleSize ? truePositive >= SampleMinTrue : truePositive == need);
         return (truePositive, need, ok);
     }
 
     private static int PrecisionCommand(string labelsPath, string hitsPath, string id, string routeBPath)
     {
-        var labels = A(Load(labelsPath, new List<object?>())).Select(O).ToList();
-        var count = A(O(Load(hitsPath))["hits"]).Select(O).Count(x => Equals(x["id"], id) && Equals(x["scope"], "prod"));
+        var labels = LoadOr<List<Label>>(labelsPath);
+        var count = Load<HitsFile>(hitsPath).Hits.Count(x => x.Id == id && x.Scope == "prod");
         var (truePositive, need, ok) = Precision(labels, count);
-        var routeB = O(Load(routeBPath, new Obj()));
-        routeB["precision"] = D(("true_positive", (long)truePositive), ("labelled", (long)labels.Count), ("needed", (long)need), ("ok", ok));
+        var routeB = LoadOr<RouteBState>(routeBPath);
+        routeB.Precision = new(truePositive, labels.Count, need, ok);
         Save(routeBPath, routeB);
         Console.WriteLine($"precision: {truePositive}/{need} true positive -> {(ok ? "PASS" : "FAIL")} (gate {SampleMinTrue}/{SampleSize})");
         return ok ? 0 : 1;
@@ -1409,26 +1061,16 @@ static partial class RuleBot
         finally { WriteText(analyzer, source); }
         var output = Universal(result.Output + result.Error);
         var failed = FailedCount().Match(output);
-        var count = failed.Success ? PyInt(failed.Groups[1].Value) : 0;
+        var count = failed.Success ? Number(failed.Groups[1].Value) : 0;
         var ok = result.Code != 0 && count > 0;
-        if (!ok) Console.WriteLine(string.Join('\n', SplitLines(output).Where(l => TestSummaryLine().IsMatch(l)).Take(10)));
+        if (!ok) Console.WriteLine(string.Join('\n', Lines(output).Where(l => TestSummaryLine().IsMatch(l)).Take(10)));
         Console.WriteLine($"red: tests with a no-op analyzer exit {result.Code}, failed {count} -> {(ok ? "PASS" : "FAIL")}");
         return ok ? 0 : 1;
     }
 
-    private static string JqText(object? value) => value switch
+    private static AnalyzerResult? LoadResult(string path)
     {
-        null => "null",
-        bool b => b ? "true" : "false",
-        _ => Text(value).TrimEnd('\n')
-    };
-
-    private static string? Given(Obj? result, string key) =>
-        result is not null && G(result, key) is { } value && !Equals(value, false) ? JqText(value) : null;
-
-    private static Obj? LoadResult(string path)
-    {
-        try { return Load(path) as Obj; }
+        try { return Load<AnalyzerResult>(path); }
         catch (Exception failure) when (failure is not OperationCanceledException) { return null; }
     }
 
@@ -1438,30 +1080,27 @@ static partial class RuleBot
     private static async Task<int> Logged(string log, string[] argv, CancellationToken token) =>
         (await Exec(["bash", "-c", "log=$1; shift; exec \"$@\" > \"$log\" 2>&1", "route-b", log, .. argv], false, token)).Code;
 
-    private static void AddAttempt(Obj state, string cluster, string result) =>
-        ((List<object?>)state["attempts"]!).Add(D(("cluster", cluster), ("result", result)));
-
-    private static async Task<bool> RouteBAttempt(string data, string id, string cluster, string why, Obj gates, Obj state, string statePath, CancellationToken token)
+    private static async Task<bool> RouteBAttempt(string data, string id, QueuedCluster entry, Dictionary<string, Gate> gates, RouteBState state, string statePath, CancellationToken token)
     {
+        var cluster = entry.Cluster;
         var resultPath = Path.Combine(data, "analyzer-result.json");
         var examplesPath = Path.Combine(data, "route-b-examples.json");
-        var examples = G(gates, cluster) is Obj gate && G(gate, "examples") is { } listed && !Equals(listed, false) ? listed : new List<object?>();
-        Save(examplesPath, examples);
+        Save(examplesPath, gates.GetValueOrDefault(cluster)?.Examples ?? []);
         File.Delete(resultPath);
         var tools = $"Read,Glob,Grep,Edit(src/Nethermind/Nethermind.Analyzers/**),Write(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Write(src/Nethermind/Nethermind.Analyzers.Test/**),Write({resultPath}),Bash(dotnet build:*),Bash(dotnet test:*)";
         var generation = await Logged(Path.Combine(data, $"analyzer-llm-{cluster}.log"),
-            [Path.Combine(Home, "llm.sh"), Path.Combine(Home, "prompts", "analyzer.txt"), tools, $"ID={id}", $"CLUSTER={cluster}", $"WHY={why}", $"EXAMPLES={examplesPath}", $"RESULT={resultPath}"], token);
+            [Path.Combine(Home, "llm.sh"), Path.Combine(Home, "prompts", "analyzer.txt"), tools, $"ID={id}", $"CLUSTER={cluster}", $"WHY={entry.Why}", $"EXAMPLES={examplesPath}", $"RESULT={resultPath}"], token);
         Console.WriteLine($"route-b: {cluster} generation exit {generation}");
 
         var result = LoadResult(resultPath);
-        var testClass = Given(result, "test_class") ?? "";
-        var analyzer = Given(result, "analyzer") ?? "";
+        var testClass = result?.TestClass ?? "";
+        var analyzer = result?.Analyzer ?? "";
         const string AnalyzerPrefix = "src/Nethermind/Nethermind.Analyzers/";
         if (!TestClassName().IsMatch(testClass) || !analyzer.StartsWith(AnalyzerPrefix, StringComparison.Ordinal) || !analyzer.AsSpan(AnalyzerPrefix.Length).EndsWith(".cs", StringComparison.Ordinal) || !File.Exists(analyzer) || (await Exec(["test", "-f", analyzer], false, token)).Code != 0)
         {
-            var skip = Given(result, "skip") ?? "no analyzer produced";
+            var skip = result?.Skip ?? "no analyzer produced";
             Console.WriteLine($"route-b: {cluster} skipped: {skip}");
-            AddAttempt(state, cluster, $"skipped by the generator: {skip}");
+            state.Attempts!.Add(new(cluster, $"skipped by the generator: {skip}"));
             Save(statePath, state);
             return false;
         }
@@ -1478,76 +1117,65 @@ static partial class RuleBot
         var redSummary = LastLine(redLog, line => line.StartsWith("red:", StringComparison.Ordinal));
         static string Flag(bool value) => value ? "true" : "false";
         Console.WriteLine($"route-b: {id} ({cluster}) guard={Flag(guardOk)} tests={Flag(testsOk)} red={Flag(redOk)} :: {summary}");
-        AddAttempt(state, cluster, $"guard {Flag(guardOk)}, tests {Flag(testsOk)}, red control {Flag(redOk)}");
-        foreach (var (key, value) in new (string, object?)[] { ("cluster", cluster), ("why", why), ("analyzer", analyzer), ("summary", Given(result, "summary") ?? ""),
-            ("guard_ok", guardOk), ("tests_ok", testsOk), ("red_ok", redOk), ("tests_summary", summary), ("red_summary", redSummary) })
-            state[key] = value;
+        state.Attempts!.Add(new(cluster, $"guard {Flag(guardOk)}, tests {Flag(testsOk)}, red control {Flag(redOk)}"));
+        (state.Cluster, state.Why, state.Analyzer, state.Summary, state.GuardOk, state.TestsOk, state.RedOk, state.TestsSummary, state.RedSummary) =
+            (cluster, entry.Why, analyzer, result?.Summary ?? "", guardOk, testsOk, redOk, summary, redSummary);
         Save(statePath, state);
         return guardOk && testsOk && redOk;
     }
 
     internal static async Task RouteB(string data, CancellationToken token)
     {
-        var plan = O(Load(Path.Combine(data, "plan.json")));
-        var gates = O(Load(Path.Combine(data, "gates.json")));
-        var queue = A(plan["route_b_queue"]).Select(O).ToList();
-        var id = JqText(G(plan, "route_b_id"));
+        var plan = Load<PlanFile>(Path.Combine(data, "plan.json"));
+        var gates = Load<Dictionary<string, Gate>>(Path.Combine(data, "gates.json"));
+        var queue = plan.RouteBQueue ?? [];
+        var id = plan.RouteBId ?? "null";
         var statePath = Path.Combine(data, "route_b.json");
-        var state = D(("id", id), ("cluster", JqText(queue.Count > 0 ? G(queue[0], "cluster") : null)), ("attempts", new List<object?>()));
+        var state = new RouteBState { Id = id, Cluster = queue.FirstOrDefault()?.Cluster ?? "null", Attempts = [] };
         Save(statePath, state);
         foreach (var entry in queue)
         {
-            var cluster = JqText(G(entry, "cluster"));
-            if (await RouteBAttempt(data, id, cluster, JqText(G(entry, "why")), gates, state, statePath, token))
+            if (await RouteBAttempt(data, id, entry, gates, state, statePath, token))
             {
                 await Git(["diff", $"--output={Path.Combine(data, "analyzer.patch")}", "HEAD"], false, token);
                 return;
             }
-            await Git(["diff", $"--output={Path.Combine(data, $"analyzer-{cluster}.patch")}", "HEAD"], false, token);
+            await Git(["diff", $"--output={Path.Combine(data, $"analyzer-{entry.Cluster}.patch")}", "HEAD"], false, token);
             await Git(["reset", "-q", "--hard", "HEAD"], false, token);
             await Git(["clean", "-qfd", "-e", "/rule-bot"], false, token);
         }
-        state["skip"] = string.Join("; ", ((List<object?>)state["attempts"]!).Select(O).Select(a => $"{S(a["cluster"])}: {S(a["result"])}"));
+        state.Skip = string.Join("; ", state.Attempts!.Select(a => $"{a.Cluster}: {a.Result}"));
         Save(statePath, state);
         Console.WriteLine("route-b: no cluster produced an analyzer that passed the gates");
     }
 
-    internal static List<(string Url, string Author)> Examples(Obj gate, int count = 3) =>
-        (G(gate, "examples") is List<object?> list ? list : []).Select(O).Take(count).Select(e => (S(e["url"]), S(e["author"]))).ToList();
-
-    private static List<string> HitsSolutions(string data) =>
-        G(O(Load(Path.Combine(data, "hits.json"), new Obj())), "solutions") is List<object?> list ? list.Select(S).ToList() : [];
-
-    private static string RoutesWhy(string cluster) =>
-        G(Child(O(Load(Path.Combine(Home, "routes.json"))), cluster), "why") is { } why ? Text(why) : cluster;
-
     private static void Body(string data, string? headRef, string outPath)
     {
-        var chosen = O(O(Load(Path.Combine(data, "candidates.json")))["chosen"] ?? throw new BotExit(1, "body: no chosen candidate"));
-        var gate = O(O(Load(Path.Combine(data, "gates.json")))[S(chosen["cluster"])]);
-        var routeB = O(Load(Path.Combine(data, "route_b.json"), new Obj()));
+        var chosen = Load<CandidatesFile>(Path.Combine(data, "candidates.json")).Chosen ?? throw new BotExit(1, "body: no chosen candidate");
+        var gate = Load<Dictionary<string, Gate>>(Path.Combine(data, "gates.json"))[chosen.Cluster];
+        var routeB = LoadOr<RouteBState>(Path.Combine(data, "route_b.json"));
+        var solutions = File.Exists(Path.Combine(data, "hits.json")) ? Load<HitsFile>(Path.Combine(data, "hits.json")).Solutions ?? [] : [];
         var head = string.IsNullOrEmpty(headRef) ? "master" : headRef;
-        var ids = Strings(chosen["ids"]).ToList();
+        var ids = chosen.Ids;
         var idText = string.Join(", ", ids.Select(i => $"`{i}`"));
         var lines = new List<string>();
-        if (Equals(chosen["route"], "A")) lines.AddRange([$"Enables {idText} as a build warning for production code and fixes the existing hits.", ""]);
-        else lines.AddRange([$"Adds analyzer `{ids[0]}` ({RoutesWhy(S(chosen["cluster"]))}) and fixes the existing hits. No code fix provider is shipped.", ""]);
-        var validity = (long)Math.Round((double)gate["validity"]! * 100, MidpointRounding.ToEven);
-        lines.AddRange(["## Why", "", $"Reviewers keep asking for this by hand: in the last {WindowDays} days {Text(gate["n"])} review comments on {Text(gate["prs"])} PRs from {Text(gate["commenters"])} people ({Text(gate["human"])} by humans) match this pattern; {validity}% were accepted as valid. Examples:", ""]);
-        lines.AddRange(Examples(gate).Select(e => $"- {e.Url} ({e.Author})"));
-        lines.AddRange(["", "## Hits", "", $"Full Release build of every CI solution on `{head}` with the rule at warning ({string.Join(", ", HitsSolutions(data).Select(s => $"`{s}`"))}):", ""]);
-        lines.Add($"- Production code: {Text(chosen["prod"])}, all fixed in this PR.");
-        lines.Add(Truthy(chosen["test"]) ? $"- Tests and benchmarks: {Text(chosen["test"])}, excluded through `.editorconfig` sections." : "- Tests and benchmarks: 0.");
-        if (Equals(chosen["route"], "B"))
+        if (chosen.Route == "A") lines.AddRange([$"Enables {idText} as a build warning for production code and fixes the existing hits.", ""]);
+        else lines.AddRange([$"Adds analyzer `{ids[0]}` ({Routes().GetValueOrDefault(chosen.Cluster)?.Why ?? chosen.Cluster}) and fixes the existing hits. No code fix provider is shipped.", ""]);
+        var validity = (long)Math.Round(gate.Validity * 100, MidpointRounding.ToEven);
+        lines.AddRange(["## Why", "", $"Reviewers keep asking for this by hand: in the last {WindowDays} days {gate.N} review comments on {gate.Prs} PRs from {gate.Commenters} people ({gate.Human} by humans) match this pattern; {validity}% were accepted as valid. Examples:", ""]);
+        lines.AddRange((gate.Examples ?? []).Take(3).Select(e => $"- {e.Url} ({e.Author})"));
+        lines.AddRange(["", "## Hits", "", $"Full Release build of every CI solution on `{head}` with the rule at warning ({string.Join(", ", solutions.Select(s => $"`{s}`"))}):", ""]);
+        lines.Add($"- Production code: {chosen.Prod}, all fixed in this PR.");
+        lines.Add(chosen.Test != 0 ? $"- Tests and benchmarks: {chosen.Test}, excluded through `.editorconfig` sections." : "- Tests and benchmarks: 0.");
+        if (chosen.Route == "B")
         {
-            var precision = Child(routeB, "precision");
             lines.AddRange(["", "## Analyzer checks", "",
-                $"- Tests: {(routeB.TryGetValue("tests_summary", out var tests) ? Text(tests) : "pass")}. With `Initialize` replaced by a no-op the tests fail ({(routeB.TryGetValue("red_summary", out var red) ? Text(red) : "red control")}).",
-                $"- Precision: {Text(G(precision, "true_positive"))}/{Text(G(precision, "needed"))} random production hits labelled true positive by a separate review pass (gate {SampleMinTrue}/{SampleSize}).",
+                $"- Tests: {routeB.TestsSummary ?? "pass"}. With `Initialize` replaced by a no-op the tests fail ({routeB.RedSummary ?? "red control"}).",
+                $"- Precision: {Show(routeB.Precision?.TruePositive)}/{Show(routeB.Precision?.Needed)} random production hits labelled true positive by a separate review pass (gate {SampleMinTrue}/{SampleSize}).",
                 $"- `{Unshipped}` gets one appended row, so a `*.md` code owner has to approve.", "",
                 "<details><summary>Precision sample</summary>", ""]);
-            foreach (var label in A(Load(Path.Combine(data, "labels.json"), new List<object?>())).Select(O))
-                lines.Add($"- `{Text(G(label, "file"))}:{Text(G(label, "line"))}` {Text(G(label, "label"))}: {(label.TryGetValue("reason", out var reason) ? Text(reason) : "")}");
+            foreach (var label in LoadOr<List<Label>>(Path.Combine(data, "labels.json")))
+                lines.Add($"- `{Show(label.File)}:{Show(label.Line)}` {Show(label.LabelName)}: {label.Reason ?? ""}");
             lines.AddRange(["", "</details>"]);
         }
         lines.AddRange(["", "## Revert", "", "Revert this PR, or set the rule to `none` in `.editorconfig`:", "", "```", string.Join('\n', ids.Select(i => $"dotnet_diagnostic.{i}.severity = none")), "```", "",
@@ -1557,9 +1185,7 @@ static partial class RuleBot
     }
 
     internal static string Render(string template, IReadOnlyDictionary<string, string> values) =>
-        TemplateKey().Replace(template, match => match.Groups[1].Value.EnumerateRunes().All(IsWordRune) && values.TryGetValue(match.Groups[1].Value, out var value) ? value : match.Value);
-
-    private static bool IsWordRune(Rune rune) => rune.Value == '_' || Rune.IsLetter(rune) || Rune.GetUnicodeCategory(rune) is UnicodeCategory.DecimalDigitNumber or UnicodeCategory.LetterNumber or UnicodeCategory.OtherNumber;
+        TemplateKey().Replace(template, match => values.TryGetValue(match.Groups[1].Value, out var value) ? value : match.Value);
 
     private static void RenderCommand(string[] args)
     {
@@ -1638,39 +1264,8 @@ static partial class RuleBot
     private static T IntOption<T>(Dictionary<string, string> values, string name, string command, T fallback) where T : IParsable<T>
     {
         if (!values.TryGetValue(name, out var text)) return fallback;
-        var invalid = new BotExit(2, $"rule-bot {command}: argument --{name}: invalid int value: '{text}'");
-        var digits = PyIntText(text) ?? throw invalid;
-        return T.TryParse(digits, CultureInfo.InvariantCulture, out var value) ? value : throw new BotExit(1, $"rule-bot {command}: argument --{name}: value out of range: '{text}'");
+        return T.TryParse(text, CultureInfo.InvariantCulture, out var value) ? value : throw new BotExit(2, $"rule-bot {command}: argument --{name}: invalid int value: '{text}'");
     }
-
-    private static string? PyIntText(string text)
-    {
-        var trimmed = text.AsSpan().Trim(PyWhitespace);
-        var result = new StringBuilder();
-        if (trimmed.Length > 0 && trimmed[0] is '+' or '-')
-        {
-            if (trimmed[0] == '-') result.Append('-');
-            trimmed = trimmed[1..];
-        }
-        var count = 0;
-        var afterDigit = false;
-        foreach (var rune in trimmed.EnumerateRunes())
-        {
-            if (rune.Value == '_')
-            {
-                if (!afterDigit) return null;
-                afterDigit = false;
-                continue;
-            }
-            if (Rune.GetUnicodeCategory(rune) != UnicodeCategory.DecimalDigitNumber) return null;
-            result.Append((int)Rune.GetNumericValue(rune));
-            afterDigit = true;
-            count++;
-        }
-        return afterDigit && count <= 4300 ? result.ToString() : null;
-    }
-
-    private static readonly char[] PyWhitespace = [.. Enumerable.Range(0, char.MaxValue + 1).Select(c => (char)c).Where(c => char.IsWhiteSpace(c) || c is >= '\x1c' and <= '\x1f')];
 
     internal static async Task<int> Run(string[] args, CancellationToken token)
     {
@@ -1693,7 +1288,7 @@ static partial class RuleBot
                 case "hits": Hits(values["logs"], values["root"], values["ids"], values["out"], Opt("generated-logs"), Opt("generated-id")); return 0;
                 case "propose": await Propose(values["data"], flags.Contains("offline"), Opt("github-output"), token); return 0;
                 case "guard": return await Guard(Opt("base") ?? "HEAD", Opt("patch"), Opt("new-id"), Opt("files"), Opt("ids"), token);
-                case "sample": SampleCommand(values["hits"], values["id"], repo, IntOption(values, "seed", args[0], BigInteger.Zero), values["out"]); return 0;
+                case "sample": SampleCommand(values["hits"], values["id"], repo, IntOption(values, "seed", args[0], 0L), values["out"]); return 0;
                 case "precision": return PrecisionCommand(values["labels"], values["hits"], values["id"], values["route-b"]);
                 case "red": return await Red(values["analyzer"], values["test-class"], token);
                 case "test": return (await Exec(TestArgv(values["test-class"]), true, token)).Code;

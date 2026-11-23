@@ -5,8 +5,7 @@
 #:include ../ci/script-process.helpers.cs
 #:include rule-bot.helpers.cs
 
-using System.Numerics;
-using Obj = System.Collections.Generic.OrderedDictionary<string, object?>;
+using System.Text.Json;
 using static RuleBot;
 using static RuleBotTestSupport;
 
@@ -18,15 +17,14 @@ const string EditorConfigSample = "root = true\n[*.cs]\ndotnet_diagnostic.CA1510
 const string OpenBotPr = """[{"number": 7, "state": "OPEN", "headRefName": "rule-bot/x-1", "createdAt": "2020-01-01T00:00:00Z"}]""";
 var day = new DateOnly(2026, 11, 20);
 
-List<string> RouteKeys(string route) => O(Load(Path.Combine(Home, "routes.json"))).Where(item => (string)((Obj)item.Value!)["route"]! == route).Select(item => item.Key).Order(StringComparer.Ordinal).ToList();
-string[] OverlayDiff(string id) => SplitLines(Overlay([id], true)).Select(line => "+" + line).ToArray();
+List<string> RouteKeys(string route) => Routes().Where(item => item.Value.Route == route).Select(item => item.Key).Order(StringComparer.Ordinal).ToList();
+string[] OverlayDiff(string id) => Lines(Overlay([id], true)).Select(line => "+" + line).ToArray();
 
 void SeedPlan(string directory, IEnumerable<(string Key, long Prs, bool Pass)> gates, bool unshipped = true)
 {
-    var gateData = new Obj();
-    foreach (var (key, prs, pass) in gates) gateData[key] = D(("prs", prs), ("pass", pass));
+    var gateData = gates.ToDictionary(gate => gate.Key, gate => new Gate(0, gate.Prs, 0, 0, 0, 0, [], gate.Pass));
     Save(Path.Combine(directory, "gates.json"), gateData);
-    Save(Path.Combine(directory, "catalog.json"), new Obj());
+    Save(Path.Combine(directory, "catalog.json"), new Dictionary<string, CatalogEntry>());
     if (!unshipped) return;
     Directory.CreateDirectory(Path.Combine(directory, Path.GetDirectoryName(Unshipped)!));
     File.WriteAllText(Path.Combine(directory, Unshipped), "NETH011 | Usage | Warning | x\n");
@@ -42,72 +40,63 @@ var tests = new (string Name, Func<Task> Body)[]
     ("test_cluster_over_gates_passes", Sync(() =>
     {
         var rows = Enumerable.Range(0, 10).SelectMany(n => new[] { GateRow(n, "a"), GateRow(n, "b") }).Append(GateRow(10, "c")).ToList();
-        True(Truthy(GateCluster(rows)["pass"]));
+        True(GateCluster(rows).Pass);
     })),
-    ("test_bot_resolved_only_is_not_valid", Sync(() => Equal(0L, Convert.ToInt64(GateCluster([GateRow(1, "claude[bot]", bot: true, valid: "likely")])["valid"])))),
+    ("test_bot_resolved_only_is_not_valid", Sync(() => Equal(0L, GateCluster([GateRow(1, "claude[bot]", bot: true, valid: "likely")]).Valid))),
     ("test_prs_and_commenters_are_distinct", Sync(() =>
     {
         var state = GateCluster([GateRow(100, "a"), GateRow(100, "a"), GateRow(101, "a"), GateRow(102, "b")]);
-        Equal("3,2,4", $"{state["prs"]},{state["commenters"]},{state["n"]}");
+        Equal("3,2,4", $"{state.Prs},{state.Commenters},{state.N}");
     })),
     ("test_two_commenters_fail_the_commenter_gate", Sync(() =>
-        True(Dumps(GateCluster(Enumerable.Range(0, 12).Select(n => GateRow(n, "ab"[n % 2].ToString())).ToList())["fails"]).Contains("commenters")))),
+        True(GateCluster(Enumerable.Range(0, 12).Select(n => GateRow(n, "ab"[n % 2].ToString())).ToList()).Fails!.Contains("commenters")))),
     ("test_missing_humans_fails", Sync(() =>
-        True(Dumps(GateCluster("abcdefghijklmnopqrst".Select((author, n) => GateRow(n, author.ToString(), bot: n > 0)).ToList())["fails"]).Contains("human")))),
+        True(GateCluster("abcdefghijklmnopqrst".Select((author, n) => GateRow(n, author.ToString(), bot: n > 0)).ToList()).Fails!.Contains("human")))),
     ("test_examples_come_from_trusted_human_rows", Sync(() =>
     {
-        Obj Trusted(Obj source, string association, string url)
-        {
-            source["association"] = association;
-            source["url"] = url;
-            source["path"] = "p";
-            source["line"] = 1L;
-            source["body"] = "b";
-            return source;
-        }
-        List<Obj> rows = [Trusted(GateRow(1, "a"), "MEMBER", "u1"), Trusted(GateRow(2, "claude[bot]", bot: true), "NONE", "u2"),
-            Trusted(GateRow(3, "c"), "CONTRIBUTOR", "u3"), Trusted(GateRow(4, "d", valid: "invalid"), "MEMBER", "u4")];
+        List<Finding> rows = [GateRow(1, "a", association: "MEMBER", url: "u1"), GateRow(2, "claude[bot]", bot: true, association: "NONE", url: "u2"),
+            GateRow(3, "c", association: "CONTRIBUTOR", url: "u3"), GateRow(4, "d", valid: "invalid", association: "MEMBER", url: "u4")];
         var examples = TrustedExamples(rows);
-        Equal("u1", string.Join(',', examples.Select(example => ((Obj)example!)["url"])));
-        Equal("u1:a", string.Join(',', Examples(D(("examples", examples))).Select(example => $"{example.Url}:{example.Author}")));
+        Equal("u1", string.Join(',', examples.Select(example => example.Url)));
+        Equal("u1:a", string.Join(',', Parse<Gate>(Dumps(GateCluster(rows) with { Examples = examples })).Examples!.Select(example => $"{example.Url}:{example.Author}")));
     })),
 
     ("test_api_keeps_partial_graphql_data", async () =>
     {
         using var scope = new Seams();
         Exec = (_, _, _) => Task.FromResult((1, """{"data":{"repository":{"p1":null}}}""", "gone"));
-        Equal("""{"data": {"repository": {"p1": null}}}""", Dumps(await RealApi(["graphql"], default)));
+        Equal("""{"data":{"repository":{"p1":null}}}""", await RealApi(["graphql"], default));
     }),
     ("test_in_window_drops_older_comments_and_dedupes", Sync(() =>
     {
-        var output = InWindow([Comment(1, 5, created: "2026-05-01T00:00:00Z"), Comment(2, 5), Comment(2, 5, body: "edited")], "2026-05-25");
+        var output = InWindow([ApiRow(1, 5, created: "2026-05-01T00:00:00Z"), ApiRow(2, 5), ApiRow(2, 5, body: "edited")], "2026-05-25");
         Equal("2", string.Join(',', output.Keys));
-        Equal("unused field", output[2]["body"]);
+        Equal("unused field", output[2].Body);
     })),
     ("test_collect_pages_until_short_page_and_counts_each_comment_once", async () =>
     {
         using var scope = new Seams();
         using var directory = new TempDirectory();
         var calls = new List<string[]>();
-        var pages = new Dictionary<int, List<object?>>
+        var pages = new Dictionary<int, string>
         {
-            [1] = Enumerable.Range(0, 100).Select(n => (object?)Comment(n, 7)).ToList(),
-            [2] = [Comment(99, 7), Comment(100, 8, body: "never mind")],
+            [1] = Dumps(Enumerable.Range(0, 100).Select(n => ApiRow(n, 7)).ToList()),
+            [2] = Dumps(new List<ApiComment> { ApiRow(99, 7), ApiRow(100, 8, body: "never mind") }),
         };
         Api = (args, _) =>
         {
             calls.Add(args);
-            if (args[0] == "graphql") return Task.FromResult(Loads("""{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"isResolved":true,"isOutdated":false,"comments":{"nodes":[{"databaseId":0}]}}]}}}}}"""));
-            return Task.FromResult<object?>(pages[int.Parse(args.First(arg => arg.StartsWith("page=", StringComparison.Ordinal))[5..])]);
+            if (args[0] == "graphql") return Task.FromResult("""{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[{"isResolved":true,"isOutdated":false,"comments":{"nodes":[{"databaseId":0}]}}]}}}}}""");
+            return Task.FromResult(pages[int.Parse(args.First(arg => arg.StartsWith("page=", StringComparison.Ordinal))[5..])]);
         };
         await Quiet(() => Collect(directory.Path, 180, "2026-11-21", default));
-        var comments = O(Load(Path.Combine(directory.Path, "comments.json")));
-        var prs = O(Load(Path.Combine(directory.Path, "prs.json")));
-        Equal("2026-05-25", comments["since"]);
-        Equal(101, ((List<object?>)comments["comments"]!).Count);
+        var comments = Load<CommentFile>(Path.Combine(directory.Path, "comments.json"));
+        var prs = Load<Dictionary<string, PrThreads>>(Path.Combine(directory.Path, "prs.json"));
+        Equal("2026-05-25", comments.Since);
+        Equal(101, comments.Comments.Count);
         Equal(2, calls.Count(args => args[0] != "graphql"));
         Equal("7", string.Join(',', prs.Keys));
-        Equal("[true, false]", Dumps(((Obj)((Obj)prs["7"]!)["threads"]!)["0"]));
+        Equal("True,False", string.Join(',', prs["7"].Threads["0"]));
     }),
     ("test_collect_follows_review_thread_pages", async () =>
     {
@@ -118,26 +107,26 @@ var tests = new (string Name, Func<Task> Body)[]
         {
             if (args[0] != "graphql")
             {
-                List<object?> page = args.Contains("page=1") ? [Comment(1, 7), Comment(2, 7)] : [];
-                return Task.FromResult<object?>(page);
+                List<ApiComment> page = args.Contains("page=1") ? [ApiRow(1, 7), ApiRow(2, 7)] : [];
+                return Task.FromResult(Dumps(page));
             }
             if (args[^1].Contains("after:"))
             {
                 True(args[^1].Contains("after:\"c1\""));
-                return Task.FromResult(Loads("""{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[""" + ThreadJson(2, true, true) + "]}}}}}"));
+                return Task.FromResult("""{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[""" + ThreadJson(2, true, true) + "]}}}}}");
             }
-            return Task.FromResult(Loads("""{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[""" + ThreadJson(1, false, false) + "]}}}}}"));
+            return Task.FromResult("""{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[""" + ThreadJson(1, false, false) + "]}}}}}");
         };
         await Quiet(() => Collect(directory.Path, 180, "2026-11-21", default));
-        Equal("""{"1": [false, false], "2": [true, true]}""", Dumps(((Obj)O(Load(Path.Combine(directory.Path, "prs.json")))["7"]!)["threads"]));
+        Equal("""{"1":[false,false],"2":[true,true]}""", Dumps(Load<Dictionary<string, PrThreads>>(Path.Combine(directory.Path, "prs.json"))["7"].Threads));
     }),
     ("test_collect_summary_prints_the_rest_page_count", async () =>
     {
         using var scope = new Seams();
         using var directory = new TempDirectory();
         Api = (args, _) => Task.FromResult(args[0] != "graphql"
-            ? new List<object?> { Comment(1, 7) }
-            : Loads("""{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}"""));
+            ? Dumps(new List<ApiComment> { ApiRow(1, 7) })
+            : """{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}""");
         True((await Quiet(() => Collect(directory.Path, 180, "2026-11-21", default))).Contains(", 1 REST pages, "));
     }),
     ("test_collect_fails_clearly_when_a_follow_up_thread_page_is_missing", async () =>
@@ -148,12 +137,12 @@ var tests = new (string Name, Func<Task> Body)[]
         {
             if (args[0] != "graphql")
             {
-                List<object?> page = args.Contains("page=1") ? [Comment(1, 7)] : [];
-                return Task.FromResult<object?>(page);
+                List<ApiComment> page = args.Contains("page=1") ? [ApiRow(1, 7)] : [];
+                return Task.FromResult(Dumps(page));
             }
-            return Task.FromResult(Loads(args[^1].Contains("after:")
+            return Task.FromResult(args[^1].Contains("after:")
                 ? """{"data":{"repository":{"pullRequest":null}}}"""
-                : """{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[]}}}}}"""));
+                : """{"data":{"repository":{"p7":{"author":{"login":"author"},"reviewThreads":{"pageInfo":{"hasNextPage":true,"endCursor":"c1"},"nodes":[]}}}}}""");
         };
         var failure = await Throws(() => Quiet(() => Collect(directory.Path, 180, "2026-11-21", default)));
         True(failure.Message.Contains("PR 7"));
@@ -165,19 +154,19 @@ var tests = new (string Name, Func<Task> Body)[]
         var original = Console.Error;
         using var error = new StringWriter();
         Console.SetError(error);
-        object? data;
+        string data;
         try { data = await RealApi(["graphql"], default); }
         finally { Console.SetError(original); }
-        Equal("""{"p1": null}""", Dumps(((Obj)O(data)["data"]!)["repository"]));
+        True(data.Contains("""{"p1":null}"""));
         True(error.ToString().Contains("boom"));
     }),
     ("test_findings_rebuild_threads_and_skip_the_pr_author", Sync(() =>
     {
-        List<Obj> comments = [Slim(Comment(1, 7)), Slim(Comment(2, 7, author: "author", replyTo: 1, created: "2026-11-02T00:00:00Z", body: "Good catch, fixed")),
-            Slim(Comment(3, 7, author: "author")), Slim(Comment(4, 8)), Slim(Comment(5, 7, author: "claude[bot]", bot: true))];
-        var prs = O(Loads("""{"7": {"author": "author", "threads": {"5": [true, false]}}}"""));
+        List<Comment> comments = [Slim(ApiRow(1, 7)), Slim(ApiRow(2, 7, author: "author", replyTo: 1, created: "2026-11-02T00:00:00Z", body: "Good catch, fixed")),
+            Slim(ApiRow(3, 7, author: "author")), Slim(ApiRow(4, 8)), Slim(ApiRow(5, 7, author: "claude[bot]", bot: true))];
+        var prs = Parse<Dictionary<string, PrThreads>>("""{"7": {"author": "author", "threads": {"5": [true, false]}}}""");
         var rows = FindingsFrom(comments, prs).ToList();
-        Equal("r1:valid:False,r5:likely:True", string.Join(',', rows.Select(r => $"{((string)r["url"]!)[^2..]}:{r["valid"]}:{r["bot"]}")));
+        Equal("r1:valid:False,r5:likely:True", string.Join(',', rows.Select(r => $"{r.Url[^2..]}:{r.Valid}:{r.Bot}")));
     })),
 
     ("test_general_section_counts_as_enforced", Sync(() => True(EnforcedOnMaster("CA1510", EditorConfigRules(EditorConfigSample), new Dictionary<string, string>())))),
@@ -197,7 +186,7 @@ var tests = new (string Name, Func<Task> Body)[]
         ];
         var found = ParseDiagnostics(lines, "/w/nethermind", new HashSet<string> { "IDE0051" });
         Equal("src/Nethermind/Nethermind.Core.Test/B.cs:test,src/Nethermind/Nethermind.Core/A.cs:prod,src/Nethermind/Nethermind.Core/obj/Release/G.cs:generated",
-            string.Join(',', found.Select(hit => $"{hit["file"]}:{hit["scope"]}")));
+            string.Join(',', found.Select(hit => $"{hit.File}:{hit.Scope}")));
     })),
     ("test_benchmark_and_tools_tests_are_not_prod", Sync(() =>
     {
@@ -329,14 +318,14 @@ var tests = new (string Name, Func<Task> Body)[]
 
     ("test_next_id_skips_reserved", Sync(() =>
     {
-        Equal("NETH012", NextNethId(new BigInteger[] { 1, 2, 10, 11 }, new BigInteger[] { 9 }));
-        Equal("NETH013", NextNethId(new BigInteger[] { 11 }, new BigInteger[] { 12 }));
+        Equal("NETH012", NextNethId([1, 2, 10, 11], [9]));
+        Equal("NETH013", NextNethId([11], [12]));
     })),
     ("test_tried_comes_from_bot_pull_requests", Sync(() =>
     {
-        List<Obj> prs = [D(("headRefName", "rule-bot/linq-neth012-1"), ("createdAt", "2026-11-01T00:00:00Z")),
-            D(("headRefName", "rule-bot/sleep-neth013-2"), ("createdAt", "2026-09-01T00:00:00Z")),
-            D(("headRefName", "rule-bot/nullforg-neth014-3"), ("createdAt", "2026-11-01T00:00:00Z"))];
+        List<BotPr> prs = [new(1, "CLOSED", "rule-bot/linq-neth012-1", "2026-11-01T00:00:00Z", null),
+            new(2, "CLOSED", "rule-bot/sleep-neth013-2", "2026-09-01T00:00:00Z", null),
+            new(3, "CLOSED", "rule-bot/nullforg-neth014-3", "2026-11-01T00:00:00Z", null)];
         Equal("linq,nullforg", string.Join(',', RecentlyTried(prs, ["linq", "sleep", "null", "nullforg"], day).Order(StringComparer.Ordinal)));
     })),
     ("test_rotation_moves_weekly", Sync(() =>
@@ -349,13 +338,13 @@ var tests = new (string Name, Func<Task> Body)[]
         SeedPlan(directory.Path, b.Select((key, n) => (key, 50L - n, n != 1)));
         var today = Enumerable.Range(0, 21).Select(day.AddDays).First(candidate => Rotate(["1", "2", "3"], candidate)[0] == "1");
         var stamp = today.ToString("yyyy-MM-dd");
-        var bot = Dumps(new List<object?> { D(("number", 5L), ("state", "CLOSED"), ("headRefName", $"rule-bot/{b[2]}-neth011-1"), ("createdAt", $"{stamp}T00:00:00Z"), ("closedAt", $"{stamp}T00:00:00Z")) });
+        var bot = BotPrJson(5, "CLOSED", $"rule-bot/{b[2]}-neth011-1", $"{stamp}T00:00:00Z", $"{stamp}T00:00:00Z");
         Exec = (argv, _, _) => Task.FromResult((0, argv.Contains("--label") ? bot : "[]", ""));
         await Quiet(() => Plan(directory.Path, directory.Path, stamp, false, null, default));
-        var plan = O(Load(Path.Combine(directory.Path, "plan.json")));
-        Equal(b[0], string.Join(',', ((List<object?>)plan["route_b_queue"]!).Select(item => ((Obj)item!)["cluster"])));
-        Equal(b[0], plan["route_b"]);
-        Equal("NETH012", plan["route_b_id"]);
+        var plan = Load<PlanFile>(Path.Combine(directory.Path, "plan.json"));
+        Equal(b[0], string.Join(',', plan.RouteBQueue!.Select(item => item.Cluster)));
+        Equal(b[0], plan.RouteB);
+        Equal("NETH012", plan.RouteBId);
     }),
     ("test_plan_tries_one_cluster_per_week_and_each_once_per_cycle", async () =>
     {
@@ -366,48 +355,45 @@ var tests = new (string Name, Func<Task> Body)[]
             using var directory = new TempDirectory();
             SeedPlan(directory.Path, b.Select(key => (key, 50L, true)));
             await Quiet(() => Plan(directory.Path, directory.Path, day.AddDays(7 * n).ToString("yyyy-MM-dd"), true, null, default));
-            var plan = O(Load(Path.Combine(directory.Path, "plan.json")));
-            Equal(1, ((List<object?>)plan["route_b_queue"]!).Count);
-            picked.Add((string)plan["route_b"]!);
+            var plan = Load<PlanFile>(Path.Combine(directory.Path, "plan.json"));
+            Equal(1, plan.RouteBQueue!.Count);
+            picked.Add(plan.RouteB!);
         }
         Equal(string.Join(',', b.Order(StringComparer.Ordinal)), string.Join(',', picked.Take(3).Order(StringComparer.Ordinal)));
         Equal(string.Join(',', picked.Take(3)), string.Join(',', picked.Skip(3)));
     }),
     ("test_rejected_route_a_ids_cool_down", Sync(() =>
     {
-        var routes = O(Loads("""{"unused": {"route": "A", "ids": ["IDE0051", "IDE0052"]}, "unusedx": {"route": "A", "ids": ["IDE0060"]}, "sleep": {"route": "B", "ids": []}}"""));
-        var prs = ((List<object?>)Loads("""
-            [{"number": 1, "state": "CLOSED", "headRefName": "rule-bot/unused-ide0051-99", "closedAt": "2026-11-01T00:00:00Z"},
-             {"number": 2, "state": "MERGED", "headRefName": "rule-bot/unused-ide0052-98", "closedAt": "2026-11-01T00:00:00Z"},
-             {"number": 3, "state": "CLOSED", "headRefName": "rule-bot/unusedx-ide0060-97", "closedAt": "2026-08-01T00:00:00Z"},
-             {"number": 4, "state": "OPEN", "headRefName": "rule-bot/unused-ide0052-96", "closedAt": null},
-             {"number": 5, "state": "CLOSED", "headRefName": "rule-bot/sleep-neth012-95", "closedAt": "2026-11-01T00:00:00Z"}]
-            """)!).Cast<Obj>();
-        Equal("""{"IDE0051": 1}""", Dumps(RejectedIds(prs, routes, day)));
+        var routes = Parse<Dictionary<string, RouteConfig>>("""{"unused": {"route": "A", "ids": ["IDE0051", "IDE0052"]}, "unusedx": {"route": "A", "ids": ["IDE0060"]}, "sleep": {"route": "B", "ids": []}}""");
+        List<BotPr> prs =
+        [
+            new(1, "CLOSED", "rule-bot/unused-ide0051-99", null, "2026-11-01T00:00:00Z"),
+            new(2, "MERGED", "rule-bot/unused-ide0052-98", null, "2026-11-01T00:00:00Z"),
+            new(3, "CLOSED", "rule-bot/unusedx-ide0060-97", null, "2026-08-01T00:00:00Z"),
+            new(4, "OPEN", "rule-bot/unused-ide0052-96", null, null),
+            new(5, "CLOSED", "rule-bot/sleep-neth012-95", null, "2026-11-01T00:00:00Z"),
+        ];
+        Equal("""{"IDE0051":1}""", Dumps(RejectedIds(prs, routes, day)));
     })),
     ("test_plan_and_propose_skip_a_rejected_rule", async () =>
     {
         using var scope = new Seams();
         using var directory = new TempDirectory();
-        var routes = O(Load(Path.Combine(Home, "routes.json")));
-        var entry = routes.First(item => (string)((Obj)item.Value!)["route"]! == "A" && ((List<object?>)((Obj)item.Value!)["ids"]!).Count > 1);
-        var ids = ((List<object?>)((Obj)entry.Value!)["ids"]!).Cast<string>().ToList();
+        var entry = Routes().First(item => item.Value.Route == "A" && item.Value.Ids.Count > 1);
+        var ids = entry.Value.Ids;
         var first = ids[0];
-        var bot = Dumps(new List<object?> { D(("number", 42L), ("state", "CLOSED"), ("headRefName", $"rule-bot/{entry.Key}-{first.ToLowerInvariant()}-1"), ("createdAt", "2026-10-01T00:00:00Z"), ("closedAt", "2026-11-10T00:00:00Z")) });
+        var bot = BotPrJson(42, "CLOSED", $"rule-bot/{entry.Key}-{first.ToLowerInvariant()}-1", "2026-10-01T00:00:00Z", "2026-11-10T00:00:00Z");
         SeedPlan(directory.Path, [(entry.Key, 50L, true)], unshipped: false);
         Exec = (argv, _, _) => Task.FromResult((0, argv.Contains("--label") && argv.Contains("all") ? bot : "[]", ""));
         await Quiet(() => Plan(directory.Path, directory.Path, "2026-11-20", false, null, default));
-        var plan = O(Load(Path.Combine(directory.Path, "plan.json")));
-        Equal(string.Join(',', ids.Skip(1)), string.Join(',', ((List<object?>)plan["measure_ids"]!).Cast<string>()));
-        Equal(Dumps(D((first, 42L))), Dumps(plan["rejected_ids"]));
-        var counts = new Obj();
-        foreach (var id in ids) counts[id] = D(("prod", 10L), ("test", 0L));
-        Save(Path.Combine(directory.Path, "hits.json"), D(("counts", counts)));
+        var plan = Load<PlanFile>(Path.Combine(directory.Path, "plan.json"));
+        Equal(string.Join(',', ids.Skip(1)), string.Join(',', plan.MeasureIds));
+        Equal(42L, plan.RejectedIds![first]);
+        Save(Path.Combine(directory.Path, "hits.json"), new HitsFile(ids.ToDictionary(id => id, _ => new HitCounts(10, 0, 0)), [], null));
         await Quiet(() => Propose(directory.Path, false, null, default));
-        var candidates = O(Load(Path.Combine(directory.Path, "candidates.json")));
-        var verdict = ((List<object?>)candidates["decisions"]!).Cast<Obj>().First(decision => (string)decision["id"]! == first)["verdict"] as string;
-        True(verdict!.StartsWith("skip: rule-bot PR #42 closed without merge", StringComparison.Ordinal));
-        True(((List<object?>)candidates["packages"]!).Cast<Obj>().All(package => !((List<object?>)package["ids"]!).Contains(first)));
+        var candidates = Load<CandidatesFile>(Path.Combine(directory.Path, "candidates.json"));
+        True(candidates.Decisions.First(decision => decision.Id == first).Verdict.StartsWith("skip: rule-bot PR #42 closed without merge", StringComparison.Ordinal));
+        True(candidates.Packages.All(package => !package.Ids.Contains(first)));
     }),
     ("test_plan_skips_the_measure_matrix_when_there_is_nothing_to_measure", async () =>
     {
@@ -441,9 +427,9 @@ var tests = new (string Name, Func<Task> Body)[]
             SeedPlan(directory.Path, b.Select(key => (key, 50L, true)));
             Exec = (argv, _, _) => Task.FromResult((0, argv.Contains("--label") ? open : "[]", ""));
             await Quiet(() => Plan(directory.Path, directory.Path, "2026-11-12", false, null, default));
-            var plan = O(Load(Path.Combine(directory.Path, "plan.json")));
-            Equal(expected, plan["route_b"]);
-            Equal(expected is not null, ((List<object?>)plan["route_b_queue"]!).Count > 0);
+            var plan = Load<PlanFile>(Path.Combine(directory.Path, "plan.json"));
+            Equal(expected, plan.RouteB);
+            Equal(expected is not null, plan.RouteBQueue!.Count > 0);
         }
     }),
     ("test_strip_initialize_block", Sync(() =>
@@ -476,7 +462,7 @@ var tests = new (string Name, Func<Task> Body)[]
     ("test_log_names_round_trip", Sync(() => Equal("tools/Kute/Kute.slnx", SolutionOf(LogNameOf("tools/Kute/Kute.slnx"))))),
     ("test_rebuild_set_uses_prod_hits_only", Sync(() =>
     {
-        var hits = O(Loads("""{"hits": [{"id": "A", "scope": "prod", "solutions": ["x.slnx", "y.slnx"]}, {"id": "A", "scope": "test", "solutions": ["z.slnx"]}, {"id": "B", "scope": "prod", "solutions": ["w.slnx"]}]}"""));
+        var hits = Parse<HitsFile>("""{"hits": [{"id": "A", "scope": "prod", "solutions": ["x.slnx", "y.slnx"]}, {"id": "A", "scope": "test", "solutions": ["z.slnx"]}, {"id": "B", "scope": "prod", "solutions": ["w.slnx"]}]}""");
         Equal("x.slnx,y.slnx", string.Join(',', RebuildSet(hits, ["A"])));
     })),
 
@@ -563,7 +549,7 @@ var tests = new (string Name, Func<Task> Body)[]
         File.WriteAllText(Path.Combine(generated, "a.slnx.log"), Line("Forged", "CA2012") + Line("Own", "NETH099"));
         var output = Path.Combine(directory.Path, "hits.json");
         Equal(0, await Run(["hits", "--logs", clean, "--root", directory.Path, "--ids", "CA2012,NETH099", "--out", output, "--generated-logs", generated, "--generated-id", "NETH099"], CancellationToken.None));
-        var found = A(O(Load(output))["hits"]).Select(hit => $"{S(O(hit)["id"])}:{Path.GetFileName(S(O(hit)["file"]))}").Order(StringComparer.Ordinal).ToList();
+        var found = Load<HitsFile>(output).Hits.Select(hit => $"{hit.Id}:{Path.GetFileName(hit.File)}").Order(StringComparer.Ordinal).ToList();
         Equal("CA2012:Real.cs,NETH099:Own.cs", string.Join(',', found));
     }),
     ("test_hits_requires_both_generated_options", async () =>
@@ -584,9 +570,9 @@ var tests = new (string Name, Func<Task> Body)[]
     ("test_route_b_stops_at_first_cluster_that_passes", async () =>
     {
         var (state, calls) = await RouteBRun(new() { ["a"] = """{"skip": "no shape"}""", ["b"] = RouteBResult, ["c"] = RouteBResult });
-        Equal("b", S(state["cluster"]));
-        Equal(2, A(state["attempts"]).Count);
-        True(Equals(state["guard_ok"], true) && Equals(state["tests_ok"], true) && Equals(state["red_ok"], true));
+        Equal("b", state.Cluster);
+        Equal(2, state.Attempts!.Count);
+        True(state.GuardOk == true && state.TestsOk == true && state.RedOk == true);
         Equal(1, calls.Count(call => call[0] == "git" && call[1] == "reset"));
         True(calls.Any(call => call[0] == "git" && call[1] == "diff" && call[2].EndsWith("/analyzer.patch", StringComparison.Ordinal)));
         True(!calls.Any(call => call.Contains("CLUSTER=c")));
@@ -596,7 +582,7 @@ var tests = new (string Name, Func<Task> Body)[]
         foreach (var gate in new[] { "guard", "test", "red" })
         {
             var (state, calls) = await RouteBRun(new() { ["a"] = RouteBResult, ["b"] = RouteBResult }, gate);
-            Equal("b", state["cluster"]);
+            Equal("b", state.Cluster);
             Equal(2, calls.Count(call => call.Any(item => item.StartsWith("CLUSTER=", StringComparison.Ordinal))));
         }
     }),
@@ -610,7 +596,7 @@ var tests = new (string Name, Func<Task> Body)[]
     ("test_route_b_skips_analyzer_outside_the_analyzer_project", async () =>
     {
         var (state, calls) = await RouteBRun(new() { ["a"] = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Core/OutsideAnalyzer.cs", "skip": "outside"}""" });
-        Equal("a: skipped by the generator: outside", S(state["skip"]));
+        Equal("a: skipped by the generator: outside", state.Skip);
         True(!calls.Any(call => call.Contains("guard")));
     }),
 };
@@ -645,7 +631,6 @@ static class RuleBotTestSupport
 
         throw new DirectoryNotFoundException("scripts/rule-bot not found above the current directory");
     }
-    internal static Obj O(object? value) => (Obj)value!;
     internal static Func<Task> Sync(Action body) => () => { body(); return Task.CompletedTask; };
     internal static void True(bool condition) { if (!condition) throw new InvalidOperationException("expected true"); }
     internal static void Equal<T>(T expected, object? actual) { if (!Equals(expected, actual)) throw new InvalidOperationException($"expected <{expected}>, got <{actual}>"); }
@@ -669,26 +654,24 @@ static class RuleBotTestSupport
         return output.ToString();
     }
 
-    internal static Obj Thread(string[] replies, bool resolved = false, bool outdated = false)
-    {
-        var nodes = new List<object?> { D(("author", D(("login", "reviewer"))), ("body", "unused field"), ("createdAt", "2026-11-20T00:00:00Z"), ("url", "u")) };
-        nodes.AddRange(replies.Select(reply => (object?)D(("author", D(("login", "author"))), ("body", reply), ("createdAt", "2026-11-20T01:00:00Z"), ("url", "u"))));
-        return D(("isResolved", resolved), ("isOutdated", outdated), ("comments", D(("nodes", nodes))), ("path", "a.cs"), ("line", 1L), ("originalLine", 1L));
-    }
+    internal static ReviewThread Thread(string[] replies, bool resolved = false, bool outdated = false) =>
+        new(resolved, outdated, [("reviewer", "unused field"), .. replies.Select(reply => ("author", reply))]);
 
-    internal static Obj GateRow(long pr, string author, bool bot = false, string valid = "valid") => D(("pr", pr), ("author", author), ("bot", bot), ("valid", valid));
+    internal static Finding GateRow(long pr, string author, bool bot = false, string valid = "valid", string? association = "MEMBER", string url = "u") =>
+        new(pr, author, bot, "p", 1, "2026-11-01T00:00:00Z", "b", url, association, valid);
 
-    internal static Obj Comment(long id, long pr, string author = "reviewer", string created = "2026-11-01T00:00:00Z", long? replyTo = null, string body = "unused field", bool bot = false) =>
-        D(("id", id), ("pull_request_url", $"https://api.github.com/repos/{Repo}/pulls/{pr}"), ("user", D(("login", author), ("type", bot ? "Bot" : "User"))),
-            ("author_association", "MEMBER"), ("in_reply_to_id", replyTo), ("path", "a.cs"), ("line", 1L), ("created_at", created), ("body", body),
-            ("html_url", $"https://github.com/{Repo}/pull/{pr}#discussion_r{id}"));
+    internal static ApiComment ApiRow(long id, long pr, string author = "reviewer", string created = "2026-11-01T00:00:00Z", long? replyTo = null, string body = "unused field", bool bot = false) =>
+        new(id, $"https://api.github.com/repos/{Repo}/pulls/{pr}", new(author, bot ? "Bot" : "User"), "MEMBER", replyTo, "a.cs", 1, null, created, body, $"https://github.com/{Repo}/pull/{pr}#discussion_r{id}");
 
-    internal static List<Obj> Labels(int truePositive, int falsePositive) =>
-        [.. Enumerable.Repeat("true_positive", truePositive).Concat(Enumerable.Repeat("false_positive", falsePositive)).Select(label => D(("label", label)))];
+    internal static string BotPrJson(long number, string state, string head, string? created, string? closed) =>
+        JsonSerializer.Serialize(new[] { new BotPr(number, state, head, created, closed) }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+    internal static List<Label> Labels(int truePositive, int falsePositive) =>
+        [.. Enumerable.Repeat("true_positive", truePositive).Concat(Enumerable.Repeat("false_positive", falsePositive)).Select(label => new Label(label, null, null, null))];
 
     internal const string RouteBResult = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Analyzers/Foo.cs", "summary": "ok"}""";
 
-    internal static async Task<(Obj State, List<string[]> Calls)> RouteBRun(Dictionary<string, string> results, string? failingGate = null)
+    internal static async Task<(RouteBState State, List<string[]> Calls)> RouteBRun(Dictionary<string, string> results, string? failingGate = null)
     {
         using var directory = new TempDirectory();
         using var seams = new Seams();
@@ -700,9 +683,9 @@ static class RuleBotTestSupport
         Directory.CreateDirectory(outsideAnalyzers);
         File.WriteAllText(Path.Combine(outsideAnalyzers, "OutsideAnalyzer.cs"), "");
         var data = Path.Combine(directory.Path, "data");
-        var queue = L(results.Keys.Select(cluster => (object?)D(("cluster", cluster), ("why", "because"))));
-        Save(Path.Combine(data, "plan.json"), D(("route_b_id", "NETH012"), ("route_b_queue", queue)));
-        Save(Path.Combine(data, "gates.json"), new Obj());
+        var queue = results.Keys.Select(cluster => new QueuedCluster(cluster, "because")).ToList();
+        Save(Path.Combine(data, "plan.json"), new PlanFile([], null, null, "NETH012", queue));
+        Save(Path.Combine(data, "gates.json"), new Dictionary<string, Gate>());
         var calls = new List<string[]>();
         Exec = (argv, _, _) =>
         {
@@ -718,7 +701,7 @@ static class RuleBotTestSupport
         try
         {
             await RouteB(data, default);
-            return (O(Load(Path.Combine(data, "route_b.json"))), calls);
+            return (Load<RouteBState>(Path.Combine(data, "route_b.json")), calls);
         }
         finally { Environment.CurrentDirectory = previous; }
     }
@@ -840,7 +823,7 @@ static class RuleBotTestSupport
 sealed class Seams : IDisposable
 {
     private readonly Func<string[], bool, CancellationToken, Task<(int Code, string Output, string Error)>> _exec = RuleBot.Exec;
-    private readonly Func<string[], CancellationToken, Task<object?>> _api = RuleBot.Api;
+    private readonly Func<string[], CancellationToken, Task<string>> _api = RuleBot.Api;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay = RuleBot.Delay;
 
     internal Seams() => RuleBot.Delay = (_, _) => Task.CompletedTask;

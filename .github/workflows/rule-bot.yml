@@ -32,7 +32,6 @@ jobs:
       route_a: ${{ steps.plan.outputs.route_a }}
       route_b: ${{ steps.plan.outputs.route_b }}
       route_b_id: ${{ steps.plan.outputs.route_b_id }}
-      skip_measure: ${{ steps.plan.outputs.skip_measure }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
