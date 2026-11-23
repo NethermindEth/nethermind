@@ -5,7 +5,6 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;

@@ -1589,13 +1589,19 @@ public class EvmExecutorTests
         BlockHeader parent = new(Keccak.Compute("trace grandparent"), Keccak.OfAnEmptySequenceRlp, Address.Zero,
             UInt256.Zero, source.Head.Number - 1, 30_000_000, 1_790_000_000, [])
         {
-            StateRoot = Keccak.Compute("trace parent state"), BaseFeePerGas = 1, IsPostMerge = true,
+            StateRoot = Keccak.Compute("trace parent state"),
+            BaseFeePerGas = 1,
+            IsPostMerge = true,
         };
         parent.Hash = parent.CalculateHash();
         BlockHeader header = new(parent.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero,
             UInt256.Zero, source.Head.Number, 30_000_000, 1_790_000_012, [])
         {
-            Hash = source.Head.BlockHash, StateRoot = source.Head.StateRoot, BaseFeePerGas = 1, IsPostMerge = true, GasUsed = 55_000,
+            Hash = source.Head.BlockHash,
+            StateRoot = source.Head.StateRoot,
+            BaseFeePerGas = 1,
+            IsPostMerge = true,
+            GasUsed = 55_000,
         };
         source.ReplayBlock = new(header, new BlockBody([write, read], []));
         source.ReplayParent = parent;

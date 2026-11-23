@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;

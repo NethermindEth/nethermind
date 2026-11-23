@@ -144,7 +144,7 @@ public class EthSimulateTestsBlocksAndTransactions
         }
     }
 
-    private const string ConflictingStorage ="\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
+    private const string ConflictingStorage = "\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"state\":{},\"stateDiff\":{}}}";
     private const string MixedFeeCalls = "\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gasPrice\":\"0x1\",\"maxFeePerGas\":\"0x2\"}]";
 
     [TestCase("{" + ConflictingStorage + "}", ErrorCodes.InvalidInput, null, TestName = "Simulate rejects conflicting storage overrides in a block without calls")]

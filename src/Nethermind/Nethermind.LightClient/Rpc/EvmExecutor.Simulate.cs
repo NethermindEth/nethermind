@@ -33,7 +33,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Facade.Filters;
-using Nethermind.Facade.Find;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
