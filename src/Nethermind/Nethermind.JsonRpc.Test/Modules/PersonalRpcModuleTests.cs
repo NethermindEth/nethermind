@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Modules.Personal;
@@ -171,6 +174,40 @@ namespace Nethermind.JsonRpc.Test.Modules
             string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_ecRecover", "0xdeadbeaf", signature);
             Assert.That(serialized, Does.Contain("\"error\""));
             Assert.That(serialized, Does.Contain("Invalid signature length"));
+        }
+
+        [Test]
+        public async Task Personal_ecRecover_rejects_invalid_recovery_byte([Values("00", "01", "1a", "1d")] string recoveryByte)
+        {
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
+            string signature = "0xa3f20717a250c2b0b729b7e5becbff67fdaef7e0699da4de7ca5895b02a170a12d887fd3b17bfdce3481f10bea41f45ba9f709d39ce8325427b57afcfc994cee" + recoveryByte;
+            string serialized = await RpcTest.TestSerializedRequest(rpcModule, "personal_ecRecover", "0xdeadbeaf", signature);
+            Assert.That(serialized, Does.Contain("\"code\":-32602"));
+            Assert.That(serialized, Does.Contain("Invalid signature recovery byte"));
+        }
+
+        [Test]
+        public async Task Personal_ecRecover_recovers_the_signer_of_personal_sign()
+        {
+            const string passphrase = "testPass";
+            Address address = _wallet.NewAccount(passphrase.Secure());
+            IPersonalRpcModule rpcModule = new PersonalRpcModule(_ecdsa, _wallet, _keyStore);
+            HashSet<byte> recoveryBytes = [];
+
+            for (int i = 0; i < 32 && recoveryBytes.Count < 2; i++)
+            {
+                string message = $"0x{i:x2}";
+                string signed = await RpcTest.TestSerializedRequest(rpcModule, "personal_sign", message, address.ToString(), passphrase);
+                using JsonDocument signedDocument = JsonDocument.Parse(signed);
+                string signature = signedDocument.RootElement.GetProperty("result").GetString()!;
+                recoveryBytes.Add(Bytes.FromHexString(signature)[^1]);
+
+                string recovered = await RpcTest.TestSerializedRequest(rpcModule, "personal_ecRecover", message, signature);
+                using JsonDocument recoveredDocument = JsonDocument.Parse(recovered);
+                Assert.That(new Address(recoveredDocument.RootElement.GetProperty("result").GetString()!), Is.EqualTo(address));
+            }
+
+            Assert.That(recoveryBytes, Is.EquivalentTo(new byte[] { Signature.VOffset, Signature.VOffset + 1 }));
         }
     }
 }
