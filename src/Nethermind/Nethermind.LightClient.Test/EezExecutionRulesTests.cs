@@ -37,8 +37,10 @@ public class EezExecutionRulesTests
     public async Task Rollup_transport_uses_eez_spec_provider()
     {
         EezExecutionRules rules = EezExecutionRules.FromGenesis(Genesis, 10_200);
-        ExecutionNetwork network = ExecutionNetwork.Custom("rollupx", Genesis, Keccak.Compute("rollup genesis"), null, Bootnode)
-            with { ExecutionRules = rules };
+        ExecutionNetwork network = ExecutionNetwork.Custom("rollupx", Genesis, Keccak.Compute("rollup genesis"), null, Bootnode) with
+        {
+            ExecutionRules = rules
+        };
         await using ExecutionPeerTransport transport = new(network, LimboLogs.Instance,
             new VerifiedHead(0, 1, Keccak.Compute("rollup head"), Keccak.Zero), 0, TestDirectory());
 
