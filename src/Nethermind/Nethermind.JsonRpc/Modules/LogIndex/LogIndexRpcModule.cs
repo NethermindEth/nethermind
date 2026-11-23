@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Db.LogIndex;
@@ -12,7 +11,7 @@ using Nethermind.JsonRpc.Modules.Eth;
 
 namespace Nethermind.JsonRpc.Modules.LogIndex;
 
-public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builder, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge)
+public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builder, IBlockFinder blockFinder, IBlockchainBridge blockchainBridge, IJsonRpcConfig jsonRpcConfig)
     : ILogIndexRpcModule
 {
     public ResultWrapper<IEnumerable<long>> logIndex_blockNumbers(Filter filter)
@@ -36,8 +35,19 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         if (GetBlockNumber(logFilter.ToBlock) is not { } to)
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
-        // Enumerated here so storage failures become JSON-RPC errors instead of breaking response serialization
-        return ResultWrapper<IEnumerable<long>>.Success(storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to).ToArray());
+        // Enumerated here so storage failures become JSON-RPC errors instead of breaking response serialization,
+        // stopping one block past the limit so a long indexed range is not loaded in full
+        int maxResults = jsonRpcConfig.MaxLogsPerResponse;
+        List<long> blockNumbers = [];
+        foreach (long blockNumber in storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to))
+        {
+            if (maxResults > 0 && blockNumbers.Count == maxResults)
+                return ResultWrapper<IEnumerable<long>>.Fail($"Too many blocks requested. Max blocks per response is {maxResults}.", ErrorCodes.LimitExceeded);
+
+            blockNumbers.Add(blockNumber);
+        }
+
+        return ResultWrapper<IEnumerable<long>>.Success(blockNumbers.ToArray());
     }
 
     public ResultWrapper<LogIndexStatus> logIndex_status() => ResultWrapper<LogIndexStatus>.Success(new()
