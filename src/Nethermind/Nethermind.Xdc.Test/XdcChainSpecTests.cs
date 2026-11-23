@@ -100,6 +100,18 @@ public class XdcChainSpecTests
         }
     }
 
+    // The reference client's TestnetChainConfig.TIPProportionalRewardBlock; mainnet has not scheduled it.
+    [TestCase("xdc-testnet.json", 84_732_999UL, false)]
+    [TestCase("xdc-testnet.json", 84_733_000UL, true)]
+    [TestCase("xdc.json", 98_802_000UL, false)]
+    public void Proportional_reward_activates_at_the_reference_block(string chainSpecFile, ulong block, bool proportional)
+    {
+        ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, EngineParameters(chainSpec), LimboLogs.Instance);
+
+        Assert.That(specProvider.GetXdcSpec(block).IsTipProportionalRewardEnabled, Is.EqualTo(proportional));
+    }
+
     private static ChainSpec LoadChainSpec(string chainSpecFile) =>
         new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance).LoadEmbeddedOrFromFile(chainSpecFile);
 

@@ -83,7 +83,10 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsDynamicGasLimitBlock = (chainSpecEngineParameters.DynamicGasLimitBlock ?? ulong.MaxValue) <= releaseStartBlock;
         releaseSpec.MinimumGasPrice = chainSpecEngineParameters.ResolveMinGasPrice(releaseStartBlock);
         // Fall back to ulong.MaxValue so that a null TipUpgradeReward/Penalty means "never enabled".
-        releaseSpec.IsTipUpgradeRewardEnabled = (chainSpecEngineParameters.TipUpgradeReward ?? ulong.MaxValue) <= releaseStartBlock;
+        releaseSpec.IsTipProportionalRewardEnabled = (chainSpecEngineParameters.TipProportionalReward ?? ulong.MaxValue) <= releaseStartBlock;
+        // The reference client's IsTIPTieredReward: either reward fork switches to the per-role tiers.
+        releaseSpec.IsTipUpgradeRewardEnabled = (chainSpecEngineParameters.TipUpgradeReward ?? ulong.MaxValue) <= releaseStartBlock
+            || releaseSpec.IsTipProportionalRewardEnabled;
         releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? ulong.MaxValue) <= releaseStartBlock;
 
         releaseSpec.MergeSignRange = chainSpecEngineParameters.MergeSignRange;

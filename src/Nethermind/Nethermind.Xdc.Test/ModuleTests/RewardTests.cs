@@ -440,8 +440,12 @@ public class RewardTests
         }
     }
 
-    [Test]
-    public void TestHookRewardAfterUpgrade()
+    // The rewarded epoch 901..1799 holds 59 sign slots (915, 930, ..., 1785). A fixed payout gives every signer its
+    // full tier reward; a proportional one scales it by the slots signed, e.g. 500 * 2 / 59 = 16 for signer2.
+    [TestCase(false, 450, 450, 360, 360, 270, 210, 2100)]
+    [TestCase(true, 7, 14, 5, 11, 4, 2, 43)]
+    public void TestHookRewardAfterUpgrade(bool proportional, int signer1Reward, int signer2Reward, int protector1Reward,
+        int protector2Reward, int observer1Reward, int foundationReward, int expectedTotalMinted)
     {
         const ulong epochLength = 900;
         const ulong mergeSignRange = 15;
@@ -472,6 +476,7 @@ public class RewardTests
         xdcSpec.SwitchBlock.Returns(0UL);
         xdcSpec.MergeSignRange.Returns(mergeSignRange);
         xdcSpec.IsTipUpgradeRewardEnabled.Returns(true);
+        xdcSpec.IsTipProportionalRewardEnabled.Returns(proportional);
         xdcSpec.MaxProtectorNodes.Returns(2);
         xdcSpec.MaxObserverNodes.Returns(2);
         xdcSpec.MasternodeReward.Returns((UInt256)500);
@@ -577,12 +582,12 @@ public class RewardTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rewards, Has.Length.EqualTo(6));
-            Assert.That(rewards.Single(r => r.Address == signer1.Address).Value, Is.EqualTo((UInt256)450));
-            Assert.That(rewards.Single(r => r.Address == signer2.Address).Value, Is.EqualTo((UInt256)450));
-            Assert.That(rewards.Single(r => r.Address == protector1.Address).Value, Is.EqualTo((UInt256)360));
-            Assert.That(rewards.Single(r => r.Address == protector2.Address).Value, Is.EqualTo((UInt256)360));
-            Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)270));
-            Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)210));
+            Assert.That(rewards.Single(r => r.Address == signer1.Address).Value, Is.EqualTo((UInt256)signer1Reward));
+            Assert.That(rewards.Single(r => r.Address == signer2.Address).Value, Is.EqualTo((UInt256)signer2Reward));
+            Assert.That(rewards.Single(r => r.Address == protector1.Address).Value, Is.EqualTo((UInt256)protector1Reward));
+            Assert.That(rewards.Single(r => r.Address == protector2.Address).Value, Is.EqualTo((UInt256)protector2Reward));
+            Assert.That(rewards.Single(r => r.Address == observer1.Address).Value, Is.EqualTo((UInt256)observer1Reward));
+            Assert.That(rewards.Single(r => r.Address == foundationWalletAddr).Value, Is.EqualTo((UInt256)foundationReward));
             Assert.That(rewards.Any(r => r.Address == observer2.Address), Is.False);
         }
 
@@ -600,7 +605,7 @@ public class RewardTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(totalMinted, Is.EqualTo((UInt256)2100));
+            Assert.That(totalMinted, Is.EqualTo((UInt256)expectedTotalMinted));
             Assert.That(rewardBlock, Is.EqualTo((UInt256)checkpointNumber));
             Assert.That(onsetBlock, Is.EqualTo((UInt256)checkpointNumber));
             Assert.That(totalBurned, Is.EqualTo(UInt256.Zero));

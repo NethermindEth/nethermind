@@ -48,6 +48,7 @@ public class XdcReleaseSpec : ReleaseSpec, IXdcReleaseSpec
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
     public bool IsTipUpgradeRewardEnabled { get; set; }
+    public bool IsTipProportionalRewardEnabled { get; set; }
     public bool IsTipUpgradePenaltyEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
@@ -160,6 +161,10 @@ public interface IXdcReleaseSpec : IReleaseSpec
     public Address FoundationWallet { get; set; }
     public Address MasternodeVotingContract { get; set; }
     public bool IsTipUpgradeRewardEnabled { get; set; }
+
+    /// <summary>Whether each tiered signer is paid in proportion to the sign slots it signed rather than a fixed amount.</summary>
+    /// <remarks>XDPoSChain's <c>CalculateRewardForSignerProportional</c>, from <c>TIPProportionalRewardBlock</c>.</remarks>
+    public bool IsTipProportionalRewardEnabled { get; set; }
     public bool IsTipTrc21FeeEnabled { get; set; }
     public bool IsBlackListingEnabled { get; set; }
     public bool IsTIP2019 { get; set; }

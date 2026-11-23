@@ -78,8 +78,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     /// <summary>Block from which the reference client pays signers in proportion to the sign slots they signed.</summary>
     /// <remarks>
-    /// <c>TIPProportionalRewardBlock</c> of XDPoSChain. Only the fork identity uses it so far: the proportional payout
-    /// itself is not implemented, so rewards from this block on still follow <see cref="TipUpgradeReward"/>.
+    /// <c>TIPProportionalRewardBlock</c> of XDPoSChain. It also enables the per-role reward tiers on its own, as
+    /// <see cref="TipUpgradeReward"/> does.
     /// </remarks>
     public ulong? TipProportionalReward { get; set; }
     [JsonConverter(typeof(XdcToWeiConverter))]
@@ -148,6 +148,8 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
             blockNumbers.Add(TipUpgradePenalty.Value);
         if (TipUpgradeReward is not null)
             blockNumbers.Add(TipUpgradeReward.Value);
+        if (TipProportionalReward is not null)
+            blockNumbers.Add(TipProportionalReward.Value);
         // Without its own release spec boundary the flag would only flip on whichever transition encloses it.
         if (DynamicGasLimitBlock is not null)
             blockNumbers.Add(DynamicGasLimitBlock.Value);

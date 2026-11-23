@@ -23,6 +23,7 @@ namespace Nethermind.Xdc;
 /// - Rewards are paid only at epoch checkpoints.
 /// - Pre-upgrade: proportional split of spec.Reward across masternode signatures.
 /// - TIP-upgrade: fixed per-signer rewards for masternode/protector/observer.
+/// - TIP-proportional: the same tiers, each signer paid in proportion to the sign slots it signed.
 /// - Holder split remains 90% owner, 10% foundation for each signer reward.
 /// </summary>
 public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
@@ -76,7 +77,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         UInt256 totalMintedInEpoch = UInt256.Zero;
         List<BlockReward> rewards = [];
         XdcEpochRewards rpcRewards = new();
-        (Dictionary<Address, XdcRewardLog> masternodeSigners, Dictionary<Address, XdcRewardLog> protectorSigners, Dictionary<Address, XdcRewardLog> observerSigners, UInt256 burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
+        (Dictionary<Address, XdcRewardLog> masternodeSigners, Dictionary<Address, XdcRewardLog> protectorSigners, Dictionary<Address, XdcRewardLog> observerSigners, ulong signSlots, UInt256 burnedInOneEpoch) = GetSigningTxCount(xdcHeader, spec);
         CopySigners(masternodeSigners, rpcRewards.Signers);
 
         if (!spec.IsTipUpgradeRewardEnabled)
@@ -90,15 +91,19 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
             CopySigners(protectorSigners, rpcRewards.SignersProtector);
             CopySigners(observerSigners, rpcRewards.SignersObserver);
 
-            Dictionary<Address, UInt256> masternodeRewards = CalculateFixedRewardForSigners(
+            ulong? proportionalSignSlots = spec.IsTipProportionalRewardEnabled ? signSlots : null;
+            Dictionary<Address, UInt256> masternodeRewards = CalculateTieredRewardForSigners(
                 spec.MasternodeReward,
-                masternodeSigners);
-            Dictionary<Address, UInt256> protectorRewards = CalculateFixedRewardForSigners(
+                masternodeSigners,
+                proportionalSignSlots);
+            Dictionary<Address, UInt256> protectorRewards = CalculateTieredRewardForSigners(
                 spec.ProtectorReward,
-                protectorSigners);
-            Dictionary<Address, UInt256> observerRewards = CalculateFixedRewardForSigners(
+                protectorSigners,
+                proportionalSignSlots);
+            Dictionary<Address, UInt256> observerRewards = CalculateTieredRewardForSigners(
                 spec.ObserverReward,
-                observerSigners);
+                observerSigners,
+                proportionalSignSlots);
 
             AddDistributedRewards(foundationWalletAddr, masternodeRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.Rewards);
             AddDistributedRewards(foundationWalletAddr, protectorRewards, rewards, ref totalFoundationWalletReward, ref totalMintedInEpoch, rpcRewards.RewardsProtector);
@@ -124,6 +129,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         Dictionary<Address, XdcRewardLog> MasternodeSigners,
         Dictionary<Address, XdcRewardLog> ProtectorSigners,
         Dictionary<Address, XdcRewardLog> ObserverSigners,
+        ulong SignSlots,
         UInt256 BurnedInOneEpoch) GetSigningTxCount(XdcBlockHeader epochHeader, IXdcReleaseSpec spec)
     {
         Dictionary<Address, XdcRewardLog> masternodeSigners = [];
@@ -131,7 +137,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         Dictionary<Address, XdcRewardLog> observerSigners = [];
         UInt256 burnedInOneEpoch = UInt256.Zero;
         ulong number = epochHeader.Number;
-        if (number == 0) return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
+        if (number == 0) return (masternodeSigners, protectorSigners, observerSigners, 0, burnedInOneEpoch);
 
         ulong signEpochCount = 1, rewardEpochCount = 2, epochCount = 0, endBlockNumber = 0, startBlockNumber = 0;
 
@@ -206,8 +212,10 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         // Only blocks at heights that are multiples of MergeSignRange are considered.
         // Calculate start >= startBlockNumber so that start % MergeSignRange == 0
         ulong start = (startBlockNumber + mergeSignRange - 1) / mergeSignRange * mergeSignRange;
+        ulong signSlots = 0;
         for (ulong i = start; i < endBlockNumber; i += mergeSignRange)
         {
+            signSlots++;
             if (!blockNumberToHash.TryGetValue(i, out Hash256 blockHash)) continue;
             if (!hashToSigningAddress.TryGetValue(blockHash, out HashSet<Address> addresses)) continue;
             foreach (Address addr in addresses)
@@ -220,7 +228,7 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
                     IncrementSignerCount(observerSigners, addr);
             }
         }
-        return (masternodeSigners, protectorSigners, observerSigners, burnedInOneEpoch);
+        return (masternodeSigners, protectorSigners, observerSigners, signSlots, burnedInOneEpoch);
     }
 
     protected internal virtual HashSet<Address> GetRewardMasternodes(XdcBlockHeader checkpointHeader, IXdcReleaseSpec spec)
@@ -297,15 +305,26 @@ public class XdcRewardCalculator(IEpochSwitchManager epochSwitchManager,
         return rewardSigners;
     }
 
-    private Dictionary<Address, UInt256> CalculateFixedRewardForSigners(
+    /// <param name="proportionalSignSlots">
+    /// The sign slots in the rewarded epoch when each signer is paid <c>rewardPerSigner * min(sign, signSlots) / signSlots</c>,
+    /// or <see langword="null"/> when every signer gets the full <paramref name="rewardPerSigner"/>.
+    /// </param>
+    private static Dictionary<Address, UInt256> CalculateTieredRewardForSigners(
         UInt256 rewardPerSigner,
-        Dictionary<Address, XdcRewardLog> signers)
+        Dictionary<Address, XdcRewardLog> signers,
+        ulong? proportionalSignSlots)
     {
         Dictionary<Address, UInt256> rewardSigners = [];
         foreach ((Address signer, XdcRewardLog rewardLog) in signers)
         {
-            rewardLog.Reward = rewardPerSigner.ToString();
-            rewardSigners[signer] = rewardPerSigner;
+            UInt256 reward = proportionalSignSlots switch
+            {
+                null => rewardPerSigner,
+                0 => UInt256.Zero,
+                ulong signSlots => rewardPerSigner * Math.Min(rewardLog.Sign, signSlots) / signSlots,
+            };
+            rewardLog.Reward = reward.ToString();
+            rewardSigners[signer] = reward;
         }
 
         return rewardSigners;
