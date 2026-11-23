@@ -438,6 +438,52 @@ public class BlockchainTestJsonOutputTests
         }
     }
 
+    // One pre-allocation group whose tests each start from genesis on a shared client: the sibling test reorgs below
+    // the head of the test before it, and the repeated rejection, answered from the invalid-block cache, is checked
+    // against the error of the first one.
+    [Test]
+    public async Task Engine_x_group_reorgs_between_tests_and_checks_a_repeated_rejection_with_the_first_error()
+    {
+        TestBlockHeaderJson genesis = EngineGenesisHeader();
+        TestBlockHeaderJson first = EngineChildHeader(genesis, "0x01", "0x0c");
+        TestBlockHeaderJson second = EngineChildHeader(first, "0x02", "0x18");
+        TestBlockHeaderJson sibling = EngineChildHeader(genesis, "0x01", "0x0d");
+        // Number 2 on genesis skips a block number, which header validation rejects.
+        TestBlockHeaderJson skipped = EngineChildHeader(genesis, "0x02", "0x0c");
+        const string unmetDiff = """{ "0x0000000000000000000000000000000000000001": { "balance": "0x01", "code": "0x", "nonce": "0x00", "storage": {} } }""";
+
+        string fixture = WriteEngineXGroup(genesis,
+            ("two_blocks", [first, second], [], second.Hash, "{}"),
+            ("sibling", [sibling], [], sibling.Hash, "{}"),
+            ("rejected", [skipped], [skipped.Hash], genesis.Hash, "{}"),
+            ("rejected_again", [skipped], [skipped.Hash], genesis.Hash, "{}"),
+            ("unmet_diff", [first], [], first.Hash, unmetDiff));
+        (string stdout, string stderr) = await RunNethtest(fixture, "--engineXTest", "--match-exceptions");
+
+        using JsonDocument document = JsonDocument.Parse(stdout);
+        Dictionary<string, JsonElement> results = document.RootElement.EnumerateArray().ToDictionary(static result => result.GetProperty("name").GetString()!);
+        Assert.That(results.Keys, Is.EquivalentTo(new[] { "two_blocks", "sibling", "rejected", "rejected_again", "unmet_diff" }), $"stderr was: {Trim(stderr)}");
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string name in new[] { "two_blocks", "sibling", "rejected", "rejected_again" })
+                Assert.That(results[name].GetProperty("pass").GetBoolean(), Is.True, $"{name}: {results[name]}");
+            Assert.That(results["unmet_diff"].GetProperty("pass").GetBoolean(), Is.False, "the post-state diff is checked");
+            Assert.That(results["rejected_again"].GetProperty("rejections")[0].GetProperty("error").GetString(), Does.StartWith("InvalidBlockNumber: "));
+        }
+    }
+
+    [Test]
+    public async Task Engine_x_refuses_a_traced_run()
+    {
+        (_, string stderr, int exitCode) = await NethtestProcess.RunWithExitCode(["--engineXTest", "--input", _directory, "--trace"]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(exitCode, Is.EqualTo(1));
+            Assert.That(stderr, Does.Contain("--trace is not supported with --engineXTest"));
+        }
+    }
+
     /// <summary>Parses a results array holding exactly one result.</summary>
     private static JsonElement SingleResult(string stdout)
     {
@@ -591,9 +637,7 @@ public class BlockchainTestJsonOutputTests
     /// <summary>Writes a Paris engine fixture whose head stays at genesis, sending the given payload entries.</summary>
     private string WriteEngineFixture(string name, string[] payloads)
     {
-        TestBlockHeaderJson genesis = GenesisHeader(baseFeePerGas: "0x07");
-        genesis.Difficulty = "0x00";
-        genesis.Hash = HashOf(genesis);
+        TestBlockHeaderJson genesis = EngineGenesisHeader();
 
         string file = Path.Combine(_directory, $"{name}.json");
         File.WriteAllText(file, $$"""
@@ -613,26 +657,77 @@ public class BlockchainTestJsonOutputTests
         return file;
     }
 
-    /// <summary>An <c>ExecutionPayloadV1</c> on the engine fixture's genesis that skips a block number.</summary>
-    private static (string Payload, string BlockHash) SkippedNumberPayload()
+    /// <summary>
+    /// Writes a Paris <c>blockchain_tests_engine_x</c> fixture whose tests share the pre-allocation group of
+    /// <paramref name="genesis"/>; each test sends its blocks, and those in <c>Rejected</c> are expected to be invalid.
+    /// </summary>
+    private string WriteEngineXGroup(TestBlockHeaderJson genesis,
+        params (string Name, TestBlockHeaderJson[] Blocks, string[] Rejected, string LastBlockHash, string PostStateDiff)[] tests)
+    {
+        const string preHash = "0x01";
+        Directory.CreateDirectory(Path.Combine(_directory, EngineXFixtures.PreAllocDirectory));
+        File.WriteAllText(Path.Combine(_directory, EngineXFixtures.PreAllocDirectory, preHash + ".json"),
+            $$"""{ "genesis": {{_serializer.Serialize(genesis)}}, "pre": {} }""");
+
+        IEnumerable<string> properties = tests.Select(static test =>
+        {
+            IEnumerable<string> payloads = test.Blocks.Select(block => test.Rejected.Contains(block.Hash)
+                ? $$"""{ "params": [{{PayloadOf(block)}}], "newPayloadVersion": "1", "forkchoiceUpdatedVersion": "1", "validationError": "BlockException.INVALID_BLOCK_NUMBER" }"""
+                : $$"""{ "params": [{{PayloadOf(block)}}], "newPayloadVersion": "1", "forkchoiceUpdatedVersion": "1" }""");
+            return $$"""
+                "{{test.Name}}": {
+                  "network": "Paris",
+                  "preHash": "{{preHash}}",
+                  "engineNewPayloads": [{{string.Join(",", payloads)}}],
+                  "lastblockhash": "{{test.LastBlockHash}}",
+                  "postStateDiff": {{test.PostStateDiff}}
+                }
+                """;
+        });
+
+        Directory.CreateDirectory(Path.Combine(_directory, "for_paris"));
+        string file = Path.Combine(_directory, "for_paris", "group.json");
+        File.WriteAllText(file, "{" + string.Join(",", properties) + "}");
+        return file;
+    }
+
+    /// <summary>The genesis of the engine fixtures: post-merge Paris with a base fee.</summary>
+    private static TestBlockHeaderJson EngineGenesisHeader()
     {
         TestBlockHeaderJson genesis = GenesisHeader(baseFeePerGas: "0x07");
         genesis.Difficulty = "0x00";
         genesis.Hash = HashOf(genesis);
-        // Number 2 on genesis skips a block number, which header validation rejects.
-        TestBlockHeaderJson child = ChildHeader(genesis, "0x02");
-        string blockHash = HashOf(child);
-
-        return ($$"""
-            {
-              "parentHash": "{{child.ParentHash}}", "feeRecipient": "{{child.Coinbase}}", "stateRoot": "{{child.StateRoot}}",
-              "receiptsRoot": "{{child.ReceiptTrie}}", "logsBloom": "{{child.Bloom}}", "prevRandao": "{{child.MixHash}}",
-              "blockNumber": "{{child.Number}}", "gasLimit": "{{child.GasLimit}}", "gasUsed": "{{child.GasUsed}}",
-              "timestamp": "{{child.Timestamp}}", "extraData": "{{child.ExtraData}}", "baseFeePerGas": "{{child.BaseFeePerGas}}",
-              "blockHash": "{{blockHash}}", "transactions": []
-            }
-            """, blockHash);
+        return genesis;
     }
+
+    /// <summary>A Paris child of <paramref name="parent"/> with its hash set, so it can be a parent itself.</summary>
+    private static TestBlockHeaderJson EngineChildHeader(TestBlockHeaderJson parent, string number, string timestamp)
+    {
+        TestBlockHeaderJson child = ChildHeader(parent, number);
+        child.Timestamp = timestamp;
+        child.Hash = HashOf(child);
+        return child;
+    }
+
+    /// <summary>An <c>ExecutionPayloadV1</c> on the engine fixture's genesis that skips a block number.</summary>
+    private static (string Payload, string BlockHash) SkippedNumberPayload()
+    {
+        // Number 2 on genesis skips a block number, which header validation rejects.
+        TestBlockHeaderJson child = EngineChildHeader(EngineGenesisHeader(), "0x02", "0x0c");
+        return (PayloadOf(child), child.Hash);
+    }
+
+    /// <summary>The <c>ExecutionPayloadV1</c> of an empty block with <paramref name="header"/>, whose hash is set.</summary>
+    private static string PayloadOf(TestBlockHeaderJson header) =>
+        $$"""
+        {
+          "parentHash": "{{header.ParentHash}}", "feeRecipient": "{{header.Coinbase}}", "stateRoot": "{{header.StateRoot}}",
+          "receiptsRoot": "{{header.ReceiptTrie}}", "logsBloom": "{{header.Bloom}}", "prevRandao": "{{header.MixHash}}",
+          "blockNumber": "{{header.Number}}", "gasLimit": "{{header.GasLimit}}", "gasUsed": "{{header.GasUsed}}",
+          "timestamp": "{{header.Timestamp}}", "extraData": "{{header.ExtraData}}", "baseFeePerGas": "{{header.BaseFeePerGas}}",
+          "blockHash": "{{header.Hash}}", "transactions": []
+        }
+        """;
 
     private static string MismatchingPostState()
     {

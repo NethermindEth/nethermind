@@ -64,23 +64,60 @@ public class EngineXFixturesTests
         }
     }
 
+    [Test]
+    public void Index_fails_a_file_whose_pre_hash_is_not_a_string()
+    {
+        WritePreAlloc("0x01");
+        string file = WriteTests("a.json", TestJson("a1", "\"0x01\""), TestJson("a2", "1"));
+
+        (List<EngineXGroup> groups, List<FailedToLoadTest> failures) = EngineXFixtures.Index([file]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(groups, Is.Empty);
+            Assert.That(failures.Select(static failure => failure.Name), Is.EqualTo(new[] { file }));
+        }
+    }
+
+    [Test]
+    public void LoadTests_fails_only_the_test_that_does_not_convert()
+    {
+        WritePreAlloc("0x01");
+        string file = WriteTests("a.json", TestJson("a1", "\"0x01\""), TestJson("a2", "\"0x01\"", engineNewPayloads: "\"0x\""), TestJson("a3", "\"0x01\""));
+
+        (List<EngineXGroup> groups, _) = EngineXFixtures.Index([file]);
+        EthereumTest[] tests = [.. groups[0].Tests.SelectMany(EngineXFixtures.LoadTests)];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tests.Select(static test => test.GetType()),
+                Is.EqualTo(new[] { typeof(BlockchainTest), typeof(FailedToLoadTest), typeof(BlockchainTest) }));
+            Assert.That(tests[1].Name, Does.StartWith(file));
+            Assert.That(tests[1].LoadFailure, Is.Not.Null);
+        }
+    }
+
     private void WritePreAlloc(string preHash) =>
         File.WriteAllText(Path.Combine(_root, EngineXFixtures.PreAllocDirectory, preHash + ".json"), "{}");
 
-    private string WriteFixture(string fileName, params (string Name, string PreHash)[] tests)
+    private string WriteFixture(string fileName, params (string Name, string PreHash)[] tests) =>
+        WriteTests(fileName, [.. tests.Select(static test => TestJson(test.Name, $"\"{test.PreHash}\""))]);
+
+    private string WriteTests(string fileName, params string[] tests)
     {
         string path = Path.Combine(_root, "for_paris", "module", fileName);
-        IEnumerable<string> properties = tests.Select(static test =>
-            $$"""
-              "{{test.Name}}": {
-                "network": "Paris",
-                "preHash": "{{test.PreHash}}",
-                "engineNewPayloads": [],
-                "lastblockhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
-                "postStateDiff": { "0x0000000000000000000000000000000000000001": null }
-              }
-            """);
-        File.WriteAllText(path, "{" + string.Join(",", properties) + "}");
+        File.WriteAllText(path, "{" + string.Join(",", tests) + "}");
         return path;
     }
+
+    private static string TestJson(string name, string preHash, string engineNewPayloads = "[]") =>
+        $$"""
+          "{{name}}": {
+            "network": "Paris",
+            "preHash": {{preHash}},
+            "engineNewPayloads": {{engineNewPayloads}},
+            "lastblockhash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+            "postStateDiff": { "0x0000000000000000000000000000000000000001": null }
+          }
+        """;
 }

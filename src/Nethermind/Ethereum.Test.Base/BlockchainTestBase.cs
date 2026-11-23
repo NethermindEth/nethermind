@@ -350,13 +350,12 @@ public abstract class BlockchainTestBase
             await KzgPolynomialCommitments.InitializeAsync();
         }
 
-        Dictionary<Hash256, string> firstRejections = [];
         List<EthereumTestResult> results = [];
         using IEnumerator<BlockchainTest> pending = tests.GetEnumerator();
         bool testsLeft = pending.MoveNext();
         while (testsLeft)
         {
-            testsLeft = await RunEngineXTestsOnClient(group, pending, firstRejections, results);
+            testsLeft = await RunEngineXTestsOnClient(group, pending, results);
         }
 
         return results;
@@ -367,9 +366,9 @@ public abstract class BlockchainTestBase
     /// until it has taken <see cref="EngineXPayloadsPerClient"/> payloads or no test is left.
     /// </summary>
     /// <returns>Whether tests are left for another client.</returns>
-    private async Task<bool> RunEngineXTestsOnClient(BlockchainTest group, IEnumerator<BlockchainTest> pending,
-        Dictionary<Hash256, string> firstRejections, List<EthereumTestResult> results)
+    private async Task<bool> RunEngineXTestsOnClient(BlockchainTest group, IEnumerator<BlockchainTest> pending, List<EthereumTestResult> results)
     {
+        Dictionary<Hash256, string> firstRejections = [];
         ISpecProvider specProvider = CreateSpecProvider(group);
         await using IContainer container = CreateContainerBuilder(group, specProvider, isEngineTest: true, tracer: null, [], out _, EngineXReorgDepth).Build();
         IMainProcessingContext mainBlockProcessingContext = container.Resolve<IMainProcessingContext>();
@@ -711,7 +710,12 @@ public abstract class BlockchainTestBase
 
         if (!int.TryParse(newPayloads[0].ForkChoiceUpdatedVersion ?? EngineApiVersions.Fcu.Latest.ToString(), out int initialFcuVersion))
             throw new FormatException($"Invalid ForkChoiceUpdatedVersion: '{newPayloads[0].ForkChoiceUpdatedVersion}'");
-        AssertRpcSuccess(await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString(), finalizeHeads));
+        JsonRpcResponse initialFcuResponse = await SendFcu(rpcService, rpcContext, initialFcuVersion, initialHeadHash.ToString(), finalizeHeads);
+        // Without finalized heads the tests of a client reorg to the initial head, and only VALID shows the reorg took place.
+        if (finalizeHeads)
+            AssertRpcSuccess(initialFcuResponse);
+        else
+            AssertFcuValid(initialFcuResponse, initialFcuVersion, initialHeadHash);
 
         string lastStatus = "";
         string? lastValidationError = null;
@@ -1131,6 +1135,12 @@ public abstract class BlockchainTestBase
     {
         await processingQueue.WaitUntilRemovedAsync(blockHash).AsTask().WaitAsync(EngineProcessingTimeout);
         JsonRpcResponse response = await SendFcu(rpcService, context, fcuVersion, blockHash.ToString(), finalize);
+        AssertFcuValid(response, fcuVersion, blockHash);
+        return response;
+    }
+
+    private static void AssertFcuValid(JsonRpcResponse response, int fcuVersion, Hash256 blockHash)
+    {
         AssertRpcSuccess(response);
         string? status = response switch
         {
@@ -1142,7 +1152,6 @@ public abstract class BlockchainTestBase
             _ => null
         };
         Assert.That(status, Is.EqualTo(PayloadStatus.Valid), $"engine_forkchoiceUpdatedV{fcuVersion} to {blockHash} answered {response.GetType().Name}");
-        return response;
     }
 
     private static void AssertRpcSuccess(JsonRpcResponse response)

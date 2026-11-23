@@ -84,18 +84,11 @@ public abstract class PyspecEngineXBlockchainTestFixture<TSelf>() : PyspecLinuxX
     public async Task Test(EngineXGroup group)
     {
         List<string> failures = [];
-        List<BlockchainTest> tests = [];
-        foreach (EthereumTest test in group.Tests.SelectMany(EngineXFixtures.LoadTests))
+        // Tests are parsed as the group runs them, so a large group never holds all of its payloads at once.
+        using IEnumerator<BlockchainTest> tests = LoadGroupTests(group, failures).GetEnumerator();
+        if (tests.MoveNext())
         {
-            if (test is BlockchainTest blockchainTest)
-                tests.Add(blockchainTest);
-            else
-                failures.Add($"{test.Name}: {test.LoadFailure}");
-        }
-
-        if (tests.Count > 0)
-        {
-            foreach (EthereumTestResult result in await RunEngineXGroup(EngineXFixtures.CreateGroupTest(group, tests[0]), tests))
+            foreach (EthereumTestResult result in await RunEngineXGroup(EngineXFixtures.CreateGroupTest(group, tests.Current), Remaining(tests)))
             {
                 if (!result.Pass)
                     failures.Add($"{result.Name}: {result.LoadFailure ?? result.Error}");
@@ -103,6 +96,24 @@ public abstract class PyspecEngineXBlockchainTestFixture<TSelf>() : PyspecLinuxX
         }
 
         Assert.That(failures, Is.Empty);
+    }
+
+    private static IEnumerable<BlockchainTest> LoadGroupTests(EngineXGroup group, List<string> failures)
+    {
+        foreach (EthereumTest test in group.Tests.SelectMany(EngineXFixtures.LoadTests))
+        {
+            if (test is BlockchainTest blockchainTest)
+                yield return blockchainTest;
+            else
+                failures.Add($"{test.Name}: {test.LoadFailure}");
+        }
+    }
+
+    private static IEnumerable<BlockchainTest> Remaining(IEnumerator<BlockchainTest> tests)
+    {
+        do
+            yield return tests.Current;
+        while (tests.MoveNext());
     }
 
     public static IEnumerable<TestCaseData> LoadTests() =>

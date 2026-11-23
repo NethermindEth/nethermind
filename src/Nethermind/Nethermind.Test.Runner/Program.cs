@@ -213,6 +213,12 @@ internal class Program
             return 1;
         }
 
+        if (isEngineXTest && trace)
+        {
+            Console.Error.WriteLine("--trace is not supported with --engineXTest");
+            return 1;
+        }
+
         WhenTrace whenTrace = WhenTrace.WhenFailing;
         if (parseResult.GetValue(Options.TraceNever)) whenTrace = WhenTrace.Never;
         if (trace) whenTrace = WhenTrace.Always;
@@ -434,19 +440,22 @@ internal class Program
         Func<bool, string?> updateProgress = CreateProgressUpdate();
         (List<EngineXGroup> groups, List<FailedToLoadTest> failures) = EngineXFixtures.Index(files);
         foreach (FailedToLoadTest failure in failures)
-        {
-            if (!baseOptions.Trace)
-                Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {updateProgress(true)} {failure.Name} - {failure.LoadFailure}");
-        }
+            Console.Error.WriteLine($"\x1b[31mEXCEPTION\x1b[0m {updateProgress(true)} {failure.Name} - {failure.LoadFailure}");
 
         BlockchainTestsRunnerOptions runnerOptions = baseOptions with { ProgressUpdateFactory = updateProgress };
         List<EthereumTestResult>[] resultsByGroup = new List<EthereumTestResult>[groups.Count];
+        int groupsWithUnloadedTests = 0;
         await Parallel.ForEachAsync(
             Enumerable.Range(0, groups.Count),
-            new ParallelOptions { MaxDegreeOfParallelism = baseOptions.Trace ? 1 : workers },
-            async (index, _) => resultsByGroup[index] = await new BlockchainTestsRunner(runnerOptions).RunEngineXGroupAsync(groups[index]));
+            new ParallelOptions { MaxDegreeOfParallelism = workers },
+            async (index, _) =>
+            {
+                BlockchainTestsRunner runner = new(runnerOptions);
+                resultsByGroup[index] = await runner.RunEngineXGroupAsync(groups[index]);
+                if (runner.LoadFailed) Interlocked.Increment(ref groupsWithUnloadedTests);
+            });
 
-        return ([.. resultsByGroup.SelectMany(static results => results)], failures.Count == 0);
+        return ([.. resultsByGroup.SelectMany(static results => results)], failures.Count == 0 && groupsWithUnloadedTests == 0);
     }
 
     /// <summary>Runs every file's block or engine tests.</summary>

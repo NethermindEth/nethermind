@@ -65,7 +65,10 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
     {
     }
 
-    /// <summary>Whether <see cref="RunTestsAsync"/> met a fixture file it could not load, which it reports on stderr and leaves out of the results.</summary>
+    /// <summary>
+    /// Whether <see cref="RunTestsAsync"/> met a fixture file it could not load, which it reports on stderr and leaves out
+    /// of the results, or <see cref="RunEngineXGroupAsync"/> met a test it could not load.
+    /// </summary>
     internal bool LoadFailed { get; private set; }
 
     public async Task<IEnumerable<EthereumTestResult>> RunTestsAsync()
@@ -147,7 +150,10 @@ public class BlockchainTestsRunner(in BlockchainTestsRunnerOptions options, ITes
             foreach (EthereumTest loadedTest in EngineXFixtures.LoadTests(testRef))
             {
                 if (loadedTest is FailedToLoadTest)
+                {
+                    LoadFailed = true;
                     loadFailures.Add(new EthereumTestResult(loadedTest.Name, loadedTest.LoadFailure) { Rejections = [] });
+                }
                 else if (loadedTest is BlockchainTest test && (_filterRegex is null || test.Name is null || _filterRegex.IsMatch(test.Name)))
                 {
                     test.ChainId = _chainId;

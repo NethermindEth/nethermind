@@ -77,18 +77,26 @@ public static class EngineXFixtures
     }
 
     /// <summary>Parses the tests in the byte range <paramref name="testRef"/> names, applying the fixture exclusions.</summary>
+    /// <returns>The tests, or a single <see cref="FailedToLoadTest"/> when the range cannot be read or converted.</returns>
     public static IEnumerable<EthereumTest> LoadTests(EngineXTestRef testRef)
     {
-        byte[] json = new byte[testRef.Length + 2];
-        using (FileStream stream = File.OpenRead(testRef.File))
+        try
         {
-            stream.Seek(testRef.Offset, SeekOrigin.Begin);
-            stream.ReadExactly(json.AsSpan(1, testRef.Length));
-        }
+            byte[] json = new byte[testRef.Length + 2];
+            using (FileStream stream = File.OpenRead(testRef.File))
+            {
+                stream.Seek(testRef.Offset, SeekOrigin.Begin);
+                stream.ReadExactly(json.AsSpan(1, testRef.Length));
+            }
 
-        json[0] = (byte)'{';
-        json[^1] = (byte)'}';
-        return new FileTestsSource(testRef.File).LoadTests(json, TestType.Blockchain);
+            json[0] = (byte)'{';
+            json[^1] = (byte)'}';
+            return [.. new FileTestsSource(testRef.File).LoadTests(json, TestType.Blockchain)];
+        }
+        catch (Exception e)
+        {
+            return [new FailedToLoadTest { Name = $"{testRef.File}@{testRef.Offset}", LoadFailure = $"Failed to load: {e}" }];
+        }
     }
 
     /// <summary>
@@ -149,7 +157,9 @@ public static class EngineXFixtures
                 bool isPreHash = reader.ValueTextEquals("preHash"u8);
                 reader.Read();
                 if (isPreHash)
-                    preHash = reader.GetString();
+                    preHash = reader.TokenType == JsonTokenType.String
+                        ? reader.GetString()
+                        : throw new InvalidDataException($"Test {testName} in {file} has a preHash that is not a string.");
                 else
                     reader.Skip();
             }
