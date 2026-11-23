@@ -364,24 +364,32 @@ public abstract class ContractDataStoreTests
         context.ReceiptFinder.Get(firstHead).Returns(_ =>
         {
             firstRefreshStarted.Set();
-            releaseFirstRefresh.Wait(TimeSpan.FromSeconds(10));
+            if (!releaseFirstRefresh.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("First refresh was not released.");
             return [];
         });
         context.DataContract.GetAllItemsFromBlock(firstHead.Header).Returns([TestItem.AddressA]);
         Address[] expected = [TestItem.AddressB];
         context.DataContract.GetAllItemsFromBlock(head.Header).Returns(expected);
 
-        onNewHead(context.BlockTree, new BlockEventArgs(firstHead));
-        Assert.That(firstRefreshStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
-        WeakReference[] supersededHeads = RaiseNewHeads(onNewHead, context.BlockTree, 3);
-        currentHead = head;
-        onNewHead(context.BlockTree, new BlockEventArgs(head));
+        bool supersededHeadRetained;
+        try
+        {
+            onNewHead(context.BlockTree, new BlockEventArgs(firstHead));
+            Assert.That(firstRefreshStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+            WeakReference[] supersededHeads = RaiseNewHeads(onNewHead, context.BlockTree, 3);
+            currentHead = head;
+            onNewHead(context.BlockTree, new BlockEventArgs(head));
 
-        GC.Collect();
-        GC.WaitForPendingFinalizers();
-        GC.Collect();
-        bool supersededHeadRetained = supersededHeads.Any(static h => h.IsAlive);
-        releaseFirstRefresh.Set();
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+            supersededHeadRetained = supersededHeads.Any(static h => h.IsAlive);
+        }
+        finally
+        {
+            releaseFirstRefresh.Set();
+        }
+
         await context.Store.LatestRefreshTask;
 
         context.DataContract.Received(1).GetAllItemsFromBlock(head.Header);
@@ -389,6 +397,7 @@ public abstract class ContractDataStoreTests
         {
             Assert.That(supersededHeadRetained, Is.False);
             Assert.That(context.Store.Collection.GetSnapshot(), Is.EquivalentTo(expected));
+            Assert.That(context.Logger.LogList, Has.None.StartsWith("Couldn't load contract data"));
         }
     }
 
