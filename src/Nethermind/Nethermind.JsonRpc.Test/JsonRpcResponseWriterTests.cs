@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -30,6 +31,27 @@ public class JsonRpcResponseWriterTests
             Assert.That(indented, Does.Contain("\n"));
             Assert.That(indentedAgain, Is.EqualTo(indented));
         }
+    }
+
+    private static IEnumerable<JsonRpcId> Ids()
+    {
+        yield return JsonRpcId.Missing;
+        yield return JsonRpcId.Null;
+        yield return new JsonRpcId(long.MinValue);
+        yield return new JsonRpcId(decimal.MaxValue);
+        yield return JsonRpcId.FromValidatedRawNumberToken("5.7e1"u8);
+        yield return JsonRpcId.FromValidatedRawDecimalToken("1e27"u8, 1e27m);
+        yield return JsonRpcId.FromValidatedRawStringToken("\"λ\\u0061\""u8);
+    }
+
+    [Test]
+    public void Compact_success_envelope_length_accounts_for_the_exact_id_bytes([ValueSource(nameof(Ids))] JsonRpcId id)
+    {
+        using JsonRpcSuccessResponse response = new() { Id = id };
+        ArrayBufferWriter<byte> buffer = new();
+        JsonRpcResponseWriter.Write(buffer, response, EthereumJsonSerializer.JsonOptions);
+
+        Assert.That(JsonRpcResponseWriter.GetCompactSuccessEnvelopeLength(id), Is.EqualTo(buffer.WrittenCount - "null"u8.Length));
     }
 
     [Test]

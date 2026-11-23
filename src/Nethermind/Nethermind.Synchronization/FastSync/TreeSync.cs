@@ -425,6 +425,10 @@ namespace Nethermind.Synchronization.FastSync
                 if (_logger.IsDebug) _logger.Debug($"Clearing node stacks ({_pendingItems.Description})");
                 _pendingItems.Clear();
                 Interlocked.Exchange(ref _rootSaved, 0);
+
+                // A store keyed by path (flat) replaces a node found saved in an earlier round once a later root saves
+                // another node at its path, so a node found saved before has to be looked up again at the new root.
+                _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
             }
             else
             {

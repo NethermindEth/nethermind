@@ -1421,7 +1421,6 @@ namespace Nethermind.Evm.TransactionProcessing
                             ref gasAvailable,
                             spec,
                             in accessTracker,
-                            isTracingAccess: false,
                             delegationAddress);
 
                         if (topFrameOutOfGas)
@@ -1991,7 +1990,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
-            if (ShouldRefundGas(tx, opts, in gasPrice))
+            if (ShouldRefundGas(tx, opts, in gasPrice) && (spec.IsEip8037Enabled || substate.ShouldRevert || substate.IsError || !substate.DestroyListContains(tx.SenderAddress)))
                 PayRefund(tx, (tx.GasLimit - spentGasAfterFloor) * gasPrice, spec);
 
             return new GasConsumed(spentGasAfterFloor, operationGas, blockGas, (ulong)blockStateGas, Math.Max(spentGas, floorGasLong), refund > 0 ? (ulong)refund : 0);
