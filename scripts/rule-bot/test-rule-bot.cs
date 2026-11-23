@@ -499,6 +499,15 @@ var tests = new (string Name, Func<Task> Body)[]
         True(calls.Any(call => call[0] == "git" && call[1] == "diff" && call[2].EndsWith("/analyzer.patch", StringComparison.Ordinal)));
         True(!calls.Any(call => call.Contains("CLUSTER=c")));
     }),
+    ("test_route_b_tries_next_cluster_when_a_gate_fails", async () =>
+    {
+        foreach (var gate in new[] { "guard", "test", "red" })
+        {
+            var (state, calls) = await RouteBRun(new() { ["a"] = RouteBResult, ["b"] = RouteBResult }, gate);
+            Equal("b", state["cluster"]);
+            Equal(2, calls.Count(call => call.Any(item => item.StartsWith("CLUSTER=", StringComparison.Ordinal))));
+        }
+    }),
     ("test_route_b_runs_generated_code_without_the_token", async () =>
     {
         var (_, calls) = await RouteBRun(new() { ["a"] = RouteBResult });
@@ -508,7 +517,7 @@ var tests = new (string Name, Func<Task> Body)[]
     }),
     ("test_route_b_skips_analyzer_outside_the_analyzer_project", async () =>
     {
-        var (state, calls) = await RouteBRun(new() { ["a"] = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Core/Foo.cs", "skip": "outside"}""" });
+        var (state, calls) = await RouteBRun(new() { ["a"] = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Core/OutsideAnalyzer.cs", "skip": "outside"}""" });
         Equal("a: skipped by the generator: outside", S(state["skip"]));
         True(!calls.Any(call => call.Contains("guard")));
     }),
@@ -587,7 +596,7 @@ static class RuleBotTestSupport
 
     internal const string RouteBResult = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Analyzers/Foo.cs", "summary": "ok"}""";
 
-    internal static async Task<(Obj State, List<string[]> Calls)> RouteBRun(Dictionary<string, string> results)
+    internal static async Task<(Obj State, List<string[]> Calls)> RouteBRun(Dictionary<string, string> results, string? failingGate = null)
     {
         using var directory = new TempDirectory();
         using var seams = new Seams();
@@ -595,6 +604,9 @@ static class RuleBotTestSupport
         var analyzers = Path.Combine(directory.Path, "src", "Nethermind", "Nethermind.Analyzers");
         Directory.CreateDirectory(analyzers);
         File.WriteAllText(Path.Combine(analyzers, "Foo.cs"), "");
+        var outsideAnalyzers = Path.Combine(directory.Path, "src", "Nethermind", "Nethermind.Core");
+        Directory.CreateDirectory(outsideAnalyzers);
+        File.WriteAllText(Path.Combine(outsideAnalyzers, "OutsideAnalyzer.cs"), "");
         var data = Path.Combine(directory.Path, "data");
         var queue = L(results.Keys.Select(cluster => (object?)D(("cluster", cluster), ("why", "because"))));
         Save(Path.Combine(data, "plan.json"), D(("route_b_id", "NETH012"), ("route_b_queue", queue)));
@@ -606,7 +618,9 @@ static class RuleBotTestSupport
             if (argv.FirstOrDefault(item => item.StartsWith("CLUSTER=", StringComparison.Ordinal)) is { } cluster)
                 File.WriteAllText(Path.Combine(data, "analyzer-result.json"), results[cluster["CLUSTER=".Length..]]);
             else if (argv[0] == "bash") File.WriteAllText(argv[4], argv.Contains("red") ? "red: PASS\n" : "Passed! total: 1\n");
-            return Task.FromResult((0, "", ""));
+            bool RunsGate(string[] call) => failingGate is not null && call[0] != failingGate && call.Contains(failingGate);
+            var gateFails = RunsGate(argv) && calls.Count(RunsGate) == 1;
+            return Task.FromResult((gateFails ? 1 : 0, "", ""));
         };
         Environment.CurrentDirectory = directory.Path;
         try
