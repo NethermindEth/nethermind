@@ -37,33 +37,30 @@ namespace Nethermind.Consensus.Processing
         ValueTask Enqueue(Block block, ProcessingOptions processingOptions);
 
         /// <summary>
+        /// Puts the block in the processing queue, as <see cref="Enqueue"/> does, and completes with the verdict on this
+        /// copy of it.
+        /// </summary>
+        /// <remarks>
+        /// A copy that is executed and validated is answered at once, before its commit; <see cref="BlockVerdict.Removed"/>
+        /// then tells whether the commit followed. Every other outcome is the copy's removal. Another copy of the same
+        /// block, queued by sync or by an earlier call, never answers this one. The block is not processed inline on the
+        /// caller's thread.
+        /// </remarks>
+        Task<BlockVerdict> EnqueueAndWaitForVerdictAsync(Block block, ProcessingOptions processingOptions);
+
+        /// <summary>
         /// Fired when all blocks from the processing queue has been taken.
         /// This is used for example by the block producers to notify them that we are fully synchronised.
         /// </summary>
         event EventHandler ProcessingQueueEmpty;
 
         event EventHandler<BlockEventArgs> BlockAdded;
-        /// <summary>
-        /// Raised when a queued block has been executed and validated, before it is committed and before
-        /// <see cref="BlockRemoved"/>. The result is <see cref="ProcessingResult.Success"/> or
-        /// <see cref="ProcessingResult.InclusionListUnsatisfied"/>; every other outcome arrives through
-        /// <see cref="BlockRemoved"/> alone.
-        /// </summary>
-        /// <remarks>
-        /// Defaulted so an implementation outside this repository keeps compiling. One that does not raise it leaves
-        /// its callers waiting for <see cref="BlockRemoved"/>, which is where the answer came from before.
-        /// </remarks>
-        event EventHandler<BlockVerdictEventArgs> BlockExecuted
-        {
-            add { }
-            remove { }
-        }
 
         event EventHandler<BlockRemovedEventArgs> BlockRemoved;
 
         /// <summary>
         /// Completes once no copy of the block is queued or being processed - at once if none is - so a caller
-        /// that learnt the verdict from <see cref="BlockExecuted"/> can wait for the block to become readable
+        /// that learnt the verdict from <see cref="EnqueueAndWaitForVerdictAsync"/> can wait for the block to become readable
         /// through the chain. It completes only after the last copy's <see cref="BlockRemoved"/> has been raised,
         /// so a caller that resumes can register for the block afresh without an event of the old copy reaching it.
         /// With <paramref name="executedOnly"/> it also completes at once for a block that has not had its verdict

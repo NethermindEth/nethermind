@@ -16,6 +16,10 @@ public class BlockExecutedEventArgs(Block block) : EventArgs
     /// <summary>The block as it was suggested, which is what the processing queue answers for.</summary>
     public Block Block { get; } = block;
 
-    /// <summary>Whether a subscriber handed the verdict to a request waiting for it; see <see cref="BlockVerdictEventArgs.Answered"/>.</summary>
+    /// <summary>
+    /// Set by a subscriber that handed the verdict to a caller waiting for it, as the processing queue does for a copy
+    /// queued through <see cref="IBlockProcessingQueue.EnqueueAndWaitForVerdictAsync"/>. From then on a failure belongs
+    /// to the commit, not to the block; without an answer, nothing has told anyone the block is valid.
+    /// </summary>
     public bool Answered { get; set; }
 }

@@ -2342,13 +2342,13 @@ public partial class EngineModuleTests
 
         public ValueTask Enqueue(Block block, ProcessingOptions processingOptions) => inner.Enqueue(block, processingOptions);
 
+        public Task<BlockVerdict> EnqueueAndWaitForVerdictAsync(Block block, ProcessingOptions processingOptions) => inner.EnqueueAndWaitForVerdictAsync(block, processingOptions);
+
         public int Count => inner.Count;
 
         public event EventHandler ProcessingQueueEmpty { add => inner.ProcessingQueueEmpty += value; remove => inner.ProcessingQueueEmpty -= value; }
 
         public event EventHandler<BlockEventArgs> BlockAdded { add => inner.BlockAdded += value; remove => inner.BlockAdded -= value; }
-
-        public event EventHandler<BlockVerdictEventArgs> BlockExecuted { add => inner.BlockExecuted += value; remove => inner.BlockExecuted -= value; }
 
         public event EventHandler<BlockRemovedEventArgs> BlockRemoved { add => inner.BlockRemoved += value; remove => inner.BlockRemoved -= value; }
 
@@ -2496,9 +2496,9 @@ public partial class EngineModuleTests
     private static TaskCompletionSource HoldCommit(MergeTestBlockchain chain, Hash256 blockHash)
     {
         TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
+        chain.BranchProcessor.BlockExecuted += (_, e) =>
         {
-            if (e.BlockHash == blockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
+            if (e.Block.Hash == blockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
         };
         return commit;
     }

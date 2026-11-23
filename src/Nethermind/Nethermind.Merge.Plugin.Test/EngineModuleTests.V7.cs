@@ -1607,13 +1607,16 @@ public partial class EngineModuleTests
     {
         const int budgetMs = 3_000;
         CommitWaitProbe probe = new();
+        ReceivedLineLogger received = new();
         // The handler's budget runs on this clock, so only the first request times out, and only when the test says so.
         ManualTimeProvider clock = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
             new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = budgetMs },
             configurer: builder => builder
                 .AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler)))
-                .UpdateSingleton<NewPayloadHandler>(inner => inner.AddSingleton<TimeProvider>(clock)));
+                .UpdateSingleton<NewPayloadHandler>(inner => inner
+                    .AddSingleton<TimeProvider>(clock)
+                    .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(received)))));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
         byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer())];
@@ -1637,9 +1640,9 @@ public partial class EngineModuleTests
             if (copy == 1) firstCopyQueued.TrySetResult();
             else if (copy == 2) secondCopyQueued.TrySetResult();
         };
-        chain.BlockProcessingQueue.BlockExecuted += (_, e) =>
+        chain.BranchProcessor.BlockExecuted += (_, e) =>
         {
-            if (e.BlockHash != payload.BlockHash) return;
+            if (e.Block.Hash != payload.BlockHash) return;
             if (Interlocked.Increment(ref executed) == 1 && resendSameList) resendAnswered.Task.Wait(TimeSpan.FromSeconds(10));
         };
 
@@ -1659,7 +1662,9 @@ public partial class EngineModuleTests
 
             probe.Watch(payload.BlockHash);
             resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, resendSameList ? inclusionList : []);
-            await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
+            // A same-list resend takes the queued copy's verdict without a queue call; its Received line is written as
+            // it starts to wait for that verdict.
+            await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task, received.Received(2)).WaitAsync(TimeSpan.FromSeconds(10));
         }
         finally
         {
@@ -1674,6 +1679,7 @@ public partial class EngineModuleTests
         {
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(result.Data.InclusionListSatisfied, Is.EqualTo(satisfied));
+            Assert.That(copiesQueued, Is.EqualTo(1), "the resend is answered by the copy already queued, or once it is gone");
         }
     }
 
