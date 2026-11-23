@@ -29,6 +29,52 @@ public sealed partial class CodeInfo
             : (FirstTouchMemoryFlag.IsActive || AirbenderFlag.IsActive) && ExecutableCodeMemory.IsPlaced(code) ? code
             : CreatePaddedCode(code.Span).AsMemory(0, code.Length);
 
+    /// <summary>The buffers that the creation frames at each call depth run their init code from.</summary>
+    private static InitCodeBuffers[]? s_initCodeBuffers;
+
+    /// <summary>A bitmap to clear and take as <see cref="IncrementalJumpBitmap"/> instead of allocating one, or <see langword="null"/>.</summary>
+    private readonly long[]? _jumpBitmapBuffer;
+
+    /// <summary>Wraps the first <paramref name="codeLength"/> bytes of <paramref name="executionBuffer"/>, followed by the execution padding, as code to run in place.</summary>
+    private CodeInfo(byte[] executionBuffer, int codeLength, long[] jumpBitmapBuffer)
+    {
+        _code = executionBuffer.AsMemory(0, codeLength);
+        _jumpBitmapBuffer = jumpBitmapBuffer;
+        _analyzer = new JumpDestinationAnalyzer(this);
+    }
+
+    /// <remarks>
+    /// The guest never frees memory, and a block can run thousands of creations of large init code for little gas: a copy
+    /// of each and of its jump bitmap took the whole heap in the benchmark blocks of tests-zkevm-benchmark v21.0.7. Each
+    /// call depth runs one frame at a time, and nothing reads the code of a creation frame once it returns, so a creation
+    /// takes over the buffers of the last one at its depth. They grow to a power of two, so init codes that keep growing
+    /// allocate at most twice the largest one.
+    /// </remarks>
+    internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth)
+    {
+        int length = initCode.Length;
+        if (length == 0) return new CodeInfo(initCode);
+
+        ref InitCodeBuffers buffers = ref (s_initCodeBuffers ??= new InitCodeBuffers[VirtualMachineStatics.MaxCallDepth + 1])[callDepth];
+        byte[]? code = buffers.Code;
+        if (code is null || code.Length - ExecutionPadding < length)
+        {
+            int capacity = length > 1 << 30 ? length : (int)BitOperations.RoundUpToPowerOf2((uint)length);
+            buffers.Code = code = CreateExecutionBuffer(capacity);
+            buffers.JumpBitmap = JumpDestinationAnalyzer.CreateBitmap(capacity);
+        }
+
+        initCode.Span.CopyTo(code);
+        code.AsSpan(length, ExecutionPadding).Clear();
+        return new CodeInfo(code, length, buffers.JumpBitmap!);
+    }
+
+    private struct InitCodeBuffers
+    {
+        public byte[]? Code;
+        public long[]? JumpBitmap;
+    }
+
     public partial ReadOnlyMemory<byte> Code => _code;
 
     public partial ReadOnlySpan<byte> CodeSpan => _code.Span;
@@ -112,7 +158,17 @@ public sealed partial class CodeInfo
 
     private long[] CreateJumpBitmap()
     {
-        long[] bitmap = JumpDestinationAnalyzer.CreateBitmap(CodeLength);
+        long[]? bitmap = _jumpBitmapBuffer;
+        if (bitmap is null)
+        {
+            bitmap = JumpDestinationAnalyzer.CreateBitmap(CodeLength);
+        }
+        else
+        {
+            // The buffer still holds the destinations of the init code that ran before at its call depth.
+            Array.Clear(bitmap, 0, JumpDestinationAnalyzer.GetInt64ArrayLengthFromBitLength(CodeLength));
+        }
+
         // STOP-first code halts before any jump, so it is not worth analyzing.
         if (ZiskFlag.IsActive && CodeLength != 0 && _code.Span[0] != (byte)Instruction.STOP) AnalyzeWithPrecompile(bitmap);
         return bitmap;

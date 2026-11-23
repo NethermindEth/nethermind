@@ -48,6 +48,11 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
 
     partial void InitializeCode(ReadOnlyMemory<byte> code);
 
+    /// <summary>Creates the code info that a creation frame at <paramref name="callDepth"/> runs <paramref name="initCode"/> with.</summary>
+    /// <param name="initCode">The init code, owned by the caller.</param>
+    /// <param name="callDepth">The call depth of the creation frame.</param>
+    internal static partial CodeInfo ForInitCode(ReadOnlyMemory<byte> initCode, int callDepth);
+
     /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
     /// <remarks>
     /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the

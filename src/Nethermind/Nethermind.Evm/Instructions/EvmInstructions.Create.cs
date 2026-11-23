@@ -290,7 +290,7 @@ public static partial class EvmInstructions
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
             vm.EnvironmentCache,
-            codeInfo: new CodeInfo(initCode),
+            codeInfo: CodeInfo.ForInitCode(initCode, env.CallDepth + 1),
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,
