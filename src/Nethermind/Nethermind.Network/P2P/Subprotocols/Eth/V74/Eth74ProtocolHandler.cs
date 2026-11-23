@@ -29,10 +29,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V74;
 
-/// <summary>
-/// EIP-8498 <c>eth/74</c>: <c>eth/73</c> plus <c>GetDependencyProofs</c> (0x19) and <c>DependencyProofs</c> (0x1a), the
-/// exchange of the EIP-8288 dependency proofs that neither block headers nor bodies carry.
-/// </summary>
+/// <summary>EIP-8498 <c>eth/74</c>: <c>eth/73</c> plus the exchange of the EIP-8288 dependency proofs that neither headers nor bodies carry.</summary>
 public class Eth74ProtocolHandler(
     ISession session,
     IMessageSerializationService serializer,
@@ -49,7 +46,7 @@ public class Eth74ProtocolHandler(
     ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
     ProofWrapperTransport wrapperTransport,
     IBlockFinder blockFinder,
-    IStarkProofStore proofStore,
+    IDependencyProofStore proofStore,
     ITxGossipPolicy? transactionsGossipPolicy = null)
     : Eth73ProtocolHandler(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo,
         logManager, txPoolConfig, specProvider, blobCustodyTracker, sparseBlobPoolPeerRegistry, wrapperTransport, transactionsGossipPolicy),
@@ -65,7 +62,6 @@ public class Eth74ProtocolHandler(
 
     public override string Name => "eth74";
 
-    /// <summary>Gets the eth/74 protocol version.</summary>
     public new static byte Version => EthVersions.Eth74;
     public override byte ProtocolVersion => Version;
     public override int MessageIdSpaceSize => Eth74Protocol.MessageIdSpaceSize;
@@ -85,9 +81,8 @@ public class Eth74ProtocolHandler(
         }
     }
 
-    /// <remarks>EIP-8498 asks for rate limiting against amplification: each request may take hundreds of kilobytes to answer.
-    /// Requests are paced per peer, and one arriving with too long a backlog is answered with no proofs, which its sender
-    /// treats as unavailable and asks another peer for.</remarks>
+    /// <remarks>EIP-8498 asks for rate limiting against amplification. A request arriving with too long a backlog is answered
+    /// with no proofs, which its sender treats as unavailable and asks another peer for.</remarks>
     private async Task<DependencyProofsMessage> Handle(GetDependencyProofsMessage request, CancellationToken cancellationToken)
     {
         using GetDependencyProofsMessage req = request;

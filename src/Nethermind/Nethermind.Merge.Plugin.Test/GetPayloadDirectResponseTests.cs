@@ -287,8 +287,8 @@ public class GetPayloadDirectResponseTests
         block.StarkProof = new byte[PayloadBodiesDirectResponseWriter.HexChunkThreshold + 1];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
-        StarkProofStore proofStore = new(new TestMemDb());
-        IBlockStore blockStore = new StarkProofSplittingBlockStore(new BlockStore(new TestMemDb()), proofStore);
+        DependencyProofStore proofStore = new(new TestMemDb());
+        IBlockStore blockStore = new DependencyProofSplittingBlockStore(new BlockStore(new TestMemDb()), proofStore);
         blockStore.Insert(block);
         if (!proofStored) proofStore.Delete(block.Number, block.Hash!);
         IBlockTree blockTree = Substitute.For<IBlockTree>();

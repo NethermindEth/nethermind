@@ -33,7 +33,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     [Test]
     public void Validates_a_block_with_the_proof_the_store_holds()
     {
-        (Block block, StarkProofStore store) = Committed(10);
+        (Block block, DependencyProofStore store) = Committed(10);
         store.Insert(block.Number, block.Hash!, Proof);
         RecordingValidator inner = new();
 
@@ -61,7 +61,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     [TestCase("canonical-ancestor", BlockErrorMessages.InvalidRecursiveStark, false)]
     public void Trusts_finality_only_for_a_missing_proof_of_a_finalized_ancestor(string relation, string innerError, bool expected)
     {
-        (Block block, StarkProofStore store) = Committed(10);
+        (Block block, DependencyProofStore store) = Committed(10);
         RecordingValidator inner = new() { Error = innerError };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         BlockHeader? finalized = relation switch
@@ -103,7 +103,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(Proof),
             new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         block.Header.Hash = block.Header.CalculateHash();
-        StarkProofStore store = new(new TestMemDb());
+        DependencyProofStore store = new(new TestMemDb());
         store.Insert(block.Number, block.Hash!, Proof);
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8288Enabled.Returns(true);
@@ -116,7 +116,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
         builder.RegisterInstance(new RecordingValidator()).As<IBlockValidator>();
         builder.RegisterInstance(specProvider).As<ISpecProvider>();
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
-        builder.RegisterInstance(store).As<IStarkProofStore>();
+        builder.RegisterInstance(store).As<IDependencyProofStore>();
         builder.RegisterInstance(Substitute.For<IBlockTree>()).As<IBlockTree>();
         builder.RegisterInstance(verifier).As<ILeanProofVerifier>();
         using IContainer container = builder.Build();
@@ -146,15 +146,15 @@ public class DependencyProofAvailabilityBlockValidatorTests
         return tx;
     }
 
-    private static DependencyProofAvailabilityBlockValidator Create(IBlockValidator inner, IStarkProofStore store) =>
+    private static DependencyProofAvailabilityBlockValidator Create(IBlockValidator inner, IDependencyProofStore store) =>
         new(inner, store, Substitute.For<IBlockTree>());
 
-    private static (Block Block, StarkProofStore Store) Committed(ulong number)
+    private static (Block Block, DependencyProofStore Store) Committed(ulong number)
     {
         Block block = Build.A.Block.WithNumber(number).TestObject;
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(Proof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
-        return (block, new StarkProofStore(new TestMemDb()));
+        return (block, new DependencyProofStore(new TestMemDb()));
     }
 
     private sealed class ProofRecordingVerifier(bool result) : ILeanProofVerifier

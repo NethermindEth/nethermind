@@ -272,7 +272,7 @@ public class OptimismModuleTests
         builder.RegisterInstance(LimboLogs.Instance).As<ILogManager>();
         builder.RegisterInstance(Always.Valid).As<IHeaderValidator>();
         builder.RegisterInstance(Substitute.For<IBlockTree>()).As<IBlockTree>().As<IBlockFinder>();
-        builder.RegisterInstance(Substitute.For<IStarkProofStore>()).As<IStarkProofStore>();
+        builder.RegisterInstance(Substitute.For<IDependencyProofStore>()).As<IDependencyProofStore>();
         builder.RegisterInstance(Substitute.For<IPoSSwitcher>()).As<IPoSSwitcher>();
         builder.RegisterInstance(Substitute.For<ILeanProofVerifier>()).As<ILeanProofVerifier>();
         using IContainer container = builder.Build();

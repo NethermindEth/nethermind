@@ -104,12 +104,9 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     /// </summary>
     public sealed override ulong? ExcessBlobGas { get; set => field = Bind(value, PayloadFields.ExcessBlobGas); }
 
-    /// <summary>
-    /// The EIP-8288 <c>dependencyProof</c>, which only the execution payload carries.
-    /// </summary>
-    /// <remarks>The header's <c>dependency_proof_hash</c> is its Keccak-256 and its <c>block_deps_hash</c> is derived from
-    /// the payload transactions, both before the block hash is checked. A payload without it builds a header without
-    /// either field.</remarks>
+    /// <summary>The EIP-8288 <c>dependencyProof</c>, which only the execution payload carries.</summary>
+    /// <remarks>Its Keccak-256 becomes the header's <c>dependency_proof_hash</c> before the block hash is checked; a payload
+    /// without it builds a header without the EIP-8288 fields.</remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[]? DependencyProof { get; set; }
 }

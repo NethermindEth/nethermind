@@ -52,7 +52,7 @@ public class Eth74ProtocolHandlerTests
     private Eth74ProtocolHandler _handler = null!;
     private SparseBlobPoolPeerRegistry _registry = null!;
     private IBlockFinder _blockFinder = null!;
-    private StarkProofStore _proofStore = null!;
+    private DependencyProofStore _proofStore = null!;
 
     [SetUp]
     public void Setup()
@@ -78,7 +78,7 @@ public class Eth74ProtocolHandlerTests
         BlobCustodyTracker custody = new();
         _registry = new SparseBlobPoolPeerRegistry(_node.Pool, custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         _blockFinder = Substitute.For<IBlockFinder>();
-        _proofStore = new StarkProofStore(new TestMemDb());
+        _proofStore = new DependencyProofStore(new TestMemDb());
         _handler = new Eth74ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
             syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
             LimboLogs.Instance, Substitute.For<ITxPoolConfig>(), specProvider, custody, _registry, _node.Transport, _blockFinder, _proofStore);

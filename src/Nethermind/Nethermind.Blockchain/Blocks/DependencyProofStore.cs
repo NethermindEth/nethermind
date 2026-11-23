@@ -11,16 +11,16 @@ using Nethermind.Db;
 namespace Nethermind.Blockchain.Blocks;
 
 /// <inheritdoc/>
-public class StarkProofStore : IStarkProofStore
+public class DependencyProofStore : IDependencyProofStore
 {
     private const int KeyLength = 40;
 
     private readonly IDb _proofDb;
-    // Like a block body, a lost proof cannot be regenerated, so the barrier must make it durable before state. Null when off.
+    // Like a block body, a lost proof cannot be regenerated, so the barrier must make it durable before state.
     private readonly DeferredWriteOverlay<byte[]>? _pending;
 
-    public StarkProofStore(
-        [KeyFilter(DbNames.StarkProofs)] IDb proofDb,
+    public DependencyProofStore(
+        [KeyFilter(DbNames.DependencyProofs)] IDb proofDb,
         IDeferredBlockDataWriter? deferredWriter = null,
         IStatePersistenceBarrier? persistenceBarrier = null)
     {

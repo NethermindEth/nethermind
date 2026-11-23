@@ -11,7 +11,7 @@ namespace Nethermind.Blockchain.Blocks;
 /// A proof is kept for as long as its block body: full validation needs it and it cannot be re-derived.
 /// A missing proof for a block whose header commits to one means the data is not available, not that the block is invalid.
 /// </remarks>
-public interface IStarkProofStore
+public interface IDependencyProofStore
 {
     void Insert(ulong blockNumber, Hash256 blockHash, byte[] proof);
 
@@ -26,12 +26,12 @@ public interface IStarkProofStore
     void DeleteRange(ulong fromInclusive, ulong toExclusive);
 }
 
-public static class StarkProofStoreExtensions
+public static class DependencyProofStoreExtensions
 {
     /// <summary>Returns <paramref name="block"/> carrying the stored proof its header commits to.</summary>
     /// <returns>A copy carrying the stored proof, leaving the block store's cached instance without it; otherwise
     /// <paramref name="block"/> itself, which lacks a committed proof only when it is not available.</returns>
-    public static Block WithProof(this IStarkProofStore proofStore, Block block)
+    public static Block WithProof(this IDependencyProofStore proofStore, Block block)
     {
         if (block.StarkProof is not null || block.Header.RecursiveStark is null || block.Hash is null
             || proofStore.Get(block.Number, block.Hash) is not { } proof)

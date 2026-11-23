@@ -97,7 +97,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 
             // Eth and its dependencies
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
-            .AddDecorator<IBlockForRpcFactory, StarkProofBlockForRpcFactory>()
+            .AddDecorator<IBlockForRpcFactory, DependencyProofBlockForRpcFactory>()
             .AddSingleton<HashesOnlyBlockReader>()
             .AddSingleton<IBatchConcurrencyStrategy, EthCallBatchConcurrency>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)

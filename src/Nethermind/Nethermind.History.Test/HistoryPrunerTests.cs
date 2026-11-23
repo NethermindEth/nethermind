@@ -446,7 +446,7 @@ public class HistoryPrunerTests
         using BasicTestBlockchain testBlockchain = await CreateBlockchainWithBlocks(historyConfig, blocks, syncPivot: syncPivot, blockHashes: blockHashes);
 
         HistoryPruner historyPruner = (HistoryPruner)testBlockchain.Container.Resolve<IHistoryPruner>();
-        IStarkProofStore proofStore = testBlockchain.Container.Resolve<IStarkProofStore>();
+        IDependencyProofStore proofStore = testBlockchain.Container.Resolve<IDependencyProofStore>();
         for (int i = 1; i <= blocks; i++) proofStore.Insert((ulong)i, blockHashes[i], [(byte)i]);
 
         if (primeWithOldestRead)
