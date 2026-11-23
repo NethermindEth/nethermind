@@ -8,8 +8,12 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL;
+using Nethermind.Optimism.CL.Decoding;
 using Nethermind.Optimism.CL.Derivation;
+using Nethermind.Optimism.Rpc;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test.CL;
@@ -62,6 +66,28 @@ public class L1BlockInfoBuilderTests
             pectraBlobScheduleTimestamp: MainnetSpecProvider.PragueBlockTimestamp + 100);
 
         Assert.That(l1BlockInfo.BlobBaseFee, Is.EqualTo(UInt256.Parse(expectedBlobBaseFee)));
+    }
+
+    [TestCase(null, "10203738961070")]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp + 100, "32594247408339235274")]
+    public void Derived_payload_attributes_use_the_pectra_blob_schedule_of_the_chain_spec(ulong? pectraBlobScheduleTimestamp, string expectedBlobBaseFee)
+    {
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
+        CLChainSpecEngineParameters engineParameters = new() { OptimismPortalProxy = TestItem.AddressA, PectraBlobScheduleTimestamp = pectraBlobScheduleTimestamp };
+        PayloadAttributesDeriver deriver = Driver.CreatePayloadAttributesDeriver(Substitute.For<ISystemConfigDeriver>(), engineParameters, 1, MainnetSpecProvider.Instance);
+        L1Block l1Origin = CreateL1Block(MainnetSpecProvider.PragueBlockTimestamp + 99, 150_000_000);
+        PayloadAttributesRef parent = new()
+        {
+            Number = 1,
+            SystemConfig = new SystemConfig(),
+            L1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, new SystemConfig(), 0, MainnetSpecProvider.Instance),
+            PayloadAttributes = new OptimismPayloadAttributes(),
+        };
+        SingularBatch batch = new() { IsFirstBlockInEpoch = false, EpochNumber = 1, Timestamp = MainnetSpecProvider.PragueBlockTimestamp + 101, Transactions = [] };
+
+        PayloadAttributesRef? derived = deriver.TryDerivePayloadAttributes(batch, parent, l1Origin, []);
+
+        Assert.That(derived!.L1BlockInfo.BlobBaseFee, Is.EqualTo(UInt256.Parse(expectedBlobBaseFee)));
     }
 
     [Test]

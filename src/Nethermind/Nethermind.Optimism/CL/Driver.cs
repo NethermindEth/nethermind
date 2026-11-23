@@ -53,17 +53,20 @@ public class Driver : IDisposable
         _executionEngineManager = executionEngineManager;
 
         _derivationPipeline = new DerivationPipeline(
-            new PayloadAttributesDeriver(
-                _systemConfigDeriver,
-                new DepositTransactionBuilder(chainId, engineParameters),
-                l1SpecProvider,
-                engineParameters.PectraBlobScheduleTimestamp),
+            CreatePayloadAttributesDeriver(_systemConfigDeriver, engineParameters, chainId, l1SpecProvider),
             l1Bridge,
             l2GenesisTimestamp,
             _l2BlockTime,
             chainId,
             logManager);
     }
+
+    internal static PayloadAttributesDeriver CreatePayloadAttributesDeriver(
+        ISystemConfigDeriver systemConfigDeriver,
+        CLChainSpecEngineParameters engineParameters,
+        ulong chainId,
+        ISpecProvider l1SpecProvider) =>
+        new(systemConfigDeriver, new DepositTransactionBuilder(chainId, engineParameters), l1SpecProvider, engineParameters.PectraBlobScheduleTimestamp);
 
     private ulong _currentDerivedBlock;
     private ulong _currentFinalizedL1Block;
