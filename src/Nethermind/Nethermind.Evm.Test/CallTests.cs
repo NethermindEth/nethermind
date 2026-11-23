@@ -112,7 +112,8 @@ namespace Nethermind.Evm.Test
         public void Value_less_precompile_call_deletes_only_an_existing_empty_account(
             [Values(Instruction.CALL, Instruction.STATICCALL)] Instruction instruction,
             [Values(false, true)] bool exists,
-            [Values(false, true)] bool empty)
+            [Values(false, true)] bool empty,
+            [Values(false, true)] bool traceActions)
         {
             Address precompile = IdentityPrecompile.Address;
             if (exists)
@@ -121,21 +122,39 @@ namespace Nethermind.Evm.Test
                 if (!empty) TestState.IncrementNonce(precompile, 1);
             }
 
-            byte[] code = instruction == Instruction.CALL
-                ? Prepare.EvmCode.Call(precompile, 50_000).Done
-                : Prepare.EvmCode.StaticCall(precompile, 50_000).Done;
-            (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code, value: 0);
-
-            TransactionResult result = _processor.Execute(
-                transaction,
-                new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)),
-                NullTxTracer.Instance);
+            // An action tracer keeps STATICCALL off the inline precompile path, so the call reaches RunPrecompile.
+            TransactionResult result = ExecuteValueLessPrecompileCall(
+                instruction, precompile, Activation, new TracingFlagsTracer(traceActions, false, false, false));
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result.TransactionExecuted, Is.True);
                 Assert.That(TestState.AccountExists(precompile), Is.EqualTo(exists && !empty));
             }
+        }
+
+        [Test]
+        public void Value_less_precompile_call_keeps_the_created_account_before_eip158()
+        {
+            Address precompile = IdentityPrecompile.Address;
+
+            TransactionResult result = ExecuteValueLessPrecompileCall(
+                Instruction.CALL, precompile, (MainnetSpecProvider.TangerineWhistleBlockNumber, 0UL), NullTxTracer.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TransactionExecuted, Is.True);
+                Assert.That(TestState.AccountExists(precompile), Is.True);
+            }
+        }
+
+        private TransactionResult ExecuteValueLessPrecompileCall(Instruction instruction, Address precompile, ForkActivation activation, ITxTracer tracer)
+        {
+            byte[] code = instruction == Instruction.CALL
+                ? Prepare.EvmCode.Call(precompile, 50_000).Done
+                : Prepare.EvmCode.StaticCall(precompile, 50_000).Done;
+            (Block block, Transaction transaction) = PrepareTx(activation, 100_000, code, value: 0);
+            return _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
         }
 
         [Test]
