@@ -277,8 +277,7 @@ public partial class EngineModuleTests
         source.ReceivedWithAnyArgs(scenario == "valid" ? 1 : 0).Set(default!, default!, default);
     }
 
-    // The engine recheck and the block validator leave out the same frame entries: a blob-carrying one is skipped by both,
-    // so its omission leaves the recheck decided rather than waiting on a prefix simulation the validator never asks for.
+    // Both the engine recheck and the block validator skip a blob-carrying frame entry, so its omission never waits on a prefix simulation.
     [Test]
     public async Task Inclusion_list_recheck_skips_omitted_blob_carrying_frame_entries_as_the_validator_does()
     {
