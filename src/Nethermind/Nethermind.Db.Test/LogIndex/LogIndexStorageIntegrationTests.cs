@@ -952,23 +952,41 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Test]
-        public async Task Reopen_resets_index_with_legacy_version()
+        public async Task Reopen_keeps_index_with_legacy_version()
         {
-            Hash256[] oldTopics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
-            Hash256[] newTopics = [TestItem.KeccakE, TestItem.KeccakF, TestItem.KeccakG, TestItem.KeccakH];
-            IDbFactory dbFactory = CreateRecordingDbFactory();
+            Hash256[] topics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            IDbFactory dbFactory = await CreateIndexWithVersionAsync(TestItem.AddressA, topics, [1]);
 
             await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
             {
-                await AddBlocksAsync(storage, TestItem.AddressA, oldTopics, forward: 10, backward: 9);
-                AssertBlocks(storage, TestItem.AddressA, oldTopics, [9, 10]);
-
-                IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
-                meta.Set("ver"u8, [1]);
-                meta.Set("sentinel"u8, [1]);
+                AssertKept(storage, [9, 10]);
+                await AddBlocksAsync(storage, TestItem.AddressA, topics, forward: 11, backward: 8);
             }
 
             await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory))
+                AssertKept(storage, [8, 9, 10, 11]);
+
+            void AssertKept(ILogIndexStorage storage, int[] blocks)
+            {
+                IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((storage.MinBlockNumber, storage.MaxBlockNumber), Is.EqualTo(((int?)blocks[0], (int?)blocks[^1])));
+                    Assert.That(meta.Get("ver"u8), Is.EqualTo(new byte[] { 1 }), "kept without restamping");
+                    Assert.That(meta.Get("sentinel"u8), Is.EqualTo(new byte[] { 1 }));
+                    AssertBlocks(storage, TestItem.AddressA, topics, blocks);
+                }
+            }
+        }
+
+        [Test]
+        public async Task Reopen_resets_index_with_legacy_version_with_reset_config()
+        {
+            Hash256[] oldTopics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            Hash256[] newTopics = [TestItem.KeccakE, TestItem.KeccakF, TestItem.KeccakG, TestItem.KeccakH];
+            IDbFactory dbFactory = await CreateIndexWithVersionAsync(TestItem.AddressA, oldTopics, [1]);
+
+            await using (ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory, reset: true))
             {
                 IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
                 using (Assert.EnterMultipleScope())
@@ -1009,6 +1027,22 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Test]
+        public async Task Reopen_resets_index_with_other_version(
+            [Values(new byte[] { }, new byte[] { 3 }, new byte[] { 1, 0 }, new byte[] { 2, 0 })] byte[] version)
+        {
+            Hash256[] topics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            IDbFactory dbFactory = await CreateIndexWithVersionAsync(TestItem.AddressA, topics, version);
+
+            await using ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((storage.MinBlockNumber, storage.MaxBlockNumber), Is.EqualTo(((int?)null, (int?)null)));
+                Assert.That(_root.GetColumnDb(LogIndexColumns.Meta).Get("ver"u8), Is.EqualTo(new byte[] { 2 }));
+                AssertBlocks(storage, TestItem.AddressA, topics, []);
+            }
+        }
+
+        [Test]
         public async Task Reopen_resets_index_without_version_or_with_reset_config([Values] bool resetConfig)
         {
             Hash256[] topics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
@@ -1037,11 +1071,11 @@ namespace Nethermind.Db.Test.LogIndex
         }
 
         [Test]
-        public void Reset_fails_when_data_survives_clear([Values] LogIndexColumns column, [Values] bool legacyVersion)
+        public void Reset_fails_when_data_survives_clear([Values] LogIndexColumns column, [Values] bool unknownVersion)
         {
-            // The old root holds either a legacy version or data without any version
+            // The old root holds either an unknown version or data without any version
             ReleaseCountingDb legacyMeta = new();
-            legacyMeta.Set(legacyVersion ? "ver"u8 : "leftover"u8, [1]);
+            legacyMeta.Set(unknownVersion ? "ver"u8 : "leftover"u8, [3]);
             IColumnsDb<LogIndexColumns> legacy = Substitute.For<IColumnsDb<LogIndexColumns>>();
             legacy.ColumnKeys.Returns(Enum.GetValues<LogIndexColumns>());
             legacy.GetColumnDb(Arg.Any<LogIndexColumns>()).Returns(legacyMeta);
@@ -1083,6 +1117,25 @@ namespace Nethermind.Db.Test.LogIndex
             dbFactory.CreateColumnsDb<LogIndexColumns>(Arg.Any<DbSettings>())
                 .Returns(c => _root = _dbFactory.CreateColumnsDb<LogIndexColumns>(c.Arg<DbSettings>()));
             dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(c => _dbFactory.GetFullDbPath(c.Arg<DbSettings>()));
+            return dbFactory;
+        }
+
+        /// <summary>
+        /// Builds an index of blocks 9 and 10 with an extra Meta key, stamped with <paramref name="version"/> (none when
+        /// empty) and without the reorg depth, which releases before 2.3.0 did not record.
+        /// </summary>
+        private async Task<IDbFactory> CreateIndexWithVersionAsync(Address address, Hash256[] topics, byte[] version)
+        {
+            IDbFactory dbFactory = CreateRecordingDbFactory();
+            await using ILogIndexStorage storage = CreateLogIndexStorage(dbFactory: dbFactory);
+            await AddBlocksAsync(storage, address, topics, forward: 10, backward: 9);
+            AssertBlocks(storage, address, topics, [9, 10]);
+
+            IDb meta = _root.GetColumnDb(LogIndexColumns.Meta);
+            if (version.Length == 0) meta.Remove("ver"u8);
+            else meta.Set("ver"u8, version);
+            meta.Remove("mrd"u8);
+            meta.Set("sentinel"u8, [1]);
             return dbFactory;
         }
 

@@ -157,8 +157,9 @@ namespace Nethermind.Db.LogIndex
             }
         }
 
-        // Indexes written before canonical-only indexing may lack logs of canonical blocks, so they are rebuilt
+        // Indexes written before canonical-only indexing may lack canonical logs: kept as LegacyVersion, with a warning
         private static readonly byte[] VersionBytes = [2];
+        private const byte LegacyVersion = 1;
 
         public const int MaxTopics = 4;
 
@@ -323,6 +324,15 @@ namespace Nethermind.Db.LogIndex
                     return ResetAndCreateNew(root, $"Log index has data in {column} but no version. {resetConsequences}");
 
                 meta.Set(SpecialKey.Version, VersionBytes);
+                return root;
+            }
+
+            // Not restamped, so a kept index stays identifiable and a version 1 binary opens it without a reset
+            if (versionBytes is [LegacyVersion])
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn("Log index was written before storage version 2 (Nethermind before 2.3.0) and may lack logs of blocks replaced by a reorg after they were indexed. Keeping it; set LogIndex.Reset=true for one start to rebuild it.");
+
                 return root;
             }
 
