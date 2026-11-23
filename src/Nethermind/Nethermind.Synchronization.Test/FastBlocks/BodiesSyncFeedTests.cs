@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -148,10 +149,38 @@ public class BodiesSyncFeedTests
     {
         const ulong chainLength = 7_600;
         const ulong presentBodies = 7_400;
+        using FullFlushDb blocksDb = new();
+        FlushTrackingSyncPointers syncPointers = new(blocksDb);
+        using BodiesSyncFeed feed = CreateFeedWithPresentBodies(blocksDb, syncPointers, chainLength, presentBodies);
+
+        using BodiesSyncBatch? batch = await feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(syncPointers.LowestInsertedBodyNumber, Is.LessThan(chainLength - 1 - presentBodies / 2));
+            Assert.That(syncPointers.SavedWithoutFlush, Is.False);
+        }
+    }
+
+    [Test]
+    public void Keeps_body_progress_when_flushing_bodies_fails()
+    {
+        const ulong chainLength = 7_600;
+        const ulong presentBodies = 7_400;
+        using FullFlushDb blocksDb = new();
+        FlushTrackingSyncPointers syncPointers = new(blocksDb);
+        using BodiesSyncFeed feed = CreateFeedWithPresentBodies(blocksDb, syncPointers, chainLength, presentBodies);
+        blocksDb.FailFlush = true;
+
+        Assert.That(() => feed.PrepareRequest(), Throws.InstanceOf<IOException>());
+        Assert.That(syncPointers.LowestInsertedBodyNumber, Is.EqualTo(chainLength - 1));
+    }
+
+    private BodiesSyncFeed CreateFeedWithPresentBodies(FullFlushDb blocksDb, FlushTrackingSyncPointers syncPointers, ulong chainLength, ulong presentBodies)
+    {
         BlockTree syncingFrom = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
         Block pivot = syncingFrom.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
 
-        using FullFlushDb blocksDb = new();
         IBlockTree syncingTo = Build.A.BlockTree().WithBlocksDb(blocksDb).TestObject;
         for (ulong i = 1; i < chainLength; i++)
         {
@@ -172,11 +201,10 @@ public class BodiesSyncFeedTests
             AncientBodiesBarrier = 0,
             DownloadBodiesInFastSync = true,
         };
-        FlushTrackingSyncPointers syncPointers = new(blocksDb);
         blocksDb.Flush(false);
         syncPointers.LowestInsertedBodyNumber = pivot.Number;
 
-        using BodiesSyncFeed feed = new(
+        BodiesSyncFeed feed = new(
             MainnetSpecProvider.Instance,
             syncingTo,
             CreateBlockValidator(),
@@ -189,24 +217,25 @@ public class BodiesSyncFeedTests
             _metadataDb,
             LimboLogs.Instance);
         feed.InitializeFeed();
-
-        using BodiesSyncBatch? batch = await feed.PrepareRequest();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(syncPointers.LowestInsertedBodyNumber, Is.LessThan(pivot.Number - presentBodies / 2));
-            Assert.That(syncPointers.SavedWithoutFlush, Is.False);
-        }
+        return feed;
     }
 
-    private sealed class FullFlushDb : TestMemDb
+    private sealed class FullFlushDb : TestMemDb, IDbMeta
     {
         public int FullFlushCount { get; private set; }
+        public bool FailFlush { get; set; }
 
         public override void Flush(bool onlyWal)
         {
+            if (FailFlush) return;
             base.Flush(onlyWal);
             FullFlushCount += onlyWal ? 0 : 1;
+        }
+
+        void IDbMeta.FlushOrThrow()
+        {
+            if (FailFlush) throw new IOException("Flush failed");
+            Flush(false);
         }
     }
 

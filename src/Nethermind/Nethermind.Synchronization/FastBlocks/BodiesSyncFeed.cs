@@ -190,7 +190,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private void Flush()
         {
             ulong lowestInsertedAtPoint = _syncStatusList.LowestInsertWithoutGaps;
-            _blocksDb.Flush();
+            _blocksDb.FlushOrThrow();
             _syncPointers.LowestInsertedBodyNumber = lowestInsertedAtPoint;
             PersistCompletionMarker();
         }
