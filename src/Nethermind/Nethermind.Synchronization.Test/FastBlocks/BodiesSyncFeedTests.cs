@@ -151,7 +151,7 @@ public class BodiesSyncFeedTests
         BlockTree syncingFrom = Build.A.BlockTree().OfChainLength(chainLength).TestObject;
         Block pivot = syncingFrom.FindBlock(chainLength - 1, BlockTreeLookupOptions.None)!;
 
-        using TestMemDb blocksDb = new();
+        using FullFlushDb blocksDb = new();
         IBlockTree syncingTo = Build.A.BlockTree().WithBlocksDb(blocksDb).TestObject;
         for (ulong i = 1; i < chainLength; i++)
         {
@@ -173,6 +173,8 @@ public class BodiesSyncFeedTests
             DownloadBodiesInFastSync = true,
         };
         FlushTrackingSyncPointers syncPointers = new(blocksDb);
+        blocksDb.Flush(false);
+        syncPointers.LowestInsertedBodyNumber = pivot.Number;
 
         using BodiesSyncFeed feed = new(
             MainnetSpecProvider.Instance,
@@ -197,10 +199,21 @@ public class BodiesSyncFeedTests
         }
     }
 
-    private sealed class FlushTrackingSyncPointers(TestMemDb blocksDb) : ISyncPointers
+    private sealed class FullFlushDb : TestMemDb
+    {
+        public int FullFlushCount { get; private set; }
+
+        public override void Flush(bool onlyWal)
+        {
+            base.Flush(onlyWal);
+            FullFlushCount += onlyWal ? 0 : 1;
+        }
+    }
+
+    private sealed class FlushTrackingSyncPointers(FullFlushDb blocksDb) : ISyncPointers
     {
         private ulong? _lowestInsertedBodyNumber;
-        private int _flushCountAtLastSave = blocksDb.FlushCount;
+        private int _flushCountAtLastSave = blocksDb.FullFlushCount;
 
         public bool SavedWithoutFlush { get; private set; }
 
@@ -211,8 +224,8 @@ public class BodiesSyncFeedTests
             {
                 if (value != _lowestInsertedBodyNumber)
                 {
-                    SavedWithoutFlush |= blocksDb.FlushCount == _flushCountAtLastSave;
-                    _flushCountAtLastSave = blocksDb.FlushCount;
+                    SavedWithoutFlush |= blocksDb.FullFlushCount == _flushCountAtLastSave;
+                    _flushCountAtLastSave = blocksDb.FullFlushCount;
                 }
 
                 _lowestInsertedBodyNumber = value;
