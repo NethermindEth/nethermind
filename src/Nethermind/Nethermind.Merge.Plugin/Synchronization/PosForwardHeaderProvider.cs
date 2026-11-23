@@ -198,6 +198,12 @@ public class PosForwardHeaderProvider : PowForwardHeaderProvider
     protected override bool ImprovementRequirementSatisfied(PeerInfo? bestPeer) => (bestPeer!.TotalDifficulty is null || bestPeer.TotalDifficulty > (_blockTree.BestSuggestedHeader?.TotalDifficulty ?? UInt256.Zero)) &&
             !_poSSwitcher.HasEverReachedTerminalBlock();
 
+    // The same call MergeSealValidator.ValidateSeal makes: it accepts a post-merge seal without calling the pre-merge
+    // validator, so a post-merge number needs no hint. With Ethash, hinting an epoch with no active or reusable cache
+    // starts a build. The terminal PoW block is not post-merge, so it is still hinted and its seal still checked; its
+    // seal can use the cache for an epoch that also contains post-merge block numbers.
+    protected override bool NeedsSealHint(BlockHeader header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge;
+
     protected override IOwnedReadOnlyList<BlockHeader> FilterPosHeader(IOwnedReadOnlyList<BlockHeader> response)
     {
         // Override PoW's RequestHeaders so that it won't request beyond PoW.
