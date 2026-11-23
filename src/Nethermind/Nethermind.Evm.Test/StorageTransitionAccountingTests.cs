@@ -146,7 +146,7 @@ public sealed class StorageTransitionAccountingTests
     }
 
     // The step reports what the handler charged before the policy rejected the write: the legacy reset cost, or the
-    // cold slot access plus the net-metered base cost.
+    // cold slot access alone, since a changed value pays the net-metered base only with the write.
     [Test]
     public void Policy_error_is_reported_to_the_instruction_trace([Values] bool legacyMetering)
     {
@@ -160,7 +160,7 @@ public sealed class StorageTransitionAccountingTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.EvmExceptionType, Is.EqualTo(EvmExceptionType.OutOfGas));
-            (ulong, string?)[] expected = [(legacyMetering ? GasCostOf.SReset : GasCostOf.ColdSLoad + GasCostOf.WarmStateRead, "out of gas")];
+            (ulong, string?)[] expected = [(legacyMetering ? GasCostOf.SReset : GasCostOf.ColdSLoad, "out of gas")];
             Assert.That(tracer.Ready, Is.EqualTo(expected));
         }
     }

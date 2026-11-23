@@ -629,8 +629,9 @@ public static partial class EvmInstructions
                 ref gas, vm, in storageCell, in currentValue, in newValue);
             if (accountingResult != EvmExceptionType.None)
             {
+                // A changed value has paid only the slot access so far; the net-metered base is charged with the write.
                 if (TTracingInst.IsActive)
-                    vm.TraceOperationReady(traceExecutionCost, accountingResult.GetEvmExceptionDescription());
+                    vm.TraceOperationReady(traceStorageAccessCost, accountingResult.GetEvmExceptionDescription());
                 return accountingResult;
             }
 
