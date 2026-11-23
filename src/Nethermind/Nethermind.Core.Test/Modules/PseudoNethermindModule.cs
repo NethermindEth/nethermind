@@ -39,6 +39,12 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
 
         base.Load(builder);
         builder
+            // Ahead of NethermindModule so it runs before FlatLayoutResolver, which would pick a layout from the test
+            // hardware info and record it under the default BaseDbPath.
+            .Intercept<IFlatDbConfig>(flatDbConfig =>
+            {
+                if (flatDbConfig.Layout == FlatLayout.Auto) flatDbConfig.Layout = FlatLayout.Flat;
+            })
             .AddModule(new NethermindModule(spec, configProvider, logManager))
             .AddModule(new PseudoNetworkModule())
             .AddModule(new TestBlockProcessingModule())
@@ -60,9 +66,6 @@ public class PseudoNethermindModule(ChainSpec spec, IConfigProvider configProvid
                 // Dont want to make it very slow
                 flatDbConfig.TrieWarmerWorkerCount = 0;
                 flatDbConfig.WarmReadConcurrency = 2;
-                // The default budget allocates a production-sized trie node cache on the large object heap
-                // per container.
-                flatDbConfig.TrieCacheMemoryBudget = MemorySizes.MiB;
                 // Matches the inert persisted tier wired above: a replacement IFlatDbConfig defaulting to long finality
                 // would convert in-memory snapshots into the no-op loader and lose that state.
                 flatDbConfig.EnableLongFinality = false;

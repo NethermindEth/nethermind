@@ -67,7 +67,7 @@ public class ChainLevelHelper(
         if (_logger.IsTrace) _logger.Trace($"ChainLevelHelper.GetNextHeaders - starting point is {startingPoint}");
 
         int effectiveMax = maxCount + skipLastBlockCount;
-        List<BlockHeader> headers = new(effectiveMax);
+        List<BlockHeader> headers = [with(effectiveMax)];
         int i = 0;
 
         while (i < effectiveMax)
@@ -113,7 +113,6 @@ public class ChainLevelHelper(
 
             if (beaconMainChainBlock.IsBeaconInfo)
             {
-                newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty == 0 ? null : beaconMainChainBlock.TotalDifficulty; // This is suppose to be removed, but I forgot to remove it before testing, so we only tested with this line in. Need to remove this back....
                 if (beaconMainChainBlock.TotalDifficulty != 0)
                 {
                     newHeader.TotalDifficulty = beaconMainChainBlock.TotalDifficulty;

@@ -4,3 +4,5 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("Nethermind.Core.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc.Test")]

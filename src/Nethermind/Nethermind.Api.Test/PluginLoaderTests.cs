@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -11,6 +13,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.HealthChecks;
 using Nethermind.Hive;
 using Nethermind.Logging;
@@ -23,6 +26,39 @@ namespace Nethermind.Api.Test;
 
 public class PluginLoaderTests
 {
+    [Test]
+    [NonParallelizable]
+    public void Assembly_load_failure_retains_exception_only_without_masking([Values] bool maskSensitiveData)
+    {
+        bool previous = SensitiveLogMasking.Enabled;
+        try
+        {
+            SensitiveLogMasking.Enabled = true;
+            string assemblyPath = Path.Combine(Path.GetTempPath(), $"missing-plugin-{Guid.NewGuid():N}.dll");
+            IFileSystem fileSystem = Substitute.For<IFileSystem>();
+            fileSystem.Directory.Exists(Arg.Any<string>()).Returns(true);
+            fileSystem.Directory.GetFiles(Arg.Any<string>(), "*.dll").Returns([assemblyPath]);
+            fileSystem.Path.GetFileNameWithoutExtension(assemblyPath).Returns("missing-plugin");
+            TestErrorLogManager logs = new();
+
+            PluginLoader loader = new(string.Empty, fileSystem, logs.GetClassLogger<PluginLoaderTests>());
+            loader.Load();
+
+            Assert.That(logs.Errors, Is.Empty);
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            loader.LogDiagnostics();
+
+            TestErrorLogManager.Error error = logs.Errors.Single();
+            Assert.That(error.Exception is not null, Is.EqualTo(!maskSensitiveData));
+            loader.LogDiagnostics();
+            Assert.That(logs.Errors, Has.Count.EqualTo(1));
+        }
+        finally
+        {
+            SensitiveLogMasking.Enabled = previous;
+        }
+    }
+
     [Test]
     public void full_lexicographical_order()
     {
@@ -144,6 +180,34 @@ public class PluginLoaderTests
             typeof(NethDevPlugin)
         ];
         Assert.That(expected, Is.EqualTo(loader.PluginTypes).AsCollection);
+    }
+
+    [Test]
+    public void Null_order_sorts_like_no_order()
+    {
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
+            typeof(HivePlugin), typeof(EthashPlugin), typeof(CliquePlugin));
+        loader.Load();
+
+        // The text "null" parses to a null order.
+        loader.OrderPlugins(new PluginConfig { PluginOrder = null });
+
+        Assert.That(loader.PluginTypes, Is.EqualTo(new[] { typeof(CliquePlugin), typeof(EthashPlugin), typeof(HivePlugin) }).AsCollection);
+    }
+
+    [TestCase("Hive", "Clique", "Hive")]
+    [TestCase("Hive", "Clique", "hive")]
+    [TestCase("Absent", "Hive", "ABSENT")] // a plugin that is not loaded
+    public void Plugin_named_twice_in_order_is_a_configuration_error(params string[] pluginOrder)
+    {
+        PluginLoader loader = new(string.Empty, Substitute.For<IFileSystem>(), new TestLogManager().GetClassLogger<PluginLoaderTests>(),
+            typeof(CliquePlugin), typeof(HivePlugin));
+        loader.Load();
+
+        Assert.That(() => loader.OrderPlugins(new PluginConfig { PluginOrder = pluginOrder }),
+            Throws.TypeOf<InvalidConfigurationException>()
+                .With.Message.Contains("Plugin.PluginOrder").And.Message.Contains($"'{pluginOrder[^1]}'")
+                .And.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.ForbiddenOptionValue));
     }
 
     [Test]

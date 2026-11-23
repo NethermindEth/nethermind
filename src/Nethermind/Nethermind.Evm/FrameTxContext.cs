@@ -50,7 +50,7 @@ public sealed class FrameTxContext(
     public ulong Nonce { get; } = nonce;
 
     /// <summary>The EIP-8250 nonce keys this transaction consumes, or <see langword="null"/> for a plain account nonce.</summary>
-    /// <remarks>When set, <see cref="Nonce"/> is the shared <c>nonce_seq</c> every key currently sits at.</remarks>
+    /// <remarks>When non-empty, <see cref="Nonce"/> is the shared <c>nonce_seq</c>: every key sits at it, or for a single-use set every key reads 0. The empty set selects the account nonce.</remarks>
     public UInt256[]? NonceKeys { get; } = nonceKeys;
 
     /// <summary>The sender's account nonce before any frame executed.</summary>
@@ -58,13 +58,13 @@ public sealed class FrameTxContext(
     public UInt256 LegacyNonce { get; } = legacyNonce;
 
     /// <summary><c>keccak256(bytes32(len(nonce_keys)) || concat(bytes32(k) for k in nonce_keys))</c>.</summary>
-    /// <remarks>The EIP-8141 envelope hashes as the key set <c>[0]</c>, the domain its account nonce occupies.</remarks>
+    /// <remarks>The EIP-8141 envelope hashes as the empty key set, the domain its account nonce occupies.</remarks>
     public ValueHash256 NonceKeysHash =>
         NonceKeys is { } keys ? _nonceKeysHash ??= ComputeNonceKeysHash(keys) : AccountNonceKeySetHash;
 
     private ValueHash256? _nonceKeysHash;
 
-    private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([UInt256.Zero]);
+    private static readonly ValueHash256 AccountNonceKeySetHash = ComputeNonceKeysHash([]);
 
     /// <summary>The envelope's frames, in execution order.</summary>
     public TxFrame[] Frames { get; } = frames;

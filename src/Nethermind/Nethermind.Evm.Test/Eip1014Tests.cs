@@ -115,7 +115,7 @@ namespace Nethermind.Evm.Test
 
             Address delegateTarget = new("0x0000000000000000000000000000000000000042");
             TestState.CreateAccount(expectedAddress, UInt256.Zero);
-            CodeInfoRepository.SetDelegation(delegateTarget, expectedAddress, SpecProvider.GetSpec(MainnetSpecProvider.OsakaActivation));
+            CodeInfoRepository.SetDelegation(TestState, delegateTarget, expectedAddress, SpecProvider.GetSpec(MainnetSpecProvider.OsakaActivation));
             TestState.Commit(SpecProvider.GenesisSpec);
             TestState.CommitTree(0);
             Execute(MainnetSpecProvider.OsakaActivation, callCode);

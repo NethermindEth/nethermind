@@ -37,6 +37,7 @@ class SszType
     public required string Name { get; init; }
     public required string? Namespace { get; init; }
     public required Kind Kind { get; init; }
+    public string? FixedSectionLengthDeclaration { get; private set; }
 
     private string? _typeReferenceName;
     /// <summary>
@@ -97,6 +98,10 @@ class SszType
     public int ActiveFieldsBitLength { get; set; }
 
     public bool IsStruct { get; set; }
+
+    /// <summary>Whether the struct declares its own parameterless constructor, which <c>new()</c> runs.</summary>
+    public bool HasExplicitParameterlessConstructor { get; private set; }
+
     public SszTypeConverterKind? ConverterKind { get; set; }
     public bool IsSszBasicType => ConverterKind == SszTypeConverterKind.BasicType;
     public SszType? EnumType { get; set; }
@@ -126,7 +131,7 @@ class SszType
 
     public const int PointerLength = 4;
 
-    internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type)
+    internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type, bool alternatePreset = false)
     {
         string? @namespace = GetNamespace(type);
         string name = GetTypeName(type);
@@ -168,10 +173,17 @@ class SszType
         result.Members = kind switch
         {
             Kind.Container or Kind.ProgressiveContainer or Kind.CompatibleUnion => GetPublicProperties(type)
-                .Select(prop => SszProperty.From(semanticModel, types, prop))
+                .Select(prop => SszProperty.From(semanticModel, types, prop, alternatePreset))
                 .ToArray(),
             _ => null,
         };
+
+        if (type.GetMembers("GetSszFixedSectionLength").OfType<IMethodSymbol>()
+            .Any(method => method.IsPartialDefinition && method.IsStatic && method.Parameters.IsEmpty))
+        {
+            string modifier = type.BaseType?.GetMembers("GetSszFixedSectionLength").Length > 0 ? "new " : "";
+            result.FixedSectionLengthDeclaration = $"internal {modifier}static partial int GetSszFixedSectionLength()";
+        }
 
         switch (result.Kind)
         {
@@ -187,6 +199,8 @@ class SszType
         if ((result.Kind & (Kind.Container | Kind.ProgressiveContainer | Kind.CompatibleUnion)) != Kind.None && type.TypeKind == TypeKind.Struct)
         {
             result.IsStruct = true;
+            result.HasExplicitParameterlessConstructor = type is INamedTypeSymbol namedType
+                && namedType.InstanceConstructors.Any(c => c is { Parameters.Length: 0, IsImplicitlyDeclared: false });
         }
 
         if (result.Kind is Kind.Container && result.Members is { Length: 1 } && result.Members[0] is { Kind: Kind.List or Kind.ProgressiveList })
@@ -443,49 +457,7 @@ class SszType
         }
     }
 
-    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type)
-    {
-        List<ITypeSymbol> typeChain = [];
-        ITypeSymbol? current = type;
-        while (current is not null && current.SpecialType == SpecialType.None)
-        {
-            typeChain.Add(current);
-            current = current.BaseType;
-        }
-        typeChain.Reverse();
-
-        Dictionary<string, IPropertySymbol> mostDerived = new(StringComparer.Ordinal);
-        foreach (ITypeSymbol t in typeChain)
-        {
-            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
-            {
-                mostDerived[p.Name] = p;
-            }
-        }
-
-        HashSet<string> seen = new(StringComparer.Ordinal);
-        foreach (ITypeSymbol t in typeChain)
-        {
-            foreach (IPropertySymbol p in GetPublicReadWriteProperties(t))
-            {
-                if (!seen.Add(p.Name))
-                    continue;
-
-                if (!mostDerived.TryGetValue(p.Name, out IPropertySymbol? canonical))
-                    continue;
-
-                if (HasPropertyAttribute(canonical, "SszIgnoreAttribute"))
-                    continue;
-
-                yield return canonical;
-            }
-        }
-    }
-
-    private static IEnumerable<IPropertySymbol> GetPublicReadWriteProperties(ITypeSymbol type) =>
-        type.GetMembers().OfType<IPropertySymbol>()
-            .Where(p => p.GetMethod?.DeclaredAccessibility == Accessibility.Public
-                     && p.SetMethod?.DeclaredAccessibility == Accessibility.Public);
+    private static IEnumerable<IPropertySymbol> GetPublicProperties(ITypeSymbol type) => SszPropertyOrder.GetPublicProperties(type);
 
     private static bool HasAttribute(ITypeSymbol typeSymbol, string attributeName) =>
         typeSymbol.GetAttributes().Any(a => a.AttributeClass?.Name == attributeName);

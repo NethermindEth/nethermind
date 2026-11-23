@@ -5,14 +5,17 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool.Collections;
@@ -67,7 +70,7 @@ public class LightTxDecoderTests
     public void Round_trip_preserves_the_proof_version([Values(ProofVersion.V0, ProofVersion.V1)] ProofVersion version)
     {
         Transaction tx = BlobCarryingTx(TxType.Blob);
-        tx.NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], version);
+        tx.NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [3], version);
 
         Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(tx)).ProofVersion, Is.EqualTo(version));
     }
@@ -78,6 +81,7 @@ public class LightTxDecoderTests
     public void Round_trip_preserves_the_optional_trailing_fields(UInt256[] nonceKeys, ulong? deadline)
     {
         Transaction tx = BlobCarryingTx(TxType.FrameTx, deadline, nonceKeys);
+        SpecChangeTxValidator validator = new(TestBlockchainIds.ChainId);
 
         LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
 
@@ -85,13 +89,16 @@ public class LightTxDecoderTests
         {
             Assert.That(decoded.NonceKeys, Is.EqualTo(nonceKeys));
             Assert.That(decoded.PersistedExpiryDeadline, Is.EqualTo(deadline));
+            Assert.That(validator.IsWellFormedLight(decoded, Eip8250Prototype.Instance).Error,
+                Is.EqualTo(validator.IsWellFormedLight(new LightTransaction(tx), Eip8250Prototype.Instance).Error));
         }
     }
 
     private static IEnumerable<TestCaseData> TrailingFieldCases()
     {
-        // [0] aliases the account nonce, so it must survive as itself rather than collapse to an absent field.
-        UInt256[][] nonceKeySets = [null, [UInt256.Zero], [0xbeef], [1, UInt256.MaxValue], FullWidthKeys()];
+        // [0] is a keyed domain, not the account nonce, so it must survive as itself rather than collapse to an absent field.
+        // [] selects the account nonce under EIP-8250, where an absent set is the refused legacy shape.
+        UInt256[][] nonceKeySets = [null, [], [UInt256.Zero], [0xbeef], [1, UInt256.MaxValue], FullWidthKeys()];
         foreach (ulong? deadline in (ulong?[])[null, 0ul, 1_000ul])
         {
             foreach (UInt256[] nonceKeys in nonceKeySets)
@@ -158,13 +165,12 @@ public class LightTxDecoderTests
         logger.Received(1).Warn(Arg.Is<string>(text => text.Contains(unreadableCount.ToString()) && text.Contains(expectedType)));
     }
 
-    // The catch must span every shape a foreign or damaged record decodes into, not just the mask check:
-    // a truncated record surfaces from the reader's unchecked slice rather than as an RlpException.
+    // The catch must skip every record a foreign or damaged decode fails on: the mask check throws
+    // ArgumentOutOfRangeException, and truncated or malformed records fail in the reader.
     [Test]
     public void Records_failing_in_different_ways_are_all_skipped()
     {
-        // A long-form list prefix mid-record makes the reader take a bogus length and index past the buffer,
-        // which is the third root and reaches neither the mask check nor the RLP grammar errors.
+        // A long-form list prefix mid-record makes the reader take a bogus length past the end of the record.
         byte[] longFormPrefix = LightTxDecoder.Encode(BlobCarryingTx(TxType.Blob));
         longFormPrefix[64] = 0xf8;
 
@@ -176,14 +182,10 @@ public class LightTxDecoderTests
             [0xff, 0xff, 0xff, 0xff],
         ];
 
-        HashSet<string> shapes = [];
         foreach (byte[] record in corrupt)
         {
-            shapes.Add(Assert.Catch(() => LightTxDecoder.Decode(record))!.GetType().Name);
+            Assert.That(() => LightTxDecoder.Decode(record), Throws.InstanceOf<RlpReaderException>().Or.InstanceOf<ArgumentOutOfRangeException>());
         }
-
-        Assert.That(shapes, Has.Count.GreaterThanOrEqualTo(3),
-            $"these records must span the roots the catch filter lists, but they only produced: {string.Join(", ", shapes)}");
 
         Transaction readable = BlobCarryingTx(TxType.Blob);
         using MemColumnsDb<BlobTxsColumns> database = new();
@@ -225,7 +227,7 @@ public class LightTxDecoderTests
             + (hasDeadline ? Rlp.LengthOf(expiryDeadline) : 0);
 
         byte[] bytes = new byte[length];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.Encode(tx.Timestamp);
         writer.Encode(tx.SenderAddress);
         writer.Encode(tx.Nonce);
@@ -306,6 +308,7 @@ public class LightTxDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(decoded.NonceKeys, Is.Null, "a group from before the key-set flag reads its empty keys list as no set");
             Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
             Assert.That(decoded.PayerAddress, Is.Null);
             Assert.That(decoded.PayerExposure, Is.Null);
@@ -402,7 +405,7 @@ public class LightTxDecoderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(() => LightTxDecoder.Decode(perGasRecord), Throws.InstanceOf<RlpException>());
+            Assert.That(() => LightTxDecoder.Decode(perGasRecord), Throws.InstanceOf<RlpReaderException>());
             Assert.That(loaded.Select(static tx => tx.Hash), Is.EqualTo(new[] { readable.Hash }));
             Assert.That(LightTxDecoder.Decode(LightTxDecoder.Encode(zeroFee)).MaxFee, Is.EqualTo(UInt256.Zero), "a zero max_fee is still a max_fee");
         }
@@ -426,13 +429,14 @@ public class LightTxDecoderTests
     public void A_group_carrying_a_slot_this_build_does_not_know_still_decodes()
     {
         byte[] bare = FrameRecordWithoutGroup();
-        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, max_fee: 5, one slot this build has no name for]
-        byte[] group = [0xDA, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x05, 0x01];
+        // [keys: [], payer: absent, exposure: 0, paymaster: AddressC, max_fee: 5, key set: yes, one slot this build has no name for]
+        byte[] group = [0xDB, 0xC0, 0x80, 0x80, 0x94, .. TestItem.AddressC.Bytes, 0x05, 0x01, 0x02];
 
         LightTransaction decoded = LightTxDecoder.Decode([.. bare, .. group]);
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(decoded.NonceKeys, Is.Empty);
             Assert.That(decoded.PersistedPaymaster, Is.EqualTo(TestItem.AddressC));
             Assert.That(decoded.PayerAddress, Is.Null);
             Assert.That(decoded.MaxFee, Is.EqualTo((UInt256)5));
@@ -541,7 +545,7 @@ public class LightTxDecoderTests
             Value = 5,
             PoolIndex = 11,
             Timestamp = 42,
-            NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [[3]], ProofVersion.V1),
+            NetworkWrapper = new ShardBlobNetworkWrapper([[1]], [[2]], [3], ProofVersion.V1),
             NonceKeys = nonceKeys,
         };
 
@@ -662,9 +666,9 @@ public class LightTxDecoderTests
         int consensusSize = tx.GetLength(shouldCountBlobs: false);
         int wrapperOverhead =
             (proofVersion is ProofVersion.V1 ? 1 : 0)               // wrapper_version
-            + Rlp.OfEmptyList.Length                                // elided blobs
+            + RlpTestHelper.OfEmptyList.Length                                // elided blobs
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs);
+            + Rlp.LengthOf(wrapper.SplitProofs());
 
         using (Assert.EnterMultipleScope())
         {
@@ -787,7 +791,7 @@ public class LightTxDecoderTests
             + (sizeFormatVersion is null ? 0 : Rlp.LengthOf(sizeFormatVersion.Value));
 
         byte[] bytes = new byte[length];
-        RlpWriter writer = new(bytes);
+        RlpWriter writer = RlpWriter.ContentWriter(bytes);
         writer.Encode(tx.Timestamp);
         writer.Encode(tx.SenderAddress);
         writer.Encode(tx.Nonce);

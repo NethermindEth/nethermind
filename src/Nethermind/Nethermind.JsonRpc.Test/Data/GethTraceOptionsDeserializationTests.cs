@@ -213,8 +213,12 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(actual.StateOverrides, Is.Not.Null);
             Assert.That(actual.BlockOverrides, Is.Not.Null);
         }
-        Assert.That(actual.StateOverrides!.TryGetValue(TestItem.AddressA, out AccountOverride? account), Is.True);
-        Assert.That(account, Is.Not.Null);
+        AccountOverride? account;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.StateOverrides!.TryGetValue(TestItem.AddressA, out account), Is.True);
+            Assert.That(account, Is.Not.Null);
+        }
         using (Assert.EnterMultipleScope())
         {
             foreach (JsonPropertyInfo property in EthereumJsonSerializer.JsonRpcRequestOptions.GetTypeInfo(typeof(GethTraceOptions)).Properties)
@@ -321,10 +325,13 @@ public class GethTraceOptionsDeserializationTests
             Assert.That(options.TracerConfig, Is.Not.Null);
             Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndObject));
         }
-        Assert.That(reader.Read(), Is.True);
-        Assert.That(reader.GetInt32(), Is.EqualTo(17));
-        Assert.That(reader.Read(), Is.True);
-        Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.Read(), Is.True);
+            Assert.That(reader.GetInt32(), Is.EqualTo(17));
+            Assert.That(reader.Read(), Is.True);
+            Assert.That(reader.TokenType, Is.EqualTo(JsonTokenType.EndArray));
+        }
     }
 
     private sealed class BufferSegment : ReadOnlySequenceSegment<byte>

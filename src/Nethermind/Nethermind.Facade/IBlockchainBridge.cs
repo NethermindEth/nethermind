@@ -10,12 +10,12 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Find;
-using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Facade.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -23,12 +23,17 @@ using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
 {
-    public interface IBlockchainBridge : ILogFinder
+    public interface IBlockchainBridge : ILogFinder, ISimulateBridge
     {
         Block HeadBlock { get; }
         bool IsMining { get; }
         void RecoverTxSenders(Block block);
         Address? RecoverTxSender(Transaction tx);
+
+        /// <summary>Recovers the sender of <paramref name="tx"/>, or null when its signature recovers none.</summary>
+        /// <param name="useSignatureChainId">Whether a legacy EIP-155 signature is recovered over the chain id it carries, as
+        /// block processing does where the spec does not validate chain ids.</param>
+        Address? RecoverTxSender(Transaction tx, bool useSignatureChainId);
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, ulong BlockTimestamp, TxGasInfo? GasInfo, int LogIndexStart) GetTxReceiptInfo(Hash256 txHash);
         bool TryGetTransaction(Hash256 txHash, [NotNullWhen(true)] out TransactionLookupResult? result, bool checkTxnPool = true);
@@ -43,7 +48,6 @@ namespace Nethermind.Facade
         }
 
         CallOutput Call(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
-        SimulateOutput<TTrace> Simulate<TTrace>(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, ISimulateBlockTracerFactory<TTrace> simulateBlockTracerFactory, ulong gasCapLimit, CancellationToken cancellationToken);
         CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMarginBasisPoints, Dictionary<Address, AccountOverride>? stateOverride = null, UInt256? blobBaseFeeOverride = null, BlockOverride? blockOverride = null, ulong gasCap = 0, bool noBaseFee = false, CancellationToken cancellationToken = default);
 
         /// <summary>Fills the omitted execution and state limits of a frame transaction's frames by replaying it.</summary>
@@ -72,7 +76,6 @@ namespace Nethermind.Facade
             Func<ulong, UInt256>? maxFeeAt, Dictionary<Address, AccountOverride>? stateOverride, BlockOverride? blockOverride, CancellationToken cancellationToken, out bool executionReverted);
 
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, bool optimize, UInt256? blobBaseFeeOverride = null, bool noBaseFee = false, CancellationToken cancellationToken = default);
-        ulong GetChainId();
 
         int NewBlockFilter();
         int NewPendingTransactionFilter();
@@ -98,9 +101,8 @@ namespace Nethermind.Facade
         /// <inheritdoc cref="Nethermind.State.IStateReader.RunTreeVisitor{TCtx}"/>
         void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingStats? diagnostics = null) where TCtx : struct, INodeContext<TCtx>;
 
-        bool HasStateForBlock(BlockHeader? baseBlock);
-
         Witness GenerateExecutionWitness(BlockHeader parent, Block block);
+        Witness GenerateExecutionWitness(BlockHeader parent, Block block, IBlockTracer tracer);
         SingleCallWitnessResult GenerateExecutionWitness(BlockHeader header, Transaction tx, CancellationToken cancellationToken = default);
 
         ReadOnlyBlockAccessList? GetBlockAccessList(ulong blockNumber, Hash256 blockHash);

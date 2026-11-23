@@ -16,6 +16,7 @@ using Nethermind.Era1.Exceptions;
 using Nethermind.EraE.E2Store;
 using Nethermind.EraE.Proofs;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Snappier;
 
@@ -44,17 +45,17 @@ public sealed class EraWriter : IDisposable
     private readonly SlotTime? _slotTime;
 
     // Buffered per-block RLP payloads. These are written in section order during Finalize().
-    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _headers = new(MaxEraSize);
-    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _bodies = new(MaxEraSize);
-    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _receipts = new(MaxEraSize);
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _headers = [with(MaxEraSize)];
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _bodies = [with(MaxEraSize)];
+    private readonly ArrayPoolList<ArrayPoolSpan<byte>> _receipts = [with(MaxEraSize)];
 
     // Per-block byte offsets recorded during Finalize() and written into the ComponentIndex.
     // Each stores the absolute file position of the entry's TLV header.
-    private readonly ArrayPoolList<long> _headerOffsets = new(MaxEraSize);
-    private readonly ArrayPoolList<long> _bodyOffsets = new(MaxEraSize);
-    private readonly ArrayPoolList<long> _receiptsOffsets = new(MaxEraSize);
+    private readonly ArrayPoolList<long> _headerOffsets = [with(MaxEraSize)];
+    private readonly ArrayPoolList<long> _bodyOffsets = [with(MaxEraSize)];
+    private readonly ArrayPoolList<long> _receiptsOffsets = [with(MaxEraSize)];
 
-    private readonly ArrayPoolList<UInt256> _totalDifficulties = new(MaxEraSize);
+    private readonly ArrayPoolList<UInt256> _totalDifficulties = [with(MaxEraSize)];
 
     private ulong _startNumber;
     private bool _firstBlock = true;
@@ -89,7 +90,15 @@ public sealed class EraWriter : IDisposable
         }
     }
 
-    public async Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default)
+    public Task Add(Block block, TxReceipt[] receipts, CancellationToken cancellation = default) =>
+        AddCore(block, null, receipts, cancellation);
+
+    /// <summary>Adds <paramref name="block"/> with its body already encoded, so its transactions are not encoded again.</summary>
+    /// <param name="encodedBody">The encoded body of <paramref name="block"/> with its sequence prefix.</param>
+    public Task Add(Block block, Memory<byte> encodedBody, TxReceipt[] receipts, CancellationToken cancellation = default) =>
+        AddCore(block, encodedBody, receipts, cancellation);
+
+    private async Task AddCore(Block block, Memory<byte>? encodedBody, TxReceipt[] receipts, CancellationToken cancellation)
     {
         ArgumentNullException.ThrowIfNull(block);
         ArgumentNullException.ThrowIfNull(receipts);
@@ -128,7 +137,7 @@ public sealed class EraWriter : IDisposable
 
         RlpBehaviors rlpBehaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
 
-        AddEncodedPayloads(block, receipts, rlpBehaviors, spec.IsEip658Enabled);
+        AddEncodedPayloads(block, encodedBody, receipts, rlpBehaviors, spec.IsEip658Enabled);
 
         if (isPostMerge && _beaconRootsProvider is not null && _slotTime is not null)
         {
@@ -280,10 +289,12 @@ public sealed class EraWriter : IDisposable
         ArrayPoolSpan<byte> bytes = new(Rlp.LengthOfSequence(totalLength));
         try
         {
-            RlpWriter writer = new(bytes);
-            writer.StartSequence(totalLength);
+            RlpWriter writer = RlpWriter.ContentWriter(bytes);
+            RlpSequence sequence = writer.StartSequence(totalLength);
             foreach (TxReceipt receipt in receipts)
                 WriteReceipt(ref writer, receipt, isEip658);
+            writer.EndSequence(sequence);
+            Rlp.CheckLength(in writer, bytes.Length);
             return bytes;
         }
         catch
@@ -306,8 +317,7 @@ public sealed class EraWriter : IDisposable
         return 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
     }
 
-    private static void WriteReceipt<TWriter>(ref TWriter writer, TxReceipt receipt, bool isEip658)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    private static void WriteReceipt(ref RlpWriter writer, TxReceipt receipt, bool isEip658)
     {
         int logsLength = 0;
         if (receipt.Logs is not null)
@@ -319,7 +329,7 @@ public sealed class EraWriter : IDisposable
         int statusLength = isEip658 ? 1 : Rlp.LengthOf(receipt.PostTransactionState);
         int contentLength = 1 + statusLength + Rlp.LengthOf(receipt.GasUsedTotal) + Rlp.LengthOfSequence(logsLength);
 
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
 
         // TxType: empty byte array for legacy, single byte for typed (EIP-2718)
         if (receipt.TxType == TxType.Legacy)
@@ -337,12 +347,15 @@ public sealed class EraWriter : IDisposable
 
         writer.Encode(receipt.GasUsedTotal);
 
-        writer.StartSequence(logsLength);
+        RlpSequence logsSequence = writer.StartSequence(logsLength);
         if (receipt.Logs is not null)
         {
             foreach (LogEntry log in receipt.Logs)
                 LogEntryDecoder.Instance.Encode(ref writer, log);
         }
+
+        writer.EndSequence(logsSequence);
+        writer.EndSequence(sequence);
     }
 
     private async Task WriteCompressed(ushort entryType, ReadOnlyMemory<byte> data, CancellationToken cancellation)
@@ -388,7 +401,14 @@ public sealed class EraWriter : IDisposable
         payloads.Clear();
     }
 
-    private void AddEncodedPayloads(Block block, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
+    private static ArrayPoolSpan<byte> CopyOf(ReadOnlySpan<byte> bytes)
+    {
+        ArrayPoolSpan<byte> copy = new(bytes.Length);
+        bytes.CopyTo(copy);
+        return copy;
+    }
+
+    private void AddEncodedPayloads(Block block, Memory<byte>? encodedBody, TxReceipt[] receipts, RlpBehaviors rlpBehaviors, bool isEip658)
     {
         ArrayPoolSpan<byte> headerRlp = _headerDecoder.EncodeToArrayPoolSpan(block.Header, rlpBehaviors);
         try
@@ -401,7 +421,11 @@ public sealed class EraWriter : IDisposable
             throw;
         }
 
-        ArrayPoolSpan<byte> bodyRlp = _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
+        // The body is kept until the epoch is written, after the caller has released its encoded body.
+        ArrayPoolSpan<byte> bodyRlp = encodedBody is { } encoded
+            ? CopyOf(encoded.Span)
+            : _blockBodyDecoder.EncodeToArrayPoolSpan(block.Body, rlpBehaviors);
+
         try
         {
             _bodies.Add(bodyRlp);

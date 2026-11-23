@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Logging;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Rlpx.TestWrappers;
@@ -77,7 +80,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            Packet packet = new("eth", 7, newBlockMessageSerializer.SerializeToArray(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
@@ -100,7 +103,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            Packet packet = new("eth", 7, newBlockMessageSerializer.SerializeToArray(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
@@ -124,7 +127,7 @@ namespace Nethermind.Network.Test.Rlpx
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
-            Packet packet = new("eth", 7, newBlockMessageSerializer.Serialize(newBlockMessage));
+            Packet packet = new("eth", 7, newBlockMessageSerializer.SerializeToArray(newBlockMessage));
 
             _input.WriteByte(packet.PacketType);
             _input.WriteBytes(packet.Data);
@@ -171,6 +174,53 @@ namespace Nethermind.Network.Test.Rlpx
             _output.ReadBytes(outputBytes);
 
             Assert.That(outputBytes.ToHexString(false), Is.EqualTo("000400c280800000000000000000000002000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"));
+        }
+
+        [TestCase(false, 600)]
+        [TestCase(false, 3 * Frame.DefaultMaxFrameSize + 5)]
+        [TestCase(true, 300)]
+        [TestCase(true, 600)]
+        [TestCase(true, 70_000)]
+        public void Output_buffer_is_allocated_once_with_room_for_the_encoded_packet(bool snappy, int packetSize)
+        {
+            (EncryptionSecrets secrets, _) = NetTestVectors.GetSecretsPair();
+            using FrameMacProcessor macProcessor = new(TestItem.IgnoredPublicKey, secrets);
+            ZeroPacketSplitter splitter = new(new FrameCipher(secrets.AesSecret), macProcessor);
+            if (snappy) splitter.EnableSnappy(LimboLogs.Instance);
+
+            RecordingAllocator allocator = new();
+            EmbeddedChannel channel = new(splitter);
+            channel.Configuration.Allocator = allocator;
+
+            byte[] packet = new byte[packetSize];
+            new Random(packetSize).NextBytes(packet);
+            packet[0] = 2;
+            channel.WriteOutbound(Unpooled.WrappedBuffer(packet));
+            IByteBuffer output = channel.ReadOutbound<IByteBuffer>();
+            try
+            {
+                Assert.That(output.Capacity, Is.EqualTo(allocator.FirstInitialCapacity), "output buffer grew while encoding");
+            }
+            finally
+            {
+                output.Release();
+                channel.FinishAndReleaseAll();
+            }
+        }
+
+        private sealed class RecordingAllocator : AbstractByteBufferAllocator
+        {
+            public int? FirstInitialCapacity { get; private set; }
+
+            public override bool IsDirectBufferPooled => false;
+
+            protected override IByteBuffer NewHeapBuffer(int initialCapacity, int maxCapacity)
+            {
+                FirstInitialCapacity ??= initialCapacity;
+                return UnpooledByteBufferAllocator.Default.HeapBuffer(initialCapacity, maxCapacity);
+            }
+
+            protected override IByteBuffer NewDirectBuffer(int initialCapacity, int maxCapacity) => throw new NotSupportedException();
         }
     }
 }

@@ -53,14 +53,14 @@ namespace Ethereum.PoW.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(EthashTest test)
         {
-            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(test.Header);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(blockHeader.Nonce, Is.EqualTo(test.Nonce), "header nonce vs test nonce");
                 Assert.That(Bytes.AreEqual(blockHeader.MixHash.Bytes, test.MixHash.Bytes), Is.True, "header mix hash vs test mix hash");
             }
 
-            Hash256 headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
+            Hash256 headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing));
             Assert.That(headerHash, Is.EqualTo(test.HeaderHash), "header hash");
 
             // seed is correct

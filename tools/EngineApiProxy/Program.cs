@@ -3,6 +3,7 @@
 
 using System.CommandLine;
 using Nethermind.EngineApiProxy.Config;
+using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging.NLog;
 using NLog;
 using NLog.Config;
@@ -42,6 +43,12 @@ public class Program
             Description = "Path to log file (if not specified, only console logging is used)"
         };
 
+        Option<bool> maskSensitiveDataOption = new("--mask-sensitive-data")
+        {
+            Description = "Hide endpoint addresses and local paths in logs",
+            DefaultValueFactory = _ => false
+        };
+
         Option<bool> validateAllBlocksOption = new("--validate-all-blocks")
         {
             Description = "Enable validation for all blocks, including those where CL doesn't request validation",
@@ -79,20 +86,22 @@ public class Program
         };
 
         // Create root command with options
-        RootCommand rootCommand = new("Nethermind Engine API Proxy")
-        {
+        RootCommand rootCommand =
+        [
+            with("Nethermind Engine API Proxy"),
             executionClientOption,
             consensusClientOption,
             portOption,
             logLevelOption,
             logFileOption,
+            maskSensitiveDataOption,
             validateAllBlocksOption,
             feeRecipientOption,
             validationModeOption,
             requestTimeoutOption,
             getPayloadMethodOption,
             newPayloadMethodOption,
-        };
+        ];
 
         rootCommand.SetAction(async (parseResult, ct) =>
         {
@@ -103,6 +112,8 @@ public class Program
                 int port = parseResult.GetValue(portOption);
                 string logLevel = parseResult.GetValue(logLevelOption) ?? "Info";
                 string? logFile = parseResult.GetValue(logFileOption);
+                bool maskSensitiveData = parseResult.GetValue(maskSensitiveDataOption);
+                Logging.SensitiveLogMasking.Enabled = maskSensitiveData;
                 bool validateAllBlocks = parseResult.GetValue(validateAllBlocksOption);
                 string feeRecipient = parseResult.GetValue(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
                 ValidationMode validationMode = parseResult.GetValue(validationModeOption);
@@ -138,7 +149,7 @@ public class Program
                     }
 
                     ConfigureFileLogging(logDirectory, logFileName, logLevel);
-                    logger.Info($"File logging enabled. Logs will be written to {Path.Combine(logDirectory, logFileName)}");
+                    logger.Info($"File logging enabled. Logs will be written to {LogEndpoint.Address(Path.Combine(logDirectory, logFileName))}");
                 }
 
                 // Check required parameters
@@ -168,7 +179,7 @@ public class Program
 
                 // Create and start proxy
                 ProxyServer proxy = new(config, logManager);
-                await proxy.StartAsync();
+                await proxy.StartAsync(CancellationToken.None);
 
                 // Wait for Ctrl+C
                 CancellationTokenSource cancellationTokenSource = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -188,12 +199,12 @@ public class Program
                 }
 
                 // Stop proxy server gracefully
-                await proxy.StopAsync();
+                await proxy.StopAsync(CancellationToken.None);
                 return 0;
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error: {ex.Message}");
+                Console.Error.WriteLine($"Error: {(Logging.SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
                 return 1;
             }
         });

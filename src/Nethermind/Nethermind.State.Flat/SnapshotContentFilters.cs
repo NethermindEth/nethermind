@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Int256;
 using Nethermind.State.Flat.Collections;
-using Nethermind.Trie;
 
 namespace Nethermind.State.Flat;
 
@@ -17,8 +16,6 @@ internal sealed class SnapshotContentFilters
 {
     public readonly SplitBlockFilter Accounts = new();
     public readonly SplitBlockFilter Storages = new();
-    public readonly SplitBlockFilter StateNodes = new();
-    public readonly SplitBlockFilter StorageNodes = new();
 
     /// <summary>Rebuilds every filter from the keys of <paramref name="content"/>.</summary>
     public void Build(SnapshotContent content, in SnapshotContentCounts counts)
@@ -28,11 +25,5 @@ internal sealed class SnapshotContentFilters
 
         Storages.Reset(counts.Storages);
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> entry in content.Storages) Storages.Add((uint)entry.Key.GetHashCode());
-
-        StateNodes.Reset(counts.StateNodes);
-        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> entry in content.StateNodes) StateNodes.Add((uint)entry.Key.GetHashCode());
-
-        StorageNodes.Reset(counts.StorageNodes);
-        content.StorageNodes.AddKeyHashesTo(StorageNodes);
     }
 }

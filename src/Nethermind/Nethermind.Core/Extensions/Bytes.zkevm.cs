@@ -80,16 +80,19 @@ public static unsafe partial class Bytes
 
     /// <summary>Copies <paramref name="source"/> to the start of <paramref name="destination"/>.</summary>
     /// <remarks>
-    /// Corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
-    /// that spills every callee-saved register, ~60 steps a call whatever the length. Where
-    /// <see cref="ZiskFlag"/> is on, this calls <c>memmove</c> directly, so overlapping spans stay safe;
-    /// elsewhere it keeps corelib's copy. See <c>Bytes.std.cs</c> for the host form.
+    /// On ZisK, corelib copies more than 64 bytes through a GC-transition wrapper around the zkVM's <c>memmove</c>
+    /// that spills every callee-saved register, ~60 steps a call whatever the length. On SP1 and OpenVM, corelib's
+    /// <c>SpanHelpers.Memmove</c> adds ~13 instructions to each copy of more than 16 bytes before it reaches the same
+    /// routine. On Airbender, its libc copies a misaligned span by whole words where corelib's copy moves bytes. Where
+    /// <see cref="ZiskFlag"/>, <see cref="Sp1Flag"/>, <see cref="OpenVmFlag"/> or <see cref="AirbenderFlag"/> is on, this
+    /// calls <c>memmove</c> directly, so overlapping spans stay safe; elsewhere it keeps corelib's copy. See
+    /// <c>Bytes.std.cs</c> for the host form.
     /// </remarks>
     /// <exception cref="ArgumentException"><paramref name="destination"/> is shorter than <paramref name="source"/>.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Copy(ReadOnlySpan<byte> source, Span<byte> destination)
     {
-        if (!ZiskFlag.IsActive)
+        if (!ZiskFlag.IsActive && !Sp1Flag.IsActive && !OpenVmFlag.IsActive && !AirbenderFlag.IsActive)
         {
             source.CopyTo(destination);
             return;
@@ -106,16 +109,142 @@ public static unsafe partial class Bytes
     /// which may overlap.</summary>
     /// <remarks>
     /// Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memmove</c>, which its runtime turns into a
-    /// DMA precompile; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
+    /// DMA precompile, and where <see cref="Sp1Flag"/> or <see cref="OpenVmFlag"/> is on it is the guest's assembly
+    /// <c>memmove</c>; elsewhere it is corelib's copy. Unpinned pointers are safe because nothing between taking
     /// them and the call returning can reach a GC safepoint: the import suppresses the GC transition and the
-    /// callee is a two-instruction thunk.
+    /// callee is native code with no calls back into managed code.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memmove(void* destination, void* source, nuint length)
     {
-        if (ZiskFlag.IsActive) Accelerators.Memmove(destination, source, length);
+        if (ZiskFlag.IsActive || Sp1Flag.IsActive || OpenVmFlag.IsActive || AirbenderFlag.IsActive) Accelerators.Memmove(destination, source, length);
         else Buffer.MemoryCopy(source, destination, length, length);
     }
+
+    /// <summary>Writes the four words at <paramref name="source"/>, which is word-aligned, to the 32 bytes at <paramref name="destination"/>, which is not.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, a misaligned 32-byte copy is 32 byte loads and stores. This
+    /// writes the five aligned words that hold the destination instead, and keeps the bytes of the first and the last
+    /// that lie outside it. The words are aligned and the guest is single-threaded, so writing those bytes back is not a
+    /// race. The destination must be misaligned: with a skew of 0 the shifts by 64 wrap and the write is wrong.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void WriteMisalignedWords(byte* destination, ulong* source)
+    {
+        int skew = (int)((nuint)destination & (sizeof(ulong) - 1));
+        Debug.Assert(skew != 0);
+        // Rounding both addresses lets the JIT drop the alignment test of every access.
+        ulong* words = (ulong*)((nuint)destination & ~(nuint)(sizeof(ulong) - 1));
+        source = (ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1));
+        int low = skew * 8;
+        int high = 64 - low;
+        ulong outside = ulong.MaxValue >> high;
+        ulong w0 = source[0], w1 = source[1], w2 = source[2], w3 = source[3];
+        words[0] = (words[0] & outside) | (w0 << low);
+        words[1] = (w0 >> high) | (w1 << low);
+        words[2] = (w1 >> high) | (w2 << low);
+        words[3] = (w2 >> high) | (w3 << low);
+        words[4] = (words[4] & ~outside) | (w3 >> high);
+    }
+
+    /// <summary>Reads the 32 bytes at <paramref name="source"/>, which is misaligned, into the four words at <paramref name="destination"/>, which is aligned.</summary>
+    /// <remarks>
+    /// The read counterpart of <see cref="WriteMisalignedWords"/>: it merges the five aligned words that hold the source.
+    /// The last of them can reach past the source's end, but no further than the word that holds its last byte, so the
+    /// read stays in the source's allocation. The source must be misaligned, for the reason given there.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void ReadMisalignedWords(byte* source, ulong* destination)
+    {
+        int skew = (int)((nuint)source & (sizeof(ulong) - 1));
+        Debug.Assert(skew != 0);
+        ulong* words = (ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1));
+        destination = (ulong*)((nuint)destination & ~(nuint)(sizeof(ulong) - 1));
+        int low = skew * 8;
+        int high = 64 - low;
+        ulong w1 = words[1], w2 = words[2], w3 = words[3];
+        destination[0] = (words[0] >> low) | (w1 << high);
+        destination[1] = (w1 >> low) | (w2 << high);
+        destination[2] = (w2 >> low) | (w3 << high);
+        destination[3] = (w3 >> low) | (words[4] << high);
+    }
+
+    /// <summary>Whether <paramref name="first"/> and <paramref name="second"/> hold the same bytes.</summary>
+    /// <remarks>
+    /// Where <see cref="StrictAlignmentFlag"/> is on, corelib compares misaligned spans by gathering every word from eight
+    /// byte loads. This compares eight bytes at a time, each merged from the two aligned words that hold them, and ends
+    /// with the eight bytes that end the spans. Every read stays in a word that holds a byte of its span. Spans shorter
+    /// than a word are compared a byte at a time.
+    /// </remarks>
+    internal static bool SequenceEqualByWords(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
+    {
+        int length = first.Length;
+        if (length != second.Length) return false;
+        if (length < sizeof(ulong)) return first.SequenceEqual(second);
+
+        byte* a = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(first));
+        byte* b = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(second));
+        ulong* wordsA = (ulong*)((nuint)a & ~(nuint)(sizeof(ulong) - 1));
+        ulong* wordsB = (ulong*)((nuint)b & ~(nuint)(sizeof(ulong) - 1));
+        int lowA = (int)((nuint)a & (sizeof(ulong) - 1)) * 8;
+        int lowB = (int)((nuint)b & (sizeof(ulong) - 1)) * 8;
+        int leading = (length - 1) / sizeof(ulong);
+        for (int k = 0; k < leading; k++)
+        {
+            if (MergeWord(wordsA, k, lowA) != MergeWord(wordsB, k, lowB)) return false;
+        }
+
+        int last = length - sizeof(ulong);
+        return ReadWord(a + last) == ReadWord(b + last);
+    }
+
+    /// <inheritdoc cref="SequenceEqualByWords"/>
+    /// <remarks>By words where <see cref="StrictAlignmentFlag"/> is on, see <see cref="SequenceEqualByWords"/>; corelib's
+    /// comparison elsewhere. See <c>Bytes.std.cs</c> for the host form.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool SequenceEqualAtAnyAlignment(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second) =>
+        StrictAlignmentFlag.IsActive ? SequenceEqualByWords(first, second) : first.SequenceEqual(second);
+
+    /// <summary>The length of the common prefix of <paramref name="first"/> and <paramref name="second"/>.</summary>
+    /// <remarks>The prefix counterpart of <see cref="SequenceEqualByWords"/>, with the same reads.</remarks>
+    internal static int CommonPrefixLengthByWords(ReadOnlySpan<byte> first, ReadOnlySpan<byte> second)
+    {
+        int length = Math.Min(first.Length, second.Length);
+        byte* a = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(first));
+        byte* b = (byte*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(second));
+        if (length < sizeof(ulong))
+        {
+            int i = 0;
+            while (i < length && a[i] == b[i]) i++;
+            return i;
+        }
+
+        ulong* wordsA = (ulong*)((nuint)a & ~(nuint)(sizeof(ulong) - 1));
+        ulong* wordsB = (ulong*)((nuint)b & ~(nuint)(sizeof(ulong) - 1));
+        int lowA = (int)((nuint)a & (sizeof(ulong) - 1)) * 8;
+        int lowB = (int)((nuint)b & (sizeof(ulong) - 1)) * 8;
+        int leading = (length - 1) / sizeof(ulong);
+        for (int k = 0; k < leading; k++)
+        {
+            ulong diff = MergeWord(wordsA, k, lowA) ^ MergeWord(wordsB, k, lowB);
+            if (diff != 0) return k * sizeof(ulong) + (BitOperations.TrailingZeroCount(diff) >> 3);
+        }
+
+        int last = length - sizeof(ulong);
+        ulong tail = ReadWord(a + last) ^ ReadWord(b + last);
+        return tail == 0 ? length : last + (BitOperations.TrailingZeroCount(tail) >> 3);
+    }
+
+    /// <summary>The eight bytes at <paramref name="source"/>, read from the aligned words that hold them.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ReadWord(byte* source) =>
+        MergeWord((ulong*)((nuint)source & ~(nuint)(sizeof(ulong) - 1)), 0, (int)((nuint)source & (sizeof(ulong) - 1)) * 8);
+
+    /// <summary>The eight bytes that start <paramref name="low"/> bits into aligned word <paramref name="index"/> of <paramref name="words"/>.</summary>
+    /// <remarks>An aligned start reads one word: a shift by 64 would wrap to 0 and merge the next word in whole.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong MergeWord(ulong* words, int index, int low) =>
+        low == 0 ? words[index] : (words[index] >> low) | (words[index + 1] << (64 - low));
 
     /// <summary>Sets <paramref name="length"/> bytes at <paramref name="destination"/> to <paramref name="value"/>.</summary>
     /// <remarks>Where <see cref="ZiskFlag"/> is on, this is the zkVM's <c>memset</c>, which its runtime turns
@@ -123,7 +252,7 @@ public static unsafe partial class Bytes
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void Memset(void* destination, byte value, nuint length)
     {
-        if (ZiskFlag.IsActive) Accelerators.Memset(destination, value, length);
+        if (ZiskFlag.IsActive || AirbenderFlag.IsActive) Accelerators.Memset(destination, value, length);
         else Unsafe.InitBlockUnaligned(destination, value, checked((uint)length));
     }
 

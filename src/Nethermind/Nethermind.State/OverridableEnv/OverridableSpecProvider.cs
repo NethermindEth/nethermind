@@ -30,6 +30,7 @@ public class OverridableSpecProvider(ISpecProvider inner) : ISpecProvider
     public ulong TimestampFork => inner.TimestampFork;
     public UInt256? TerminalTotalDifficulty => inner.TerminalTotalDifficulty;
     public IReleaseSpec GenesisSpec => inner.GenesisSpec;
+    public bool GenesisStateUnavailable => inner.GenesisStateUnavailable;
     public ulong? DaoBlockNumber => inner.DaoBlockNumber;
     public ulong? BeaconChainGenesisTimestamp => inner.BeaconChainGenesisTimestamp;
     public ulong NetworkId => inner.NetworkId;

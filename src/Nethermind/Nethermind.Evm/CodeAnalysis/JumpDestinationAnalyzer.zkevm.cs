@@ -231,11 +231,25 @@ public sealed partial class JumpDestinationAnalyzer
     private static bool MayHoldReachingPush(ref byte end)
     {
         nint skew = Skew(ref end);
-        ref ulong row = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_reachBiases), skew * ReachRowLength);
-        ref ulong word = ref FirstWindowWord(ref end, skew);
+        ref ulong row = ref Aligned(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_reachBiases), skew * ReachRowLength));
+        ref ulong word = ref Aligned(ref FirstWindowWord(ref end, skew));
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // A 32-bit core adds a 64-bit word as a register pair, carrying between them. Halves drop only that carry,
+            // which comes from a byte with bit 7 set and so can only name a byte that does not reach.
+            ref uint half = ref Unsafe.As<ulong, uint>(ref word);
+            ref uint biases = ref Unsafe.As<ulong, uint>(ref row);
+            uint reached = ReachingBytes(ref half, ref biases, 0) | ReachingBytes(ref half, ref biases, 1) |
+                ReachingBytes(ref half, ref biases, 2) | ReachingBytes(ref half, ref biases, 3) |
+                ReachingBytes(ref half, ref biases, 4) | ReachingBytes(ref half, ref biases, 5) |
+                ReachingBytes(ref half, ref biases, 6) | ReachingBytes(ref half, ref biases, 7) |
+                ReachingBytes(ref half, ref biases, 8) | ReachingBytes(ref half, ref biases, 9);
+            return (reached & (uint)Unsafe.Add(ref row, ReachHighBits)) != 0;
+        }
+
         ulong reach = ReachingBytes(ref word, ref row, 0) | ReachingBytes(ref word, ref row, 1) |
             ReachingBytes(ref word, ref row, 2) | ReachingBytes(ref word, ref row, 3);
-        return ((reach | ReachingBytes(ref word, ref row, 4)) & Aligned(ref Unsafe.Add(ref row, ReachHighBits))) != 0;
+        return ((reach | ReachingBytes(ref word, ref row, 4)) & Unsafe.Add(ref row, ReachHighBits)) != 0;
     }
 
     /// <summary>The offset of <paramref name="end"/> in its aligned word, which picks the look-back's row of biases.</summary>
@@ -252,18 +266,34 @@ public sealed partial class JumpDestinationAnalyzer
         ref Unsafe.Add(ref Unsafe.As<byte, ulong>(ref Unsafe.Subtract(ref end, skew)), -(MaxImmediateLength / sizeof(ulong)));
 
     /// <summary><paramref name="word"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
-    /// <remarks>One <c>andi</c> lets the JIT prove the load aligned and drop its alignment test.</remarks>
+    /// <remarks>One <c>andi</c> lets the JIT prove aligned every load at a whole number of words from the result, and drop their alignment tests.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong Aligned(ref ulong word) => StrictAlignmentFlag.IsActive
-        ? Unsafe.As<byte, ulong>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
+    private static ref ulong Aligned(ref ulong word) => ref StrictAlignmentFlag.IsActive
+        ? ref Unsafe.As<byte, ulong>(ref Unsafe.AddByteOffset(ref Unsafe.NullRef<byte>(),
             Unsafe.ByteOffset(ref Unsafe.NullRef<byte>(), ref Unsafe.As<ulong, byte>(ref word)) & ~(nint)(sizeof(ulong) - 1)))
-        : word;
+        : ref word;
 
     /// <summary>Returns the last position below <paramref name="destination"/> and at or above <paramref name="limit"/> that <paramref name="bitmap"/> marks, or -1.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static nint FindMarkedBelow(long[] bitmap, nint destination, nint limit)
     {
         ref long words = ref MemoryMarshal.GetArrayDataReference(bitmap);
+        if (IntPtr.Size == sizeof(uint))
+        {
+            // A 32-bit core masks and tests a 64-bit word as a register pair: there the search runs over 32-bit words.
+            ref uint halves = ref Unsafe.As<long, uint>(ref words);
+            nint half = destination >> 5;
+            uint below = Unsafe.Add(ref halves, half) & ((1u << (int)destination) - 1);
+            while (below == 0)
+            {
+                if (--half < limit >> 5) return -1;
+                below = Unsafe.Add(ref halves, half);
+            }
+
+            nint found = (half << 5) + HighestSetBit(below);
+            return found >= limit ? found : -1;
+        }
+
         nint word = destination >> BitShiftPerInt64;
         // The positions of the destination's word below it; a shift counts modulo 64.
         ulong marks = (ulong)Unsafe.Add(ref words, word) & ((1UL << (int)destination) - 1);
@@ -273,9 +303,63 @@ public sealed partial class JumpDestinationAnalyzer
             marks = (ulong)Unsafe.Add(ref words, word);
         }
 
-        nint marked = (word << BitShiftPerInt64) + 63 - BitOperations.LeadingZeroCount(marks);
+        nint marked = (word << BitShiftPerInt64) + HighestSetBit(marks);
         return marked >= limit ? marked : -1;
     }
+
+    /// <summary>Returns the index of the highest set bit of <paramref name="value"/>, which must not be zero.</summary>
+    /// <remarks>
+    /// Without Zbb, <see cref="BitOperations.LeadingZeroCount(ulong)"/> calls a software fallback, and that call makes
+    /// the scanned-jump handler keep its values in callee-saved registers. The bit smear and the de Bruijn multiply
+    /// need no call.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static nint HighestSetBit(ulong value)
+    {
+        // A 32-bit core multiplies 64-bit words in several instructions and shifts them in pairs: there the half holding
+        // the bit is smeared and multiplied alone.
+        if (IntPtr.Size == sizeof(uint))
+        {
+            uint high = (uint)(value >> 32);
+            return high != 0 ? 32 + HighestSetBit(high) : HighestSetBit((uint)value);
+        }
+
+        value |= value >> 1;
+        value |= value >> 2;
+        value |= value >> 4;
+        value |= value >> 8;
+        value |= value >> 16;
+        value |= value >> 32;
+        return Unsafe.Add(ref MemoryMarshal.GetReference(HighestSetBitIndices), (nint)((value * 0x03F7_9D71_B4CB_0A89UL) >> 58));
+    }
+
+    /// <summary><see cref="HighestSetBit(ulong)"/> of a 32-bit <paramref name="value"/>, which must not be zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static nint HighestSetBit(uint value)
+    {
+        value |= value >> 1;
+        value |= value >> 2;
+        value |= value >> 4;
+        value |= value >> 8;
+        value |= value >> 16;
+        return Unsafe.Add(ref MemoryMarshal.GetReference(HighestSetBitIndices32), (nint)((value * 0x07C4_ACDDU) >> 27));
+    }
+
+    /// <summary>The index of the highest set bit, by the top 5 bits of the smeared 32-bit value times the de Bruijn constant.</summary>
+    private static ReadOnlySpan<byte> HighestSetBitIndices32 =>
+    [
+        0, 9, 1, 10, 13, 21, 2, 29, 11, 14, 16, 18, 22, 25, 3, 30,
+        8, 12, 20, 28, 15, 17, 24, 7, 19, 27, 23, 6, 26, 5, 4, 31
+    ];
+
+    /// <summary>The index of the highest set bit, by the top 6 bits of the smeared value times the de Bruijn constant.</summary>
+    private static ReadOnlySpan<byte> HighestSetBitIndices =>
+    [
+        0, 47, 1, 56, 48, 27, 2, 60, 57, 49, 41, 37, 28, 16, 3, 61,
+        54, 58, 35, 52, 50, 42, 21, 44, 38, 32, 29, 23, 17, 11, 4, 62,
+        46, 55, 26, 59, 40, 36, 15, 53, 34, 51, 20, 43, 31, 22, 10, 45,
+        25, 39, 14, 33, 19, 30, 9, 24, 13, 18, 8, 12, 7, 6, 5, 63
+    ];
 
     /// <summary>Scans from the instruction start <paramref name="start"/> up to the JUMPDEST at <paramref name="destination"/> and reports whether it starts an instruction, marking it if so.</summary>
     /// <remarks>
@@ -321,7 +405,11 @@ public sealed partial class JumpDestinationAnalyzer
                 else if (op == jumpDest)
                 {
                     nint jumpDestination = (nint)(position - codeStart);
-                    Unsafe.Add(ref bits, jumpDestination >> BitShiftPerInt64) |= 1L << (int)jumpDestination;
+                    // A 32-bit core shifts a 64-bit word as a register pair: there one 32-bit word takes the bit.
+                    if (IntPtr.Size == sizeof(uint))
+                        Unsafe.Add(ref Unsafe.As<long, uint>(ref bits), jumpDestination >> 5) |= 1u << (int)jumpDestination;
+                    else
+                        Unsafe.Add(ref bits, jumpDestination >> BitShiftPerInt64) |= 1L << (int)jumpDestination;
                     if (position == end)
                     {
                         startsInstruction = true;
@@ -353,16 +441,16 @@ public sealed partial class JumpDestinationAnalyzer
     private static bool TryFindReachingPush(ref byte end, ref ulong biases, out nint offset)
     {
         nint skew = Skew(ref end);
-        ref ulong row = ref Unsafe.Add(ref biases, skew * ReachRowLength);
-        ref ulong word = ref FirstWindowWord(ref end, skew);
-        ulong highBits = Aligned(ref Unsafe.Add(ref row, ReachHighBits));
+        ref ulong row = ref Aligned(ref Unsafe.Add(ref biases, skew * ReachRowLength));
+        ref ulong word = ref Aligned(ref FirstWindowWord(ref end, skew));
+        ulong highBits = Unsafe.Add(ref row, ReachHighBits);
         // A word at a time, stopping at the first that reaches, so the search holds one word rather than eight.
         offset = -skew;
         ulong reaching = ReachingBytes(ref word, ref row, 0) & highBits;
         if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 1) & highBits; }
         if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 2) & highBits; }
         if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 3) & highBits; }
-        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 4) & Aligned(ref Unsafe.Add(ref row, ReachTailMask)); }
+        if (reaching == 0) { offset += sizeof(ulong); reaching = ReachingBytes(ref word, ref row, 4) & Unsafe.Add(ref row, ReachTailMask); }
         if (reaching == 0) return false;
 
         offset += BitOperations.TrailingZeroCount(reaching) >> 3;
@@ -373,7 +461,15 @@ public sealed partial class JumpDestinationAnalyzer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static ulong ReachingBytes(ref ulong word, ref ulong row, int index)
     {
-        ulong bytes = Aligned(ref Unsafe.Add(ref word, index));
-        return (bytes + Aligned(ref Unsafe.Add(ref row, index))) & ~bytes;
+        ulong bytes = Unsafe.Add(ref word, index);
+        return (bytes + Unsafe.Add(ref row, index)) & ~bytes;
+    }
+
+    /// <summary><see cref="ReachingBytes(ref ulong, ref ulong, int)"/> of window half-word <paramref name="index"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static uint ReachingBytes(ref uint word, ref uint row, int index)
+    {
+        uint bytes = Unsafe.Add(ref word, index);
+        return (bytes + Unsafe.Add(ref row, index)) & ~bytes;
     }
 }

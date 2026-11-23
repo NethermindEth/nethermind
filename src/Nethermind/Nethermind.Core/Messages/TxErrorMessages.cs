@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core.Messages;
 
 public static class TxErrorMessages
@@ -64,8 +66,8 @@ public static class TxErrorMessages
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";
 
-    public static readonly string InvalidBlobDataSize =
-        $"InvalidBlobDataSize: Blob data fields are of incorrect size.";
+    public const string InvalidBlobDataSize =
+        "InvalidBlobDataSize: Blob data fields are of incorrect size.";
 
     public const string InvalidBlobHashes =
         "InvalidBlobProof: Hashes do not match the blobs.";
@@ -98,4 +100,12 @@ public static class TxErrorMessages
 
     public const string NonceTooHigh = "NonceTooHigh: Nonce exceeds max nonce";
 
+    /// <summary>Whether <paramref name="error"/> comes from intrinsic gas validation.</summary>
+    /// <remarks>Both <see cref="IntrinsicGasTooLow"/> and <see cref="TxIntrinsicGasExceedsCap"/> start with the geth-compatible <see cref="IntrinsicGasTooLow"/> text.</remarks>
+    public static bool IsIntrinsicGasError(string? error) =>
+        error?.StartsWith(IntrinsicGasTooLow, StringComparison.Ordinal) == true;
+
+    /// <summary>Whether <paramref name="error"/> is about the blob sidecar only, which the transaction hash does not cover.</summary>
+    public static bool IsBlobSidecarError(string? error) =>
+        error is InvalidBlobDataSize or InvalidBlobHashes or InvalidProofVersion;
 }

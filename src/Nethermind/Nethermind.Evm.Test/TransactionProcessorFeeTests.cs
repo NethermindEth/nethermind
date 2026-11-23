@@ -2,18 +2,23 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
@@ -78,6 +83,27 @@ public class TransactionProcessorFeeTests
         {
             Assert.That(tracer.Fees, Is.EqualTo((UInt256)189000));
             Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
+        }
+    }
+
+    [Test]
+    public void Pays_fees_without_fee_tracing([Values] bool withFeeCollector)
+    {
+        _spec.FeeCollector = withFeeCollector ? TestItem.AddressC : null;
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(10)
+            .WithType(TxType.EIP1559).WithGasLimit(21000).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(TestItem.AddressB).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(21000)
+            .TestObject;
+
+        ExecuteAndTrace(block, NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressB), Is.EqualTo((UInt256)189000));
+            Assert.That(_stateProvider.GetBalance(TestItem.AddressC), Is.EqualTo(withFeeCollector ? (UInt256)21000 : UInt256.Zero));
         }
     }
 
@@ -154,6 +180,61 @@ public class TransactionProcessorFeeTests
         {
             Assert.That(tracer.Fees, Is.EqualTo((UInt256)525213));
             Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
+        }
+    }
+
+    [Test]
+    public void Destroyed_gas_beneficiary_is_paid_before_destruction([Values] bool revert, [Values] bool eip8037, [Values] bool eip7708, [Values] bool eip8246)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8037Enabled = eip8037, IsEip7708Enabled = eip7708, IsEip8246Enabled = eip8246 };
+        Address creator = ContractAddress.From(TestItem.AddressA, 0);
+        Address beneficiary = ContractAddress.From(creator, 1);
+
+        byte[] selfDestructInitCode = Prepare.EvmCode
+            .PushData(beneficiary)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+        Prepare initCode = Prepare.EvmCode
+            .Create(selfDestructInitCode, UInt256.Zero)
+            .Op(Instruction.POP);
+        if (revert)
+        {
+            initCode.Revert(0, 0);
+        }
+
+        Transaction tx = Build.A.Transaction
+            .WithGasPrice(10)
+            .WithMaxFeePerGas(10)
+            .WithType(TxType.EIP1559)
+            .WithGasLimit(5_000_000)
+            .WithCode(initCode.Done)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Block block = Build.A.Block.WithNumber(1)
+            .WithBeneficiary(beneficiary).WithBaseFeePerGas(1).WithTransactions(tx).WithGasLimit(30_000_000)
+            .TestObject;
+
+        FeesTracer feesTracer = new();
+        BlockReceiptsTracer receiptsTracer = new();
+        receiptsTracer.SetOtherTracer(feesTracer);
+        receiptsTracer.StartNewBlockTrace(block);
+        receiptsTracer.StartNewTxTrace(tx);
+        _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, spec), receiptsTracer);
+        receiptsTracer.EndTxTrace();
+        receiptsTracer.EndBlockTrace();
+
+        // execution-specs pay the coinbase, then destroy: the fee is burned unless EIP-8246 keeps the balance.
+        // A reverted tx destroys nothing, so the fee is always kept.
+        bool feeKept = revert || eip8246;
+        bool burnLogged = !revert && eip8037 && eip7708 && !eip8246;
+        TxReceipt receipt = receiptsTracer.TxReceipts[0];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receipt.StatusCode, Is.EqualTo(revert ? StatusCode.Failure : StatusCode.Success));
+            Assert.That(feesTracer.Fees, Is.GreaterThan(UInt256.Zero));
+            Assert.That(_stateProvider.GetBalance(beneficiary), Is.EqualTo(feeKept ? feesTracer.Fees : UInt256.Zero));
+            Assert.That(_stateProvider.AccountExists(beneficiary), Is.EqualTo(feeKept));
+            Assert.That(_stateProvider.GetNonce(beneficiary), Is.EqualTo(0UL));
+            Assert.That(receipt.Logs!.Count(static log => log.Topics[0] == TransferLog.BurnSignature), Is.EqualTo(burnLogged ? 1 : 0));
         }
     }
 
@@ -395,6 +476,87 @@ public class TransactionProcessorFeeTests
         }
         Assert.That(result.ErrorDescription, Does.Contain($"baseFee: {baseFee}"));
         Assert.That(result.ErrorDescription, Does.Contain(TestItem.AddressA.ToString(withEip55Checksum: true)));
+    }
+
+    public enum FeeObserver { None, Fees, State, OpcodeLogs, ReceiptLogs }
+
+    [Test]
+    public void CallAndRestore_pays_fees_only_when_a_tracer_sees_them([Values] FeeObserver observer)
+    {
+        _spec.FeeCollector = TestItem.AddressC;
+        byte[] code = Prepare.EvmCode.PushData(42).PushData(0).Op(Instruction.MSTORE).PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        _stateProvider.CreateAccount(TestItem.AddressD, 0);
+        _stateProvider.InsertCode(TestItem.AddressD, code, _spec);
+        _stateProvider.Commit(_spec);
+
+        FeeAccountRecorder recorder = new(_stateProvider, TestItem.AddressB, TestItem.AddressC);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(_specProvider)
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder.AddSingleton<IWorldState>(recorder));
+        ITransactionProcessor processor = scope.Resolve<ITransactionProcessor>();
+
+        Transaction tx = Build.A.Transaction
+            .WithType(TxType.EIP1559).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(2)
+            .To(TestItem.AddressD).WithGasLimit(100_000)
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1).WithBeneficiary(TestItem.AddressB).WithBaseFee(1).WithGasLimit(30_000_000).TestObject;
+        BlockExecutionContext context = new(header, _spec);
+
+        CallOutputTracer expected = new();
+        processor.CallAndRestore(tx, context, new CancellationTxTracer(expected, CancellationToken.None) { IsTracingFees = true });
+        int expectedTouches = recorder.Touches;
+        recorder.Touches = 0;
+
+        CallOutputTracer actual = new();
+        TransactionResult result = processor.CallAndRestore(tx, context, new CancellationTxTracer(actual, CancellationToken.None)
+        {
+            IsTracingFees = observer == FeeObserver.Fees,
+            IsTracingState = observer == FeeObserver.State,
+            IsTracingLogs = observer == FeeObserver.OpcodeLogs,
+            IsTracingReceipt = observer == FeeObserver.ReceiptLogs,
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(actual.ReturnValue, Is.EqualTo(expected.ReturnValue));
+            Assert.That(actual.GasSpent, Is.EqualTo(expected.GasSpent));
+            Assert.That(expectedTouches, Is.GreaterThan(0), "a fee observer pays the beneficiary and the fee collector");
+            Assert.That(recorder.Touches, observer == FeeObserver.None ? Is.Zero : Is.EqualTo(expectedTouches));
+            Assert.That(_stateProvider.AccountExists(TestItem.AddressB), Is.False, "the restore discards the fee payment");
+            Assert.That(_stateProvider.AccountExists(TestItem.AddressC), Is.False, "the restore discards the fee payment");
+        }
+    }
+
+    private sealed class FeeAccountRecorder(IWorldState state, params Address[] feeAccounts) : WorldStateDecorator(state)
+    {
+        public int Touches { get; set; }
+
+        public override bool AccountExists(Address address)
+        {
+            Record(address);
+            return base.AccountExists(address);
+        }
+
+        public override void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        {
+            Record(address);
+            base.AddToBalance(address, in balanceChange, spec, out oldBalance);
+        }
+
+        public override bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
+        {
+            Record(address);
+            return base.AddToBalanceAndCreateIfNotExists(address, in balanceChange, spec, out oldBalance);
+        }
+
+        private void Record(Address address)
+        {
+            if (Array.IndexOf(feeAccounts, address) >= 0) Touches++;
+        }
     }
 
     private void ExecuteAndTrace(Block block, IBlockTracer otherTracer)

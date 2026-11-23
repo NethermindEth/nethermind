@@ -85,7 +85,7 @@ public class Eth68ProtocolHandler(ISession session,
 
     protected override bool HandleMessageCore(ZeroPacket message)
     {
-        int size = message.Content.ReadableBytes;
+        int size = message.Content.Length;
         switch (message.PacketType)
         {
             case Eth68MessageCode.NewPooledTransactionHashes:
@@ -94,7 +94,7 @@ public class Eth68ProtocolHandler(ISession session,
                     if (IsTransactionGossipAllowed())
                     {
                         NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                            Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                            Deserialize<NewPooledTransactionHashesMessage68>(message);
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }
@@ -140,7 +140,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         RequestPooledTransactions(message.Hashes, message.Sizes, message.Types);
 
-        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node?.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
     protected void RequestPooledTransactions(
@@ -200,7 +200,7 @@ public class Eth68ProtocolHandler(ISession session,
                 SendHashesToRequest();
             }
 
-            hashesToRequest ??= new ArrayPoolList<ValueHash256>(requestCapacity);
+            hashesToRequest ??= [with(requestCapacity)];
             hashesToRequest.Add(hash);
             toRequestCount++;
 
@@ -255,9 +255,9 @@ public class Eth68ProtocolHandler(ISession session,
                 ValueHash256 txHash = txHashes[i];
                 if (TryGetTxShape(in txHash, out (int Size, TxType Type) txShape))
                 {
-                    hashesWithShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
-                    sizes ??= new ArrayPoolList<int>(txHashes.Length);
-                    types ??= new ArrayPoolList<byte>(txHashes.Length);
+                    hashesWithShape ??= [with(txHashes.Length)];
+                    sizes ??= [with(txHashes.Length)];
+                    types ??= [with(txHashes.Length)];
 
                     hashesWithShape.Add(txHash);
                     sizes.Add(txShape.Size);
@@ -265,7 +265,7 @@ public class Eth68ProtocolHandler(ISession session,
                 }
                 else
                 {
-                    hashesWithoutShape ??= new ArrayPoolList<ValueHash256>(txHashes.Length);
+                    hashesWithoutShape ??= [with(txHashes.Length)];
                     hashesWithoutShape.Add(txHash);
                 }
             }
@@ -436,15 +436,15 @@ public class Eth68ProtocolHandler(ISession session,
     protected override bool CanServePooledTransaction(Transaction tx) => !IsSparseBlobTransaction(tx);
 
     /// <inheritdoc/>
-    protected override bool TryGetPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out Transaction? tx)
+    /// <remarks>
+    /// Serves a full type-3 transaction that only persistent storage holds. One blob-pool lookup gives both the cell
+    /// mask and the encoding, so a sparse transaction is not loaded, and a hash takes the blob-pool lock once before
+    /// <see cref="Eth65ProtocolHandler.TryGetPooledTransactionToServe"/>.
+    /// </remarks>
+    private protected override bool TryGetEncodedPooledTransactionToServe(in ValueHash256 hash, [NotNullWhen(true)] out IOwnedReadOnlyList<byte>? encodedTx, out bool unservable)
     {
-        if (_txPool.TryGetPendingBlobCellMask(hash, out BlobCellMask availableMask) && !availableMask.IsFull)
-        {
-            tx = default;
-            return false;
-        }
-
-        return base.TryGetPooledTransactionToServe(hash, out tx);
+        unservable = _txPool.TryGetPendingBlobCellMaskAndNetworkForm(hash, out BlobCellMask availableMask, out encodedTx) && !availableMask.IsFull;
+        return encodedTx is not null;
     }
 
     protected override ValueTask HandleSlow(TransactionsRequest request, CancellationToken cancellationToken)
@@ -498,7 +498,7 @@ public class Eth68ProtocolHandler(ISession session,
         int sidecarContentLength = checked(
             Rlp.LengthOf(wrapper.Blobs)
             + Rlp.LengthOf(wrapper.Commitments)
-            + Rlp.LengthOf(wrapper.Proofs));
+            + Rlp.LengthOfSequence(wrapper.ProofCount * Rlp.LengthOfByteString(ShardBlobNetworkWrapper.BytesPerProof, firstByte: 0)));
         return checked(tx.GetLength(shouldCountBlobs: false) + Rlp.LengthOfSequence(sidecarContentLength));
     }
 

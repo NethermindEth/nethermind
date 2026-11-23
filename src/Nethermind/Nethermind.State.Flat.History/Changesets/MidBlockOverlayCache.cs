@@ -2,19 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Flat.History.Changesets;
 
 /// <summary>Keeps the overlay of a block being traced so that tracing its transactions one by one folds each
 /// changeset once rather than once per transaction. An overlay another request still holds is never extended under
-/// it: that request gets the block folded fresh instead. A prefix with a row missing is not lent at all.</summary>
+/// it: that request gets the block folded fresh instead. A prefix with a row missing is not lent at all.
+/// The least recently rented block makes room for a new one, and its overlay is folded again for the new block when no
+/// request holds it, so a run of traces over different blocks keeps folding into the same few overlays.</summary>
 internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int blocks)
 {
     public const int DefaultBlocks = 4;
 
-    private readonly LruCache<ulong, MidBlockOverlay> _overlays = new(Math.Max(1, blocks), nameof(MidBlockOverlayCache));
+    private readonly MidBlockOverlay?[] _overlays = new MidBlockOverlay?[Math.Max(1, blocks)];
+    private readonly long[] _rentedAt = new long[Math.Max(1, blocks)];
+    private long _rents;
     private readonly Lock _lock = new();
 
     public MidBlockOverlayCache(TransactionChangesetStore store) : this(store, DefaultBlocks)
@@ -28,7 +31,8 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
         MidBlockOverlay overlay;
         lock (_lock)
         {
-            MidBlockOverlay? cached = _overlays.Get(block);
+            int entry = IndexOf(block);
+            MidBlockOverlay? cached = entry < 0 ? null : _overlays[entry];
             // The hash, not the height: the rows of a height can be replaced by a sibling's between two rents, and a
             // prefix folded from the one it replaced is not a prefix of this block at all.
             bool shareable = cached is not null && cached.Hash == hash && cached.Version == version && !cached.Extending
@@ -39,12 +43,17 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
             }
             else
             {
-                overlay = new MidBlockOverlay();
+                if (entry < 0) entry = LeastRecentlyRented();
+                // The overlay in the entry, evicted or of this same block, is folded again when no request holds it
+                // and it did not grow too large to keep; one a request still reads is left to that request.
+                MidBlockOverlay? current = _overlays[entry];
+                overlay = current is { Pins: 0, Extending: false, Oversized: false } ? current : new MidBlockOverlay();
                 overlay.Reset(block, hash);
                 overlay.Version = version;
-                _overlays.Set(block, overlay);
+                _overlays[entry] = overlay;
             }
 
+            _rentedAt[entry] = ++_rents;
             overlay.Pins++;
             overlay.Extending = overlay.Folded < beforeTransaction;
         }
@@ -98,6 +107,28 @@ internal sealed class MidBlockOverlayCache(TransactionChangesetStore store, int 
 
             return false;
         }
+    }
+
+    private int IndexOf(ulong block)
+    {
+        for (int i = 0; i < _overlays.Length; i++)
+        {
+            if (_overlays[i] is { } overlay && overlay.Block == block) return i;
+        }
+
+        return -1;
+    }
+
+    private int LeastRecentlyRented()
+    {
+        int oldest = 0;
+        for (int i = 0; i < _overlays.Length; i++)
+        {
+            if (_overlays[i] is null) return i;
+            if (_rentedAt[i] < _rentedAt[oldest]) oldest = i;
+        }
+
+        return oldest;
     }
 
     private void Return(MidBlockOverlay overlay)

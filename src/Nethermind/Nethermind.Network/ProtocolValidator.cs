@@ -59,10 +59,11 @@ namespace Nethermind.Network
             P2PProtocolInitializedEventArgs args = (P2PProtocolInitializedEventArgs)eventArgs;
             bool valid = ValidateP2PVersion(args.P2PVersion) || Disconnect(session, DisconnectReason.IncompatibleP2PVersion, CompatibilityValidationType.P2PVersion, $"p2p.{args.P2PVersion}");
             if (!valid) return false;
+            if (_clientIdPattern is null || session.Node.IsStatic || session.Node.IsTrusted) return true;
 
             try
             {
-                if (_clientIdPattern?.IsMatch(args.ClientId) == false)
+                if (!_clientIdPattern.IsMatch(args.ClientId))
                 {
                     session.InitiateDisconnect(DisconnectReason.ClientFiltered, $"clientId: {args.ClientId}");
                     return false;
@@ -114,10 +115,10 @@ namespace Nethermind.Network
 
         protected bool Disconnect(ISession session, DisconnectReason reason, CompatibilityValidationType type, string details, string traceDetails = "")
         {
-            if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, {details}{traceDetails}");
+            if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId:hide}, {details:hide}{traceDetails:hide}");
             _nodeStatsManager.ReportFailedValidation(session.Node, type);
             session.InitiateDisconnect(reason, details);
-            if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {reason} ({details}).");
+            if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host:hide}:{session.Node.Port:hide}, reason: {reason} ({details:hide}).");
             return false;
         }
 

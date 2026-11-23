@@ -23,10 +23,18 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
 {
     private readonly Lock _lock = new();
     private readonly Stack<StreamingParityLikeTxTracer> _idle = new();
+    private readonly Stack<TxTracer> _idleResults = new();
     private bool _disposed;
 
     /// <summary>Traces the transaction <paramref name="txHash"/>; its result returns the transaction tracer to the pool when disposed.</summary>
-    public IBlockTracer<ParityLikeTxTrace> For(Hash256 txHash) => new TxTracer(this, txHash);
+    public IBlockTracer<ParityLikeTxTrace> For(Hash256 txHash)
+    {
+        TxTracer? result;
+        lock (_lock) _idleResults.TryPop(out result);
+        result ??= new TxTracer(this);
+        result.Start(txHash);
+        return result;
+    }
 
     private StreamingParityLikeTxTracer Rent(Block block, Transaction tx)
     {
@@ -37,6 +45,14 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
 
         tracer.ResetForNextTx(block, tx);
         return tracer;
+    }
+
+    private void Return(TxTracer result)
+    {
+        lock (_lock)
+        {
+            if (!_disposed) _idleResults.Push(result);
+        }
     }
 
     private void Return(StreamingParityLikeTxTracer tracer, bool completed)
@@ -59,13 +75,15 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
         {
             _disposed = true;
             while (_idle.TryPop(out StreamingParityLikeTxTracer? tracer)) tracer.ReleaseResources();
+            _idleResults.Clear();
         }
     }
 
-    /// <summary>Traces one transaction and is its own result.</summary>
-    private sealed class TxTracer(ParallelParityTxTracerPool pool, Hash256 txHash)
-        : IBlockTracer<ParityLikeTxTrace>, IReadOnlyCollection<ParityLikeTxTrace>, IDisposable
+    /// <summary>Traces one transaction and is its own result; reused for the next transaction once disposed.</summary>
+    private sealed class TxTracer(ParallelParityTxTracerPool pool)
+        : IBlockTracer<ParityLikeTxTrace>, IReadOnlyList<ParityLikeTxTrace>, IDisposable
     {
+        private Hash256? _txHash;
         private Block? _block;
         private StreamingParityLikeTxTracer? _txTracer;
         private ParityLikeTxTrace? _trace;
@@ -74,12 +92,16 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
 
         public int Count => _trace is null ? 0 : 1;
 
+        public void Start(Hash256 txHash) => _txHash = txHash;
+
+        public ParityLikeTxTrace this[int index] => index == 0 && _trace is not null ? _trace : throw new ArgumentOutOfRangeException(nameof(index));
+
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
 
         public void StartNewBlockTrace(Block block) => _block = block;
 
         public ITxTracer StartNewTxTrace(Transaction? tx) =>
-            tx is null || tx.Hash != txHash || _txTracer is not null
+            tx is null || tx.Hash != _txHash || _txTracer is not null
                 ? NullTxTracer.Instance
                 : _txTracer = pool.Rent(_block!, tx);
 
@@ -99,13 +121,19 @@ internal sealed class ParallelParityTxTracerPool(Utf8JsonWriter writer, Cancella
 
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-        /// <summary>Returns the transaction tracer to the pool; one that did not finish its trace is released instead.</summary>
+        /// <summary>Returns the transaction tracer to the pool, one that did not finish its trace is released instead,
+        /// and then this result itself. A second call before the result is rented again does nothing; its owner
+        /// disposes it once, as every result is.</summary>
         public void Dispose()
         {
-            if (_txTracer is null) return;
-            pool.Return(_txTracer, completed: _trace is not null);
+            if (_txHash is null) return;
+
+            if (_txTracer is not null) pool.Return(_txTracer, completed: _trace is not null);
             _txTracer = null;
             _trace = null;
+            _block = null;
+            _txHash = null;
+            pool.Return(this);
         }
     }
 }

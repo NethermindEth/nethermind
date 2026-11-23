@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Config;
 
 namespace Nethermind.Db;
@@ -106,10 +107,16 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Delete the patricia-trie state DB on start once the flat DB owns the state, reclaiming its disk space. The kept trie is what a switch back to the patricia backend restarts from, replaying from the conversion block, so this is irreversible: switching back afterwards requires a resync.", DefaultValue = "false")]
     bool DropPruningTrieState { get; set; }
 
+    [ConfigItem(Description = "Migrate an existing pruning trie state DB to the flat DB while the node runs: the node switches to flat at once, serving what is not copied yet from the trie DB, which it keeps until the copy completes. Supported by the Flat and FlatInTrie layouts. Once started, the migration continues on every restart until it completes, whether or not this is still set.", DefaultValue = "false")]
+    bool MigrateFromPruningTrieState { get; set; }
+
+    [ConfigItem(Description = "Number of trie nodes the online migration from the pruning trie state copies per write, between which block processing takes over.", DefaultValue = "1000")]
+    int MigrationChunkNodes { get; set; }
+
     [ConfigItem(Description = "Inline compaction", DefaultValue = "false")]
     bool InlineCompaction { get; set; }
 
-    [ConfigItem(Description = "Flat db layout", DefaultValue = "Flat")]
+    [ConfigItem(Description = "Flat db layout. `Auto` keeps the layout of an existing flat DB, and creates a new one as `FlatInTrie` below 16 GB of memory available to .NET (75% of a container's memory limit) and as `Flat` otherwise.", DefaultValue = "Auto")]
     FlatLayout Layout { get; set; }
 
     [ConfigItem(Description = "Max in flight compact job", DefaultValue = "32")]
@@ -130,8 +137,12 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Regenerate the per-instance compaction offset on startup instead of loading from metadata DB. Use when restoring one backup to multiple instances. Flag is sticky across restarts — toggle off after first restart.", DefaultValue = "false")]
     bool RegenerateCompactionOffset { get; set; }
 
-    [ConfigItem(Description = "Trie cache memory target", DefaultValue = "536870912")]
+    [ConfigItem(Description = "Obsolete trie cache memory target, in bytes. The trie-node cache has been removed, so this setting has no effect.", DefaultValue = "536870912", HiddenFromDocs = true)]
+    [Obsolete("The trie-node cache has been removed. This setting has no effect.")]
     ulong TrieCacheMemoryBudget { get; set; }
+
+    [ConfigItem(Description = "Memory budget, in bytes, for the compacted generations of the trie node buffer; the oldest are freed beyond it. 0 disables compaction, freeing dropped generations at once; it is also disabled while TrieNodeLogEnabled is set. It also sizes the buffer's storage root index.", DefaultValue = "524288000")]
+    ulong CompressedNodeRecordBufferMemoryBudget { get; set; }
 
     [ConfigItem(Description = "Trie warmer worker count (-1 for the larger of 3/4 of the processor count and 1.5 per processor up to 12, 0 to disable)", DefaultValue = "-1")]
     int TrieWarmerWorkerCount { get; set; }
@@ -142,7 +153,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
 
-    [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
+    [ConfigItem(Description = "Publish the storage trie roots when the block commits, after it is reported valid, as the state trie already does; their nodes are written as each write batch completes either way. `false` publishes each storage trie's root before the block is reported valid.", DefaultValue = "true")]
     bool DeferStorageTrieCommit { get; set; }
 
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]

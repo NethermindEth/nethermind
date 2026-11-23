@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Stats.Model;
 using NUnit.Framework;
 
@@ -29,7 +29,7 @@ public class HelloMessageSerializerTests
         helloMessage.ListenPort = 8002;
         helloMessage.NodeId = NetTestVectors.StaticKeyA.PublicKey;
 
-        byte[] serialized = _serializer.Serialize(helloMessage);
+        byte[] serialized = _serializer.SerializeToArray(helloMessage);
         byte[] expectedBytes = Bytes.FromHexString("f85e01904e65746865726d696e642f616c706861c6c58365746801821f42b840fda1cff674c90c9a197539fe3dfb53086ace64f83ed7c6eabec741f7f381cc803e52ab2cd55d5569bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877");
 
         Assert.That(Bytes.AreEqual(serialized, expectedBytes), Is.True, "bytes");
@@ -106,7 +106,7 @@ public class HelloMessageSerializerTests
     {
         static ArrayPoolList<Capability> CreateCapabilities(int count)
         {
-            ArrayPoolList<Capability> caps = new(count);
+            ArrayPoolList<Capability> caps = [with(count)];
             for (int i = 0; i < count; i++)
             {
                 caps.Add(new Capability($"p{i:D3}", 1));
@@ -123,7 +123,7 @@ public class HelloMessageSerializerTests
             Capabilities = CreateCapabilities(capCount),
         };
 
-        byte[] serialized = _serializer.Serialize(original);
+        byte[] serialized = _serializer.SerializeToArray(original);
 
         if (shouldThrow)
         {
@@ -168,7 +168,7 @@ public class HelloMessageSerializerTests
             NodeId = NetTestVectors.StaticKeyA.PublicKey,
             Capabilities = new ArrayPoolList<Capability>(1) { new(protocolCode, 1) },
         };
-        return _serializer.Serialize(message);
+        return _serializer.SerializeToArray(message);
     }
 
     [Test]
@@ -198,6 +198,6 @@ public class HelloMessageSerializerTests
             NodeId = NetTestVectors.StaticKeyA.PublicKey,
             Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 68) },
         };
-        return _serializer.Serialize(message);
+        return _serializer.SerializeToArray(message);
     }
 }

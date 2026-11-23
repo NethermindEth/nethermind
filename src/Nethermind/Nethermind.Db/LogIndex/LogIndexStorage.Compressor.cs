@@ -117,7 +117,7 @@ partial class LogIndexStorage
             }
         }
 
-        public async Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken)
+        public async Task<bool> WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken)
         {
             Task empty;
             lock (_queueLock)
@@ -129,10 +129,12 @@ partial class LogIndexStorage
             try
             {
                 await empty.WaitAsync(waitTime, cancellationToken).ConfigureAwait(false);
+                return true;
             }
             catch (TimeoutException)
             {
                 // Compaction may continue after its bounded wait for compression expires.
+                return false;
             }
         }
 
@@ -230,7 +232,7 @@ partial class LogIndexStorage
         public PostMergeProcessingStats GetAndResetStats() => Stats;
         public bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue) => false;
         public Task EnqueueAsync(int? topicIndex, byte[] dbKey) => Task.CompletedTask;
-        public Task WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) => Task.CompletedTask;
+        public Task<bool> WaitUntilEmptyAsync(TimeSpan waitTime, CancellationToken cancellationToken) => Task.FromResult(true);
         public void Start() { }
         public Task StopAsync() => Task.CompletedTask;
         public void Dispose() { }
@@ -242,7 +244,8 @@ partial class LogIndexStorage
 
         bool TryEnqueue(int? topicIndex, ReadOnlySpan<byte> dbKey, ReadOnlySpan<byte> dbValue);
         Task EnqueueAsync(int? topicIndex, byte[] dbKey);
-        Task WaitUntilEmptyAsync(TimeSpan waitTime = default, CancellationToken cancellationToken = default);
+        /// <returns><c>false</c> if the queue was still not empty when <paramref name="waitTime"/> expired.</returns>
+        Task<bool> WaitUntilEmptyAsync(TimeSpan waitTime = default, CancellationToken cancellationToken = default);
 
         void Start();
         Task StopAsync();

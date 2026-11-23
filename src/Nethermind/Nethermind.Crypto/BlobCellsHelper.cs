@@ -41,7 +41,7 @@ public static class BlobCellsHelper
         int blobCount = wrapper.Commitments.Length;
         int cellsPerBlob = wrapper.CellMask.Count;
         if ((wrapper.Blobs.Length != 0 && wrapper.Blobs.Length != blobCount)
-            || wrapper.Proofs.Length != blobCount * Ckzg.CellsPerExtBlob
+            || wrapper.Proofs.Length != blobCount * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof
             || wrapper.Cells.Length != blobCount * cellsPerBlob)
         {
             return false;
@@ -50,14 +50,6 @@ public static class BlobCellsHelper
         for (int i = 0; i < blobCount; i++)
         {
             if (wrapper.Commitments[i] is not { Length: Ckzg.BytesPerCommitment })
-            {
-                return false;
-            }
-        }
-
-        for (int i = 0; i < wrapper.Proofs.Length; i++)
-        {
-            if (wrapper.Proofs[i] is not { Length: Ckzg.BytesPerProof })
             {
                 return false;
             }
@@ -85,7 +77,7 @@ public static class BlobCellsHelper
                 {
                     int flatIndex = blobIndex * cellsPerBlob + position;
                     wrapper.Commitments[blobIndex].CopyTo(flatCommitments.Slice(flatIndex * Ckzg.BytesPerCommitment, Ckzg.BytesPerCommitment));
-                    wrapper.Proofs[blobIndex * Ckzg.CellsPerExtBlob + cellIndex].CopyTo(flatProofs.Slice(flatIndex * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
+                    wrapper.GetProofs(blobIndex * Ckzg.CellsPerExtBlob + cellIndex).Span.CopyTo(flatProofs.Slice(flatIndex * Ckzg.BytesPerProof, Ckzg.BytesPerProof));
                     wrapper.Cells[flatIndex].CopyTo(flatCells.Slice(flatIndex * Ckzg.BytesPerCell, Ckzg.BytesPerCell));
                     indices[flatIndex] = (ulong)cellIndex;
                 }
@@ -124,7 +116,7 @@ public static class BlobCellsHelper
             || wrapper.Cells is not { } cells
             || cells.Length != blobCount * cellsPerBlob
             || (wrapper.Blobs.Length != 0 && wrapper.Blobs.Length != blobCount)
-            || wrapper.Proofs.Length != blobCount * Ckzg.CellsPerExtBlob)
+            || wrapper.Proofs.Length != blobCount * Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof)
         {
             return false;
         }
@@ -146,11 +138,11 @@ public static class BlobCellsHelper
         }
 
         byte[][] blobs = new byte[blobCount][];
-        byte[][] proofs = new byte[blobCount * Ckzg.CellsPerExtBlob][];
+        const int proofsPerBlobLength = Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof;
+        byte[] proofs = new byte[blobCount * proofsPerBlobLength];
         using ArrayPoolSpan<ulong> indices = new(cellsPerBlob);
         using ArrayPoolSpan<byte> inputCells = new(cellsPerBlob * Ckzg.BytesPerCell);
         using ArrayPoolSpan<byte> recoveredCells = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerCell);
-        using ArrayPoolSpan<byte> recoveredProofs = new(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof);
 
         int indexPosition = 0;
         foreach (int cellIndex in wrapper.CellMask.EnumerateSetBits())
@@ -171,20 +163,13 @@ public static class BlobCellsHelper
 
                 Ckzg.RecoverCellsAndKzgProofs(
                     recoveredCells,
-                    recoveredProofs,
+                    proofs.AsSpan(blobIndex * proofsPerBlobLength, proofsPerBlobLength),
                     indices,
                     inputCells,
                     cellsPerBlob,
                     KzgPolynomialCommitments.CkzgSetup);
 
                 blobs[blobIndex] = recoveredCells.Slice(0, Ckzg.BytesPerBlob).ToArray();
-                int proofOffset = blobIndex * Ckzg.CellsPerExtBlob;
-                for (int cellIndex = 0; cellIndex < Ckzg.CellsPerExtBlob; cellIndex++)
-                {
-                    proofs[proofOffset + cellIndex] = recoveredProofs
-                        .Slice(cellIndex * Ckzg.BytesPerProof, Ckzg.BytesPerProof)
-                        .ToArray();
-                }
             }
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
@@ -337,7 +322,7 @@ public static class BlobCellsHelper
     {
         if (blobIndex < 0
             || blobIndex >= wrapper.Commitments.Length
-            || wrapper.Proofs.Length < (blobIndex + 1) * Ckzg.CellsPerExtBlob)
+            || wrapper.ProofCount < (blobIndex + 1) * Ckzg.CellsPerExtBlob)
         {
             return [];
         }
@@ -347,7 +332,7 @@ public static class BlobCellsHelper
         int i = 0;
         foreach (int cellIndex in availableMask.EnumerateSetBits())
         {
-            proofs[i++] = wrapper.Proofs[blobIndex * Ckzg.CellsPerExtBlob + cellIndex];
+            proofs[i++] = wrapper.GetProofs(blobIndex * Ckzg.CellsPerExtBlob + cellIndex).ToArray();
         }
 
         return proofs;

@@ -6,6 +6,7 @@ using System.Runtime.Intrinsics.X86;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -166,7 +167,7 @@ public partial class TrieStoreScopeProvider(
             }
 
             // Copy the span into a pooled array so the parallel loop can capture it.
-            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = new(bal.AccountChanges.AsSpan());
+            ArrayPoolList<ReadOnlyAccountChanges> accountChanges = [with(bal.AccountChanges.AsSpan())];
 
             _hintBalCts = new CancellationTokenSource();
             CancellationToken token = _hintBalCts.Token;
@@ -256,7 +257,11 @@ public partial class TrieStoreScopeProvider(
                     sink.OnStorageRead(in cell, in value);
                 }
             }
-            catch (MissingTrieNodeException) { }
+            catch (MissingTrieNodeException e)
+            {
+                ILogger logger = _logManager.GetClassLogger<TrieStoreWorldStateBackendScope>();
+                if (logger.IsTrace) logger.Trace($"BAL warmup of {address} stopped on a missing trie node: {e.Message}");
+            }
         }
 
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
@@ -326,7 +331,7 @@ public partial class TrieStoreScopeProvider(
         int estimatedAccountCount,
         ILogger logger) : IWorldStateScopeProvider.IWorldStateWriteBatch
     {
-        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = new(estimatedAccountCount);
+        private readonly Dictionary<AddressAsKey, Account?> _dirtyAccounts = [with(estimatedAccountCount)];
         private Action<Address, Hash256>? _markDirty;
 
         public event EventHandler<IWorldStateScopeProvider.AccountUpdated>? OnAccountUpdated;
@@ -343,15 +348,17 @@ public partial class TrieStoreScopeProvider(
             while (_dirtyStorageTree.TryDequeue(out (AddressAsKey, Hash256) entry))
             {
                 (AddressAsKey key, Hash256 storageRoot) = entry;
-                if (!_dirtyAccounts.TryGetValue(key, out Account? account))
-                    account = scope.Get(key);
+                ref Account? slot = ref CollectionsMarshal.GetValueRefOrNullRef(_dirtyAccounts, key);
+                bool isDirty = !Unsafe.IsNullRef(ref slot);
+                Account? account = isDirty ? slot : scope.Get(key);
 
                 // Account may be null when EIP-161 deletes an empty account that had storage
                 // changes in the same block. Skip the storage root update since the account
                 // will not exist in the state trie.
                 if (account is null) continue;
                 account = account.WithChangedStorageRoot(storageRoot);
-                _dirtyAccounts[key] = account;
+                if (isDirty) slot = account;
+                else _dirtyAccounts[key] = account;
                 Address address = key.Value;
                 OnAccountUpdated?.Invoke(address, new IWorldStateScopeProvider.AccountUpdated(address, account));
                 if (logger.IsTrace) Trace(address, storageRoot, account);

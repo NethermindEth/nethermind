@@ -13,9 +13,11 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using CryptSharp.Utility;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
@@ -52,6 +54,27 @@ namespace Nethermind.KeyStore
     [DoNotUseInSecuredContext("Untested, also uses lots of unsafe software key generation techniques")]
     public class FileKeyStore : IKeyStore
     {
+        private const string Scrypt = "scrypt";
+        private const string Pbkdf2 = "pbkdf2";
+        private const string Aes128Ctr = "aes-128-ctr";
+        private const string Aes128Cbc = "aes-128-cbc";
+
+        // New key files take the MAC key from the last 16 derived bytes; the Web3 Secret Storage definition takes bytes
+        // 16..31. The two agree only at 32, so that is the only length new key files are written with.
+        private const int WriteDkLen = 32;
+        private const int MinWriteSaltLength = 16;
+        // Reading needs derived bytes 0..15 for the cipher key and 16 bytes for the MAC key (see IsMacValid).
+        private const int MinReadDkLen = 16;
+        private const int MaxReadDkLen = 1024;
+        private const int MacKeyLength = 16;
+
+        // Resource limits for scrypt on read and write, far above the parameters wallets use. Memory is
+        // 128 * r * (n + 2p + 3) bytes: n + 3 blocks of 128 * r bytes for the mixing and the p input blocks, held twice.
+        // Work is n * r * p, which the default settings put at 1 << 21.
+        private const long MaxScryptMemory = 1L << 31;
+        private const long MaxScryptWork = 1L << 24;
+        private const string ScryptLimits = "scrypt may use at most 2 GiB of memory and n * r * p of at most 16777216";
+
         private readonly PrivateKeyGenerator _privateKeyGenerator;
         private readonly IKeyStoreConfig _config;
         private readonly IJsonSerializer _jsonSerializer;
@@ -127,37 +150,52 @@ namespace Nethermind.KeyStore
             byte[] salt = Bytes.FromHexString(keyStoreItem.Crypto.KDFParams.Salt);
 
             KdfParams kdfParams = keyStoreItem.Crypto.KDFParams;
+            int dkLen = kdfParams.DkLen;
+            if (dkLen is < MinReadDkLen or > MaxReadDkLen)
+            {
+                return (null, Result.Fail($"Unsupported dklen: {dkLen}"));
+            }
+
             byte[] passBytes = password.ToByteArray(_keyStoreEncoding);
 
             byte[] derivedKey;
-            string kdf = keyStoreItem.Crypto.KDF.Trim();
+            string? kdf = ToCanonicalName(keyStoreItem.Crypto.KDF);
             switch (kdf)
             {
-                case "scrypt":
-                    int r = kdfParams.R.Value;
-                    int p = kdfParams.P.Value;
-                    int n = kdfParams.N.Value;
-                    // ComputeDerivedKey uses too little stack size in case of multithread processing, which may cause stack overflow.
-                    // Switch to single thread if "cost" is too high, see Scrypt.ThreadSMixCalls internals
-                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, n, r, p, n > 8192 ? 1 : null, kdfParams.DkLen);
+                case Scrypt:
+                    if (kdfParams.N is not int n || kdfParams.R is not int r || kdfParams.P is not int p
+                        || !IsValidScryptN(n) || r <= 0 || p <= 0)
+                    {
+                        return (null, Result.Fail("Incorrect key: scrypt requires a power-of-two n above 1 and positive r and p"));
+                    }
+
+                    if (!IsWithinScryptLimits(n, r, p))
+                    {
+                        return (null, Result.Fail($"Unsupported scrypt parameters: n {n}, r {r}, p {p}; {ScryptLimits}"));
+                    }
+
+                    derivedKey = DeriveScryptKey(passBytes, salt, n, r, p, dkLen);
                     break;
-                case "pbkdf2":
-                    int c = kdfParams.C.Value;
-                    derivedKey = Rfc2898DeriveBytes.Pbkdf2(passBytes, salt, c, HashAlgorithmName.SHA256, 256);
+                case Pbkdf2:
+                    if (kdfParams.C is not int c || c <= 0)
+                    {
+                        return (null, Result.Fail("Incorrect key: pbkdf2 requires a positive c"));
+                    }
+
+                    derivedKey = Rfc2898DeriveBytes.Pbkdf2(passBytes, salt, c, HashAlgorithmName.SHA256, dkLen);
                     break;
                 default:
                     return (null, Result.Fail($"Unsupported algorithm: {kdf}"));
             }
 
-            Span<byte> restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
-            if (!CryptographicOperations.FixedTimeEquals(mac, restoredMac))
+            if (!IsMacValid(mac, derivedKey, cipher))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
 
-            string cipherType = keyStoreItem.Crypto.Cipher.Trim();
+            string? cipherType = ToCanonicalName(keyStoreItem.Crypto.Cipher);
             byte[] decryptKey;
-            if (kdf == "scrypt" && cipherType == "aes-128-cbc")
+            if (kdf == Scrypt && cipherType == Aes128Cbc)
             {
                 decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes[..16].ToArray();
             }
@@ -249,15 +287,23 @@ namespace Nethermind.KeyStore
                 throw new InvalidOperationException("Cannot work with password that is not readonly");
             }
 
-            byte[] salt = _cryptoRandom.GenerateRandomBytes(32);
+            // Each setting is read once, so the key is derived, encrypted and described with the same values.
+            string? kdf = ToCanonicalName(_config.Kdf);
+            string? cipherType = ToCanonicalName(_config.Cipher);
+            int dkLen = _config.KdfparamsDklen;
+            int saltLength = _config.KdfparamsSaltLen;
+            int n = _config.KdfparamsN;
+            int r = _config.KdfparamsR;
+            int p = _config.KdfparamsP;
+            ValidateWriteSettings(kdf, cipherType, dkLen, saltLength, n, r, p);
+
+            byte[] salt = _cryptoRandom.GenerateRandomBytes(saltLength);
             byte[] passBytes = password.ToByteArray(_keyStoreEncoding);
 
-            byte[] derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _config.KdfparamsN, _config.KdfparamsR, _config.KdfparamsP, null, _config.KdfparamsDklen);
+            byte[] derivedKey = DeriveScryptKey(passBytes, salt, n, r, p, dkLen);
 
             byte[] encryptKey;
-            string kdf = _config.Kdf;
-            string cipherType = _config.Cipher;
-            if (kdf == "scrypt" && cipherType == "aes-128-cbc")
+            if (kdf == Scrypt && cipherType == Aes128Cbc)
             {
                 encryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes[..16].ToArray();
             }
@@ -269,13 +315,13 @@ namespace Nethermind.KeyStore
             byte[] encryptContent = keyContent;
             byte[] iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
-            byte[] cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
+            byte[] cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, cipherType);
             if (cipher is null)
             {
                 return Result.Fail("Error during encryption");
             }
 
-            Span<byte> mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
+            Span<byte> mac = Keccak.Compute(derivedKey.Skip(dkLen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
 
             string addressString = address.ToString(false, false);
             KeyStoreItem keyStoreItem = new()
@@ -283,19 +329,19 @@ namespace Nethermind.KeyStore
                 Address = addressString,
                 Crypto = new Crypto
                 {
-                    Cipher = _config.Cipher,
+                    Cipher = cipherType,
                     CipherText = cipher.ToHexString(false),
                     CipherParams = new CipherParams
                     {
                         IV = iv.ToHexString(false)
                     },
-                    KDF = _config.Kdf,
+                    KDF = kdf,
                     KDFParams = new KdfParams
                     {
-                        DkLen = _config.KdfparamsDklen,
-                        N = _config.KdfparamsN,
-                        P = _config.KdfparamsP,
-                        R = _config.KdfparamsR,
+                        DkLen = dkLen,
+                        N = n,
+                        P = p,
+                        R = r,
                         Salt = salt.ToHexString(false)
                     },
                     MAC = mac.ToHexString(false),
@@ -320,7 +366,7 @@ namespace Nethermind.KeyStore
             catch (Exception e)
             {
                 string msg = "Error during getting addresses";
-                if (_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) LogIoFailure(msg, e);
                 return ([], Result.Fail(msg));
             }
         }
@@ -357,6 +403,108 @@ namespace Nethermind.KeyStore
             return Result.Success;
         }
 
+        private static string? ToCanonicalName(string? name) => name?.Trim().ToLowerInvariant();
+
+        // Scrypt needs a cost above 1.
+        private static bool IsValidScryptN(int n) => n > 1 && int.IsPow2(n);
+
+        // For p above 1 the library would start extra threads with an 8 KB stack, on which the runtime can overflow and
+        // end the process. On one thread the p passes run on the caller's stack, one after another, and give the same key.
+        private static byte[] DeriveScryptKey(byte[] password, byte[] salt, int n, int r, int p, int dkLen) =>
+            SCrypt.ComputeDerivedKey(password, salt, n, r, p, 1, dkLen);
+
+        /// <summary>Whether scrypt with these parameters stays within the memory and work a key file may ask for.</summary>
+        /// <remarks>Expects positive <paramref name="r"/> and <paramref name="p"/>. Divides the limits, so nothing overflows.</remarks>
+        internal static bool IsWithinScryptLimits(int n, int r, int p) =>
+            n + 2L * p + 3 <= MaxScryptMemory / (128L * r) && (long)n * r <= MaxScryptWork / p;
+
+        // Accepts the MAC key of the Web3 Secret Storage definition, derived bytes 16..31, and, for a dklen other than 32,
+        // the last 16 derived bytes, which Nethermind key files with such a dklen use.
+        private static bool IsMacValid(ReadOnlySpan<byte> mac, ReadOnlySpan<byte> derivedKey, ReadOnlySpan<byte> cipher)
+        {
+            int length = MacKeyLength + cipher.Length;
+            Span<byte> macBody = length <= 256 ? stackalloc byte[length] : new byte[length];
+            cipher.CopyTo(macBody[MacKeyLength..]);
+
+            if (derivedKey.Length >= 2 * MacKeyLength)
+            {
+                derivedKey.Slice(MacKeyLength, MacKeyLength).CopyTo(macBody);
+                if (MacMatches(mac, macBody))
+                {
+                    return true;
+                }
+
+                if (derivedKey.Length == 2 * MacKeyLength)
+                {
+                    return false;
+                }
+            }
+
+            derivedKey[^MacKeyLength..].CopyTo(macBody);
+            return MacMatches(mac, macBody);
+
+            static bool MacMatches(ReadOnlySpan<byte> mac, ReadOnlySpan<byte> macBody)
+            {
+                ValueHash256 restoredMac = ValueKeccak.Compute(macBody);
+                return CryptographicOperations.FixedTimeEquals(mac, restoredMac.Bytes);
+            }
+        }
+
+        /// <summary>Rejects settings that new key files cannot be written with.</summary>
+        /// <remarks>
+        /// Checked on every write rather than at startup, so settings that only affect writing do not stop a node from
+        /// reading its key files. Throws rather than failing the <see cref="Result"/>, which most callers do not check.
+        /// </remarks>
+        /// <exception cref="InvalidConfigurationException">A setting is not supported for new key files.</exception>
+        private static void ValidateWriteSettings(string? kdf, string? cipherType, int dkLen, int saltLength, int n, int r, int p)
+        {
+            if (kdf != Scrypt)
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.Kdf), kdf, $"use '{Scrypt}'; key files derived with '{Pbkdf2}' can still be read");
+            }
+
+            if (cipherType is not (Aes128Ctr or Aes128Cbc))
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.Cipher), cipherType, $"use '{Aes128Ctr}' or '{Aes128Cbc}'");
+            }
+
+            if (dkLen != WriteDkLen)
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsDklen), dkLen, $"use {WriteDkLen}");
+            }
+
+            if (saltLength < MinWriteSaltLength)
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsSaltLen), saltLength, $"use at least {MinWriteSaltLength}");
+            }
+
+            // The same rules as for reading a scrypt key file.
+            if (!IsValidScryptN(n))
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsN), n, "use a power of two greater than 1");
+            }
+
+            if (r <= 0)
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsR), r, "use at least 1");
+            }
+
+            if (p <= 0)
+            {
+                throw UnsupportedWriteSetting(nameof(IKeyStoreConfig.KdfparamsP), p, "use at least 1");
+            }
+
+            if (!IsWithinScryptLimits(n, r, p))
+            {
+                throw new InvalidConfigurationException(
+                    $"KeyStore.{nameof(IKeyStoreConfig.KdfparamsN)} '{n}', KeyStore.{nameof(IKeyStoreConfig.KdfparamsR)} '{r}' and KeyStore.{nameof(IKeyStoreConfig.KdfparamsP)} '{p}' are not supported together for new key files: {ScryptLimits}.",
+                    ExitCodes.ForbiddenOptionValue);
+            }
+
+            static InvalidConfigurationException UnsupportedWriteSetting(string setting, object? value, string rule) =>
+                new($"KeyStore.{setting} '{value}' is not supported for new key files: {rule}.", ExitCodes.ForbiddenOptionValue);
+        }
+
         private Result PersistKey(Address address, KeyStoreItem keyData)
         {
             string serializedKey = _jsonSerializer.Serialize(keyData);
@@ -372,7 +520,7 @@ namespace Nethermind.KeyStore
             catch (Exception e)
             {
                 string msg = $"Error during persisting key for address: {address}";
-                if (_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) LogIoFailure(msg, e);
                 return Result.Fail(msg);
             }
         }
@@ -398,7 +546,7 @@ namespace Nethermind.KeyStore
             catch (Exception e)
             {
                 string msg = $"Error during deleting key for address: {address}";
-                if (_logger.IsError) _logger.Error(msg, e);
+                if (_logger.IsError) LogIoFailure(msg, e);
                 return Result.Fail(msg);
             }
         }
@@ -415,7 +563,7 @@ namespace Nethermind.KeyStore
                 string[] files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
+                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory):hide}.");
                     return null;
                 }
 
@@ -423,9 +571,15 @@ namespace Nethermind.KeyStore
             }
             catch (Exception e)
             {
-                if (_logger.IsError) _logger.Error($"Error during reading key for address: {address}", e);
+                if (_logger.IsError) LogIoFailure($"Error during reading key for address: {address}", e);
                 return null;
             }
+        }
+
+        private void LogIoFailure(string message, Exception error)
+        {
+            bool maskSensitiveData = SensitiveLogMasking.Enabled;
+            _logger.Error(maskSensitiveData ? $"{message}: {error.GetType().Name}" : message, maskSensitiveData ? null : error);
         }
 
         internal string[] FindKeyFiles(Address address)

@@ -171,7 +171,7 @@ public class TransactionChangesetIndexModuleTests
         foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
             Assert.That(session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, CancellationToken.None), Is.True);
         session.VerifyAnchor(CancellationToken.None);
-        BulkFillScopeProvider provider = new(session, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        BulkFillScopeProvider provider = new(session, container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
         using ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, provider, container.Resolve<IBlockValidationModule[]>());
         IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
         Block originalHead = tree.Head;
@@ -344,7 +344,7 @@ public class TransactionChangesetIndexModuleTests
         foreach (Block block in chain) Assert.That(tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
 
         int syncsBeforeReplay = scratch.Syncs;
-        BulkFillScopeProvider provider = new(session, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        BulkFillScopeProvider provider = new(session, container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
         using (ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, provider, container.Resolve<IBlockValidationModule[]>()))
         {
             IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
@@ -368,7 +368,7 @@ public class TransactionChangesetIndexModuleTests
         }
 
         restarted.CleanStorage(CancellationToken.None);
-        BulkFillScopeProvider restartedProvider = new(restarted, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        BulkFillScopeProvider restartedProvider = new(restarted, container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
         using (ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, restartedProvider, container.Resolve<IBlockValidationModule[]>()))
         {
             IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();

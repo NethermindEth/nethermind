@@ -31,6 +31,12 @@ namespace Nethermind.JsonRpc
         internal static void IncrementJsonRpcOverloadRejections() => Interlocked.Increment(ref _jsonRpcOverloadRejections);
 
         [CounterMetric]
+        [Description("Number of JSON RPC requests abandoned while queued for a module because their client went away. They are counted as neither successes nor errors.")]
+        public static long JsonRpcAbandonedRequests => _jsonRpcAbandonedRequests;
+        private static long _jsonRpcAbandonedRequests;
+        internal static void IncrementJsonRpcAbandonedRequests() => Interlocked.Increment(ref _jsonRpcAbandonedRequests);
+
+        [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]
         public static long JsonRpcErrors { get; set; }
 

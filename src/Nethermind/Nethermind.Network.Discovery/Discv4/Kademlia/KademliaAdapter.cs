@@ -95,10 +95,10 @@ public class KademliaAdapter(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TraceEnsureSession(Node node) => Logger.Trace($"Ensure session for node {node}");
+    private void TraceEnsureSession(Node node) => Logger.Trace($"Ensure session for node {node:hide}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void TracePongSent(Node node) => Logger.Trace($"Node {node} pong sent.");
+    private void TracePongSent(Node node) => Logger.Trace($"Node {node:hide} pong sent.");
 
     private async Task<DiscoveryResponse<T>> RunAuthenticatedRequest<T, TState>(Node node, NodeSession session, TState state, Func<TState, CancellationToken, Task<DiscoveryResponse<T>>> callRequest, CancellationToken token)
     {
@@ -361,6 +361,32 @@ public class KademliaAdapter(
     protected override bool IsEnrValidForNode(Node node, NodeRecord record)
         => HasExpectedNodeId(record, node.Id.Hash.ValueHash256);
 
+    /// <remarks>
+    /// A signed record proves the node identity, not its endpoint, and every refresh follows a bond with the node's
+    /// current endpoint. The record is kept, and the node stays at that endpoint, so that a refresh never moves the
+    /// routing entry to an endpoint that did not answer a ping. When the record lists that endpoint (the same address
+    /// bytes and UDP port; a record carries no IPv6 scope), the node takes the record's TCP port and keeps the bonded
+    /// address, including its scope. Otherwise it keeps its current TCP address.
+    /// </remarks>
+    protected override bool TryCreateNodeFromEnr(Node currentNode, NodeRecord record, [NotNullWhen(true)] out Node? refreshedNode)
+    {
+        if (!base.TryCreateNodeFromEnr(currentNode, record, out Node? recordNode))
+        {
+            refreshedNode = null;
+            return false;
+        }
+
+        IPEndPoint bondedEndpoint = currentNode.DiscoveryAddress;
+        IPEndPoint recordEndpoint = recordNode.DiscoveryAddress;
+        bool listsBondedEndpoint = recordEndpoint.Port == bondedEndpoint.Port &&
+                                   HasSameAddressBytes(recordEndpoint.Address, bondedEndpoint.Address);
+        IPEndPoint tcpAddress = listsBondedEndpoint
+            ? new IPEndPoint(currentNode.Address.Address, recordNode.Port)
+            : currentNode.Address;
+        refreshedNode = new Node(currentNode.Id, tcpAddress, currentNode.DiscoveryPort);
+        return true;
+    }
+
     protected override void AddOrRefreshRemoteNode(Node node)
         => kademlia.Value.AddOrRefresh(node);
 
@@ -453,7 +479,7 @@ public class KademliaAdapter(
 
     private async Task<bool> HandlePing(Node node, NodeSession session, PingMsg ping, CancellationToken token)
     {
-        if (Logger.IsTrace) Logger.Trace($"Receive ping from {node}");
+        if (Logger.IsTrace) Logger.Trace($"Receive ping from {node:hide}");
         if (ping.Mdc is not { } pingMdc)
         {
             if (Logger.IsTrace) TracePingWithoutHash(node);
@@ -482,19 +508,19 @@ public class KademliaAdapter(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceUnbondedEnrRequest(IPEndPoint endpoint, Node node) =>
-        Logger.Trace($"Rejecting enr request from unbonded endpoint {endpoint} for peer {node.Id}");
+        Logger.Trace($"Rejecting enr request from unbonded endpoint {endpoint:hide} for peer {node.Id:hide}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceEnrRequestWithoutHash(Node node) =>
-        Logger.Trace($"Rejecting enr request without packet hash from {node}");
+        Logger.Trace($"Rejecting enr request without packet hash from {node:hide}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TraceUnbondedFindNodeRequest(IPEndPoint endpoint, Node node) =>
-        Logger.Trace($"Rejecting findNode request from unbonded endpoint {endpoint} for peer {node.Id}");
+        Logger.Trace($"Rejecting findNode request from unbonded endpoint {endpoint:hide} for peer {node.Id:hide}");
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void TracePingWithoutHash(Node node) =>
-        Logger.Trace($"Rejecting ping without packet hash from {node}");
+        Logger.Trace($"Rejecting ping without packet hash from {node:hide}");
 
     private void PublishNode(Node node, NodeSession session, PingMsg? signedPing, ulong? advertisedEnrSequence)
     {
@@ -586,11 +612,11 @@ public class KademliaAdapter(
     {
         try
         {
-            if (Logger.IsTrace) Logger.Trace($"Received msg: {msg}");
+            if (Logger.IsTrace) Logger.Trace($"Received msg: {msg:hide}");
             MsgType msgType = msg.MsgType;
             if (msg.FarPublicKey is null || msg.FarAddress is null)
             {
-                if (Logger.IsDebug) Logger.Debug($"Discovery message without a valid remote endpoint or signature, message: {msg}");
+                if (Logger.IsDebug) Logger.Debug($"Discovery message without a valid remote endpoint or signature, message: {msg:hide}");
                 return;
             }
 
@@ -666,7 +692,7 @@ public class KademliaAdapter(
     {
         if (msg.DestinationAddress is null || msg.FarAddress is null)
         {
-            if (Logger.IsError) Logger.Error($"Received a ping message with empty address, message: {msg}");
+            if (Logger.IsError) Logger.Error($"Received a ping message with empty address, message: {msg:hide}");
             return false;
         }
 

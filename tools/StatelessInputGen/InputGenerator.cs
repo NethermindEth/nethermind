@@ -14,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Ssz;
@@ -25,7 +26,7 @@ namespace Nethermind.StatelessInputGen;
 
 internal static class InputGenerator
 {
-    internal static async Task<int> Generate(string blockParam, Uri host, Uri? beaconUrl, string output, bool forZisk, CancellationToken cancellationToken = default)
+    internal static async Task<int> Generate(string blockParam, Uri host, Uri? beaconUrl, string output, bool forZisk, bool trusted, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(blockParam);
         ArgumentNullException.ThrowIfNull(host);
@@ -48,12 +49,15 @@ internal static class InputGenerator
         if (data is null)
             return 1;
 
+        if (trusted)
+            data = TrustedInput.FromStatelessInput(data);
+
         if (forZisk)
             data = ZiskFrame.Wrap(data);
 
         Directory.CreateDirectory(output);
 
-        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}.ssz";
+        string fileName = $"{EnsureBlockParamIsNumber(blockParam, block)}{(trusted ? ".nti" : ".ssz")}";
         string path = Path.Join(output, fileName);
 
         await File.WriteAllBytesAsync(path, data, cancellationToken);
@@ -192,7 +196,7 @@ internal static class InputGenerator
                 IRlpDecoder<Block> blockDecoder = Rlp.GetDecoderOrThrow<Block>();
                 RlpReader blockContext = new(rlp);
                 Block? decodedBlock = blockDecoder.Decode(ref blockContext, RlpBehaviors.None);
-                blockContext.Check(rlp.Length);
+                blockContext.CheckEnd();
 
                 if (decodedBlock is null)
                 {

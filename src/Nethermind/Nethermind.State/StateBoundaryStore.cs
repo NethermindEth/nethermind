@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State;
@@ -43,6 +45,7 @@ public sealed class StateBoundaryStore(
         {
             lock (_lock) return _oldestStateBlock;
         }
+        [SkipLocalsInit]
         set
         {
             lock (_lock)
@@ -57,7 +60,7 @@ public sealed class StateBoundaryStore(
                 }
                 // Persist before caching so a thrown kv write doesn't desync memory from disk.
                 if (value.HasValue)
-                    stateDb[OldestStateBlockKey] = Rlp.Encode(value.Value).Bytes;
+                    stateDb.PutSpan(OldestStateBlockKey, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 else
                     stateDb.Remove(OldestStateBlockKey);
                 _oldestStateBlock = value;
@@ -76,6 +79,7 @@ public sealed class StateBoundaryStore(
         {
             lock (_lock) return _bestPersistedState;
         }
+        [SkipLocalsInit]
         set
         {
             lock (_lock)
@@ -83,7 +87,7 @@ public sealed class StateBoundaryStore(
                 if (_bestPersistedState == value) return;
                 // Persist before caching so a thrown kv write doesn't desync memory from disk.
                 if (value.HasValue)
-                    blockInfosDb[BestPersistedStateKey] = Rlp.Encode(value.Value).Bytes;
+                    blockInfosDb.PutSpan(BestPersistedStateKey, Rlp.Encode(value.Value, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
                 else
                     blockInfosDb.Remove(BestPersistedStateKey);
                 _bestPersistedState = value;
@@ -91,6 +95,10 @@ public sealed class StateBoundaryStore(
         }
     }
 
-    private static ulong? DecodeBlockNumber(byte[]? rlp) =>
-        rlp is null ? null : new RlpReader(rlp).DecodeULong();
+    private static ulong? DecodeBlockNumber(byte[]? rlp)
+    {
+        if (rlp is null) return null;
+        RlpReader reader = new(rlp);
+        return reader.DecodeULong<OffFlag>();
+    }
 }

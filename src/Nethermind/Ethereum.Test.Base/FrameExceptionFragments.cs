@@ -109,17 +109,31 @@ public static class FrameExceptionFragments
     ];
 
     /// <summary>
-    /// Decode-time rejections of a frame field too wide or too long for its type, which the fixtures
-    /// also name as format failures. Reported before any rule runs, so they name no rule.
+    /// Decode-time rejections of a frame transaction's encoding — a field too wide or too long for its type, a field
+    /// not encoded canonically, or a list whose header does not match its elements — which the fixtures also name as
+    /// format failures. Reported before any rule runs, so they name no rule.
     /// </summary>
     public static readonly string[] Decode =
     [
         "Unexpected length of integer value",
+        // A nonce or nonce_seq wider than 64 bits, as BaseTxDecoder.DecodeNonce reports it. EIP-8250's
+        // seq_beyond_width labels it TYPE_6_INVALID_FRAME_FORMAT only; a plain nonce also matches NONCE_OVERFLOW.
+        "NonceTooWide",
         // Two producers: RlpReader words a bad address prefix, RlpHelpers a field that should be a
         // sequence and is not. The latter is trimmed of the byte range it goes on to name.
         "Unexpected RLP prefix",
         "Expected a sequence prefix",
         "frame transaction payload is incomplete",
+        // A field not encoded canonically: an integer or one-byte string with a leading zero or a header it does
+        // not need, a one-byte field (mode, flags) under a string or list prefix, and a long-form length on a string
+        // shorter than 56 bytes.
+        "Non-canonical integer",
+        "Unexpected byte value",
+        "Expected length greater than or equal to 56",
+        // A list header that does not match the bytes its elements take up, e.g. a frame's limits missing one.
+        "Data checkpoint failed",
+        // A fees list without both max_fee and max_priority_fee_per_gas.
+        "fees must hold two items",
         // Kept in step with FeeOverflow by DecodeCarriesEveryFeeOverflowWording, rather than spread
         // from it: a static initialiser reading a field declared below it silently reads null.
         "Collection count",

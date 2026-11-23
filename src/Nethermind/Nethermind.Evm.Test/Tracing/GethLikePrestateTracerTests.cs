@@ -172,6 +172,66 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         .AddDecorator<IWorldState, RecordingStorageWorldState>()
         .Build();
 
+    [Test]
+    public void MarkAsSuccess_DiffWithUnchangedCode_DoesNotReadCodeAgain([Values] bool disableCode)
+    {
+        StorageReadCounter reads = new() { CodeReadTarget = TestItem.AddressB };
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        using NativePrestateTracer tracer = CreateCodeSnapshot(state, disableCode);
+        Assert.That(reads.CodeReads, Is.EqualTo(disableCode ? 0 : 1), "precondition: the initial code was captured once");
+
+        state.AddToBalance(TestItem.AddressB, 1, Cancun.Instance);
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads.CodeReads, Is.EqualTo(disableCode ? 0 : 1), "an unchanged code hash must reuse the captured code");
+            Assert.That(diff.post[TestItem.AddressB].Balance, Is.EqualTo((UInt256?)2), "other changed fields must remain in the diff");
+            Assert.That(diff.post[TestItem.AddressB].Code.IsEmpty, Is.True, "unchanged code must stay omitted");
+            Assert.That(diff.post[TestItem.AddressB].CodeHash, Is.Null, "unchanged code hashes must stay omitted");
+        }
+    }
+
+    [Test]
+    public void MarkAsSuccess_DiffWithChangedCode_ReadsAndReportsNewCode(
+        [Values] bool disableCode, [Values(CodeChange.Replace, CodeChange.Clear, CodeChange.DeleteAccount)] CodeChange change)
+    {
+        StorageReadCounter reads = new() { CodeReadTarget = TestItem.AddressB };
+        using IContainer container = CreateStorageReadContainer(reads);
+        using ILifetimeScope processingScope = CreateStorageProcessingScope(container);
+        IWorldState state = processingScope.Resolve<IWorldState>();
+        using IDisposable scope = state.BeginScope(IWorldState.PreGenesis);
+        using NativePrestateTracer tracer = CreateCodeSnapshot(state, disableCode);
+        byte[] postCode = change == CodeChange.Replace ? [1, 0] : [];
+
+        if (change == CodeChange.DeleteAccount) state.DeleteAccount(TestItem.AddressB);
+        else state.InsertCode(TestItem.AddressB, postCode, Cancun.Instance);
+        int readsBeforeResult = reads.CodeReads;
+        tracer.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        NativePrestateTracerDiffMode diff = (NativePrestateTracerDiffMode)tracer.BuildResult().CustomTracerResult!.Value!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reads.CodeReads - readsBeforeResult, Is.EqualTo(disableCode ? 0 : 1), "a changed hash needs the new code unless code is disabled");
+            Assert.That(diff.post[TestItem.AddressB].Code.ToArray(), Is.EqualTo(disableCode ? Array.Empty<byte>() : postCode));
+            Assert.That(diff.post[TestItem.AddressB].IncludeEmptyCode, Is.EqualTo(!disableCode && postCode.Length == 0));
+            Assert.That(diff.post[TestItem.AddressB].CodeHash, Is.Not.Null, "code hash changes must survive disabled code output");
+        }
+    }
+
+    private static NativePrestateTracer CreateCodeSnapshot(IWorldState state, bool disableCode)
+    {
+        state.CreateAccount(TestItem.AddressB, 1);
+        state.InsertCode(TestItem.AddressB, new byte[] { 0 }, Cancun.Instance);
+        return new NativePrestateTracer(state,
+            GetGethTraceOptions(JsonSerializer.Serialize(new { diffMode = true, disableCode })), Hash256.Zero,
+            TestItem.AddressA, TestItem.AddressB);
+    }
+
     private static ILifetimeScope CreateStorageProcessingScope(IContainer container) => container.BeginLifetimeScope(builder =>
         builder.AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
 
@@ -455,6 +515,43 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             Assert.That(tracingStackOnAdd, Is.False);
             Assert.That(tracingStackOnSLoad, Is.True);
             Assert.That(account.Storage?.Count ?? 0, Is.EqualTo(1));
+        }
+    }
+
+    /// <summary>As in geth, a storage opcode that fails before it executes reads no slot, so the slot is not in the prestate.</summary>
+    [TestCaseSource(nameof(FailedStorageOperationCases))]
+    public void StorageOperation_WhenItFailsBeforeExecuting_LeavesSlotOutOfPrestate(byte[] code, ulong gasAfterIntrinsic, bool executes, bool wrapped)
+    {
+        (Block block, Transaction transaction) = PrepareTx(MainnetSpecProvider.CancunActivation, GasCostOf.Transaction + gasAfterIntrinsic, code);
+        IReleaseSpec spec = SpecProvider.GetSpec(block.Header);
+        using GethLikeNativeTxTracer tracer = GethLikeNativeTracerFactory.CreateTracer(GetGethTraceOptions(), block, transaction, TestState, spec);
+        using ITxTracer executionTracer = wrapped ? new CancellationTxTracer(new CompositeTxTracer(tracer)) : tracer;
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), executionTracer);
+
+        NativePrestateTracerAccount account =
+            ((Dictionary<AddressAsKey, NativePrestateTracerAccount>)tracer.BuildResult().CustomTracerResult!.Value)[transaction.To!];
+        Assert.That(account.Storage?.ContainsKey(1) ?? false, Is.EqualTo(executes));
+    }
+
+    private static IEnumerable<TestCaseData> FailedStorageOperationCases()
+    {
+        byte[] sload = Prepare.EvmCode.PushData(1).Op(Instruction.SLOAD).Done;
+        byte[] sstore = Prepare.EvmCode.PushData(1).PushData(1).Op(Instruction.SSTORE).Done;
+        const ulong sloadGas = GasCostOf.VeryLow + GasCostOf.ColdSLoad;
+        const ulong sstoreGas = 2 * GasCostOf.VeryLow + GasCostOf.ColdSLoad + GasCostOf.SSet;
+        (string Name, byte[] Code, ulong Gas, bool Executes)[] cases =
+        [
+            ("SLOAD", sload, sloadGas, true),
+            ("SLOAD out of gas", sload, sloadGas - 1, false),
+            ("SSTORE", sstore, sstoreGas, true),
+            ("SSTORE out of gas", sstore, sstoreGas - 1, false),
+            ("SSTORE stack underflow", Prepare.EvmCode.PushData(1).Op(Instruction.SSTORE).Done, 100000, false),
+        ];
+        foreach (bool wrapped in new[] { false, true })
+        {
+            foreach ((string name, byte[] code, ulong gas, bool executes) in cases)
+                yield return new TestCaseData(code, gas, executes, wrapped).SetArgDisplayNames(name, wrapped ? "wrapped" : "bare");
         }
     }
 
@@ -1564,10 +1661,18 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         public int Count { get; set; }
         public bool FailNextRead { get; set; }
         public bool FailNextAccountRead { get; set; }
+        public Address? CodeReadTarget { get; init; }
+        public int CodeReads { get; set; }
     }
 
     private sealed class RecordingStorageWorldState(IWorldState state, StorageReadCounter reads) : WorldStateDecorator(state)
     {
+        public override ReadOnlyMemory<byte> GetCode(Address address)
+        {
+            if (address == reads.CodeReadTarget) reads.CodeReads++;
+            return base.GetCode(address);
+        }
+
         public override void Get(in StorageCell storageCell, out UInt256 value)
         {
             reads.Count++;
@@ -1588,5 +1693,12 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             }
             return base.TryGetAccount(address, out account);
         }
+    }
+
+    public enum CodeChange
+    {
+        Replace,
+        Clear,
+        DeleteAccount
     }
 }

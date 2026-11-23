@@ -12,7 +12,7 @@ public static class TraceProcessingOptions
         ProcessingOptions.ForceProcessing | ProcessingOptions.ReadOnlyChain | ProcessingOptions.LoadNonceFromState | ProcessingOptions.NoValidation;
 
     /// <summary>
-    /// Runs a constructed block of signed transactions without persisting the result or validating the block, keeping each
+    /// Runs a block without persisting the result or validating the block, keeping each
     /// transaction's signed nonce for the processor to validate.
     /// </summary>
     public const ProcessingOptions ReadOnlySigned =

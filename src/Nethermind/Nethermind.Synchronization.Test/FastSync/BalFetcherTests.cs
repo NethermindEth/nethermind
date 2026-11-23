@@ -33,6 +33,7 @@ public class BalFetcherTests
         Success,
         Failure,
         Cancellation,
+        PeerCancellation,
         InvalidBal,
     }
 
@@ -43,6 +44,7 @@ public class BalFetcherTests
     private int _largestRequest;
     private int _responseLimit;
     private int _disposedAllocations;
+    private CancellationTokenSource _cts = null!;
     private IBlockTree _blockTree = null!;
     private MemDb _balDb = null!;
     private BlockAccessListStore _balStore = null!;
@@ -56,6 +58,7 @@ public class BalFetcherTests
         _largestRequest = 0;
         _responseLimit = int.MaxValue;
         _disposedAllocations = 0;
+        _cts = new CancellationTokenSource();
         _blockTree = Substitute.For<IBlockTree>();
         _balDb = new MemDb();
         _balStore = new BlockAccessListStore(_balDb);
@@ -67,6 +70,7 @@ public class BalFetcherTests
     public async Task TearDown()
     {
         _balDb.Dispose();
+        _cts.Dispose();
         await _pool.DisposeAsync();
     }
 
@@ -124,7 +128,7 @@ public class BalFetcherTests
     }
 
     [Test]
-    public async Task Disposes_allocation_after_fetch([Values(FetchOutcome.Success, FetchOutcome.Failure, FetchOutcome.Cancellation)] FetchOutcome outcome)
+    public async Task Disposes_allocation_after_fetch([Values(FetchOutcome.Success, FetchOutcome.Failure, FetchOutcome.Cancellation, FetchOutcome.PeerCancellation)] FetchOutcome outcome)
     {
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
@@ -133,24 +137,24 @@ public class BalFetcherTests
 
         if (outcome == FetchOutcome.Cancellation)
         {
-            await Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, default));
+            await Assert.ThrowsAsync<OperationCanceledException>(async () => await _fetcher.EnsureRange(from, b11, _cts.Token));
         }
         else
         {
-            bool result = await _fetcher.EnsureRange(from, b11, default);
+            bool result = await _fetcher.EnsureRange(from, b11, _cts.Token);
             Assert.That(result, Is.EqualTo(outcome == FetchOutcome.Success));
         }
 
         using (Assert.EnterMultipleScope())
         {
-            int expectedDisposals = outcome == FetchOutcome.Failure ? 50 : 1;
+            int expectedDisposals = outcome is FetchOutcome.Failure or FetchOutcome.PeerCancellation ? 50 : 1;
             Assert.That(_disposedAllocations, Is.EqualTo(expectedDisposals));
             Assert.That(peer.IsAllocated(AllocationContexts.State), Is.False);
         }
     }
 
     [Test]
-    public async Task Reports_peer_by_fault([Values(FetchOutcome.InvalidBal, FetchOutcome.Failure)] FetchOutcome outcome)
+    public async Task Reports_peer_by_fault([Values(FetchOutcome.InvalidBal, FetchOutcome.Failure, FetchOutcome.PeerCancellation)] FetchOutcome outcome)
     {
         BlockHeader from = Block(10, bal: null);
         BlockHeader b11 = Block(11, [0x01, 0x02]);
@@ -398,7 +402,7 @@ public class BalFetcherTests
             {
                 asked[peer] = asked.GetValueOrDefault(peer) + 1;
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
-                ArrayPoolList<byte[]> response = new(requested.Count);
+                ArrayPoolList<byte[]> response = [with(requested.Count)];
                 foreach (ValueHash256 hash in requested) response.Add(serves ? _balByHash.GetValueOrDefault(hash, []) : []);
                 onAsked?.Invoke();
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
@@ -420,12 +424,18 @@ public class BalFetcherTests
             .Returns(ci =>
             {
                 if (outcome == FetchOutcome.Failure) throw new InvalidOperationException("fetch failed");
-                if (outcome == FetchOutcome.Cancellation) throw new OperationCanceledException();
+                if (outcome == FetchOutcome.Cancellation)
+                {
+                    _cts.Cancel();
+                    throw new OperationCanceledException(_cts.Token);
+                }
+                // A request the session cancels on disconnect, while the caller's token is still live.
+                if (outcome == FetchOutcome.PeerCancellation) throw new TaskCanceledException();
 
                 IReadOnlyList<ValueHash256> requested = ci.Arg<IReadOnlyList<ValueHash256>>();
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
                 int served = Math.Min(requested.Count, _responseLimit);
-                ArrayPoolList<byte[]> response = new(served);
+                ArrayPoolList<byte[]> response = [with(served)];
                 // An invalid BAL is garbage that won't hash to the header's BlockAccessListHash.
                 for (int i = 0; i < served; i++) response.Add(outcome == FetchOutcome.InvalidBal ? [0xDE, 0xAD] : _balByHash.GetValueOrDefault(requested[i], []));
                 return Task.FromResult<IByteArrayList>(new ByteArrayListAdapter(response));
@@ -446,7 +456,7 @@ public class BalFetcherTests
             {
                 IReadOnlyList<Hash256> requested = ci.Arg<IReadOnlyList<Hash256>>();
                 _largestRequest = Math.Max(_largestRequest, requested.Count);
-                ArrayPoolList<byte[]?> response = new(requested.Count);
+                ArrayPoolList<byte[]?> response = [with(requested.Count)];
                 foreach (Hash256 hash in requested)
                     response.Add(_balByHash.TryGetValue(hash.ValueHash256, out byte[]? rlp) ? rlp : null);
                 return Task.FromResult<IOwnedReadOnlyList<byte[]?>>(response);

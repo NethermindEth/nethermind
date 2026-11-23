@@ -45,12 +45,14 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -1003,6 +1005,27 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task forkchoiceUpdatedV1_with_zero_hash_keeps_known_safe_and_finalized_blocks([Values] bool zeroSafe)
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        TestRpcBlockchain testRpc = await CreateTestRpc(chain);
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash!;
+        Hash256 newHeadHash = (await SendNewBlockV1(rpc, chain)).BlockHash!;
+        await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newHeadHash, startingHead, startingHead));
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(
+            new ForkchoiceStateV1(newHeadHash, zeroSafe ? startingHead : Keccak.Zero, zeroSafe ? Keccak.Zero : startingHead));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Safe).Data?.Hash, Is.EqualTo(startingHead));
+            Assert.That(testRpc.EthRpcModule.eth_getBlockByNumber(BlockParameter.Finalized).Data?.Hash, Is.EqualTo(startingHead));
+        }
+    }
+
+    [Test]
     public async Task forkchoiceUpdatedV1_with_no_payload_attributes_should_change_head()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
@@ -1026,11 +1049,13 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task forkChoiceUpdatedV1_to_unknown_block_is_syncing_and_records_forkchoice()
+    public async Task forkChoiceUpdatedV1_to_unknown_block_is_syncing_and_records_forkchoice([Values] bool zeroFinalized)
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = chain.EngineRpcModule;
-        ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF);
+        Hash256 safeHash = chain.BlockTree.HeadHash!;
+        if (zeroFinalized) await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(TestItem.KeccakF, TestItem.KeccakF, TestItem.KeccakF));
+        ForkchoiceStateV1 forkchoiceStateV1 = new(TestItem.KeccakF, zeroFinalized ? Keccak.Zero : TestItem.KeccakF, safeHash);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         Assert.That(forkchoiceUpdatedResult.Data.PayloadStatus.Status, Is.EqualTo(nameof(PayloadStatus.Syncing).ToUpper())); // ToDo wait for final PostMerge sync
         using (Assert.EnterMultipleScope())
@@ -1039,7 +1064,7 @@ public partial class EngineModuleTests
             // are recorded so a node restarted before its first pivot update can recover without a new FCU.
             Assert.That(chain.BlockFinder.HeadHash, Is.Not.EqualTo(TestItem.KeccakF));
             Assert.That(chain.BlockFinder.FinalizedHash, Is.EqualTo(TestItem.KeccakF));
-            Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(TestItem.KeccakF));
+            Assert.That(chain.BlockFinder.SafeHash, Is.EqualTo(safeHash));
         }
     }
 
@@ -1877,9 +1902,10 @@ public partial class EngineModuleTests
             ExecutionPayload executionPayload = await CreateBlockRequest(chain, block, TestItem.AddressA);
             PrivateKey from = TestItem.PrivateKeyB;
             Address to = TestItem.AddressD;
-            (_, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out BlockHeader parentHeader);
+            (UInt256 fromBalanceAfterValue, UInt256 toBalanceAfter) = AddTransactions(chain, executionPayload, from, to, count, 1, out _);
+            // Every transfer pays 1 GWei per gas: BuildTransactions sets both fee caps to 1 GWei.
+            UInt256 gasFees = GasCostOf.Transaction * count * 1.GWei;
 
-            UInt256 fromBalance = chain.StateReader.GetBalance(parentHeader!, from.Address);
             executionPayload.GasUsed = GasCostOf.Transaction * count;
             executionPayload.StateRoot =
                 new Hash256("0x3d2e3ced6da0d1e94e65894dc091190480f045647610ef614e1cab4241ca66e0");
@@ -1898,7 +1924,7 @@ public partial class EngineModuleTests
                 Assert.That(chain.StateReader.HasStateForBlock(payloadBlock), Is.True);
 
                 UInt256 fromBalanceAfter = chain.StateReader.GetBalance(payloadBlock, from.Address);
-                Assert.That(fromBalanceAfter, Is.LessThan(fromBalance - toBalanceAfter));
+                Assert.That(fromBalanceAfter, Is.EqualTo(fromBalanceAfterValue - gasFees));
                 Assert.That(chain.StateReader.GetBalance(payloadBlock, to), Is.EqualTo(toBalanceAfter));
                 Block findBlock = chain.BlockTree.FindBlock(executionPayload.BlockHash, BlockTreeLookupOptions.None)!;
                 TxReceipt[]? receipts = chain.ReceiptStorage.Get(findBlock);
@@ -1917,19 +1943,38 @@ public partial class EngineModuleTests
         Address recipient = TestItem.AddressD;
         PrivateKey sender = TestItem.PrivateKeyB;
 
-        Transaction[] txsSource =
+        Transaction[] transfers =
             BuildTransactions(chain, startingHead, sender, recipient, count, value, out _, out _);
+        // Non-empty calldata, so a decoder that drops it cannot pass the comparison below.
+        Transaction withCalldata = Build.A.Transaction
+            .WithNonce(transfers[^1].Nonce + 1)
+            .WithTo(recipient)
+            .WithValue(value.GWei)
+            .WithData([0x01, 0x02, 0x03])
+            .WithType(TxType.EIP1559)
+            .WithGasPrice(1.GWei)
+            .WithMaxFeePerGasIfSupports1559(1.GWei)
+            .WithChainId(chain.SpecProvider.ChainId)
+            .SignedAndResolved(sender).TestObject;
+        Transaction[] txsSource = [.. transfers, withCalldata];
 
         ExecutionPayload executionPayload = new();
         executionPayload.SetTransactions(txsSource);
 
-        Transaction[] txsReceived = executionPayload.TryGetTransactions().Data!;
+        // SetTransactions keeps the array it was given, so decode from a payload that holds only the encodings.
+        ExecutionPayload decodingPayload = new() { Transactions = executionPayload.Transactions };
+        Transaction[] txsReceived = decodingPayload.TryGetTransactions().Data!;
 
-        Assert.That(txsReceived, Is.EqualTo(txsSource).UsingTransactionComparer(
-            nameof(Transaction.ChainId),
-            nameof(Transaction.Data),
-            nameof(Transaction.SenderAddress),
-            nameof(Transaction.Timestamp)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executionPayload.TryGetTransactions().Data, Is.EqualTo(txsSource).UsingTransactionComparer(
+                nameof(Transaction.SenderAddress),
+                nameof(Transaction.Timestamp)), "the payload that was set");
+            Assert.That(txsReceived, Is.Not.SameAs(txsSource));
+            Assert.That(txsReceived, Is.EqualTo(txsSource).UsingTransactionComparer(
+                nameof(Transaction.SenderAddress),
+                nameof(Transaction.Timestamp)));
+        }
     }
 
     [Test]
@@ -2150,6 +2195,10 @@ public partial class EngineModuleTests
         public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions = null, VisitingStats? diagnostics = null)
             where TCtx : struct, INodeContext<TCtx> =>
             inner.RunTreeVisitor(treeVisitor, baseBlock, visitingOptions, diagnostics);
+
+        public void RunTreeVisitor<TCtx>(INodeRecordVisitor<TCtx> visitor, BlockHeader? baseBlock, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
+            where TCtx : struct, INodeContext<TCtx> =>
+            inner.RunTreeVisitor(visitor, baseBlock, visitingOptions, diagnostics);
     }
 
     /// <summary>Builds a node whose state for selected blocks can be hidden on demand.</summary>

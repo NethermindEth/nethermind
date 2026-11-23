@@ -61,13 +61,75 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             }
             else
             {
-                Assert.That(RefundAt(logs, "SSTORE"), Is.EqualTo(sClearRefund));
+                Assert.That(RefundAt(logs, "SSTORE"), Is.Null);
                 Assert.That(RefundAt(logs, "STOP"), Is.EqualTo(sClearRefund));
             }
         }
     }
 
+    [Test]
+    public void Streams_execution_cost_of_an_sstore_that_refills_state_gas_on_Amsterdam([Values] bool reservoirFunded)
+    {
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
+
+        List<StructLog> logs = StreamLogs(GethTraceOptions.Default,
+            tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+            transaction);
+
+        Assert.That(logs.Where(static l => l.Op == "SSTORE").ElementAt(1).GasCost, Is.EqualTo(Eip8038Constants.WarmAccess));
+    }
+
+    [Test]
+    public void Streams_refund_counter_before_a_failing_sstore()
+    {
+        (Block block, Transaction transaction) = PrepareChildClearOutOfGasTx();
+
+        StructLog sstore = StreamLogs(GethTraceOptions.Default,
+            tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
+            transaction).Single(static l => l.Op == "SSTORE");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sstore.Error, Is.Not.Null);
+            Assert.That(sstore.Refund, Is.Null);
+        }
+    }
+
     private static long? RefundAt(IEnumerable<StructLog> logs, string opcode) => logs.Single(l => l.Op == opcode).Refund;
+
+    [Test]
+    public void Streams_stack_underflow_before_out_of_gas(
+        [ValueSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.StackUnderflowGasAfterIntrinsic))] ulong gasAfterIntrinsic)
+    {
+        List<StructLog> logs = StreamLogs(Prepare.EvmCode.Op(Instruction.ADD).Done, GethTraceOptions.Default, GasCostOf.Transaction + gasAfterIntrinsic);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
+            Assert.That(logs[0].GasCost, Is.EqualTo(GasCostOf.VeryLow));
+        }
+    }
+
+    [TestCaseSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.OutOfGasOperations))]
+    public void Streams_full_cost_of_out_of_gas_operation(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
+    {
+        List<StructLog> logs = StreamLogs(code, GethTraceOptions.Default, GasCostOf.Transaction + gasAfterIntrinsic);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[^1].Error, Is.EqualTo("out of gas"));
+            Assert.That(logs[^1].GasCost, Is.EqualTo(expectedGasCost));
+        }
+    }
+
+    [Test]
+    public void Streams_callee_out_of_gas_without_an_error_on_the_calling_step([Values] bool precompile)
+    {
+        List<StructLog> logs = StreamLogs(CalleeOutOfGasCode(precompile), GethTraceOptions.Default);
+
+        Assert.That(logs.Where(static l => l.Error is not null).Select(static l => l.Depth).ToArray(),
+            Is.EqualTo(precompile ? Array.Empty<int>() : [2]), "depths of the steps with an error");
+    }
 
     [Test]
     public void Streams_parent_refund_survives_child_revert()
@@ -106,7 +168,7 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(RefundAt(logs, "SELFDESTRUCT"), Is.EqualTo(destroyRefund));
+            Assert.That(RefundAt(logs, "SELFDESTRUCT"), Is.Null);
             Assert.That(RefundAt(logs, "STOP"), Is.EqualTo(destroyRefund));
         }
     }
@@ -374,9 +436,9 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     private List<StructLog> ExecuteAndStream(bool clearingFrameReverts) =>
         StreamLogs(clearingFrameReverts ? ChildClearThenRevertCode() : ClearSstoreCode(), GethTraceOptions.Default);
 
-    private List<StructLog> StreamLogs(byte[] code, GethTraceOptions options)
+    private List<StructLog> StreamLogs(byte[] code, GethTraceOptions options, ulong gasLimit = 100000)
     {
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
 
         return StreamLogs(options,
             tracer => _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer),
@@ -404,6 +466,8 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         return [.. document.RootElement.EnumerateArray().Select(static e => new StructLog(
             e.GetProperty("op").GetString()!,
             e.GetProperty("depth").GetInt32(),
+            e.GetProperty("gasCost").GetUInt64(),
+            e.TryGetProperty("error", out JsonElement error) ? error.GetString() : null,
             e.TryGetProperty("refund", out JsonElement refund) ? refund.GetInt64() : null,
             e.TryGetProperty("returnData", out JsonElement returnData) ? returnData.GetString() : null))];
     }
@@ -425,5 +489,5 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             .Done;
     }
 
-    private readonly record struct StructLog(string Op, int Depth, long? Refund, string? ReturnData);
+    private readonly record struct StructLog(string Op, int Depth, ulong GasCost, string? Error, long? Refund, string? ReturnData);
 }

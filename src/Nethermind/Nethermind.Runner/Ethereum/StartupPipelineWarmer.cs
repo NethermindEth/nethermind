@@ -99,7 +99,7 @@ internal static class StartupPipelineWarmer
             }
             catch (Exception exception)
             {
-                if (logger.IsWarn) logger.Warn($"Could not delete startup warmup directory '{directory.FullName}': {exception.Message}");
+                if (logger.IsWarn) logger.Warn($"Could not delete startup warmup directory '{directory.FullName:hide}': {(SensitiveLogMasking.Enabled ? exception.GetType().Name : exception.Message)}");
             }
         }
     }
@@ -234,7 +234,6 @@ internal static class StartupPipelineWarmer
                 Enabled = flatState,
                 Layout = liveConfig.GetConfig<IFlatDbConfig>().Layout,
                 BlockCacheSizeBudget = 16 * 1024 * 1024,
-                TrieCacheMemoryBudget = 16 * 1024 * 1024,
                 PersistedSnapshotArenaPageCacheBytes = 16 * 1024 * 1024,
                 ArenaFileSizeBytes = 16 * 1024 * 1024
             },

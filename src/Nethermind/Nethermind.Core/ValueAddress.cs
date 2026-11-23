@@ -30,7 +30,7 @@ public readonly struct ValueAddress : IEquatable<ValueAddress>
         if (bytes.Length != Address.Size)
             ThrowInvalidLength(bytes.Length, nameof(bytes));
         // A fixed-size struct copy rather than a Memmove call.
-        _bytes = Unsafe.As<byte, Bytes20>(ref MemoryMarshal.GetReference(bytes));
+        _bytes = Unsafe.ReadUnaligned<Bytes20>(ref MemoryMarshal.GetReference(bytes));
     }
 
     [DoesNotReturn, StackTraceHidden]

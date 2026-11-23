@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Reflection;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -12,9 +11,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.Trie;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -125,29 +124,30 @@ public class SnapshotTests
     }
 
     [Test]
-    public void AddressOwnedStorageNodesPreserveFlattenedDictionarySemantics()
+    public void PersistSizingCoversEveryWrittenNode([Values] bool singleBlock)
     {
-        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing);
-        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
-        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
-        TreePath pathA = TreePath.FromHexString("12");
-        TreePath pathB = TreePath.FromHexString("34");
-        TrieNode original = new(NodeType.Leaf, TestItem.KeccakA);
-        TrieNode replacement = new(NodeType.Branch, TestItem.KeccakB);
-        TrieNode otherAddress = new(NodeType.Extension, TestItem.KeccakC);
-
-        snapshot.Content.StorageNodes[(addressA, pathA)] = original;
-        snapshot.Content.StorageNodes[(addressA, pathA)] = replacement;
-        snapshot.Content.StorageNodes[(addressB, pathB)] = otherAddress;
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        // PreGenesis is block ulong.MaxValue, so ending at block 0 spans one block.
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(singleBlock ? 0UL : 1UL, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
+        snapshot.Content.StorageRoots[TestItem.KeccakA] = Write(TestItem.KeccakA).Pointer;
+        snapshot.Content.StateRootPointer = Write(null).Pointer;
+        long rlpBytes = snapshot.StateNodes.Sum(node => node.Record.Rlp.Length) + snapshot.StorageNodes.Sum(node => node.Record.Rlp.Length);
+        int nodes = snapshot.StateNodes.Count() + snapshot.StorageNodes.Count();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(snapshot.Content.StorageNodes.Count, Is.EqualTo(2));
-            Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressA, pathA)), out TrieNode? foundA), Is.True);
-            Assert.That(foundA, Is.SameAs(replacement));
-            Assert.That(snapshot.Content.StorageNodes.TryGetValue(new((addressB, pathB)), out TrieNode? foundB), Is.True);
-            Assert.That(foundB, Is.SameAs(otherAddress));
-            Assert.That(snapshot.StorageNodesCount, Is.EqualTo(2));
+            Assert.That(rlpBytes, Is.GreaterThan(4 * 1024), "the RLP must outgrow the slack");
+            // A single block is bounded by its pinned record bytes, which exceed the RLP they hold; a wider range sums the RLP.
+            Assert.That(PersistedSnapshotBuilder.EstimateTotalRlpSize(snapshot), singleBlock ? Is.GreaterThan(rlpBytes) : Is.EqualTo(rlpBytes));
+            // Each node takes up to 160 bytes of the node table.
+            Assert.That(PersistedSnapshotBuilder.EstimateSize(snapshot), Is.GreaterThanOrEqualTo(snapshot.Content.EstimateMemory() + nodes * 160L));
+        }
+
+        (ValueHash256 Hash, ulong Pointer) Write(Hash256? address)
+        {
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(128);
+            for (int i = 0; i < 128; i++) entries.Add(new(Keccak.Compute(i.ToString()).ValueHash256, Enumerable.Repeat((byte)i, 32).ToArray()));
+            return FlatTestHelpers.BulkSet(_pool, buffer, address, (ValueKeccak.EmptyTreeHash, 0), entries, canParallelize: false);
         }
     }
 
@@ -160,7 +160,7 @@ public class SnapshotTests
         {
             // An earlier, larger build over the keys asserted absent below: its filter arrays are reused, not reallocated.
             Populate(Count, 4 * Count);
-            using (Snapshot previous = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing))
+            using (Snapshot previous = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing, null))
             {
                 previous.BuildFilters();
             }
@@ -171,35 +171,25 @@ public class SnapshotTests
         }
 
         Populate(0, Count);
-        using Snapshot snapshot = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        using Snapshot snapshot = new(StateId.PreGenesis, StateId.PreGenesis, content, _pool, ResourcePool.Usage.MainBlockProcessing, null);
         snapshot.BuildFilters();
 
         SnapshotContentFilters filters = content.Filters!;
-        int[] maybePresent = new int[5];
+        int[] maybePresent = new int[2];
         using (Assert.EnterMultipleScope())
         {
             for (int i = 0; i < 2 * Count; i++)
             {
                 bool written = i < Count;
-                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
-                HashedKey<Address> account = new(address);
-                HashedKey<(Address, UInt256)> storage = new((address, (UInt256)i));
-                HashedKey<TreePath> stateNode = new(path);
-                HashedKey<(Hash256, TreePath)> storageNode = new((hash, path));
-                HashedKey<(Hash256, TreePath)> otherStorageNode = new((hash, otherPath));
+                HashedKey<Address> account = new(Key(i));
+                HashedKey<(Address, UInt256)> storage = new((Key(i), (UInt256)i));
                 Assert.That(snapshot.TryGetAccount(account, out _), Is.EqualTo(written));
                 Assert.That(snapshot.TryGetStorage(storage, out _), Is.EqualTo(written));
-                Assert.That(snapshot.TryGetStateNode(stateNode, out _), Is.EqualTo(written));
-                Assert.That(snapshot.TryGetStorageNode(storageNode, out _), Is.EqualTo(written));
-                Assert.That(snapshot.TryGetStorageNode(otherStorageNode, out _), Is.EqualTo(written));
 
                 // The dictionaries decide the lookups above, so also check that the filters reject absent keys.
                 if (written) continue;
                 if (filters.Accounts.MightContain((uint)account.GetHashCode())) maybePresent[0]++;
                 if (filters.Storages.MightContain((uint)storage.GetHashCode())) maybePresent[1]++;
-                if (filters.StateNodes.MightContain((uint)stateNode.GetHashCode())) maybePresent[2]++;
-                if (filters.StorageNodes.MightContain((uint)storageNode.GetHashCode())) maybePresent[3]++;
-                if (filters.StorageNodes.MightContain((uint)otherStorageNode.GetHashCode())) maybePresent[4]++;
             }
 
             Assert.That(maybePresent, Is.All.LessThan(Count / 10));
@@ -209,188 +199,236 @@ public class SnapshotTests
         {
             for (int i = from; i < to; i++)
             {
-                (Address address, Hash256 hash, TreePath path, TreePath otherPath) = Key(i);
-                content.Accounts[new(address)] = new((ulong)i, 1);
-                content.Storages[new((address, (UInt256)i))] = (UInt256)i;
-                content.StateNodes[new(path)] = new TrieNode(NodeType.Leaf, hash);
-                content.StorageNodes[(hash, path)] = new TrieNode(NodeType.Leaf, hash);
-                content.StorageNodes[(hash, otherPath)] = new TrieNode(NodeType.Leaf, hash);
+                content.Accounts[new(Key(i))] = new((ulong)i, 1);
+                content.Storages[new((Key(i), (UInt256)i))] = (UInt256)i;
             }
         }
 
-        static (Address, Hash256, TreePath, TreePath) Key(int i)
+        static Address Key(int i) => new(Keccak.Compute(i.ToString()).Bytes[..Address.Size]);
+    }
+
+    [Test]
+    public void EnumerationAndBloomIncludeOnlyReachableWritesSinceRetain([Values] bool storage)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using INodeRecordBufferPin originalRetain = buffer.PinHead();
+        Hash256? address = storage ? TestItem.KeccakA : null;
+        Hash256 firstKey = new("1000000000000000000000000000000000000000000000000000000000000000");
+        Hash256 lastKey = new("f000000000000000000000000000000000000000000000000000000000000000");
+        (ValueHash256 Hash, ulong Pointer) original = Write((ValueKeccak.EmptyTreeHash, 0), firstKey, 1, lastKey);
+        INodeRecordBufferPin updateRetain = buffer.PinHead();
+        (ValueHash256 Hash, ulong Pointer) unrelated = Write((ValueKeccak.EmptyTreeHash, 0), firstKey, 3);
+        (ValueHash256 Hash, ulong Pointer) updated = Write(original, lastKey, 2);
+        using Snapshot snapshot = new(new(1, original.Hash), new(2, updated.Hash), new SnapshotContent(), _pool, ResourcePool.Usage.MainBlockProcessing, updateRetain);
+        if (storage) snapshot.Content.StorageRoots[address!] = updated.Pointer;
+        else
         {
-            Hash256 hash = Keccak.Compute(i.ToString());
-            return (new Address(hash.Bytes[..Address.Size]), hash, TreePath.FromPath(hash.Bytes), TreePath.FromPath(hash.Bytes[..16]));
+            snapshot.Content.StateRootPointer = updated.Pointer;
+        }
+        ulong[] pointers = (storage ? snapshot.StorageNodes.Select(node => node.Pointer) : snapshot.StateNodes.Select(node => node.Pointer)).ToArray();
+        bool found = storage
+            ? snapshot.TryGetStorageNode((address!, TreePath.Empty.Append(1)), out TrieNode? inherited)
+            : snapshot.TryGetStateNode(TreePath.Empty.Append(1), out inherited);
+        ulong inheritedPointer = buffer.EnumerateNodes(updated.Pointer, 0).First(node => node.Path == TreePath.Empty.Append(1)).Pointer;
+        BloomFilter bloom = ((NodeRecordBuffer)buffer).FindBloom(updated.Pointer)!;
+        snapshot.PopulateBloom();
+        snapshot.PopulateBloom();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bloom.Count, Is.EqualTo(2), "only the reachable writes, once");
+            Assert.That(updated.Pointer >> 32, Is.EqualTo(original.Pointer >> 32));
+            Assert.That(pointers, Has.Length.EqualTo(2));
+            Assert.That(pointers, Does.Not.Contain(unrelated.Pointer));
+            Assert.That(pointers, Does.Not.Contain(inheritedPointer));
+            Assert.That(found, Is.True);
+            Assert.That(inherited!.FullRlp.ToArray(), Is.Not.Empty);
+        }
+
+        (ValueHash256 Hash, ulong Pointer) Write((ValueHash256 Hash, ulong Pointer) root, Hash256 key, byte value, Hash256? other = null)
+        {
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(2);
+            entries.Add(new(key.ValueHash256, Enumerable.Repeat(value, 32).ToArray()));
+            if (other is not null) entries.Add(new(other.ValueHash256, new byte[32]));
+            return FlatTestHelpers.BulkSet(_pool, buffer, address, root, entries, canParallelize: false);
         }
     }
 
     [Test]
-    public void RebuildingFiltersDoesNotHidePublishedStorageNodes()
+    public void UnchangedStateRootOmitsEvenRecordsWrittenAfterRetain([Values] bool duplicateRoot)
     {
-        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, StateId.PreGenesis, ResourcePool.Usage.MainBlockProcessing);
-        HashedKey<(Hash256, TreePath)> key = new((TestItem.KeccakA, TreePath.Empty));
-        snapshot.Content.StorageNodes[key] = new TrieNode(NodeType.Leaf, TestItem.KeccakB);
-        snapshot.BuildFilters();
-
-        // A stale queued compaction job can resolve to a snapshot whose filters are already published.
-        // Observe a lookup exactly between clearing the storage filter and adding its first key if it rebuilds.
-        FieldInfo field = typeof(AddressStorageNodeDictionary).GetField("_cachedAddressEnumerator", BindingFlags.Instance | BindingFlags.NonPublic)!;
-        IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>> original =
-            (IEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>)field.GetValue(snapshot.Content.StorageNodes)!;
-        field.SetValue(snapshot.Content.StorageNodes,
-            new LookupCheckingEnumerator<KeyValuePair<Hash256AsKey, AddressStorageNodeDictionary.AddressNodes>>(original, () =>
-                Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True, "published filters must never hide a written key")));
-
-        try
-        {
-            snapshot.BuildFilters();
-            Assert.That(snapshot.TryGetStorageNode(key, out _), Is.True);
-        }
-        finally
-        {
-            field.SetValue(snapshot.Content.StorageNodes, original);
-        }
-    }
-
-    private sealed class LookupCheckingEnumerator<T>(IEnumerator<T> inner, Action checkLookup) : IEnumerator<T>
-    {
-        public T Current => inner.Current;
-        object IEnumerator.Current => Current!;
-
-        public bool MoveNext()
-        {
-            checkLookup();
-            return inner.MoveNext();
-        }
-
-        public void Reset() => inner.Reset();
-        public void Dispose() => inner.Dispose();
-    }
-
-    [TestCase(256)]
-    [TestCase(8_192)]
-    public void AddressNodesResetForPoolingKeepsSmallCapacityAndDropsLargeCapacity(int requestedCapacity)
-    {
-        AddressStorageNodeDictionary.AddressNodes nodes = new();
-        nodes.EnsureAdditionalCapacity(requestedCapacity);
-        nodes.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
-        int capacityBeforeReset = nodes.Nodes.Capacity;
-
-        nodes.ResetForPooling();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        byte[] rlp = FlatTestHelpers.LeafRlp(1);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        ulong original = buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []);
+        using Snapshot snapshot = _pool.CreateSnapshot(new(1, hash), new(2, hash), ResourcePool.Usage.MainBlockProcessing, buffer);
+        ulong root = duplicateRoot ? buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []) : original;
+        snapshot.Content.StateRootPointer = root;
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(nodes.Nodes, Is.Empty);
+            Assert.That(snapshot.StateNodes, Is.Empty);
+            Assert.That(snapshot.TryGetStateNode(TreePath.Empty, out TrieNode? found), Is.True);
+            Assert.That(found!.FullRlp.ToArray(), Is.EqualTo(rlp));
+        }
+    }
 
-            if (requestedCapacity > 4_096)
+    [Test]
+    public void FixtureConnectsPathsWithUnnormalizedTrailingBytes([Values] bool storage)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        TreePath path = new(TestItem.KeccakA, 3);
+        byte[] rlp = FlatTestHelpers.LeafRlp(1);
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
+        {
+            if (storage) content.SetStorageNodeRlp(buffer, TestItem.KeccakB, path, rlp);
+            else content.SetStateNodeRlp(buffer, path, rlp);
+        });
+
+        bool found = storage
+            ? snapshot.TryGetStorageNode((TestItem.KeccakB, path), out TrieNode? node)
+            : snapshot.TryGetStateNode(path, out node);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found, Is.True);
+            Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(rlp));
+        }
+    }
+
+    [Test]
+    public void SuppliedRootRlpIsPreservedWhenItsChildrenArriveLater()
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
+        byte[] leafRlp = FlatTestHelpers.LeafRlp(new byte[40]);
+        byte[] rootRlp = FlatTestHelpers.ExtensionRlp([1, 2], leafRlp);
+        snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, rootRlp);
+        snapshot.Content.SetStateNodeRlp(buffer, TreePath.FromHexString("12"), leafRlp);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(snapshot.GetRlp(snapshot.Content.StateRootPointer).ToArray(), Is.EqualTo(rootRlp));
+            Assert.That(snapshot.TryGetStateNode(TreePath.FromHexString("12"), out TrieNode? node), Is.True);
+            Assert.That(node!.FullRlp.ToArray(), Is.EqualTo(leafRlp));
+            Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void ReplacingRootOmitsDisconnectedEarlierNodes([Values] bool storage)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.Zero), ResourcePool.Usage.MainBlockProcessing, buffer);
+        TreePath oldPath = TreePath.FromHexString("12");
+        if (storage) snapshot.Content.SetStorageNodeRlp(buffer, TestItem.KeccakA, oldPath, FlatTestHelpers.LeafRlpA);
+        else snapshot.Content.SetStateNodeRlp(buffer, oldPath, FlatTestHelpers.LeafRlpA);
+        byte[] replacement = FlatTestHelpers.LeafRlp(2);
+        ulong root = buffer.AppendRecordFromRlp(storage ? TestItem.KeccakA : null, TreePath.Empty, ValueKeccak.Compute(replacement), replacement, []);
+        if (storage) snapshot.Content.StorageRoots[TestItem.KeccakA] = root;
+        else snapshot.Content.StateRootPointer = root;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage ? snapshot.TryGetStorageNode((TestItem.KeccakA, oldPath), out _) : snapshot.TryGetStateNode(oldPath, out _), Is.False);
+            Assert.That(storage ? snapshot.StorageNodes.Count() : snapshot.StateNodes.Count(), Is.EqualTo(1));
+            Assert.That(storage ? snapshot.StorageNodes.Single().Pointer : snapshot.StateNodes.Single().Pointer, Is.EqualTo(root));
+        }
+    }
+
+    [Test]
+    public void ExplicitEmptyRootEnumeratesNoNodes([Values] bool storage)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot snapshot = _pool.CreateSnapshot(StateId.PreGenesis, new(1, Keccak.EmptyTreeHash), ResourcePool.Usage.MainBlockProcessing, buffer);
+        if (storage)
+        {
+            snapshot.Content.SetStorageNodeRlp(buffer, TestItem.KeccakA, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+            snapshot.Content.StorageRoots[TestItem.KeccakA] = 0;
+        }
+        else
+        {
+            snapshot.Content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+            snapshot.Content.StateRootPointer = 0;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage ? snapshot.StorageNodes.Count() : snapshot.StateNodes.Count(), Is.Zero);
+            Assert.That(storage ? snapshot.TryGetStorageNode((TestItem.KeccakA, TreePath.Empty), out _) : snapshot.TryGetStateNode(TreePath.Empty, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void RootMetadataEstimatesDoNotScaleWithReachableNodes([Values] bool storage)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using Snapshot single = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
+        {
+            if (storage) content.SetStorageNodeRlp(buffer, TestItem.KeccakA, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+            else content.SetStateNodeRlp(buffer, TreePath.Empty, FlatTestHelpers.LeafRlpA);
+        });
+        using Snapshot connected = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
+        {
+            if (storage) content.SetStorageNodeRlp(buffer, TestItem.KeccakA, TreePath.FromHexString("12"), FlatTestHelpers.LeafRlpA);
+            else content.SetStateNodeRlp(buffer, TreePath.FromHexString("12"), FlatTestHelpers.LeafRlpA);
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(storage ? single.StorageNodes.Count() : single.StateNodes.Count(), Is.EqualTo(1));
+            Assert.That(storage ? connected.StorageNodes.Count() : connected.StateNodes.Count(), Is.EqualTo(2));
+            Assert.That(connected.EstimateMemory(), Is.EqualTo(single.EstimateMemory()));
+            Assert.That(connected.EstimateCompactedMemory(), Is.EqualTo(single.EstimateCompactedMemory()));
+        }
+    }
+
+    [Test]
+    public void NodesEnumerateInAddressHashThenPathOrder([Values] bool storage)
+    {
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        Hash256[] addresses = [TestItem.KeccakH, TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC, TestItem.KeccakE, TestItem.KeccakB, TestItem.KeccakG, TestItem.KeccakD];
+        string[] paths = ["f", "0", "37", "3a", "3c01234567", "3b0123456789abcdef01", "3b0123456789abcdef02"];
+        using Snapshot snapshot = FlatTestHelpers.MakeSnapshot(_pool, buffer, content =>
+        {
+            foreach (string path in paths)
             {
-                Assert.That(nodes.Nodes.Capacity, Is.Zero);
+                if (!storage) content.SetStateNodeRlp(buffer, TreePath.FromHexString(path), FlatTestHelpers.LeafRlpA);
+                else foreach (Hash256 address in addresses) content.SetStorageNodeRlp(buffer, address, TreePath.FromHexString(path), FlatTestHelpers.LeafRlpA);
             }
-            else
-            {
-                Assert.That(nodes.Nodes.Capacity, Is.EqualTo(capacityBeforeReset));
-            }
-        }
-    }
+        });
 
-    [Test]
-    public void AddressOwnedStorageNodesReuseRetainedLargeDictionaryForLargeBatches()
-    {
-        const int LargeBatch = 12_345;
-        AddressStorageNodeDictionary storageNodes = new();
-        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
-        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
-        AddressStorageNodeDictionary.AddressNodes first = storageNodes.GetOrAddAddress(addressA);
-        first.EnsureAdditionalCapacity(LargeBatch);
-        first.Set(TreePath.Empty, new TrieNode(NodeType.Unknown, TestItem.KeccakA));
-
-        storageNodes.NoLockClear();
-        AddressStorageNodeDictionary.AddressNodes second = storageNodes.GetOrAddAddress(addressB);
-        Dictionary<HashedKey<TreePath>, TrieNode> beforeBatch = second.Nodes;
-        second.EnsureAdditionalCapacity(LargeBatch);
+        string[] keys = storage
+            ? snapshot.StorageNodes.Select(node => SortKey(node.Address, node.Path)).ToArray()
+            : snapshot.StateNodes.Select(node => SortKey(null, node.Path)).ToArray();
 
         using (Assert.EnterMultipleScope())
         {
-            // Growing in place keeps the dictionary instance, so a new instance means one was rented from the retained pool.
-            Assert.That(second.Nodes, Is.Not.SameAs(beforeBatch));
-            Assert.That(second.Nodes, Is.Empty);
-            Assert.That(second.Nodes.Capacity, Is.GreaterThanOrEqualTo(LargeBatch));
+            Assert.That(keys, Has.Length.GreaterThan(paths.Length * (storage ? addresses.Length : 1)), "synthesized ancestors are enumerated too");
+            Assert.That(keys, Is.Ordered.Using((IComparer<string>)StringComparer.Ordinal));
         }
+
+        static string SortKey(Hash256? address, in TreePath path) => $"{address}:{path.Path}:{path.Length:D2}";
     }
 
     [Test]
-    public void AddressOwnedStorageNodesSupportOverlappingAndReusedEnumerators()
+    public void StateRootPublicationRecordsResolvedAndEmptyRoots([Values] bool empty)
     {
-        AddressStorageNodeDictionary storageNodes = new();
-        Hash256 addressA = TestItem.AddressA.ToAccountPath.ToCommitment();
-        Hash256 addressB = TestItem.AddressB.ToAccountPath.ToCommitment();
-        storageNodes[(addressA, TreePath.FromHexString("12"))] = new TrieNode(NodeType.Leaf, TestItem.KeccakA);
-        storageNodes[(addressA, TreePath.FromHexString("34"))] = new TrieNode(NodeType.Branch, TestItem.KeccakB);
-        storageNodes[(addressB, TreePath.FromHexString("56"))] = new TrieNode(NodeType.Extension, TestItem.KeccakC);
-
-        AddressStorageNodeDictionary.Enumerator first = storageNodes.GetEnumerator();
-        AddressStorageNodeDictionary.Enumerator second = storageNodes.GetEnumerator();
-        int firstCount = Count(ref first);
-        int secondCount = Count(ref second);
-        first.Dispose();
-        second.Dispose();
-
-        AddressStorageNodeDictionary.Enumerator reused = storageNodes.GetEnumerator();
-        int reusedCount = Count(ref reused);
-        reused.Dispose();
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+        using SnapshotBundle bundle = new(FlatTestHelpers.MakeBundle(_pool), buffer, _pool, ResourcePool.Usage.MainBlockProcessing);
+        INodeRecordBufferPin retain = buffer.PinHead();
+        byte[] rlp = FlatTestHelpers.LeafRlp(1);
+        ValueHash256 hash = ValueKeccak.Compute(rlp);
+        (ValueHash256 Hash, ulong Pointer) root = empty ? (ValueKeccak.EmptyTreeHash, 0) : (hash, buffer.AppendRecordFromRlp(null, TreePath.Empty, hash, rlp, []));
+        bundle.PublishBufferedStateRoot(root);
+        (Snapshot? published, TransientResource? retired) = bundle.CollectAndApplySnapshot(
+            StateId.PreGenesis, new(1, root.Hash), retain);
+        using Snapshot snapshot = published!;
+        retired!.ReleaseLease();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(firstCount, Is.EqualTo(3));
-            Assert.That(secondCount, Is.EqualTo(3));
-            Assert.That(reusedCount, Is.EqualTo(3));
-        }
-
-        static int Count(ref AddressStorageNodeDictionary.Enumerator enumerator)
-        {
-            int count = 0;
-            while (enumerator.MoveNext()) count++;
-            return count;
-        }
-    }
-
-    [Test]
-    public void PublicTrieNodeSettersPreserveWriteBehavior()
-    {
-        using SnapshotBundle bundle = new(
-            FlatTestHelpers.MakeBundle(_pool),
-            Substitute.For<ITrieNodeCache>(),
-            _pool,
-            ResourcePool.Usage.MainBlockProcessing);
-        TreePath statePath = TreePath.FromHexString("12");
-        TreePath storagePath = TreePath.FromHexString("34");
-        Hash256 address = TestItem.AddressA.ToAccountPath.ToCommitment();
-        TrieNode stateNode = new(NodeType.Unknown, TestItem.KeccakA);
-        TrieNode storageNode = new(NodeType.Unknown, TestItem.KeccakB);
-
-        bundle.SetStateNode(statePath, stateNode);
-        bundle.SetStorageNode(address, storagePath, storageNode);
-
-        MethodInfo? stateSetter = typeof(SnapshotBundle).GetMethod(
-            nameof(SnapshotBundle.SetStateNode),
-            BindingFlags.Public | BindingFlags.Instance,
-            binder: null,
-            [typeof(TreePath).MakeByRefType(), typeof(TrieNode)],
-            modifiers: null);
-        MethodInfo? storageSetter = typeof(SnapshotBundle).GetMethod(
-            nameof(SnapshotBundle.SetStorageNode),
-            BindingFlags.Public | BindingFlags.Instance,
-            binder: null,
-            [typeof(Hash256), typeof(TreePath).MakeByRefType(), typeof(TrieNode)],
-            modifiers: null);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(stateSetter, Is.Not.Null);
-            Assert.That(storageSetter, Is.Not.Null);
-            Assert.That(bundle.FindStateNodeOrUnknown(statePath, TestItem.KeccakA), Is.SameAs(stateNode));
-            Assert.That(bundle.FindStorageNodeOrUnknown(address, storagePath, TestItem.KeccakB), Is.SameAs(storageNode));
+            Assert.That(snapshot.StateRootPointer, Is.EqualTo(root.Pointer));
+            Assert.That(snapshot.StateNodes.Count(), Is.EqualTo(empty ? 0 : 1));
         }
     }
 
@@ -399,18 +437,18 @@ public class SnapshotTests
     {
         using SnapshotBundle bundle = new(
             FlatTestHelpers.MakeBundle(_pool),
-            Substitute.For<ITrieNodeCache>(),
+            null,
             _pool,
             ResourcePool.Usage.MainBlockProcessing);
         Account accountA = new(1, 100);
         Account accountB = new(2, 200);
 
         bundle.SetAccount(TestItem.AddressA, accountA);
-        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), returnSnapshot: false);
+        bundle.CollectAndApplySnapshot(StateId.PreGenesis, new StateId(1, TestItem.KeccakA), null, returnSnapshot: false);
 
         bundle.SetAccount(TestItem.AddressB, accountB);
         (Snapshot? second, TransientResource? transientResource) =
-            bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB));
+            bundle.CollectAndApplySnapshot(new StateId(1, TestItem.KeccakA), new StateId(2, TestItem.KeccakB), null);
         using Snapshot? snapshotLease = second;
         transientResource?.Dispose();
 

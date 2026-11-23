@@ -30,20 +30,33 @@ namespace Nethermind.Init.Modules;
 
 public class PruningTrieStoreModule : Module
 {
+    // Read when the container is built, as DbModule reads it: a decorator can still change the config before the state DB is resolved.
+    // Null when no init config was given: the mode is then read from the container when the state DB is created.
+    private readonly bool? _memDbMode;
+
+    public PruningTrieStoreModule()
+    {
+    }
+
+    public PruningTrieStoreModule(IInitConfig initConfig) => _memDbMode = initConfig.DiagnosticMode == DiagnosticMode.MemDb;
+
     protected override void Load(ContainerBuilder builder) =>
         builder
 
             // Special case for state db with pruning trie state.
             .AddKeyedSingleton<IDb>(DbNames.State, (ctx) =>
             {
+                // A container without an init config keeps the factory-type check alone, as before the mode was read.
+                bool memDbMode = _memDbMode ?? (ctx.ResolveOptional<IInitConfig>()?.DiagnosticMode == DiagnosticMode.MemDb);
                 IFileSystem fileSystem = ctx.Resolve<IFileSystem>();
                 IDbFactory dbFactory = ctx.Resolve<IDbFactory>();
-                DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State);
+                DbSettings stateDbSettings = new(GetTitleDbName(DbNames.State), DbNames.State) { SkipMetricsTracking = memDbMode };
                 stateDbSettings.DeleteOnStart = ShouldDropPruningTrieState(
                     ctx.ResolveOptional<IFlatDbConfig>(), ctx.Resolve<IColumnsDb<FlatDbColumns>>, ctx.Resolve<ILogManager>,
                     () => HasSstFiles(fileSystem, dbFactory.GetFullDbPath(stateDbSettings)));
                 IDbFactory innerDbFactory = dbFactory;
-                if (dbFactory is not MemDbFactory)
+                // DbMonitoringModule decorates IDbFactory, so its type alone does not show the MemDb diagnostic mode.
+                if (!memDbMode && dbFactory is not MemDbFactory)
                 {
                     FullPruningInnerDbFactory fullPruningInnerDbFactory = new(dbFactory, fileSystem, stateDbSettings.DbPath);
                     // DeleteOnStart reaches only the inner DB that gets opened. A copy left by an interrupted
@@ -61,8 +74,8 @@ public class PruningTrieStoreModule : Module
                 // inner DB, even across full-pruning cycles. The inner DBs are not tracked:
                 // - via FullPruningInnerDbFactory they get SkipMetricsTracking = true so the
                 //   DbFactoryInterceptor skips registration.
-                // - via the MemDbFactory branch they're MemDbs created outside any interceptor and
-                //   therefore never reach the tracker either.
+                // - in the MemDb diagnostic mode they inherit SkipMetricsTracking = true from the
+                //   state DB settings; a bare MemDbFactory has no interceptor at all.
                 ctx.ResolveOptional<DbMonitoringModule.DbTracker>()?.AddDb(stateDbSettings.DbName, db);
                 return db;
             })
@@ -163,6 +176,12 @@ public class PruningTrieStoreModule : Module
         if (currentState == StateId.PreGenesis)
         {
             if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB is empty, so the node would be left without any state.");
+            return false;
+        }
+
+        if (BasePersistence.ReadMigrationCursor(metadata) is not null)
+        {
+            if (logger.IsInfo) logger.Info("Keeping the patricia trie state: the flat DB still reads what its migration has not copied yet from it.");
             return false;
         }
 

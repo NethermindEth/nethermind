@@ -7,10 +7,9 @@ namespace Nethermind.Taiko.Tdx;
 
 public interface ISurgeTdxConfig : IConfig
 {
-    [ConfigItem(Description = "Path to the tdxs Unix socket.", DefaultValue = "/var/tdxs.sock")]
+    [ConfigItem(Description = "Path to the tdxs Unix socket.", DefaultValue = "/var/tdxs.sock", IsSensitiveWhenMasked = true)]
     string SocketPath { get; set; }
 
-    [ConfigItem(Description = "Path to store TDX bootstrap data and keys.", DefaultValue = "~/.config/nethermind/tdx")]
+    [ConfigItem(Description = "Path to store TDX bootstrap data and keys.", DefaultValue = "~/.config/nethermind/tdx", IsSensitiveWhenMasked = true)]
     string ConfigPath { get; set; }
 }
-

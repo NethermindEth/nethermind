@@ -18,6 +18,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -25,6 +26,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using NSubstitute;
@@ -179,7 +181,7 @@ public partial class EngineModuleTests
         ResultWrapper<GetPayloadV5Result?> result = await rpcModule.engine_getPayloadV5(Bytes.FromHexString(payloadId!));
         BlobsBundleV2 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
-            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V1);
+            getPayloadResultBlobsBundle.Commitments, [.. getPayloadResultBlobsBundle.Proofs.SelectMany(static proof => proof)], ProofVersion.V1);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
@@ -272,7 +274,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new(requestSize);
+        List<byte[]> request = [with(requestSize)];
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -309,6 +311,52 @@ public partial class EngineModuleTests
         Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
     }
 
+    private static IEnumerable<(SyncMode SyncMode, bool IsSyncing, bool Serves)> GetBlobsSyncStates()
+    {
+        yield return (SyncMode.StateNodes | SyncMode.FastHeaders, true, false);
+        yield return (SyncMode.Full, true, false);
+        yield return (SyncMode.WaitingForBlock | SyncMode.FastBodies | SyncMode.FastReceipts, true, true);
+        yield return (SyncMode.WaitingForBlock, false, true);
+    }
+
+    [Test]
+    public async Task GetBlobs_should_return_null_only_while_behind_head(
+        [Values(2, 3)] int version,
+        [ValueSource(nameof(GetBlobsSyncStates))] (SyncMode SyncMode, bool IsSyncing, bool Serves) state)
+    {
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.SyncMode.Returns(state.SyncMode);
+        syncingInfo.IsSyncing().Returns(state.IsSyncing);
+        using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Osaka.Instance, configurer: builder => builder.AddSingleton(syncingInfo));
+        IEngineRpcModule rpcModule = chain.EngineRpcModule;
+
+        Transaction blobTx = Build.A.Transaction
+            .WithShardBlobTxTypeAndFields(1, spec: Osaka.Instance)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithMaxFeePerBlobGas(1000.Wei)
+            .SignedAndResolved(chain.EthereumEcdsa, TestItem.PrivateKeyA).TestObject;
+        Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+        byte[][] blobVersionedHashes = blobTx.BlobVersionedHashes!.Select(static h => h!).ToArray();
+        Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> GetBlobs(byte[][] hashes) =>
+            version == 2 ? rpcModule.engine_getBlobsV2(hashes) : rpcModule.engine_getBlobsV3(hashes);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> result = await GetBlobs(blobVersionedHashes);
+        // The size check runs before the sync check, and the sync check before the answer to an empty request.
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> empty = await GetBlobs([]);
+        ResultWrapper<IReadOnlyList<BlobAndProofV2?>?> tooLarge = await GetBlobs(Enumerable.Repeat(blobVersionedHashes[0], 129).ToArray());
+
+        ShardBlobNetworkWrapper wrapper = (ShardBlobNetworkWrapper)blobTx.NetworkWrapper!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result, Is.EqualTo(Result.Success));
+            Assert.That(result.Data?.Select(static b => b!.Blob), state.Serves ? Is.EqualTo(wrapper.Blobs) : Is.Null);
+            Assert.That(empty.Result, Is.EqualTo(Result.Success));
+            Assert.That(empty.Data, state.Serves ? Is.Empty : Is.Null, "an empty request");
+            Assert.That(tooLarge.ErrorCode, Is.EqualTo(MergeErrorCodes.TooLargeRequest), "a request of 129 hashes");
+        }
+    }
+
     [Test]
     public async Task GetBlobsV2_should_return_requested_blobs([Values(1, 2, 3, 4, 5, 6)] int numberOfBlobs)
     {
@@ -333,7 +381,7 @@ public partial class EngineModuleTests
             Assert.That(result.Data, Is.Not.Null);
             Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
             Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
-            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.SplitProofs().Chunk(128)));
         }
     }
 
@@ -363,7 +411,7 @@ public partial class EngineModuleTests
         {
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(executionPayload.BlockHash));
             Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(Ckzg.CellsPerExtBlob)));
+            Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.SplitProofs().Chunk(Ckzg.CellsPerExtBlob)));
         }
     }
 
@@ -408,7 +456,7 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -435,7 +483,7 @@ public partial class EngineModuleTests
                 Assert.That(result.Data, Is.Not.Null);
                 Assert.That(result.Data!.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
                 Assert.That(result.Data, Has.Count.EqualTo(numberOfBlobs));
-                Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.Proofs.Chunk(128)));
+                Assert.That(result.Data!.Select(static b => b!.Proofs), Is.EqualTo(wrapper.SplitProofs().Chunk(128)));
             }
         }
     }
@@ -457,7 +505,7 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -488,7 +536,7 @@ public partial class EngineModuleTests
                 {
                     Assert.That(result.Data!.ElementAt(i), Is.Not.Null);
                     Assert.That(result.Data!.ElementAt(i)!.Blob, Is.EqualTo(wrapper.Blobs[foundIndex]));
-                    Assert.That(result.Data!.ElementAt(i)!.Proofs, Is.EqualTo(wrapper.Proofs.Skip(foundIndex * 128).Take(128)));
+                    Assert.That(result.Data!.ElementAt(i)!.Proofs, Is.EqualTo(wrapper.SplitProofs().Skip(foundIndex * 128).Take(128)));
                 }
                 foundIndex++;
             }
@@ -518,7 +566,7 @@ public partial class EngineModuleTests
     public async Task BlobsV2DirectResponse_WriteToAsync_produces_valid_json()
     {
         byte[]?[] blobs = [RandomBytes(16), null];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([RandomBytes(48), RandomBytes(48)]), default];
+        ReadOnlyMemory<byte>[] proofs = [RandomBytes(96), default];
 
         BlobsV2DirectResponse response = new(blobs, proofs, 2);
         await AssertStreamedJsonMatchesSerializer(response);
@@ -538,7 +586,7 @@ public partial class EngineModuleTests
     {
         byte[] blob = new byte[131072]; // 128KB
         byte[]?[] blobs = [blob];
-        ReadOnlyMemory<byte[]>[] proofs = [new ReadOnlyMemory<byte[]>([new byte[48]])];
+        ReadOnlyMemory<byte>[] proofs = [new byte[48]];
         BlobsV2DirectResponse response = new(blobs, proofs, 1);
 
         using CancellationTokenSource cts = new();

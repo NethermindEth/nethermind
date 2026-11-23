@@ -4,9 +4,9 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.State.Flat.Persistence.BloomFilter;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 
@@ -20,7 +20,11 @@ internal static class PersistedSnapshotBloomBuilder
     /// filter. Reads bytes through the caller-owned <paramref name="session"/>; this
     /// method does not dispose it.
     /// </summary>
-    internal static BloomFilter Build(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey)
+    /// <param name="hasStorageClears">Whether the table carries a "destructed" self-destruct record (an
+    /// unreadable flag counts as one). Without one, no merge inside the snapshot's range dropped a slot, so
+    /// the bloom also covers every persisted snapshot that range contains; with one it covers this snapshot
+    /// only (see <see cref="PersistedSnapshotMerger.NWayMergeSnapshots{TWriter, TView, TReader, TPin}"/>).</param>
+    internal static BloomFilter Build(WholeReadSession session, PersistedSnapshot snapshot, double bitsPerKey, out bool hasStorageClears)
     {
         WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, snapshot);
 
@@ -28,8 +32,10 @@ internal static class PersistedSnapshotBloomBuilder
         // the address's account, self-destruct flag, and the address half of every slot lookup, so it is
         // counted once per address — not once per account/flag/slot.
         long capacity = 0;
+        hasStorageClears = false;
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
+            hasStorageClears |= entry.SelfDestructFlag is false;
             capacity++; // addrKey
             foreach (WholeReadScanner.SlotEntry _ in entry.Slots)
                 capacity++; // (address, slot) key
@@ -48,7 +54,7 @@ internal static class PersistedSnapshotBloomBuilder
         // of a slot check), then one key per slot.
         foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
         {
-            ulong addrKey = AddressKey(entry.Address);
+            ulong addrKey = AddressKey(entry.Address.AsSpan);
             bloom.Add(addrKey);
             foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
                 bloom.Add(SlotKey(addrKey, slot.Slot));
@@ -73,9 +79,8 @@ internal static class PersistedSnapshotBloomBuilder
         AddressKey(address.Bytes);
 
     /// <summary>
-    /// Span overload of <see cref="AddressKey(Address)"/> — used by the builder loop,
-    /// which iterates raw 20-byte slices in a NativeMemoryList without materialising
-    /// an <see cref="Address"/> object per row.
+    /// Span overload of <see cref="AddressKey(Address)"/> for callers that have the raw 20 address bytes:
+    /// the scanner-based bloom build, <see cref="PersistedSnapshotMerger"/> and <see cref="PersistedSnapshotBuilder"/>.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong AddressKey(scoped ReadOnlySpan<byte> addressBytes) =>

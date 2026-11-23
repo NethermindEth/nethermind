@@ -11,8 +11,30 @@ using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 
+[assembly: SszPreset(typeof(Nethermind.Serialization.SszGenerator.Test.TestPreset), nameof(Nethermind.Serialization.SszGenerator.Test.TestPreset.Alternate))]
+
 namespace Nethermind.Serialization.SszGenerator.Test
 {
+    public static class TestPreset
+    {
+        public static bool Alternate { get; set; }
+    }
+
+    [SszContainer]
+    public partial class PresetVector
+    {
+        [SszVector(4, AlternateLength = 2)]
+        public ulong[] Values { get; set; } = [];
+    }
+
+    [SszContainer]
+    public partial class PresetContainer
+    {
+        public PresetVector Head { get; set; } = new();
+        [SszList(8, AlternateLimit = 4)]
+        public ulong[] Tail { get; set; } = [];
+    }
+
     [SszContainer]
     public partial struct ComplexStruct
     {
@@ -139,6 +161,40 @@ namespace Nethermind.Serialization.SszGenerator.Test
     {
         [SszList(3)]
         public SpanBuiltBytes? Bytes { get; set; }
+    }
+
+    /// <summary>A byte collection built from a span of its bytes, held in a struct as a decoded witness state node is.</summary>
+    public readonly struct SpanBuiltByteStruct(ReadOnlySpan<byte> bytes)
+    {
+        private readonly byte[] _bytes = bytes.ToArray();
+
+        public ReadOnlySpan<byte> AsSpan() => _bytes;
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteStructListItself
+    {
+        [SszList(3)]
+        public SpanBuiltByteStruct Bytes { get; set; }
+    }
+
+    /// <summary>A member name that matches a local of the generated array decoder.</summary>
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteListItselfNamedIndex
+    {
+        [SszList(3)]
+        public SpanBuiltBytes? Index { get; set; }
+    }
+
+    [SszContainer(isCollectionItself: true)]
+    public partial struct SpanBuiltByteStructListItselfWithConstructor
+    {
+        public SpanBuiltByteStructListItselfWithConstructor() => Marker = 7;
+
+        public readonly int Marker;
+
+        [SszList(3)]
+        public SpanBuiltByteStruct Bytes { get; set; }
     }
 
     [SszContainer]

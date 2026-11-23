@@ -41,6 +41,10 @@ namespace Nethermind.JsonRpc
         public static int GetDebugModuleConcurrentInstances(this IJsonRpcConfig config) =>
             config.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16);
 
+        /// <summary>The size of the trace module pool: <see cref="IJsonRpcConfig.TraceModuleConcurrentInstances"/>, or 2.</summary>
+        public static int GetTraceModuleConcurrentInstances(this IJsonRpcConfig config) =>
+            config.TraceModuleConcurrentInstances ?? 2;
+
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
         {
             HashSet<string> enabledModules = config.EnabledModules.ToHashSet();

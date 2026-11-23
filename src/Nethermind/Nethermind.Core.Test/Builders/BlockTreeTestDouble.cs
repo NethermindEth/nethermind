@@ -186,6 +186,10 @@ public class BlockTreeTestDouble : IBlockTree
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
         Inner?.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags) ?? AddBlockResult.Added;
 
+    public virtual AddBlockResult Insert(BlockHeader header, ReadOnlySpan<byte> body, BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
+        BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None, WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+        Inner?.Insert(header, body, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags) ?? AddBlockResult.Added;
+
     public virtual void UpdateHeadBlock(Hash256 blockHash) => Inner?.UpdateHeadBlock(blockHash);
     /// <inheritdoc/>
     public virtual bool TryRewindHead(Hash256 blockHash) => Inner?.TryRewindHead(blockHash) ?? false;
@@ -216,6 +220,7 @@ public class BlockTreeTestDouble : IBlockTree
     public virtual IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse) =>
         Inner?.FindHeaders(hash, numberOfBlocks, skip, reverse) ?? new ArrayPoolList<BlockHeader>(0);
     public virtual void DeleteInvalidBlock(Block invalidBlock) => Inner?.DeleteInvalidBlock(invalidBlock);
+    public virtual void DeleteBranchWithoutBadBlockReport(BlockHeader branchRoot) => Inner?.DeleteBranchWithoutBadBlockReport(branchRoot);
     public virtual void ReportBadBlock(Block badBlock) => Inner?.ReportBadBlock(badBlock);
     public virtual void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive) => Inner?.DeleteOldBlockRange(fromInclusive, toExclusive);
     public virtual void DeleteOldBlock(ulong blockNumber, Hash256 blockHash) => Inner?.DeleteOldBlock(blockNumber, blockHash);

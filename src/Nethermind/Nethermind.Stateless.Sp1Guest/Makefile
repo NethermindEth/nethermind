@@ -8,6 +8,7 @@ BIN_DIR := /nethermind/bin
 SRC_DIR := /nethermind/src
 
 GUEST_LIBC := sp1
+GUEST_PACKAGE := Nethermind.Sp1.Runtime
 
 # MUL on the uint256_mul precompile without the frame a call from managed code takes.
 GUEST_OBJECTS := mul.o
@@ -49,7 +50,7 @@ ifeq ($(strip $(SP1_RUNNER)),)
 	docker run --rm --shm-size=$(SP1_SHM_SIZE) -e RUST_BACKTRACE=full \
 		--mount type=bind,source="$(GUEST_DIR)/bin",target=/n \
 		$(SP1_IMAGE) \
-		/n/nethermind /n/$(INPUT).raw
+		/n/$(GUEST_NAME) /n/$(INPUT).raw
 else
-	$(SP1_RUNNER) $(GUEST_DIR)/bin/nethermind $(GUEST_DIR)/bin/$(INPUT).raw
+	$(SP1_RUNNER) $(GUEST_DIR)/bin/$(GUEST_NAME) $(GUEST_DIR)/bin/$(INPUT).raw
 endif

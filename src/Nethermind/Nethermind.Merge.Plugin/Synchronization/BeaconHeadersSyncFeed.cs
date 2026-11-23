@@ -184,9 +184,11 @@ public sealed class BeaconHeadersSyncFeed(
 
         headersToAdd = headersToAdd.Slice(lowestIndex);
 
+        // Empty when the highest header of the batch is already known: nothing to insert, only the merge to record.
         if (_logger.IsTrace)
-            _logger.Trace(
-                $"Adding {headersToAdd.Count} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
+            _logger.Trace(headersToAdd.Count == 0
+                ? "No new header to add in beacon headers sync, the highest header of the batch is already known"
+                : $"Adding {headersToAdd.Count} new header in beacon headers sync starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)}");
 
         AddBlockResult insertOutcome = AddBlockResult.Added;
         try
@@ -203,7 +205,7 @@ public sealed class BeaconHeadersSyncFeed(
             }
         }
 
-        if (_logger.IsTrace)
+        if (_logger.IsTrace && headersToAdd.Count > 0)
             _logger.Trace(
                 $"New header starting from {headersToAdd[0].ToString(BlockHeader.Format.FullHashAndNumber)} in beacon headers sync. InsertOutcome: {insertOutcome}");
 

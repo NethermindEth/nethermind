@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ using Nethermind.Api.Monitoring;
 using Nethermind.Config;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test;
 using Nethermind.Core;
@@ -21,12 +23,13 @@ using Nethermind.Evm.State;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using Bloom = Nethermind.State.Flat.Persistence.BloomFilter.BloomFilter;
 
 namespace Nethermind.State.Flat.Test;
 
@@ -43,7 +46,7 @@ public class ReadOnlySnapshotBundleTests
 
     private static ReadOnlySnapshotBundle Bundle(SnapshotPooledList snapshots, IPersistence.IPersistenceReader? reader = null, bool recordDetailedMetrics = false) =>
         new(snapshots, reader ?? Substitute.For<IPersistence.IPersistenceReader>(), recordDetailedMetrics,
-            PersistedSnapshotStack.Empty(recordDetailedMetrics));
+            PersistedSnapshotStack.Empty(recordDetailedMetrics), bufferPin: null);
 
     [Test]
     public void GetAccount_FoundInSnapshot_ReturnsIt([Values] bool detailedMetrics)
@@ -164,16 +167,20 @@ public class ReadOnlySnapshotBundleTests
     public void TryFindStateNodes_ReturnsTrueWhenPresentInSnapshot()
     {
         TreePath path = TreePath.FromHexString("12");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x01]);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
-            MakeSnapshot(c => c.StateNodes[new HashedKey<TreePath>(path)] = node)),
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStateNodeRlp(buffer, path, FlatTestHelpers.LeafRlpA))),
             recordDetailedMetrics: true);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.TryFindStateNodes(path, Keccak.Zero, out TrieNode? found), Is.True);
-            Assert.That(found, Is.SameAs(node));
+            Assert.That(bundle.TryFindStateNodes(path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)), out TrieNode? found), Is.True);
+            if (found is not null)
+            {
+                Assert.That(found.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpA)));
+                Assert.That(found.Keccak, Is.EqualTo(Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpA))));
+            }
         }
     }
 
@@ -194,16 +201,55 @@ public class ReadOnlySnapshotBundleTests
     {
         Hash256 address = TestItem.KeccakA;
         TreePath path = TreePath.FromHexString("ab");
-        TrieNode node = new(NodeType.Leaf, [0xc1, 0x02]);
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
-            MakeSnapshot(c => c.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = node)),
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlpB))),
             recordDetailedMetrics: true);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Zero, out TrieNode? found), Is.True);
-            Assert.That(found, Is.SameAs(node));
+            Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? found), Is.True);
+            if (found is not null) Assert.That(found.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        }
+    }
+
+    [Test]
+    public void TryFindStorageNodes_skips_newer_snapshots_without_the_storage_root()
+    {
+        Hash256 address = TestItem.KeccakA;
+        TreePath path = TreePath.FromHexString("ab");
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+
+        // The newest snapshot changed only the state trie, so the account's storage root is in the older one.
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlpB)),
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStateNodeRlp(buffer, TreePath.FromHexString("12"), FlatTestHelpers.LeafRlpA))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? found), Is.True);
+            if (found is not null) Assert.That(found.FullRlp.ToArray(), Is.EqualTo(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)));
+        }
+    }
+
+    [Test]
+    public void TryFindStorageNodes_misses_when_the_newest_snapshot_holding_the_root_misses()
+    {
+        Hash256 address = TestItem.KeccakA;
+        TreePath path = TreePath.FromHexString("ab");
+        using INodeRecordBuffer buffer = FlatTestHelpers.NewTestBuffer();
+
+        // The older snapshot holds a node at the path, but the newest storage root of the account does not reach one there,
+        // so the older node belongs to an older version of the trie and the lookup goes to persistence.
+        using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, path, FlatTestHelpers.LeafRlpB)),
+            FlatTestHelpers.MakeSnapshot(_pool, buffer, c => c.SetStorageNodeRlp(buffer, address, TreePath.FromHexString("cd"), FlatTestHelpers.LeafRlpC))));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.TryFindStorageNodes(address, path, Keccak.Compute(Bytes.FromHexString(FlatTestHelpers.LeafRlpB)), out TrieNode? node), Is.False);
+            Assert.That(node, Is.Null);
         }
     }
 
@@ -211,12 +257,12 @@ public class ReadOnlySnapshotBundleTests
     public void TryLoadStateRlp_DelegatesToReader([Values] bool detailedMetrics)
     {
         TreePath path = TreePath.FromHexString("12");
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(path, ReadFlags.None).Returns([0xc1, 0xff]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        Assert.That(bundle.TryLoadStateRlp(path, Keccak.Zero, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xff }));
+        Assert.That(bundle.TryLoadStateRlp(path, TestItem.KeccakB, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xff }));
     }
 
     [Test]
@@ -224,12 +270,12 @@ public class ReadOnlySnapshotBundleTests
     {
         TreePath path = TreePath.FromHexString("ab");
         Hash256 address = TestItem.KeccakA;
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStorageRlp(address, path, ReadFlags.None).Returns([0xc1, 0xee]);
 
         using ReadOnlySnapshotBundle bundle = Bundle(FlatTestHelpers.SnapshotList(MakeSnapshot()), reader, detailedMetrics);
 
-        Assert.That(bundle.TryLoadStorageRlp(address, path, Keccak.Zero, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xee }));
+        Assert.That(bundle.TryLoadStorageRlp(address, path, TestItem.KeccakB, ReadFlags.None), Is.EqualTo(new byte[] { 0xc1, 0xee }));
     }
 
     [Test]
@@ -270,6 +316,7 @@ public class ReadOnlySnapshotBundleFilterTests
     private IArenaManager Arena => _tier.Resolve<IArenaManager>();
     private BlobArenaManager _blobs = null!;
     private FlatTestContainer _tier = null!;
+    private INodeRecordBuffer _buffer = null!;
 
     public enum FilterMode
     {
@@ -291,17 +338,22 @@ public class ReadOnlySnapshotBundleFilterTests
         _pool = _tier.ResourcePool;
         _compactor = _tier.Resolve<ISnapshotCompactor>();
         _blobs = _tier.Blobs;
+        _buffer = FlatTestHelpers.NewTestBuffer();
     }
 
     [TearDown]
-    public void TearDown() => _tier.Dispose();
+    public void TearDown()
+    {
+        _tier.Dispose();
+        _buffer.Dispose();
+    }
 
     [Test]
     [NonParallelizable]
     public void Persisted_snapshot_helper_releases_reservation_and_blob_leases()
     {
         using Snapshot snapshot = MakeSnapshot(0, content =>
-            content.StateNodes[new TreePath(Keccak.Compute("p"), 8)] = new TrieNode(NodeType.Leaf, [0xC2, 0x80, 0x80]));
+            content.SetStateNodeRlp(_buffer, new TreePath(Keccak.Compute("p"), 8), FlatTestHelpers.LeafRlpA));
         long blobBytes = Metrics.BlobAllocatedBytes;
         byte[] table = PersistedSnapshotBuilderTestExtensions.Build(snapshot, _blobs);
         long reservations = Metrics.ArenaReservationCount;
@@ -416,7 +468,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
         using ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics: false, out _);
         bundle.GetSlotFiltered(-1, (Addresses[0], (UInt256)1), out _);
-        Bloom filter = bundle.SlotFilter!;
+        BloomFilter filter = bundle.SlotFilter!;
 
         Assert.That(written.Where(key => !filter.MightContain(Snapshot.StorageFilterKey(key))), Is.Empty);
     }
@@ -506,7 +558,7 @@ public class ReadOnlySnapshotBundleFilterTests
         ReadOnlySnapshotBundle bundle = stack.CreateBundle(RealBitsPerKey, detailedMetrics: false, out _);
         Assert.That(bundle.TryLease(), Is.True);
         bundle.GetSlotFiltered(-1, (Addresses[0], (UInt256)1), out _);
-        Bloom filter = bundle.SlotFilter!;
+        BloomFilter filter = bundle.SlotFilter!;
 
         using (Assert.EnterMultipleScope())
         {
@@ -640,7 +692,7 @@ public class ReadOnlySnapshotBundleFilterTests
         Assert.That(readOnly.TryLease(), Is.True);
         try
         {
-            using (SnapshotBundle bundle = new(readOnly, Substitute.For<ITrieNodeCache>(), _pool,
+            using (SnapshotBundle bundle = new(readOnly, null, _pool,
                        ResourcePool.Usage.ReadOnlyProcessingEnv, filterInMemorySlotReads: filterInMemorySlotReads))
             {
                 bundle.GetSlot(address, 1, bundle.DetermineSelfDestructSnapshotIdx(address), out UInt256? value);
@@ -792,7 +844,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private static IContainer BuildFlatDbManagerContainer(LayerStack stack, StateId head, StateId persisted, double bitsPerKey, CancellationToken token)
     {
-        FlatDbConfig config = new() { CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, InMemorySnapshotBloomBitsPerKey = bitsPerKey };
+        FlatDbConfig config = new() { Layout = FlatLayout.Flat, CompactSize = 16, MaxInFlightCompactJob = 4, InlineCompaction = true, InMemorySnapshotBloomBitsPerKey = bitsPerKey };
 
         IPersistenceManager persistenceManager = Substitute.For<IPersistenceManager>();
         persistenceManager.GetCurrentPersistedStateId().Returns(persisted);
@@ -972,7 +1024,7 @@ public class ReadOnlySnapshotBundleFilterTests
                 }
 
                 readOnly.TryLease();
-                bundles[b] = new SnapshotBundle(readOnly, Substitute.For<ITrieNodeCache>(), _pool,
+                bundles[b] = new SnapshotBundle(readOnly, null, _pool,
                     ResourcePool.Usage.ReadOnlyProcessingEnv, ownList, filterInMemorySlotReads: b == 1);
                 foreach ((Address address, UInt256 index, UInt256 value, bool clear) in ops)
                 {
@@ -1091,9 +1143,9 @@ public class ReadOnlySnapshotBundleFilterTests
 
     private Snapshot MakeSnapshot(ulong block, Action<SnapshotContent>? populate = null)
     {
-        SnapshotContent content = _pool.GetSnapshotContent(ResourcePool.Usage.MainBlockProcessing);
-        populate?.Invoke(content);
-        return new Snapshot(CreateStateId(block), CreateStateId(block + 1), content, _pool, ResourcePool.Usage.MainBlockProcessing);
+        Snapshot snapshot = _pool.CreateSnapshot(CreateStateId(block), CreateStateId(block + 1), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        populate?.Invoke(snapshot.Content);
+        return snapshot;
     }
 
     private Snapshot MakeSnapshot(int block, Action<SnapshotContent>? populate = null) => MakeSnapshot((ulong)block, populate);
@@ -1217,7 +1269,7 @@ public class ReadOnlySnapshotBundleFilterTests
 
             reader = new DictionaryReader(PersistenceSlots, PersistenceAccounts, StateId.PreGenesis);
             return new ReadOnlySnapshotBundle(LeaseInMemory(), reader, detailedMetrics,
-                new PersistedSnapshotStack(persisted, detailedMetrics), slotFilterBitsPerKey: bitsPerKey);
+                new PersistedSnapshotStack(persisted, detailedMetrics), bufferPin: null, slotFilterBitsPerKey: bitsPerKey);
         }
 
         public void Dispose()
@@ -1247,8 +1299,11 @@ public class ReadOnlySnapshotBundleFilterTests
         }
 
         public StateId CurrentState => currentState;
-        public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => null;
-        public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => null;
+        public MigrationCursor? GetMigrationCursor() => null;
+        public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+        public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => false;
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();

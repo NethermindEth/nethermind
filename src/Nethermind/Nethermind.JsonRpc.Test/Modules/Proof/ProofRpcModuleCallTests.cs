@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,14 +14,17 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Proof;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
+using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof;
@@ -80,6 +84,24 @@ public class ProofRpcModuleCallTests
             Assert.That(result.Witness.State, Is.Not.Empty, "a call touching state must record state-trie nodes");
             Assert.That(result.Witness.Headers, Is.Not.Empty, "the executed-against header is always included");
         }
+    }
+
+    [Test]
+    public async Task Proof_call_witness_includes_the_gas_beneficiary()
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        await CreateTransferTx(blockchain);
+
+        BlockHeader head = blockchain.BlockTree.Head!.Header;
+        Address beneficiary = head.GasBeneficiary!;
+        Assert.That(beneficiary, Is.Not.EqualTo(TestItem.AddressB).And.Not.EqualTo(Address.Zero), "the call must not touch the beneficiary for another reason");
+
+        using ResultWrapper<CallResultWithProof> wrapper = blockchain.ProofRpcModule.proof_call(
+            new Facade.Eth.RpcTransaction.LegacyTransactionForRpc { To = TestItem.AddressB },
+            new BlockParameter(head.Number));
+
+        Assert.That(wrapper.Data!.Witness.Keys, Has.Some.EqualTo(beneficiary.Bytes.ToArray()),
+            "a stateless re-execution of the call pays the fees, so it reads the beneficiary");
     }
 
     [Test]
@@ -880,5 +902,54 @@ public class ProofRpcModuleCallTests
         Assert.That(result.Result, Is.Not.Null.And.Not.Empty,
             "from-but-no-nonce must not be rejected pre-VM");
         Assert.That(result.Result![^1], Is.EqualTo(0x42));
+    }
+
+    /// <summary>A call with the fields and signature of a signed transaction runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Proof_call_runs_a_signed_call_as_its_from([Values] bool fromOmitted)
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .Build(new TestSpecProvider(Cancun.Instance));
+        // proof_call rejects genesis.
+        await CreateTransferTx(blockchain);
+
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(blockchain.EthereumEcdsa, blockchain.SpecProvider.ChainId, fromOmitted ? null : from);
+
+        using ResultWrapper<CallResultWithProof> result = blockchain.ProofRpcModule.proof_call(call, BlockParameter.Latest);
+
+        // The `from` has no balance, so the priced call names it as the sender without funds.
+        Assert.That(result.Result.Error, Does.Contain($"insufficient funds for gas * price + value: address {from}").IgnoreCase);
+    }
+
+    /// <summary>
+    /// A header without the runtime flag, as stored headers are, takes the chain switcher's answer, as a Taiko header
+    /// keeping its zk gas in the difficulty needs; a header carrying the flag keeps it.
+    /// </summary>
+    [TestCase(false, true, true, TestName = "Proof_call_reads_prevrandao_from_the_mix_hash_when_the_chain_switcher_says_post_merge")]
+    [TestCase(true, false, true, TestName = "Proof_call_reads_prevrandao_from_the_mix_hash_of_a_flagged_header")]
+    [TestCase(false, false, false, TestName = "Proof_call_reads_the_difficulty_of_an_unflagged_header_on_a_chain_without_the_merge")]
+    public async Task Proof_call_reads_prevrandao_or_difficulty(bool isPostMerge, bool chainIsPostMerge, bool expectMixHash)
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(builder =>
+        {
+            if (chainIsPostMerge) builder.AddSingleton<IPoSSwitcher>(AlwaysPoS.Instance);
+        });
+        Address contract = await DeployContract(blockchain, Bytes.FromHexString("0x4460005260206000f3"));
+        BlockHeader head = blockchain.BlockTree.Head!.Header;
+        head.Difficulty = (UInt256)5;
+        head.MixHash = TestItem.KeccakH;
+        head.IsPostMerge = isPostMerge;
+
+        string response = await RpcTest.TestSerializedRequest(blockchain.ProofRpcModule, "proof_call",
+            new { to = contract.ToString(), gas = "0x186a0" }, "latest");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Bytes.FromHexString(JToken.Parse(response)["result"]!["result"]!.Value<string>()!),
+                Is.EqualTo(expectMixHash ? TestItem.KeccakH.Bytes.ToArray() : head.Difficulty.ToBigEndian()), response);
+            Assert.That(head.IsPostMerge, Is.EqualTo(isPostMerge), "the head keeps its flag");
+        }
     }
 }
