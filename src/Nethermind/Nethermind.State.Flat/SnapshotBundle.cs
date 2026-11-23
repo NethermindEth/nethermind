@@ -102,6 +102,9 @@ public sealed class SnapshotBundle : IDisposable
     /// <remarks>Replaced when <see cref="CollectAndApplySnapshot"/> retires the block's transient resource, so read it for each operation.</remarks>
     internal INodeRecordBuffer? NodeRecordBuffer => _cacheableNodeRecordBuffer;
 
+    /// <summary>Whether <see cref="NodeRecordBuffer"/> is a private buffer freed with this bundle.</summary>
+    internal bool OwnsNodeRecordBuffer => _ownsNodeRecordBuffer;
+
     private WarmedNodeRecordBuffer? CreateCacheableNodeRecordBuffer(TransientResource transientResource) =>
         _nodeRecordBuffer is null ? null : new WarmedNodeRecordBuffer(_nodeRecordBuffer, transientResource.WarmedNodeBuffer);
 

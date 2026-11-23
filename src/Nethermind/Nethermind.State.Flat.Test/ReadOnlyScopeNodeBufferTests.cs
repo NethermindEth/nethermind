@@ -1,16 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.NodeBuffer;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.PersistedSnapshots;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.Test;
@@ -78,6 +83,40 @@ public class ReadOnlyScopeNodeBufferTests
                 Assert.That(builtBalance, Is.EqualTo((UInt256)1002));
             }
         }
+    }
+
+    [Test]
+    public void Disposing_the_bundle_releases_its_private_buffer()
+    {
+        // The private buffer pins the global head when created; disposing it releases that pin.
+        List<INodeRecordBufferPin> pins = [];
+        INodeRecordBuffer global = Substitute.For<INodeRecordBuffer>();
+        global.PinHead().Returns(_ =>
+        {
+            INodeRecordBufferPin pin = Substitute.For<INodeRecordBufferPin>();
+            pins.Add(pin);
+            return pin;
+        });
+
+        ResourcePool pool = new(new FlatDbConfig { CompactSize = 2 });
+        ReadOnlySnapshotBundle readOnly = new(
+            new SnapshotPooledList(0),
+            Substitute.For<SubstitutablePersistenceReader>(),
+            recordDetailedMetrics: false,
+            PersistedSnapshotStack.Empty(), bufferPin: null);
+        SnapshotBundle bundle = new(readOnly, global, pool, ResourcePool.Usage.ReadOnlyProcessingEnv, privateNodeRecords: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.OwnsNodeRecordBuffer, Is.True);
+            Assert.That(pins, Has.Count.EqualTo(1));
+        }
+
+        pins[0].DidNotReceive().Dispose();
+
+        bundle.Dispose();
+
+        pins[0].Received(1).Dispose();
     }
 
     private static void ApplyBlock(IWorldState state, ulong number)
