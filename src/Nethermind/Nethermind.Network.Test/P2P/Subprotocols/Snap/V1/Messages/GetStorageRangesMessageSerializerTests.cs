@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -39,6 +40,33 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             GetStorageRangesMessageSerializer serializer = new();
 
             SerializerTester.Test(serializer, msg);
+        }
+
+        [Test]
+        public void Disposing_deserialized_request_releases_account_owner()
+        {
+            using GetStorageRangeMessage request = new()
+            {
+                StorageRange = new()
+                {
+                    RootHash = TestItem.KeccakC,
+                    Accounts = new ArrayPoolList<PathWithAccount>(2)
+                    {
+                        new(TestItem.KeccakA, default),
+                        new(TestItem.KeccakB, default)
+                    }
+                },
+                ResponseBytes = 1000
+            };
+            GetStorageRangesMessageSerializer serializer = new();
+            IOwnedReadOnlyList<PathWithAccount> decodedAccounts;
+            using (GetStorageRangeMessage decoded = serializer.Deserialize(serializer.SerializeToArray(request)))
+            {
+                decodedAccounts = decoded.StorageRange.Accounts;
+                Assert.That(decodedAccounts.Select(account => account.Path), Is.EqualTo(new[] { TestItem.KeccakA, TestItem.KeccakB }));
+            }
+
+            Assert.That(() => decodedAccounts.AsSpan().Length, Throws.InstanceOf<ObjectDisposedException>());
         }
 
         [Test]

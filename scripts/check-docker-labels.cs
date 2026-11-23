@@ -2,6 +2,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+#:property PublishAot=false
 #:include version.helpers.cs
 #:include ci/script-process.helpers.cs
 using System.Globalization;
@@ -12,6 +13,8 @@ using System.Text.Json.Nodes;
 // The default stub build context checks final-stage labels without compiling the client.
 var full = false;
 var dockerfiles = new List<string>();
+const string lightClientDirectory = "src/Nethermind/Nethermind.LightClient";
+const string lightClientDeployment = lightClientDirectory + "/Deployment";
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
@@ -69,12 +72,14 @@ try
     foreach (var dockerfile in dockerfiles)
     {
         var bootnode = dockerfile == "tools/Bootnode/Dockerfile";
-        if (!bootnode && dockerfile is not ("Dockerfile" or "Dockerfile.chiseled"))
+        var lightClient = dockerfile == lightClientDeployment + "/Dockerfile";
+        if (!bootnode && !lightClient && dockerfile is not ("Dockerfile" or "Dockerfile.chiseled"))
         {
             Console.Error.WriteLine($"error: '{dockerfile}' has no expected labels here. Add them, or exclude it in check-docker-labels.cs if it is not released.");
             return 2;
         }
-        var version = ScriptVersion.Read(Path.Combine(root, bootnode ? "tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj" : "src/Nethermind/Directory.Build.props"));
+        var version = ScriptVersion.Read(Path.Combine(root, bootnode ? "tools/Bootnode/Nethermind.Bootnode/Nethermind.Bootnode.csproj"
+            : lightClient ? lightClientDirectory + "/Nethermind.LightClient.csproj" : "src/Nethermind/Directory.Build.props"));
         var tag = "nethermind-label-check:" + dockerfile.Replace('/', '-').Replace('.', '-');
         List<string> build = ["buildx", "build", root, "-f", Path.Combine(root, dockerfile), "-t", tag,
             "--build-arg", $"COMMIT_HASH={commit}", "--build-arg", $"VERSION={version}", "--build-arg", $"BUILD_TIMESTAMP={timestamp}", "--load"];
@@ -82,15 +87,16 @@ try
         Console.WriteLine($"Building {dockerfile} as {tag}");
         tags.Add(tag);
         await Run("docker", [.. build], echo: true);
-        var labels = JsonNode.Parse(await Run("docker", ["image", "inspect", "--format", "{{json .Config.Labels}}", tag]));
+        var config = JsonNode.Parse(await Run("docker", ["image", "inspect", "--format", "{{json .Config}}", tag]));
+        var labels = config?["Labels"];
         Console.WriteLine($"Checking the labels of {tag}");
         foreach (var (key, expected) in new[]
         {
-            ("title", bootnode ? "Nethermind Bootnode" : "Nethermind"),
-            ("description", bootnode ? "Standalone discovery bootnode for discv4 and discv5." : "A robust execution client for Ethereum node operators."),
+            ("title", bootnode ? "Nethermind Bootnode" : lightClient ? "Nethermind Light Client" : "Nethermind"),
+            ("description", bootnode ? "Standalone discovery bootnode for discv4 and discv5." : lightClient ? "Ethereum light client with verified P2P state and local JSON-RPC." : "A robust execution client for Ethereum node operators."),
             ("vendor", "Demerzel Solutions Limited"), ("licenses", "LGPL-3.0-only"),
-            ("url", bootnode ? "https://github.com/NethermindEth/nethermind/tree/master/tools/Bootnode" : "https://nethermind.io/nethermind-client"),
-            ("documentation", bootnode ? "https://github.com/NethermindEth/nethermind/blob/master/tools/Bootnode/README.md" : "https://docs.nethermind.io"),
+            ("url", bootnode ? "https://github.com/NethermindEth/nethermind/tree/master/tools/Bootnode" : lightClient ? $"https://github.com/NethermindEth/nethermind/tree/master/{lightClientDeployment}" : "https://nethermind.io/nethermind-client"),
+            ("documentation", bootnode ? "https://github.com/NethermindEth/nethermind/blob/master/tools/Bootnode/README.md" : lightClient ? $"https://github.com/NethermindEth/nethermind/blob/master/{lightClientDeployment}/README.md" : "https://docs.nethermind.io"),
             ("source", "https://github.com/NethermindEth/nethermind"), ("version", version), ("revision", commit), ("created", timestamp)
         })
         {
@@ -105,16 +111,26 @@ try
         }
         if (!bootnode)
         {
-            if (JsonNode.Parse(await Run("docker", ["image", "inspect", "--format", "{{json .Config.ExposedPorts}}", tag])) is not JsonObject ports ||
-                !ports.ContainsKey("30303/tcp") || !ports.ContainsKey("30303/udp"))
+            string[] requiredPorts = lightClient
+                ? ["8545/tcp", "30303/tcp", "30303/udp", "9050/tcp", "9050/udp", "9051/udp"]
+                : ["30303/tcp", "30303/udp"];
+            if (config?["ExposedPorts"] is not JsonObject ports ||
+                requiredPorts.Any(port => !ports.ContainsKey(port)))
             {
-                Console.Error.WriteLine($"FAIL: {dockerfile} must expose TCP and UDP port 30303");
+                Console.Error.WriteLine($"FAIL: {dockerfile} must expose {string.Join(", ", requiredPorts)}");
                 failures++;
             }
         }
+        if (lightClient &&
+            (!JsonNode.DeepEquals(config?["Entrypoint"], JsonNode.Parse("""["./Nethermind.LightClient"]""")) ||
+             !JsonNode.DeepEquals(config?["Healthcheck"]?["Test"], JsonNode.Parse("""["CMD","./Nethermind.LightClient","--health-check"]"""))))
+        {
+            Console.Error.WriteLine($"FAIL: {dockerfile} must launch the client and healthcheck directly");
+            failures++;
+        }
     }
     if (failures > 0) throw new InvalidOperationException($"{failures} image metadata check(s) failed");
-    Console.WriteLine("All image labels and required exposed ports are correct");
+    Console.WriteLine("All image metadata checks passed");
     return 0;
 }
 catch (OperationCanceledException) { return 130; }

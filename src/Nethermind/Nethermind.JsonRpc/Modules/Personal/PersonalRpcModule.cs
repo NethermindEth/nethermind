@@ -77,6 +77,12 @@ namespace Nethermind.JsonRpc.Modules.Personal
                 return ResultWrapper<Address>.Fail($"Invalid signature length: {signature.Length}. Expected {Signature.Size} bytes.", ErrorCodes.InvalidParams);
             }
 
+            byte recoveryByte = signature[^1];
+            if (recoveryByte is not (Signature.VOffset or Signature.VOffset + 1))
+            {
+                return ResultWrapper<Address>.Fail($"Invalid signature recovery byte: {recoveryByte}. Expected {Signature.VOffset} or {Signature.VOffset + 1}.", ErrorCodes.InvalidParams);
+            }
+
             Hash256 msgHash = Eip191Hasher.HashMessage(message);
             PublicKey? publicKey = ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
             return publicKey is null

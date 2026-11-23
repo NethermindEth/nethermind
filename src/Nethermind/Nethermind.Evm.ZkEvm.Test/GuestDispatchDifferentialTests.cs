@@ -1300,7 +1300,7 @@ public class GuestDispatchDifferentialTests
     /// TSTORE faults instead.
     /// </remarks>
     [Test]
-    public void Transient_storage_matches_the_shared_handlers([Values] bool isStatic)
+    public void Transient_storage_matches_the_shared_handlers([Values] bool isStatic, [Values] bool slotStore)
     {
         byte[] code =
         [
@@ -1313,13 +1313,13 @@ public class GuestDispatchDifferentialTests
         List<string> mismatches = [];
         for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
         {
-            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic);
-            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, loadsStorage: true, isStatic: isStatic);
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic, slotStore: slotStore);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, loadsStorage: true, isStatic: isStatic, slotStore: slotStore);
             if (!Matches(untraced, traced))
                 mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
         }
 
-        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic);
+        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic, slotStore: slotStore);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(mismatches, Is.Empty);
@@ -1340,10 +1340,12 @@ public class GuestDispatchDifferentialTests
     /// Memory starts empty, holds one word at 0, or holds words up to 0x120, so a copy lands inside the initialized
     /// memory, past it with a gap, or at the end of the inline backing. Each copy also runs one and three gas short of
     /// its need, which puts the end of the gas inside its word and expansion charges. An MLOAD at 0x100 or 0x400 grows
-    /// the memory and initializes it past its new size, so a destination there still owes its expansion.
+    /// the memory and initializes it past its new size, so a destination there still owes its expansion. Memory written
+    /// with 0xff up to 0x120 shows the zeros a copy past its source must leave. A source 13 bytes below the end of the
+    /// code sends a CODECOPY of a word or more, with at most a word of zeros, past its source.
     /// </remarks>
     [Test]
-    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2, 3, 4)] int memory)
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2, 3, 4, 5)] int memory)
     {
         byte[] data = new byte[40];
         for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
@@ -1353,10 +1355,11 @@ public class GuestDispatchDifferentialTests
             1 => [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE],
             2 => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
             3 => [(byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
-            _ => [(byte)Instruction.PUSH2, 0x04, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
+            4 => [(byte)Instruction.PUSH2, 0x04, 0x00, (byte)Instruction.MLOAD, (byte)Instruction.POP],
+            _ => [.. Enumerable.Range(0, 9).SelectMany(static word => (byte[])[(byte)Instruction.PUSH0, (byte)Instruction.NOT, (byte)Instruction.PUSH2, (byte)(word * 0x20 >> 8), (byte)(word * 0x20), (byte)Instruction.MSTORE])],
         };
         UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
-        UInt256[] sources = [0, 5, 39, 40, 41, 0x100, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 5, 39, 40, 41, (ulong)prefix.Length + 90, 0x100, UInt256.One << 32, UInt256.One << 64];
         UInt256[] sizes = [0, 1, 31, 32, 33, 64, 200, UInt256.One << 32];
 
         List<string> mismatches = [];
@@ -1740,11 +1743,12 @@ public class GuestDispatchDifferentialTests
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
     /// <param name="codeInfoRepository">The code the calls read; without it CALL, STATICCALL and DELEGATECALL run as INVALID.</param>
     /// <param name="txContext">The transaction's context, which holds the versioned blob hashes; without it BLOBHASH runs as INVALID.</param>
+    /// <param name="slotStore">Whether the world state is a <see cref="IGuestSlotStore"/> for transient storage, which TLOAD then reads through.</param>
     /// <param name="onFrameGas">Runs the chain on the frame's gas, which a precompile call run in a frame refunds, as the dispatch loop does; a nested code frame needs the frame loop instead.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
         bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null,
         ICodeInfoRepository? codeInfoRepository = null, BlockExecutionContext? context = null, TxExecutionContext? txContext = null,
-        FrameTxContext? frameTxContext = null, bool advanceFrameAfterWrite = false, UInt256? balance = null, bool onFrameGas = false)
+        FrameTxContext? frameTxContext = null, bool advanceFrameAfterWrite = false, UInt256? balance = null, bool slotStore = false, bool onFrameGas = false)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         if (context is { } blockContext)
@@ -1765,6 +1769,7 @@ public class GuestDispatchDifferentialTests
             }
         }
         IWorldState stateSubstitute = vm.WorldState;
+        if (slotStore) vm.UseTransientSlotStore();
         BalanceWorldState? balanceState = balance is { } value ? vm.UseBalance(value) : null;
         if (returnData is not null) vm.ReturnDataBuffer = returnData;
         if (txContext is not null) vm.SetTxExecutionContext(txContext.Value);
@@ -1936,6 +1941,18 @@ public class GuestDispatchDifferentialTests
             typeof(VirtualMachine<EthereumGasPolicy>).GetField("_codeInfoRepository", BindingFlags.NonPublic | BindingFlags.Instance)!.SetValue(this, repository);
 
         public void Trace(ITxTracer tracer) => _txTracer = tracer;
+
+        public void UseTransientSlotStore() => _worldState = new TransientSlotStoreWorldState(_worldState);
+    }
+
+    /// <summary>A world state that is a <see cref="IGuestSlotStore"/> for transient storage only, so TLOAD reads through <see cref="IGuestSlotStore.ReadTransient"/>.</summary>
+    private sealed class TransientSlotStoreWorldState(IWorldState state) : WorldStateDecorator(state), IGuestSlotStore
+    {
+        public int ReadForStore(in StorageCell storageCell, out UInt256 current, out UInt256 original) => throw new NotSupportedException();
+
+        public void WriteAt(int slot, in StorageCell storageCell, in UInt256 current, in UInt256 newValue) => throw new NotSupportedException();
+
+        public void ReadTransient(Address address, in UInt256 index, out UInt256 value) => GetTransientState(new StorageCell(address, in index), out value);
     }
 
     private sealed class BalanceWorldState(IWorldState state, UInt256 balance) : WorldStateDecorator(state)
