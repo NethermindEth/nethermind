@@ -53,6 +53,33 @@ public class L1BlockInfoBuilderTests
         Assert.That(l1BlockInfo.BlobBaseFee, Is.EqualTo(UInt256.Parse(expectedBlobBaseFee)));
     }
 
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp + 99, "32594247408339235274")]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp + 100, "10203738961070")]
+    public void FromL1BlockAndSystemConfig_uses_cancun_fraction_before_pectra_blob_schedule(ulong l1Timestamp, string expectedBlobBaseFee)
+    {
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(
+            CreateL1Block(l1Timestamp, 150_000_000), new SystemConfig(), 0, MainnetSpecProvider.Instance,
+            pectraBlobScheduleTimestamp: MainnetSpecProvider.PragueBlockTimestamp + 100);
+
+        Assert.That(l1BlockInfo.BlobBaseFee, Is.EqualTo(UInt256.Parse(expectedBlobBaseFee)));
+    }
+
+    [Test]
+    public void FromL1BlockAndSystemConfig_uses_blob_base_fee_of_one_without_excess_blob_gas()
+    {
+        L1Block block = new()
+        {
+            Hash = TestItem.KeccakA,
+            Number = 1,
+            Timestamp = MainnetSpecProvider.CancunBlockTimestamp - 1,
+            BaseFeePerGas = 1,
+        };
+
+        L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(block, new SystemConfig(), 0, MainnetSpecProvider.Instance);
+
+        Assert.That(l1BlockInfo.BlobBaseFee, Is.EqualTo(UInt256.One));
+    }
+
     [Test]
     public void FromL1BlockAndSystemConfig_throws_when_blob_base_fee_overflows() =>
         Assert.That(

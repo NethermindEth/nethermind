@@ -14,7 +14,8 @@ namespace Nethermind.Optimism.CL.Derivation;
 public class PayloadAttributesDeriver(
     ISystemConfigDeriver systemConfigDeriver,
     DepositTransactionBuilder depositTransactionBuilder,
-    ISpecProvider l1SpecProvider
+    ISpecProvider l1SpecProvider,
+    ulong? pectraBlobScheduleTimestamp = null
 ) : IPayloadAttributesDeriver
 {
     public readonly Address SequencerFeeVault = new("0x4200000000000000000000000000000000000011");
@@ -38,7 +39,7 @@ public class PayloadAttributesDeriver(
         }
 
         L1BlockInfo l1BlockInfo = L1BlockInfoBuilder.FromL1BlockAndSystemConfig(l1Origin, systemConfig,
-            batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1, l1SpecProvider);
+            batch.IsFirstBlockInEpoch ? 0 : parentPayloadAttributes.L1BlockInfo.SequenceNumber + 1, l1SpecProvider, pectraBlobScheduleTimestamp);
 
         Transaction systemTransaction = _depositTransactionBuilder.BuildL1InfoTransaction(l1BlockInfo);
         systemTransaction.Nonce = number + 1;

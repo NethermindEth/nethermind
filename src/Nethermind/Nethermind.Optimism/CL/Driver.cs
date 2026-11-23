@@ -56,7 +56,8 @@ public class Driver : IDisposable
             new PayloadAttributesDeriver(
                 _systemConfigDeriver,
                 new DepositTransactionBuilder(chainId, engineParameters),
-                l1SpecProvider),
+                l1SpecProvider,
+                engineParameters.PectraBlobScheduleTimestamp),
             l1Bridge,
             l2GenesisTimestamp,
             _l2BlockTime,
