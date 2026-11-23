@@ -489,7 +489,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         if (parameters.Eip8288TransitionTimestamp is { } proofTransition && genesisHeader.Timestamp >= proofTransition)
         {
-            genesisHeader.DependencyProofCommitment = new DependencyProofCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+            genesisHeader.DependencyProofCommitment = DependencyProofCommitment.Empty;
             chainSpec.Genesis.DependencyProof = [];
         }
     }

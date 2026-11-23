@@ -8,6 +8,8 @@ using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.ProofAggregation;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -74,7 +76,9 @@ public class BoundedModulePoolTests
                 Substitute.For<IHistoryPruner>()),
             new BlockForRpcFactory(),
             new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()),
-            Substitute.For<IReceiptStorage>()),
+            Substitute.For<IReceiptStorage>(),
+            new ProofWrapperService(txPool, Substitute.For<ISpecProvider>(), blockTree, new LeanProofStore(FrameTxSigHash.ComputeValue),
+                Substitute.For<ILeanProofVerifier>())),
              1, 1000);
 
         return Task.CompletedTask;

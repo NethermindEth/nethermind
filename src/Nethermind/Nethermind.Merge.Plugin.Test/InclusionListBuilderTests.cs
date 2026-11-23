@@ -51,7 +51,7 @@ public class InclusionListBuilderTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Frontier.Instance);
         IReadOnlyStateProvider headState = Substitute.For<IReadOnlyStateProvider>();
         foreach ((Address sender, ulong nonce) in accountNonces ?? []) headState.GetNonce(sender).Returns(nonce);
-        return new InclusionListBuilder(pool, blockTree, specProvider, headState);
+        return new InclusionListBuilder(pool, blockTree, specProvider, headState, NoHeldProofs());
     }
 
     /// <summary>A pool whose ready buckets are the given transactions, grouped by sender and nonce-ordered.</summary>
@@ -295,7 +295,7 @@ public class InclusionListBuilderTests
         blockTree.Head.Returns(Build.A.Block.TestObject);
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Frontier.Instance);
-        return (pool, headState, new InclusionListBuilder(pool, blockTree, specProvider, headState));
+        return (pool, headState, new InclusionListBuilder(pool, blockTree, specProvider, headState, NoHeldProofs()));
     }
 
     private static Address SenderAt(int index)
@@ -441,7 +441,7 @@ public class InclusionListBuilderTests
     [TestCase("no-held-proof", false)]
     [TestCase("uncovering-proof", false)]
     [TestCase("invalid-proof", false)]
-    [TestCase("no-proof-service", false)]
+    [TestCase("no-proof-store", false)]
     [TestCase("next-nonce-only", false)]
     [TestCase("max-fee-covers-max-gas", true)]
     [TestCase("max-fee-covers-frame-gas-only", false)]
@@ -463,8 +463,7 @@ public class InclusionListBuilderTests
         FrameDependency surplus = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("surplus"), default);
         if (scenario != "no-held-proof")
             store.AddCachedRecursive(Eip8288Dependencies.Canonicalize([scenario == "uncovering-proof" ? surplus : dependency, surplus]), [1]);
-        InclusionListProofService? proofs = scenario == "no-proof-service" ? null
-            : new InclusionListProofService(new HeldProofVerifier(scenario != "invalid-proof"), store);
+        InclusionListProofService proofs = new(new HeldProofVerifier(scenario != "invalid-proof"), scenario == "no-proof-store" ? null : store);
 
         (InclusionListBytes il, RecursiveStarkV1 proof) = BuildProofBuilder(PoolWithPending([ordinary], [dependencyBearing]), proofs, baseFee: baseFee)
             .GetInclusionListWithProof();
@@ -587,7 +586,7 @@ public class InclusionListBuilderTests
 
     /// <summary>A builder whose target fork enables EIP-8288.</summary>
     /// <remarks>The head sits at its gas target, so <paramref name="baseFee"/> is also the next block's.</remarks>
-    private static InclusionListBuilder BuildProofBuilder(ITxPool pool, InclusionListProofService? proofs, IReadOnlyStateProvider? headState = null,
+    private static InclusionListBuilder BuildProofBuilder(ITxPool pool, InclusionListProofService proofs, IReadOnlyStateProvider? headState = null,
         UInt256 baseFee = default)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
@@ -596,6 +595,8 @@ public class InclusionListBuilderTests
         specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Eip8288Prototype.Instance);
         return new InclusionListBuilder(pool, blockTree, specProvider, headState ?? Substitute.For<IReadOnlyStateProvider>(), proofs);
     }
+
+    private static InclusionListProofService NoHeldProofs() => new(new HeldProofVerifier(false));
 
     private sealed class HeldProofVerifier(bool valid) : ILeanProofVerifier
     {

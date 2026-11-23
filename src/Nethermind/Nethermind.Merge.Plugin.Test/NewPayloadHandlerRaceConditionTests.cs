@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1758,6 +1759,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
             specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
-            logManager ?? LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance,
+            new InclusionListProofService(Substitute.For<ILeanProofVerifier>()));
     }
 }

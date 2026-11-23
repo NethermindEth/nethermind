@@ -62,11 +62,15 @@ public static class InclusionListValidator
     /// may have to judge by prefix simulation.</summary>
     /// <remarks>Decided from transaction hashes alone, before execution, and conservatively: an entry is left out unless the block
     /// carries a transaction of its hash, whether or not it is eligible. When none is, the simulation is never asked for.</remarks>
-    public static bool OmitsFrameEntry(Block block)
+    public static bool OmitsFrameEntry(Block block) => OmitsFrameEntry(block, block.InclusionListTransactions);
+
+    /// <summary>Whether <paramref name="block"/> leaves out an EIP-8141 frame entry of <paramref name="inclusionList"/>,
+    /// as <see cref="OmitsFrameEntry(Block)"/> decides it for the block's own list.</summary>
+    public static bool OmitsFrameEntry(Block block, Transaction[]? inclusionList)
     {
-        if (block.InclusionListTransactions is not { } il) return false;
+        if (inclusionList is null) return false;
         HashSet<Hash256>? included = null;
-        foreach (Transaction tx in il)
+        foreach (Transaction tx in inclusionList)
         {
             if (!tx.SupportsFrames || tx.SupportsBlobs || tx.CarriesBlobs) continue;
             if (tx.Hash is null) return true;

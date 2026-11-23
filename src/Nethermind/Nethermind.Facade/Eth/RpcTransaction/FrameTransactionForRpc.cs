@@ -111,6 +111,14 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public override bool ShouldSetBaseFee() => base.ShouldSetBaseFee() || MaxFee.IsPositive();
 
+    /// <summary>A shallow copy of this request carrying <paramref name="frames"/>.</summary>
+    internal FrameTransactionForRpc WithFrames(FrameForRpc[]? frames)
+    {
+        FrameTransactionForRpc copy = (FrameTransactionForRpc)MemberwiseClone();
+        copy.Frames = frames;
+        return copy;
+    }
+
     /// <inheritdoc/>
     /// <remarks>A request naming a <c>max_fee</c> gets only the priority fee, since <c>max_fee</c> is its fee cap.</remarks>
     public override Result FillDefaults(in TxFillContext context)

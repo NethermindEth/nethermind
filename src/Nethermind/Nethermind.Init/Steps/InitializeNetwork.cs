@@ -81,7 +81,6 @@ public class InitializeNetwork : IStep
         INodeStorageFactory nodeStorageFactory,
         FlatStateActivationPolicy flatStateActivationPolicy,
         ILogManager logManager,
-        ProofWrapperBroadcaster proofWrapperBroadcaster, // Resolved so wrappers validated before the first eth/73 session are offered
         ProofWrapperProducer? proofWrapperProducer = null
     )
     {

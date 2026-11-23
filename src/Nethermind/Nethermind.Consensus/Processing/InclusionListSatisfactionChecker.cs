@@ -18,20 +18,18 @@ namespace Nethermind.Consensus.Processing;
 /// <remarks>Lists whose proofs were never resolved, as for a block cached or inserted before its newPayload request reached them,
 /// are resolved here, so an unresolved list is never read as one without a verified proof.</remarks>
 public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider, ITxValidator txValidator,
-    ITransactionProcessor? transactionProcessor = null, InclusionListProofService? inclusionListProofs = null)
+    ITransactionProcessor transactionProcessor, InclusionListProofService inclusionListProofs)
     : IInclusionListSatisfactionChecker
 {
     public bool IsSatisfied(Block processedBlock, Block suggestedBlock, IReadOnlyStateProvider worldState)
     {
         IReleaseSpec spec = specProvider.GetSpec(processedBlock.Header);
-        inclusionListProofs?.ResolveUnresolved(suggestedBlock.InclusionLists, spec);
+        inclusionListProofs.ResolveUnresolved(suggestedBlock.InclusionLists, spec);
         return InclusionListValidator.IsSatisfied(processedBlock, suggestedBlock.InclusionListTransactions,
             worldState, spec, txValidator, suggestedBlock.InclusionLists, CouldAppendFrame);
 
         bool CouldAppendFrame(Transaction tx)
         {
-            ITransactionProcessor processor = transactionProcessor
-                ?? throw new InvalidOperationException("Frame inclusion lists require a transaction processor.");
             IWorldState mutableState = worldState as IWorldState
                 ?? throw new InvalidOperationException("Frame inclusion lists require transaction-boundary execution state.");
             IBlockAccessListSource? recorder = mutableState as IBlockAccessListSource;
@@ -46,11 +44,11 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
                     : worldState.GetNonce(sender) != tx.Nonce) return false;
 
                 FrameTxValidationTracer tracer = new(sender, Eip8141Constants.ExpiryVerifierAddress, mutableState, spec);
-                processor.SetBlockExecutionContext(processedBlock.Header.Clone());
+                transactionProcessor.SetBlockExecutionContext(processedBlock.Header.Clone());
                 try
                 {
                     // The including block's fee budget, not max_fee: a payer this block's execution charges less still appends.
-                    return processor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameValidationPrefixAtBlockFees)
+                    return transactionProcessor.Process(tx, tracer, ExecutionOptions.FrameValidationPrefixOnly | ExecutionOptions.FrameValidationPrefixAtBlockFees)
                         && !tracer.Violated && tracer.Payer is not null;
                 }
                 catch (OperationCanceledException) when (tracer.Violated)
@@ -62,7 +60,7 @@ public sealed class InclusionListSatisfactionChecker(ISpecProvider specProvider,
             {
                 mutableState.Restore(snapshot);
                 recorder?.SetGeneratingBlockAccessList(recordedAccesses);
-                processor.SetBlockExecutionContext(processedBlock.Header);
+                transactionProcessor.SetBlockExecutionContext(processedBlock.Header);
             }
         }
     }

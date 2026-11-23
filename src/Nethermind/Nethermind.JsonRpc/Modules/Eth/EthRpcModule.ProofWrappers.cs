@@ -14,7 +14,7 @@ public partial class EthRpcModule
 {
     public async Task<ResultWrapper<Hash256[]>> eth_sendProofWrapper(byte[] wrapper)
     {
-        if (proofWrapperService?.IsEnabled != true)
+        if (!proofWrapperService.IsEnabled)
             return ResultWrapper<Hash256[]>.Fail("EIP-8288 proof wrappers are unavailable.", ErrorCodes.MethodNotFound);
         if (wrapper.Length > Eip8288Constants.MaxWrapperBytes)
             return ResultWrapper<Hash256[]>.Fail("Proof wrapper exceeds MAX_WRAPPER_BYTES.", ErrorCodes.InvalidInput);
@@ -38,7 +38,7 @@ public partial class EthRpcModule
 
     public ResultWrapper<byte[]> eth_getProofWrapper()
     {
-        if (proofWrapperService?.IsEnabled != true)
+        if (!proofWrapperService.IsEnabled)
             return ResultWrapper<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.", ErrorCodes.MethodNotFound);
         Result<byte[]> result = proofWrapperService.GetLatestWrapper();
         return result.IsSuccess ? ResultWrapper<byte[]>.Success(result.Data!)

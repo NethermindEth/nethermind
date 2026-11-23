@@ -39,6 +39,7 @@ public class InitializeNetworkTests
             .AddSingleton(sessionMonitor)
             .Build();
 
+        container.Resolve<InitializeProofWrapperBroadcaster>();
         InitializeNetwork network = container.Resolve<InitializeNetwork>();
         // A wrapper submitted over RPC before the first eth/73 session is offered only if the transport already subscribed.
         Assert.That(container.Resolve<ProofWrapperService>().IsDependencySetOffered, Is.Not.Null);
