@@ -73,6 +73,7 @@
 
         "TIPUpgradeReward": 83600000,
         "TIPUpgradePenalty": 83600000,
+        "TIPProportionalReward": 84733000,
 
         "blackListedAddresses": [
           "0x5248bfb72fd4f234e062d3e9bb76f08643004fcd",

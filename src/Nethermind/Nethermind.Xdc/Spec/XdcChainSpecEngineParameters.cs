@@ -75,6 +75,13 @@ public class XdcChainSpecEngineParameters : IChainSpecEngineParameters
 
     public ulong? TipUpgradePenalty { get; set; }
     public ulong? TipUpgradeReward { get; set; }
+
+    /// <summary>Block from which the reference client pays signers in proportion to the sign slots they signed.</summary>
+    /// <remarks>
+    /// <c>TIPProportionalRewardBlock</c> of XDPoSChain. Only the fork identity uses it so far: the proportional payout
+    /// itself is not implemented, so rewards from this block on still follow <see cref="TipUpgradeReward"/>.
+    /// </remarks>
+    public ulong? TipProportionalReward { get; set; }
     [JsonConverter(typeof(XdcToWeiConverter))]
     public UInt256 MasternodeReward { get; set; }
     [JsonConverter(typeof(XdcToWeiConverter))]
