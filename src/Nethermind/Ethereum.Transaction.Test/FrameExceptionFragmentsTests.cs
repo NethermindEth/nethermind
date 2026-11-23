@@ -6,7 +6,9 @@ using System.Collections.Generic;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
 namespace Ethereum.Transaction.Test;
@@ -212,6 +214,47 @@ public class FrameExceptionFragmentsTests
         {
             Assert.That(message, Does.Contain(wording));
             Assert.That(Covers(FrameExceptionFragments.Decode, message), Is.True, message);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> DependencyFrameRuleCases()
+    {
+        static TestCaseData Case(string name, ulong gasLimit = Eip8288Constants.LeanSphincsVerificationGas, UInt256 value = default,
+            int claims = 1, Action<byte[]> mutateData = null, int extraBytes = 0)
+        {
+            byte[] data = new byte[claims * Eip8288Constants.DependencyTripleLength + extraBytes];
+            for (int i = 0; i < claims; i++) data[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
+            mutateData?.Invoke(data);
+            return new TestCaseData(new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, gasLimit, value, data))
+                .SetName($"Format covers {name}");
+        }
+
+        yield return Case("a dependency frame carrying value", value: UInt256.One);
+        yield return Case("dependency data that is not a whole number of claims", extraBytes: 1);
+        yield return Case("too many dependencies in one frame", gasLimit: (Eip8288Constants.MaxDependenciesPerFrame + 1) * Eip8288Constants.LeanSphincsVerificationGas,
+            claims: Eip8288Constants.MaxDependenciesPerFrame + 1);
+        yield return Case("a dependency with nonzero padding", mutateData: static data => data[0] = 1);
+        yield return Case("a dependency scheme that is not enabled", mutateData: static data => data[31] = 0x7f);
+        yield return Case("a dependency frame gas limit that is not the claims' verification gas", gasLimit: 1);
+    }
+
+    [TestCaseSource(nameof(DependencyFrameRuleCases))]
+    public void Format_CoversTheEip8288DependencyFrameRules(TxFrame dependencyFrame)
+    {
+        Nethermind.Core.Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [dependencyFrame, new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, UInt256.Zero, default)],
+            FrameSignatures = [],
+        };
+
+        bool wellFormed = FrameTxValidation.IsWellFormed(tx, Eip8288Prototype.Instance, out string error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.False);
+            Assert.That(Covers(FrameExceptionFragments.Format, error), Is.True, error);
         }
     }
 

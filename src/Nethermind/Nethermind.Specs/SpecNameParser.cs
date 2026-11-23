@@ -64,6 +64,7 @@ namespace Nethermind.Specs
                 nameof(Amsterdam) => Amsterdam.Instance,
                 nameof(Bogota) => Bogota.Instance,
                 nameof(Eip8141Prototype) => Eip8141Prototype.Instance,
+                nameof(Eip8288Prototype) => Eip8288Prototype.Instance,
                 nameof(Eip8250Prototype) => Eip8250Prototype.Instance,
                 nameof(Eip8272Prototype) => Eip8272Prototype.Instance,
                 nameof(Eip7906Prototype) => Eip7906Prototype.Instance,

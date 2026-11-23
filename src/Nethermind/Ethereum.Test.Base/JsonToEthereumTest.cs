@@ -91,6 +91,9 @@ namespace Ethereum.Test.Base
                 TxRoot = new Hash256(headerJson.TransactionsTrie),
                 WithdrawalsRoot = headerJson.WithdrawalsRoot is null ? null : new Hash256(headerJson.WithdrawalsRoot),
                 BlockAccessListHash = headerJson.BlockAccessListHash is null ? null : new Hash256(headerJson.BlockAccessListHash),
+                RecursiveStark = headerJson.DependencyProofHash is null || headerJson.BlockDepsHash is null
+                    ? null
+                    : new RecursiveStarkCommitment(new Hash256(headerJson.DependencyProofHash), new Hash256(headerJson.BlockDepsHash)),
             };
 
             if (headerJson.BaseFeePerGas is not null)

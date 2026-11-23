@@ -19,6 +19,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -102,6 +103,7 @@ namespace Ethereum.Test.Base
                 .AddModule(new TestNethermindModule(configProvider))
                 .AddSingleton<IBlockhashProvider>(new TestBlockhashProvider())
                 .AddDecorator<IWorldState>(static (_, inner) => new TracedAccessWorldState(inner, parallel: false))
+                .AddDecorator<ILeanProofVerifier>(static (_, inner) => new BlockProofAdmittingVerifier(inner))
                 .AddSingleton(specProvider)
                 .AddSingleton(_logManager)
                 .Build();
@@ -161,8 +163,9 @@ namespace Ethereum.Test.Base
                 ReceiptsRoot = test.PostReceiptsRoot,
             };
 
-            header.Hash = header.CalculateHash();
             Block block = new(header, new BlockBody(transactions, [], withdrawals));
+            if (spec.IsEip8288Enabled) CommitToPlaceholderDependencyProof(block);
+            header.Hash = header.CalculateHash();
 
             // Zero is a placeholder rather than a keccak256 output: generated tests that pin no logs put it there.
             StateTestLogsTracer? logsTracer = test.PostReceiptsRoot is null || test.PostReceiptsRoot == Keccak.Zero ? null : new();
@@ -279,6 +282,35 @@ namespace Ethereum.Test.Base
             }
 
             return differences;
+        }
+
+        /// <summary>Commits the block to its EIP-8288 dependencies and a placeholder proof of them.</summary>
+        /// <remarks>A state test carries no dependency proof: EIP-8288 checks it per block, so the block admits a placeholder
+        /// through <see cref="BlockProofAdmittingVerifier"/> while the block deps hash still binds the transaction's claims.</remarks>
+        private static void CommitToPlaceholderDependencyProof(Block block)
+        {
+            List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
+            block.StarkProof = dependencies.Count == 0 ? [] : PlaceholderDependencyProof;
+            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)));
+        }
+
+        private static readonly byte[] PlaceholderDependencyProof = [0];
+
+        /// <summary>Admits any block dependency proof and leaves every other check to the verifier it wraps.</summary>
+        private sealed class BlockProofAdmittingVerifier(ILeanProofVerifier inner) : ILeanProofVerifier
+        {
+            public void EnsureAvailable() => inner.EnsureAvailable();
+
+            public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
+                inner.VerifyLeanSphincs(in dataHash, in verificationKey, witness);
+
+            public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) =>
+                inner.VerifyLeanStark(in dataHash, in verificationKey, witness);
+
+            public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof) => true;
+
+            public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) =>
+                inner.ProveRecursiveStark(in depsHash, aggregatedVk, input);
         }
     }
 }
