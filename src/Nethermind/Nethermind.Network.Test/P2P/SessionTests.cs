@@ -4,9 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Net;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -746,91 +744,6 @@ public class SessionTests
         session.ReceiveMessage(new Packet("---", 100, data));
 
         Assert.That(session.BytesReceived, Is.EqualTo(data.Length * 5));
-    }
-
-    // Nothing else reads the node of a bare inbound session here. Each case starts from a fresh session, so one raise
-    // site cannot create the node for the other. The highest port is still a usable one.
-    [Test]
-    public void Inbound_session_raises_message_events_with_its_node([Values] bool received, [Values(30000, IPEndPoint.MaxPort)] int port)
-    {
-        Session session = CreateInboundSession(TestItem.PublicKeyA, "127.0.0.1", port);
-        List<Node> nodes = [];
-        if (received) session.MsgReceived += (_, e) => nodes.Add(e.Node);
-        else session.MsgDelivered += (_, e) => nodes.Add(e.Node);
-
-        RaiseMessageEvent(session, received);
-        RaiseMessageEvent(session, received);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(nodes, Has.Count.EqualTo(2).And.All.Not.Null, "both events carry a node");
-            Assert.That(nodes, Has.All.SameAs(session.Node), "the node is created once and kept");
-            Assert.That(session.Node.Id, Is.EqualTo(TestItem.PublicKeyA));
-            Assert.That(session.Node.Address, Is.EqualTo(new IPEndPoint(IPAddress.Loopback, port)));
-        }
-    }
-
-    // Without a subscriber the event arguments are not evaluated, so raising an event does not create the node: it is
-    // built when Node is read, from the details known then.
-    [Test]
-    public void Message_events_without_a_subscriber_leave_the_node_to_be_created_on_read([Values] bool received)
-    {
-        Session session = CreateInboundSession(TestItem.PublicKeyA, "127.0.0.1", 30000);
-
-        RaiseMessageEvent(session, received);
-        session.RemotePort = 30001;
-
-        Assert.That(session.Node.Port, Is.EqualTo(30001));
-    }
-
-    private static IEnumerable<TestCaseData> UnusableRemoteDetails()
-    {
-        foreach (bool received in new[] { true, false })
-        {
-            string direction = received ? "received" : "delivered";
-            yield return new TestCaseData(null, "127.0.0.1", 30000, received).SetArgDisplayNames("no id", direction);
-            yield return new TestCaseData(TestItem.PublicKeyA, null, 30000, received).SetArgDisplayNames("no host", direction);
-            yield return new TestCaseData(TestItem.PublicKeyA, "127.0.0.1", 0, received).SetArgDisplayNames("no port", direction);
-            yield return new TestCaseData(TestItem.PublicKeyA, "not an address", 30000, received).SetArgDisplayNames("host not an IP address", direction);
-            yield return new TestCaseData(TestItem.PublicKeyA, "127.0.0.1", -1, received).SetArgDisplayNames("negative port", direction);
-            yield return new TestCaseData(TestItem.PublicKeyA, "127.0.0.1", IPEndPoint.MaxPort + 1, received).SetArgDisplayNames("port above the range", direction);
-        }
-    }
-
-    // The public Node getter throws for these, and new Node(...) would throw for an unparsable host or a port out of
-    // range; the message path must not.
-    [TestCaseSource(nameof(UnusableRemoteDetails))]
-    public void Session_with_unknown_or_unusable_remote_details_raises_message_events_without_a_node(PublicKey? remoteId, string? host, int port, bool received)
-    {
-        Session session = CreateInboundSession(remoteId, host, port);
-        List<PeerEventArgs> raised = [];
-        if (received) session.MsgReceived += (_, e) => raised.Add(e);
-        else session.MsgDelivered += (_, e) => raised.Add(e);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(() => RaiseMessageEvent(session, received), Throws.Nothing, "the events are raised on the p2p path");
-            Assert.That(raised, Has.Count.EqualTo(1).And.All.Property(nameof(PeerEventArgs.Node)).Null, "one event, without a node");
-        }
-    }
-
-    private Session CreateInboundSession(PublicKey? remoteId, string? host, int port)
-    {
-        Session session = new(30312, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
-        {
-            RemoteHost = host,
-            RemotePort = port,
-        };
-        session.Handshake(remoteId);
-        session.Init(5, _packetSender);
-        session.AddProtocolHandler(BuildHandler("p2p", 10));
-        return session;
-    }
-
-    private static void RaiseMessageEvent(Session session, bool received)
-    {
-        if (received) session.ReceiveMessage(new Packet("---", 3, new byte[10]));
-        else session.DeliverMessage(new TestMessage());
     }
 
     [Test]

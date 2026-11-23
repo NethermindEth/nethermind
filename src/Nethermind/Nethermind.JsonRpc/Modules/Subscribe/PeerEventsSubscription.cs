@@ -42,8 +42,8 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"admin_subscription {Id} will track PeerAdded, PeerRemoved, MsgDelivered and MsgReceived.");
         }
 
-        // The handlers run on the network's threads, a message's on its p2p path, so they must not throw. A session raises
-        // its message events without a node while its remote id, host or port is unknown; without one there is nothing to report.
+        // The handlers run on the network's threads, a message's on its p2p path, so they must not throw. An inbound session
+        // raises its message events with its node only once something has read it; without one there is nothing to report.
         private void OnPeerAdded(object? sender, PeerEventArgs args)
         {
             if (args.Node is not { } node) return;

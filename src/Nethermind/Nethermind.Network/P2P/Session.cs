@@ -8,7 +8,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Net;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -124,25 +123,6 @@ namespace Nethermind.Network.P2P
             private set => _node = value;
         }
 
-        // The message events are raised on the p2p path and must not throw, so unlike Node this gives null while the
-        // remote id, host or port is unknown or unusable. Read only in the events' ?.Invoke arguments, so only when an
-        // event has a subscriber.
-        private Node? NodeIfKnown => _node ?? CreateNodeIfKnown();
-
-        private Node? CreateNodeIfKnown()
-        {
-            PublicKey? remoteNodeId = RemoteNodeId;
-            int remotePort = RemotePort;
-            if (remoteNodeId is null || remotePort is <= 0 or > IPEndPoint.MaxPort
-                || !IPAddress.TryParse(RemoteHost, out IPAddress? remoteAddress))
-            {
-                return null;
-            }
-
-            // The node the Node getter would build, from the address already parsed here.
-            return _node = new Node(remoteNodeId, new IPEndPoint(remoteAddress, remotePort));
-        }
-
         public void EnableSnappy()
         {
             lock (_sessionStateLock)
@@ -220,7 +200,7 @@ namespace Nethermind.Network.P2P
             zeroPacket.Protocol = protocol;
 
             _activityObserver?.OnSessionActivity(this);
-            MsgReceived?.Invoke(this, new PeerEventArgs(NodeIfKnown, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.Length));
+            MsgReceived?.Invoke(this, new PeerEventArgs(_node, zeroPacket.Protocol, zeroPacket.PacketType, zeroPacket.Content.Length));
 
             route?.Record(zeroPacket.Content.Length);
 
@@ -281,7 +261,7 @@ namespace Nethermind.Network.P2P
                 int size = _packetSender.Enqueue(message);
 
                 _activityObserver?.OnSessionActivity(this);
-                MsgDelivered?.Invoke(this, new PeerEventArgs(NodeIfKnown, message.Protocol, message.PacketType, size));
+                MsgDelivered?.Invoke(this, new PeerEventArgs(_node, message.Protocol, message.PacketType, size));
 
                 GetOutgoingRoute(routes, adaptivePacketType, message.Protocol, message.PacketType).Record(size);
 
