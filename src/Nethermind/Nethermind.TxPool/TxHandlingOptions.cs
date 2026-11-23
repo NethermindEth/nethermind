@@ -30,6 +30,11 @@ namespace Nethermind.TxPool
         /// </summary>
         AllowReplacingSignature = 8,
 
-        All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowReplacingSignature
+        All = ManagedNonce | PersistentBroadcast | PreEip155Signing | AllowReplacingSignature,
+
+        /// <summary>
+        /// Requires a local transaction pool to report successful admission.
+        /// </summary>
+        RequireLocalAdmission = 16
     }
 }

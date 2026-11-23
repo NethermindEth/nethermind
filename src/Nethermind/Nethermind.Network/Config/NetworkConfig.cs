@@ -44,6 +44,8 @@ namespace Nethermind.Network.Config
         public NetworkNode[] Bootnodes { get; set; } = [];
         public bool EnableUPnP { get; set; } = false;
         public int DiscoveryPort { get; set; } = 30303;
+
+        public int WebTransportPort { get; set; }
         public int P2PPort { get; set; } = 30303;
         public long SimulateSendLatencyMs { get; set; } = 0;
         public int NumConcurrentOutgoingConnects { get; set; } = 0;

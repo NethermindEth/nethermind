@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Net;
+using System.Net.Sockets;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -17,6 +18,36 @@ namespace Nethermind.Network.Enr.Test;
 public class NodeRecordSignerTests
 {
     private const string TestPrivateKey = "b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291";
+
+    [Test]
+    public void Unknown_quic_values_are_preserved_in_signed_records([Values(EnrContentKey.Quic, EnrContentKey.QuicCertificateHashes)] string key)
+    {
+        using PrivateKey privateKey = new(TestPrivateKey);
+        NodeRecord record = new();
+        record.SetEntry(new IpEntry(IPAddress.Loopback));
+        record.SetEntry(new SecP256k1Entry(privateKey.CompressedPublicKey));
+        record.SetEntry(new QuicPortEntry(30304));
+        record.SetEntry(new QuicCertificateHashesEntry(new byte[32]));
+        record.SetEntry(new UnsupportedQuicEntry(key));
+        new NodeRecordSigner(new Ecdsa(), privateKey).Sign(record);
+
+        string original = record.ToString();
+        NodeRecord parsed = NodeRecord.FromEnrString(original);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed.ToString(), Is.EqualTo(original));
+            Assert.That(parsed.HasEntry(key), Is.True);
+            Assert.That(parsed.TryGetQuicEndpoint(AddressFamily.InterNetwork, out _), Is.False);
+        }
+    }
+
+    private sealed class UnsupportedQuicEntry(string key) : EnrContentEntry
+    {
+        public override string Key => key;
+        protected override int GetRlpLengthOfValue() => 1;
+        protected override void EncodeValue(ref RlpWriter writer) => writer.WriteEncoded([Rlp.EmptyListByte]);
+    }
 
     [Test(Description = "https://eips.ethereum.org/EIPS/eip-778")]
     public void Is_correct_on_eip_test_vector()

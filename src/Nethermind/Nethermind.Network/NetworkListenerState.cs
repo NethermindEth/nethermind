@@ -17,6 +17,7 @@ public sealed class NetworkListenerState
 {
     private ListenerBinding? _rlpxBinding;
     private ListenerBinding? _discoveryBinding;
+    private WebTransportBinding? _webTransport;
     private readonly ILogger _logger;
 
     /// <summary>Initializes the shared listener state from the resolved and configured local addresses.</summary>
@@ -52,6 +53,18 @@ public sealed class NetworkListenerState
 
     /// <summary>The address on which the discovery listener successfully bound, or <see langword="null"/> before it binds.</summary>
     public IPAddress? DiscoveryAddress => Volatile.Read(ref _discoveryBinding)?.Address;
+
+    /// <summary>The bound browser WebTransport endpoint and the certificate hashes it serves.</summary>
+    public WebTransportBinding? WebTransport => Volatile.Read(ref _webTransport);
+
+    /// <summary>Updates the WebTransport endpoint advertisement after a bind, rotation, or shutdown.</summary>
+    public void SetWebTransport(WebTransportBinding? binding)
+    {
+        if (Interlocked.Exchange(ref _webTransport, binding) != binding)
+        {
+            OnChanged();
+        }
+    }
 
     /// <summary>Raised when a successfully bound listener address changes.</summary>
     public event EventHandler? Changed;
@@ -145,4 +158,7 @@ public sealed class NetworkListenerState
     {
         public IPAddress Address { get; } = address;
     }
+
+    /// <summary>The bind address, UDP port and concatenated SHA-256 certificate hashes for WebTransport.</summary>
+    public sealed record WebTransportBinding(IPAddress Address, int Port, ReadOnlyMemory<byte> CertificateHashes);
 }

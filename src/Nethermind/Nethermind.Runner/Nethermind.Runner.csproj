@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType>
     <Nullable>annotations</Nullable>
     <AssemblyName>nethermind</AssemblyName>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>

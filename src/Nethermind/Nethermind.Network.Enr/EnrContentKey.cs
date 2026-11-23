@@ -73,5 +73,14 @@ namespace Nethermind.Network.Enr
         /// </summary>
         public const string Udp6 = "udp6";
         public static ReadOnlySpan<byte> Udp6U8 => "udp6"u8;
+
+        /// <summary>IPv4 QUIC UDP port.</summary>
+        public const string Quic = "quic";
+
+        /// <summary>IPv6 QUIC UDP port.</summary>
+        public const string Quic6 = "quic6";
+
+        /// <summary>Concatenated SHA-256 hashes of the QUIC TLS certificates.</summary>
+        public const string QuicCertificateHashes = "qh";
     }
 }
