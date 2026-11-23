@@ -29,8 +29,13 @@ namespace Nethermind.Facade.Filters
     /// filters of that kind, every filter holds only a cursor into it, and its results are matched when it is polled.
     /// Memory is therefore independent of the number of filters and of how many results they match: a log keeps what
     /// the least recently polled filter has not read yet, and a filter that stops polling is removed by the
-    /// <see cref="FilterStore"/> timeout. Only log filters keep receipts alive; the receipts cache already holds those of
-    /// recent blocks, so an idle log filter adds only the older blocks processed within that timeout.
+    /// <see cref="FilterStore"/> timeout. With the receipt store on, only log filters keep receipts alive; the receipts
+    /// cache already holds those of recent blocks, so an idle log filter adds only the older blocks processed within that
+    /// timeout. With the receipt store off, processed receipts are held until their block becomes canonical, up to
+    /// <see cref="PendingReceiptBlockLimit"/> blocks, and while a log filter is installed the receipts of up to
+    /// <see cref="RecentCanonicalReceiptBlockLimit"/> canonical blocks are held to report their removal.
+    /// A block already reported as added is not reported again until it is removed, so moving the head back to a
+    /// canonical ancestor reports only the removed blocks.
     /// Results are returned as pooled lists that the caller disposes.
     /// </remarks>
     public sealed class FilterManager
@@ -46,6 +51,7 @@ namespace Nethermind.Facade.Filters
         private readonly LruCache<ValueHash256, TxReceipt[]>? _recentCanonicalReceipts;
 
         private Hash256? _lastBlockHash;
+        private Hash256? _canonicalTip;
         private readonly FilterStore _filterStore;
         private readonly ITxPool _txPool;
         private readonly Eip8116Schedule _eip8116;
@@ -70,7 +76,7 @@ namespace Nethermind.Facade.Filters
             _pendingTransactions = new FilterEventLog<PendingTransaction>(filterStore);
             if (receiptConfig.StoreReceipts)
             {
-                receiptMonitor.ReceiptsInserted += OnReceiptsInserted;
+                receiptMonitor.ReceiptsInserted += OnCanonicalReceiptsInserted;
             }
             else
             {
@@ -143,8 +149,9 @@ namespace Nethermind.Facade.Filters
 
         private void OnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
         {
-            if (e.PreviousBlock is { } previous) AppendCanonicalReceipts(previous.Header, removed: true);
+            if (e.PreviousBlock is { } previous) OnBlockRemovedFromMain(previous.Header);
             BlockHeader header = e.Block.Header;
+            if (!TryMoveCanonicalTip(header, removed: false)) return;
             if (header.Hash is { } hash && _pendingReceipts!.TryRemove(hash.ValueHash256, out TxReceipt[]? receipts))
             {
                 LruCache<ValueHash256, TxReceipt[]> recentReceipts = _recentCanonicalReceipts!;
@@ -163,8 +170,26 @@ namespace Nethermind.Facade.Filters
             }
         }
 
-        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) =>
-            AppendCanonicalReceipts(e.Header, removed: true);
+        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) => OnBlockRemovedFromMain(e.Header);
+
+        private void OnBlockRemovedFromMain(BlockHeader header)
+        {
+            TryMoveCanonicalTip(header, removed: true);
+            AppendCanonicalReceipts(header, removed: true);
+        }
+
+        private bool TryMoveCanonicalTip(BlockHeader header, bool removed)
+        {
+            if (removed)
+            {
+                _canonicalTip = header.ParentHash;
+                return true;
+            }
+
+            if (header.Hash is { } hash && hash == _canonicalTip) return false;
+            _canonicalTip = header.Hash;
+            return true;
+        }
 
         private void AppendCanonicalReceipts(BlockHeader header, bool removed)
         {
@@ -178,6 +203,11 @@ namespace Nethermind.Facade.Filters
         {
             if (_blocks.IsTracking)
                 OnReceiptsInserted(this, new ReceiptsEventArgs(header, receipts, removed, _eip8116.IsEnabled(header.Number, header.Timestamp)));
+        }
+
+        private void OnCanonicalReceiptsInserted(object? sender, ReceiptsEventArgs e)
+        {
+            if (TryMoveCanonicalTip(e.BlockHeader, e.WasRemoved)) OnReceiptsInserted(sender, e);
         }
 
         private void OnReceiptsInserted(object? sender, ReceiptsEventArgs e)

@@ -34,6 +34,7 @@ public class FilterManagerTests
     private IBlockTree _blockTree = null!;
     private ILogManager _logManager = null!;
     private FilterManager _filterManager = null!;
+    private int _processedBlockCount;
 
     private int _currentFilterId;
 
@@ -453,6 +454,46 @@ public class FilterManagerTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Rewinding_the_head_to_a_canonical_ancestor_reports_only_the_removed_blocks([Values] bool storeReceipts)
+    {
+        LogFilter filter = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(filter);
+        CreateFilterManager(storeReceipts);
+        (Block first, TxReceipt[] firstReceipts) = RaiseChainBlockProcessed(null);
+        (Block second, TxReceipt[] secondReceipts) = RaiseChainBlockProcessed(first);
+        (Block third, TxReceipt[] thirdReceipts) = RaiseChainBlockProcessed(second);
+        RaiseAddedToMain(storeReceipts, first, firstReceipts);
+        RaiseAddedToMain(storeReceipts, second, secondReceipts);
+        RaiseAddedToMain(storeReceipts, third, thirdReceipts);
+        _filterManager.PollLogs(filter.Id).Dispose();
+
+        RaiseRemovedFromMain(storeReceipts, third, thirdReceipts);
+        RaiseAddedToMain(storeReceipts, second, secondReceipts);
+        (Block replacement, TxReceipt[] replacementReceipts) = RaiseChainBlockProcessed(second, 1);
+        RaiseAddedToMain(storeReceipts, replacement, replacementReceipts);
+
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)).Select(static log => (log.Removed, log.BlockHash)),
+            Is.EqualTo(new[] { (true, third.Hash), (false, replacement.Hash) }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Block_returning_to_the_main_chain_is_reported_again_without_a_receipt_store()
+    {
+        LogFilter filter = BuildFilter(static _ => { });
+        _filterStore.SaveFilter(filter);
+        CreateFilterManager(storeReceipts: false);
+        (Block original, _) = RaiseChainBlockProcessed(null);
+        (Block replacement, _) = RaiseChainBlockProcessed(null, 1);
+
+        _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(original));
+        _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(replacement, original));
+        _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(original, replacement));
+
+        Assert.That(Drain(_filterManager.PollLogs(filter.Id)).Select(static log => (log.Removed, log.BlockHash)),
+            Is.EqualTo(new[] { (false, original.Hash), (true, original.Hash), (false, replacement.Hash), (true, replacement.Hash), (false, original.Hash) }));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void block_whose_bloom_excludes_the_filter_is_skipped()
     {
         LogFilter filter = BuildFilter(static f => f.WithAddress(TestItem.AddressA));
@@ -594,6 +635,16 @@ public class FilterManagerTests
         Assert.That(IsCollected(receipt), Is.False);
 
         _filterStore.RemoveFilter(filter.Id);
+        Assert.That(IsCollected(receipt), Is.True);
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Canonical_receipts_are_not_kept_without_a_log_filter_or_receipt_store()
+    {
+        CreateFilterManager(storeReceipts: false);
+
+        WeakReference receipt = RaiseBlockProcessedWithUnreferencedReceipt(storeReceipts: false);
+
         Assert.That(IsCollected(receipt), Is.True);
     }
 
@@ -750,6 +801,34 @@ public class FilterManagerTests
     private void RaiseCanonicalReceipts(Block block, TxReceipt[] receipts) =>
         _receiptMonitor.ReceiptsInserted += Raise.EventWith(_receiptMonitor, new ReceiptsEventArgs(block, receipts));
 
+    private (Block Block, TxReceipt[] Receipts) RaiseChainBlockProcessed(Block? parent, byte variant = 0)
+    {
+        TxReceipt receipt = BuildReceipt(static _ => { });
+        BlockBuilder builder = Build.A.Block.WithBloom(new Bloom(receipt.Logs ?? [])).WithExtraData([variant]);
+        Block block = (parent is null ? builder.WithNumber(1) : builder.WithParent(parent)).TestObject;
+        receipt.BlockHash = block.Hash;
+        receipt.BlockNumber = block.Number;
+        TxReceipt[] receipts = [receipt];
+        _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, receipts));
+        return (block, receipts);
+    }
+
+    private void RaiseAddedToMain(bool storeReceipts, Block block, TxReceipt[] receipts)
+    {
+        if (storeReceipts)
+            RaiseCanonicalReceipts(block, receipts);
+        else
+            _blockTree.BlockAddedToMain += Raise.EventWith(_blockTree, new BlockReplacementEventArgs(block));
+    }
+
+    private void RaiseRemovedFromMain(bool storeReceipts, Block block, TxReceipt[] receipts)
+    {
+        if (storeReceipts)
+            _receiptMonitor.ReceiptsInserted += Raise.EventWith(_receiptMonitor, new ReceiptsEventArgs(block, receipts, wasRemoved: true));
+        else
+            _blockTree.BlockRemovedFromMain += Raise.EventWith(_blockTree, new BlockHeaderEventArgs(block.Header));
+    }
+
     private Block RaiseBlockProcessedOnly(params TxReceipt[] receipts)
     {
         Bloom bloom = new();
@@ -758,7 +837,7 @@ public class FilterManagerTests
             if (receipt.Logs is not null) bloom.Add(receipt.Logs);
         }
 
-        Block block = Build.A.Block.WithBloom(bloom).TestObject;
+        Block block = Build.A.Block.WithBloom(bloom).WithExtraData(BitConverter.GetBytes(++_processedBlockCount)).TestObject;
         _mainProcessingContext.TestBranchProcessor.RaiseBlockProcessed(new BlockProcessedEventArgs(block, receipts));
         return block;
     }
