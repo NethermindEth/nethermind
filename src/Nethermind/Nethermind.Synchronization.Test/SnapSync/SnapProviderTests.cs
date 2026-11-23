@@ -31,7 +31,6 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
@@ -1400,7 +1399,7 @@ public class SnapProviderTests
     /// <param name="afterRequest">Called with the number of each request once it is answered.</param>
     private static async Task HealWithTrieNodes(IPersistence persistence, ISyncConfig syncConfig, IStateSyncPivot pivot, TestRawTrieStore source, Action<int>? afterRequest = null)
     {
-        TreeSync treeSync = new(new MemDb(), new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), pivot, MainnetSpecProvider.Instance, LimboLogs.Instance),
+        TreeSync treeSync = new(new MemDb(), new FlatTreeSyncStore(persistence, Substitute.For<IPersistenceManager>(), LimboLogs.Instance),
             Substitute.For<IBlockTree>(), pivot, syncConfig, LimboLogs.Instance);
         PeerInfo peer = new(Substitute.For<ISyncPeer>());
         int request = 0;

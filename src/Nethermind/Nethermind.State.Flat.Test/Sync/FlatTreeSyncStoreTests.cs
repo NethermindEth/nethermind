@@ -7,18 +7,14 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Persistence.TrieNodeLog;
 using Nethermind.State.Flat.Sync;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -45,16 +41,12 @@ public class FlatTreeSyncStoreTests
     [TearDown]
     public void TearDown() => _columnsDb.Dispose();
 
-    private static FlatTestContainer CreateContainer(IPersistence persistence, IHistoryPivotSeeder? seeder = null, IReleaseSpec? spec = null) =>
+    private static FlatTestContainer CreateContainer(IPersistence persistence, IHistoryPivotSeeder? seeder = null) =>
         new(loadPersistedTier: false, configure: builder =>
         {
-            IStateSyncPivot pivot = Substitute.For<IStateSyncPivot>();
-            pivot.GetPivotHeader().Returns(Build.A.BlockHeader.TestObject);
             builder
                 .AddSingleton<IPersistence>(persistence)
-                .AddSingleton<IPersistenceManager>(Substitute.For<IPersistenceManager>())
-                .AddSingleton<IStateSyncPivot>(pivot)
-                .AddSingleton<ISpecProvider>(new TestSpecProvider(spec ?? Shanghai.Instance));
+                .AddSingleton<IPersistenceManager>(Substitute.For<IPersistenceManager>());
             if (seeder is not null) builder.AddSingleton<IHistoryPivotSeeder>(seeder);
         });
 
@@ -180,7 +172,7 @@ public class FlatTreeSyncStoreTests
     }
 
     [Test]
-    public void SaveNode_self_destructs_each_replaced_range_once_keeping_the_leaf_account_unless_EIP_6780_is_enabled([Values] bool eip6780Enabled)
+    public void SaveNode_self_destructs_each_replaced_range_once_keeping_the_leaf_account()
     {
         Address kept = TestItem.AddressB;
         using (FlatTestContainer container = CreateContainer(_persistence))
@@ -189,13 +181,13 @@ public class FlatTreeSyncStoreTests
         }
 
         FakeWriteBatch batch = new();
-        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch), spec: eip6780Enabled ? Cancun.Instance : Shanghai.Instance);
+        using FlatTestContainer recording = CreateContainer(new BatchRecordingPersistence(_persistence, batch));
         SaveRootAccountLeaf(recording.Resolve<FlatTreeSyncStore>(), kept);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(batch.DeleteAccountRangeCalls, Is.Not.Empty);
-            Assert.That(batch.SelfDestructRangeCalls, Has.Count.EqualTo(eip6780Enabled ? 0 : batch.DeleteAccountRangeCalls.Count));
+            Assert.That(batch.SelfDestructRangeCalls, Is.Not.Empty);
+            Assert.That(batch.SelfDestructRangeCalls, Has.Count.EqualTo(batch.DeleteAccountRangeCalls.Count));
             Assert.That(batch.SelfDestructRangeCalls.Select(static call => call.KeptAccount), Is.All.EqualTo(Keccak.Compute(kept.Bytes).ValueHash256));
         }
     }

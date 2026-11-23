@@ -5,7 +5,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
@@ -20,8 +19,6 @@ namespace Nethermind.State.Flat.Sync;
 public class FlatTreeSyncStore(
     IPersistence persistence,
     IPersistenceManager persistenceManager,
-    IStateSyncPivot stateSyncPivot,
-    ISpecProvider specProvider,
     ILogManager logManager,
     IHistoryPivotSeeder? historyPivotSeeder = null) : ITreeSyncStore
 {
@@ -102,14 +99,10 @@ public class FlatTreeSyncStore(
         ComputeDeletionRanges(path, newNode, existingNode, ref ranges);
         if (ranges.Count == 0) return;
 
-        // EIP-6780: SELFDESTRUCT removes only an account created in the same transaction, so no account with storage at
-        // an earlier pivot can be gone at this one. Self-destructing the range would read every storage key in it, all
-        // of the account a new leaf keeps included.
-        bool accountsCanBeRemoved = stateSyncPivot.GetPivotHeader() is not { } pivot || !specProvider.GetSpec(pivot).SelfdestructOnlyOnSameTransaction;
         ValueHash256? keptAccount = newNode.IsLeaf ? path.Append(newNode.Key).ToLowerBoundPath() : null;
         foreach (DeletionRange range in ranges.AsSpan())
         {
-            if (accountsCanBeRemoved) writeBatch.SelfDestructRange(range.From, range.To, keptAccount);
+            writeBatch.SelfDestructRange(range.From, range.To, keptAccount);
             writeBatch.DeleteAccountRange(range.From, range.To);
             writeBatch.DeleteStateTrieNodeRange(range.From, range.To);
         }
