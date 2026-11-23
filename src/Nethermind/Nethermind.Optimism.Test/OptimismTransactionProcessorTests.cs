@@ -176,6 +176,35 @@ public class OptimismTransactionProcessorTests
     }
 
     [Test]
+    public void Deposit_without_system_flag_before_Regolith_is_limited_by_block_gas()
+    {
+        using SystemDepositRun run = ExecuteSystemDeposit(regolithTimestamp: null, value: 0, gasLimit: 150_000_000, isSystem: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Result.Error, Is.EqualTo(TransactionResult.ErrorType.BlockGasLimitExceeded));
+            Assert.That(run.Header.GasUsed, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void System_flagged_deposit_before_Regolith_with_value_above_its_balance_fails_as_a_deposit()
+    {
+        using SystemDepositRun run = ExecuteSystemDeposit(regolithTimestamp: null, value: 2_000_000_000_000_000_000UL, gasLimit: 100_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Result, Is.EqualTo(TransactionResult.Ok));
+            Assert.That(run.Tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
+            Assert.That(run.Tracer.GasSpent, Is.Zero);
+            Assert.That(run.Header.GasUsed, Is.Zero);
+            Assert.That(run.State.GetBalance(TestItem.AddressA), Is.EqualTo(1.Ether));
+            Assert.That(run.State.GetNonce(TestItem.AddressA), Is.EqualTo(1UL));
+            Assert.That(run.State.GetBalance(TestItem.AddressB), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
     public void Failed_system_flagged_deposit_before_Regolith_uses_no_block_gas()
     {
         using SystemDepositRun run = ExecuteSystemDeposit(regolithTimestamp: null, value: 0, gasLimit: 1_000);
@@ -191,7 +220,7 @@ public class OptimismTransactionProcessorTests
         }
     }
 
-    private static SystemDepositRun ExecuteSystemDeposit(ulong? regolithTimestamp, ulong value, ulong gasLimit)
+    private static SystemDepositRun ExecuteSystemDeposit(ulong? regolithTimestamp, ulong value, ulong gasLimit, bool isSystem = true)
     {
         IReleaseSpec spec = Prague.Instance;
         IContainer container = BuildContainer(new OptimismChainSpecEngineParameters { BedrockBlockNumber = 0, RegolithTimestamp = regolithTimestamp }, spec);
@@ -206,7 +235,7 @@ public class OptimismTransactionProcessorTests
             .WithTo(TestItem.AddressB)
             .WithValue(value)
             .WithGasLimit(gasLimit)
-            .WithIsOPSystemTransaction(true)
+            .WithIsOPSystemTransaction(isSystem)
             .TestObject;
         tx.Mint = 1.Ether;
         BlockHeader header = Build.A.BlockHeader.WithGasLimit(30_000_000).TestObject;
