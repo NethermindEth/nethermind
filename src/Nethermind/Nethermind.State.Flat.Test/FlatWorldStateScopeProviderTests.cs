@@ -1198,6 +1198,57 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
+    public void EarlyStorageApply_BlockEndDuringAPassKeepsTheFinishedPasses()
+    {
+        using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
+        using TestContext ctx = new();
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(Build.An.Account.WithBalance(1).TestObject);
+        FlatStorageTree tree = (FlatStorageTree)ctx.Scope.CreateStorageTree(address);
+        UInt256[] expected = new UInt256[20];
+        for (int slot = 1; slot < 10; slot++) expected[slot] = (UInt256)(slot + 100);
+        ApplyEarlyHints(tree, () =>
+        {
+            for (int slot = 1; slot < 10; slot++) tree.HintSet((UInt256)slot, expected[slot]);
+        });
+
+        using ManualResetEventSlim started = new();
+        using ManualResetEventSlim resume = new();
+        tree.OnEarlyPassDrained = () => { started.Set(); resume.Wait(); };
+        try
+        {
+            for (int slot = 10; slot < expected.Length; slot++)
+            {
+                expected[slot] = (UInt256)(slot + 100);
+                tree.HintSet((UInt256)slot, expected[slot]);
+            }
+            Assert.That(started.Wait(5000), Is.True);
+
+            Task blockEnd = Task.Run(() =>
+            {
+                using IWorldStateScopeProvider.IWorldStateWriteBatch batch = ctx.Scope.StartWriteBatch(1);
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, expected.Length);
+                for (int slot = 1; slot < expected.Length; slot++) storage.Set((UInt256)slot, expected[slot]);
+            });
+            Assert.That(blockEnd.Wait(5000), Is.True, "the block end must not wait for the unfinished pass");
+        }
+        finally
+        {
+            resume.Set();
+        }
+
+        Assert.That(() => tree.EarlyWritesDrained, Is.True.After(5000, 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Scope.EarlyApplyCounts.Reused, Is.EqualTo(9), "the slots of the finished pass are reused");
+            Assert.That(ctx.Scope.EarlyApplyCounts.Abandoned, Is.EqualTo(1));
+        }
+        ctx.Scope.Commit(1);
+        AssertStorageRoot(ctx, expected);
+    }
+
+    [Test]
+    [NonParallelizable]
     public void EarlyStorageApply_FailedPassIsNotAdopted()
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
