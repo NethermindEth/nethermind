@@ -346,8 +346,8 @@ public class GethGenesisLoader(IJsonSerializer serializer, ILogManager? logManag
 
         if (IsForkActive(config.Eip8288PrototypeTime, genesisHeader.Timestamp))
         {
-            genesisHeader.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
-            chainSpec.Genesis.StarkProof = [];
+            genesisHeader.DependencyProofCommitment = new DependencyProofCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+            chainSpec.Genesis.DependencyProof = [];
         }
     }
 

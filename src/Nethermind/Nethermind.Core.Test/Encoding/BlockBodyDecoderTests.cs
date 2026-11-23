@@ -27,7 +27,7 @@ public class BlockBodyDecoderTests
         BlockBody decoded = BlockBodyDecoder.Instance.DecodeGuardNotNull(ref reader);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.StarkProof, Is.EqualTo(body.StarkProof));
+            Assert.That(decoded.DependencyProof, Is.EqualTo(body.DependencyProof));
             Assert.That(decoded.Withdrawals, Is.EqualTo(body.Withdrawals));
             Assert.That(reader.Position, Is.EqualTo(encoded.Length));
         }

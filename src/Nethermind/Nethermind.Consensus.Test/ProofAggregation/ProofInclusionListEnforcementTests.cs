@@ -155,9 +155,9 @@ public class ProofInclusionListEnforcementTests
             };
             block = block.WithReplacedBody(new([includedGeneric], block.Uncles, block.Withdrawals));
             List<FrameDependency> existingDependencies = Eip8288Dependencies.ForTransaction(includedGeneric, FrameTxSigHash.ComputeValue);
-            block.StarkProof = scenario == "generic-compressed-union"
+            block.DependencyProof = scenario == "generic-compressed-union"
                 ? LeanProofTestEnvelope.CreateMaximal(existingDependencies) : LeanProofTestEnvelope.Create(existingDependencies, 0);
-            block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof),
+            block.Header.DependencyProofCommitment = new(Keccak.Compute(block.DependencyProof),
                 new Hash256(Eip8288Dependencies.ComputeDepsHash(existingDependencies)));
         }
         block.Header.GasUsedPerDimension = (0, 0);

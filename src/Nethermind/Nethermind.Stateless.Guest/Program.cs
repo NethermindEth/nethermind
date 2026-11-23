@@ -85,6 +85,6 @@ internal sealed class UnsupportedLeanProofVerifier : ILeanProofVerifier
     public void EnsureAvailable() => throw Unsupported();
     public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness) => throw Unsupported();
     public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 key, ReadOnlySpan<byte> witness) => throw Unsupported();
-    public bool VerifyRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof) => throw Unsupported();
-    public byte[] ProveRecursiveStark(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input) => throw Unsupported();
+    public bool VerifyDependencyProof(in ValueHash256 hash, ReadOnlySpan<byte> key, ReadOnlySpan<byte> proof) => throw Unsupported();
+    public byte[] ProveDependencyProof(in ValueHash256 hash, ReadOnlySpan<byte> key, AggregationInput input) => throw Unsupported();
 }

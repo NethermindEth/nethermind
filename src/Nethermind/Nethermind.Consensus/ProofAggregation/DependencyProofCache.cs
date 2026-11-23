@@ -14,13 +14,13 @@ using Metrics = Nethermind.Blockchain.Metrics;
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Serializes proving and shares verified completed steps between aggregation callers.</summary>
-public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManager? logManager = null) : ILeanProofVerifier
+public sealed class DependencyProofCache(ILeanProofVerifier verifier, ILogManager? logManager = null) : ILeanProofVerifier
 {
     // This type is reachable from the zkVM guest, which rejects floating-point instructions.
     private static long ElapsedMilliseconds(long start) =>
         (long)((Int128)(Stopwatch.GetTimestamp() - start) * 1000 / Stopwatch.Frequency);
 
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ProductionProofCache>();
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<DependencyProofCache>();
     private const int MaxEntries = 64;
     private const long MaxBytes = 32 * 1024 * 1024;
     private readonly Dictionary<ValueHash256, LinkedListNode<Entry>> _entries = [];
@@ -76,7 +76,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         Request? previous = CurrentRequest.Value;
         Request request = new(cancellationToken, previous is { Active: true, Background: true });
         CurrentRequest.Value = request;
-        try { return verifier.ProveRecursiveStark(in depsHash, aggregatedVk, input); }
+        try { return verifier.ProveDependencyProof(in depsHash, aggregatedVk, input); }
         finally
         {
             request.Active = false;
@@ -97,7 +97,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     /// A recursive proof that verified once is accepted again without the native call: a produced block is otherwise
     /// verified when produced and again on import, and identical proofs arrive repeatedly in wrappers and blocks.
     /// </remarks>
-    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+    public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
         ValueHash256 key = VerifiedKey(in depsHash, aggregatedVk, proof);
         lock (_cacheLock)
@@ -110,7 +110,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
                 return true;
             }
         }
-        if (!verifier.VerifyRecursiveStark(in depsHash, aggregatedVk, proof)) return false;
+        if (!verifier.VerifyDependencyProof(in depsHash, aggregatedVk, proof)) return false;
         RememberVerified(key);
         return true;
     }
@@ -142,7 +142,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     }
 
     /// <inheritdoc/>
-    public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+    public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
         Request? request = CurrentRequest.Value;
         if (request?.Active != true) request = null;
@@ -157,7 +157,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         foreach (RecursiveProofInput parent in input.RecursiveProofs)
             if (parent.InnerDeps is null || parent.InnerDeps.Count > Eip8288Constants.MaxProofDependencies)
                 throw new ArgumentException("Invalid recursive aggregation input.", nameof(input));
-        if (RecursiveStarkAggregator.InputSize(input) > Eip8288Constants.MaxAggregationInputBytes)
+        if (DependencyProofAggregator.InputSize(input) > Eip8288Constants.MaxAggregationInputBytes)
             throw new ArgumentException("Aggregation input exceeds the proving bound.", nameof(input));
         input = Snapshot(input);
         byte[] keyBytes = aggregatedVk.ToArray();
@@ -249,7 +249,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
     {
         try
         {
-            byte[] proof = RecursiveStarkAggregator.Prove(statement.Input, this, statement.ForkVerifier, statement.DepsHash, CancellationToken.None);
+            byte[] proof = DependencyProofAggregator.Prove(statement.Input, this, statement.ForkVerifier, statement.DepsHash, CancellationToken.None);
             statement.Store.AddCachedRecursive(statement.Deps, proof);
         }
         // A later production pass schedules the statement again.
@@ -310,14 +310,14 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
             }
             // Preserve authenticated work before a caller checks its cancellation or proposal deadline.
             long started = Stopwatch.GetTimestamp();
-            byte[] proof = verifier.ProveRecursiveStark(in statement, aggregatedVk, input);
+            byte[] proof = verifier.ProveDependencyProof(in statement, aggregatedVk, input);
             long elapsed = ElapsedMilliseconds(started);
             Interlocked.Increment(ref Metrics.LeanNativeProofs);
             Interlocked.Add(ref Metrics.LeanNativeProveMilliseconds, elapsed);
             Metrics.LeanNativeProveLastMilliseconds = elapsed;
             started = Stopwatch.GetTimestamp();
             bool valid = proof.Length is > 0 and <= Eip8288Constants.MaxAggregateProofBytes
-                && verifier.VerifyRecursiveStark(in statement, aggregatedVk, proof);
+                && verifier.VerifyDependencyProof(in statement, aggregatedVk, proof);
             if (_logger.IsInfo)
                 _logger.Info($"Lean native {(background ? "background" : "production")} proof: prove {elapsed} ms, verify " +
                     $"{ElapsedMilliseconds(started)} ms, {proof.Length} bytes; {input.Deps.Count} direct, " +

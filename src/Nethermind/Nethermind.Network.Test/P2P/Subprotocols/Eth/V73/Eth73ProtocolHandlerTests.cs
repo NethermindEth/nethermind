@@ -81,7 +81,7 @@ public class Eth73ProtocolHandlerTests
         _registry = new SparseBlobPoolPeerRegistry(_node.Pool, custody, RunImmediatelyScheduler.Instance, LimboLogs.Instance);
         _handler = new Eth73ProtocolHandler(_session, _serializer, new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
             syncServer, RunImmediatelyScheduler.Instance, _node.Pool, Substitute.For<IGossipPolicy>(), new ForkInfo(specProvider, syncServer),
-            LimboLogs.Instance, txPoolConfig, specProvider, custody, _registry, _node.Transport, gossipPolicy);
+            LimboLogs.Instance, txPoolConfig, specProvider, custody, _registry, _node.Broadcaster, gossipPolicy);
         _handler.Init();
         using StatusMessage69 status = new() { ProtocolVersion = 73, GenesisHash = _genesis.Hash!, LatestBlockHash = _genesis.Hash! };
         Handle(status, 0);
@@ -139,7 +139,7 @@ public class Eth73ProtocolHandlerTests
         using ProofWrappersMessage wrapperResponse = new(wrapperRequest.RequestId, [Entry(wrapper)]);
         Handle(wrapperResponse, Eth73MessageCode.ProofWrappers);
 
-        await WrapperTestNode.Until(() => _node.Transport.IsStored(Describe(wrapper).Hash) && _node.Transport.FetchCount == 0);
+        await WrapperTestNode.Until(() => _node.Broadcaster.IsStored(Describe(wrapper).Hash) && _node.Broadcaster.FetchCount == 0);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(_node.Pending.Select(static t => t.Hash), Is.EqualTo(new[] { transaction.Hash }));
@@ -239,7 +239,7 @@ public class Eth73ProtocolHandlerTests
         using ProofWrappersMessage response = new(Delivered<GetProofWrappersMessage>().Single().RequestId, [Entry(wrapper)]);
         Handle(response, Eth73MessageCode.ProofWrappers);
         await WrapperTestNode.Until(() => _registry.IsAwaitingCells(blob.Hash!));
-        Assert.That(_node.Transport.IsStored(Describe(wrapper).Hash), Is.True, "the wrapper circulates before availability is established");
+        Assert.That(_node.Broadcaster.IsStored(Describe(wrapper).Hash), Is.True, "the wrapper circulates before availability is established");
         await WrapperTestNode.Until(() =>
         {
             Maintain();

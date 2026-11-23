@@ -41,7 +41,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
         Rlp.LengthOfSequence(lengths.Txs) +
         Rlp.LengthOfSequence(lengths.Uncles) +
         (lengths.Withdrawals is not null ? Rlp.LengthOfSequence(lengths.Withdrawals.Value) : 0) +
-        (b.StarkProof is { } proof ? Rlp.LengthOf(proof) : 0);
+        (b.DependencyProof is { } proof ? Rlp.LengthOf(proof) : 0);
 
     public (int Txs, int Uncles, int? Withdrawals) GetBodyComponentLength(BlockBody b) =>
         GetBodyComponentLength(b, GetTxLength(b.Transactions));
@@ -128,7 +128,7 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
             }
 
             byte[]? starkProof = ctx.Position < lastPosition
-                ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof)))
+                ? ctx.DecodeByteArray(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, "StarkProof"))
                 : null;
             ctx.Check(lastPosition);
             return new BlockBody(transactions, uncles, withdrawals, starkProof);
@@ -201,6 +201,6 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
                 _withdrawalDecoderDecoder.Encode(ref writer, withdrawal);
             }
         }
-        if (body.StarkProof is { } proof) writer.Encode(proof);
+        if (body.DependencyProof is { } proof) writer.Encode(proof);
     }
 }

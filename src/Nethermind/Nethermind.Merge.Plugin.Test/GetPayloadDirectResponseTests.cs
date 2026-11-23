@@ -237,8 +237,8 @@ public class GetPayloadDirectResponseTests
     public async Task Payload_bodies_preserve_proof_in_raw_and_materialized_responses([Values(0, 65537)] int size, [Values(1, 2)] int version)
     {
         Block block = Build.A.Block.WithWithdrawals(0).TestObject;
-        block.StarkProof = new byte[size];
-        block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.DependencyProof = new byte[size];
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
         byte[] encoded = Rlp.Encode(block).Bytes;
         object dto;
         IStreamableResult raw;
@@ -248,16 +248,16 @@ public class GetPayloadDirectResponseTests
             PayloadBodiesV1DirectResponse rawResponse = new(new PayloadBodiesV1DirectResponse.PayloadBody?[] { new(encoded) });
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
-            materialized = new PayloadBodiesV1DirectResponse(new ExecutionPayloadBodyV1Result?[] { new([], [], block.StarkProof) });
-            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.StarkProof));
+            materialized = new PayloadBodiesV1DirectResponse(new ExecutionPayloadBodyV1Result?[] { new([], [], block.DependencyProof) });
+            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.DependencyProof));
         }
         else
         {
             PayloadBodiesV2DirectResponse rawResponse = new([new(encoded, null)]);
             dto = new[] { rawResponse[0] };
             raw = rawResponse;
-            materialized = new PayloadBodiesV2DirectResponse([new([], [], null, block.StarkProof)]);
-            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.StarkProof));
+            materialized = new PayloadBodiesV2DirectResponse([new([], [], null, block.DependencyProof)]);
+            Assert.That(rawResponse[0]!.StarkProof, Is.EqualTo(block.DependencyProof));
         }
         byte[] expected = JsonSerializer.SerializeToUtf8Bytes(dto, dto.GetType(), EthereumJsonSerializer.JsonOptions);
         using (Assert.EnterMultipleScope())
@@ -280,8 +280,8 @@ public class GetPayloadDirectResponseTests
     public async Task Direct_response_json_matches_dto_json_with_recursive_stark(int proofLength, bool inclusionCommitment)
     {
         (Block block, BlobsBundleV2 blobsBundle, byte[][]? executionRequests) = CreatePayloadInputs(1, 1, withdrawals: true, requests: true, BalKind.Encoded, slotNumber: 42);
-        block.StarkProof = new byte[proofLength];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.DependencyProof = new byte[proofLength];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
         if (inclusionCommitment) block.InclusionLists = [new CommitteeInclusionList([], [1], [])];
 
         object plain = CreatePlainResult(6, block, blobsBundle, executionRequests);

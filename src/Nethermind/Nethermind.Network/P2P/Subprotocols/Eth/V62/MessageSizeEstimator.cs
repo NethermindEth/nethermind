@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             // An active empty proof still has an RLP byte-string field; null means pre-activation absence.
-            if (block.StarkProof is { } proof) estimate += (ulong)Rlp.LengthOf(proof);
+            if (block.DependencyProof is { } proof) estimate += (ulong)Rlp.LengthOf(proof);
             return estimate;
         }
 

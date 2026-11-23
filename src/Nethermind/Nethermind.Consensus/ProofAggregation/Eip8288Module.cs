@@ -15,7 +15,7 @@ public sealed class Eip8288Module : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<ILeanProofVerifier, NativeLeanProofVerifier>()
-        .AddDecorator<ILeanProofVerifier, ProductionProofCache>()
+        .AddDecorator<ILeanProofVerifier, DependencyProofCache>()
         .AddSingleton<LeanProofStore>(static _ => new LeanProofStore(FrameTxSigHash.ComputeValue))
         .AddSingleton<ProofWrapperService>()
         .AddSingleton<InclusionListProofService>()

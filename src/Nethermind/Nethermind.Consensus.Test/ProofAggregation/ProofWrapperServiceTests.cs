@@ -438,7 +438,7 @@ public class ProofWrapperServiceTests
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         store.AddVerified([dependency], [[1]], null);
         FakeLeanProofVerifier backend = new(valid);
-        ILeanProofVerifier verifier = decorated ? new ProductionProofCache(backend) : backend;
+        ILeanProofVerifier verifier = decorated ? new DependencyProofCache(backend) : backend;
         ProofWrapperService service = CreateService([CreateTransaction(dependency, TestItem.KeccakA)], store, verifier);
         using (Assert.EnterMultipleScope())
         {
@@ -454,9 +454,9 @@ public class ProofWrapperServiceTests
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, TestItem.KeccakA.ValueHash256, default);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
         FakeLeanProofVerifier backend = new(false);
-        ProductionProofCache verifier = new(backend);
+        DependencyProofCache verifier = new(backend);
         AggregationInput input = new() { RecursiveProofs = [new([dependency], [1])] };
-        Assert.Throws<InvalidOperationException>(() => RecursiveStarkAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash));
+        Assert.Throws<InvalidOperationException>(() => DependencyProofAggregator.Prove(input, verifier, Eip8288Verifier.Pinned, hash));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(backend.VerificationCalls, Is.EqualTo(1));
@@ -549,15 +549,15 @@ public class ProofWrapperServiceTests
         public void EnsureAvailable() { }
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => true;
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             VerifiedStatements.Add(depsHash);
             return RejectedStatement != depsHash;
         }
-        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+        public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             Inputs.Add(input);
-            if (!RecursiveStarkAggregatorTests.TryAggregate(input, this, Eip8288Verifier.Pinned, out _, out ValueHash256 actual) || actual != depsHash)
+            if (!DependencyProofAggregatorTests.TryAggregate(input, this, Eip8288Verifier.Pinned, out _, out ValueHash256 actual) || actual != depsHash)
                 throw new InvalidOperationException("Invalid proving input.");
             return [1];
         }
@@ -760,7 +760,7 @@ public class ProofWrapperServiceTests
         bool busy = true;
         verifier.OnProving = () =>
         {
-            if (busy) throw new InvalidOperationException(ProductionProofCache.BackgroundBusyMessage);
+            if (busy) throw new InvalidOperationException(DependencyProofCache.BackgroundBusyMessage);
         };
         List<MempoolWrapper> expected = [], retried = [];
 
@@ -771,7 +771,7 @@ public class ProofWrapperServiceTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(skipped.Error, Is.EqualTo(ProductionProofCache.BackgroundBusyMessage));
+            Assert.That(skipped.Error, Is.EqualTo(DependencyProofCache.BackgroundBusyMessage));
             Assert.That(retried.Single().Transactions.Select(static tx => tx.Hash), Is.EqualTo(expected.Single().Transactions.Select(static tx => tx.Hash)));
         }
     }
@@ -802,7 +802,7 @@ public class ProofWrapperServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.TryGetInput(Eip8288Dependencies.ForTransaction(wide, FrameTxSigHash.ComputeValue), out AggregationInput wideInput), Is.True);
-            Assert.That(RecursiveStarkAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(ProofWrapperService.MaxWrapperProvingCost));
+            Assert.That(DependencyProofAggregator.EstimatedCost(wideInput), Is.LessThanOrEqualTo(ProofWrapperService.MaxWrapperProvingCost));
         }
         FakeLeanProofVerifier verifier = new(true);
         ProofWrapperService service = CreateService([wide, small], store, verifier);
@@ -887,8 +887,8 @@ public class ProofWrapperServiceTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.TryGetInput(dependencies, out AggregationInput input), Is.True);
-            Assert.That(RecursiveStarkAggregator.InputSize(input), Is.GreaterThan(proof.Length));
-            Assert.That(RecursiveStarkAggregator.InputSize(input), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
+            Assert.That(DependencyProofAggregator.InputSize(input), Is.GreaterThan(proof.Length));
+            Assert.That(DependencyProofAggregator.InputSize(input), Is.LessThan(Eip8288Constants.MaxAggregationInputBytes));
         }
 
         Result<byte[]> result = service.BuildWrapper();

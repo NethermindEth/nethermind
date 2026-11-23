@@ -14,7 +14,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
-public sealed partial class ProofWrapperTransport
+public sealed partial class ProofWrapperBroadcaster
 {
     private const int MaxBusyRetries = 50;
 

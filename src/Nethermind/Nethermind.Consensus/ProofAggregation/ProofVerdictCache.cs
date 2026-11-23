@@ -59,7 +59,7 @@ public sealed class ProofVerdictCache
         ValueHash256 key = forkVerifier.AggregatedVk;
         ProofVerdictCache cache = For(verifier);
         return cache.Verify(cache._aggregate, new AggregateKey(proofHash, deps, key), proof, proofHash,
-            () => verifier.VerifyRecursiveStark(in deps, key.Bytes, proof));
+            () => verifier.VerifyDependencyProof(in deps, key.Bytes, proof));
     }
 
     /// <summary>Verifies a mode-0 direct witness for its single dependency under <paramref name="forkVerifier"/>'s parameters for the

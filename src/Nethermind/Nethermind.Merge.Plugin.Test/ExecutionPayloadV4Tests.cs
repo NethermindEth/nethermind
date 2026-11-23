@@ -250,11 +250,11 @@ public class ExecutionPayloadV4Tests
         }
 
         Block block = payload.TryGetBlock().Data!;
-        Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(block.Header.DependencyProofCommitment, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(block.StarkProof, Is.EqualTo(proof));
-            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(depsHash));
+            Assert.That(block.DependencyProof, Is.EqualTo(proof));
+            Assert.That(block.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(depsHash));
         }
 
         // Re-create a payload from the reconstructed block and round-trip again: recursive_stark
@@ -294,8 +294,8 @@ public class ExecutionPayloadV4Tests
         block.Header.BlobGasUsed = 0;
         block.Header.ExcessBlobGas = 0;
         block.Header.SlotNumber = 0;
-        block.StarkProof = proof;
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), depsHash);
+        block.DependencyProof = proof;
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), depsHash);
         block.Header.Hash = block.Header.CalculateHash();
         ExecutionPayloadV4 payload = ExecutionPayloadV4.Create(block);
 
@@ -309,7 +309,7 @@ public class ExecutionPayloadV4Tests
             Assert.That(json.ContainsKey("starkProof"), Is.True);
             Assert.That(json.ContainsKey("recursiveStarkProof"), Is.False);
             Assert.That(json.ContainsKey("recursiveStarkBlockDepsHash"), Is.False);
-            Assert.That(deserialized.TryGetBlock().Data!.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(depsHash));
+            Assert.That(deserialized.TryGetBlock().Data!.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(depsHash));
         }
     }
 
@@ -323,7 +323,7 @@ public class ExecutionPayloadV4Tests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(payload.StarkProof, Is.Null);
-            Assert.That(payload.TryGetBlock().Data!.Header.RecursiveStark, Is.Null);
+            Assert.That(payload.TryGetBlock().Data!.Header.DependencyProofCommitment, Is.Null);
         }
     }
 

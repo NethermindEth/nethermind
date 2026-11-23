@@ -258,10 +258,10 @@ public class InvalidChainTrackerTest
         IBlockProcessingQueue queue = Substitute.For<IBlockProcessingQueue>();
         _tracker.SetupBlockchainProcessorInterceptor(queue);
         Block block = Build.A.Block.WithParent(Build.A.BlockHeader.TestObject).TestObject;
-        block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }),
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(new byte[] { 1 }),
             noDependencies ? new Hash256(Eip8288Dependencies.ComputeDepsHash([])) : TestItem.KeccakA);
         block.Header.Hash = block.Header.CalculateHash();
-        block.StarkProof = proof;
+        block.DependencyProof = proof;
 
         queue.InvalidBlock += Raise.EventWith(new IBlockProcessingQueue.InvalidBlockEventArgs { InvalidBlock = block });
 

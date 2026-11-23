@@ -32,7 +32,7 @@ namespace Nethermind.Serialization.Rlp
                 Rlp.LengthOfSequence(txs) +
                 Rlp.LengthOfSequence(uncles) +
                 (withdrawals is not null ? Rlp.LengthOfSequence(withdrawals.Value) : 0) +
-                (item.StarkProof is { } proof ? Rlp.LengthOf(proof) : 0);
+                (item.DependencyProof is { } proof ? Rlp.LengthOf(proof) : 0);
             return (contentLength, txs, uncles, withdrawals);
         }
 
@@ -68,7 +68,7 @@ namespace Nethermind.Serialization.Rlp
             // Blocks retain transactions without the return path provided by OwnedBlockBodies.Dispose.
             BlockBody body = _blockBodyDecoder.DecodeUnwrapped(ref decoderContext, blockCheck, usePooledTransactions: false);
             // EIP-8288: only a header committing to a recursive STARK admits a trailing stark_proof body field.
-            if (body.StarkProof is not null && header.RecursiveStark is null)
+            if (body.DependencyProof is not null && header.DependencyProofCommitment is null)
                 throw new RlpException("Block carries a stark_proof without a recursive STARK commitment.");
 
             Block block = new(header, body)
@@ -161,7 +161,7 @@ namespace Nethermind.Serialization.Rlp
                     _withdrawalDecoder.Encode(ref writer, withdrawals[i]);
                 }
             }
-            if (item.StarkProof is { } proof) writer.Encode(proof);
+            if (item.DependencyProof is { } proof) writer.Encode(proof);
         }
 
         public ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
@@ -191,9 +191,9 @@ namespace Nethermind.Serialization.Rlp
             {
                 decoderContext.SkipItem(); // Skip withdrawals
             }
-            if (header.RecursiveStark is not null)
+            if (header.DependencyProofCommitment is not null)
             {
-                decoderContext.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, nameof(BlockBody.StarkProof)));
+                decoderContext.DecodeByteArraySpan(RlpLimit.For<BlockBody>(Eip8288Constants.MaxAggregateProofBytes, "StarkProof"));
             }
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {

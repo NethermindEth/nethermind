@@ -40,14 +40,14 @@ internal sealed class WrapperTestVerifier : ILeanProofVerifier
     /// <summary>When set, recursive STARK checks wait for it, as a slow verification would.</summary>
     public ManualResetEventSlim? Hold { get; set; }
 
-    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+    public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
         Interlocked.Increment(ref _calls);
         Hold?.Wait(TimeSpan.FromSeconds(10));
         return Valid;
     }
 
-    public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [1];
+    public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [1];
 }
 
 /// <summary>Records what the transport sends to one peer and the penalties it applies.</summary>
@@ -95,7 +95,7 @@ internal sealed class WrapperTestNode : IDisposable
             return AcceptTxResult.Accepted;
         });
         Wrappers = new ProofWrapperService(Pool, specs, Tree, ProofStore, Verifier, new ForwardingBlobAdmission(this));
-        Transport = new ProofWrapperTransport(Wrappers, LimboLogs.Instance, Time);
+        Broadcaster = new ProofWrapperBroadcaster(Wrappers, LimboLogs.Instance, Time);
     }
 
     public ManualTimeProvider Time { get; }
@@ -105,7 +105,7 @@ internal sealed class WrapperTestNode : IDisposable
     public List<Transaction> Pending { get; } = [];
     public LeanProofStore ProofStore { get; } = new(FrameTxSigHash.ComputeValue);
     public ProofWrapperService Wrappers { get; }
-    public ProofWrapperTransport Transport { get; }
+    public ProofWrapperBroadcaster Broadcaster { get; }
 
     /// <summary>Where validated wrappers hand their blob-carrying transactions; none refuses them.</summary>
     public IWrappedBlobTransactionAdmission? BlobAdmission { get; set; }
@@ -137,7 +137,7 @@ internal sealed class WrapperTestNode : IDisposable
     }
 
     public WrapperPeer Connect(FakeWrapperLink link) =>
-        Transport.Accept(link) ?? throw new InvalidOperationException("Wrapper exchange is inactive");
+        Broadcaster.Accept(link) ?? throw new InvalidOperationException("Wrapper exchange is inactive");
 
     public void Tick(TimeSpan elapsed) => Time.AdvanceAndFireTimer(elapsed);
 
@@ -147,7 +147,7 @@ internal sealed class WrapperTestNode : IDisposable
         while (!condition()) await Task.Delay(10, timeout.Token);
     }
 
-    public void Dispose() => Transport.Dispose();
+    public void Dispose() => Broadcaster.Dispose();
 }
 
 internal static class WrapperTestObjects

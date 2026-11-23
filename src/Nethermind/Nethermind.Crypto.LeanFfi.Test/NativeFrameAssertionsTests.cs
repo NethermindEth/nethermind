@@ -59,7 +59,7 @@ public class NativeFrameAssertionsTests
         transaction.Hash = transaction.CalculateHash();
         List<FrameDependency> dependencies = Eip8288Dependencies.ForTransaction(transaction, FrameTxSigHash.ComputeValue);
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
+        Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
         proofs.AddVerified(dependencies, null, proof);
         UInt256 balanceBefore;
         using (chain.MainWorldState.BeginScope(chain.BlockTree.Head!.Header))
@@ -87,8 +87,8 @@ public class NativeFrameAssertionsTests
             Assert.That(receipt.GasUsed, Is.EqualTo(execution + state));
             Assert.That(Math.Max(execution, state), Is.EqualTo(block.GasUsed));
             Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue), Is.EqualTo(commitment));
-            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
-                block.StarkProof!), Is.True);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(commitment, Eip8288Constants.AggregatedVk,
+                block.DependencyProof!), Is.True);
         }
     }
 

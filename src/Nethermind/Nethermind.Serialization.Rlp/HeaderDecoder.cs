@@ -88,7 +88,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 Hash256 starkProofHash = decoderContext.DecodeKeccak() ?? throw new RlpException("Missing EIP-8288 proof hash.");
                 Hash256 blockDepsHash = decoderContext.DecodeKeccak() ?? ThrowMissingBlockDepsHash();
-                blockHeader.RecursiveStark = new RecursiveStarkCommitment(starkProofHash, blockDepsHash);
+                blockHeader.DependencyProofCommitment = new DependencyProofCommitment(starkProofHash, blockDepsHash);
                 position = decoderContext.Position;
             }
 
@@ -184,8 +184,8 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) writer.Encode(header.SlotNumber.GetValueOrDefault());
             if (requiredItems[8])
             {
-                RecursiveStarkCommitment recursiveStark = header.RecursiveStark!;
-                writer.Encode(recursiveStark.StarkProofHash);
+                DependencyProofCommitment recursiveStark = header.DependencyProofCommitment!;
+                writer.Encode(recursiveStark.DependencyProofHash);
                 writer.Encode(recursiveStark.BlockDepsHash);
             }
         }
@@ -245,8 +245,8 @@ namespace Nethermind.Serialization.Rlp
             if (requiredItems[7]) contentLength += Rlp.LengthOf(item.SlotNumber.GetValueOrDefault());
             if (requiredItems[8])
             {
-                RecursiveStarkCommitment recursiveStark = item.RecursiveStark!;
-                contentLength += Rlp.LengthOf(recursiveStark.StarkProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash);
+                DependencyProofCommitment recursiveStark = item.DependencyProofCommitment!;
+                contentLength += Rlp.LengthOf(recursiveStark.DependencyProofHash) + Rlp.LengthOf(recursiveStark.BlockDepsHash);
             }
 
             return contentLength;
@@ -263,7 +263,7 @@ namespace Nethermind.Serialization.Rlp
             requiredItems[5] = header.RequestsHash is not null;
             requiredItems[6] = header.BlockAccessListHash is not null;
             requiredItems[7] = header.SlotNumber is not null;
-            requiredItems[8] = header.RecursiveStark is not null;
+            requiredItems[8] = header.DependencyProofCommitment is not null;
 
             for (int i = requiredItems.Length - 2; i >= 0; i--)
             {
@@ -276,6 +276,6 @@ namespace Nethermind.Serialization.Rlp
 
         [DoesNotReturn]
         private static Hash256 ThrowMissingBlockDepsHash() =>
-            throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in {nameof(BlockHeader.RecursiveStark)}");
+            throw new RlpException($"Missing {nameof(RecursiveStark.BlockDepsHash)} in RecursiveStark");
     }
 }

@@ -228,8 +228,8 @@ public class Eth73MessagesTests
             Assert.That(Eth73MessageCode.IsWrapperMessage(0x19), Is.False);
             Assert.That(Eth73Protocol.MaxWrapperBytes, Is.EqualTo(Eth73Protocol.SoftResponseLimit));
             // The largest valid response reaches just under the soft limit, then adds one maximum wrapper.
-            Assert.That(ProofWrapperTransport.ResponseLength(-1, Eth73Protocol.SoftResponseLimit - 1
-                    + ProofWrapperTransport.EntryLength(Eth73Protocol.MaxWrapperBytes) + (Eth73Protocol.MaxWrappersPerRequest - 1) * 37),
+            Assert.That(ProofWrapperBroadcaster.ResponseLength(-1, Eth73Protocol.SoftResponseLimit - 1
+                    + ProofWrapperBroadcaster.EntryLength(Eth73Protocol.MaxWrapperBytes) + (Eth73Protocol.MaxWrappersPerRequest - 1) * 37),
                 Is.LessThanOrEqualTo(Eth73Protocol.LocalMaxResponseBytes));
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes), Is.False);
             Assert.That(Eth73Protocol.ExceedsMessageLimit(Eth73MessageCode.ProofWrappers, Eth73Protocol.LocalMaxResponseBytes + 1), Is.True);
@@ -278,7 +278,7 @@ public class Eth73MessagesTests
             Assert.That(request.Compact, Is.True);
             Assert.That(new GetProofWrappersMessageSerializer().Encode(request), Is.EqualTo(encoded));
             Assert.That(response, Is.EqualTo(Eth73Rlp.EncodeList(Eth73Rlp.EncodeUInt(ulong.MaxValue), Eth73Rlp.EncodeList())));
-            Assert.That(response.Length, Is.EqualTo(ProofWrapperTransport.ResponseLength(request.RequestId, 0)));
+            Assert.That(response.Length, Is.EqualTo(ProofWrapperBroadcaster.ResponseLength(request.RequestId, 0)));
         }
     }
 
@@ -297,7 +297,7 @@ public class Eth73MessagesTests
             Assert.That((request.RequestId, request.Compact, request.Hashes.Length), Is.EqualTo((42L, false, 2)));
             ProofWrappersMessageSerializer wrappers = new();
             byte[] encoded = wrappers.Encode(new(42, [entry, entry]));
-            Assert.That(encoded.Length, Is.EqualTo(ProofWrapperTransport.ResponseLength(42, 2 * ProofWrapperTransport.EntryLength(wrapper.Length))));
+            Assert.That(encoded.Length, Is.EqualTo(ProofWrapperBroadcaster.ResponseLength(42, 2 * ProofWrapperBroadcaster.EntryLength(wrapper.Length))));
             Assert.That(wrappers.Decode(encoded).Entries, Is.EqualTo(new[] { entry, entry }).Using<ProofWrapperEntry>(static (a, b) => a.Hash == b.Hash && a.Wrapper.AsSpan().SequenceEqual(b.Wrapper)),
                 "wrappers are embedded RLP items");
         }

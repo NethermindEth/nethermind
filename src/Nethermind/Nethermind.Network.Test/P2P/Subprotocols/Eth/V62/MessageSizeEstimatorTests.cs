@@ -49,7 +49,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
             Block withoutProof = new(header, new BlockBody([], []));
-            Block withProof = new(header, new BlockBody([], [], starkProof: new byte[proofBytes]));
+            Block withProof = new(header, new BlockBody([], [], dependencyProof: new byte[proofBytes]));
             ulong increase = MessageSizeEstimator.EstimateSize(withProof) - MessageSizeEstimator.EstimateSize(withoutProof);
             Assert.That(increase, Is.EqualTo((ulong)Rlp.LengthOf(new byte[proofBytes])));
         }

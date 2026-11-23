@@ -98,7 +98,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     }
 
     /// <inheritdoc/>
-    public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+    public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
     {
         if (aggregatedVk.Length != 32 || proof.IsEmpty || proof.Length > Eip8288Constants.MaxAggregateProofBytes) return false;
         try
@@ -112,7 +112,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     }
 
     /// <inheritdoc/>
-    public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+    public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
     {
         try { return Prove(in depsHash, aggregatedVk, input); }
         catch (Exception exception) when (IsUnavailable(exception))
@@ -166,7 +166,7 @@ public sealed unsafe partial class NativeLeanProofVerifier : ILeanProofVerifier
     /// The queue is bounded, so callers that bypass the managed proving gate are refused with
     /// <see cref="LeanProverBusyException"/> rather than pile up behind the prover,
     /// and it is completed at process exit. A caller that must stop waiting runs the call on a task of its own, as
-    /// <c>ProductionProofCache</c> does.</remarks>
+    /// <c>DependencyProofCache</c> does.</remarks>
     private static class ProverThread
     {
         private const int MaxQueued = 4;

@@ -30,7 +30,7 @@ public class LeanProofVerifierWiringTests
     [Test]
     public void Guest_referenced_consensus_code_uses_no_platform_digest()
     {
-        using FileStream stream = File.OpenRead(typeof(ProductionProofCache).Assembly.Location);
+        using FileStream stream = File.OpenRead(typeof(DependencyProofCache).Assembly.Location);
         using PEReader pe = new(stream);
         MetadataReader metadata = pe.GetMetadataReader();
         foreach (TypeReferenceHandle handle in metadata.TypeReferences)
@@ -47,7 +47,7 @@ public class LeanProofVerifierWiringTests
     public async Task Startup_checks_a_decorated_backend_through_its_interface()
     {
         ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();
-        ProductionProofCache decorator = new(backend);
+        DependencyProofCache decorator = new(backend);
         InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), decorator);
 
         await step.Execute(CancellationToken.None);
@@ -60,7 +60,7 @@ public class LeanProofVerifierWiringTests
     {
         ILeanProofVerifier backend = Substitute.For<ILeanProofVerifier>();
         backend.When(verifier => verifier.EnsureAvailable()).Do(_ => throw new DllNotFoundException("lean backend missing"));
-        InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), new ProductionProofCache(backend));
+        InitializeLeanBackend step = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), new DependencyProofCache(backend));
 
         Assert.That(() => step.Execute(CancellationToken.None), Throws.TypeOf<DllNotFoundException>());
     }
@@ -92,7 +92,7 @@ public class LeanProofVerifierWiringTests
         using ILifetimeScope scope = chain.Container.BeginLifetimeScope();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(verifier, Is.TypeOf<ProductionProofCache>());
+            Assert.That(verifier, Is.TypeOf<DependencyProofCache>());
             Assert.That(scope.Resolve<ILeanProofVerifier>(), Is.SameAs(verifier));
         }
         return verifier;
@@ -129,9 +129,9 @@ public class LeanProofVerifierWiringTests
         using (Assert.EnterMultipleScope())
         {
             AssertSharedVerifier(chain);
-            Assert.That(block.Header.RecursiveStark is not null, Is.EqualTo(enabled));
+            Assert.That(block.Header.DependencyProofCommitment is not null, Is.EqualTo(enabled));
             // EIP-8288: a block without dependencies carries an empty proof, so neither side runs the backend.
-            Assert.That(block.StarkProof, Is.EqualTo(enabled ? System.Array.Empty<byte>() : null));
+            Assert.That(block.DependencyProof, Is.EqualTo(enabled ? System.Array.Empty<byte>() : null));
             Assert.That(verifier.ProofCalls, Is.Zero);
             Assert.That(verifier.VerificationCalls, Is.Zero);
         }

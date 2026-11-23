@@ -72,7 +72,7 @@ public class NativeBlockProductionTests
             Mode = mode,
             Proofs = mode == MempoolWrapper.ModeDirect ? [witness] : null,
             RecursiveStark = mode == MempoolWrapper.ModeRecursive
-                ? new(RecursiveStarkAggregator.Prove(new AggregationInput { Deps = [resolved], Witnesses = [witness] }, verifier, Eip8288Verifier.Pinned, in depsHash), new Hash256(depsHash))
+                ? new(DependencyProofAggregator.Prove(new AggregationInput { Deps = [resolved], Witnesses = [witness] }, verifier, Eip8288Verifier.Pinned, in depsHash), new Hash256(depsHash))
                 : null
         };
         ProofWrapperAcceptance acceptance = await chain.Container.Resolve<ProofWrapperService>().AcceptDetailedAsync(
@@ -94,9 +94,9 @@ public class NativeBlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.Transactions, Has.Length.EqualTo(1));
-            Assert.That(block.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(new Hash256(depsHash)));
-            Assert.That(verifier.VerifyRecursiveStark(depsHash, Eip8288Constants.AggregatedVk, block.StarkProof!), Is.True);
-            Assert.That(verifier.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash([raw]), Eip8288Constants.AggregatedVk, block.StarkProof!), Is.False);
+            Assert.That(block.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(new Hash256(depsHash)));
+            Assert.That(verifier.VerifyDependencyProof(depsHash, Eip8288Constants.AggregatedVk, block.DependencyProof!), Is.True);
+            Assert.That(verifier.VerifyDependencyProof(Eip8288Dependencies.ComputeDepsHash([raw]), Eip8288Constants.AggregatedVk, block.DependencyProof!), Is.False);
             Assert.That(Eip8288Dependencies.ParseFrame(transaction.Frames![1]).Single(), Is.EqualTo(raw));
             Assert.That(TxDecoder.Instance.Encode(transaction).Bytes, Is.EqualTo(encodedTransaction));
         }
@@ -210,19 +210,19 @@ public class NativeBlockProductionTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.Transactions, Has.Length.EqualTo(1));
-            Assert.That(block.Header.RecursiveStark, Is.Not.Null);
+            Assert.That(block.Header.DependencyProofCommitment, Is.Not.Null);
             Assert.That(block.Header.GasUsedPerDimension, Is.Not.Null);
         }
-        NativeLeanProofVerifierTests.AssertBareStarkProof(block.StarkProof!, Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue));
+        NativeLeanProofVerifierTests.AssertBareStarkProof(block.DependencyProof!, Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue));
         (ulong Execution, ulong State) dimensions = block.Header.GasUsedPerDimension!.Value;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(2));
-            Assert.That(block.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(Keccak.Compute(block.StarkProof!)));
+            Assert.That(block.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(Keccak.Compute(block.DependencyProof!)));
             Assert.That(block.GasUsed, Is.LessThanOrEqualTo(block.GasLimit));
             Assert.That(Math.Max(dimensions.Execution, dimensions.State), Is.EqualTo(block.GasUsed));
-            Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
-                block.StarkProof!), Is.True);
+            Assert.That(NativeLeanProofVerifier.Instance.VerifyDependencyProof(commitment, Eip8288Constants.AggregatedVk,
+                block.DependencyProof!), Is.True);
             Assert.That(chain.ReceiptStorage.Get(block)[0].GasUsed, Is.EqualTo(block.GasUsed));
             Assert.That(verifier.ProofCalls - callsBeforeProduction, Is.EqualTo(preAggregate ? 0 : 1));
         }
@@ -236,12 +236,12 @@ public class NativeBlockProductionTests
             => NativeLeanProofVerifier.Instance.VerifyLeanSphincs(in dataHash, in verificationKey, witness);
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness)
             => NativeLeanProofVerifier.Instance.VerifyLeanStark(in dataHash, in verificationKey, witness);
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
-            => NativeLeanProofVerifier.Instance.VerifyRecursiveStark(in depsHash, aggregatedVk, proof);
-        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
+        public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+            => NativeLeanProofVerifier.Instance.VerifyDependencyProof(in depsHash, aggregatedVk, proof);
+        public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input)
         {
             ProofCalls++;
-            return NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, aggregatedVk, input);
+            return NativeLeanProofVerifier.Instance.ProveDependencyProof(in depsHash, aggregatedVk, input);
         }
     }
     internal static Transaction CreateTransaction(BasicTestBlockchain chain)

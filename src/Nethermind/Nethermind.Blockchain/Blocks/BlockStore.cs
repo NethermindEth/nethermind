@@ -305,7 +305,7 @@ public class BlockStore : IBlockStore, IClearableCache
 
     /// <summary>The count-bounded cache sized for <paramref name="block"/>'s proof, so proof-carrying blocks keep the memory of
     /// the caches bounded; null for a proof no valid block carries.</summary>
-    private AssociativeCache<ValueHash256, Block>? CacheFor(Block block) => (block.StarkProof?.Length ?? 0) switch
+    private AssociativeCache<ValueHash256, Block>? CacheFor(Block block) => (block.DependencyProof?.Length ?? 0) switch
     {
         <= MaxCachedProofBytes => _blockCache,
         <= Eip8288Constants.MaxAggregateProofBytes => _proofBlockCache,

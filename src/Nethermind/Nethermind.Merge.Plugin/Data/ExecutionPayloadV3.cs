@@ -34,9 +34,9 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
         executionPayload.BlobGasUsed = block.BlobGasUsed;
         executionPayload.ExcessBlobGas = block.ExcessBlobGas;
         executionPayload.InclusionListTransactions = block.InclusionListTransactions is null ? [] : InclusionListDecoder.Encode(block.InclusionListTransactions);
-        if (block.Header.RecursiveStark is not null)
+        if (block.Header.DependencyProofCommitment is not null)
         {
-            executionPayload.StarkProof = block.StarkProof ?? throw new System.InvalidOperationException("Missing block proof body");
+            executionPayload.StarkProof = block.DependencyProof ?? throw new System.InvalidOperationException("Missing block proof body");
         }
 
         return executionPayload;
@@ -76,8 +76,8 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
                 return Result<Block>.Fail($"{nameof(StarkProof)} exceeds the proof size limit");
             }
 
-            block.StarkProof = StarkProof;
-            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+            block.DependencyProof = StarkProof;
+            block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         }
 
         return baseResult;

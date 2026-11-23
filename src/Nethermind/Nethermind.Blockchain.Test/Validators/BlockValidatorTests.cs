@@ -114,8 +114,8 @@ public class BlockValidatorTests
     public void Eip8288_accepts_block_with_valid_recursive_stark()
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.StarkProof = [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
 
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
 
@@ -131,8 +131,8 @@ public class BlockValidatorTests
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize)
             .WithTransactions(DependencyTx(dependencies, leanStark)).TestObject;
-        block.StarkProof = [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         FixedLeanProofVerifier verifier = new(true);
 
         bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
@@ -152,7 +152,7 @@ public class BlockValidatorTests
 
         CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingRecursiveStark));
+        Assert.That(error, Is.EqualTo(BlockErrorMessages.MissingDependencyProof));
     }
 
     [TestCase(true)]
@@ -160,13 +160,13 @@ public class BlockValidatorTests
     public void Eip8288_rejects_missing_or_mismatched_body_before_verification(bool missing)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.Header.RecursiveStark = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
-        block.StarkProof = missing ? null : [2];
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(new byte[] { 1 }), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = missing ? null : [2];
         FixedLeanProofVerifier verifier = new(true);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error), Is.False);
-            Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingRecursiveStark : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(error, Is.EqualTo(missing ? BlockErrorMessages.MissingDependencyProof : BlockErrorMessages.InvalidDependencyProof));
             Assert.That(verifier.RecursiveCalls, Is.Zero);
         }
     }
@@ -175,8 +175,8 @@ public class BlockValidatorTests
     public void Eip8288_rejects_block_with_mismatched_deps_hash()
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.StarkProof = [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.Compute("wrong"));
+        block.DependencyProof = [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), Keccak.Compute("wrong"));
 
         CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
 
@@ -187,12 +187,12 @@ public class BlockValidatorTests
     public void Eip8288_rejects_block_when_recursive_stark_fails_verification()
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.StarkProof = [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
 
         CreateEip8288Validator(new FixedLeanProofVerifier(false)).ValidateSuggestedBlock(block, parent, out string? error);
 
-        Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+        Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidDependencyProof));
     }
 
     [Test]
@@ -212,16 +212,16 @@ public class BlockValidatorTests
         depTx.Hash = depTx.CalculateHash();
 
         Block block = Build.A.Block.WithParent(parent).WithTransactions(depTx).TestObject;
-        block.StarkProof = [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         block.Header.Hash = block.Header.CalculateHash();
 
         Block decoded = Rlp.Decode<Block>(Rlp.Encode(block).Bytes)!;
 
-        Assert.That(decoded.Header.RecursiveStark, Is.Not.Null);
+        Assert.That(decoded.Header.DependencyProofCommitment, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.Header.RecursiveStark!.BlockDepsHash, Is.EqualTo(block.Header.RecursiveStark!.BlockDepsHash));
+            Assert.That(decoded.Header.DependencyProofCommitment!.BlockDepsHash, Is.EqualTo(block.Header.DependencyProofCommitment!.BlockDepsHash));
             Assert.That(Eip8288Dependencies.ForBlock(decoded, FrameTxSigHash.ComputeValue), Has.Count.EqualTo(1));
             Assert.That(decoded.Header.CalculateHash(), Is.EqualTo(block.Header.Hash));
         }
@@ -235,8 +235,8 @@ public class BlockValidatorTests
     public void Eip8288_rejects_invalid_proof_size([Values(0, Eip8288Constants.MaxAggregateProofBytes + 1)] int length)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.StarkProof = new byte[length];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = new byte[length];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         FixedLeanProofVerifier verifier = new(true);
 
         bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out string? error);
@@ -244,7 +244,7 @@ public class BlockValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.False);
-            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.InvalidDependencyProof));
             Assert.That(verifier.RecursiveCalls, Is.Zero, "rejected before proof decoding or verification");
         }
     }
@@ -254,8 +254,8 @@ public class BlockValidatorTests
     public void Eip8288_proof_at_the_aggregate_bound_is_still_verified([Values] bool verdict)
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.StarkProof = new byte[Eip8288Constants.MaxAggregateProofBytes];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = new byte[Eip8288Constants.MaxAggregateProofBytes];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
         FixedLeanProofVerifier verifier = new(verdict);
 
         bool result = CreateEip8288Validator(verifier).ValidateSuggestedBlock(block, parent, out _);
@@ -271,15 +271,15 @@ public class BlockValidatorTests
     public void Eip8288_empty_dependencies_require_empty_proof([Values] bool emptyProof)
     {
         (Block block, BlockHeader parent) = Eip8288Block(withDependency: false);
-        block.StarkProof = emptyProof ? [] : [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
+        block.DependencyProof = emptyProof ? [] : [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
 
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true)).ValidateSuggestedBlock(block, parent, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(emptyProof), error);
-            Assert.That(error, Is.EqualTo(emptyProof ? null : BlockErrorMessages.InvalidRecursiveStark));
+            Assert.That(error, Is.EqualTo(emptyProof ? null : BlockErrorMessages.InvalidDependencyProof));
         }
     }
 
@@ -287,8 +287,8 @@ public class BlockValidatorTests
     public void Eip8288_rejects_recursive_stark_before_activation()
     {
         (Block block, BlockHeader parent) = Eip8288Block();
-        block.StarkProof = [1];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), Keccak.OfAnEmptyString);
+        block.DependencyProof = [1];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), Keccak.OfAnEmptyString);
 
         bool result = CreateEip8288Validator(new FixedLeanProofVerifier(true), enabled: false)
             .ValidateSuggestedBlock(block, parent, out string? error);
@@ -296,7 +296,7 @@ public class BlockValidatorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.False);
-            Assert.That(error, Is.EqualTo(BlockErrorMessages.RecursiveStarkNotEnabled));
+            Assert.That(error, Is.EqualTo(BlockErrorMessages.DependencyProofNotEnabled));
         }
     }
 
@@ -357,13 +357,13 @@ public class BlockValidatorTests
 
         public bool VerifyLeanSphincs(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
         public bool VerifyLeanStark(in ValueHash256 dataHash, in ValueHash256 verificationKey, ReadOnlySpan<byte> witness) => result;
-        public bool VerifyRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
+        public bool VerifyDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, ReadOnlySpan<byte> proof)
         {
             RecursiveCalls++;
             return result;
         }
 
-        public byte[] ProveRecursiveStark(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
+        public byte[] ProveDependencyProof(in ValueHash256 depsHash, ReadOnlySpan<byte> aggregatedVk, AggregationInput input) => [];
     }
 
     [Test]
@@ -451,8 +451,8 @@ public class BlockValidatorTests
     public void ValidateBodyAgainstHeader_binds_proof_presence_and_hash(bool commitmentPresent, byte[]? proof, bool expected)
     {
         Block block = Build.A.Block.TestObject;
-        block.Header.RecursiveStark = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), TestItem.KeccakA) : null;
-        block.StarkProof = proof;
+        block.Header.DependencyProofCommitment = commitmentPresent ? new(Keccak.Compute(new byte[] { 1 }), TestItem.KeccakA) : null;
+        block.DependencyProof = proof;
 
         bool valid = _blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error);
 
@@ -467,8 +467,8 @@ public class BlockValidatorTests
     public void ValidateBodyAgainstHeader_accepts_committed_empty_proof()
     {
         Block block = Build.A.Block.TestObject;
-        block.Header.RecursiveStark = new(Keccak.OfAnEmptyString, Keccak.OfAnEmptyString);
-        block.StarkProof = [];
+        block.Header.DependencyProofCommitment = new(Keccak.OfAnEmptyString, Keccak.OfAnEmptyString);
+        block.DependencyProof = [];
 
         Assert.That(_blockValidator.ValidateBodyAgainstHeader(block.Header, block.Body, out string? error), Is.True, error);
     }

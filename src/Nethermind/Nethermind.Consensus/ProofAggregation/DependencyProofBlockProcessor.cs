@@ -23,7 +23,7 @@ internal sealed class DependencyProofBlockProcessor(
     ILeanProofVerifier leanProofVerifier,
     LeanProofStore? leanProofStore = null) : IBlockProcessor
 {
-    private readonly ProductionProofCache _productionProofCache = leanProofVerifier as ProductionProofCache
+    private readonly DependencyProofCache _dependencyProofCache = leanProofVerifier as DependencyProofCache
         ?? new(leanProofVerifier ?? throw new ArgumentNullException(nameof(leanProofVerifier)));
     private (ValueHash256 Dependencies, ValueHash256 VerificationKey)? _productionProofKey;
     private byte[]? _productionProof;
@@ -77,7 +77,7 @@ internal sealed class DependencyProofBlockProcessor(
     private void PrepareProductionProof(Block block, IReleaseSpec spec, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        bool latest = _productionProofCache.ObserveProduction(block.Timestamp, block.Number);
+        bool latest = _dependencyProofCache.ObserveProduction(block.Timestamp, block.Number);
         List<FrameDependency> deps = Eip8288Dependencies.ForBlock(block, FrameTxSigHash.ComputeValue);
         ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
         Eip8288Verifier verifier = Eip8288Verifier.For(spec);
@@ -91,7 +91,7 @@ internal sealed class DependencyProofBlockProcessor(
         {
             byte[]? prepared = null;
             if (leanProofStore?.TryGetRecursiveProof(deps, out prepared) == true
-                && !leanProofVerifier.VerifyRecursiveStark(in depsHash, verifier.AggregatedVk.Bytes, prepared!))
+                && !leanProofVerifier.VerifyDependencyProof(in depsHash, verifier.AggregatedVk.Bytes, prepared!))
             {
                 leanProofStore.RemoveCachedRecursive(deps, prepared!);
                 prepared = null;
@@ -109,15 +109,15 @@ internal sealed class DependencyProofBlockProcessor(
                     DependencyProofPlanner.IncludableTransactions includable = new(block);
                     (HashSet<FrameDependency> limit, int kept) = includable.ChooseProvenLimit(leanProofStore.ProvenSubsets(attempted));
                     // Only the latest payload's unrestricted body is worth proving; a restricted rebuild is a subset of it.
-                    if (latest && producing.LeanProduction.DependencyLimit is null && !_productionProofCache.IsScheduledWithin(attempted))
+                    if (latest && producing.LeanProduction.DependencyLimit is null && !_dependencyProofCache.IsScheduledWithin(attempted))
                         DependencyProofPlanner.ScheduleProductionProof(producing, includable, attempted, deps, depsHash, limit, kept,
-                            leanProofStore, verifier, _productionProofCache);
+                            leanProofStore, verifier, _dependencyProofCache);
                     throw new LeanProofNotReadyException(limit);
                 }
-                AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProduction.ProofInputs, deps);
+                AggregationInput input = producing is null ? new() : DependencyProofAggregator.Combine(producing.LeanProduction.ProofInputs, deps);
                 try
                 {
-                    proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, verifier, in depsHash, token);
+                    proof = DependencyProofAggregator.Prove(input, _dependencyProofCache, verifier, in depsHash, token);
                 }
                 // A prover that cannot take the statement now leaves the body to what is already proven, as a deadline would.
                 catch (LeanProverBusyException) when (producing is not null && leanProofStore is not null)
@@ -135,7 +135,7 @@ internal sealed class DependencyProofBlockProcessor(
         }
         token.ThrowIfCancellationRequested();
         // Produced blocks must not alias the mutable improvement cache.
-        block.StarkProof = (byte[])proof.Clone();
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(proof), new Hash256(depsHash));
+        block.DependencyProof = (byte[])proof.Clone();
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(proof), new Hash256(depsHash));
     }
 }

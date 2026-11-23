@@ -29,8 +29,8 @@ public class NativeLeanProofVerifierTests
             Witnesses = [Witness("sphincs"), Witness("stark")]
         };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash(dependencies);
-        byte[] proof = RecursiveStarkAggregator.Prove(input, Native, Eip8288Verifier.Pinned, in hash);
-        Assert.That(Native.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
+        byte[] proof = DependencyProofAggregator.Prove(input, Native, Eip8288Verifier.Pinned, in hash);
+        Assert.That(Native.VerifyDependencyProof(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
         AssertBareStarkProof(proof, dependencies);
         return proof;
     }
@@ -99,10 +99,10 @@ public class NativeLeanProofVerifierTests
             witnesses[i] = fixtures.AsSpan(offset + 32, Eip8288Constants.LeanSphincsWitnessBytes).ToArray();
         }
         ValueHash256 commitment = Eip8288Dependencies.ComputeDepsHash(deps);
-        byte[] proof = Native.ProveRecursiveStark(commitment, Eip8288Constants.AggregatedVk, new() { Deps = deps, Witnesses = witnesses });
-        Assert.That(Native.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
+        byte[] proof = Native.ProveDependencyProof(commitment, Eip8288Constants.AggregatedVk, new() { Deps = deps, Witnesses = witnesses });
+        Assert.That(Native.VerifyDependencyProof(commitment, Eip8288Constants.AggregatedVk, proof), Is.True);
         deps[^1] = deps[0];
-        Assert.That(Native.VerifyRecursiveStark(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.AggregatedVk, proof), Is.False);
+        Assert.That(Native.VerifyDependencyProof(Eip8288Dependencies.ComputeDepsHash(deps), Eip8288Constants.AggregatedVk, proof), Is.False);
     }
 
     [Test]
@@ -120,7 +120,7 @@ public class NativeLeanProofVerifierTests
             Thread caller = new(() =>
             {
                 callers[index] = Environment.CurrentManagedThreadId;
-                Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input);
+                Native.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, input);
                 provers[index] = NativeLeanProofVerifier.LastProverThreadId;
             });
             caller.Start();
@@ -139,7 +139,7 @@ public class NativeLeanProofVerifierTests
     {
         AggregationInput input = new() { RecursiveProofs = [default] };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([]);
-        Assert.Throws<ArgumentException>(() => Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input));
+        Assert.Throws<ArgumentException>(() => Native.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, input));
     }
 
     [Test]
@@ -167,9 +167,9 @@ public class NativeLeanProofVerifierTests
         FrameDependency sphincs = Dependency("sphincs");
         FrameDependency stark = Dependency("stark");
         ValueHash256 genericHash = Eip8288Dependencies.ComputeDepsHash([stark]);
-        byte[] genericLeaf = Native.ProveRecursiveStark(genericHash, Eip8288Constants.AggregatedVk,
+        byte[] genericLeaf = Native.ProveDependencyProof(genericHash, Eip8288Constants.AggregatedVk,
             new() { Deps = [stark], Witnesses = [Witness("stark")] });
-        Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, genericLeaf), Is.True);
+        Assert.That(Native.VerifyDependencyProof(genericHash, Eip8288Constants.AggregatedVk, genericLeaf), Is.True);
         AssertBareStarkProof(genericLeaf, [stark]);
         AggregationInput mixedInput = new()
         {
@@ -178,42 +178,42 @@ public class NativeLeanProofVerifierTests
             RecursiveProofs = [new RecursiveProofInput([stark], genericLeaf)]
         };
         ValueHash256 mixedHash = Eip8288Dependencies.ComputeDepsHash([stark, sphincs]);
-        byte[] mixed = Native.ProveRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixedInput);
-        Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.True);
+        byte[] mixed = Native.ProveDependencyProof(mixedHash, Eip8288Constants.AggregatedVk, mixedInput);
+        Assert.That(Native.VerifyDependencyProof(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.True);
         AssertBareStarkProof(mixed, [stark, sphincs]);
-        byte[] selected = Native.ProveRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, new()
+        byte[] selected = Native.ProveDependencyProof(genericHash, Eip8288Constants.AggregatedVk, new()
         {
             RecursiveProofs = [new([stark, sphincs], mixed)],
             Discards = [sphincs]
         });
-        Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, selected), Is.True);
+        Assert.That(Native.VerifyDependencyProof(genericHash, Eip8288Constants.AggregatedVk, selected), Is.True);
         AssertBareStarkProof(selected, [stark]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, selected), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(genericHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(mixedHash, new byte[32], mixed), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, [.. mixed, 0]), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed[..^1]), Is.False);
+            Assert.That(Native.VerifyDependencyProof(mixedHash, Eip8288Constants.AggregatedVk, selected), Is.False);
+            Assert.That(Native.VerifyDependencyProof(genericHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
+            Assert.That(Native.VerifyDependencyProof(mixedHash, new byte[32], mixed), Is.False);
+            Assert.That(Native.VerifyDependencyProof(mixedHash, Eip8288Constants.AggregatedVk, [.. mixed, 0]), Is.False);
+            Assert.That(Native.VerifyDependencyProof(mixedHash, Eip8288Constants.AggregatedVk, mixed[..^1]), Is.False);
         }
         AggregationInput missing = new() { RecursiveProofs = [new([stark, sphincs], genericLeaf)] };
-        Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, missing));
+        Assert.Throws<InvalidOperationException>(() => Native.ProveDependencyProof(mixedHash, Eip8288Constants.AggregatedVk, missing));
         mixed[^1] ^= 1;
-        Assert.That(Native.VerifyRecursiveStark(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
+        Assert.That(Native.VerifyDependencyProof(mixedHash, Eip8288Constants.AggregatedVk, mixed), Is.False);
     }
 
     [Test]
     public void Empty_dependency_set_has_an_empty_proof_and_rejects_any_other()
     {
         ValueHash256 emptyHash = Eip8288Dependencies.ComputeDepsHash([]);
-        byte[] empty = Native.ProveRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, new());
+        byte[] empty = Native.ProveDependencyProof(emptyHash, Eip8288Constants.AggregatedVk, new());
         byte[] nonEmpty = new byte[12];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(empty, Is.Empty);
-            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, empty), Is.True);
-            Assert.That(RecursiveStarkAggregator.VerifyStarkCheck(Native, Eip8288Verifier.Pinned, 0, emptyHash, nonEmpty), Is.False);
-            Assert.That(Native.VerifyRecursiveStark(emptyHash, Eip8288Constants.AggregatedVk, nonEmpty), Is.False);
+            Assert.That(DependencyProofAggregator.CheckDependencyProof(Native, Eip8288Verifier.Pinned, 0, emptyHash, empty), Is.True);
+            Assert.That(DependencyProofAggregator.CheckDependencyProof(Native, Eip8288Verifier.Pinned, 0, emptyHash, nonEmpty), Is.False);
+            Assert.That(Native.VerifyDependencyProof(emptyHash, Eip8288Constants.AggregatedVk, nonEmpty), Is.False);
         }
     }
 
@@ -224,7 +224,7 @@ public class NativeLeanProofVerifierTests
         FrameDependency dependency = Dependency(scheme);
         byte[] witness = Witness(scheme);
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([dependency]);
-        byte[] parent = Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk,
+        byte[] parent = Native.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk,
             new() { Deps = [dependency], Witnesses = [witness] });
         witness[^1] ^= 1;
         AggregationInput duplicate = new()
@@ -233,7 +233,7 @@ public class NativeLeanProofVerifierTests
             Witnesses = [witness],
             RecursiveProofs = [new([dependency], parent)]
         };
-        Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, duplicate));
+        Assert.Throws<InvalidOperationException>(() => Native.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, duplicate));
     }
 
     /// <summary>EIP-8288: a <c>stark_proof</c> is verified against <c>deps_hash</c> alone and carries no dependency.</summary>
@@ -255,9 +255,9 @@ public class NativeLeanProofVerifierTests
         FrameDependency stark = Dependency("stark");
         AggregationInput input = new() { Deps = [sphincs, stark, sphincs], Witnesses = [Witness("sphincs"), Witness("stark"), Witness("sphincs")], Discards = [sphincs] };
         ValueHash256 hash = Eip8288Dependencies.ComputeDepsHash([stark]);
-        byte[] proof = Native.ProveRecursiveStark(hash, Eip8288Constants.AggregatedVk, input);
-        Assert.That(Native.VerifyRecursiveStark(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
+        byte[] proof = Native.ProveDependencyProof(hash, Eip8288Constants.AggregatedVk, input);
+        Assert.That(Native.VerifyDependencyProof(hash, Eip8288Constants.AggregatedVk, proof), Is.True);
         ValueHash256 invented = Eip8288Dependencies.ComputeDepsHash([sphincs, stark]);
-        Assert.Throws<InvalidOperationException>(() => Native.ProveRecursiveStark(invented, Eip8288Constants.AggregatedVk, input));
+        Assert.Throws<InvalidOperationException>(() => Native.ProveDependencyProof(invented, Eip8288Constants.AggregatedVk, input));
     }
 }

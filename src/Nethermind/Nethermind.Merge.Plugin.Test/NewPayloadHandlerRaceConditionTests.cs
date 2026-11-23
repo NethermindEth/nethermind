@@ -1627,8 +1627,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     public async Task Payload_missing_committed_proof_is_invalid_without_network_recovery()
     {
         Block block = PostMergeBlock();
-        block.StarkProof = [1, 2, 3];
-        block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), new Hash256(ValueKeccak.Compute("deps"u8)));
+        block.DependencyProof = [1, 2, 3];
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(block.DependencyProof), new Hash256(ValueKeccak.Compute("deps"u8)));
         block.Header.Hash = block.Header.CalculateHash();
         ExecutionPayload payload = ExecutionPayload.Create(block);
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.Added, wasProcessed: false, validateSuggestedBlock: true,

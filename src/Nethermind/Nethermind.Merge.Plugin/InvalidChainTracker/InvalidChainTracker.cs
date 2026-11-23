@@ -49,7 +49,7 @@ public class InvalidChainTracker(
         Block block = args.InvalidBlock;
         // EIP-8288: a body whose stark_proof does not match the header's stark_proof_hash is not this block's body; it is
         // discarded and requested again, and the block is not invalid.
-        if (!BlockValidator.StarkProofMatchesCommitment(block.Header, block.Body)) return;
+        if (!BlockValidator.DependencyProofMatchesCommitment(block.Header, block.Body)) return;
         OnInvalidBlock(block.Hash!, block.ParentHash);
     }
 

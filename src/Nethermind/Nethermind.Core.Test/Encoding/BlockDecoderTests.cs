@@ -23,16 +23,16 @@ public class BlockDecoderTests
     public void Block_roundtrip_preserves_proof_body(int size)
     {
         Block block = Build.A.Block.WithWithdrawals(0).TestObject;
-        block.StarkProof = new byte[size];
-        block.Header.RecursiveStark = new(Keccak.Compute(block.StarkProof), Keccak.Compute("deps"));
+        block.DependencyProof = new byte[size];
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(block.DependencyProof), Keccak.Compute("deps"));
         BlockDecoder decoder = new();
         byte[] encoded = decoder.Encode(block).Bytes;
         RlpReader reader = new(encoded);
         Block decoded = decoder.DecodeGuardNotNull(ref reader);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(decoded.StarkProof, Is.EqualTo(block.StarkProof));
-            Assert.That(decoded.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(block.Header.RecursiveStark.StarkProofHash));
+            Assert.That(decoded.DependencyProof, Is.EqualTo(block.DependencyProof));
+            Assert.That(decoded.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
             Assert.That(decoded.IsBodyMissing, Is.False);
             Assert.That(reader.Position, Is.EqualTo(encoded.Length));
             Assert.That(new Block(block.Header).IsBodyMissing, Is.True);
@@ -40,7 +40,7 @@ public class BlockDecoderTests
         ReceiptRecoveryBlock recovery = decoder.DecodeToReceiptRecoveryBlock(null, encoded, RlpBehaviors.None)!.Value;
         try
         {
-            Assert.That(recovery.Header.RecursiveStark!.StarkProofHash, Is.EqualTo(block.Header.RecursiveStark.StarkProofHash));
+            Assert.That(recovery.Header.DependencyProofCommitment!.DependencyProofHash, Is.EqualTo(block.Header.DependencyProofCommitment.DependencyProofHash));
         }
         finally
         {

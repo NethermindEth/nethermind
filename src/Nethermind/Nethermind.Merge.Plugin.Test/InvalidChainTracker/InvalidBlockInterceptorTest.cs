@@ -168,9 +168,9 @@ public class InvalidBlockInterceptorTest
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
         byte[] authenticProof = [];
-        block.Header.RecursiveStark = new(Keccak.Compute(authenticProof), Keccak.OfAnEmptyString);
+        block.Header.DependencyProofCommitment = new(Keccak.Compute(authenticProof), Keccak.OfAnEmptyString);
         block.Header.Hash = block.Header.CalculateHash();
-        block.StarkProof = missing ? null : [2];
+        block.DependencyProof = missing ? null : [2];
         _baseValidator.ValidateSuggestedBlock(block, parent, out _).Returns(false);
         using (Assert.EnterMultipleScope())
         {
@@ -184,7 +184,7 @@ public class InvalidBlockInterceptorTest
             _tracker.DidNotReceive().OnInvalidBlock(block.Hash!, block.ParentHash);
             _tracker.DidNotReceive().SetChildParent(block.Hash!, block.ParentHash!);
         }
-        block.StarkProof = authenticProof;
+        block.DependencyProof = authenticProof;
         Assert.That(_invalidBlockInterceptor.ValidateSuggestedBlock(block, parent, out _), Is.False);
         _tracker.Received().OnInvalidBlock(block.Hash!, block.ParentHash);
     }

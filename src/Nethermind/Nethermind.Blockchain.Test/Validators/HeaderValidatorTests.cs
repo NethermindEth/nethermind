@@ -63,18 +63,18 @@ public class HeaderValidatorTests
     }
 
     [TestCase(false, "absent", true, null)]
-    [TestCase(false, "valid", false, BlockErrorMessages.RecursiveStarkNotEnabled)]
-    [TestCase(true, "absent", false, BlockErrorMessages.MissingRecursiveStark)]
-    [TestCase(true, "missing-proof-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(false, "valid", false, BlockErrorMessages.DependencyProofNotEnabled)]
+    [TestCase(true, "absent", false, BlockErrorMessages.MissingDependencyProof)]
+    [TestCase(true, "missing-proof-hash", false, BlockErrorMessages.InvalidDependencyProof)]
     [TestCase(true, "empty-deps", true, null)]
-    [TestCase(true, "empty-deps-with-proof", false, BlockErrorMessages.InvalidRecursiveStark)]
-    [TestCase(true, "missing-hash", false, BlockErrorMessages.InvalidRecursiveStark)]
+    [TestCase(true, "empty-deps-with-proof", false, BlockErrorMessages.InvalidDependencyProof)]
+    [TestCase(true, "missing-hash", false, BlockErrorMessages.InvalidDependencyProof)]
     [TestCase(true, "valid", true, null)]
     public void Header_validation_gates_recursive_proof_shape(bool enabled, string shape, bool valid, string? expectedError)
     {
         OverridableReleaseSpec spec = new(Byzantium.Instance) { IsEip8141Enabled = enabled, IsEip8288Enabled = enabled };
         _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
-        _block.Header.RecursiveStark = shape == "absent" ? null : new RecursiveStarkCommitment(shape switch
+        _block.Header.DependencyProofCommitment = shape == "absent" ? null : new DependencyProofCommitment(shape switch
         {
             "missing-proof-hash" => null!,
             "empty-deps" => Keccak.OfAnEmptyString,
@@ -105,7 +105,7 @@ public class HeaderValidatorTests
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
             .TestObject;
-        header.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+        header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
         header.Hash = header.CalculateHash();
 
         BlockHeader decoded = Rlp.Decode<BlockHeader>(Rlp.Encode(header))!;

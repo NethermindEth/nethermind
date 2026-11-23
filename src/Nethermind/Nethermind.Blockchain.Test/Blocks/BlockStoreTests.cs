@@ -162,8 +162,8 @@ public class BlockStoreTests
         using TestMemDb db = new();
         BlockStore store = new(db);
         Block block = Build.A.Block.WithNumber(1).TestObject;
-        block.StarkProof = new byte[proofBytes];
-        block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
+        block.DependencyProof = new byte[proofBytes];
+        block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), TestItem.KeccakA);
         store.Cache(block);
 
         Assert.That(store.Get(block.Number, block.Hash!), cached ? Is.Not.Null : Is.Null);
@@ -195,8 +195,8 @@ public class BlockStoreTests
             Block block = Build.A.Block.WithNumber((ulong)i + 1).TestObject;
             byte[] proof = new byte[Eip8288Constants.MaxAggregateProofBytes];
             proofs[i] = new(proof);
-            block.StarkProof = proof;
-            block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), TestItem.KeccakA);
+            block.DependencyProof = proof;
+            block.Header.DependencyProofCommitment = new DependencyProofCommitment(Keccak.Compute(block.DependencyProof), TestItem.KeccakA);
             store.Cache(block);
         }
         return proofs;
