@@ -338,7 +338,8 @@ public sealed unsafe partial class ArenaFile : RefCountingDisposable
         // otherwise delete it (the normal post-prune cleanup path).
         if (Volatile.Read(ref _preserveOnDispose) == 0)
         {
-            try { File.Delete(Path); } catch { /* best-effort */ }
+            try { File.Delete(Path); }
+            catch (Exception) { Metrics.RecordSnapshotFileDeleteFailure(); }
         }
     }
 }

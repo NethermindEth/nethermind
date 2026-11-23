@@ -107,7 +107,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
 
             OwnedBlockBodies blocks = await _nodeStats.RunSizeAndLatencyRequestSizer<OwnedBlockBodies, Hash256, BlockBody?>(RequestType.Bodies, blockHashes, async clampedBlockHashes =>
-                await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token));
+            {
+                (OwnedBlockBodies Bodies, long Size) response = await SendRequest(new GetBlockBodiesMessage(clampedBlockHashes), token);
+                if (response.Bodies.Count <= clampedBlockHashes.Count) return response;
+
+                response.Bodies.Dispose();
+                Disconnect(DisconnectReason.BreachOfProtocol, "more block bodies than requested");
+                return (new OwnedBlockBodies([]), response.Size);
+            });
 
             return blocks;
         }

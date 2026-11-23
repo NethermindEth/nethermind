@@ -34,8 +34,9 @@ internal delegate CallToolResult? McpPayloadWriter<in TState>(Utf8JsonWriter wri
 /// when that elapses the client gets a <c>timeout</c> error, but the body keeps its concurrency slot and its rented
 /// module until the underlying call actually returns. Runaway work thus stays counted against
 /// <see cref="IMcpConfig.MaxConcurrentToolCalls"/> (new calls wait up to <see cref="SlotWait"/> for a slot, then fail with
-/// <c>resource_exhausted</c>) instead of piling up, and a module is never returned to its pool while still in use. The underlying call itself is bounded by
-/// the module's own <c>JsonRpc.Timeout</c>, which the configuration keeps at or above the tool timeout.
+/// <c>resource_exhausted</c>) instead of piling up, and a module is never returned to its pool while still in use. A body
+/// passes its token to the module methods that take one, so their work stops at the tool timeout or on client cancellation;
+/// other calls are bounded by the module's own <c>JsonRpc.Timeout</c>, which the configuration keeps at or above the tool timeout.
 /// </para>
 /// <para>
 /// The body also receives a token that is cancelled on client cancellation or at the tool timeout, so it can stop at

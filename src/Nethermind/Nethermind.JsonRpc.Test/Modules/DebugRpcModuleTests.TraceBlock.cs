@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.IO.Pipelines;
 using System.Text;
@@ -735,6 +736,34 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Javascript_timeout_range_uses_the_owned_deadline(
+        [Values(0, -1, 1, 121, 4_294_968)] int seconds, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        DeadlineExecution clock = new();
+        using Engine engine = new(Prague.Instance);
+        using (GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext(),
+            new GethTraceOptions
+            {
+                Timeout = TimeSpan.FromSeconds(seconds),
+                DeadlineClock = clock,
+                CaptureJavaScriptErrors = capture,
+                Tracer = "{fault:function(){},result:function(){return {};}}"
+            }))
+        {
+            clock.Advance(0);
+            if (seconds <= 0)
+                Assert.That(() => tracer.BuildResult(), Throws.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
+            else
+            {
+                using GethLikeTxTrace result = tracer.BuildResult();
+                Assert.That(result.CustomTracerResult, Is.Not.Null);
+            }
+        }
+        Assert.That(clock.Timers, Has.All.Property(nameof(ExecutionTimer.Disposed)).True);
+    }
+
     private static GethLikeJavaScriptTxTracer CreateDeadlineJavaScriptTracer(
         Engine engine, TestRpcBlockchain chain, DeadlineExecution clock, string script,
         GethTraceDeadlineScope? scope = null, int timeoutSeconds = 1, CancellationToken external = default) =>
@@ -996,24 +1025,26 @@ public partial class DebugRpcModuleTests
     private static IDebugRpcModule WithDeadlineClock(IDebugRpcModule inner, TimeProvider clock, bool noBaseFee = false)
     {
         IDebugRpcModule module = Substitute.For<IDebugRpcModule>();
-        module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+        module.debug_traceTransaction(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
+            inner.debug_traceTransaction(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with { DeadlineClock = clock }, call.Arg<CancellationToken>()));
+        module.debug_traceBlockByNumber(Arg.Any<BlockParameter>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
             inner.debug_traceBlockByNumber(call.Arg<BlockParameter>(), call.Arg<GethTraceOptions>() with
             {
                 DeadlineClock = clock,
                 NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
-            }));
-        module.debug_traceBlockByHash(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            }, call.Arg<CancellationToken>()));
+        module.debug_traceBlockByHash(Arg.Any<Hash256>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
             inner.debug_traceBlockByHash(call.Arg<Hash256>(), call.Arg<GethTraceOptions>() with
             {
                 DeadlineClock = clock,
                 NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
-            }));
-        module.debug_traceBlock(Arg.Any<byte[]>(), Arg.Any<GethTraceOptions>()).Returns(call =>
+            }, call.Arg<CancellationToken>()));
+        module.debug_traceBlock(Arg.Any<byte[]>(), Arg.Any<GethTraceOptions>(), Arg.Any<CancellationToken>()).Returns(call =>
             inner.debug_traceBlock(call.Arg<byte[]>(), call.Arg<GethTraceOptions>() with
             {
                 DeadlineClock = clock,
                 NoBaseFee = noBaseFee || call.Arg<GethTraceOptions>().NoBaseFee
-            }));
+            }, call.Arg<CancellationToken>()));
         return module;
     }
 
@@ -2350,7 +2381,10 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json["result"], Is.Null, response);
-            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InternalError), response);
+            bool scriptThrow = resultBody.StartsWith("throw", StringComparison.Ordinal);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(scriptThrow ? ErrorCodes.InvalidInput : ErrorCodes.InternalError), response);
+            if (scriptThrow)
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("Error: result failure in server-side tracer function 'result'"), response);
             Assert.That(json["error"]?["data"], Is.Null, response);
             Assert.That(JToken.DeepEquals(JToken.Parse(next)["result"], JToken.Parse("""{"ok":[1]}""")), Is.True, next);
         }
@@ -3920,7 +3954,15 @@ public partial class DebugRpcModuleTests
             using GethLikeTxTrace result = Trace();
             Assert.That(result.TraceError is null, Is.EqualTo(callback == "return"));
         }
-        else Assert.Throws<ScriptEngineException>(() => Trace());
+        else
+        {
+            InvalidDataException failure = Assert.Throws<InvalidDataException>(() => Trace())!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(failure.Message, Is.EqualTo(callback == "setup" ? "null" : $"null in server-side tracer function '{callback}'"));
+                Assert.That(failure.InnerException, Is.InstanceOf<ScriptEngineException>());
+            }
+        }
     }
 
     [Test]

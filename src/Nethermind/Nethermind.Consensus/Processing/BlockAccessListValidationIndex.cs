@@ -110,7 +110,7 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         {
             lanes = new LaneStore(counts);
             int wordCount = WordCount(accounts.Length);
-            hasAccountWords = wordCount == 0 ? [] : PooledArrays.RentCleared<ulong>(wordCount);
+            hasAccountWords = wordCount == 0 ? [] : RentBitmap(wordCount);
             lanes.FillFromAccounts(accounts, addressIndex, lastIndex, hasAccountWords);
             lanes.SortAllRows();
             return new(addressIndex, lastIndex, lanes, hasAccountWords);
@@ -466,6 +466,21 @@ internal sealed partial class BlockAccessListValidationIndex : IDisposable
         int word = accountOrdinal >> WordShift;
         if ((uint)word >= (uint)words.Length) PooledArrays.Grow(ref words, word + 1);
         words[word] |= 1UL << (accountOrdinal & BitMask);
+    }
+
+    /// <summary>
+    /// Rents an account bitmap with every word cleared.
+    /// </summary>
+    /// <remarks>
+    /// The pool may hand back a longer array than requested, and the bitmap is scanned over its whole length
+    /// (<see cref="MarkedAccountCount"/>, <see cref="EnumerateMarkedOrdinals"/>), so words past
+    /// <paramref name="wordCount"/> must not keep bits from the array's previous use.
+    /// </remarks>
+    private static ulong[] RentBitmap(int wordCount)
+    {
+        ulong[] words = PooledArrays.Rent<ulong>(wordCount);
+        words.AsSpan().Clear();
+        return words;
     }
 
     private const int WordShift = 6;
