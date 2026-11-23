@@ -109,7 +109,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
             if (_functions.HasFlag(TracerFunctions.setup))
             {
-                Invoke(TracerFunctions.setup, options.TracerConfig?.ToString() ?? "{}");
+                Invoke(TracerFunctions.setup, options.TracerConfig?.GetRawText() ?? "{}");
             }
 
             TimeSpan timeout;
