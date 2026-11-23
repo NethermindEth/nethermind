@@ -124,6 +124,49 @@ public class LogIndexRpcModuleTests
     }
 
     [Test]
+    public async Task logIndex_blockNumbers_with_lifted_result_limit_returns_all_indexed_blocks()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => ((IEnumerable<int>)[2, 4, 6, 8, 10]).GetEnumerator());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage, maxResults: 0), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0xa","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":["0x2","0x4","0x6","0x8","0xa"],"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_over_result_limit_disposes_storage_enumerator()
+    {
+        bool disposed = false;
+        IEnumerator<int> EveryBlock()
+        {
+            try
+            {
+                for (int block = 1; block <= HeadNumber; block++)
+                    yield return block;
+            }
+            finally
+            {
+                disposed = true;
+            }
+        }
+
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>()).Returns(_ => EveryBlock());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0xa","address":"{{TestItem.AddressA}}"}""");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.LimitExceeded}"));
+            Assert.That(disposed, Is.True);
+        }
+    }
+
+    [Test]
     public async Task logIndex_blockNumbers_without_max_indexed_block_returns_error()
     {
         // The state after a reorg the index could not revert: postings remain but MaxBlockNumber is null
@@ -147,7 +190,7 @@ public class LogIndexRpcModuleTests
         return storage;
     }
 
-    private static ILogIndexRpcModule CreateModule(ILogIndexStorage storage)
+    private static ILogIndexRpcModule CreateModule(ILogIndexStorage storage, int maxResults = MaxResults)
     {
         FilterStore filterStore = new(Substitute.For<ITimerFactory>());
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
@@ -158,6 +201,6 @@ public class LogIndexRpcModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(Build.A.Block.WithNumber(HeadNumber).TestObject);
 
-        return new LogIndexRpcModule(storage, Substitute.For<ILogIndexBuilder>(), blockFinder, bridge, new JsonRpcConfig { MaxLogsPerResponse = MaxResults });
+        return new LogIndexRpcModule(storage, Substitute.For<ILogIndexBuilder>(), blockFinder, bridge, new JsonRpcConfig { MaxLogsPerResponse = maxResults });
     }
 }
