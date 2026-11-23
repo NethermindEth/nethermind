@@ -148,9 +148,9 @@ namespace Nethermind.Consensus.Processing
 
                                         int index = pending[k];
                                         Transaction currentTx = inclusionList[index];
-                                        stateProvider.TryGetAccount(currentTx.SenderAddress!, out AccountStruct account);
-                                        ulong nonce = account.Nonce;
-                                        UInt256 balance = account.Balance;
+                                        Address sender = currentTx.SenderAddress!;
+                                        ulong nonce = stateProvider.GetNonce(sender);
+                                        UInt256 balance = stateProvider.GetBalance(sender);
                                         if (!firstPass && nonce == nonceAtSkip[k] && balance == balanceAtSkip[k])
                                         {
                                             pending[kept] = index;
