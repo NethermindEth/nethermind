@@ -1829,6 +1829,7 @@ namespace Nethermind.TxPool
                 // transaction's reservations. Answered like a syncing pool, as the sender is not at fault.
                 if (_isDisposed)
                 {
+                    Metrics.PendingTransactionsDiscarded++;
                     PooledBlobBuffers.Return(tx);
                     return AcceptTxResult.Syncing.WithMessage("Transaction pool is disposed.");
                 }
