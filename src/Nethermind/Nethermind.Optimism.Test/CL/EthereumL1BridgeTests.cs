@@ -1,9 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using CkzgLib;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -28,7 +30,7 @@ public class EthereumL1BridgeTests
     {
         ShardBlobNetworkWrapper wrapper = CreateBlobs(1, 2);
 
-        L1BridgeStepResult result = await StepOverBlobTransaction(ToSidecars(wrapper), GetVersionedHashes(wrapper));
+        L1BridgeStepResult result = await StepOverBlobTransaction([BatcherTransaction(GetVersionedHashes(wrapper))], ToSidecars(wrapper), 0, 1);
 
         Assert.That(result.NewData, Is.Not.Null);
         Assert.That(result.NewData!, Has.Length.EqualTo(2));
@@ -39,7 +41,32 @@ public class EthereumL1BridgeTests
         }
     }
 
-    public enum SidecarChange { Swapped, OtherBlob, Missing, NullBlob, ShortBlob }
+    [Test]
+    public async Task Step_requests_sidecars_after_the_blobs_of_earlier_transactions()
+    {
+        ShardBlobNetworkWrapper other = CreateBlobs(5, 1);
+        ShardBlobNetworkWrapper wrapper = CreateBlobs(1, 2);
+        L1Transaction otherTransaction = new()
+        {
+            Hash = TestItem.KeccakE,
+            Type = TxType.Blob,
+            From = TestItem.AddressC,
+            To = TestItem.AddressD,
+            BlobVersionedHashes = GetVersionedHashes(other)
+        };
+
+        L1BridgeStepResult result = await StepOverBlobTransaction([otherTransaction, BatcherTransaction(GetVersionedHashes(wrapper))], ToSidecars(wrapper), 1, 2);
+
+        Assert.That(result.NewData, Is.Not.Null);
+        Assert.That(result.NewData!, Has.Length.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.NewData![0].Data, Is.SameAs(wrapper.Blobs[0]));
+            Assert.That(result.NewData![1].Data, Is.SameAs(wrapper.Blobs[1]));
+        }
+    }
+
+    public enum SidecarChange { Swapped, OtherBlob, Missing, NullBlob, ShortBlob, NonCanonicalBlob }
 
     [Test]
     public void Step_fails_when_sidecars_do_not_match_the_versioned_hashes([Values] SidecarChange change)
@@ -63,12 +90,26 @@ public class EthereumL1BridgeTests
             case SidecarChange.ShortBlob:
                 sidecars[1].Blob = sidecars[1].Blob[..^1];
                 break;
+            case SidecarChange.NonCanonicalBlob:
+                byte[] blob = new byte[Ckzg.BytesPerBlob];
+                Array.Fill(blob, (byte)0xff);
+                sidecars[1].Blob = blob;
+                break;
         }
 
-        Assert.That(() => StepOverBlobTransaction(sidecars, GetVersionedHashes(wrapper)), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => StepOverBlobTransaction([BatcherTransaction(GetVersionedHashes(wrapper))], sidecars, 0, 1), Throws.InstanceOf<InvalidDataException>());
     }
 
-    private static async Task<L1BridgeStepResult> StepOverBlobTransaction(BlobSidecar[] sidecars, byte[][] versionedHashes)
+    private static L1Transaction BatcherTransaction(byte[][] versionedHashes) => new()
+    {
+        Hash = TestItem.KeccakD,
+        Type = TxType.Blob,
+        From = BatchSubmitter,
+        To = BatcherInbox,
+        BlobVersionedHashes = versionedHashes
+    };
+
+    private static async Task<L1BridgeStepResult> StepOverBlobTransaction(L1Transaction[] transactions, BlobSidecar[] sidecars, int firstIndex, int lastIndex)
     {
         L1Block finalized = new() { Number = 10, Hash = TestItem.KeccakA, ParentHash = TestItem.KeccakB };
         L1Block head = new()
@@ -77,24 +118,14 @@ public class EthereumL1BridgeTests
             Hash = TestItem.KeccakC,
             ParentHash = finalized.Hash,
             Timestamp = 120,
-            Transactions =
-            [
-                new L1Transaction
-                {
-                    Hash = TestItem.KeccakD,
-                    Type = TxType.Blob,
-                    From = BatchSubmitter,
-                    To = BatcherInbox,
-                    BlobVersionedHashes = versionedHashes
-                }
-            ]
+            Transactions = transactions
         };
 
         IEthApi ethApi = Substitute.For<IEthApi>();
         ethApi.GetFinalized(true).Returns(Task.FromResult<L1Block?>(finalized));
         ethApi.GetHead(true).Returns(Task.FromResult<L1Block?>(head));
         IBeaconApi beaconApi = Substitute.For<IBeaconApi>();
-        beaconApi.GetBlobSidecars(10, 0, versionedHashes.Length - 1, Arg.Any<CancellationToken>()).Returns(sidecars);
+        beaconApi.GetBlobSidecars(10, firstIndex, lastIndex, Arg.Any<CancellationToken>()).Returns(sidecars);
 
         EthereumL1Bridge bridge = new(ethApi, beaconApi,
             new CLChainSpecEngineParameters { BatchSubmitter = BatchSubmitter, BatcherInboxAddress = BatcherInbox, L1BeaconGenesisSlotTime = 0 },
@@ -108,7 +139,7 @@ public class EthereumL1BridgeTests
         byte[][] blobs = new byte[count][];
         for (int i = 0; i < count; i++)
         {
-            blobs[i] = new byte[Eip4844Constants.GasPerBlob];
+            blobs[i] = new byte[Ckzg.BytesPerBlob];
             blobs[i][31] = (byte)(seed + i);
         }
 

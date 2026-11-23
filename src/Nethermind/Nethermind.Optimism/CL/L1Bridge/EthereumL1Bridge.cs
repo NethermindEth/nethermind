@@ -186,7 +186,15 @@ public class EthereumL1Bridge : IL1Bridge
             byte[]? blob = blobSidecars[i].Blob;
             if (blob?.Length != Ckzg.BytesPerBlob) return false;
 
-            KzgPolynomialCommitments.ComputeCommitment(blob, commitment);
+            try
+            {
+                KzgPolynomialCommitments.ComputeCommitment(blob, commitment);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+
             if (!KzgPolynomialCommitments.TryComputeCommitmentHashV1(commitment, versionedHash)
                 || !versionedHash.SequenceEqual(blobVersionedHashes[i]))
             {
