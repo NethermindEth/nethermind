@@ -116,6 +116,20 @@ public static class VirtualMachineStatics
 
     [DoesNotReturn]
     internal static void ThrowOperationCanceledException() => throw new OperationCanceledException("Cancellation Requested");
+
+    /// <summary>Finds the exception, if any, saying that a native library is missing, built for another platform or lacks an export.</summary>
+    /// <remarks>Searches the <see cref="Exception.InnerException"/> chain from the outside in and returns the first match.
+    /// Such a failure says nothing about the input of the call that met it, so it must not become a failed precompile call.</remarks>
+    public static Exception? FindNativeLoadFailure(Exception? exception)
+    {
+        for (; exception is not null; exception = exception.InnerException)
+        {
+            if (exception is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
+                return exception;
+        }
+
+        return null;
+    }
 }
 
 /// <summary>Retains nested return scratch and tracks the logical length of the currently staged output.</summary>
