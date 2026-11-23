@@ -18,7 +18,7 @@ public class LeanProofStoreTests
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
         Address sender = Sender(1);
         int admitted = 0;
-        byte[] witness = new byte[6208];
+        byte[] witness = new byte[Eip8288Constants.LeanSphincsWitnessBytes];
         for (int batch = 0; batch < 64; batch++)
         {
             FrameDependency[] dependencies = Enumerable.Range(batch * 16, 16).Select(Dependency).ToArray();
@@ -190,7 +190,7 @@ public class LeanProofStoreTests
     public void Record_slots_accommodate_the_default_pool_transaction_capacity()
     {
         LeanProofStore store = new(FrameTxSigHash.ComputeValue);
-        byte[] witness = new byte[6208];
+        byte[] witness = new byte[Eip8288Constants.LeanSphincsWitnessBytes];
         for (int index = 0; index < 2048; index++)
         {
             FrameDependency dependency = Dependency(index);
