@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -22,6 +23,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 {
     private byte[]? _decodedBlockAccessListSource;
     private ReadOnlyBlockAccessList? _decodedBlockAccessList;
+    private byte[]? _deferredBlockAccessListSource;
 
     protected new static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayloadV4, new()
     {
@@ -45,19 +47,28 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         }
 
         Block block = baseResult.Data;
-        ReadOnlyBlockAccessList? blockAccessList = null;
-        if (BlockAccessList is not null)
+        byte[]? encodedBlockAccessList = BlockAccessList;
+        Hash256? blockAccessListHash = null;
+        if (encodedBlockAccessList is not null)
         {
-            if (!TryDecodeBlockAccessList(out blockAccessList, out string? error))
+            if (ReferenceEquals(encodedBlockAccessList, _deferredBlockAccessListSource))
             {
-                return Result<Block>.Fail(error);
+                blockAccessListHash = Keccak.Compute(encodedBlockAccessList);
             }
+            else
+            {
+                if (!TryDecodeBlockAccessList(out ReadOnlyBlockAccessList? blockAccessList, out string? error))
+                {
+                    return Result<Block>.Fail(error);
+                }
 
-            block.BlockAccessList = blockAccessList;
+                block.BlockAccessList = blockAccessList;
+                blockAccessListHash = blockAccessList.WireHash;
+            }
         }
 
-        block.EncodedBlockAccessList = BlockAccessList;
-        block.Header.BlockAccessListHash = blockAccessList?.WireHash;
+        block.EncodedBlockAccessList = encodedBlockAccessList;
+        block.Header.BlockAccessListHash = blockAccessListHash;
         block.Header.SlotNumber = SlotNumber;
 
         return baseResult;
@@ -89,6 +100,25 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
 
         _decodedBlockAccessList = blockAccessList;
         _decodedBlockAccessListSource = encodedBlockAccessList;
+        _deferredBlockAccessListSource = null;
+        return true;
+    }
+
+    internal bool TryDeferBlockAccessListDecode([NotNullWhen(false)] out string? error)
+    {
+        byte[]? encodedBlockAccessList = BlockAccessList;
+        if (encodedBlockAccessList is null)
+        {
+            error = "Block access list is missing.";
+            return false;
+        }
+
+        if (!IsWithinItemLimit(encodedBlockAccessList, GasLimit, out error))
+        {
+            return false;
+        }
+
+        _deferredBlockAccessListSource = encodedBlockAccessList;
         return true;
     }
 
@@ -98,22 +128,26 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         [NotNullWhen(true)] out ReadOnlyBlockAccessList? blockAccessList,
         [NotNullWhen(false)] out string? error)
     {
-        try
-        {
-            if (!IsWithinItemLimit(BlockAccessListDecoder.CountItems(encodedBlockAccessList), gasLimit, out error))
-            {
-                blockAccessList = null;
-                return false;
-            }
-        }
-        catch (RlpReaderException e)
+        if (!IsWithinItemLimit(encodedBlockAccessList, gasLimit, out error))
         {
             blockAccessList = null;
-            error = $"Error decoding block access list: {e.Message}";
             return false;
         }
 
         return TryDecodeBlockAccessList(encodedBlockAccessList, out blockAccessList, out error);
+    }
+
+    private static bool IsWithinItemLimit(byte[] encodedBlockAccessList, ulong gasLimit, [NotNullWhen(false)] out string? error)
+    {
+        try
+        {
+            return IsWithinItemLimit(BlockAccessListDecoder.CountItems(encodedBlockAccessList), gasLimit, out error);
+        }
+        catch (RlpReaderException e)
+        {
+            error = $"Error decoding block access list: {e.Message}";
+            return false;
+        }
     }
 
     internal static bool TryDecodeBlockAccessList(

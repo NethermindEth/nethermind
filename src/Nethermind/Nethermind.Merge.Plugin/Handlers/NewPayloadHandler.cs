@@ -268,6 +268,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
+            if (block.EncodedBlockAccessList is not null) block.BlockAccessList = null;
+
             // possible that headers sync finished before this was called, so blocks in cache weren't inserted
             if (!_beaconSyncStrategy.IsBeaconSyncFinished(parentHeader))
             {
@@ -279,6 +281,17 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             if (_logger.IsInfo) _logger.Info($"Insert block into cache without parent {block}");
             _blockCacheService.TryAddBlock(block);
             return NewPayloadV1Result.Syncing;
+        }
+
+        if (block.BlockAccessList is null && block.EncodedBlockAccessList is { } encodedBlockAccessList && block.Header.BlockAccessListHash is not null)
+        {
+            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, GetItemLimitGasLimit(block.Header, parentHeader), out ReadOnlyBlockAccessList? blockAccessList, out string? blockAccessListError))
+            {
+                if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, blockAccessListError));
+                return NewPayloadV1Result.Invalid(null, blockAccessListError);
+            }
+
+            block.BlockAccessList = blockAccessList;
         }
 
         if (_simulateBlockProduction)
@@ -442,6 +455,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             default:
                 return ThrowUnknownValidationResult(result);
         }
+    }
+
+    private ulong GetItemLimitGasLimit(BlockHeader header, BlockHeader parent)
+    {
+        IReleaseSpec spec = _specProvider.GetSpec(header);
+        if (spec.GasLimitBoundDivisor == 0) return header.GasLimit;
+
+        UInt128 parentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
+        UInt128 maxGasLimit = parentGasLimit + parentGasLimit / spec.GasLimitBoundDivisor;
+        return maxGasLimit < header.GasLimit ? (ulong)maxGasLimit : header.GasLimit;
     }
 
     [DoesNotReturn]

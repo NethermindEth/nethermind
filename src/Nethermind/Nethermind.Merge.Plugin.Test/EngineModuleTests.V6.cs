@@ -12,7 +12,10 @@ using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Config;
+using Nethermind.Core.Messages;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Core.Specs;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -371,6 +374,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
         Block block = Build.A.Block
             .WithNumber(chain.BlockTree.Head!.Number + 1)
+            .WithParentHash(chain.BlockTree.HeadHash!)
             .WithParentBeaconBlockRoot(Keccak.Zero)
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
@@ -398,6 +402,112 @@ public partial class EngineModuleTests
             Assert.That(response.Data.LatestValidHash, Is.Null);
             Assert.That(response.Data.ValidationError, Does.StartWith(expectedValidationError));
         }
+    }
+
+    [Test]
+    public async Task NewPayloadV5_caches_a_block_without_parent_with_only_its_encoded_access_list()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        ExecutionPayloadV4 payload = await GetPayloadV6OnHead(chain);
+        payload.ParentHash = TestItem.KeccakF;
+        payload.GasLimit = 1UL << 50;
+        payload.BlockAccessList = EncodeStorageReadsAccessList((int)(chain.BlockTree.Head!.GasLimit * 2 / Eip7928Constants.ItemCost));
+        payload.BlockHash = payload.TryGetBlock().Data!.CalculateHash();
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, []);
+
+        chain.Container.Resolve<IBlockCacheService>().BlockCache.TryGetValue(payload.BlockHash, out Block? cached);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+            Assert.That(cached, Is.Not.Null);
+            Assert.That(cached?.BlockAccessList, Is.Null);
+            Assert.That(cached?.EncodedBlockAccessList, Is.SameAs(payload.BlockAccessList));
+        }
+    }
+
+    [Test]
+    public async Task NewPayload_checks_a_deferred_access_list_against_the_parent_gas_limit_before_decoding()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        ExecutionPayloadV4 payload = await GetPayloadV6OnHead(chain);
+        payload.GasLimit = 1UL << 50;
+        payload.BlockAccessList = EncodeStorageReadsAccessList((int)(chain.BlockTree.Head!.GasLimit * 2 / Eip7928Constants.ItemCost));
+        payload.BlockHash = payload.TryGetBlock().Data!.CalculateHash();
+
+        PayloadStatusV1 status = await HandleDeferredPayload(chain, payload);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(status.ValidationError, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
+    [Test]
+    public async Task NewPayload_validates_a_deferred_access_list_without_access_list_execution()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance, configurer: static builder => builder
+            .AddDecorator<IBlocksConfig>(static (_, blocksConfig) =>
+            {
+                blocksConfig.ParallelExecution = false;
+                blocksConfig.ParallelExecutionBatchRead = false;
+                return blocksConfig;
+            }));
+        ExecutionPayloadV4 payload = await GetPayloadV6OnHead(chain);
+        payload.BlockAccessList = BlockAccessListDecoder.EncodeToBytes(Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(5, 1)).TestObject)
+            .TestObject);
+        payload.BlockHash = payload.TryGetBlock().Data!.CalculateHash();
+
+        PayloadStatusV1 status = await HandleDeferredPayload(chain, payload);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(status.ValidationError, Does.Contain(BlockErrorMessages.BlockLevelAccessListIndexOutOfRange(5, 1)));
+        }
+    }
+
+    private static async Task<ExecutionPayloadV4> GetPayloadV6OnHead(MergeTestBlockchain chain)
+    {
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = head.Timestamp + 1,
+            PrevRandao = TestItem.KeccakH,
+            SuggestedFeeRecipient = TestItem.AddressF,
+            Withdrawals = [],
+            ParentBeaconBlockRoot = TestItem.KeccakE,
+            SlotNumber = head.SlotNumber + 1,
+            TargetGasLimit = head.GasLimit
+        };
+        ForkchoiceStateV1 forkchoiceState = new(head.Hash!, head.Hash!, head.Hash!);
+        string payloadId = (await chain.EngineRpcModule.engine_forkchoiceUpdatedV4(forkchoiceState, payloadAttributes)).Data.PayloadId!;
+        ExecutionPayloadV4 payload = (await chain.EngineRpcModule.engine_getPayloadV6(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+        payload.ParentBeaconBlockRoot = TestItem.KeccakE;
+        payload.ExecutionRequests = [];
+        return payload;
+    }
+
+    private static async Task<PayloadStatusV1> HandleDeferredPayload(MergeTestBlockchain chain, ExecutionPayloadV4 payload)
+    {
+        Assert.That(payload.TryDeferBlockAccessListDecode(out string? error), Is.True, error);
+        ResultWrapper<PayloadStatusV1> response = await chain.Container.Resolve<IAsyncHandler<ExecutionPayload, PayloadStatusV1>>().HandleAsync(payload);
+        return response.Data;
+    }
+
+    private static byte[] EncodeStorageReadsAccessList(int itemCount)
+    {
+        UInt256[] reads = new UInt256[127];
+        for (int i = 0; i < reads.Length; i++) reads[i] = (UInt256)i;
+        ReadOnlyAccountChanges[] accounts = new ReadOnlyAccountChanges[itemCount / (reads.Length + 1) + 1];
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            accounts[i] = Build.An.AccountChanges.WithAddress(Address.FromNumber((UInt256)(i + 1))).WithStorageReads(reads).TestObject;
+        }
+
+        return BlockAccessListDecoder.EncodeToBytes(Build.A.BlockAccessList.WithAccountChanges(accounts).TestObject);
     }
 
     [TestCase(

@@ -29,14 +29,26 @@ public sealed class PayloadTransactionCountGuard(IBlockTree? blockTree, IPoSSwit
     /// <summary>Checks whether the payload's transaction count can fit within its parent's gas limit bound.</summary>
     /// <param name="latestValidHash">On rejection, zero for a PoW parent, the parent's hash for a processed PoS parent; otherwise <c>null</c>.</param>
     /// <returns><c>false</c> when the count cannot fit; <c>true</c> when it can, or when the parent is unknown.</returns>
-    public bool IsWithinParentGasLimit(ExecutionPayload payload, IReleaseSpec spec, [NotNullWhen(false)] out string? error, out Hash256? latestValidHash)
+    public bool IsWithinParentGasLimit(ExecutionPayload payload, IReleaseSpec spec, [NotNullWhen(false)] out string? error, out Hash256? latestValidHash) =>
+        IsWithinParentGasLimit(payload, spec, out error, out latestValidHash, out _);
+
+    /// <summary>Checks whether the payload's transaction count can fit within its parent's gas limit bound.</summary>
+    /// <param name="latestValidHash">On rejection, zero for a PoW parent, the parent's hash for a processed PoS parent; otherwise <c>null</c>.</param>
+    /// <param name="isParentUnknown"><c>true</c> when the parent was looked up and not found.</param>
+    /// <returns><c>false</c> when the count cannot fit; <c>true</c> when it can, or when the parent is unknown.</returns>
+    public bool IsWithinParentGasLimit(ExecutionPayload payload, IReleaseSpec spec, [NotNullWhen(false)] out string? error, out Hash256? latestValidHash, out bool isParentUnknown)
     {
         error = null;
         latestValidHash = null;
+        isParentUnknown = false;
         if (blockTree is null || spec.GasLimitBoundDivisor == 0) return true;
 
         BlockHeader? parent = blockTree.FindHeader(payload.ParentHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
-        if (parent is null) return true;
+        if (parent is null)
+        {
+            isParentUnknown = true;
+            return true;
+        }
 
         // The fork-block elasticity jump mirrors Eip1559GasLimitAdjuster; UInt128 because hive sets parent gas limits up to ulong.MaxValue.
         UInt128 gasLimit = parent.GasLimit;

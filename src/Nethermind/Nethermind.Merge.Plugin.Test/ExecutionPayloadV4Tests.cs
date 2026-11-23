@@ -74,6 +74,56 @@ public class ExecutionPayloadV4Tests
     }
 
     [Test]
+    public void TryGetBlock_keeps_a_deferred_block_access_list_encoded()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject)
+            .TestObject;
+        byte[] encoded = BlockAccessListDecoder.EncodeToBytes(bal);
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = encoded,
+            SlotNumber = 0,
+            BlockNumber = 1,
+            GasLimit = 30_000_000,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            StateRoot = Keccak.EmptyTreeHash,
+        };
+
+        bool deferred = payload.TryDeferBlockAccessListDecode(out string? error);
+        Block block = payload.TryGetBlock().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferred, Is.True, error);
+            Assert.That(block.BlockAccessList, Is.Null);
+            Assert.That(block.EncodedBlockAccessList, Is.SameAs(encoded));
+            Assert.That(block.Header.BlockAccessListHash, Is.EqualTo(Keccak.Compute(encoded)));
+        }
+    }
+
+    [Test]
+    public void TryDeferBlockAccessListDecode_checks_the_item_limit()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(0, 1, 2).TestObject)
+            .TestObject;
+        ExecutionPayloadV4 payload = new()
+        {
+            BlockAccessList = BlockAccessListDecoder.EncodeToBytes(bal),
+            GasLimit = 3 * Eip7928Constants.ItemCost,
+        };
+
+        bool deferred = payload.TryDeferBlockAccessListDecode(out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(deferred, Is.False);
+            Assert.That(error, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
+    [Test]
     public void TryGetBlock_checks_the_item_limit_of_a_cached_block_access_list()
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
