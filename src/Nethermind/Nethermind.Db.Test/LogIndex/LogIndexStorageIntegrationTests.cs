@@ -993,7 +993,12 @@ namespace Nethermind.Db.Test.LogIndex
             foreach ((bool reset, int warnings) in new[] { (false, 1), (false, 2), (true, 2), (false, 2) })
             {
                 await using (CreateLogIndexStorage(dbFactory: dbFactory, reset: reset, logManager: logManager)) { }
-                sink.Received(warnings).Warn(Arg.Is<string>(m => m.Contains("LogIndex.Reset=true") && m.Contains("TraceStore.AddressIndexReset=true")));
+
+                // Each setting next to the database it resets, and what may be missing
+                sink.Received(warnings).Warn(Arg.Is<string>(m =>
+                    m.Contains("LogIndex.Reset=true (log index)") &&
+                    m.Contains("TraceStore.AddressIndexReset=true (OTS address index)") &&
+                    m.Contains("canonical blocks that replaced")));
             }
         }
 
