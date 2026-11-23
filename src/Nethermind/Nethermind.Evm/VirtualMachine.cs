@@ -1364,10 +1364,9 @@ public partial class VirtualMachine<TGasPolicy>(
             output = precompile.Run(callData, spec);
             return true;
         }
-        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+        catch (Exception exception) when (GetFatalLoadFailure(exception) is { } loadFailure)
         {
-            if (_logger.IsError) LogMissingDependency(precompile, GetMissingDependencyException(exception));
-            Environment.Exit(ExitCodes.MissingPrecompile);
+            ExitOnMissingDependency(precompile, loadFailure);
             throw; // Unreachable
         }
         catch (Exception exception) when (!IsNodeFault(exception))
@@ -1553,8 +1552,11 @@ public partial class VirtualMachine<TGasPolicy>(
     /// gas consumption after execution.
     /// </summary>
     /// <remarks>
-    /// An exception from <see cref="IPrecompile.Run"/> fails the call, except a missing KZG setup and running out of
-    /// memory (even as an inner exception): those are node faults with no counterpart in the execution spec, so they propagate instead.
+    /// An exception from <see cref="IPrecompile.Run"/> is handled in this order. A native library that cannot be used
+    /// (<see cref="GetFatalLoadFailure"/>) ends the process. A missing KZG setup and running out of memory (even as an inner
+    /// exception) are node faults with no counterpart in the execution spec, so they propagate. Any other exception fails
+    /// the call. Within a node fault only a missing library directly in it or one level down ends the process: a KZG setup
+    /// failure caused directly by a missing library exits, one caused directly by a library built for another platform propagates.
     /// </remarks>
     protected virtual CallResult ExecutePrecompileCall(
         VmState<TGasPolicy> state,
@@ -1587,10 +1589,9 @@ public partial class VirtualMachine<TGasPolicy>(
                 SubstateError = success || !state.IsTopLevel ? null : GetErrorString(output.Error)
             };
         }
-        catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
+        catch (Exception exception) when (GetFatalLoadFailure(exception) is { } loadFailure)
         {
-            if (_logger.IsError) LogMissingDependency(precompile, GetMissingDependencyException(exception));
-            Environment.Exit(ExitCodes.MissingPrecompile);
+            ExitOnMissingDependency(precompile, loadFailure);
             throw; // Unreachable
         }
         catch (Exception exception) when (!IsNodeFault(exception))
@@ -1647,14 +1648,30 @@ public partial class VirtualMachine<TGasPolicy>(
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     protected void LogMissingDependency(IPrecompile precompile, DllNotFoundException exception)
-        => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", exception);
+        => LogMissingDependency(precompile, (Exception)exception);
 
-    private static DllNotFoundException GetMissingDependencyException(Exception exception) => exception switch
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void LogMissingDependency(IPrecompile precompile, Exception loadFailure)
+        => _logger.Error($"Failed to load one of the dependencies of {precompile.GetType()} precompile", loadFailure);
+
+    /// <summary>Finds the native load failure, if any, that must end the process instead of failing the call.</summary>
+    /// <remarks>A node fault keeps the narrower rule it had before: a missing library, directly or one level down.
+    /// Anything else uses <see cref="VirtualMachineStatics.FindNativeLoadFailure"/>.</remarks>
+    protected static Exception? GetFatalLoadFailure(Exception exception) =>
+        IsNodeFault(exception)
+            ? exception as DllNotFoundException ?? exception.InnerException as DllNotFoundException
+            : FindNativeLoadFailure(exception);
+
+    /// <summary>Logs <paramref name="loadFailure"/> and ends the process with <see cref="ExitCodes.MissingPrecompile"/>.</summary>
+    /// <remarks>The process ends whether or not errors are logged: a node that cannot run the precompile cannot know the
+    /// result of the call.</remarks>
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    protected void ExitOnMissingDependency(IPrecompile precompile, Exception loadFailure)
     {
-        DllNotFoundException missingDependency => missingDependency,
-        { InnerException: DllNotFoundException missingDependency } => missingDependency,
-        _ => throw new ArgumentOutOfRangeException(nameof(exception)),
-    };
+        if (_logger.IsError) LogMissingDependency(precompile, loadFailure);
+        Environment.Exit(ExitCodes.MissingPrecompile);
+    }
 
     private static bool IsNodeFault(Exception exception) =>
         exception is KzgSetupUnavailableException or OutOfMemoryException or { InnerException: OutOfMemoryException };

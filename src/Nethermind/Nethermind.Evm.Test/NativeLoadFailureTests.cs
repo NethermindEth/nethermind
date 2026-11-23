@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Crypto;
+using Nethermind.Evm.GasPolicy;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -40,5 +42,35 @@ public class NativeLoadFailureTests
         yield return new TestCaseData(outer, outer).SetArgDisplayNames("outermost first");
     }
 
+    [TestCaseSource(nameof(FatalChains))]
+    public void Fatal_load_failure_keeps_the_old_rule_for_node_faults_only(Exception chain, Exception? expected) =>
+        Assert.That(Classifier.GetFatal(chain), Is.SameAs(expected));
+
+    /// <remarks>A node fault exits only on a missing library directly in it or one level down, as before the rule was
+    /// shared; deeper, or another load failure, it propagates. Anything else follows the shared rule.</remarks>
+    private static IEnumerable<TestCaseData> FatalChains()
+    {
+        DllNotFoundException missingLibrary = new("missing library");
+        yield return new TestCaseData(new KzgSetupUnavailableException("KZG trusted setup failed to load", missingLibrary), missingLibrary)
+            .SetArgDisplayNames("KZG setup, missing library one level down");
+        yield return new TestCaseData(new KzgSetupUnavailableException("KZG trusted setup failed to load", Wrap(new DllNotFoundException("missing library"))), null)
+            .SetArgDisplayNames("KZG setup, missing library two levels down");
+        yield return new TestCaseData(new KzgSetupUnavailableException("KZG trusted setup failed to load", new BadImageFormatException("wrong format")), null)
+            .SetArgDisplayNames("KZG setup, wrong format");
+        yield return new TestCaseData(new OutOfMemoryException("out of memory", new BadImageFormatException("wrong format")), null)
+            .SetArgDisplayNames("out of memory, wrong format one level down");
+        yield return new TestCaseData(new BadImageFormatException("wrong format", new OutOfMemoryException()), null)
+            .SetArgDisplayNames("wrong format, out of memory one level down");
+
+        EntryPointNotFoundException missingExport = new("missing export");
+        yield return new TestCaseData(Wrap(Wrap(missingExport)), missingExport).SetArgDisplayNames("not a node fault, missing export two levels down");
+    }
+
     private static Exception Wrap(Exception inner) => new TypeInitializationException("Precompile", inner);
+
+    /// <summary>Reaches the classifier the VM's precompile dispatch uses; never constructed.</summary>
+    private sealed class Classifier() : VirtualMachine<EthereumGasPolicy>(null, null, null, null)
+    {
+        public static Exception? GetFatal(Exception exception) => GetFatalLoadFailure(exception);
+    }
 }

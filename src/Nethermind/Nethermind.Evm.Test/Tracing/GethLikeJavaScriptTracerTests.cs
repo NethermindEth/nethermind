@@ -2835,6 +2835,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     {
         [AllocationBurstChildArgument] => Task.FromResult(RunAllocationBurst()),
         [UnsampledCallChildArgument] => Task.FromResult(RunUnsampledCall()),
+        [PrecompileFaultTests.NativeLoadFailureChildArgument, string call] => Task.FromResult(PrecompileFaultTests.RunNativeLoadFailureChild(call)),
         _ => MicrosoftTestingPlatformEntryPoint.Main(args)
     };
 
