@@ -1019,6 +1019,25 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Should_not_offer_inclusion_list_transactions_again_when_a_build_without_an_abandon_token_is_cancelled()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+        (Transaction first, Transaction second, PayloadAttributes payloadAttributes) = SetTwoSenderInclusionList(chain);
+        using CancellationTokenSource cts = new();
+        counter.OnNextOffer(cts.Cancel);
+
+        await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes, cancellationToken: cts.Token);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.OffersPerBlock(first.Hash!), Is.Not.Empty);
+            Assert.That(counter.OffersPerBlock(second.Hash!), Is.Empty);
+        }
+    }
+
     private (Transaction First, Transaction Second, PayloadAttributes PayloadAttributes) SetTwoSenderInclusionList(MergeTestBlockchain chain)
     {
         Transaction first = Build.A.Transaction
