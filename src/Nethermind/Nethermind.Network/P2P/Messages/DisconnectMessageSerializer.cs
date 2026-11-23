@@ -26,24 +26,27 @@ namespace Nethermind.Network.P2P.Messages
 
         public DisconnectMessage Deserialize(ReadOnlySpan<byte> msg)
         {
-            if (msg.Length == 1)
-            {
-                return new DisconnectMessage((EthDisconnectReason)msg[0]);
-            }
-
-            if (msg.Length == 0)
+            if (msg.IsEmpty)
             {
                 // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
                 return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
             }
 
+            if (msg.Length == 1 && msg[0] < Rlp.EmptyByteArrayByte)
+            {
+                return new DisconnectMessage(msg[0]);
+            }
+
             RlpReader reader = new(msg);
             if (!reader.IsNextSequence)
             {
-                reader = new RlpReader(reader.DecodeByteArraySpan());
+                ReadOnlySpan<byte> wrapped = reader.DecodeByteArraySpan();
+                if (wrapped.IsEmpty) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
+                reader = new RlpReader(wrapped);
             }
 
             RlpReader fields = reader.EnterSequence(out _);
+            if (!fields.HasNext) return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
             int reason = fields.DecodeInt();
             DisconnectMessage disconnectMessage = new(reason);
             return disconnectMessage;
