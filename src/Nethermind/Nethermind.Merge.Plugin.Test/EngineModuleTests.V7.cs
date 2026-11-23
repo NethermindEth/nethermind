@@ -956,6 +956,29 @@ public partial class EngineModuleTests
         }
     }
 
+    [Test]
+    public async Task Should_offer_inclusion_list_transaction_again_after_its_sender_changes_in_a_later_pass()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+
+        PrivateKey spender = Build.A.PrivateKey.TestObject;
+        Transaction spend = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(spender).TestObject;
+        Transaction relay = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(1.Ether).WithGasLimit(1_000_000)
+            .WithTo(spender.Address).SignedAndResolved(TestItem.PrivateKeyE).TestObject;
+        Transaction fund = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei).WithValue(2.Ether).WithGasLimit(1_000_000)
+            .WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(spend), Rlp.Encode(relay), Rlp.Encode(fund)]);
+        chain.InclusionListTxSource!.Set(payloadAttributes.InclusionListTransactions!, Bogota.Instance);
+
+        Block? block = await chain.BlockProducer!.BuildBlock(chain.BlockTree.Head!.Header, payloadAttributes: payloadAttributes);
+
+        Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { fund.Hash, relay.Hash, spend.Hash }));
+    }
+
     private static (Transaction Spend, Transaction Fund) BuildSpendFundedByLaterTransaction()
     {
         Transaction spend = Build.A.Transaction
