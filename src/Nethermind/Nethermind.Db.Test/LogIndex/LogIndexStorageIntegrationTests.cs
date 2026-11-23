@@ -269,7 +269,8 @@ namespace Nethermind.Db.Test.LogIndex
 
         private ILogIndexStorage CreateLogIndexStorage(
             int compactionDistance = 262_144, int compressionParallelism = 16, ulong maxReorgDepth = 64, IDbFactory? dbFactory = null,
-            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false, bool reset = false
+            string? compressionAlgo = null, int? failOnBlock = null, int? failOnCallN = null, bool failOnMerge = false, bool reset = false,
+            ILogManager? logManager = null
         )
         {
             LogIndexConfig config = new()
@@ -283,8 +284,8 @@ namespace Nethermind.Db.Test.LogIndex
             };
 
             ILogIndexStorage storage = failOnBlock is null && failOnCallN is null
-                ? new LogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
-                : new SaveFailingLogIndexStorage(dbFactory ?? _dbFactory, LimboLogs.Instance, config)
+                ? new LogIndexStorage(dbFactory ?? _dbFactory, logManager ?? LimboLogs.Instance, config)
+                : new SaveFailingLogIndexStorage(dbFactory ?? _dbFactory, logManager ?? LimboLogs.Instance, config)
                 {
                     FailOnBlock = failOnBlock ?? 0,
                     FailOnCallN = failOnCallN ?? 0,
@@ -976,6 +977,23 @@ namespace Nethermind.Db.Test.LogIndex
                     Assert.That(meta.Get("sentinel"u8), Is.EqualTo(new byte[] { 1 }));
                     AssertBlocks(storage, TestItem.AddressA, topics, blocks);
                 }
+            }
+        }
+
+        [Test]
+        public async Task Reopen_warns_once_per_open_of_index_with_legacy_version()
+        {
+            Hash256[] topics = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
+            IDbFactory dbFactory = await CreateIndexWithVersionAsync(TestItem.AddressA, topics, [1]);
+            InterfaceLogger sink = Substitute.For<InterfaceLogger>();
+            sink.IsWarn.Returns(true);
+            OneLoggerLogManager logManager = new(new ILogger(sink));
+
+            // Two opens of the legacy index, a reset to the current version, then an open of the current version
+            foreach ((bool reset, int warnings) in new[] { (false, 1), (false, 2), (true, 2), (false, 2) })
+            {
+                await using (CreateLogIndexStorage(dbFactory: dbFactory, reset: reset, logManager: logManager)) { }
+                sink.Received(warnings).Warn(Arg.Is<string>(m => m.Contains("LogIndex.Reset=true") && m.Contains("TraceStore.AddressIndexReset=true")));
             }
         }
 

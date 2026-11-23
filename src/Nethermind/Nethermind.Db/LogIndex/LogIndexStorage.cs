@@ -327,11 +327,13 @@ namespace Nethermind.Db.LogIndex
                 return root;
             }
 
-            // Not restamped, so a kept index stays identifiable and a version 1 binary opens it without a reset
+            // Not restamped, so a kept index stays identifiable and a version 1 binary opens it without a reset.
+            // The log index and the OTS address index both open their DB here, and this class cannot tell which one it
+            // opened, so the message names the reset setting of each.
             if (versionBytes is [LegacyVersion])
             {
                 if (_logger.IsWarn)
-                    _logger.Warn("Log index was written before storage version 2 (Nethermind before 2.3.0) and may lack logs of blocks replaced by a reorg after they were indexed. Keeping it; set LogIndex.Reset=true for one start to rebuild it.");
+                    _logger.Warn("Log index database was written before storage version 2 (Nethermind before 2.3.0) and may miss logs of canonical blocks that replaced already indexed blocks. Keeping it. To rebuild it, start once with LogIndex.Reset=true (log index) or TraceStore.AddressIndexReset=true (OTS address index).");
 
                 return root;
             }
