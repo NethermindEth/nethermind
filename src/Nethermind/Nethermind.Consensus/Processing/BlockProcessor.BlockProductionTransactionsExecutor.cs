@@ -117,8 +117,6 @@ namespace Nethermind.Consensus.Processing
                     if (executedAndSkippedTx is not null) consideredTx.UnionWith(executedAndSkippedTx);
 
                     int[] pending = ArrayPool<int>.Shared.Rent(inclusionList.Length);
-                    ulong[] nonceAtSkip = ArrayPool<ulong>.Shared.Rent(inclusionList.Length);
-                    UInt256[] balanceAtSkip = ArrayPool<UInt256>.Shared.Rent(inclusionList.Length);
                     try
                     {
                         int pendingCount = 0;
@@ -128,66 +126,77 @@ namespace Nethermind.Consensus.Processing
                             if (!tx.SupportsFrames && tx.SenderAddress is not null && !consideredTx.Contains(tx)) pending[pendingCount++] = i;
                         }
 
-                        bool firstPass = true;
-                        bool added = true;
-                        while (added && pendingCount > 0 && !token.IsCancellationRequested)
+                        if (pendingCount > 0)
                         {
-                            added = false;
-                            int kept = 0;
-                            for (int k = 0; k < pendingCount; k++)
+                            ulong[] nonceAtSkip = ArrayPool<ulong>.Shared.Rent(inclusionList.Length);
+                            UInt256[] balanceAtSkip = ArrayPool<UInt256>.Shared.Rent(inclusionList.Length);
+                            try
                             {
-                                if (token.IsCancellationRequested)
+                                bool firstPass = true;
+                                bool added = true;
+                                while (added && pendingCount > 0 && !token.IsCancellationRequested)
                                 {
                                     added = false;
-                                    break;
-                                }
+                                    int kept = 0;
+                                    for (int k = 0; k < pendingCount; k++)
+                                    {
+                                        if (token.IsCancellationRequested)
+                                        {
+                                            added = false;
+                                            break;
+                                        }
 
-                                int index = pending[k];
-                                Transaction currentTx = inclusionList[index];
-                                Address sender = currentTx.SenderAddress!;
-                                ulong nonce = stateProvider.GetNonce(sender);
-                                UInt256 balance = stateProvider.GetBalance(sender);
-                                if (!firstPass && nonce == nonceAtSkip[k] && balance == balanceAtSkip[k])
-                                {
-                                    pending[kept] = index;
-                                    nonceAtSkip[kept] = nonceAtSkip[k];
-                                    balanceAtSkip[kept] = balanceAtSkip[k];
-                                    kept++;
-                                    continue;
-                                }
+                                        int index = pending[k];
+                                        Transaction currentTx = inclusionList[index];
+                                        stateProvider.TryGetAccount(currentTx.SenderAddress!, out AccountStruct account);
+                                        ulong nonce = account.Nonce;
+                                        UInt256 balance = account.Balance;
+                                        if (!firstPass && nonce == nonceAtSkip[k] && balance == balanceAtSkip[k])
+                                        {
+                                            pending[kept] = index;
+                                            nonceAtSkip[kept] = nonceAtSkip[k];
+                                            balanceAtSkip[kept] = balanceAtSkip[k];
+                                            kept++;
+                                            continue;
+                                        }
 
-                                TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed);
-                                if (action == TxAction.Stop)
-                                {
-                                    added = false;
-                                    break;
-                                }
+                                        TxAction action = ProcessTransaction(block, currentTx, includedTx.Count, receiptsTracer, processingOptions, consideredTx, ref itemBudget, out bool executed);
+                                        if (action == TxAction.Stop)
+                                        {
+                                            added = false;
+                                            break;
+                                        }
 
-                                if (action == TxAction.Add)
-                                {
-                                    added = true;
-                                    consideredTx.Add(currentTx);
-                                    includedTx.Add(currentTx);
-                                    blockToProduce.TxByteLength += currentTx.GetLength(false);
-                                }
-                                else if (!executed)
-                                {
-                                    pending[kept] = index;
-                                    nonceAtSkip[kept] = nonce;
-                                    balanceAtSkip[kept] = balance;
-                                    kept++;
+                                        if (action == TxAction.Add)
+                                        {
+                                            added = true;
+                                            consideredTx.Add(currentTx);
+                                            includedTx.Add(currentTx);
+                                            blockToProduce.TxByteLength += currentTx.GetLength(false);
+                                        }
+                                        else if (!executed)
+                                        {
+                                            pending[kept] = index;
+                                            nonceAtSkip[kept] = nonce;
+                                            balanceAtSkip[kept] = balance;
+                                            kept++;
+                                        }
+                                    }
+
+                                    pendingCount = kept;
+                                    firstPass = false;
                                 }
                             }
-
-                            pendingCount = kept;
-                            firstPass = false;
+                            finally
+                            {
+                                ArrayPool<ulong>.Shared.Return(nonceAtSkip);
+                                ArrayPool<UInt256>.Shared.Return(balanceAtSkip);
+                            }
                         }
                     }
                     finally
                     {
                         ArrayPool<int>.Shared.Return(pending);
-                        ArrayPool<ulong>.Shared.Return(nonceAtSkip);
-                        ArrayPool<UInt256>.Shared.Return(balanceAtSkip);
                     }
                 }
 
