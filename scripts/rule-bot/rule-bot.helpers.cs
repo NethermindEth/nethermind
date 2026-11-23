@@ -88,6 +88,7 @@ static partial class RuleBot
     internal const int RouteBTries = 1;
     internal const string Unshipped = "src/Nethermind/Nethermind.Analyzers/AnalyzerReleases.Unshipped.md";
     internal const string EditorConfig = ".editorconfig";
+    private const string UnknownPatch = "?";
     internal const int WindowDays = 180;
     private const int Page = 100;
     private const string ThreadNodes = "pageInfo { hasNextPage endCursor } nodes { isResolved isOutdated comments(first:1) { nodes { databaseId } } }";
@@ -159,6 +160,9 @@ static partial class RuleBot
 
     [GeneratedRegex(@"\Adotnet_diagnostic\.([A-Z]+\d+)\.severity = (\w+)\z")]
     private static partial Regex OverlayRow();
+
+    [GeneratedRegex(@"\A\+\s*dotnet_diagnostic\.([A-Z]+\d+)\.severity\s*=\s*(?:warning|error)\b")]
+    private static partial Regex EnabledRuleRow();
 
     [GeneratedRegex(@"\A@@ -([0-9]+)(?:,([0-9]+))? \+([0-9]+)(?:,([0-9]+))? @@")]
     private static partial Regex HunkHeader();
@@ -634,7 +638,7 @@ static partial class RuleBot
         if (!string.IsNullOrEmpty(githubOutput)) File.AppendAllText(githubOutput, $"solutions={solutions}\n", StrictUtf8);
     }
 
-    internal static string FixDenyTools() => string.Join(',', FixDeniedPrefixes.SelectMany(prefix => new[] { $"Edit({prefix}**)", $"Write({prefix}**)" }));
+    internal static string FixDenyTools() => string.Join(',', FixDeniedPrefixes.Select(prefix => $"Edit({prefix}**)"));
 
     private static void Hits(string logs, string root, string idList, string outPath, string? generatedLogs = null, string? generatedId = null)
     {
@@ -712,10 +716,20 @@ static partial class RuleBot
         return groups;
     }
 
-    private static async Task<List<long>> OpenPrsFor(string ruleId, CancellationToken token)
+    internal static bool EnablesRule(string patches, string ruleId) =>
+        Lines(patches).Any(line => line == UnknownPatch || (EnabledRuleRow().Match(line) is { Success: true } row && row.Groups[1].Value == ruleId));
+
+    internal static async Task<List<long>> OpenPrsFor(string ruleId, CancellationToken token)
     {
         var output = await Gh(["pr", "list", "-R", Repo, "--state", "open", "--search", $"{ruleId} in:title,body", "--json", "number", "--limit", "20"], token, check: false);
-        return ParseGitHub<List<NumberedPr>>(output.Length > 0 ? output : "[]").Select(x => x.Number).Order().ToList();
+        var open = new List<long>();
+        foreach (var number in ParseGitHub<List<NumberedPr>>(output.Length > 0 ? output : "[]").Select(x => x.Number).Order())
+        {
+            var (code, patches, _) = await Exec(["gh", "api", "-X", "GET", $"repos/{Repo}/pulls/{number}/files?per_page=100", "--paginate", "--jq",
+                $".[] | select(.filename | endswith(\"{EditorConfig}\")) | .patch // \"{UnknownPatch}\""], false, token);
+            if (code != 0 || EnablesRule(patches, ruleId)) open.Add(number);
+        }
+        return open;
     }
 
     internal static async Task Propose(string data, bool offline, string? githubOutput, CancellationToken token)
@@ -1088,6 +1102,9 @@ static partial class RuleBot
     private static async Task<int> Logged(string log, string[] argv, CancellationToken token) =>
         (await Exec(["bash", "-c", "log=$1; shift; exec \"$@\" > \"$log\" 2>&1", "route-b", log, .. argv], false, token)).Code;
 
+    internal static string RouteBTools(string resultPath) =>
+        $"Read,Glob,Grep,Edit(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Edit(/{resultPath}),Bash(dotnet build:*),Bash(dotnet test:*)";
+
     private static async Task<bool> RouteBAttempt(string data, string id, QueuedCluster entry, Dictionary<string, Gate> gates, RouteBState state, string statePath, CancellationToken token)
     {
         var cluster = entry.Cluster;
@@ -1095,7 +1112,7 @@ static partial class RuleBot
         var examplesPath = Path.Combine(data, "route-b-examples.json");
         Save(examplesPath, gates.GetValueOrDefault(cluster)?.Examples ?? []);
         File.Delete(resultPath);
-        var tools = $"Read,Glob,Grep,Edit(src/Nethermind/Nethermind.Analyzers/**),Write(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Write(src/Nethermind/Nethermind.Analyzers.Test/**),Write({resultPath}),Bash(dotnet build:*),Bash(dotnet test:*)";
+        var tools = RouteBTools(resultPath);
         var generation = await Logged(Path.Combine(data, $"analyzer-llm-{cluster}.log"),
             [Path.Combine(Home, "llm.sh"), Path.Combine(Home, "prompts", "analyzer.txt"), tools, $"ID={id}", $"CLUSTER={cluster}", $"WHY={entry.Why}", $"EXAMPLES={examplesPath}", $"RESULT={resultPath}"], token);
         Console.WriteLine($"route-b: {cluster} generation exit {generation}");

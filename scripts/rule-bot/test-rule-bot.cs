@@ -224,15 +224,41 @@ var tests = new (string Name, Func<Task> Body)[]
             Any(CheckPaths([("M", path)], [], "NETH012", [path]));
         }
     })),
+    ("test_file_tool_rules_use_edit", Sync(() =>
+    {
+        const string result = "/work/rule-bot/data/analyzer-result.json";
+        var tools = RouteBTools(result).Split(',');
+        True(tools.Contains($"Edit(/{result})"));
+        True(tools.Contains("Edit(src/Nethermind/Nethermind.Analyzers/**)"));
+        True(tools.Contains("Edit(src/Nethermind/Nethermind.Analyzers.Test/**)"));
+        True(!tools.Any(tool => tool.StartsWith("Write(", StringComparison.Ordinal)));
+        True(!FixDenyTools().Contains("Write(", StringComparison.Ordinal));
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "rule-bot.yml"));
+        True(workflow.Contains("Edit(/$DATA/labels.json)", StringComparison.Ordinal));
+        True(!workflow.Contains("Write(", StringComparison.Ordinal));
+    })),
+    ("test_open_pr_counts_only_when_it_enables_the_rule", async () =>
+    {
+        using var scope = new Seams();
+        Exec = (argv, _, _) => Task.FromResult(argv switch
+        {
+            [_, "pr", "list", ..] => (0, """[{"number": 8}, {"number": 7}, {"number": 9}, {"number": 10}, {"number": 11}]""", ""),
+            [_, "api", _, _, var path, ..] when path.Contains("/pulls/7/") => (0, "@@ -1 +1,2 @@\n+dotnet_diagnostic.CA1512.severity = warning\n", ""),
+            [_, "api", _, _, var path, ..] when path.Contains("/pulls/9/") => (1, "", "boom"),
+            [_, "api", _, _, var path, ..] when path.Contains("/pulls/10/") => (0, "@@ -1 +1,2 @@\n+dotnet_diagnostic.CA1512.severity = none\n-dotnet_diagnostic.CA1512.severity = warning\n", ""),
+            [_, "api", _, _, var path, ..] when path.Contains("/pulls/11/") => (0, "?\n", ""),
+            _ => (0, "", "")
+        });
+        True((await OpenPrsFor("CA1512", default)).SequenceEqual([7L, 9L, 11L]));
+    }),
     ("test_deny_tools_cover_every_denied_prefix", Sync(() =>
     {
         var tools = FixDenyTools().Split(',');
         foreach (var prefix in FixDeniedPrefixes)
         {
             True(tools.Contains($"Edit({prefix}**)"));
-            True(tools.Contains($"Write({prefix}**)"));
         }
-        Equal(2 * FixDeniedPrefixes.Length, tools.Length);
+        Equal(FixDeniedPrefixes.Length, tools.Length);
     })),
     ("test_route_b_cannot_change_existing_analyzers", Sync(() =>
     {

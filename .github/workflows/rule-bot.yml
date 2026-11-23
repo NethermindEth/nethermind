@@ -344,7 +344,7 @@ jobs:
           WHY=$(jq -r '.why // empty' "$DATA/route_b.json")
           "$RUNNER_TEMP/rule-bot/rule-bot" sample --hits "$DATA/hits.json" --id "$ROUTE_B_ID" --seed "$GITHUB_RUN_ID" --out "$DATA/sample.json"
           if [ "$(jq length "$DATA/sample.json")" -gt 0 ]; then
-            bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/label.txt" "Read,Glob,Grep,Write($DATA/labels.json)" \
+            bash "$RUNNER_TEMP/rule-bot/llm.sh" "$RUNNER_TEMP/rule-bot/prompts/label.txt" "Read,Glob,Grep,Edit(/$DATA/labels.json)" \
               "ID=$ROUTE_B_ID" "WHY=$WHY" "SAMPLE=$DATA/sample.json" "RESULT=$DATA/labels.json" > "$DATA/label-llm.log" 2>&1 || true
           fi
           "$RUNNER_TEMP/rule-bot/rule-bot" precision --labels "$DATA/labels.json" --hits "$DATA/hits.json" --id "$ROUTE_B_ID" --route-b "$DATA/route_b.json" || true
