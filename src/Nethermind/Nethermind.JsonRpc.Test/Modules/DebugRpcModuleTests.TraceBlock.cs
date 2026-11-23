@@ -767,12 +767,59 @@ public partial class DebugRpcModuleTests
 
     [Test]
     public async Task Debug_traceCall_javascript_deadline_cancels_execution(
-        [Values("javascript", "mux", "nested-mux", "native", "native-mux", "shadowed-mux")] string kind, [Values] bool indexed) =>
+        [Values("javascript", "mux", "nested-mux", "mux-withlog", "native", "native-mux", "shadowed-mux")] string kind, [Values] bool indexed) =>
         await AssertJavaScriptCallCancellation(kind, indexed, bundle: false);
 
     [Test]
     public async Task Debug_traceCallMany_keeps_its_existing_deadline_policy([Values("javascript", "mux", "native")] string kind) =>
         await AssertJavaScriptCallCancellation(kind, indexed: false, bundle: true);
+
+    [Test]
+    public async Task Debug_traceCall_indexed_deadline_uses_replay_position(
+        [Values] bool matchingHash, [Values] bool withLog, [Values] bool expireDuringPrefix)
+    {
+        DeadlineExecution clock = new() { Expiry = "before", UseExecutionIndex = true, Target = expireDuringPrefix ? 0UL : 1UL };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new DeadlineAdapter(inner, clock)));
+        ulong nonce = chain.ReadOnlyState.GetNonce(TestItem.AddressB);
+        Block block = await chain.AddBlock(CreateDeadlineTransactions(nonce));
+        Transaction selected = block.Transactions[matchingHash ? 0 : 1];
+        LegacyTransactionForRpc call = new(selected, default);
+        Transaction converted = call.ToTransaction().Data ?? throw new AssertionException("Signed call conversion failed.");
+        Assert.That(converted.CalculateHash() == block.Transactions[0].Hash, Is.EqualTo(matchingHash));
+        clock.Enabled = true;
+        const string script = "{fault:function(){},result:function(ctx){return {index:ctx.txIndex};}}";
+        Dictionary<string, object> options = new()
+        {
+            ["tracer"] = withLog ? "muxTracer" : script,
+            ["timeout"] = "1s",
+            ["txIndex"] = "0x1",
+            ["streamMode"] = false
+        };
+        if (withLog) options["tracerConfig"] = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = true } };
+        string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
+            "debug_traceCall", call, block.Hash!, options);
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(clock.PrefixCancelled, Is.False, response);
+            Assert.That(clock.Calls, Is.EqualTo(2), response);
+            Assert.That(clock.TargetCancelled, Is.EqualTo(!expireDuringPrefix), response);
+            Assert.That(clock.Timers, Has.Count.EqualTo(1));
+            Assert.That(clock.Timers, Has.All.Property(nameof(ExecutionTimer.Disposed)).True);
+            if (expireDuringPrefix)
+            {
+                Assert.That(json["error"], Is.Null, response);
+                JToken? result = withLog ? json["result"]?[script] : json["result"];
+                Assert.That((int?)result?["index"], Is.EqualTo(1), response);
+            }
+            else
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("execution timeout"), response);
+            }
+        }
+    }
 
     private static async Task AssertJavaScriptCallCancellation(string kind, bool indexed, bool bundle)
     {
@@ -784,15 +831,15 @@ public partial class DebugRpcModuleTests
         clock.Target = nonce + (indexed ? 1UL : 3UL);
         clock.Enabled = true;
         const string script = "{fault:function(){},result:function(){return {};}}";
-        object config = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { } };
+        object config = new Dictionary<string, object> { [script] = new { }, ["callTracer"] = new { withLog = kind == "mux-withlog" } };
         if (kind == "nested-mux") config = new Dictionary<string, object> { ["muxTracer"] = config };
         if (kind == "native-mux") config = new Dictionary<string, object> { ["callTracer"] = new { } };
         if (kind == "shadowed-mux") config = JsonSerializer.Deserialize<JsonElement>(
             "{\"muxTracer\":" + JsonSerializer.Serialize(config) + ",\"muxTracer\":{\"callTracer\":{}}}");
-        bool javascript = kind is "javascript" or "mux" or "nested-mux";
+        bool javascript = kind is "javascript" or "mux" or "nested-mux" or "mux-withlog";
         string tracer = kind == "native" ? "callTracer" : kind == "javascript" ? script : "muxTracer";
         Dictionary<string, object> options = new() { ["tracer"] = tracer, ["timeout"] = "1s", ["streamMode"] = false };
-        if (kind is "mux" or "nested-mux" or "native-mux" or "shadowed-mux") options["tracerConfig"] = config;
+        if (kind is "mux" or "nested-mux" or "mux-withlog" or "native-mux" or "shadowed-mux") options["tracerConfig"] = config;
         if (indexed) options["txIndex"] = "0x1";
         object call = new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), nonce = $"0x{clock.Target:x}", gas = "0x186a0" };
         string response = await RpcTest.TestSerializedRequest(WithDeadlineClock(chain.DebugRpcModule, clock),
