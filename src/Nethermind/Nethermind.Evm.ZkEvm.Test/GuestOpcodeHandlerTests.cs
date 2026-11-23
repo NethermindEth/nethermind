@@ -588,8 +588,9 @@ public class GuestOpcodeHandlerTests
     /// A ZK_EVM test process cannot run the zkVM's keccak, so the range's bytes are memoized with a stand-in digest
     /// first: hashing any other bytes misses the memo and reaches the precompile, which throws. That leaves out the
     /// empty range, whose digest the guest takes from a constant hashed on first use. Memory holds 64 initialized
-    /// bytes, so a range may end on that boundary or run past it, which grows memory through the shared handler. A second
-    /// hash of the range takes a 32- or 64-byte input's digest from the memo the first one filled.
+    /// bytes, so a range may end on that boundary or run past it, which grows memory through the shared handler. When
+    /// the first hash of a 32- or 64-byte range stays inside those bytes, the second takes its digest from the memo the
+    /// first one filled.
     /// </remarks>
     [Test]
     public void Keccak256_leaves_the_digest_of_its_range([Values(8, 32, 33, 64)] int length, [Values(0, 5, 32)] int offset, [Values] bool twice)
@@ -613,6 +614,41 @@ public class GuestOpcodeHandlerTests
             (twice ? (3 + 3 + hashGas) + (3 + 3) + MemoryCost(5) : MemoryCost(4)),
             [.. WordA, .. WordB, .. new byte[32], .. digest, .. twice ? digest : []],
             []);
+    }
+
+    /// <remarks>
+    /// A new stand-in digest for an input that was hashed shows whether a hash took the word memo's digest or
+    /// <see cref="KeccakCache"/>'s. The memo picks an entry from an XOR of the input's outer words, so inputs that swap
+    /// two words share one entry. A hash of an input with no stand-in throws after its entry takes the new key.
+    /// </remarks>
+    [Test]
+    public void Keccak256_word_memo_answers_only_the_input_its_entry_holds([Values(32, 64)] int length)
+    {
+        byte[] first = Enumerable.Range(0x40 + length, length).Select(static b => (byte)b).ToArray();
+        byte[] second = [.. first[8..16], .. first[..8], .. first[16..]];
+        byte[] third = [.. first[..16], .. first[24..32], .. first[16..24], .. first[32..]];
+
+        AssertWordMemoHash(first, 1, 1);
+        AssertWordMemoHash(first, 2, 1);
+        AssertWordMemoHash(second, 3, 3);
+        Assert.That(() => RunHash(third), Throws.Exception);
+        AssertWordMemoHash(third, 4, 4);
+
+        static void AssertWordMemoHash(byte[] input, byte standIn, byte expected)
+        {
+            KeccakCache.WriteMemo(input, new ValueHash256(StandIn(standIn)));
+            Assert.That(RunHash(input), Is.EqualTo(StandIn(expected)), $"stand-in {standIn}");
+        }
+
+        static byte[] StandIn(byte n) => Enumerable.Range(0, 32).Select(b => (byte)(n << 5 | b)).ToArray();
+
+        static byte[] RunHash(byte[] input)
+        {
+            byte[] stores = input.Chunk(32).SelectMany(static (word, i) => (byte[])[PUSH32, .. word, PUSH1, (byte)(i * 32), MSTORE]).ToArray();
+            Outcome outcome = Run(Code([.. stores, PUSH1, (byte)input.Length, PUSH1, 0, KECCAK256, PUSH1, (byte)input.Length, MSTORE, STOP]), AmpleGas);
+            Assert.That(outcome.Exception, Is.AnyOf(EvmExceptionType.None, EvmExceptionType.Stop));
+            return outcome.Memory[input.Length..(input.Length + 32)];
+        }
     }
 
     /// <remarks>
