@@ -183,6 +183,18 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                         nodeRecord.SetEntry(new Tcp6Entry(tcpPort));
                         break;
                     }
+                case 4 when key.SequenceEqual(EnrContentKey.QuicU8):
+                    {
+                        int quicPort = fields.DecodePositiveInt();
+                        nodeRecord.SetEntry(new QuicEntry(quicPort));
+                        break;
+                    }
+                case 5 when key.SequenceEqual(EnrContentKey.Quic6U8):
+                    {
+                        int quicPort = fields.DecodePositiveInt();
+                        nodeRecord.SetEntry(new Quic6Entry(quicPort));
+                        break;
+                    }
                 case 3 when key.SequenceEqual(EnrContentKey.UdpU8):
                     {
                         int udpPort = fields.DecodePositiveInt();

@@ -151,7 +151,7 @@ public class GethLikeCallTracerEip7708Tests : VirtualMachineTestsBase
         {
             Assert.That(topFrame.Calls, Has.Count.EqualTo(3), "factory must create then call twice");
             Assert.That(topFrame.Calls[0].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, initBalance, 0UL, 0UL)]).UsingPropertiesComparer(), "CREATE endowment log on create frame");
-            Assert.That(topFrame.Calls[1].Logs, Is.EqualTo([ExpectedTransferLog(contractA, inheritor, initBalance, 1UL, 1UL)]).UsingPropertiesComparer(), "SELFDESTRUCT transfer log on call frame (position follows the SELFDESTRUCT child frame recorded first; geth records AddLog before the child frame, so cross-client position differs here)");
+            Assert.That(topFrame.Calls[1].Logs, Is.EqualTo([ExpectedTransferLog(contractA, inheritor, initBalance, 1UL, 0UL)]).UsingPropertiesComparer(), "SELFDESTRUCT transfer log on call frame, positioned before its SELFDESTRUCT child frame as in geth");
             Assert.That(topFrame.Calls[2].Logs, Is.EqualTo([ExpectedTransferLog(Recipient, contractA, fundedAfter, 2UL, 0UL)]).UsingPropertiesComparer(), "post-destruct funding log on call frame");
             Assert.That(topFrame.Logs, Is.EqualTo([ExpectedSelfDestructLog(contractA, fundedAfter, 3UL, 3UL)]).UsingPropertiesComparer(), "finalization log must be reported to log tracers on the top frame");
         }

@@ -1606,6 +1606,25 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Disposed_pool_rejects_submissions()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction
+                .WithGasLimit(TxGasLimit)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            await _txPool.DisposeAsync();
+
+            AcceptTxResult result = _txPool.SubmitTx(tx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Syncing));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            }
+        }
+
+        [Test]
         public void should_add_valid_transactions_recovering_its_address()
         {
             _txPool = CreatePool();
@@ -3894,6 +3913,30 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType), "frame transactions must be rejected at pool ingress");
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0), "no frame transaction may enter the pool");
+            }
+        }
+
+        [Test]
+        public void SubmitTx_DepositTransaction_RejectedAsNotSupported()
+        {
+            TxValidator txValidator = new(_specProvider.ChainId);
+            txValidator.RegisterValidator(TxType.DepositTx, Always.Valid);
+            _txPool = CreatePool(txValidator: txValidator);
+            Transaction depositTx = Build.A.Transaction
+                .WithType(TxType.DepositTx)
+                .WithNonce(0)
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(depositTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
             }
         }
 
@@ -8631,7 +8674,8 @@ namespace Nethermind.TxPool.Test
             IEthereumEcdsa ethereumEcdsa = null,
             ITxValidator specChangeTxValidator = null,
             IFrameTxPrefixSimulator frameTxPrefixSimulator = null,
-            IStateHeaderProvider stateHeaderProvider = null)
+            IStateHeaderProvider stateHeaderProvider = null,
+            ITxValidator txValidator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -8651,7 +8695,7 @@ namespace Nethermind.TxPool.Test
                 txStorage,
                 _headInfo,
                 config,
-                new TxValidator(_specProvider.ChainId),
+                txValidator ?? new TxValidator(_specProvider.ChainId),
                 specChangeTxValidator ?? new SpecChangeTxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),
