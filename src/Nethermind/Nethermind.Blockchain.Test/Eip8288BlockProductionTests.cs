@@ -762,7 +762,7 @@ public class Eip8288BlockProductionTests
         ValueHash256 initialHash = Eip8288Dependencies.ComputeDepsHash([first]);
         cache.ProveRecursiveStark(initialHash, Eip8288Constants.AggregatedVk, initial);
         // Enough maximum-sized proofs to pass the cache's 32 MiB byte bound well before its entry bound.
-        const int laterProofs = 26;
+        const int laterProofs = 32 * 1024 * 1024 / Eip8288Constants.MaxAggregateProofBytes + 1;
         for (int i = 1; i <= laterProofs; i++)
         {
             FrameDependency next = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute($"large-{i}"), default);
