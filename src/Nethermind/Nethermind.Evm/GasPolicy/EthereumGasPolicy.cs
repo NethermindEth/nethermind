@@ -243,24 +243,18 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         bool isTracingAccess,
         Address address,
         AccountAccessKind kind = AccountAccessKind.Default) =>
-        TryConsumeAccountAccessGasCore<ColdAccountGasCost, DynamicStorageMode>(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+        TryConsumeAccountAccessGasCore<ColdAccountGasCost, DynamicStorageMode>(ref gas, spec, in accessTracker, address, kind);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryConsumeAccountAccessGasCore<TColdCost, TMode>(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         AccountAccessKind kind)
         where TColdCost : struct, ISpecGasCost
         where TMode : struct, IStorageMode
     {
         if (!TMode.UseHotAndColdStorage(spec)) return true;
-        if (isTracingAccess)
-        {
-            // Ensure that tracing simulates access-list behavior.
-            accessTracker.WarmUp(address);
-        }
 
         // WarmUp first so the warm path skips IsPrecompile; precompiles are pre-warmed at tx start.
         return (accessTracker.WarmUp(address) && !spec.IsPrecompile(address)) switch
@@ -293,7 +287,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec) =>
-        TryConsumeStorageAccessGasCore<DynamicStorageMode>(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+        TryConsumeStorageAccessGasCore<DynamicStorageMode>(ref gas, in accessTracker, in storageCell, storageAccessType, spec);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -330,7 +324,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TryConsumeStorageAccessGasCore<StorageMode<Eip2929, Eip8038>>(ref gas, in accessTracker, isTracingAccess, in storageCell, storageAccessType, spec);
+        TryConsumeStorageAccessGasCore<StorageMode<Eip2929, Eip8038>>(ref gas, in accessTracker, in storageCell, storageAccessType, spec);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -339,7 +333,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         AccountAccessKind kind = AccountAccessKind.Default)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
-        TryConsumeAccountAccessGasCore<ColdAccountGasCost<Eip8038>, StorageMode<Eip2929, Eip8038>>(ref gas, spec, in accessTracker, isTracingAccess, address, kind);
+        TryConsumeAccountAccessGasCore<ColdAccountGasCost<Eip8038>, StorageMode<Eip2929, Eip8038>>(ref gas, spec, in accessTracker, address, kind);
 
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -381,7 +375,6 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool TryConsumeStorageAccessGasCore<TMode>(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec)
@@ -389,17 +382,6 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     {
         if (!TMode.UseHotAndColdStorage(spec))
             return true;
-        if (isTracingAccess)
-        {
-            bool isCold = accessTracker.IsCold(in storageCell);
-            bool gasAvailable = storageAccessType != StorageAccessType.SLOAD && !TMode.IsEip8038Enabled(spec)
-                || UpdateGas(ref gas, GasCostOf.WarmStateRead);
-
-            if (gasAvailable && isCold)
-                accessTracker.WarmUp(in storageCell);
-
-            return gasAvailable;
-        }
 
         // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
         if (accessTracker.WarmUp(in storageCell))
