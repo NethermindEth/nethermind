@@ -244,6 +244,10 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
         }
 
+        // Geth defaults an omitted fee cap to zero, so a tip alone fails its tip check before the base fee check.
+        if (tx.GetTipAboveFeeCapError(spec) is { } tipAboveFeeCap)
+            return ResultWrapper<GethLikeTxTrace>.Fail(ErrorWrapper.DebugTrace(tipAboveFeeCap), ErrorCodes.InvalidInput);
+
         GethTraceOptions effective = (options ?? GethTraceOptions.Default) with
         {
             NoBaseFee = !call.ShouldSetBaseFee()
