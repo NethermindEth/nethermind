@@ -8,6 +8,9 @@ namespace Nethermind.Core;
 /// <summary>The EIP-8288 header fields <c>dependency_proof_hash</c> and <c>block_deps_hash</c>.</summary>
 public sealed class RecursiveStarkCommitment(Hash256 dependencyProofHash, Hash256 blockDepsHash)
 {
+    /// <summary>The commitment of a block without dependencies: an empty proof over an empty statement, as at genesis.</summary>
+    public static RecursiveStarkCommitment Empty { get; } = new(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+
     /// <summary>Keccak-256 of the exact <c>dependency_proof</c> bytes; that of the empty string for an empty proof.</summary>
     public Hash256 DependencyProofHash { get; } = dependencyProofHash;
 

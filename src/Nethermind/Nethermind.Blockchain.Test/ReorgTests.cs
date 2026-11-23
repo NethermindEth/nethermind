@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -109,14 +110,14 @@ public class ReorgTests
             LimboLogs.Instance,
             new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
             new ExecutionRequestsProcessor(transactionProcessor),
-            balManager,
-            Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>());
+            balManager);
         BranchProcessor branchProcessor = new(
             blockProcessor,
             MainnetSpecProvider.Instance,
             stateProvider,
             blockhashProvider,
-            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(MainnetSpecProvider.Instance, Substitute.For<ITxValidator>(), transactionProcessor,
+                new InclusionListProofService(Substitute.For<Nethermind.Core.Crypto.ILeanProofVerifier>())),
             LimboLogs.Instance,
             Substitute.For<IWorldStateManager>());
 

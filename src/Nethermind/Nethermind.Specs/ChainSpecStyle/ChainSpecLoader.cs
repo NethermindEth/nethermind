@@ -489,7 +489,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
 
         if (parameters.Eip8288TransitionTimestamp is { } proofTransition && genesisHeader.Timestamp >= proofTransition)
         {
-            genesisHeader.RecursiveStark = new RecursiveStarkCommitment(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+            genesisHeader.RecursiveStark = RecursiveStarkCommitment.Empty;
             chainSpec.Genesis.StarkProof = [];
         }
     }

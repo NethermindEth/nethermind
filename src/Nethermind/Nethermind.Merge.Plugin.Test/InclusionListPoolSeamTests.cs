@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -162,5 +164,6 @@ public class InclusionListPoolSeamTests
     }
 
     private static InclusionListBuilder BuildBuilder(ITxPool pool, BasicTestBlockchain chain) =>
-        new(pool, chain.BlockTree, new TestSpecProvider(Frontier.Instance), chain.ReadOnlyState);
+        new(pool, chain.BlockTree, new TestSpecProvider(Frontier.Instance), chain.ReadOnlyState,
+            chain.Container.Resolve<InclusionListProofService>());
 }
