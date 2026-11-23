@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
@@ -43,7 +44,9 @@ public static class GethLikeNativeTracerFactory
     public static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate) =>
         _tracers.Add(tracerName, (options, block, transaction, worldState, _) => tracerDelegate(options, block, transaction, worldState));
 
-    internal static T? ParseConfig<T>(JsonElement? config, JsonSerializerOptions options) where T : class
+    /// <summary>Deserializes a native tracer config, reporting a type mismatch with Geth's <c>encoding/json</c> error text.</summary>
+    /// <param name="goTypeName">The name of Geth's config struct, such as <c>callTracerConfig</c>.</param>
+    internal static T? ParseConfig<T>(JsonElement? config, JsonSerializerOptions options, string goTypeName) where T : class
     {
         try
         {
@@ -51,9 +54,39 @@ public static class GethLikeNativeTracerFactory
         }
         catch (JsonException exception)
         {
-            throw new NativeTracerConfigException(exception.Message, exception);
+            throw new NativeTracerConfigException(
+                GoUnmarshalTypeError(config!.Value, exception.Path, options.GetTypeInfo(typeof(T)), goTypeName) ?? exception.Message, exception);
         }
     }
+
+    private static string? GoUnmarshalTypeError(JsonElement config, string? path, JsonTypeInfo typeInfo, string goTypeName)
+    {
+        if (config.ValueKind != JsonValueKind.Object)
+            return $"json: cannot unmarshal {GoJsonKind(config.ValueKind)} into Go value of type native.{goTypeName}";
+
+        if (path is null || !path.StartsWith("$.", StringComparison.Ordinal)) return null;
+        string name = path[2..];
+        foreach (JsonPropertyInfo property in typeInfo.Properties)
+        {
+            if (property.Name != name || Nullable.GetUnderlyingType(property.PropertyType) != typeof(bool)) continue;
+            foreach (JsonProperty member in config.EnumerateObject())
+            {
+                if (member.Name == name && member.Value.ValueKind is not (JsonValueKind.True or JsonValueKind.False or JsonValueKind.Null))
+                    return $"json: cannot unmarshal {GoJsonKind(member.Value.ValueKind)} into Go struct field {goTypeName}.{name} of type bool";
+            }
+        }
+
+        return null;
+    }
+
+    internal static string GoJsonKind(JsonValueKind kind) => kind switch
+    {
+        JsonValueKind.Object => "object",
+        JsonValueKind.Array => "array",
+        JsonValueKind.String => "string",
+        JsonValueKind.Number => "number",
+        _ => "bool"
+    };
 
     public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState, IReleaseSpec releaseSpec)
     {

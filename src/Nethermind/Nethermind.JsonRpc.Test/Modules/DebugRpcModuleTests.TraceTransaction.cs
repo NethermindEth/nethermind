@@ -348,7 +348,7 @@ public partial class DebugRpcModuleTests
         {
             "unknown" => "transaction not found",
             "native" or "extension" => "time: invalid duration \"bad\"",
-            "config" or "config-valid-timeout" => "Cannot convert",
+            "config" or "config-valid-timeout" => "cannot unmarshal",
             _ => null
         };
         using (Assert.EnterMultipleScope())
@@ -625,7 +625,7 @@ public partial class DebugRpcModuleTests
             if (invalid)
             {
                 Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"], Does.Contain("Cannot convert"), response);
+                Assert.That((string?)json["error"]?["message"], Does.Contain("cannot unmarshal"), response);
                 Assert.That(json["result"], Is.Null, response);
             }
             else
