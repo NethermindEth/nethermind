@@ -20,7 +20,7 @@ using Nethermind.TxPool;
 namespace Nethermind.Merge.Plugin.Handlers;
 
 internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyStateProvider headState,
-    InclusionListProofService? proofs = null)
+    InclusionListProofService proofs)
 {
     // Conservative lower bound for an encoded transaction's size.
     private const int MinTransactionSizeBytes = 32;
@@ -101,7 +101,7 @@ internal class InclusionListBuilder(ITxPool txPool, IBlockTree blockTree, ISpecP
     /// <returns>Encodings the caller owns and disposes.</returns>
     private (HeldInclusionListProof Proof, List<ArrayPoolList<byte>?> Encoded)? CoveredDependencyBearing(BlockHeader? parent)
     {
-        if (proofs is null || parent is null) return null;
+        if (parent is null) return null;
         // The list constrains the next slot's block: its fork fixes static validity and the AGGREGATED_VK, predicted as
         // for mempool wrappers, so a held wrapper proof verifies under the same verifier.
         IReleaseSpec targetSpec = WrapperTargetFork.Predict(specProvider, parent,

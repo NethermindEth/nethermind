@@ -16,6 +16,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -213,6 +214,7 @@ public class RpcAllocationMeasurement
         new EthCapabilitiesProvider(chain.BlockTree.AsReadOnly(), chain.Container.Resolve<IStateBoundary>(), chain.Container.Resolve<ISyncConfig>(),
             Substitute.For<ISyncPointers>(), Substitute.For<IHistoryConfig>(), Substitute.For<IHistoryPruner>()),
         chain.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
+        chain.Container.Resolve<ProofWrapperService>(),
         chain.Container.ResolveOptional<HashesOnlyBlockReader>());
 
     /// <summary>Deploys a contract that writes storage, logs and calls a second contract, then fills <see cref="Blocks"/> blocks with calls to it.</summary>

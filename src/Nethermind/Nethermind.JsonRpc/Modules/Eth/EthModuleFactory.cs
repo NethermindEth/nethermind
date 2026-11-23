@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         IBlockForRpcFactory blockForRpcFactory,
         HashesOnlyBlockReader hashesOnlyBlockReader,
         IReceiptStorage receiptStorage,
-        ProofWrapperService? proofWrapperService = null)
+        ProofWrapperService proofWrapperService)
         : ModuleFactoryBase<IEthRpcModule>
     {
         private readonly ulong _secondsPerSlot = blocksConfig.SecondsPerSlot;
@@ -68,8 +68,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 _headBlockSignal,
                 capabilitiesProvider,
                 blockForRpcFactory,
+                proofWrapperService,
                 hashesOnlyBlockReader,
-                receiptStorage,
-                proofWrapperService);
+                receiptStorage);
     }
 }
