@@ -55,6 +55,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             lock (_gasPriceEstimationLock)
             {
+                // The head may have moved while this caller waited: price the live one, not the one read before the lock.
+                headBlock = _blockFinder.Head ?? headBlock;
+                headBlockHash = headBlock.Hash!;
                 if (_gasPriceEstimation.TryGetPrice(headBlockHash, out price))
                 {
                     return ValueTask.FromResult(price!.Value);
@@ -94,6 +97,9 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 
             lock (_maxPriorityFeePerGasEstimationLock)
             {
+                // Price the live head, as in GetGasPriceEstimate.
+                headBlock = _blockFinder.Head ?? headBlock;
+                headBlockHash = headBlock.Hash!;
                 if (_maxPriorityFeePerGasEstimation.TryGetPrice(headBlockHash, out price))
                 {
                     return price!.Value;

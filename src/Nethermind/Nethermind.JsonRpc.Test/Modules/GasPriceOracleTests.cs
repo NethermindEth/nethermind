@@ -666,7 +666,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Assert.That(lastPriceWhileHeld, Is.EqualTo(HeldScan.PreviousPrice(priorityFee)));
                 Assert.That(estimates, Is.All.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
                 Assert.That(scan.Scans, Is.EqualTo(1), "one scan for every caller");
-                Assert.That(scan.HeadReads, Is.EqualTo(4), "each caller reads the head once");
+                Assert.That(scan.HeadReads, Is.EqualTo(8), "each caller reads the head before and after taking the lock");
                 Assert.That(scan.CachedForNewHead(priorityFee), Is.EqualTo(HeldScan.ExpectedPrice(priorityFee)));
                 Assert.That(scan.Finish(), Is.Zero, "callers still running");
             }
@@ -727,8 +727,55 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        /// <summary>An oracle on a new head whose one-block scan estimates a 20 gwei gas price and a 10 gwei tip, with both caches
-        /// holding a previous head's price; the first <c>FindBlock</c> call waits for <c>Release</c>, later ones do not.</summary>
+        /// <summary>The head a waiter that read the new head finds once it holds the lock.</summary>
+        public enum HeadUnderTheLock
+        {
+            /// <summary>The next head, which the holder has just priced.</summary>
+            PricedNext,
+            /// <summary>No head: the waiter keeps the new head and prices it.</summary>
+            None,
+            /// <summary>The next head, which arrived while the holder priced the new head.</summary>
+            UnpricedNext
+        }
+
+        /// <remarks>For <see cref="HeadUnderTheLock.PricedNext"/> and <see cref="HeadUnderTheLock.None"/> the waiter reads the new head after
+        /// the holder has read the next one: the reverse of the real order, which the oracle cannot tell apart.</remarks>
+        [Test]
+        public void Estimate_HeadMovesWhileWaitingOnTheLock_PricesTheLiveHead([Values] bool priorityFee, [Values] HeadUnderTheLock underTheLock)
+        {
+            using HeldScan scan = new();
+            // The head the holder prices, the head the waiter prices, and how many scans that takes.
+            (Block holderHead, Block priced, int scans) = underTheLock switch
+            {
+                HeadUnderTheLock.PricedNext => (scan.NextHead, scan.NextHead, 1),
+                HeadUnderTheLock.None => (scan.NextHead, scan.NewHead, 2),
+                _ => (scan.NewHead, scan.NextHead, 2),
+            };
+            scan.SetHead(holderHead);
+            HeldScan.Caller holder = scan.Start(priorityFee);
+            bool held = scan.WaitUntilScanHeld();
+            scan.SetHead(scan.NewHead);
+            HeldScan.Caller waiter = scan.Start(priorityFee);
+            bool parked = scan.WaitUntilAllParked();
+            scan.SetHead(underTheLock == HeadUnderTheLock.None ? null : scan.NextHead);
+            scan.Release();
+            UInt256? holderEstimate = holder.Wait();
+            UInt256? waiterEstimate = waiter.Wait();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(held && parked, Is.True, "the holder is held in its scan and the waiter waits");
+                Assert.That(holderEstimate, Is.EqualTo(scan.PriceOf(holderHead, priorityFee)), "the holder's price");
+                Assert.That(waiterEstimate, Is.EqualTo(scan.PriceOf(priced, priorityFee)), "the waiter's price");
+                Assert.That(scan.Scans, Is.EqualTo(scans), "one scan per head priced");
+                Assert.That(scan.CachedFor(priorityFee, priced), Is.EqualTo(scan.PriceOf(priced, priorityFee)), "the head left in the cache");
+                Assert.That(scan.Finish(), Is.Zero, "callers still running");
+            }
+        }
+
+        /// <summary>An oracle on a new head whose one-block scan estimates a 20 gwei gas price and a 10 gwei tip (40 and 30 gwei from
+        /// its child, the next head), with both caches holding a previous head's price; the first scan to reach the new head's block
+        /// waits for <c>Release</c>, later ones do not.</summary>
         private sealed class HeldScan : IDisposable
         {
             private static readonly TimeSpan Guard = TimeSpan.FromSeconds(10);
@@ -738,6 +785,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             private Block? _head;
             private int _scans;
             private int _headReads;
+            private int _headReadsWhenHeld;
+            private int _callersWhenHeld;
 
             public HeldScan()
             {
@@ -748,6 +797,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                     return Volatile.Read(ref _head);
                 });
                 blockFinder.FindBlock(0UL).Returns(_ => Scan());
+                NextHead = Build.A.Block.WithParent(NewHead).WithBaseFeePerGas(10.GWei).WithTransactions(Build.A.Transaction.WithGasPrice(40.GWei).TestObject).TestObject;
+                blockFinder.FindBlock(1UL).Returns(NextHead);
                 _head = NewHead;
                 Oracle = new(blockFinder, GetSpecProviderWithEip1559EnabledAs(true), LimboLogs.Instance)
                 {
@@ -757,6 +808,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
 
             public Block NewHead { get; } = Build.A.Block.Genesis.WithBaseFeePerGas(10.GWei).WithTransactions(Build.A.Transaction.WithGasPrice(20.GWei).TestObject).TestObject;
+            public Block NextHead { get; }
             public Block PreviousHead { get; } = Build.A.Block.Genesis.WithTimestamp(1).TestObject;
             public GasPriceOracle Oracle { get; }
             public Exception? FirstScanFailure { get; init; }
@@ -766,6 +818,8 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             public static UInt256 ExpectedPrice(bool priorityFee) => priorityFee ? 10.GWei : 20.GWei;
             public static UInt256 PreviousPrice(bool priorityFee) => priorityFee ? 5.GWei : 7.GWei;
+            public static UInt256 NextPrice(bool priorityFee) => priorityFee ? 30.GWei : 40.GWei;
+            public UInt256 PriceOf(Block head, bool priorityFee) => head == NextHead ? NextPrice(priorityFee) : ExpectedPrice(priorityFee);
 
             public Caller Start(bool priorityFee)
             {
@@ -774,15 +828,22 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return caller;
             }
 
-            public bool WaitUntilScanHeld() => _scanHeld.Wait(Guard);
+            public bool WaitUntilScanHeld()
+            {
+                bool held = _scanHeld.Wait(Guard);
+                (_headReadsWhenHeld, _callersWhenHeld) = (HeadReads, _callers.Count);
+                return held;
+            }
 
-            /// <summary>The scan is released only after this: every caller has read the head and is blocked or finished.</summary>
-            public bool WaitUntilAllParked() => SpinWait.SpinUntil(() => HeadReads >= _callers.Count && _callers.All(static caller => caller.IsParked), Guard);
+            /// <summary>The scan is released only after this: every caller started since it was held has read the head, and every
+            /// caller is blocked or finished.</summary>
+            public bool WaitUntilAllParked() => SpinWait.SpinUntil(() => HeadReads - _headReadsWhenHeld >= _callers.Count - _callersWhenHeld && _callers.All(static caller => caller.IsParked), Guard);
 
             public void SetHead(Block? head) => Volatile.Write(ref _head, head);
             public void Release() => _release.Set();
             public PriceCache Cache(bool priorityFee) => priorityFee ? Oracle._maxPriorityFeePerGasEstimation : Oracle._gasPriceEstimation;
-            public UInt256? CachedForNewHead(bool priorityFee) => Cache(priorityFee).TryGetPrice(NewHead.Hash!, out UInt256? price) ? price : null;
+            public UInt256? CachedForNewHead(bool priorityFee) => CachedFor(priorityFee, NewHead);
+            public UInt256? CachedFor(bool priorityFee, Block head) => Cache(priorityFee).TryGetPrice(head.Hash!, out UInt256? price) ? price : null;
 
             /// <returns>How many callers are still running once the scan is released and each one is joined.</returns>
             public int Finish()
