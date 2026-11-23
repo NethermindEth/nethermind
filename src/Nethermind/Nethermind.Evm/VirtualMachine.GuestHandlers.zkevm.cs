@@ -2970,7 +2970,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         }
                     }
 
-                    if (slots is not null) slots.WriteAt(slot, in newValue);
+                    if (slots is not null) slots.WriteAt(slot, in storageCell, in currentValue, in newValue);
                     else worldState.Set(in storageCell, in newValue, in currentValue);
                     if (newValue.IsZero) vm.MetricsCounters.IncrementStorageDeleted();
                 }
