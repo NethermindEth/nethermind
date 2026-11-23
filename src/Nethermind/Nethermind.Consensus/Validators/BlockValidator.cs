@@ -102,7 +102,7 @@ public class BlockValidator(
     }
 
     /// <summary>EIP-8288 block validity: the header commitments must match the block's dependencies and any <c>dependency_proof</c>
-    /// received with it. <see cref="RecursiveStarkBlockValidator"/> verifies the proof.</summary>
+    /// received with it. <see cref="DependencyProofBlockValidator"/> verifies the proof.</summary>
     /// <remarks>A block committing to a nonempty proof it does not carry fails last with
     /// <see cref="BlockErrorMessages.MissingDependencyProof"/>, which is not invalidity (EIPs#12549).</remarks>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)

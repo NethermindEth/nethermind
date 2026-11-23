@@ -13,22 +13,17 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Validators;
 
-/// <summary>Adds EIP-8288 recursive STARK verification to suggested and orphaned block validation.</summary>
-/// <remarks>
-/// Runs after the inner validator accepts the block, so a block it rejects keeps its error. The inner validator checks the
-/// header commitment against the block: <c>block_deps_hash</c>, <c>dependency_proof_hash</c>, and that a block committing to a
-/// nonempty proof carries it. This one checks that the proof verifies against the block's dependencies and the block fork's
-/// <c>AGGREGATED_VK</c>, or is empty when there are none. It must run on the block carrying its stored proof, so it sits inside
-/// <see cref="DependencyProofAvailabilityBlockValidator"/>. Validators built without the container must wrap themselves in it,
-/// or the check does not run.
-/// </remarks>
-public sealed class RecursiveStarkBlockValidator(
+/// <summary>Verifies the EIP-8288 dependency proof against the block's dependencies and the fork's <c>AGGREGATED_VK</c>
+/// in suggested and orphaned block validation.</summary>
+/// <remarks>Runs after the inner validator accepts the block and must sit inside <see cref="DependencyProofAvailabilityBlockValidator"/>
+/// to see the stored proof. Validators built without the container must add it themselves, or the check does not run.</remarks>
+public sealed class DependencyProofBlockValidator(
     IBlockValidator inner,
     ILeanProofVerifier leanProofVerifier,
     ISpecProvider specProvider,
     ILogManager logManager) : IBlockValidator
 {
-    private readonly ILogger _logger = logManager.GetClassLogger<RecursiveStarkBlockValidator>();
+    private readonly ILogger _logger = logManager.GetClassLogger<DependencyProofBlockValidator>();
 
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
         inner.Validate(header, parent, isUncle, out error);
@@ -43,10 +38,10 @@ public sealed class RecursiveStarkBlockValidator(
         inner.ValidateWithdrawals(block, out error);
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) =>
-        inner.ValidateOrphanedBlock(block, out error) && ValidateRecursiveStark(block, out error);
+        inner.ValidateOrphanedBlock(block, out error) && ValidateDependencyProof(block, out error);
 
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
-        inner.ValidateSuggestedBlock(block, parent, out error, validateHashes) && ValidateRecursiveStark(block, out error);
+        inner.ValidateSuggestedBlock(block, parent, out error, validateHashes) && ValidateDependencyProof(block, out error);
 
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error) =>
         inner.ValidateProcessedBlock(processedBlock, receipts, suggestedBlock, out error);
@@ -54,7 +49,7 @@ public sealed class RecursiveStarkBlockValidator(
     public bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated, [NotNullWhen(false)] out string? error) =>
         inner.ValidateBodyAgainstHeader(header, toBeValidated, out error);
 
-    private bool ValidateRecursiveStark(Block block, [NotNullWhen(false)] out string? error)
+    private bool ValidateDependencyProof(Block block, [NotNullWhen(false)] out string? error)
     {
         error = null;
         // A block without the commitment needs no spec lookup: the inner validator has already required it from EIP-8288 on.

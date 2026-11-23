@@ -118,7 +118,7 @@ public static partial class StatelessExecutor
             specProvider,
             NullLogManager.Instance
         );
-        RecursiveStarkBlockValidator blockValidator = new(
+        DependencyProofBlockValidator blockValidator = new(
             new BlockValidator(
                 new TxValidator(specProvider.ChainId),
                 headerValidator,

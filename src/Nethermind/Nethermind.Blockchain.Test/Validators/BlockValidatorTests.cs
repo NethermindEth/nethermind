@@ -211,7 +211,7 @@ public class BlockValidatorTests
         (Block block, BlockHeader parent) = Eip8288Block();
         block.StarkProof = [1];
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(block.StarkProof), new Hash256(Eip8288Dependencies.ComputeBlockDepsHash(block, FrameTxSigHash.ComputeValue)));
-        RecursiveStarkBlockValidator sut = CreateEip8288Validator(new FixedLeanProofVerifier(false));
+        DependencyProofBlockValidator sut = CreateEip8288Validator(new FixedLeanProofVerifier(false));
 
         string? error;
         if (orphaned) sut.ValidateOrphanedBlock(block, out error);
@@ -340,7 +340,7 @@ public class BlockValidatorTests
         ISpecProvider specProvider = Eip8288SpecProvider(enabled: false);
         BlockValidator inner = new(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
         FixedLeanProofVerifier verifier = new(false);
-        RecursiveStarkBlockValidator sut = new(inner, verifier, specProvider, LimboLogs.Instance);
+        DependencyProofBlockValidator sut = new(inner, verifier, specProvider, LimboLogs.Instance);
 
         bool expected = Validate(inner, out string? expectedError);
         bool result = Validate(sut, out string? error);
@@ -398,10 +398,10 @@ public class BlockValidatorTests
         return depTx;
     }
 
-    private static RecursiveStarkBlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
+    private static DependencyProofBlockValidator CreateEip8288Validator(ILeanProofVerifier verifier, bool enabled = true)
     {
         ISpecProvider specProvider = Eip8288SpecProvider(enabled);
-        return new RecursiveStarkBlockValidator(
+        return new DependencyProofBlockValidator(
             new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance),
             verifier, specProvider, LimboLogs.Instance);
     }

@@ -95,7 +95,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
         }
     }
 
-    // The proof store join wraps the STARK check in the block processing module, so the proof verified is the stored one.
+    // The proof store join wraps the dependency proof check in the module, so the proof verified is the stored one.
     [Test]
     public void Module_verifies_the_stored_proof_of_a_block_received_without_it([Values] bool verdict)
     {

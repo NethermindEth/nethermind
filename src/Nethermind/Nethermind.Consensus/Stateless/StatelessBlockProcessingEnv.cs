@@ -101,7 +101,7 @@ public partial class StatelessBlockProcessingEnv(
         );
 
         HeaderValidator headerValidator = new(statelessBlockTree, sealValidator, specProvider, logManager);
-        RecursiveStarkBlockValidator blockValidator = new(
+        DependencyProofBlockValidator blockValidator = new(
             new BlockValidator(
                 new TxValidator(specProvider.ChainId),
                 headerValidator,

@@ -253,9 +253,9 @@ public class OptimismModuleTests
         }
     }
 
-    // EIP-8288: the recursive STARK check is a decorator over whichever block validator a plugin registers.
+    // EIP-8288: the dependency proof check is a decorator over whichever block validator a plugin registers.
     [Test]
-    public void Recursive_stark_check_applies_over_the_optimism_block_validator([Values] bool emptyProof)
+    public void Dependency_proof_check_applies_over_the_optimism_block_validator([Values] bool emptyProof)
     {
         IOptimismReleaseSpec spec = OptimismReleaseSpecSubstitute.Create();
         spec.IsEip8288Enabled.Returns(true);

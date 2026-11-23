@@ -194,7 +194,7 @@ public class StatelessInputGeneratorTests
         Assert.That(StatelessExecutor.Execute(block, witness, new TestSpecProvider(Osaka.Instance), _leanProofVerifier), Is.False);
     }
 
-    // EIP-8288: the executor builds its block validator by hand, so it must add the recursive STARK check itself.
+    // EIP-8288: the executor builds its block validator by hand, so it must add the dependency proof check itself.
     [Test]
     public void Direct_execution_rejects_a_missing_or_failing_dependency_proof([Values] bool proofMissing)
     {
