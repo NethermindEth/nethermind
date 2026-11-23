@@ -1634,12 +1634,18 @@ public class RetryCacheTests
             AnnounceResult promoted = cache.Announced(2, laterAnnouncer);
 
             cache.Received(1);
+            int trackedBeforeReceipt = cache.TrackedRequestsInUse;
+            int overflowBeforeReceipt = cache.OverflowRequestsInUse;
+            int pendingHandlersBeforeReceipt = cache.PendingHandlersInUse;
             cache.Received(2);
             AnnounceResult next = cache.Announced(3, laterAnnouncer);
 
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(promoted, Is.EqualTo(AnnounceResult.Delayed));
+                Assert.That(trackedBeforeReceipt, Is.EqualTo(1));
+                Assert.That(overflowBeforeReceipt, Is.Zero);
+                Assert.That(pendingHandlersBeforeReceipt, Is.EqualTo(1));
                 Assert.That(next, Is.EqualTo(AnnounceResult.RequestRequired));
                 Assert.That(cache.TrackedRequestsInUse, Is.EqualTo(1));
                 Assert.That(cache.OverflowRequestsInUse, Is.Zero);
