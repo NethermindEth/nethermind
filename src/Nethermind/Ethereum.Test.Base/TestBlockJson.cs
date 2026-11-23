@@ -10,6 +10,7 @@ namespace Ethereum.Test.Base
         public TestBlockHeaderJson? BlockHeader { get; set; }
         public TestBlockHeaderJson[]? UncleHeaders { get; set; }
         public string? Rlp { get; set; }
+        public string? DependencyProof { get; set; }
         public BlockAccessListAccountJson[]? BlockAccessList { get; set; }
 
         /// <summary>An expected-invalid block has no top-level fields; its access list is under <c>rlp_decoded</c>.</summary>
