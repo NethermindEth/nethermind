@@ -1421,7 +1421,6 @@ namespace Nethermind.Evm.TransactionProcessing
                             ref gasAvailable,
                             spec,
                             in accessTracker,
-                            isTracingAccess: false,
                             delegationAddress);
 
                         if (topFrameOutOfGas)
