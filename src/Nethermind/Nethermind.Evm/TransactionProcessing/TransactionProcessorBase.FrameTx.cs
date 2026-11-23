@@ -834,18 +834,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     private static bool OpensDeployPrefix(TxFrame[] frames, int i)
     {
         // EIP-8288 dependency frames carry no approval scope and may sit between the protocol verifier frames.
-        int first = SkipDependencies(frames, 0);
-        if (first < frames.Length && FrameTxValidation.IsExpiryVerifyFrame(frames[first])) first = SkipDependencies(frames, first + 1);
-        if (first < frames.Length && FrameTxValidation.IsRecentRootVerifyFrame(frames[first])) first = SkipDependencies(frames, first + 1);
+        int first = FrameTxValidation.SkipDependencies(frames, 0);
+        if (first < frames.Length && FrameTxValidation.IsExpiryVerifyFrame(frames[first])) first = FrameTxValidation.SkipDependencies(frames, first + 1);
+        if (first < frames.Length && FrameTxValidation.IsRecentRootVerifyFrame(frames[first])) first = FrameTxValidation.SkipDependencies(frames, first + 1);
         if (i != first || !FrameTxValidation.IsDeployFrame(frames[i])) return false;
-        int next = SkipDependencies(frames, i + 1);
+        int next = FrameTxValidation.SkipDependencies(frames, i + 1);
         return next < frames.Length && frames[next].Mode == FrameMode.Verify;
-
-        static int SkipDependencies(TxFrame[] frames, int index)
-        {
-            while (index < frames.Length && frames[index].Mode == FrameMode.DepVerify) index++;
-            return index;
-        }
     }
 
     private TransactionSubstate ExecuteFrame<TTracing>(TxFrame frame, Address resolvedTarget, Address caller, bool isStatic, FrameTxContext frameContext, in StackAccessTracker accessTracker, IReleaseSpec spec, ITxTracer tracer, out ulong gasUsed, out long stateGasUsed)

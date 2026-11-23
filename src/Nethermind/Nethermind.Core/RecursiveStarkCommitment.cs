@@ -8,6 +8,9 @@ namespace Nethermind.Core;
 /// <summary>The EIP-8288 header commitment to the body proof and its dependency statement.</summary>
 public sealed class RecursiveStarkCommitment(Hash256 starkProofHash, Hash256 blockDepsHash)
 {
+    /// <summary>The commitment of a block without dependencies: an empty proof over an empty statement, as at genesis.</summary>
+    public static RecursiveStarkCommitment Empty { get; } = new(Keccak.OfAnEmptyString, new Hash256(Eip8288Dependencies.ComputeDepsHash([])));
+
     /// <summary>Keccak-256 of the exact proof bytes carried in the block body.</summary>
     public Hash256 StarkProofHash { get; } = starkProofHash;
 

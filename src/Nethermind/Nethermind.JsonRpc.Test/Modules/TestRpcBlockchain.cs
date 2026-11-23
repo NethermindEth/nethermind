@@ -225,9 +225,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             @this.Container.ResolveOptional<IBlockForRpcFactory>() ?? new BlockForRpcFactory(),
+            @this.Container.Resolve<ProofWrapperService>(),
             @this.Container.ResolveOptional<HashesOnlyBlockReader>(),
-            @this.ReceiptFinder,
-            @this.Container.ResolveOptional<ProofWrapperService>());
+            @this.ReceiptFinder);
 
         protected override async Task<TestBlockchain> Build(Action<ContainerBuilder>? configurer = null)
         {

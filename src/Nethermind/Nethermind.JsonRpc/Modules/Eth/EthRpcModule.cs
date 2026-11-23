@@ -74,9 +74,9 @@ public partial class EthRpcModule(
     HeadBlockSignal headBlockSignal,
     IEthCapabilitiesProvider capabilitiesProvider,
     IBlockForRpcFactory blockForRpcFactory,
+    ProofWrapperService proofWrapperService,
     HashesOnlyBlockReader? hashesOnlyBlockReader = null,
-    IReceiptFinder? storedReceiptFinder = null,
-    ProofWrapperService? proofWrapperService = null) : IEthRpcModule
+    IReceiptFinder? storedReceiptFinder = null) : IEthRpcModule
 {
     public const int GetProofStorageKeyLimit = 1024;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
