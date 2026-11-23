@@ -9,8 +9,8 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V73;
 
 namespace Nethermind.Init.Steps;
 
-/// <summary>Creates the EIP-8288 eth/73 wrapper transport before the network starts.</summary>
-/// <remarks>The transport subscribes to wrapper validation on creation, so it offers wrappers validated before the first eth/73 session.</remarks>
+/// <summary>Creates the EIP-8437 wrapper transport before the network starts.</summary>
+/// <remarks>The transport subscribes to wrapper validation on creation, so it offers wrappers validated before the first EIP-8437 session.</remarks>
 [RunnerStepDependencies(
     dependencies: [typeof(InitializeBlockchain)],
     dependents: [typeof(InitializeNetwork)]
