@@ -24,6 +24,8 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IBlockTree _blockTree;
         private Hash256 _lastHash;
         private Task _latestRefresh = Task.CompletedTask;
+        private Block _pendingHead;
+        private bool _refreshQueued;
         private readonly Lock _lock = new();
         private readonly Lock _refreshLock = new();
         private readonly ILogger _logger;
@@ -49,19 +51,35 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private void OnNewHead(object sender, BlockEventArgs e)
         {
             // we don't want this to be on main processing thread, and refreshes must run one at a time in head order
-            // so that a refresh of an older head never overwrites the data of a newer one
+            // so that a refresh of an older head never overwrites the data of a newer one.
+            // Only the latest head waiting for a refresh is kept: the refreshes of the heads it supersedes would be skipped anyway.
             lock (_refreshLock)
             {
-                Task refresh = _latestRefresh
-                    .ContinueWith(_ => Refresh(e.Block), TaskScheduler.Default)
-                    .ContinueWith(t =>
-                    {
-                        if (t.IsFaulted)
-                        {
-                            if (_logger.IsError) _logger.Error($"Couldn't load contract data from block {e.Block.ToString(Block.Format.FullHashAndNumber)}.", t.Exception);
-                        }
-                    }, TaskScheduler.Default);
-                Volatile.Write(ref _latestRefresh, refresh);
+                _pendingHead = e.Block;
+                if (_refreshQueued) return;
+
+                _refreshQueued = true;
+                Volatile.Write(ref _latestRefresh, _latestRefresh.ContinueWith(_ => RefreshPendingHead(), TaskScheduler.Default));
+            }
+        }
+
+        private void RefreshPendingHead()
+        {
+            Block block;
+            lock (_refreshLock)
+            {
+                block = _pendingHead;
+                _pendingHead = null;
+                _refreshQueued = false;
+            }
+
+            try
+            {
+                Refresh(block);
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Couldn't load contract data from block {block.ToString(Block.Format.FullHashAndNumber)}.", e);
             }
         }
 

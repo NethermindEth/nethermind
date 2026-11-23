@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Contracts;
@@ -345,6 +346,64 @@ public abstract class ContractDataStoreTests
         await context.Store.LatestRefreshTask;
 
         Assert.That(context.Logger.LogList, Has.One.StartsWith("Couldn't load contract data"));
+    }
+
+    [Test]
+    public async Task keeps_only_latest_head_waiting_for_refresh()
+    {
+        Block firstHead = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(1).WithHash(TestItem.KeccakA).WithParentHash(TestItem.KeccakC).TestObject).TestObject;
+        Block head = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(5).WithHash(TestItem.KeccakB).WithParentHash(TestItem.KeccakD).TestObject).TestObject;
+        StoreContext context = BuildStoreWithLogger();
+        // invoke the subscribed handler directly, so that the substitute does not keep the raised event arguments
+        EventHandler<BlockEventArgs> onNewHead = (EventHandler<BlockEventArgs>)context.BlockTree.ReceivedCalls()
+            .Single(static c => c.GetMethodInfo().Name == $"add_{nameof(IBlockTree.NewHeadBlock)}").GetArguments()[0];
+        Block currentHead = firstHead;
+        context.BlockTree.Head.Returns(_ => currentHead);
+        using ManualResetEventSlim firstRefreshStarted = new();
+        using ManualResetEventSlim releaseFirstRefresh = new();
+        context.ReceiptFinder.Get(firstHead).Returns(_ =>
+        {
+            firstRefreshStarted.Set();
+            releaseFirstRefresh.Wait(TimeSpan.FromSeconds(10));
+            return [];
+        });
+        context.DataContract.GetAllItemsFromBlock(firstHead.Header).Returns([TestItem.AddressA]);
+        Address[] expected = [TestItem.AddressB];
+        context.DataContract.GetAllItemsFromBlock(head.Header).Returns(expected);
+
+        onNewHead(context.BlockTree, new BlockEventArgs(firstHead));
+        Assert.That(firstRefreshStarted.Wait(TimeSpan.FromSeconds(10)), Is.True);
+        WeakReference[] supersededHeads = RaiseNewHeads(onNewHead, context.BlockTree, 3);
+        currentHead = head;
+        onNewHead(context.BlockTree, new BlockEventArgs(head));
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        bool supersededHeadRetained = supersededHeads.Any(static h => h.IsAlive);
+        releaseFirstRefresh.Set();
+        await context.Store.LatestRefreshTask;
+
+        context.DataContract.Received(1).GetAllItemsFromBlock(head.Header);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(supersededHeadRetained, Is.False);
+            Assert.That(context.Store.Collection.GetSnapshot(), Is.EquivalentTo(expected));
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference[] RaiseNewHeads(EventHandler<BlockEventArgs> onNewHead, object sender, int count)
+    {
+        WeakReference[] heads = new WeakReference[count];
+        for (int i = 0; i < count; i++)
+        {
+            Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithNumber(2 + i).TestObject).TestObject;
+            onNewHead(sender, new BlockEventArgs(block));
+            heads[i] = new WeakReference(block);
+        }
+
+        return heads;
     }
 
     private static StoreContext BuildStoreWithLogger()
