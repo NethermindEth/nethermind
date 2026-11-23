@@ -113,7 +113,8 @@ jobs:
       - name: Generate and check the analyzer
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-        run: bash "$RUNNER_TEMP/rule-bot/route-b.sh" "$DATA"
+        run: |
+          "$RUNNER_TEMP/rule-bot/rule-bot" route-b --data "$DATA"
 
       - name: Upload analyzer
         uses: actions/upload-artifact@v7

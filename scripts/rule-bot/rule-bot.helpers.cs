@@ -227,6 +227,9 @@ static partial class RuleBot
     [GeneratedRegex(": error |failed:|total:")]
     private static partial Regex TestSummaryLine();
 
+    [GeneratedRegex("total: [0-9]+|Passed!|Failed!")]
+    private static partial Regex TestRunSummary();
+
     [GeneratedRegex(@"\{\{((?:" + Word + @"|[\uD800-\uDBFF][\uDC00-\uDFFF])+)\}\}")]
     private static partial Regex TemplateKey();
 
@@ -248,10 +251,10 @@ static partial class RuleBot
 
     internal static List<object?> L(IEnumerable<object?> items) => [.. items];
     private static Obj O(object? value) => (Obj)value!;
-    private static List<object?> A(object? value) => (List<object?>)value!;
+    internal static List<object?> A(object? value) => (List<object?>)value!;
     private static object? G(Obj obj, string key) => obj.TryGetValue(key, out var value) ? value : null;
     private static Obj Child(Obj obj, string key) => G(obj, key) as Obj ?? [];
-    private static string S(object? value) => (string)value!;
+    internal static string S(object? value) => (string)value!;
     private static long N(object? value) => Convert.ToInt64(value, CultureInfo.InvariantCulture);
     private static IEnumerable<string> Strings(object? value) => A(value).Select(S);
 
@@ -1355,6 +1358,102 @@ static partial class RuleBot
         return ok ? 0 : 1;
     }
 
+    private static string JqText(object? value) => value switch
+    {
+        null => "null",
+        bool b => b ? "true" : "false",
+        _ => Text(value).TrimEnd('\n')
+    };
+
+    private static string? Given(Obj? result, string key) =>
+        result is not null && G(result, key) is { } value && !Equals(value, false) ? JqText(value) : null;
+
+    private static Obj? LoadResult(string path)
+    {
+        try { return Load(path) as Obj; }
+        catch (Exception failure) when (failure is not OperationCanceledException) { return null; }
+    }
+
+    private static string LastLine(string path, Func<string, bool> matches) =>
+        LenientUtf8.GetString(File.ReadAllBytes(path)).Split('\n').LastOrDefault(matches) ?? "";
+
+    private static async Task<int> Logged(string log, string[] argv, CancellationToken token) =>
+        (await Exec(["bash", "-c", "log=$1; shift; exec \"$@\" > \"$log\" 2>&1", "route-b", log, .. argv], false, token)).Code;
+
+    private static void AddAttempt(Obj state, string cluster, string result) =>
+        ((List<object?>)state["attempts"]!).Add(D(("cluster", cluster), ("result", result)));
+
+    private static async Task<bool> RouteBAttempt(string data, string id, string cluster, string why, Obj gates, Obj state, string statePath, CancellationToken token)
+    {
+        var resultPath = Path.Combine(data, "analyzer-result.json");
+        var examplesPath = Path.Combine(data, "route-b-examples.json");
+        var examples = G(gates, cluster) is Obj gate && G(gate, "examples") is { } listed && !Equals(listed, false) ? listed : new List<object?>();
+        Save(examplesPath, examples);
+        File.Delete(resultPath);
+        var tools = $"Read,Glob,Grep,Edit(src/Nethermind/Nethermind.Analyzers/**),Write(src/Nethermind/Nethermind.Analyzers/**),Edit(src/Nethermind/Nethermind.Analyzers.Test/**),Write(src/Nethermind/Nethermind.Analyzers.Test/**),Write({resultPath}),Bash(dotnet build:*),Bash(dotnet test:*)";
+        var generation = await Logged(Path.Combine(data, $"analyzer-llm-{cluster}.log"),
+            [Path.Combine(Home, "llm.sh"), Path.Combine(Home, "prompts", "analyzer.txt"), tools, $"ID={id}", $"CLUSTER={cluster}", $"WHY={why}", $"EXAMPLES={examplesPath}", $"RESULT={resultPath}"], token);
+        Console.WriteLine($"route-b: {cluster} generation exit {generation}");
+
+        var result = LoadResult(resultPath);
+        var testClass = Given(result, "test_class") ?? "";
+        var analyzer = Given(result, "analyzer") ?? "";
+        const string AnalyzerPrefix = "src/Nethermind/Nethermind.Analyzers/";
+        if (!TestClassName().IsMatch(testClass) || !analyzer.StartsWith(AnalyzerPrefix, StringComparison.Ordinal) || !analyzer.AsSpan(AnalyzerPrefix.Length).EndsWith(".cs", StringComparison.Ordinal) || !File.Exists(analyzer) || (await Exec(["test", "-f", analyzer], false, token)).Code != 0)
+        {
+            var skip = Given(result, "skip") ?? "no analyzer produced";
+            Console.WriteLine($"route-b: {cluster} skipped: {skip}");
+            AddAttempt(state, cluster, $"skipped by the generator: {skip}");
+            Save(statePath, state);
+            return false;
+        }
+
+        await Git(["add", "-N", "."], false, token);
+        var self = Path.Combine(Home, "rule-bot");
+        string[] withoutToken = ["env", "-u", "CLAUDE_CODE_OAUTH_TOKEN", self];
+        var guardOk = (await Exec([self, "guard", "--new-id", id], true, token)).Code == 0;
+        var testsLog = Path.Combine(data, "analyzer-tests.log");
+        var testsOk = await Logged(testsLog, [.. withoutToken, "test", "--test-class", testClass], token) == 0;
+        var summary = LastLine(testsLog, line => TestRunSummary().IsMatch(line));
+        var redLog = Path.Combine(data, "analyzer-red.log");
+        var redOk = await Logged(redLog, [.. withoutToken, "red", "--analyzer", analyzer, "--test-class", testClass], token) == 0;
+        var redSummary = LastLine(redLog, line => line.StartsWith("red:", StringComparison.Ordinal));
+        static string Flag(bool value) => value ? "true" : "false";
+        Console.WriteLine($"route-b: {id} ({cluster}) guard={Flag(guardOk)} tests={Flag(testsOk)} red={Flag(redOk)} :: {summary}");
+        AddAttempt(state, cluster, $"guard {Flag(guardOk)}, tests {Flag(testsOk)}, red control {Flag(redOk)}");
+        foreach (var (key, value) in new (string, object?)[] { ("cluster", cluster), ("why", why), ("analyzer", analyzer), ("summary", Given(result, "summary") ?? ""),
+            ("guard_ok", guardOk), ("tests_ok", testsOk), ("red_ok", redOk), ("tests_summary", summary), ("red_summary", redSummary) })
+            state[key] = value;
+        Save(statePath, state);
+        return guardOk && testsOk && redOk;
+    }
+
+    internal static async Task RouteB(string data, CancellationToken token)
+    {
+        var plan = O(Load(Path.Combine(data, "plan.json")));
+        var gates = O(Load(Path.Combine(data, "gates.json")));
+        var queue = A(plan["route_b_queue"]).Select(O).ToList();
+        var id = JqText(G(plan, "route_b_id"));
+        var statePath = Path.Combine(data, "route_b.json");
+        var state = D(("id", id), ("cluster", JqText(queue.Count > 0 ? G(queue[0], "cluster") : null)), ("attempts", new List<object?>()));
+        Save(statePath, state);
+        foreach (var entry in queue)
+        {
+            var cluster = JqText(G(entry, "cluster"));
+            if (await RouteBAttempt(data, id, cluster, JqText(G(entry, "why")), gates, state, statePath, token))
+            {
+                await Git(["diff", $"--output={Path.Combine(data, "analyzer.patch")}", "HEAD"], false, token);
+                return;
+            }
+            await Git(["diff", $"--output={Path.Combine(data, $"analyzer-{cluster}.patch")}", "HEAD"], false, token);
+            await Git(["reset", "-q", "--hard", "HEAD"], false, token);
+            await Git(["clean", "-qfd", "-e", "/rule-bot"], false, token);
+        }
+        state["skip"] = string.Join("; ", ((List<object?>)state["attempts"]!).Select(O).Select(a => $"{S(a["cluster"])}: {S(a["result"])}"));
+        Save(statePath, state);
+        Console.WriteLine("route-b: no cluster produced an analyzer that passed the gates");
+    }
+
     internal static List<(string Url, string Author)> Examples(Obj gate, int count = 3) =>
         (G(gate, "examples") is List<object?> list ? list : []).Select(O).Take(count).Select(e => (S(e["url"]), S(e["author"]))).ToList();
 
@@ -1438,7 +1537,8 @@ static partial class RuleBot
         ["body"] = new(["data", "out"], ["head"], []),
         ["solutions"] = new([], ["workflows", "github-output"], []),
         ["package"] = new(["data"], ["github-output"], []),
-        ["deny-tools"] = new([], [], [])
+        ["deny-tools"] = new([], [], []),
+        ["route-b"] = new(["data"], [], [])
     };
 
     private static bool LooksLikeOption(string token) => token.Length > 1 && token[0] == '-' && !NegativeNumber().IsMatch(token);
@@ -1542,6 +1642,7 @@ static partial class RuleBot
                 case "body": Body(values["data"], Opt("head"), values["out"]); return 0;
                 case "solutions": SolutionsCommand(Opt("workflows") ?? ".github/workflows", Opt("github-output")); return 0;
                 case "package": PackageCommand(values["data"], Opt("github-output")); return 0;
+                case "route-b": await RouteB(values["data"], token); return 0;
                 default: Console.WriteLine(FixDenyTools()); return 0;
             }
         }

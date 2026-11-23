@@ -488,6 +488,30 @@ var tests = new (string Name, Func<Task> Body)[]
     })),
 
     ("test_prebuilt_guard_ignores_hostile_build_files", () => HostileBuildFiles(Home)),
+
+    ("test_route_b_stops_at_first_cluster_that_passes", async () =>
+    {
+        var (state, calls) = await RouteBRun(new() { ["a"] = """{"skip": "no shape"}""", ["b"] = RouteBResult, ["c"] = RouteBResult });
+        Equal("b", S(state["cluster"]));
+        Equal(2, A(state["attempts"]).Count);
+        True(Equals(state["guard_ok"], true) && Equals(state["tests_ok"], true) && Equals(state["red_ok"], true));
+        Equal(1, calls.Count(call => call[0] == "git" && call[1] == "reset"));
+        True(calls.Any(call => call[0] == "git" && call[1] == "diff" && call[2].EndsWith("/analyzer.patch", StringComparison.Ordinal)));
+        True(!calls.Any(call => call.Contains("CLUSTER=c")));
+    }),
+    ("test_route_b_runs_generated_code_without_the_token", async () =>
+    {
+        var (_, calls) = await RouteBRun(new() { ["a"] = RouteBResult });
+        var generated = calls.Where(call => call.Contains("--test-class")).ToList();
+        Equal(2, generated.Count);
+        foreach (var call in generated) True(string.Join(' ', call).Contains("env -u CLAUDE_CODE_OAUTH_TOKEN"));
+    }),
+    ("test_route_b_skips_analyzer_outside_the_analyzer_project", async () =>
+    {
+        var (state, calls) = await RouteBRun(new() { ["a"] = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Core/Foo.cs", "skip": "outside"}""" });
+        Equal("a: skipped by the generator: outside", S(state["skip"]));
+        True(!calls.Any(call => call.Contains("guard")));
+    }),
 };
 
 var failures = 0;
@@ -560,6 +584,38 @@ static class RuleBotTestSupport
 
     internal static List<Obj> Labels(int truePositive, int falsePositive) =>
         [.. Enumerable.Repeat("true_positive", truePositive).Concat(Enumerable.Repeat("false_positive", falsePositive)).Select(label => D(("label", label)))];
+
+    internal const string RouteBResult = """{"test_class": "FooTests", "analyzer": "src/Nethermind/Nethermind.Analyzers/Foo.cs", "summary": "ok"}""";
+
+    internal static async Task<(Obj State, List<string[]> Calls)> RouteBRun(Dictionary<string, string> results)
+    {
+        using var directory = new TempDirectory();
+        using var seams = new Seams();
+        var previous = Environment.CurrentDirectory;
+        var analyzers = Path.Combine(directory.Path, "src", "Nethermind", "Nethermind.Analyzers");
+        Directory.CreateDirectory(analyzers);
+        File.WriteAllText(Path.Combine(analyzers, "Foo.cs"), "");
+        var data = Path.Combine(directory.Path, "data");
+        var queue = L(results.Keys.Select(cluster => (object?)D(("cluster", cluster), ("why", "because"))));
+        Save(Path.Combine(data, "plan.json"), D(("route_b_id", "NETH012"), ("route_b_queue", queue)));
+        Save(Path.Combine(data, "gates.json"), new Obj());
+        var calls = new List<string[]>();
+        Exec = (argv, _, _) =>
+        {
+            calls.Add(argv);
+            if (argv.FirstOrDefault(item => item.StartsWith("CLUSTER=", StringComparison.Ordinal)) is { } cluster)
+                File.WriteAllText(Path.Combine(data, "analyzer-result.json"), results[cluster["CLUSTER=".Length..]]);
+            else if (argv[0] == "bash") File.WriteAllText(argv[4], argv.Contains("red") ? "red: PASS\n" : "Passed! total: 1\n");
+            return Task.FromResult((0, "", ""));
+        };
+        Environment.CurrentDirectory = directory.Path;
+        try
+        {
+            await RouteB(data, default);
+            return (O(Load(Path.Combine(data, "route_b.json"))), calls);
+        }
+        finally { Environment.CurrentDirectory = previous; }
+    }
 
     internal static async Task HostileBuildFiles(string home)
     {
