@@ -1026,7 +1026,8 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     [NonParallelizable]
-    public void EarlyStorageApply_ReconcilesFinalWrites([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    public void EarlyStorageApply_ReconcilesFinalWrites([Values] bool applyEarly, [Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit,
+        [Values(40, 300)] int slotCount)
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
         using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = applyEarly, DeferStorageTrieCommit = deferStorageTrieCommit });
@@ -1042,7 +1043,7 @@ public class FlatWorldStateScopeProviderTests
         scope.Commit(1);
         FlatStorageTree tree = (FlatStorageTree)scope.CreateStorageTree(address);
         Hash256 preBlockRoot = tree.RootHash;
-        UInt256[] expected = new UInt256[40];
+        UInt256[] expected = new UInt256[slotCount];
         expected[3] = clearAtBlockEnd ? UInt256.Zero : (UInt256)30;
 
         if (applyEarly)
