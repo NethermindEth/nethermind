@@ -23,6 +23,7 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public class LogIndexRpcModuleTests
 {
     private const long HeadNumber = 10;
+    private const int MaxResults = 3;
 
     [TestCase("""{"fromBlock":"latest","toBlock":"latest"}""")]
     [TestCase("""{"fromBlock":"0x1","toBlock":"0x5","topics":[null]}""")]
@@ -83,6 +84,45 @@ public class LogIndexRpcModuleTests
         Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.ResourceUnavailable}"));
     }
 
+    [Test]
+    public async Task logIndex_blockNumbers_at_result_limit_returns_indexed_blocks()
+    {
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>())
+            .Returns(_ => ((IEnumerable<int>)[2, 4, 6]).GetEnumerator());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0xa","address":"{{TestItem.AddressA}}"}""");
+
+        Assert.That(serialized, Is.EqualTo("""{"jsonrpc":"2.0","result":["0x2","0x4","0x6"],"id":67}"""));
+    }
+
+    [Test]
+    public async Task logIndex_blockNumbers_over_result_limit_returns_error_without_enumerating_all_blocks()
+    {
+        int enumerated = 0;
+        IEnumerator<int> EveryBlock()
+        {
+            for (int block = 1; block <= HeadNumber; block++)
+            {
+                enumerated++;
+                yield return block;
+            }
+        }
+
+        ILogIndexStorage storage = EnabledStorage();
+        storage.GetEnumerator(TestItem.AddressA, Arg.Any<int>(), Arg.Any<int>()).Returns(_ => EveryBlock());
+
+        string serialized = await RpcTest.TestSerializedRequest(CreateModule(storage), "logIndex_blockNumbers",
+            $$"""{"fromBlock":"0x1","toBlock":"0xa","address":"{{TestItem.AddressA}}"}""");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{ErrorCodes.LimitExceeded}"));
+            Assert.That(enumerated, Is.EqualTo(MaxResults + 1));
+        }
+    }
+
     private static ILogIndexStorage EnabledStorage()
     {
         ILogIndexStorage storage = Substitute.For<ILogIndexStorage>();
@@ -101,6 +141,6 @@ public class LogIndexRpcModuleTests
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(Arg.Any<BlockParameter>()).Returns(Build.A.Block.WithNumber(HeadNumber).TestObject);
 
-        return new LogIndexRpcModule(storage, Substitute.For<ILogIndexBuilder>(), blockFinder, bridge);
+        return new LogIndexRpcModule(storage, Substitute.For<ILogIndexBuilder>(), blockFinder, bridge, new JsonRpcConfig { MaxLogsPerResponse = MaxResults });
     }
 }
