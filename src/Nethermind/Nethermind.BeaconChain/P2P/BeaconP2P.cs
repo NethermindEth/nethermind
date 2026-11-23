@@ -49,6 +49,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     private const string IdentityMetadataKey = "p2pIdentityKey";
 
     private readonly IBeaconChainConfig _config;
+    private readonly int? _quicListenPort;
     private readonly LocalMetadataSource _metadataSource;
     private readonly IBeaconChainStatusSource _statusSource;
     private readonly BeaconChainStore _store;
@@ -97,14 +98,35 @@ public sealed class BeaconP2P : IAsyncDisposable
         Lazy<IBeaconSyncPeerPool>? peerPool = null,
         Action<PubsubRouter, PubsubSettings>? configureGossip = null,
         bool lightClientRequests = false)
+        : this(config, spec, store, statusSource, metadataSource, dataColumnSidecarPool, executionPayloadEnvelopePool, logManager,
+            config.QuicPort == 0 ? null : config.QuicPort, messageValidator, clock, peerPool, configureGossip, lightClientRequests)
+    { }
+
+    // A null port disables QUIC; an explicit zero lets the OS select a port for loopback tests.
+    internal BeaconP2P(
+        IBeaconChainConfig config,
+        BeaconChainSpec spec,
+        BeaconChainStore store,
+        IBeaconChainStatusSource statusSource,
+        LocalMetadataSource metadataSource,
+        DataColumnSidecarPool dataColumnSidecarPool,
+        ExecutionPayloadEnvelopePool executionPayloadEnvelopePool,
+        ILogManager logManager,
+        int? quicListenPort,
+        GossipMessageValidator? messageValidator = null,
+        SlotClock? clock = null,
+        Lazy<IBeaconSyncPeerPool>? peerPool = null,
+        Action<PubsubRouter, PubsubSettings>? configureGossip = null,
+        bool lightClientRequests = false)
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(config.QuicPort, nameof(IBeaconChainConfig.QuicPort));
-        ArgumentOutOfRangeException.ThrowIfGreaterThan(config.QuicPort, ushort.MaxValue, nameof(IBeaconChainConfig.QuicPort));
-        if (config.QuicPort != 0 && config.QuicPort == config.Discv5Port)
+        ArgumentOutOfRangeException.ThrowIfNegative(quicListenPort.GetValueOrDefault(), nameof(IBeaconChainConfig.QuicPort));
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(quicListenPort.GetValueOrDefault(), ushort.MaxValue, nameof(IBeaconChainConfig.QuicPort));
+        if (quicListenPort is > 0 && quicListenPort == config.Discv5Port)
             throw new ArgumentException("QUIC and discovery require different UDP ports.", nameof(IBeaconChainConfig.QuicPort));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidations, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidations));
         ArgumentOutOfRangeException.ThrowIfLessThan(config.GossipMaxPendingValidationBytes, 1, nameof(IBeaconChainConfig.GossipMaxPendingValidationBytes));
         _config = config;
+        _quicListenPort = quicListenPort;
         _peerPool = peerPool;
         _messageValidator = messageValidator;
         _configureGossip = configureGossip;
@@ -136,14 +158,13 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddLibp2p(builder =>
             {
                 builder.WithMplex();
-                if (config.QuicPort > 0) builder.WithQuic();
+                if (quicListenPort is not null) builder.WithQuic();
                 if (lightClientRequests)
                     builder.AddProtocol<LightClientBootstrapProtocol>(isExposed: false)
                         .AddProtocol<LightClientUpdatesByRangeProtocol>(isExposed: false)
                         .AddProtocol<LightClientFinalityUpdateProtocol>(isExposed: false)
                         .AddProtocol<LightClientOptimisticUpdateProtocol>(isExposed: false);
-                // Zero-custody light clients avoid Lighthouse's metadata v3 rejection:
-                // https://github.com/sigp/lighthouse/blob/v8.3.3/beacon_node/lighthouse_network/src/peer_manager/mod.rs#L1559-L1571
+                // Use metadata v2 for zero-custody light clients because peers can reject a v3 custody count below the network minimum.
                 builder.AddProtocolFactory(sp => new ProtocolRef(sp.GetRequiredService<MetaDataProtocolV2>(), isExposed: lightClientRequests)
                 {
                     AcceptInbound = lightClientRequests,
@@ -320,7 +341,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     /// <param name="token">Must stay uncancelled for the host lifetime: the pubsub heartbeat and reconnect loops are bound to it.</param>
     public async Task StartAsync(CancellationToken token)
     {
-        if (_config.QuicPort > 0 && !(QuicListener.IsSupported && QuicConnection.IsSupported))
+        if (_quicListenPort is not null && !(QuicListener.IsSupported && QuicConnection.IsSupported))
             throw new PlatformNotSupportedException("Beacon QUIC requires an available MsQuic runtime; install it or set QuicPort to 0 for TCP-only operation.");
         _startCts = CancellationTokenSource.CreateLinkedTokenSource(token);
         try
@@ -328,8 +349,8 @@ public sealed class BeaconP2P : IAsyncDisposable
             _localPeer = (LocalPeer)_serviceProvider.GetRequiredService<IPeerFactory>().Create(LoadOrCreateIdentity());
             _localPeer.OnConnected += OnSessionConnected;
             _localPeer.Sessions.CollectionChanged += OnSessionsChanged;
-            Multiaddress[] addresses = _config.QuicPort > 0
-                ? [$"/ip4/0.0.0.0/tcp/{_config.P2PPort}", $"/ip4/0.0.0.0/udp/{_config.QuicPort}/quic-v1"]
+            Multiaddress[] addresses = _quicListenPort is int requestedQuicPort
+                ? [$"/ip4/0.0.0.0/tcp/{_config.P2PPort}", $"/ip4/0.0.0.0/udp/{requestedQuicPort}/quic-v1"]
                 : [$"/ip4/0.0.0.0/tcp/{_config.P2PPort}"];
             await _localPeer.StartListenAsync(addresses, _startCts.Token);
             token.ThrowIfCancellationRequested();
@@ -345,8 +366,8 @@ public sealed class BeaconP2P : IAsyncDisposable
             {
                 throw new InvalidOperationException($"Beacon chain P2P failed to bind TCP port {_config.P2PPort}; check whether the port is already in use");
             }
-            if (_config.QuicPort > 0 && quicEndpoint?.Port != _config.QuicPort)
-                throw new InvalidOperationException($"Beacon chain P2P failed to bind QUIC UDP port {_config.QuicPort}; check whether the port is already in use");
+            if (_quicListenPort is int quicPort && (quicEndpoint is null || quicEndpoint.Port == 0 || quicPort != 0 && quicEndpoint.Port != quicPort))
+                throw new InvalidOperationException($"Beacon chain P2P failed to bind QUIC UDP port {quicPort}; check whether the port is already in use");
 
             _router = _serviceProvider.GetRequiredService<PubsubRouter>();
             if (_messageValidator is not null)
@@ -458,6 +479,7 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal int SessionCountForTest => _localPeer?.Sessions.Count ?? 0;
     /// <summary>The fixed part of every request's budget; internal so a test need not wait out the production value.</summary>
     internal TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
+    internal TimeProvider IdentifyTime { get; init; } = TimeProvider.System;
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
     /// <summary>Whether the pubsub router holds a gossip channel with <paramref name="peerId"/>, opened by either side.</summary>
@@ -978,7 +1000,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             TaskCompletionSource<SessionInfo> slot = _owner._sessionInfo.GetValue(session,
                 static _ => new(TaskCreationOptions.RunContinuationsAsynchronously));
             IdentifyResult answer;
-            using CancellationTokenSource cts = new(IdentifyTimeout);
+            using CancellationTokenSource cts = new(IdentifyTimeout, _owner.IdentifyTime);
             try
             {
                 answer = await session.DialAsync<IdentifyProtocol, IdentifyResult>(cts.Token);

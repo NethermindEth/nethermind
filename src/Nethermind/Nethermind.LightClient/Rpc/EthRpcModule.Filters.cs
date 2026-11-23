@@ -19,13 +19,13 @@ internal sealed partial class EthRpcModule
     public Task<ResultWrapper<UInt256>> eth_newPendingTransactionFilter() =>
         Execute(static (rpc, _) => Task.FromResult(rpc.Filters.Install(pending: true)));
 
-    public Task<ResultWrapper<JsonElement>> eth_getFilterChanges(UInt256 filterId)
+    public Task<ResultWrapper<SerializedJson>> eth_getFilterChanges(UInt256 filterId)
     {
         bool webSocket = JsonRpcContext.Current?.RpcEndpoint == RpcTransport.Ws;
         return Execute((rpc, token) => rpc.Filters.PollAsync(filterId, rpc, token, webSocket), static response => response);
     }
 
-    public Task<ResultWrapper<JsonElement>> eth_getFilterLogs(UInt256 filterId) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getFilterLogs(UInt256 filterId) =>
         Execute((rpc, token) => rpc.GetLogsAsync(rpc.Filters.GetLogQuery(filterId), token));
 
     public Task<ResultWrapper<bool>> eth_uninstallFilter(UInt256 filterId) =>

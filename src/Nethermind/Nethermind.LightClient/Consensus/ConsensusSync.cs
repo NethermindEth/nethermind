@@ -40,11 +40,7 @@ internal static class ConsensusSync
                 {
                     token.ThrowIfCancellationRequested();
                     ulong currentSlot = CurrentSlot();
-                    try { store.RequireRecent(currentSlot); }
-                    catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
-                    {
-                        await ForceUpdateAsync(currentSlot);
-                    }
+                    if (!store.IsRecent(currentSlot) && !await ForceUpdateAsync(currentSlot)) return false;
                     ulong before = progress();
                     if (logger.IsEnabled(LogLevel.Debug))
                     {
@@ -67,35 +63,49 @@ internal static class ConsensusSync
                 finally { gate.Release(); }
             }, token);
 
-        internal async Task<bool> ForceUpdateAsync(CancellationToken token)
+        internal async Task RunRecoveryLoopAsync(CancellationToken token)
+        {
+            // A verified candidate can have only one eligible slot. Peer deadlines cannot determine this cadence.
+            using PeriodicTimer timer = new(TimeSpan.FromSeconds(spec.SecondsPerSlot), clock);
+            do
+            {
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    if (!store.IsRecent(CurrentSlot())) await ForceUpdateAsync(token, onlyIfStale: true);
+                }
+                catch (LightClientClockException exception)
+                {
+                    logger.LogDebug(exception, "Waiting for the local clock to catch up with the authenticated head");
+                }
+            } while (await timer.WaitForNextTickAsync(token));
+        }
+
+        internal async Task<bool> ForceUpdateAsync(CancellationToken token, bool onlyIfStale = false)
         {
             await gate.WaitAsync(token);
             try
             {
                 token.ThrowIfCancellationRequested();
-                return await ForceUpdateAsync(CurrentSlot());
+                ulong currentSlot = CurrentSlot();
+                return (!onlyIfStale || !store.IsRecent(currentSlot)) && await ForceUpdateAsync(currentSlot);
             }
             finally { gate.Release(); }
         }
 
         private async Task<bool> ForceUpdateAsync(ulong currentSlot)
         {
-            LightClientUpdate? best = store.BestUpdate;
-            if (best is null)
-            {
-                RequireLiveState(store, currentSlot, stopApplication);
-                return false;
-            }
-            bool forced;
+            LightClientUpdate? forced;
             try { forced = store.ForceUpdateRecent(currentSlot); }
             catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
             {
-                RequireLiveState(store, currentSlot, stopApplication);
-                throw;
+                stopApplication();
+                throw new InvalidOperationException("Authenticated light-client state is too old to resume; restart with a recent trusted checkpoint.", exception);
             }
-            if (!forced) return false;
-            await PersistAsync(journal.AppendForcedAsync(best, currentSlot, store, stoppingToken));
+            if (forced is null) return false;
+            await PersistAsync(journal.AppendForcedAsync(forced, currentSlot, store, stoppingToken));
             publish();
+            logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
             return true;
         }
 
@@ -242,16 +252,6 @@ internal static class ConsensusSync
             catch (IrrelevantLightClientUpdateException) { break; }
             catch (OperationCanceledException) when (timeout.IsCancellationRequested && !cancellationToken.IsCancellationRequested) { break; }
             if (store.SyncProgress == (before, knewNext)) break;
-        }
-    }
-
-    internal static void RequireLiveState(LightClientStore store, ulong currentSlot, Action stopApplication)
-    {
-        try { store.RequireRecent(currentSlot); }
-        catch (LightClientLocalStateException exception) when (exception is not LightClientClockException)
-        {
-            stopApplication();
-            throw new InvalidOperationException("Authenticated light-client state is too old to resume; restart with a recent trusted checkpoint.", exception);
         }
     }
 

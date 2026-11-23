@@ -5,6 +5,8 @@ using System.Net;
 using System.Net.Quic;
 using System.Net.Sockets;
 using Multiformats.Address;
+using Multiformats.Address.Net;
+using Multiformats.Address.Protocols;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.Types;
@@ -20,8 +22,8 @@ public class QuicLoopbackTests
     public async Task Quic_session_identifies_the_peer_and_exchanges_status_and_ping(CancellationToken token)
     {
         RequireQuic();
-        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: PeerSessionNodes.FreeUdpPort());
-        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: PeerSessionNodes.FreeUdpPort());
+        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: 0);
+        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: 0);
         await using PeerHostScope hosts = new(client.P2P, server.P2P);
         await hosts.StartAsync(token, server.P2P, client.P2P);
 
@@ -45,8 +47,8 @@ public class QuicLoopbackTests
     public async Task Quic_dial_rejects_a_peer_whose_certificate_has_another_peer_id(CancellationToken token)
     {
         RequireQuic();
-        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: PeerSessionNodes.FreeUdpPort());
-        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: PeerSessionNodes.FreeUdpPort());
+        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: 0);
+        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: 0);
         await using PeerHostScope hosts = new(client.P2P, server.P2P);
         await hosts.StartAsync(token, server.P2P, client.P2P);
 
@@ -64,13 +66,13 @@ public class QuicLoopbackTests
     public async Task Disposing_an_active_quic_host_closes_its_udp_listener_and_session(CancellationToken token)
     {
         RequireQuic();
-        int port = PeerSessionNodes.FreeUdpPort();
-        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: port);
-        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: PeerSessionNodes.FreeUdpPort());
+        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: 0);
+        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: 0);
         await using BeaconP2P clientHost = client.P2P;
         await using BeaconP2P serverHost = server.P2P;
         await serverHost.StartAsync(token);
         await clientHost.StartAsync(token);
+        int port = serverHost.ListenAddresses.Single(static address => address.Has<QUICv1>()).ToEndPoint().Port;
         await PeerSessionNodes.DialAsync(clientHost, serverHost, token, quic: true);
 
         await serverHost.DisposeAsync();
@@ -85,13 +87,16 @@ public class QuicLoopbackTests
     public async Task Discovered_peer_falls_back_to_tcp_after_a_quic_dial_failure(CancellationToken token)
     {
         RequireQuic();
-        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: PeerSessionNodes.FreeUdpPort());
-        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: PeerSessionNodes.FreeUdpPort());
+        PeerSessionNodes.Node server = PeerSessionNodes.Create(quicPort: 0);
+        PeerSessionNodes.Node client = PeerSessionNodes.Create(quicPort: 0);
         await using PeerHostScope hosts = new(client.P2P, server.P2P);
         await hosts.StartAsync(token, server.P2P, client.P2P);
 
         string tcp = PeerSessionNodes.LoopbackAddressText(server.P2P);
-        string unavailableQuic = $"/ip4/127.0.0.1/udp/{PeerSessionNodes.FreeUdpPort()}/quic-v1/p2p/{server.P2P.LocalPeerId}";
+        using Socket withoutQuic = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+        withoutQuic.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+        int port = ((IPEndPoint)withoutQuic.LocalEndPoint!).Port;
+        string unavailableQuic = $"/ip4/127.0.0.1/udp/{port}/quic-v1/p2p/{server.P2P.LocalPeerId}";
         BeaconPeerCandidate candidate = new(unavailableQuic, server.P2P.LocalPeerId!.ToString(), [], 1, "")
         {
             Addresses = [unavailableQuic, tcp],

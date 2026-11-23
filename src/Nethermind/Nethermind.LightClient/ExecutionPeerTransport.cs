@@ -202,8 +202,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         {
             builder.AddModule(new AuRaHeaderModule())
                 .AddSingleton(chainSpec.EngineChainSpecParametersProvider.GetChainSpecParameters<AuRaChainSpecEngineParameters>())
-                .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
-                .AddSingleton<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>();
+                .AddModule(new AuRaWithdrawalModule());
         }
         builder.RegisterModule(new LightExecutionOverrides(_syncServer, _transactionRelay, _stop.Token));
         if (dataDirectory is not null)
@@ -1772,6 +1771,9 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             _historyStopped = true;
             history = _logHistory.IsValueCreated ? _logHistory.Value : null;
         }
+        // The history must stop using the transport before it is torn down.
+        Task? historyDisposal = history?.DisposeAsync().AsTask();
+        if (historyDisposal is not null) await historyDisposal.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         await _stop.CancelAsync();
         await _bodies.DisposeAsync();
         await _receipts.DisposeAsync();
@@ -1784,7 +1786,6 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         for (int i = 0; i < ExecutionRequestLimit; i++) await _executionDataRequests.WaitAsync();
         for (int i = 0; i < ExecutionBulkLimit; i++) await _executionBulkRequests.WaitAsync();
         for (int i = 0; i < SnapRequestLimit; i++) await _snapRequests.WaitAsync();
-        if (history is not null) await history.DisposeAsync();
         if (_snapCapacityTask is not null)
         {
             try { await _snapCapacityTask; }
@@ -1808,6 +1809,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
         await _services.DisposeAsync();
         _peerCooldowns.Dispose();
         _stop.Dispose();
+        if (historyDisposal is not null) await historyDisposal;
     }
 
     private sealed class LightExecutionOverrides(LightSyncServer syncServer, BoundedTransactionRelay transactionRelay,

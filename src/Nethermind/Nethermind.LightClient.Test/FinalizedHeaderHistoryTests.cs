@@ -155,6 +155,7 @@ public class FinalizedHeaderHistoryTests
                 Assert.That(chain.WorkerCancellationObserved, Is.True);
                 Assert.That(history.Progress.FirstVerifiedBlock, Is.EqualTo(472));
                 Assert.That(history.Progress.IsBackfilling, Is.False);
+                Assert.That(history.Progress.Error, shutdown ? Is.Null : Is.Not.Null);
                 Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromMinutes(30)));
             }
         }

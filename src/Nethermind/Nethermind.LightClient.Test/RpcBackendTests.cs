@@ -1988,8 +1988,8 @@ public class RpcBackendTests
         using ExecutionData data = new(provider, specs, 1, new BlockForRpcFactory());
 
         JsonElement projected = single
-            ? (await data.FindTransactionAsync(header, transaction.Hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None))!.Value
-            : (await data.GetBlockReceiptsAsync(header, CancellationToken.None))[0];
+            ? JsonElement.Parse((await data.FindTransactionAsync(header, transaction.Hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None))!.Value.Utf8Json)
+            : JsonElement.Parse((await data.GetBlockReceiptsAsync(header, CancellationToken.None)).Utf8Json)[0];
         TxReceipt fullNodeReceipt = new(receipt) { Bloom = spec.IsEip7668Enabled ? Bloom.ZeroLength : authenticatedBloom };
         JsonElement expected = BoundedJson.ToElement(new ReceiptForRpc(transaction.Hash, fullNodeReceipt, header.Timestamp,
             transaction.GetGasInfo(spec, header)));
@@ -2042,7 +2042,8 @@ public class RpcBackendTests
         Hash256 hash = provider.Transactions[index].Hash!;
         if (warm) await data.FindTransactionAsync(provider.Header, hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None);
 
-        JsonElement receipt = (await data.FindTransactionAsync(provider.Header, hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None))!.Value;
+        JsonElement receipt = JsonElement.Parse(
+            (await data.FindTransactionAsync(provider.Header, hash, ExecutionData.TransactionResult.Receipt, CancellationToken.None))!.Value.Utf8Json);
         int[] offsets = [0, 2, 3];
         using (Assert.EnterMultipleScope())
         {
@@ -2056,7 +2057,7 @@ public class RpcBackendTests
                 Is.EqualTo(provider.Receipts[index].Logs!.Select((_, i) => RpcBackend.Quantity((ulong)(offsets[index] + i)))));
         }
 
-        JsonElement all = await data.GetBlockReceiptsAsync(provider.Header, CancellationToken.None);
+        JsonElement all = JsonElement.Parse((await data.GetBlockReceiptsAsync(provider.Header, CancellationToken.None)).Utf8Json);
         Assert.That(receipt.GetRawText(), Is.EqualTo(all[index].GetRawText()));
     }
 
@@ -2379,7 +2380,7 @@ public class RpcBackendTests
         older.GasUsed = provider.Header.GasUsed;
         using ExecutionData execution = new(provider, MainnetSpecProvider.Instance, 1, new BlockForRpcFactory());
 
-        JsonElement one = await execution.GetLogsAsync([provider.Header], null, [], CancellationToken.None);
+        JsonElement one = JsonElement.Parse((await execution.GetLogsAsync([provider.Header], null, [], CancellationToken.None)).Utf8Json);
         Assert.That(one.GetArrayLength(), Is.EqualTo(3));
         RpcException? error = await Assert.ThrowsAsync<RpcException>(async () =>
             await execution.GetLogsAsync([older, provider.Header], null, [], CancellationToken.None));
@@ -2864,6 +2865,28 @@ public class RpcBackendTests
     }
 
     [Test]
+    public async Task Fee_history_rewards_seed_the_index_for_transactions_outside_the_recent_hash_scan([Values] bool receipt)
+    {
+        const ulong blockNumber = 20_000_010;
+        using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+        Transaction transaction = new() { GasLimit = 21_000, GasPrice = 2, To = AccountAddress };
+        new EthereumEcdsa(1).Sign(key, transaction);
+        Hash256 hash = transaction.Hash = transaction.CalculateHash();
+        LookupSource source = new(transaction, blockNumber);
+        using RpcBackend rpc = new(source, () => source.Finalized, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => source.Latest);
+        string method = receipt ? "eth_getTransactionReceipt" : "eth_getTransactionByHash";
+        JsonElement lookup = Parameters(hash.ToString());
+        CancellationToken token = TestContext.CurrentContext.CancellationToken;
+
+        JsonElement excluded = (JsonElement)await rpc.InvokeAsync(method, lookup, token);
+        Assert.That(excluded.ValueKind, Is.EqualTo(JsonValueKind.Null));
+        await rpc.InvokeAsync("eth_feeHistory", Parameters("0x1", RpcBackend.Quantity(blockNumber), new double[] { 50 }), token);
+        JsonElement indexed = (JsonElement)await rpc.InvokeAsync(method, lookup, token);
+
+        Assert.That(indexed.GetProperty("blockNumber").GetString(), Is.EqualTo(RpcBackend.Quantity(blockNumber)));
+    }
+
+    [Test]
     public async Task Polling_an_unincluded_transaction_skips_indexed_bodies([Values] bool receipt)
     {
         using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
@@ -3195,7 +3218,7 @@ public class RpcBackendTests
         });
         using RpcBackend rpc = new(source, () => start, 1, specProvider: MainnetSpecProvider.Instance, getLatestHead: () => latest);
 
-        JsonElement receipt = await rpc.SendRawTransactionSyncAsync(encoded, 2_000, token);
+        JsonElement receipt = JsonElement.Parse((await rpc.SendRawTransactionSyncAsync(encoded, 2_000, token)).Utf8Json);
 
         using (Assert.EnterMultipleScope())
         {

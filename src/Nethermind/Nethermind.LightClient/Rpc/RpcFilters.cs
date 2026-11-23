@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -17,7 +16,7 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
     internal const int MaxHeadChanges = 32;
     internal const int MaxPendingHashes = 1_024;
     internal static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
-    private static readonly JsonElement Empty = JsonSerializer.SerializeToElement(Array.Empty<object>());
+    private static readonly SerializedJson Empty = new("[]"u8.ToArray());
     private readonly TimeProvider _clock = timeProvider ?? TimeProvider.System;
     private readonly Lock _lock = new();
     private readonly Dictionary<UInt256, Filter> _filters = [];
@@ -122,7 +121,7 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
         lock (_lock) return GetFilter(id, _clock.GetTimestamp()).Query ?? throw FilterNotFound();
     }
 
-    internal async Task<ResultWrapper<JsonElement>> PollAsync(UInt256 id, RpcBackend rpc, CancellationToken token, bool webSocket = false)
+    internal async Task<ResultWrapper<SerializedJson>> PollAsync(UInt256 id, RpcBackend rpc, CancellationToken token, bool webSocket = false)
     {
         Filter filter;
         HeadChange[] changes;
@@ -134,26 +133,34 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
             filter = GetFilter(id, now);
             filter.LastPoll = now;
             // The poll in flight owns the changes so far, and leaves them for the next poll if its response is not sent.
-            if (filter.Polling) return ResultWrapper<JsonElement>.Success(Empty);
+            if (filter.Polling) return ResultWrapper<SerializedJson>.Success(Empty);
             if (filter.Pending is { } pending)
             {
                 if (filter.PendingOverflow) throw RemoveOverflowedFilter(id);
-                if (pending.Count == 0) return ResultWrapper<JsonElement>.Success(Empty);
+                if (pending.Count == 0) return ResultWrapper<SerializedJson>.Success(Empty);
                 hashes = [.. pending];
                 changes = [];
             }
             else
             {
                 if (filter.Cursor < _lostThrough) throw RemoveOverflowedFilter(id);
-                changes = [.. _history.Where(head => head.Sequence > filter.Cursor)];
-                if (changes.Length == 0) return ResultWrapper<JsonElement>.Success(Empty);
-                if (filter.Query is null) hashes = [.. changes.SelectMany(change => change.AddedHashes)];
+                List<HeadChange> unseen = [];
+                foreach (HeadChange change in _history)
+                    if (change.Sequence > filter.Cursor) unseen.Add(change);
+                if (unseen.Count == 0) return ResultWrapper<SerializedJson>.Success(Empty);
+                changes = [.. unseen];
+                if (filter.Query is null)
+                {
+                    List<Hash256> added = [];
+                    foreach (HeadChange change in changes) added.AddRange(change.AddedHashes);
+                    hashes = [.. added];
+                }
             }
             filter.Polling = true;
         }
         try
         {
-            JsonElement? result = hashes is not null ? BoundedJson.ToElement(hashes)
+            SerializedJson? result = hashes is not null ? BoundedJson.Serialize(hashes)
                 : await rpc.GetLogChangesAsync(filter.Query!, filter.Start, changes, token, webSocket);
             long sequence = changes.Length == 0 ? 0 : changes[^1].Sequence;
             int pendingCount = filter.Pending is not null ? hashes!.Length : 0;
@@ -215,11 +222,11 @@ internal sealed class RpcFilters(TimeProvider? timeProvider = null)
     internal sealed record HeadChange(long Sequence, LogBlock[] Removed, Hash256[] AddedHashes, BlockHeader[] AddedLogHeaders);
 
     /// <summary>A poll result that commits the filter's cursor only once the transport accepts it into the outgoing frame.</summary>
-    internal sealed class PollResponse : ResultWrapper<JsonElement>
+    internal sealed class PollResponse : ResultWrapper<SerializedJson>
     {
         private Action<bool>? _complete;
 
-        internal PollResponse(JsonElement result, Action<bool> complete)
+        internal PollResponse(SerializedJson result, Action<bool> complete)
         {
             Data = result;
             _complete = complete;

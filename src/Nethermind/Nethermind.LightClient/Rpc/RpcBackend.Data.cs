@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.FluentRlp;
@@ -19,16 +20,16 @@ internal sealed partial class RpcBackend
 {
     private static readonly JsonSerializerOptions StorageKeyOptions = new() { Converters = { new RpcParameterConverters.StorageIndexParameterConverter() } };
 
-    internal Task<JsonElement> GetBlockHeaderAsync(JsonElement selector, bool hashOnly, CancellationToken token) =>
+    internal Task<SerializedJson> GetBlockHeaderAsync(JsonElement selector, bool hashOnly, CancellationToken token) =>
         GetDataAsync(selector, hashOnly, DataKind.Header, false, UInt256.Zero, token);
 
-    internal Task<JsonElement> GetBlockAccessListAsync(JsonElement selector, CancellationToken token) =>
+    internal Task<SerializedJson> GetBlockAccessListAsync(JsonElement selector, CancellationToken token) =>
         GetDataAsync(selector, false, DataKind.BlockAccessList, false, UInt256.Zero, token);
 
-    internal Task<JsonElement> GetRawTransactionAsync(JsonElement selector, bool hashOnly, UInt256 index, CancellationToken token) =>
+    internal Task<SerializedJson> GetRawTransactionAsync(JsonElement selector, bool hashOnly, UInt256 index, CancellationToken token) =>
         GetDataAsync(selector, hashOnly, DataKind.RawTransaction, false, index, token);
 
-    internal Task<JsonElement> GetRawTransactionByHashAsync(Hash256 hash, CancellationToken token) =>
+    internal Task<SerializedJson> GetRawTransactionByHashAsync(Hash256 hash, CancellationToken token) =>
         GetTransactionByHashAsync(hash, ExecutionData.TransactionResult.Raw, token);
 
     internal async Task<AccountForRpc?> GetAccountForRpcAsync(Address address, JsonElement selector, CancellationToken cancellationToken)

@@ -38,15 +38,15 @@ internal sealed class LightClientStore
     private PreparedCommittee? _currentCommitteeKeys;
     private PreparedCommittee? _nextCommitteeKeys;
 
-    private sealed class PreparedCommittee(SyncCommittee committee)
+    internal sealed class PreparedCommittee(SyncCommittee committee)
     {
         private readonly BlsPublicKey[] _keys = new BlsPublicKey[Presets.SyncCommitteeSize];
         private readonly long[] _points = new long[Presets.SyncCommitteeSize * Bls.P1Affine.Sz];
         private readonly bool[] _valid = new bool[Presets.SyncCommitteeSize];
 
-        public SyncCommittee Committee { get; } = committee;
+        internal SyncCommittee Committee { get; } = committee;
 
-        public Bls.P1Affine Get(int index)
+        internal Bls.P1Affine Get(int index)
         {
             BlsPublicKey key = Committee.Pubkeys![index];
             Bls.P1Affine point = new(_points.AsSpan(index * Bls.P1Affine.Sz, Bls.P1Affine.Sz));
@@ -71,12 +71,6 @@ internal sealed class LightClientStore
         LightClientUpdate? BestUpdate,
         int PreviousMaxParticipants,
         int CurrentMaxParticipants);
-
-    private LightClientStore(BeaconChainSpec spec, Snapshot snapshot)
-    {
-        _spec = spec;
-        _snapshot = snapshot;
-    }
 
     public LightClientStore(BeaconChainSpec spec, Hash256 checkpoint, LightClientBootstrap bootstrap, ulong currentSlot)
     {
@@ -103,12 +97,22 @@ internal sealed class LightClientStore
     /// </remarks>
     /// <exception cref="LightClientLocalStateException">The authenticated state is too old to trust.</exception>
     /// <exception cref="LightClientClockException">The authenticated head is ahead of the local clock.</exception>
-    internal void RequireRecent(ulong currentSlot)
-    {
-        ulong optimisticSlot = Volatile.Read(ref _snapshot).OptimisticHeader.Beacon!.Slot;
-        if (optimisticSlot > currentSlot) throw new LightClientClockException();
-        RequireLocal(currentSlot - optimisticSlot <= Presets.MinValidatorWithdrawabilityDelay * _spec.SlotsPerEpoch,
+    internal void RequireRecent(ulong currentSlot) => RequireRecent(Volatile.Read(ref _snapshot), currentSlot);
+
+    internal bool IsRecent(ulong currentSlot) => IsRecent(Volatile.Read(ref _snapshot), currentSlot);
+
+    private bool IsRecent(Snapshot snapshot, ulong currentSlot) =>
+        GetOptimisticAge(snapshot, currentSlot) <= Presets.MinValidatorWithdrawabilityDelay * _spec.SlotsPerEpoch;
+
+    private void RequireRecent(Snapshot snapshot, ulong currentSlot) =>
+        RequireLocal(IsRecent(snapshot, currentSlot),
             "Authenticated light-client state is older than the conservative 256-epoch weak-subjectivity bound; supply a recent trusted checkpoint.");
+
+    private static ulong GetOptimisticAge(Snapshot snapshot, ulong currentSlot)
+    {
+        ulong optimisticSlot = snapshot.OptimisticHeader.Beacon!.Slot;
+        if (optimisticSlot > currentSlot) throw new LightClientClockException();
+        return currentSlot - optimisticSlot;
     }
 
     /// <summary>A detached copy of the most recent authenticated finalized header.</summary>
@@ -195,27 +199,42 @@ internal sealed class LightClientStore
         update.AttestedHeader, null, null, null, null, update.SyncAggregate,
         update.SignatureSlot, currentSlot);
 
-    /// <summary>Applies timeout recovery only when its resulting authenticated head passes the live recency policy.</summary>
+    /// <summary>Returns the applied recovery candidate when its timeout has elapsed and its resulting head is recent.</summary>
+    /// <remarks>Live sync can wait for a verified pending candidate to reach its timeout. Any resulting head must pass the same absolute recency bound.</remarks>
     /// <exception cref="LightClientLocalStateException">The proposed state is too old or ahead of the local clock.</exception>
-    internal bool ForceUpdateRecent(ulong currentSlot)
+    internal LightClientUpdate? ForceUpdateRecent(ulong currentSlot)
     {
-        LightClientStore proposal = new(_spec, _snapshot);
-        bool forced = proposal.ForceUpdate(currentSlot);
-        proposal.RequireRecent(currentSlot);
-        if (forced) Volatile.Write(ref _snapshot, proposal._snapshot);
-        return forced;
+        Snapshot snapshot = _snapshot;
+        if (snapshot.BestUpdate is not { } candidate)
+        {
+            RequireRecent(snapshot, currentSlot);
+            return null;
+        }
+        _ = GetOptimisticAge(snapshot, currentSlot);
+        if (!IsForceDue(snapshot.SyncHeader.Beacon!.Slot, currentSlot)) return null;
+
+        Snapshot proposal = ApplyForce(snapshot, candidate);
+        RequireRecent(proposal, currentSlot);
+        LightClientUpdate applied = CloneUpdate(candidate);
+        Volatile.Write(ref _snapshot, proposal);
+        return applied;
     }
 
     /// <summary>Advances the sync committee after an update timeout, while retaining the proven finalized head.</summary>
     public bool ForceUpdate(ulong currentSlot)
     {
         Snapshot snapshot = _snapshot;
-        ulong timeout = _spec.SlotsPerEpoch * Presets.EpochsPerSyncCommitteePeriod;
-        if (snapshot.BestUpdate is null || currentSlot <= snapshot.SyncHeader.Beacon!.Slot ||
-            currentSlot - snapshot.SyncHeader.Beacon.Slot <= timeout)
+        if (snapshot.BestUpdate is not { } best || !IsForceDue(snapshot.SyncHeader.Beacon!.Slot, currentSlot))
             return false;
+        Volatile.Write(ref _snapshot, ApplyForce(snapshot, best));
+        return true;
+    }
 
-        LightClientUpdate best = snapshot.BestUpdate;
+    private bool IsForceDue(ulong syncSlot, ulong currentSlot) =>
+        currentSlot > syncSlot && currentSlot - syncSlot > _spec.SlotsPerEpoch * Presets.EpochsPerSyncCommitteePeriod;
+
+    private Snapshot ApplyForce(Snapshot snapshot, LightClientUpdate best)
+    {
         LightClientHeader target = HasNonzeroBranch(best.FinalityBranch) &&
             best.FinalizedHeader!.Beacon!.Slot > snapshot.SyncHeader.Beacon!.Slot
             ? best.FinalizedHeader : best.AttestedHeader!;
@@ -239,7 +258,7 @@ internal sealed class LightClientStore
 
         LightClientHeader optimistic = target.Beacon.Slot > snapshot.OptimisticHeader.Beacon!.Slot
             ? CloneHeader(target) : snapshot.OptimisticHeader;
-        Volatile.Write(ref _snapshot, snapshot with
+        return snapshot with
         {
             SyncHeader = target.Beacon.Slot > snapshot.SyncHeader.Beacon.Slot ? CloneHeader(target) : snapshot.SyncHeader,
             OptimisticHeader = optimistic,
@@ -248,8 +267,7 @@ internal sealed class LightClientStore
             BestUpdate = null,
             PreviousMaxParticipants = targetPeriod == storePeriod + 1 ? snapshot.CurrentMaxParticipants : snapshot.PreviousMaxParticipants,
             CurrentMaxParticipants = targetPeriod == storePeriod + 1 ? 0 : snapshot.CurrentMaxParticipants,
-        });
-        return true;
+        };
     }
 
     private void ProcessCore(LightClientHeader? attested, LightClientHeader? finalized, Hash256[]? finalityBranch,

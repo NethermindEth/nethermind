@@ -223,8 +223,11 @@ internal sealed class FinalizedHeaderHistory : IAsyncDisposable
             {
                 lock (_state)
                 {
-                    _failure = failure;
-                    _failureCode = exception is RpcException rpc ? rpc.Code : -32000;
+                    if (exception is not OperationCanceledException || !_stop.IsCancellationRequested)
+                    {
+                        _failure = failure;
+                        _failureCode = exception is RpcException rpc ? rpc.Code : -32000;
+                    }
                     Publish(backfilling: false);
                 }
             }

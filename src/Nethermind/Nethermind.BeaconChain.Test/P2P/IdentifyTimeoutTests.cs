@@ -14,37 +14,29 @@ namespace Nethermind.BeaconChain.Test.P2P;
 [CancelAfter(60_000)]
 public class IdentifyTimeoutTests
 {
-    private static readonly TimeSpan Within = BeaconP2P.IdentifyTimeout + TimeSpan.FromSeconds(3);
-
     [Test]
     public async Task A_dial_to_a_peer_that_never_answers_identify_fails_within_the_identify_bound(CancellationToken token)
     {
         UnansweredIdentifyProtocol? unanswered = null;
         await using PlainPeer peer = await PlainPeer.StartAsync(settings => unanswered = new UnansweredIdentifyProtocol(false, settings), token);
-        await using BeaconP2P node = Create().P2P;
+        ManualTimeProvider deadline = new();
+        await using BeaconP2P node = Create(identifyTime: deadline).P2P;
         ManualTimeProvider readClock = ControlIdentifyReadDeadline(node);
         await node.StartAsync(token);
 
         using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = node.DialPeerAsync(peer.Address, attempt.Token);
-        await unanswered!.Requested.Task.WaitAsync(token);
-        await readClock.TimerCreated.WaitAsync(token);
-        // The library removes a closed session under this lock, so holding it keeps the failed session listed while the dial fails:
-        // the window in which the dial could hand that session back. The dial's own lookup takes the lock too, so it waits here.
-        Task heldListing = Task.Run(() =>
-        {
-            lock (node.LocalPeerForTest!.Sessions)
-            {
-                ((IAsyncResult)dial).AsyncWaitHandle.WaitOne(BeaconP2P.IdentifyTimeout + TimeSpan.FromSeconds(1));
-            }
-        }, token);
         try
         {
-            Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
+            await unanswered!.Requested.Task.WaitAsync(token);
+            await readClock.TimerCreated.WaitAsync(token);
+            await deadline.TimerCreated.WaitAsync(token);
+            deadline.AdvanceAndFireTimer(BeaconP2P.IdentifyTimeout);
+            await ((Task)dial).WaitAsync(token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            token.ThrowIfCancellationRequested();
         }
         finally
         {
-            await heldListing.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
             attempt.Cancel();
             await ((Task)dial).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
@@ -55,14 +47,15 @@ public class IdentifyTimeoutTests
             Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo(new AggregateException().Message), $"the dial failed with {failure.GetType().Name}: {failure.Message}");
             Assert.That(failure.Message, Does.Not.Contain("closed before it was established"), "an identify timeout is not reported as a closed session");
         }
-        await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
+        await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token);
         Assert.That(node.IdentifyTimeoutsForTest, Is.EqualTo(1), "the stall is counted as an identify timeout");
     }
 
     [Test]
     public async Task A_session_from_a_peer_that_never_answers_identify_is_closed_within_the_identify_bound(CancellationToken token)
     {
-        await using BeaconP2P node = Create().P2P;
+        ManualTimeProvider deadline = new();
+        await using BeaconP2P node = Create(identifyTime: deadline).P2P;
         ManualTimeProvider readClock = ControlIdentifyReadDeadline(node);
         await node.StartAsync(token);
         int established = 0;
@@ -75,7 +68,9 @@ public class IdentifyTimeoutTests
         {
             await unanswered!.Requested.Task.WaitAsync(token);
             await readClock.TimerCreated.WaitAsync(token);
-            await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token, Within);
+            await deadline.TimerCreated.WaitAsync(token);
+            deadline.AdvanceAndFireTimer(BeaconP2P.IdentifyTimeout);
+            await WaitUntilAsync(() => node.SessionCountForTest == 0, "the unidentified session was left open", token);
         }
         finally
         {
@@ -92,7 +87,7 @@ public class IdentifyTimeoutTests
     [Test]
     public async Task Unsupported_identify_is_rejected_without_waiting_for_the_identify_deadline([Values] bool inbound, CancellationToken token)
     {
-        await using BeaconP2P node = Create().P2P;
+        await using BeaconP2P node = Create(identifyTime: new ManualTimeProvider()).P2P;
         await node.StartAsync(token);
         int established = 0;
         node.SessionEstablished += (_, _) => Interlocked.Increment(ref established);
@@ -100,13 +95,13 @@ public class IdentifyTimeoutTests
         using BeaconP2P.SessionWatch watch = node.WatchSessions(peer.Peer.Identity.PeerId);
         using CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(token);
         Task<ISession> dial = inbound ? peer.Peer.DialAsync(LoopbackAddress(node), attempt.Token) : node.DialPeerAsync(peer.Address, attempt.Token);
-        TimeSpan prompt = TimeSpan.FromSeconds(2);
         try
         {
             await WaitUntilAsync(() => watch.Opened != 0, "fixture: no session reached the node", token);
+            await ((Task)dial).WaitAsync(token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            token.ThrowIfCancellationRequested();
             if (!inbound)
             {
-                Assert.That(await Task.WhenAny(dial, Task.Delay(prompt, token)), Is.SameAs(dial), "an unsupported identify protocol fails before the identify deadline");
                 Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted));
                 Exception failure = dial.Exception!.InnerException!;
                 using (Assert.EnterMultipleScope())
@@ -117,13 +112,11 @@ public class IdentifyTimeoutTests
                     Assert.That(PeerManager.DescribeFailure(failure), Does.Not.Contain("timed out"));
                 }
             }
-            await WaitUntilAsync(() => node.SessionCountForTest == 0, "the rejected unidentified session stayed listed", token, prompt);
-            Assert.That(await Task.WhenAny(dial, Task.Delay(prompt, token)), Is.SameAs(dial), "the remote handshake also ended");
-            await ((Task)dial).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+            await WaitUntilAsync(() => node.SessionCountForTest == 0, "the rejected unidentified session stayed listed", token);
             if (dial.IsCompletedSuccessfully)
             {
                 ISession remote = await dial;
-                await WaitUntilAsync(() => remote.Closed.IsCancellationRequested, "the remote session remained open after identify rejection", token, prompt);
+                await WaitUntilAsync(() => remote.Closed.IsCancellationRequested, "the remote session remained open after identify rejection", token);
             }
         }
         finally
@@ -143,7 +136,8 @@ public class IdentifyTimeoutTests
         UnansweredIdentifyProtocol? unanswered = null;
         await using PlainPeer peer = await PlainPeer.StartAsync(
             settings => localClose ? unanswered = new UnansweredIdentifyProtocol(false, settings) : new ClosingIdentifyProtocol(settings), token);
-        await using BeaconP2P node = Create().P2P;
+        await using BeaconP2P node = Create(identifyTime: new ManualTimeProvider()).P2P;
+        ControlIdentifyReadDeadline(node);
         await node.StartAsync(token);
 
         Task<ISession> dial = node.DialPeerAsync(peer.Address, token);
@@ -159,11 +153,9 @@ public class IdentifyTimeoutTests
             await session.DisconnectAsync();
         }
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended");
-            Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "fixture: the dial failed");
-        }
+        await ((Task)dial).WaitAsync(token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        token.ThrowIfCancellationRequested();
+        Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), "fixture: the dial failed");
         Exception failure = dial.Exception!.InnerException!;
         string description = $"the dial failed with {failure.GetType().Name}: {failure.Message}";
         using (Assert.EnterMultipleScope())
@@ -171,8 +163,7 @@ public class IdentifyTimeoutTests
             Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo("request timed out").And.Not.EqualTo(new AggregateException().Message), description);
             Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.RequestFailed), description);
         }
-        await WaitUntilAsync(() => node.SessionCountForTest == 0, "fixture: the closed session stayed listed", token, Within);
-        await Task.Delay(BeaconP2P.IdentifyTimeout, token);
+        await WaitUntilAsync(() => node.SessionCountForTest == 0, "fixture: the closed session stayed listed", token);
         Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a closed session is not counted as an identify timeout");
     }
 

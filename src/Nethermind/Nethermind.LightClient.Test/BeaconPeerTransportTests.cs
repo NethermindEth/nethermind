@@ -230,14 +230,11 @@ public class BeaconPeerTransportTests
 
         await ConsensusSync.CatchUpAsync(store, ConsensusTests.Spec, fixture.UpdateAsync, () => 16384,
             (update, _) => { store.Process(update, 16384); return Task.CompletedTask; }, token).WaitAsync(TimeSpan.FromSeconds(2), token);
-        bool stopped = false;
-        ConsensusSync.RequireLiveState(store, 16384, () => stopped = true);
-        bool forced = store.ForceUpdate(16384);
+        LightClientUpdate? forced = store.ForceUpdateRecent(16384);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(forced, Is.True);
-            Assert.That(stopped, Is.False);
+            Assert.That(forced, Is.Not.Null);
             Assert.That(store.Period, Is.EqualTo(1));
             Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(8190));
             Assert.That(BootstrapAbsenceFixture.Failures(first.Peer), Is.Zero);
@@ -362,7 +359,7 @@ public class BeaconPeerTransportTests
                 Task Request() => requests.RequestAsync([peer], (_, _) => Task.FromResult(update),
                     Validate<LightClientUpdate>(value =>
                     {
-                        ConsensusSync.RequireLiveState(store, beforeValidation ? 9UL : 11UL, static () => Assert.Fail("Clock skew must not stop the application."));
+                        store.RequireRecent(beforeValidation ? 9UL : 11UL);
                         store.Process(value, 11);
                     }), CancellationToken.None);
                 if (beforeValidation)

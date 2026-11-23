@@ -366,7 +366,9 @@ namespace Nethermind.Facade
             IBlockTracer<TTrace> tracer = simulateBlockTracerFactory.CreateSimulateBlockTracer(payload.TraceTransfers, env.WorldState, env.SpecProvider, header, cancellationToken);
             try
             {
-                return _simulateBridgeHelper.TrySimulate(header, payload, tracer, env, gasCapLimit, cancellationToken);
+                SimulateBridgeHelper.ExecutionEnvironment execution = new(env.WorldState, env.SpecProvider, env.CodeInfoRepository,
+                    env.SimulateRequestState, env.BlockProcessor);
+                return _simulateBridgeHelper.TrySimulate(header, payload, tracer, execution, gasCapLimit, cancellationToken, blockTree: env.BlockTree);
             }
             finally
             {

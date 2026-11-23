@@ -29,18 +29,18 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
     private readonly EthereumEcdsa _ecdsa = new(chainId);
     private readonly BoundedMemoryCache _transactionIndex = new();
 
-    internal JsonElement GetHeader(BlockHeader header) =>
-        BoundedJson.ToElement(blockForRpcFactory.CreateHeader(header, specProvider));
+    internal SerializedJson GetHeader(BlockHeader header) =>
+        BoundedJson.Serialize(blockForRpcFactory.CreateHeader(header, specProvider));
 
-    internal async Task<JsonElement> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken)
+    internal async Task<SerializedJson> GetBlockAccessListAsync(BlockHeader header, CancellationToken cancellationToken)
     {
         if (header.BlockAccessListHash is null)
             throw new RpcException(ErrorCodes.BlockAccessListResourceNotFound, "Resource not found");
         ReadOnlyBlockAccessList accessList = await source.GetBlockAccessListAsync(header, cancellationToken);
-        return BoundedJson.ToElement(AccountAccessForRpc.FromBlockAccessList(accessList));
+        return BoundedJson.Serialize(AccountAccessForRpc.FromBlockAccessList(accessList));
     }
 
-    internal async Task<JsonElement> GetBlockAsync(BlockHeader header, bool fullTransactions, CancellationToken cancellationToken)
+    internal async Task<SerializedJson> GetBlockAsync(BlockHeader header, bool fullTransactions, CancellationToken cancellationToken)
     {
         Block block = await source.GetBlockAsync(header, cancellationToken);
         Index(block);
@@ -51,20 +51,20 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
             ValidatePayloadBytes(payloadBytes);
             RecoverSenders(block);
         }
-        return BoundedJson.ToElement(blockForRpcFactory.Create(block, fullTransactions, specProvider));
+        return BoundedJson.Serialize(blockForRpcFactory.Create(block, fullTransactions, specProvider));
     }
 
-    internal async Task<JsonElement> GetBlockTransactionCountAsync(BlockHeader header, CancellationToken cancellationToken)
+    internal async Task<SerializedJson> GetBlockTransactionCountAsync(BlockHeader header, CancellationToken cancellationToken)
     {
         Block block = await source.GetBlockAsync(header, cancellationToken);
-        return JsonSerializer.SerializeToElement($"0x{block.Transactions.Length:x}");
+        return BoundedJson.Serialize($"0x{block.Transactions.Length:x}");
     }
 
-    internal async Task<JsonElement> GetTransactionAsync(BlockHeader header, int index, CancellationToken cancellationToken, bool raw = false)
+    internal async Task<SerializedJson> GetTransactionAsync(BlockHeader header, int index, CancellationToken cancellationToken, bool raw = false)
     {
         Block block = await source.GetBlockAsync(header, cancellationToken);
         Index(block);
-        if ((uint)index >= (uint)block.Transactions.Length) return JsonSerializer.SerializeToElement<object?>(null);
+        if ((uint)index >= (uint)block.Transactions.Length) return BoundedJson.Null;
         Transaction transaction = block.Transactions[index];
         RefreshTransactionLocation(transaction.Hash ??= transaction.CalculateHash(), block.Header);
         if (raw) return EncodeRawTransaction(transaction);
@@ -72,10 +72,10 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         RecoverSender(transaction);
         TransactionForRpcContext context = new(chainId, header.Hash!, header.Number, index, header.Timestamp, header.BaseFeePerGas,
             specProvider.GetSpec(header), excessBlobGas: header.ExcessBlobGas);
-        return BoundedJson.ToElement(TransactionForRpc.FromTransaction(transaction, context));
+        return BoundedJson.Serialize(TransactionForRpc.FromTransaction(transaction, context));
     }
 
-    internal async Task<JsonElement> GetBlockReceiptsAsync(BlockHeader header, CancellationToken cancellationToken)
+    internal async Task<SerializedJson> GetBlockReceiptsAsync(BlockHeader header, CancellationToken cancellationToken)
     {
         Block block = await source.GetBlockAsync(header, cancellationToken);
         Index(block);
@@ -83,10 +83,10 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         long payloadBytes = 0;
         foreach (TxReceipt receipt in receipts) ValidateLogPayload(receipt, ref payloadBytes);
         ReceiptForRpc[] result = BuildReceipts(block, receipts);
-        return BoundedJson.ToElement(result);
+        return BoundedJson.Serialize(result);
     }
 
-    internal async Task<JsonElement> GetLogsAsync(BlockHeader[] headers, HashSet<Address>? addresses,
+    internal async Task<SerializedJson> GetLogsAsync(BlockHeader[] headers, HashSet<Address>? addresses,
         IReadOnlyList<HashSet<Hash256>?> topics, CancellationToken cancellationToken,
         Func<Address, Hash256[], bool>? includeLog = null, bool removed = false)
     {
@@ -130,7 +130,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
                     pending.RemoveAt(0);
                 } while (pending.Count != 0 && pending[0].IsCompleted);
             }
-            return BoundedJson.ToElement(result);
+            return BoundedJson.Serialize(result);
         }
         finally
         {
@@ -214,7 +214,7 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
 
     internal enum TransactionResult { Transaction, Receipt, Raw }
 
-    internal async Task<JsonElement?> FindTransactionAsync(BlockHeader header, Hash256 hash, TransactionResult result,
+    internal async Task<SerializedJson?> FindTransactionAsync(BlockHeader header, Hash256 hash, TransactionResult result,
         CancellationToken cancellationToken)
     {
         if (await FindTransactionInBlockAsync(header, hash, cancellationToken) is not { } located) return null;
@@ -232,11 +232,11 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
             ValidateLogPayload(receipts[index], ref payloadBytes);
             ReceiptForRpc receipt = BuildReceipt(block, receipts[index], index,
                 index == 0 ? 0 : receipts[index - 1].GasUsedTotal, logIndex, specProvider.GetSpec(block.Header));
-            return BoundedJson.ToElement(receipt);
+            return BoundedJson.Serialize(receipt);
         }
         ValidatePayloadBytes(PayloadBytes(transaction));
         RecoverSender(transaction);
-        return BoundedJson.ToElement(TransactionForRpc.FromTransaction(transaction,
+        return BoundedJson.Serialize(TransactionForRpc.FromTransaction(transaction,
             new(chainId, header.Hash!, header.Number, index, header.Timestamp, header.BaseFeePerGas,
                 specProvider.GetSpec(header), excessBlobGas: header.ExcessBlobGas)));
     }
@@ -257,12 +257,12 @@ internal sealed class ExecutionData(IExecutionStateSource source, ISpecProvider 
         return null;
     }
 
-    private static JsonElement EncodeRawTransaction(Transaction transaction)
+    private static SerializedJson EncodeRawTransaction(Transaction transaction)
     {
         const RlpBehaviors encoding = RlpBehaviors.SkipTypedWrapping;
         if (TxDecoder.Instance.GetLength(transaction, encoding) * 2L + 4 > BoundedJson.ResultLimit)
             throw BoundedJson.TooLarge();
-        return BoundedJson.ToElement(TxDecoder.Instance.Encode(transaction, encoding));
+        return BoundedJson.Serialize(TxDecoder.Instance.Encode(transaction, encoding));
     }
 
     private void RefreshTransactionLocation(Hash256 hash, BlockHeader header)

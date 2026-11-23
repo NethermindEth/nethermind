@@ -55,6 +55,7 @@ if (Array.Exists(args, static arg => arg is "--help" or "-h"))
         "Optional: --checkpoint <trusted beacon block root> or --checkpoint-url <trusted HTTPS Beacon API>\n" +
         "          --checkpoint-check-url <independent trusted HTTPS Beacon API>\n" +
         "Optional: --network mainnet|hoodi|sepolia|gnosis (default mainnet) --urls http://127.0.0.1:8545\n" +
+        "          --AllowedHosts <host1;host2> (RPC DNS names, default localhost and *.localhost)\n" +
         "          --data-dir src/Nethermind/artifacts/lightclient\n" +
         "          --beacon-port 9050 --beacon-quic-port 9051 (0 disables QUIC) --execution-port 30307\n" +
         "          --host-accounts <0xaddress,0xaddress,...> (complete account state retained in RAM)\n" +
@@ -167,7 +168,8 @@ async Task RunClientAsync(CancellationToken stoppingToken)
     LightClientMetrics metrics = new(network, status.Read);
     string rpcUrl = LightClientHost.ReadRpcUrls(builder.Configuration);
     using RpcService rpcService = new(status, logManager);
-    rpcService.Config.AllowedHosts = builder.Configuration["AllowedHosts"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? ["*"];
+    rpcService.Config.AllowedHosts = builder.Configuration["AllowedHosts"]?.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        ?? ["localhost", "*.localhost"];
     rpcService.Config.CorsOrigins = [];
     IJsonRpcProcessor processor = rpcService.CreateProcessor(new RpcServiceDiagnostics(rpcService.Service,
         loggerFactory.CreateLogger("LightClient"), metrics));
@@ -388,6 +390,7 @@ async Task RunClientAsync(CancellationToken stoppingToken)
         {
             using CancellationTokenSource workersStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             Task[] workers = [PollConsensusAsync(workersStop.Token), PublishConsensusAsync(workersStop.Token),
+                consensus.RunRecoveryLoopAsync(workersStop.Token),
                 ReportPeersAsync(workersStop.Token), beacon.GossipCompletion,
                 execution.HostAccountsAsync(GetFreshLatestHead, clock, workersStop.Token)];
             await Task.WhenAny(workers);
@@ -466,12 +469,15 @@ async Task RunClientAsync(CancellationToken stoppingToken)
             {
                 await ConsensusSync.CatchUpAsync(store, spec, beacon.UpdateAsync, CurrentSlot,
                     consensus.ProcessAsync, cancellationToken, clock);
-                if (await consensus.ForceUpdateAsync(cancellationToken))
-                    logger.LogWarning("Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged");
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
                 logger.LogWarning(exception, "Consensus sync failed; retaining the last verified finalized head");
+            }
+            try { await consensus.ForceUpdateAsync(cancellationToken); }
+            catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
+            {
+                logger.LogWarning(exception, "Local consensus recovery failed");
             }
             try
             {

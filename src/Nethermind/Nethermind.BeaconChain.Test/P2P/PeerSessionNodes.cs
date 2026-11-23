@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net;
-using System.Net.Sockets;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
@@ -43,9 +41,10 @@ internal static class PeerSessionNodes
         EarliestAvailableSlot = AnchorSlot,
     };
 
-    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null, int quicPort = 0)
+    public static Node Create(IBeaconChainStatusSource? served = null, byte[]? privateKey = null, Lazy<IBeaconSyncPeerPool>? peerPool = null,
+        int? quicPort = null, TimeProvider? identifyTime = null)
     {
-        BeaconChainConfig config = new() { P2PPort = 0, QuicPort = quicPort };
+        BeaconChainConfig config = new() { P2PPort = 0, QuicPort = quicPort.GetValueOrDefault() };
         BeaconChainStatusHolder statusHolder = new(Spec, Timestamper.Default) { CurrentStatus = Status };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         if (privateKey is not null)
@@ -54,7 +53,10 @@ internal static class PeerSessionNodes
         }
 
         BeaconP2P p2p = new(config, Spec, store, served ?? statusHolder, new LocalMetadataSource(),
-            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LoopbackTrace.NewNode() ?? LimboLogs.Instance, peerPool: peerPool);
+            new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LoopbackTrace.NewNode() ?? LimboLogs.Instance, quicPort, peerPool: peerPool)
+        {
+            IdentifyTime = identifyTime ?? TimeProvider.System,
+        };
         return new Node(p2p, statusHolder, config);
     }
 
@@ -138,13 +140,6 @@ internal static class PeerSessionNodes
         }
 
         return withPeerId ? $"{address}/p2p/{node.LocalPeerId}" : address;
-    }
-
-    public static int FreeUdpPort()
-    {
-        using Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
-        return ((IPEndPoint)socket.LocalEndPoint!).Port;
     }
 
     public static async Task WaitUntilAsync(Func<bool> condition, string failure, CancellationToken token, TimeSpan? within = null, int pollDelayMilliseconds = 20)

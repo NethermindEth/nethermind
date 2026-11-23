@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
 using System.Text.Json;
 using Nethermind.JsonRpc;
 using Nethermind.LightClient.Rpc;
@@ -29,6 +30,40 @@ public class RpcResponseBufferTests
             Assert.That(document.RootElement[0].GetProperty("id").GetInt32(), Is.EqualTo(7));
             Assert.That(document.RootElement[0].GetProperty("error").GetProperty("message").GetString(), Does.Contain("8 MiB"));
             Assert.That(document.RootElement[1].GetProperty("result").GetString(), Is.EqualTo("next"));
+        }
+    }
+
+    [Test]
+    public async Task A_partially_written_result_is_rewound_without_touching_other_batch_items()
+    {
+        using RpcResponseBuffer sink = new(RpcEndpoint.BatchResponseLimit, RpcEndpoint.BatchLimitMessage);
+        using ResultWrapper<string> first = ResultWrapper<string>.Success("first");
+        using PartialResult partial = new() { Id = new JsonRpcId(7) };
+        using ResultWrapper<string> last = ResultWrapper<string>.Success("last");
+        RpcReport success = new("eth_getLogs", 0, true);
+
+        await sink.BeginBatchAsync(CancellationToken.None);
+        await sink.WriteBatchItemAsync(first, success, CancellationToken.None);
+        await sink.WriteBatchItemAsync(partial, success, CancellationToken.None);
+        await sink.WriteBatchItemAsync(last, success, CancellationToken.None);
+        await sink.EndBatchAsync(CancellationToken.None);
+        JsonElement items = JsonElement.Parse(sink.WrittenMemory.Span);
+        Assert.That(items.GetArrayLength(), Is.EqualTo(3));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(items[0].GetProperty("result").GetString(), Is.EqualTo("first"));
+            Assert.That(items[1].GetProperty("id").GetInt32(), Is.EqualTo(7));
+            Assert.That(items[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.LimitExceeded));
+            Assert.That(items[2].GetProperty("result").GetString(), Is.EqualTo("last"));
+        }
+    }
+
+    private sealed class PartialResult : JsonRpcResponse, IJsonRpcRawResponse
+    {
+        public void WriteRaw(IBufferWriter<byte> writer)
+        {
+            writer.Write("{\"jsonrpc\":\"2.0\",\"result\":["u8);
+            throw new RpcException(ErrorCodes.LimitExceeded, "Oversized test result.");
         }
     }
 

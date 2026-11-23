@@ -66,7 +66,7 @@ public class ChannelTransportTests
     [Test]
     public async Task Beacon_host_offers_yamux_then_mplex([Values] bool quic)
     {
-        await using BeaconP2P host = PeerSessionNodes.Create(quicPort: quic ? 9061 : 0).P2P;
+        await using BeaconP2P host = PeerSessionNodes.Create(quicPort: quic ? 0 : null).P2P;
         ServiceProvider services = (ServiceProvider)typeof(BeaconP2P)
             .GetField("_serviceProvider", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(host)!;
         services.GetRequiredService<IPeerFactory>();
@@ -101,7 +101,7 @@ public class ChannelTransportTests
         IPeerFactory factory = services.GetRequiredService<IPeerFactory>();
         await using ILocalPeer first = factory.Create();
         string endpoint = transport == ApplicationTransport.Quic
-            ? $"/ip4/127.0.0.1/udp/{PeerSessionNodes.FreeUdpPort()}/quic-v1" : "/ip4/127.0.0.1/tcp/0";
+            ? "/ip4/127.0.0.1/udp/0/quic-v1" : "/ip4/127.0.0.1/tcp/0";
         await first.StartListenAsync([Multiaddress.Decode(endpoint)], CancellationToken.None).WaitAsync(token);
         Multiaddress bound = Multiaddress.Decode(first.ListenAddresses.Single().ToString().Split("/p2p/")[0]);
 
@@ -135,7 +135,7 @@ public class ChannelTransportTests
                 stack.Protocols[selector] = stack.Protocols[selector].Where(protocol => protocol.Protocol is not YamuxProtocol).ToArray();
         }
         string address = transport == ApplicationTransport.Quic
-            ? $"/ip4/127.0.0.1/udp/{PeerSessionNodes.FreeUdpPort()}/quic-v1" : "/ip4/127.0.0.1/tcp/0";
+            ? "/ip4/127.0.0.1/udp/0/quic-v1" : "/ip4/127.0.0.1/tcp/0";
         await server.StartListenAsync([Multiaddress.Decode(address)], token);
         ISession session = await client.DialAsync(server.ListenAddresses.Single(), token);
         using CancellationTokenSource request = CancellationTokenSource.CreateLinkedTokenSource(token);

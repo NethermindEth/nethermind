@@ -381,7 +381,7 @@ public class RpcSubscriptionsTests
         using CancellationTokenSource cancellation = new();
         if (cancel) await cancellation.CancelAsync();
 
-        Task<JsonElement> logs = rpc.GetSubscriptionLogsAsync(source.Current.Header, static (_, _) => true, cancellation.Token);
+        Task<Nethermind.JsonRpc.SerializedJson> logs = rpc.GetSubscriptionLogsAsync(source.Current.Header, static (_, _) => true, cancellation.Token);
         RpcException? rejected = await Assert.ThrowsAsync<RpcException>(async () => await rpc.InvokeAsync("eth_getBlockByHash", parameters, CancellationToken.None));
         Assert.That(rejected!.Code, Is.EqualTo(-32005));
         if (cancel)
@@ -390,7 +390,7 @@ public class RpcSubscriptionsTests
         }
         else
         {
-            JsonElement result = await logs.WaitAsync(TimeSpan.FromSeconds(5));
+            JsonElement result = JsonElement.Parse((await logs.WaitAsync(TimeSpan.FromSeconds(5))).Utf8Json);
             Assert.That(result[0].GetProperty("blockHash").GetString(), Is.EqualTo(source.Current.Hash!.ToString()));
         }
         await load.ReleaseAsync();
@@ -1227,6 +1227,39 @@ public class RpcSubscriptionsTests
         }
     }
 
+    [Test, CancelAfter(15_000)]
+    public async Task Shutdown_does_not_hold_the_subscription_lock_while_cancelling_requests(CancellationToken token)
+    {
+        await using Harness harness = new();
+        using ManualResetEventSlim releaseCancellation = new();
+        TaskCompletionSource cancelling = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FakeSocket socket = harness.Connect(CancellationToken.None);
+        await socket.Request("eth_subscribe", "logs");
+        harness.Source.BlockGate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Source.BeforeBlockWait = cancellationToken => cancellationToken.Register(() =>
+        {
+            cancelling.TrySetResult();
+            releaseCancellation.Wait(token);
+        });
+        Block next = harness.Source.Add(11, harness.Source.Current, 1);
+        harness.Publish(next);
+        await harness.Source.FirstBodyStarted.Task.WaitAsync(token);
+
+        Task stopped = Task.Run(harness.StopAsync, token);
+        try
+        {
+            await cancelling.Task.WaitAsync(token);
+            await Task.Run(() => harness.Subscriptions.PublishPendingTransaction(next.Transactions[0]), token)
+                .WaitAsync(TimeSpan.FromSeconds(5), token);
+            Assert.That(stopped.IsCompleted, Is.False, "Shutdown must wait for its cancellation callbacks before disposing the connection.");
+        }
+        finally
+        {
+            releaseCancellation.Set();
+            await stopped;
+        }
+    }
+
     [Test]
     public async Task Shutdown_joins_connections_and_disposes_their_sockets(
         [Values("idle", "send", "receipts", "close")] string blocked)
@@ -1590,6 +1623,7 @@ public class RpcSubscriptionsTests
         internal bool RejectBlocks { get; set; }
         internal bool LatestFresh { get; set; } = true;
         internal TaskCompletionSource? BlockGate { get; set; }
+        internal Func<CancellationToken, CancellationTokenRegistration>? BeforeBlockWait { get; set; }
         internal TaskCompletionSource FirstBodyStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal TaskCompletionSource BlocksStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         internal int HeaderReads => Volatile.Read(ref _headerReads);
@@ -1671,9 +1705,11 @@ public class RpcSubscriptionsTests
                 if (RejectBlocks) throw new InvalidOperationException("A header subscription must not request a block body.");
                 if (BlockGate is { } gate)
                 {
+                    Task wait = gate.Task.WaitAsync(cancellationToken);
+                    using CancellationTokenRegistration registration = BeforeBlockWait?.Invoke(cancellationToken) ?? default;
                     FirstBodyStarted.TrySetResult();
                     if (Interlocked.Increment(ref _blockedBlockReads) == 4) BlocksStarted.TrySetResult();
-                    await gate.Task.WaitAsync(cancellationToken);
+                    await wait;
                 }
                 Block block = _blocks[header.Hash!].Block;
                 ExecutionPeerTransport.VerifyBlockBody(header, block.Body);

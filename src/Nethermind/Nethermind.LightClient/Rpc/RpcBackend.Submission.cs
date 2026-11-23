@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
@@ -14,7 +13,7 @@ internal sealed partial class RpcBackend
 {
     private readonly SemaphoreSlim _sendReceiptRequests = new(8, 8);
 
-    internal async ValueTask<JsonElement> GetPendingTransactionViewAsync(Transaction tx, ulong secondsPerSlot, CancellationToken token)
+    internal async ValueTask<SerializedJson> GetPendingTransactionViewAsync(Transaction tx, ulong secondsPerSlot, CancellationToken token)
     {
         TransactionForRpcContext context = new(chainId);
         if (tx.SupportsFrames && specProvider is not null && getLatestHead?.Invoke() is { } head)
@@ -22,10 +21,10 @@ internal sealed partial class RpcBackend
             BlockHeader header = await execution.GetHeaderAsync(head, token);
             context = TransactionForRpcContext.ForPending(specProvider, header, secondsPerSlot);
         }
-        return BoundedJson.ToElement(TransactionForRpc.FromTransaction(tx, context));
+        return BoundedJson.Serialize(TransactionForRpc.FromTransaction(tx, context));
     }
 
-    internal async Task<JsonElement> SendRawTransactionSyncAsync(byte[] raw, ulong? timeoutMs, CancellationToken cancellationToken)
+    internal async Task<SerializedJson> SendRawTransactionSyncAsync(byte[] raw, ulong? timeoutMs, CancellationToken cancellationToken)
     {
         if (_data is null) throw new RpcException(-32601, "Verified transaction relay is unavailable.");
         if (raw.Length > 2 * 1024 * 1024) throw InvalidParameters();
@@ -47,7 +46,7 @@ internal sealed partial class RpcBackend
         finally { _sendReceiptRequests.Release(); }
     }
 
-    private async Task<JsonElement> WaitForReceiptAsync(ExecutionData data, VerifiedHead start, Hash256 hash, CancellationToken token)
+    private async Task<SerializedJson> WaitForReceiptAsync(ExecutionData data, VerifiedHead start, Hash256 hash, CancellationToken token)
     {
         Hash256 scannedTip = start.BlockHash;
         HashSet<Hash256> noMatch = [];

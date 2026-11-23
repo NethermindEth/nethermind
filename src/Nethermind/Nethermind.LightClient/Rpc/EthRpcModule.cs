@@ -38,31 +38,31 @@ internal sealed partial class EthRpcModule(RpcService service, ILogManager logs)
         Execute((rpc, token) => rpc.GetProofAsync(address, storageKeys, blockParameter ?? default, token));
     public Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction) =>
         Execute((rpc, token) => rpc.SendRawTransactionAsync(transaction, token), waitForStartup: false);
-    public Task<ResultWrapper<JsonElement>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null) =>
+    public Task<ResultWrapper<SerializedJson>> eth_sendRawTransactionSync(byte[] transaction, ulong? timeoutMs = null) =>
         Execute((rpc, token) => rpc.SendRawTransactionSyncAsync(transaction, timeoutMs, token), waitForStartup: false);
     public Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null) =>
         Execute((rpc, token) => rpc.SimulateAsync(payload, blockParameter ?? default, token));
     public Task<ResultWrapper<JsonElement>> eth_feeHistory(UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles) =>
         Execute((rpc, token) => rpc.GetFeeHistoryAsync(blockCount, newestBlock, rewardPercentiles, token));
-    public Task<ResultWrapper<JsonElement>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects) =>
         Execute((rpc, token) => rpc.GetBlockAsync(blockParameter, false, returnFullTransactionObjects, token));
-    public Task<ResultWrapper<JsonElement>> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects) =>
         Execute((rpc, token) => rpc.GetBlockAsync(HashParameter(blockHash), true, returnFullTransactionObjects, token));
-    public Task<ResultWrapper<JsonElement>> eth_getBlockTransactionCountByNumber(JsonElement blockParameter) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getBlockTransactionCountByNumber(JsonElement blockParameter) =>
         Execute((rpc, token) => rpc.GetBlockTransactionCountAsync(blockParameter, false, token));
-    public Task<ResultWrapper<JsonElement>> eth_getBlockTransactionCountByHash(Hash256 blockHash) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getBlockTransactionCountByHash(Hash256 blockHash) =>
         Execute((rpc, token) => rpc.GetBlockTransactionCountAsync(HashParameter(blockHash), true, token));
-    public Task<ResultWrapper<JsonElement>> eth_getTransactionByBlockNumberAndIndex(JsonElement blockParameter, UInt256 position) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getTransactionByBlockNumberAndIndex(JsonElement blockParameter, UInt256 position) =>
         Execute((rpc, token) => rpc.GetTransactionAsync(blockParameter, false, position, token));
-    public Task<ResultWrapper<JsonElement>> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 position) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getTransactionByBlockHashAndIndex(Hash256 blockHash, UInt256 position) =>
         Execute((rpc, token) => rpc.GetTransactionAsync(HashParameter(blockHash), true, position, token));
-    public Task<ResultWrapper<JsonElement>> eth_getTransactionByHash(Hash256 transactionHash) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getTransactionByHash(Hash256 transactionHash) =>
         Execute((rpc, token) => rpc.GetTransactionByHashAsync(transactionHash, ExecutionData.TransactionResult.Transaction, token));
-    public Task<ResultWrapper<JsonElement>> eth_getTransactionReceipt(Hash256 transactionHash) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getTransactionReceipt(Hash256 transactionHash) =>
         Execute((rpc, token) => rpc.GetTransactionByHashAsync(transactionHash, ExecutionData.TransactionResult.Receipt, token));
-    public Task<ResultWrapper<JsonElement>> eth_getBlockReceipts(JsonElement blockParameter) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getBlockReceipts(JsonElement blockParameter) =>
         Execute((rpc, token) => rpc.GetBlockReceiptsAsync(blockParameter, token));
-    public Task<ResultWrapper<JsonElement>> eth_getLogs(JsonElement filter) =>
+    public Task<ResultWrapper<SerializedJson>> eth_getLogs(JsonElement filter) =>
         Execute((rpc, token) => rpc.GetLogsDataAsync(filter, token));
 
     private Task<ResultWrapper<T>> Execute<T>(Func<RpcBackend, CancellationToken, Task<T>> invoke, bool waitForStartup = true) =>

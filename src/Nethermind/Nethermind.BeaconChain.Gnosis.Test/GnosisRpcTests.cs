@@ -111,7 +111,7 @@ public class GnosisRpcTests
 
         JsonElement result = (JsonElement)await rpc.InvokeAsync(method,
             JsonSerializer.SerializeToElement(new object[] { selector, fullTransactions }), CancellationToken.None);
-        JsonElement notification = rpc.GetHeader(header);
+        JsonElement notification = JsonElement.Parse(rpc.GetHeader(header).Utf8Json);
 
         foreach (JsonElement projected in new[] { result, notification })
         {

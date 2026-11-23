@@ -5,6 +5,7 @@ using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 
 namespace Nethermind.LightClient.Rpc;
@@ -13,14 +14,27 @@ internal static class BoundedJson
 {
     internal const int ResultLimit = 8 * 1024 * 1024;
     private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> Options = [];
+    internal static readonly SerializedJson Null = new("null"u8.ToArray());
+
+    internal static SerializedJson Serialize<T>(T value)
+    {
+        using BoundedJsonBuffer output = new(ResultLimit);
+        Write(output, value);
+        return new(output.WrittenMemory.ToArray());
+    }
 
     internal static JsonElement ToElement<T>(T value)
     {
         using BoundedJsonBuffer output = new(ResultLimit);
-        using (Utf8JsonWriter writer = new(output))
-            TypeInfoJsonSerializer.Serialize(writer, value, Options.GetValue(EthereumJsonSerializer.JsonOptions, CreateOptions));
-        using JsonDocument document = JsonDocument.Parse(output.WrittenMemory);
-        return document.RootElement.Clone();
+        Write(output, value);
+        return JsonElement.Parse(output.WrittenMemory.Span);
+    }
+
+    private static void Write<T>(IBufferWriter<byte> output, T value)
+    {
+        JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions;
+        using Utf8JsonWriter writer = new(output, new() { Encoder = options.Encoder });
+        TypeInfoJsonSerializer.Serialize(writer, value, Options.GetValue(options, CreateOptions));
     }
 
     private static JsonSerializerOptions CreateOptions(JsonSerializerOptions original)
@@ -75,30 +89,33 @@ internal sealed class BoundedJsonBuffer(int limit, int reservationSlack = 4096, 
     private byte[] _buffer = [];
     private int _written;
     private bool _disposed;
+    internal int WriteLimit { private get; set; } = limit;
     internal ReadOnlyMemory<byte> WrittenMemory => _buffer.AsMemory(0, _written);
 
     public void Advance(int count)
     {
-        if (count < 0 || count > limit - _written) throw TooLarge();
+        if (count < 0 || count > WriteLimit - _written) throw TooLarge();
         _written += count;
     }
+
+    internal void Rewind(int position) => _written = position;
 
     public Memory<byte> GetMemory(int sizeHint = 0)
     {
         EnsureCapacity(sizeHint);
-        return _buffer.AsMemory(_written, Math.Min(_buffer.Length, limit + reservationSlack) - _written);
+        return _buffer.AsMemory(_written, Math.Min(_buffer.Length, WriteLimit + reservationSlack) - _written);
     }
 
     public Span<byte> GetSpan(int sizeHint = 0)
     {
         EnsureCapacity(sizeHint);
-        return _buffer.AsSpan(_written, Math.Min(_buffer.Length, limit + reservationSlack) - _written);
+        return _buffer.AsSpan(_written, Math.Min(_buffer.Length, WriteLimit + reservationSlack) - _written);
     }
 
     private void EnsureCapacity(int sizeHint)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        int maximum = limit + reservationSlack;
+        int maximum = WriteLimit + reservationSlack;
         if (sizeHint < 0 || sizeHint > maximum - _written) throw TooLarge();
         int needed = _written + Math.Max(1, sizeHint);
         if (needed <= _buffer.Length) return;

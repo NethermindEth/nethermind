@@ -34,14 +34,9 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
 
     public JsonRpcErrorResponse? GetBatchLimitResponse(JsonRpcRequest? request)
     {
-        using BoundedJsonBuffer error = new(limit, 6 * limit);
-        try
-        {
-            JsonRpcResponseWriter.Write(error, Error(request?.Id ?? JsonRpcId.Null), EthereumJsonSerializer.JsonOptions);
-            return (long)_output.WrittenMemory.Length + error.WrittenMemory.Length + FinalError.Length + 3 > limit
-                ? Error(JsonRpcId.Null) : null;
-        }
-        catch (RpcException) { return Error(JsonRpcId.Null); }
+        int finalErrorLength = FinalError.Length;
+        long withRequestId = finalErrorLength - "null"u8.Length + (long)(request?.Id ?? JsonRpcId.Null).GetEncodedLength();
+        return _output.WrittenMemory.Length + withRequestId + finalErrorLength + 3 > limit ? Error(JsonRpcId.Null) : null;
     }
 
     private ReadOnlySpan<byte> FinalError
@@ -92,9 +87,10 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
     {
         if (_sealed) return;
         if (!_batch) ErrorCode = response is JsonRpcErrorResponse { Error: { } error } ? error.Code : null;
+        int position = _output.WrittenMemory.Length;
         int separator = _batch && _responses != 0 ? 1 : 0;
         int reserve = _batch ? FinalError.Length + 2 : 0;
-        int remaining = limit - _output.WrittenMemory.Length - separator - reserve;
+        int remaining = limit - position - separator - reserve;
         if (remaining <= 0)
         {
             Seal(FinalError);
@@ -103,43 +99,47 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
         }
         int itemLimit = remaining;
         if (rpcReport.Success && remaining > BoundedJson.ResultLimit)
-        {
-            using BoundedJsonBuffer envelope = new(limit, 6 * limit);
-            JsonRpcResponseWriter.Write(envelope, new JsonRpcSuccessResponse { Id = response.Id }, EthereumJsonSerializer.JsonOptions);
-            itemLimit = Math.Min(remaining, BoundedJson.ResultLimit + envelope.WrittenMemory.Length - "null"u8.Length);
-        }
+            itemLimit = Math.Min(remaining, BoundedJson.ResultLimit + JsonRpcResponseWriter.GetCompactSuccessEnvelopeLength(response.Id));
         bool payloadLimited = itemLimit < remaining;
-        using BoundedJsonBuffer item = new(itemLimit, 6 * limit);
         try
         {
-            JsonRpcResponseWriter.Write(item, response, EthereumJsonSerializer.JsonOptions);
-            if (separator != 0) Append(","u8);
-            Append(item.WrittenMemory.Span);
-            _responses++;
+            WriteItem(response, itemLimit);
         }
         catch (RpcException)
         {
             RpcServiceDiagnostics.OverrideOutcome(response, "error -32005");
-            using BoundedJsonBuffer error = new(Math.Max(1, limit - _output.WrittenMemory.Length - separator - reserve), 6 * limit);
             try
             {
-                JsonRpcResponseWriter.Write(error, Error(response.Id, payloadLimited ? BoundedJson.TooLarge().Message : null),
-                    EthereumJsonSerializer.JsonOptions);
+                WriteItem(Error(response.Id, payloadLimited ? BoundedJson.TooLarge().Message : null), remaining);
             }
             catch (RpcException)
             {
                 Seal(FinalError);
                 return;
             }
-            if (separator != 0) Append(","u8);
-            Append(error.WrittenMemory.Span);
-            _responses++;
             StopRequested |= !payloadLimited;
             if (!_batch) ErrorCode = ErrorCodes.LimitExceeded;
             return;
         }
         if (response is RpcFilters.PollResponse poll) _completePolls += poll.TakeCompletion();
         report?.Invoke(response, rpcReport);
+
+        void WriteItem(JsonRpcResponse item, int budget)
+        {
+            _output.WriteLimit = position + separator + budget;
+            try
+            {
+                if (separator != 0) Append(","u8);
+                JsonRpcResponseWriter.Write(_output, item, EthereumJsonSerializer.JsonOptions);
+                _responses++;
+            }
+            catch
+            {
+                _output.Rewind(position);
+                throw;
+            }
+            finally { _output.WriteLimit = limit; }
+        }
     }
 
     private JsonRpcErrorResponse Error(JsonRpcId id, string? message = null) => new()
@@ -153,6 +153,7 @@ internal sealed class RpcResponseBuffer(int limit, string limitMessage,
         if (_batch && _responses != 0) Append(","u8);
         Append(finalError);
         _responses++;
+        if (!_batch) ErrorCode = ErrorCodes.LimitExceeded;
         StopRequested = true;
         _sealed = true;
     }

@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Net;
 using System.Net.Quic;
-using System.Net.Sockets;
 using System.Threading.Channels;
 using Google.Protobuf;
 using Multiformats.Address.Net;
+using Multiformats.Address.Protocols;
 using Nethermind.BeaconChain;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Gossip;
@@ -40,13 +39,13 @@ public class LightClientGossipTests
         await using LightClientGossip gossip = new(ConsensusTests.Spec, LimboLogs.Instance, clock);
         PubsubRouter senderRouter = null!, receiverRouter = null!;
         PubsubSettings senderSettings = null!, receiverSettings = null!;
-        int senderQuicPort = quic ? FreeUdpPort() : 0;
-        await using BeaconP2P sender = CreateHost(quicPort: senderQuicPort, configure: (router, settings) =>
+        int? quicListenPort = quic ? 0 : null;
+        await using BeaconP2P sender = CreateHost(quicListenPort: quicListenPort, configure: (router, settings) =>
         {
             senderRouter = router;
             senderSettings = settings;
         });
-        await using BeaconP2P receiver = CreateHost(gossip, quic ? FreeUdpPort() : 0, (router, settings) =>
+        await using BeaconP2P receiver = CreateHost(gossip, quicListenPort, (router, settings) =>
         {
             receiverRouter = router;
             receiverSettings = settings;
@@ -85,9 +84,10 @@ public class LightClientGossipTests
         string optimisticTopic = GossipTopics.Topic(digest, GossipTopics.LightClientOptimisticUpdate);
         ITopic finalityPublisher = sender.GetTopic(finalityTopic);
         ITopic optimisticPublisher = sender.GetTopic(optimisticTopic);
+        int senderQuicPort = quic ? ListenPort(sender, quic) : 0;
         PeerManager manager = new(sender, new BeaconChainConfig { P2PPort = 0, QuicPort = senderQuicPort },
             new BeaconChainStatusHolder(ConsensusTests.Spec, Timestamper.Default), LimboLogs.Instance);
-        int port = receiver.ListenAddresses.Single(address => address.ToString().Contains(quic ? "/quic-v1" : "/tcp/", StringComparison.Ordinal)).ToEndPoint().Port;
+        int port = ListenPort(receiver, quic);
         string transport = quic ? $"udp/{port}/quic-v1" : $"tcp/{port}";
         bool connected = await manager.TryAddPeerAsync($"/ip4/127.0.0.1/{transport}/p2p/{receiver.LocalPeerId}", token);
         Assert.That(connected, Is.True);
@@ -135,23 +135,20 @@ public class LightClientGossipTests
             return ((IRoutingStateContainer)router).Mesh.TryGetValue(topic, out HashSet<PeerId>? peers) && peers.Contains(peer);
     }
 
-    private static BeaconP2P CreateHost(LightClientGossip? gossip = null, int quicPort = 0,
-        Action<PubsubRouter, PubsubSettings>? configure = null) => new(new BeaconChainConfig { P2PPort = 0, QuicPort = quicPort },
+    private static int ListenPort(BeaconP2P host, bool quic) =>
+        host.ListenAddresses.Single(address => quic ? address.Has<QUICv1>() : address.Has<TCP>()).ToEndPoint().Port;
+
+    private static BeaconP2P CreateHost(LightClientGossip? gossip = null, int? quicListenPort = null,
+        Action<PubsubRouter, PubsubSettings>? configure = null) => new(new BeaconChainConfig { P2PPort = 0 },
         ConsensusTests.Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>(), ConsensusTests.Spec),
         new BeaconChainStatusHolder(ConsensusTests.Spec, Timestamper.Default), new LocalMetadataSource(),
         new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance,
+        quicListenPort,
         configureGossip: (router, settings) =>
         {
             gossip?.Configure(router, settings);
             configure?.Invoke(router, settings);
         });
-
-    private static int FreeUdpPort()
-    {
-        using Socket socket = new(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-        socket.Bind(new IPEndPoint(IPAddress.Loopback, 0));
-        return ((IPEndPoint)socket.LocalEndPoint!).Port;
-    }
 
     [Test]
     public async Task Finality_then_matching_optimistic_are_authenticated_and_forwarded_once()
@@ -247,7 +244,8 @@ public class LightClientGossipTests
     }
 
     [Test]
-    public async Task Next_slot_gossip_can_advance_locally_after_waiting_without_forwarding_early_data([Values] bool finality)
+    [CancelAfter(15_000)]
+    public async Task Next_slot_gossip_can_advance_locally_after_waiting_without_forwarding_early_data([Values] bool finality, CancellationToken token)
     {
         ConsensusTests.RepairClock clock = new(DateTimeOffset.FromUnixTimeSeconds(
             (long)(ConsensusTests.Spec.GenesisTime + 3 * ConsensusTests.Spec.SecondsPerSlot + 6)));
@@ -257,8 +255,8 @@ public class LightClientGossipTests
         List<ulong> credited = [];
         int attempts = 0;
         gossip.ValidatedUpdate = (_, slot) => credited.Add(slot);
-        gossip.Start(static _ => new FakeTopic(), (update, token) => ProcessAsync(() => store.Process(update, CurrentSlot()), token),
-            (update, token) => ProcessAsync(() => store.Process(update, CurrentSlot()), token), CancellationToken.None);
+        gossip.Start(static _ => new FakeTopic(), (update, stopping) => ProcessAsync(() => store.Process(update, CurrentSlot()), stopping),
+            (update, stopping) => ProcessAsync(() => store.Process(update, CurrentSlot()), stopping), token);
         LightClientUpdate signed = ConsensusTests.Update(2, 3, 4, 1);
         string topic = GossipTopics.Topic(ForkDigest.Compute(ConsensusTests.Spec, 0),
             finality ? GossipTopics.LightClientFinalityUpdate : GossipTopics.LightClientOptimisticUpdate);
@@ -266,8 +264,8 @@ public class LightClientGossipTests
             : LightClientWireCodec.EncodeOptimistic(Optimistic(signed), ConsensusTests.Spec);
 
         Task<MessageValidity> pending = gossip.HandleAsync(topic, Snappy.CompressToArray(ssz), static _ => true,
-            CancellationToken.None, new Nethermind.Libp2p.Core.Identity().PeerId);
-        await clock.WaitForTimersAsync(2).WaitAsync(TimeSpan.FromSeconds(2));
+            token, new Nethermind.Libp2p.Core.Identity().PeerId);
+        await clock.WaitForTimersAsync(2).WaitAsync(token);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pending.IsCompleted, Is.False);
@@ -276,7 +274,7 @@ public class LightClientGossipTests
         }
         clock.Advance(TimeSpan.FromSeconds(6));
 
-        Assert.That(await pending.WaitAsync(TimeSpan.FromSeconds(2)), Is.EqualTo(MessageValidity.Ignored));
+        Assert.That(await pending.WaitAsync(token), Is.EqualTo(MessageValidity.Ignored));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(attempts, Is.EqualTo(2));
@@ -286,13 +284,13 @@ public class LightClientGossipTests
         }
 
         ulong CurrentSlot() => ConsensusTests.Spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSeconds());
-        Task<bool> ProcessAsync(Action process, CancellationToken token) =>
+        Task<bool> ProcessAsync(Action process, CancellationToken stopping) =>
             ConsensusSync.ProcessWithTimeRetryAsync(ConsensusTests.Spec, clock, () =>
             {
                 attempts++;
                 process();
                 return Task.FromResult(true);
-            }, token);
+            }, stopping);
     }
 
     [Test]

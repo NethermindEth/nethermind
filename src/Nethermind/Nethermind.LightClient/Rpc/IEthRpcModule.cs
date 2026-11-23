@@ -30,19 +30,19 @@ internal partial interface IEthRpcModule : IRpcModule
     Task<ResultWrapper<byte[]>> eth_getStorageAt([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictAddressConverter))] Address address, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StorageIndexParameterConverter))] StorageIndex position, JsonElement? blockParameter = null);
     Task<ResultWrapper<AccountProof>> eth_getProof([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictAddressConverter))] Address address, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StorageKeysConverter))] StorageIndex[] storageKeys, JsonElement? blockParameter = null);
     Task<ResultWrapper<Hash256>> eth_sendRawTransaction([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictDataConverter))] byte[] transaction);
-    Task<ResultWrapper<JsonElement>> eth_sendRawTransactionSync(
+    Task<ResultWrapper<SerializedJson>> eth_sendRawTransactionSync(
         [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictDataConverter))] byte[] transaction,
         ulong? timeoutMs = null);
     Task<ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>> eth_simulateV1(JsonElement payload, JsonElement? blockParameter = null);
     Task<ResultWrapper<JsonElement>> eth_feeHistory([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictQuantityConverter))] UInt256 blockCount, JsonElement newestBlock, double[] rewardPercentiles);
-    Task<ResultWrapper<JsonElement>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects);
-    Task<ResultWrapper<JsonElement>> eth_getBlockByHash([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 blockHash, bool returnFullTransactionObjects);
-    Task<ResultWrapper<JsonElement>> eth_getBlockTransactionCountByNumber(JsonElement blockParameter);
-    Task<ResultWrapper<JsonElement>> eth_getBlockTransactionCountByHash([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 blockHash);
-    Task<ResultWrapper<JsonElement>> eth_getTransactionByBlockNumberAndIndex(JsonElement blockParameter, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictQuantityConverter))] UInt256 position);
-    Task<ResultWrapper<JsonElement>> eth_getTransactionByBlockHashAndIndex([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictQuantityConverter))] UInt256 position);
-    Task<ResultWrapper<JsonElement>> eth_getTransactionByHash([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 transactionHash);
-    Task<ResultWrapper<JsonElement>> eth_getTransactionReceipt([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 transactionHash);
-    Task<ResultWrapper<JsonElement>> eth_getBlockReceipts(JsonElement blockParameter);
-    Task<ResultWrapper<JsonElement>> eth_getLogs(JsonElement filter);
+    Task<ResultWrapper<SerializedJson>> eth_getBlockByNumber(JsonElement blockParameter, bool returnFullTransactionObjects);
+    Task<ResultWrapper<SerializedJson>> eth_getBlockByHash([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 blockHash, bool returnFullTransactionObjects);
+    Task<ResultWrapper<SerializedJson>> eth_getBlockTransactionCountByNumber(JsonElement blockParameter);
+    Task<ResultWrapper<SerializedJson>> eth_getBlockTransactionCountByHash([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 blockHash);
+    Task<ResultWrapper<SerializedJson>> eth_getTransactionByBlockNumberAndIndex(JsonElement blockParameter, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictQuantityConverter))] UInt256 position);
+    Task<ResultWrapper<SerializedJson>> eth_getTransactionByBlockHashAndIndex([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 blockHash, [JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictQuantityConverter))] UInt256 position);
+    Task<ResultWrapper<SerializedJson>> eth_getTransactionByHash([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 transactionHash);
+    Task<ResultWrapper<SerializedJson>> eth_getTransactionReceipt([JsonRpcParameter(ConverterType = typeof(RpcParameterConverters.StrictHashConverter))] Hash256 transactionHash);
+    Task<ResultWrapper<SerializedJson>> eth_getBlockReceipts(JsonElement blockParameter);
+    Task<ResultWrapper<SerializedJson>> eth_getLogs(JsonElement filter);
 }

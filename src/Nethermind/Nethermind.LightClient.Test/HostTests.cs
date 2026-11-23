@@ -304,53 +304,78 @@ public class HostTests
 
     [Test]
     [NonParallelizable]
-    public async Task Console_signal_cancels_checkpoint_fetch_while_the_status_listener_is_running()
+    [CancelAfter(45_000)]
+    public async Task Wildcard_listener_checks_hosts_and_console_signal_cancels_checkpoint_fetch(CancellationToken token)
     {
         string directory = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             "NethermindLightClientShutdownTests", Guid.NewGuid().ToString("N"));
         using TcpListener provider = new(IPAddress.Loopback, 0);
         provider.Start();
         int port = ((IPEndPoint)provider.LocalEndpoint).Port;
-        using TcpListener reservation = new(IPAddress.Loopback, 0);
-        reservation.Start();
-        string rpcUrl = $"http://127.0.0.1:{((IPEndPoint)reservation.LocalEndpoint).Port}";
-        reservation.Stop();
         string assembly = typeof(LightClientHost).Assembly.Location;
         string application = Path.GetDirectoryName(assembly)!;
-        ProcessStartInfo start = new("dotnet") { UseShellExecute = OperatingSystem.IsWindows() };
-        if (OperatingSystem.IsWindows()) start.WindowStyle = ProcessWindowStyle.Hidden;
+        ProcessStartInfo start = new("dotnet") { RedirectStandardOutput = true };
+        if (OperatingSystem.IsWindows()) start.CreateNewProcessGroup = true;
         foreach (string argument in new[]
         {
             "exec", "--runtimeconfig", Path.Combine(application, "Nethermind.LightClient.runtimeconfig.json"),
             "--depsfile", Path.Combine(application, "Nethermind.LightClient.deps.json"), assembly,
-            "--checkpoint-url", $"https://127.0.0.1:{port}", "--urls", rpcUrl, "--data-dir", directory,
+            "--checkpoint-url", $"https://127.0.0.1:{port}", "--urls", "http://0.0.0.0:0", "--data-dir", directory,
         }) start.ArgumentList.Add(argument);
         using Process client = Process.Start(start)!;
-        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
         try
         {
-            using TcpClient connection = await provider.AcceptTcpClientAsync(timeout.Token);
-            using HttpClient rpc = new();
-            using JsonDocument progress = JsonDocument.Parse(await rpc.GetStringAsync(rpcUrl + "/status", timeout.Token));
+            const string Listening = "Light-client RPC and status listening at ";
+            Uri? address = null;
+            while (await client.StandardOutput.ReadLineAsync(token) is { } line)
+            {
+                int prefix = line.IndexOf(Listening, StringComparison.Ordinal);
+                if (prefix >= 0 && Uri.TryCreate(line[(prefix + Listening.Length)..].Trim(), UriKind.Absolute, out address)) break;
+            }
+            Assert.That(address, Is.Not.Null, "The child must report its actual bound address.");
+            Uri rpcUrl = new UriBuilder(address!) { Host = IPAddress.Loopback.ToString() }.Uri;
+            using TcpClient connection = await provider.AcceptTcpClientAsync(token);
+            using HttpClient rpc = new(new SocketsHttpHandler { UseProxy = false }) { BaseAddress = rpcUrl };
+            using JsonDocument progress = JsonDocument.Parse(await rpc.GetStringAsync("status", token));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(progress.RootElement.GetProperty("startupStage").GetString(), Is.EqualTo("checkpoint"));
                 Assert.That(progress.RootElement.GetProperty("rpcInitialized").GetBoolean(), Is.False);
                 Assert.That(progress.RootElement.GetProperty("latest").ValueKind, Is.EqualTo(JsonValueKind.Null));
             }
-            using CancellationTokenSource shutdownDeadline = new(TimeSpan.FromSeconds(15));
+            using HttpRequestMessage statusRequest = new(HttpMethod.Get, "status");
+            statusRequest.Headers.Host = "unconfigured.example";
+            using HttpResponseMessage statusResponse = await rpc.SendAsync(statusRequest, token);
+            using HttpRequestMessage websocketRequest = new(HttpMethod.Get, "ws");
+            websocketRequest.Headers.Host = statusRequest.Headers.Host;
+            using HttpResponseMessage websocketResponse = await rpc.SendAsync(websocketRequest, token);
+            using HttpRequestMessage rpcRequest = new(HttpMethod.Post, "")
+            {
+                Content = new StringContent("""{"jsonrpc":"2.0","id":1,"method":"eth_chainId"}""", Encoding.UTF8, "application/json"),
+            };
+            rpcRequest.Headers.Host = statusRequest.Headers.Host;
+            rpcRequest.Headers.Add("Origin", "http://unconfigured.example");
+            using HttpResponseMessage rpcResponse = await rpc.SendAsync(rpcRequest, token);
+            using CancellationTokenSource shutdownDeadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+            shutdownDeadline.CancelAfter(TimeSpan.FromSeconds(15));
             await SendInterruptAsync(client.Id, shutdownDeadline.Token);
             try { await client.WaitForExitAsync(shutdownDeadline.Token); }
             catch (OperationCanceledException) when (shutdownDeadline.IsCancellationRequested)
             {
                 Assert.Fail($"Console shutdown did not complete for child {client.Id}; exited={client.HasExited}, RPC={rpcUrl}.");
             }
-            Assert.That(client.ExitCode, Is.Zero, "The console signal during checkpoint selection must unwind normally.");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(client.ExitCode, Is.Zero, "The console signal during checkpoint selection must unwind normally.");
+                Assert.That(statusResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden), "Status Host");
+                Assert.That(websocketResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden), "WebSocket Host");
+                Assert.That(rpcResponse.StatusCode, Is.EqualTo(HttpStatusCode.Forbidden), "JSON-RPC Host");
+            }
         }
         finally
         {
             if (!client.HasExited) client.Kill(entireProcessTree: true);
-            await client.WaitForExitAsync();
+            await client.WaitForExitAsync(CancellationToken.None);
             if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
         }
     }
@@ -1119,22 +1144,12 @@ public class HostTests
                 Add-Type -Name ConsoleSignal -Namespace LightClientTests -MemberDefinition @'
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool FreeConsole();
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool AttachConsole(uint pid);
-                public delegate bool HandlerRoutine(uint signal);
-                public static readonly HandlerRoutine IgnoreInterrupt = _ => true;
-                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool SetConsoleCtrlHandler(HandlerRoutine handler, bool add);
-                [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern uint GetConsoleProcessList(uint[] ids, uint length);
                 [System.Runtime.InteropServices.DllImport("kernel32.dll")] public static extern bool GenerateConsoleCtrlEvent(uint signal, uint group);
                 '@
                 [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null
                 if (![LightClientTests.ConsoleSignal]::AttachConsole({{clientId}})) { throw 'Cannot attach to the test child console.' }
                 try {
-                    $ids = New-Object uint32[] 8
-                    $count = [LightClientTests.ConsoleSignal]::GetConsoleProcessList($ids, 8)
-                    $senderId = [Diagnostics.Process]::GetCurrentProcess().Id
-                    if ($count -ne 2 -or $ids -notcontains {{clientId}} -or $ids -notcontains $senderId) { throw 'The child console is not isolated.' }
-                    if (![LightClientTests.ConsoleSignal]::SetConsoleCtrlHandler([LightClientTests.ConsoleSignal]::IgnoreInterrupt, $true)) { throw 'Cannot protect the signal sender.' }
-                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(1, 0)) { throw 'Cannot send Ctrl+Break.' }
-                    Start-Sleep -Milliseconds 100
+                    if (![LightClientTests.ConsoleSignal]::GenerateConsoleCtrlEvent(1, {{clientId}})) { throw 'Cannot send Ctrl+Break to the child process group.' }
                 } finally { [LightClientTests.ConsoleSignal]::FreeConsole() | Out-Null }
                 """);
         }

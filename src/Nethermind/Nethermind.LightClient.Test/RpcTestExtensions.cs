@@ -30,6 +30,7 @@ internal static class RpcTestExtensions
         if (result.Result.ResultType != ResultType.Success)
             throw new RpcException(result.ErrorCode, result.Result.Error!, result.HasErrorData ? result.Data as string : null);
         if (result.Data is JsonElement existing) return existing;
+        if (result.Data is SerializedJson serialized) return JsonElement.Parse(serialized.Utf8Json);
         JsonElement value = BoundedJson.ToElement(result.Data);
         return value.ValueKind switch
         {

@@ -136,8 +136,17 @@ public class ExecutionProofVerifierTests
     }
 
     [Test]
-    public void Oversized_proof_node_is_rejected([Values(0, 1025)] int length)
-        => Assert.That(() => ExecutionProofVerifier.VerifyStorage(Keccak.EmptyTreeHash, 1, [new byte[length]]), Throws.TypeOf<InvalidDataException>());
+    public void Proof_node_size_limit_includes_the_maximum([Values(0, 1023, 1024, 1025)] int length)
+    {
+        byte[] leaf = Leaf(StorageKey(1), Rlp.Encode((UInt256)42));
+        Hash256 root = Keccak.Compute(leaf);
+        byte[][] proof = [leaf, new byte[length]];
+
+        if (length is 0 or > 1024)
+            Assert.That(() => ExecutionProofVerifier.VerifyStorage(root, 1, proof), Throws.TypeOf<InvalidDataException>());
+        else
+            Assert.That(ExecutionProofVerifier.VerifyStorage(root, 1, proof), Is.EqualTo((UInt256)42));
+    }
 
     [Test]
     public void Proof_node_count_is_bounded_even_when_every_node_is_valid([Values(65, 66)] int count)

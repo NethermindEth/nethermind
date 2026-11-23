@@ -13,9 +13,11 @@ using Nethermind.BeaconChain.Test;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.LightClient.Consensus;
 using Nethermind.Merge.Plugin.SszRest;
+using static Nethermind.LightClient.Test.LightClientTestSigning;
 
 namespace Nethermind.BeaconChain.Gnosis.Test;
 
@@ -223,6 +225,123 @@ public class GnosisPresetTests
     }
 
     [Test]
+    [CancelAfter(30_000)]
+    public async Task Gnosis_live_recovery_waits_for_the_committee_timeout_and_rechecks_the_candidate_age(
+        [Values] bool recentCandidate, [Values] bool incoming, CancellationToken token)
+    {
+        using LightClientFixture fixture = new();
+        BeaconChainSpec spec = BeaconChainSpec.Gnosis;
+        const ulong UpdateTimeout = 8192;
+        const ulong RecencyLimit = 4096;
+        ulong checkpointSlot = fixture.Slot("bootstrap_slot") / UpdateTimeout * UpdateTimeout;
+        ulong finalizedSlot = checkpointSlot + 1;
+        ulong optimisticSlot = checkpointSlot + 100;
+        ulong candidateSlot = checkpointSlot + (recentCandidate ? 4098UL : 200UL);
+        LightClientBootstrap bootstrap = fixture.Bootstrap();
+        bootstrap.Header!.Beacon!.Slot = checkpointSlot;
+        Array.Fill(bootstrap.CurrentSyncCommittee!.Pubkeys!, new BlsPublicKey(new Bls.P1(Key(1)).Compress()));
+        bootstrap.Header.Beacon.StateRoot = BranchRoot(SszRoots.HashTreeRoot(bootstrap.CurrentSyncCommittee),
+            bootstrap.CurrentSyncCommitteeBranch!, bootstrap.Header.IsGloas ? 2945 : 86);
+        Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header.Beacon);
+        LightClientStore store = new(spec, checkpoint, bootstrap, checkpointSlot);
+        LightClientFinalityUpdate confirmed = SignedFinality(finalizedSlot, optimisticSlot, 342);
+        LightClientFinalityUpdate candidate = SignedFinality(candidateSlot, candidateSlot + 1, 1);
+        using SemaphoreSlim gate = new(1, 1);
+        int stops = 0, publications = 0;
+        TaskCompletionSource recovered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        SlotClock clock = new(spec, confirmed.SignatureSlot);
+        string directory = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"gnosis-recovery-{Guid.NewGuid():N}");
+        ConsensusJournal OpenJournal() => new(directory, spec, "gnosis", checkpoint, NullLogger.Instance);
+        try
+        {
+            ConsensusJournal journal = OpenJournal();
+            await journal.InitializeAsync(bootstrap, store, token);
+            ConsensusSync.Processor processor = new(store, journal, spec, clock, gate,
+                () => { if (++publications == 3) recovered.TrySetResult(); }, () => stops++, NullLogger.Instance, token);
+            Assert.That(await processor.ProcessAsync(confirmed, token), Is.True);
+            clock.Slot = candidate.SignatureSlot;
+            bool advanced = await processor.ProcessAsync(candidate, token);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(advanced, Is.False);
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(optimisticSlot));
+                Assert.That(store.HasBestUpdate, Is.True);
+            }
+
+            clock.Slot = optimisticSlot + RecencyLimit + 1;
+            bool pending = incoming ? await processor.ProcessAsync(candidate, token) : await processor.ForceUpdateAsync(token);
+            Assert.That(pending, Is.False);
+            clock.Slot = finalizedSlot + UpdateTimeout;
+            Assert.That(await processor.ForceUpdateAsync(token), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stops, Is.Zero);
+                Assert.That(publications, Is.EqualTo(2));
+                Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(finalizedSlot));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(optimisticSlot));
+            }
+
+            if (recentCandidate)
+            {
+                using CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                TaskCompletionSource catchingUp = new(TaskCreationOptions.RunContinuationsAsynchronously);
+                Task catchUp = ConsensusSync.CatchUpAsync(store, spec, async (_, _, attempt) =>
+                {
+                    catchingUp.TrySetResult();
+                    await Task.Delay(Timeout.InfiniteTimeSpan, attempt);
+                    throw new AssertionException("The blocked supplier must be canceled.");
+                }, () => clock.Slot, processor.ProcessAsync, stop.Token, clock);
+                Task recovery = Task.CompletedTask;
+                try
+                {
+                    await catchingUp.Task.WaitAsync(token);
+                    clock.Slot++;
+                    recovery = processor.RunRecoveryLoopAsync(stop.Token);
+                    if (await Task.WhenAny(recovered.Task, recovery).WaitAsync(token) == recovery) await recovery;
+                    Assert.That(catchUp.IsCompleted, Is.False);
+                }
+                finally
+                {
+                    await stop.CancelAsync();
+                    try { await Task.WhenAll(catchUp, recovery); }
+                    catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+                }
+                LightClientStore? replayed = await OpenJournal().LoadAsync(clock.Slot, token);
+                Assert.That(replayed, Is.Not.Null);
+                Assert.That(replayed!.HasSameAuthenticatedState(store), Is.True);
+            }
+            else
+            {
+                clock.Slot++;
+                Assert.That(async () => await processor.ForceUpdateAsync(token),
+                    Throws.TypeOf<InvalidOperationException>().With.InnerException.TypeOf<LightClientLocalStateException>());
+            }
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(stops, Is.EqualTo(recentCandidate ? 0 : 1));
+                Assert.That(publications, Is.EqualTo(recentCandidate ? 3 : 2));
+                Assert.That(store.HasBestUpdate, Is.EqualTo(!recentCandidate));
+                Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(recentCandidate ? candidateSlot : optimisticSlot));
+                Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(finalizedSlot));
+            }
+        }
+        finally { if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true); }
+
+        LightClientFinalityUpdate SignedFinality(ulong finalized, ulong attested, int participants)
+        {
+            LightClientFinalityUpdate update = fixture.Finality();
+            update.FinalizedHeader!.Beacon!.Slot = finalized;
+            update.AttestedHeader!.Beacon!.Slot = attested;
+            update.AttestedHeader.Beacon.StateRoot = BranchRoot(SszRoots.HashTreeRoot(update.FinalizedHeader.Beacon),
+                update.FinalityBranch!, update.AttestedHeader.IsGloas ? 735 : 169);
+            update.SignatureSlot = attested + 1;
+            update.SyncAggregate = SignHeader(update.AttestedHeader.Beacon, attested, 1, participants, spec);
+            return update;
+        }
+    }
+
+    [Test]
     public async Task Captured_gnosis_committee_rollover_survives_journal_replay()
     {
         using LightClientFixture fixture = new();
@@ -259,6 +378,26 @@ public class GnosisPresetTests
         byte[] bytes = original.Bytes.ToArray();
         bytes[0] ^= 1;
         return new Hash256(bytes);
+    }
+
+    private sealed class SlotClock(BeaconChainSpec spec, ulong slot) : TimeProvider
+    {
+        internal ulong Slot { get; set; } = slot;
+        public override DateTimeOffset GetUtcNow() => DateTimeOffset.FromUnixTimeSeconds((long)(spec.GenesisTime + Slot * spec.SecondsPerSlot));
+    }
+
+    private static Hash256 BranchRoot(Hash256 leaf, Hash256[] branch, int index)
+    {
+        Span<byte> pair = stackalloc byte[64];
+        foreach (Hash256 sibling in branch)
+        {
+            bool right = (index & 1) != 0;
+            leaf.Bytes.CopyTo(pair[(right ? 32 : 0)..]);
+            sibling.Bytes.CopyTo(pair[(right ? 0 : 32)..]);
+            leaf = new Hash256(SHA256.HashData(pair));
+            index >>= 1;
+        }
+        return leaf;
     }
 
     // SSZ captured from https://rpc-gbc.gnosischain.com on 2026-11-17.

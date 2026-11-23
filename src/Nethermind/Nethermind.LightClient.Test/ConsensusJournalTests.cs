@@ -119,7 +119,7 @@ public class ConsensusJournalTests
     }
 
     [Test]
-    public async Task A_journal_written_before_forced_optimistic_promotion_replays_without_discarding_state()
+    public async Task A_forced_journal_record_replays_the_optimistic_head_without_a_separate_head_file()
     {
         LightClientBootstrap bootstrap = ConsensusTests.Bootstrap(1, 1);
         Hash256 checkpoint = SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
@@ -135,14 +135,11 @@ public class ConsensusJournalTests
             store.Process(update, update.SignatureSlot);
             await journal.AppendAsync(update, store, CancellationToken.None);
         }
-        LightClientHeader previousOptimistic = store.OptimisticHeader;
-        Assert.That(previousOptimistic.Beacon!.Slot, Is.EqualTo(3));
+        Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(3));
         LightClientUpdate candidate = store.BestUpdate!;
         Assert.That(store.ForceUpdate(8195), Is.True);
-        // Emulate the former writer's participation threshold during forced progress.
-        object snapshot = typeof(LightClientStore).GetField("_snapshot", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(store)!;
-        snapshot.GetType().GetProperty("OptimisticHeader")!.SetValue(snapshot, previousOptimistic);
         await journal.AppendForcedAsync(candidate, 8195, store, CancellationToken.None);
+        Assert.That(Directory.GetFiles(_directory, "*.optimistic"), Is.Empty);
         string chainPath = Directory.GetFiles(_directory, "*.chain").Single();
         byte[] chain = await File.ReadAllBytesAsync(chainPath);
 
@@ -236,7 +233,10 @@ public class ConsensusJournalTests
             Assert.That(stopped, Is.Zero);
             Assert.That(published, Is.EqualTo(replaySlot == 8196 ? 4 : 3));
             Assert.That(gate.CurrentCount, Is.EqualTo(1));
-            Assert.That(_logger.Entries.Where(entry => entry.Level >= LogLevel.Warning), Is.Empty);
+            Assert.That(_logger.Entries.Where(entry => entry.Level >= LogLevel.Warning), Is.EqualTo(new[]
+            {
+                (LogLevel.Warning, "Advanced sync committee without finality after the update timeout; finalized RPC head remains unchanged", (Exception?)null),
+            }));
         }
     }
 

@@ -511,7 +511,8 @@ public class EvmExecutorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(source.ContractAccountFetches, Is.EqualTo(2));
+            Assert.That(source.ContractAccountFetches, Is.EqualTo(3),
+                "The new root must fail both the speculative proof and the demand retry.");
             Assert.That(source.StorageFetches, Is.EqualTo(1));
             Assert.That(source.CodeFetches, Is.EqualTo(1));
         }
@@ -844,6 +845,133 @@ public class EvmExecutorTests
     }
 
     [Test]
+    public async Task Cold_call_overlaps_the_sender_proof_with_target_code_and_small_storage_hints([Values(0, 1, 4, 5)] int hints)
+    {
+        FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        TaskCompletionSource<Account> sender = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.SenderAccountResponse = token => sender.Task.WaitAsync(token);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        JsonElement request = StorageHintRequest(hints);
+        int prefetched = hints <= 4 ? hints : 0;
+
+        Task<string> response = call.ExecuteAsync(source.Head, request, false, CancellationToken.None);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.IsCompleted, Is.False);
+                Assert.That(source.ContractAccountFetches, Is.EqualTo(1));
+                Assert.That(source.CodeFetches, Is.EqualTo(1));
+                Assert.That(source.StorageFetches, Is.EqualTo(prefetched));
+            }
+        }
+        finally
+        {
+            sender.TrySetResult(Account.TotallyEmpty);
+            await response;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(await response, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(source.CodeFetches, Is.EqualTo(1));
+            Assert.That(source.StorageFetches, Is.EqualTo(Math.Max(prefetched, 1)));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Unused_storage_hints_do_not_block_or_fail_execution([Values] bool fail, CancellationToken cancellationToken)
+    {
+        FakeSource source = new([0x60, 0x2a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        bool cancelled = false;
+        source.StorageResponse = async (_, token) =>
+        {
+            if (fail) throw new InvalidDataException("Unusable speculative proof");
+            try { await Task.Delay(Timeout.Infinite, token); }
+            catch (OperationCanceledException) when (token.IsCancellationRequested)
+            {
+                cancelled = true;
+                throw;
+            }
+            return UInt256.Zero;
+        };
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        string result = await call.ExecuteAsync(source.Head, StorageHintRequest(1), false, cancellationToken);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            Assert.That(source.StorageFetches, Is.EqualTo(1));
+            Assert.That(cancelled, Is.EqualTo(!fail));
+        }
+    }
+
+    [Test]
+    [CancelAfter(10_000)]
+    public async Task Failed_storage_hint_can_be_retried_when_demanded([Values] bool cancelBeforeDemand, CancellationToken token)
+    {
+        FakeSource source = new([0x60, 0x00, 0x54, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
+        TaskCompletionSource<Account> sender = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.SenderAccountResponse = cancellationToken => sender.Task.WaitAsync(cancellationToken);
+        source.StorageResponse = (_, _) => source.StorageFetches == 1
+            ? Task.FromException<UInt256>(new ExecutionDataUnavailableException("The speculative storage proof is unavailable."))
+            : Task.FromResult((UInt256)42);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+
+        Task<string> response = call.ExecuteAsync(source.Head, StorageHintRequest(1), false, caller.Token);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.IsCompleted, Is.False);
+                Assert.That(source.StorageFetches, Is.EqualTo(1));
+            }
+            if (cancelBeforeDemand)
+            {
+                await caller.CancelAsync();
+                await Assert.CatchAsync<OperationCanceledException>(async () => await response);
+            }
+            else
+            {
+                sender.SetResult(Account.TotallyEmpty);
+                Assert.That(await response, Is.EqualTo("0x" + new string('0', 62) + "2a"));
+            }
+        }
+        finally
+        {
+            sender.TrySetResult(Account.TotallyEmpty);
+            await ((Task)response).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+        Assert.That(source.StorageFetches, Is.EqualTo(cancelBeforeDemand ? 1 : 2));
+    }
+
+    [Test]
+    public async Task First_account_miss_uses_its_single_proof_attempt()
+    {
+        FakeSource source = new([0x00]);
+        int senderFetches = 0;
+        source.SenderAccountResponse = _ => ++senderFetches == 1
+            ? Task.FromException<Account>(new ExecutionDataUnavailableException("The sender proof is unavailable."))
+            : Task.FromResult(Account.TotallyEmpty);
+        using EvmExecutor call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+
+        await Assert.ThrowsAsync<ExecutionDataUnavailableException>(async () =>
+            await call.ExecuteAsync(source.Head, StorageHintRequest(0), false, CancellationToken.None));
+        Assert.That(senderFetches, Is.EqualTo(1));
+    }
+
+    private static JsonElement StorageHintRequest(int storageKeys) => JsonSerializer.SerializeToElement(new
+    {
+        to = Contract.ToString(),
+        accessList = storageKeys == 0 ? null : new[]
+        {
+            new { address = Contract.ToString(), storageKeys = Enumerable.Range(0, storageKeys).Select(index => $"0x{index:x64}").ToArray() },
+        },
+    });
+
+    [Test]
     public async Task Execution_gas_is_capped_even_when_the_request_asks_for_more()
     {
         FakeSource source = new([0x5a, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xf3]);
@@ -1154,8 +1282,9 @@ public class EvmExecutorTests
             Assert.That(observed!.OperationName, Is.EqualTo("LightClientCall"));
             Assert.That(observed!.ParentId, Is.EqualTo(parent.Id));
             Assert.That(entries.Any(entry => entry.Contains($"block={source.Head.BlockHash} number={source.Head.Number} stateRoot={source.Head.StateRoot}")), Is.True);
-            foreach (string kind in new[] { "Account", "Code", blockhash ? "Blockhash" : "Storage" })
-                Assert.That(entries.Any(entry => entry.Contains($"phase=fill kind={kind} count=1 outcome=filled")), Is.True);
+            foreach (string kind in new[] { "Account", "Code" })
+                Assert.That(entries.Any(entry => entry.Contains($"phase=prefetch kind={kind} outcome=ready")), Is.True);
+            Assert.That(entries.Any(entry => entry.Contains($"phase=fill kind={(blockhash ? "Blockhash" : "Storage")} count=1 outcome=filled")), Is.True);
             Assert.That(entries.Any(entry => entry.Contains("phase=execution") && entry.Contains("outcome=completed")), Is.True);
         }
 
@@ -1266,7 +1395,7 @@ public class EvmExecutorTests
         {
             await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
             FieldInfo logger = typeof(EvmExecutor).GetField("_logger", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            logger.SetValue(call, DiagnosticLogs(true, entries).GetLogger(EvmExecutor.LogCategory));
+            logger.SetValue(call, DiagnosticLogs(true, entries).GetClassLogger<EvmExecutor>());
             Assert.That(((Nethermind.Logging.ILogger)logger.GetValue(call)!).IsDebug, Is.True);
         }
         finally
@@ -1660,7 +1789,7 @@ public class EvmExecutorTests
         sink.When(logger => logger.Debug(Arg.Any<string>())).Do(call => entries.Enqueue(call.Arg<string>()));
         ILogManager logs = Substitute.For<ILogManager>();
         Nethermind.Logging.ILogger logger = new(sink);
-        logs.GetLogger(EvmExecutor.LogCategory).Returns(logger);
+        logs.GetClassLogger<EvmExecutor>().Returns(logger);
         return logs;
     }
 
@@ -1712,6 +1841,7 @@ public class EvmExecutorTests
         public VerifiedHead? CanonicalHistoricalHead { get; set; }
         public Func<VerifiedHead, CancellationToken, Task<UInt256>>? StorageResponse { get; set; }
         public Func<VerifiedHead, Account>? ContractAccountResponse { get; set; }
+        public Func<CancellationToken, Task<Account>>? SenderAccountResponse { get; set; }
         public int Broadcasts { get; private set; }
         public BoundedTransactionRelay? TransactionRelay { get; init; }
         public Account GetPendingAccount(Address address, Account account, ulong nonceLimit = ulong.MaxValue) =>
@@ -1750,6 +1880,7 @@ public class EvmExecutorTests
         {
             Fetches++;
             LastQueriedHead = head;
+            if (address == Address.Zero && SenderAccountResponse is { } sender) return sender(cancellationToken);
             if (ExtraAccounts.TryGetValue(address, out Account? account)) return Task.FromResult(account);
             if (ExtraContracts.TryGetValue(address, out byte[]? extra))
                 return Task.FromResult(new Account(1, 0, Keccak.EmptyTreeHash, Keccak.Compute(extra)));

@@ -101,9 +101,9 @@ public class RpcFiltersTests
 
     private static async Task<JsonElement> DeliveredPollAsync(RpcFilters filters, UInt256 id, RpcBackend rpc)
     {
-        using ResultWrapper<JsonElement> response = await filters.PollAsync(id, rpc, CancellationToken.None);
+        using ResultWrapper<SerializedJson> response = await filters.PollAsync(id, rpc, CancellationToken.None);
         if (response is RpcFilters.PollResponse poll) poll.TakeCompletion()?.Invoke(true);
-        return response.Data;
+        return JsonElement.Parse(response.Data.Utf8Json);
     }
 
     private static RpcBackend Backend() => new(Substitute.For<IExecutionStateSource>(), static () => throw new InvalidOperationException(), 1);

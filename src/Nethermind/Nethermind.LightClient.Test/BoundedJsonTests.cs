@@ -1,7 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers;
+using System.Text;
 using System.Text.Json;
+using Nethermind.JsonRpc;
 using Nethermind.LightClient.Rpc;
 using Nethermind.Serialization.Json;
 
@@ -15,9 +18,9 @@ public class BoundedJsonTests
         byte[] value = new byte[(BoundedJson.ResultLimit - 4) / 2 + (oversized ? 1 : 0)];
         if (oversized)
         {
-            BoundedJson.ToElement(Array.Empty<byte>());
+            BoundedJson.Serialize(Array.Empty<byte>());
             long before = GC.GetAllocatedBytesForCurrentThread();
-            RpcException? error = Assert.Throws<RpcException>(() => BoundedJson.ToElement(value));
+            RpcException? error = Assert.Throws<RpcException>(() => BoundedJson.Serialize(value));
             long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
             using (Assert.EnterMultipleScope())
             {
@@ -28,8 +31,7 @@ public class BoundedJsonTests
         }
         else
         {
-            JsonElement result = BoundedJson.ToElement(value);
-            Assert.That(result.GetRawText().Length, Is.EqualTo(BoundedJson.ResultLimit));
+            Assert.That(BoundedJson.Serialize(value).Utf8Json, Has.Length.EqualTo(BoundedJson.ResultLimit));
         }
     }
 
@@ -44,7 +46,22 @@ public class BoundedJsonTests
             _ => new byte[]?[] { bytes, [], null },
         };
         string expected = TypeInfoJsonSerializer.Serialize(value, EthereumJsonSerializer.JsonOptions);
-        Assert.That(BoundedJson.ToElement(value).GetRawText(), Is.EqualTo(expected));
+        Assert.That(Encoding.UTF8.GetString(BoundedJson.Serialize(value).Utf8Json), Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Serialized_result_preserves_the_compact_envelope_bytes()
+    {
+        object payload = new Dictionary<string, string?> { ["<name>"] = "α<&>\n", ["empty"] = null };
+        using ResultWrapper<JsonElement> element = ResultWrapper<JsonElement>.Success(JsonSerializer.SerializeToElement(payload));
+        using ResultWrapper<SerializedJson> justBytes = ResultWrapper<SerializedJson>.Success(BoundedJson.Serialize(payload));
+        element.Id = justBytes.Id = new JsonRpcId("λ<&>");
+        ArrayBufferWriter<byte> expected = new();
+        ArrayBufferWriter<byte> actual = new();
+        JsonRpcResponseWriter.Write(expected, element, EthereumJsonSerializer.JsonOptions);
+        JsonRpcResponseWriter.Write(actual, justBytes, EthereumJsonSerializer.JsonOptions);
+
+        Assert.That(actual.WrittenSpan.SequenceEqual(expected.WrittenSpan), Is.True);
     }
 
     [Test]

@@ -115,7 +115,9 @@ initialization completes. After initialization, `eth_syncing` follows the
 authenticated latest head; it does not promise all configured accounts or
 requested history have finished downloading.
 
-Loopback listeners reject non-loopback Host headers. Requests from browser
+Loopback listeners accept loopback Host headers. Other listeners default to
+`localhost`, `*.localhost` and IP literals. Set `--AllowedHosts 'rpc.example;localhost'`
+to allow an operator-controlled DNS name on a non-loopback listener. Requests from browser
 extensions (`chrome-extension://` or `moz-extension://`) are allowed, including
 CORS preflights. CORS does not enable credentialed cross-origin requests. Ordinary
 website and opaque (`null`) origins are rejected on both HTTP and WebSocket
@@ -124,17 +126,21 @@ an extension or caller. Public listeners require an authenticated gateway.
 The root must be a recent **finalized beacon block root**. It is not an execution
 block hash or a beacon state root. The client never obtains or replaces its
 trust anchor from its peers.
-The bootstrap, the latest replayed authenticated header, and the retained live
-state before processing or forcing another update must be
+The bootstrap, the latest replayed authenticated header, and the live head used
+to verify another update must be
 at most 256 epochs of slots old (27 hours 18 minutes 24 seconds on Ethereum
 networks; 5 hours 41 minutes 20 seconds on Gnosis). This uses the minimum
 validator withdrawal delay, a conservative
 lower bound of the supported forks' [weak-subjectivity periods](https://ethereum.github.io/consensus-specs/specs/gloas/weak-subjectivity/).
 It does not compute the full state-dependent validator churn term. A saved
 original checkpoint may be older when replay proves recent authenticated
-progress. A stale replay or a live client suspended beyond this bound requires
-an explicitly chosen recent checkpoint; live processing stops rather than
-following committees that would be refused on restart.
+progress. A live client with a verified recovery candidate can wait for the
+committee timeout even after the retained head exceeds this bound. It pauses
+processing new updates until timeout recovery produces a recent authenticated
+head. During this pause the client checks for recovery each slot independently
+of peer polling. Startup, journal replay and the head produced by recovery all use the
+same 256-epoch bound. If the candidate still leaves the head outside the bound
+when recovery is due, restart with an explicitly chosen recent checkpoint.
 `--data-dir` selects the consensus journal and networking storage directory (default:
 `src/Nethermind/artifacts/lightclient`). Restart with the same network and
 checkpoint to replay saved updates; a new checkpoint starts a separate journal.

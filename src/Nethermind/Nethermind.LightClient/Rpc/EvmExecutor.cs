@@ -31,8 +31,6 @@ namespace Nethermind.LightClient.Rpc;
 internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs, TimeProvider? clock = null,
     ulong? secondsPerSlot = null, IWithdrawalProcessorFactory? withdrawalProcessorFactory = null) : IDisposable
 {
-    // Preserve existing log filters when the implementation class is renamed.
-    internal const string LogCategory = "LightClient.Rpc.VerifiedCall";
     private const ulong GasCap = 10_000_000;
     private const int CodeCacheCapacity = 256;
     private readonly BoundedMemoryCache _cache = new();
@@ -47,7 +45,7 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
         .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
         .Build();
     private readonly SemaphoreSlim _slots = new(4);
-    private readonly Nethermind.Logging.ILogger _logger = logs.GetLogger(LogCategory);
+    private readonly Nethermind.Logging.ILogger _logger = logs.GetClassLogger<EvmExecutor>();
 
     internal Task<string> ExecuteAsync(VerifiedHead head, TransactionForRpc request, bool estimateGas, CancellationToken cancellationToken,
         Dictionary<Address, AccountOverride>? stateOverrides = null, BlockOverride? blockOverrides = null) =>
@@ -275,55 +273,63 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
         UInt256? blobFeeOverride = zeroBlobFee ? UInt256.Zero : blockOverrides?.BlobBaseFee;
         callHeader.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(tx);
         ICodeCache? codeCache = stateOverrides is { Count: > 0 } ? new StaticCodeCache(CodeCacheCapacity) : null;
-
-        for (int attempt = 0; attempt < 128; attempt++)
+        StatePrefetch? prefetch = null;
+        try
         {
-            token.ThrowIfCancellationRequested();
-            MissingCallState missingState;
-            await EnterExecutionAsync(trace, token);
-            try
+            for (int attempt = 0; attempt < 128; attempt++)
             {
-                using ILifetimeScope environment = CreateExecutionScope(head, codeCache, traceCall: kind == SingleCallKind.TraceCall);
-                if (blobFeeOverride is { } fee) environment.Resolve<SingleCallRequestState>().BlobBaseFeeOverride = fee;
-                IWorldState state = environment.Resolve<IWorldState>();
-                if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
-                using (scope)
+                token.ThrowIfCancellationRequested();
+                MissingCallState missingState;
+                await EnterExecutionAsync(trace, token);
+                try
                 {
-                    long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
-                    bool filling = false;
-                    bool completed = false;
-                    try
+                    using ILifetimeScope environment = CreateExecutionScope(head, codeCache, traceCall: kind == SingleCallKind.TraceCall);
+                    if (blobFeeOverride is { } fee) environment.Resolve<SingleCallRequestState>().BlobBaseFeeOverride = fee;
+                    IWorldState state = environment.Resolve<IWorldState>();
+                    if (!state.TryBeginScope(header, out IDisposable? scope)) throw new RpcException(-32000, "Verified state is unavailable.");
+                    using (scope)
                     {
-                        if (stateOverrides is { Count: > 0 })
+                        long executionStart = trace ? Stopwatch.GetTimestamp() : 0;
+                        bool filling = false;
+                        bool completed = false;
+                        try
                         {
-                            IOverridableCodeInfoRepository codes = environment.Resolve<IOverridableCodeInfoRepository>();
-                            state.ApplyStateOverrides(codes, stateOverrides, spec, callHeader.Number, merkleize: false);
+                            if (stateOverrides is { Count: > 0 })
+                            {
+                                IOverridableCodeInfoRepository codes = environment.Resolve<IOverridableCodeInfoRepository>();
+                                state.ApplyStateOverrides(codes, stateOverrides, spec, callHeader.Number, merkleize: false);
+                            }
+                            if (tx.NonceKeys is null) tx.Nonce = state.GetNonce(tx.SenderAddress);
+                            ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
+                            BlockExecutionContext context = blobFeeOverride is { } overriddenFee ? new(callHeader, spec, overriddenFee) : new(callHeader, spec);
+                            T result = run(processor, state, tx, model, in context, token);
+                            completed = true;
+                            return result;
                         }
-                        if (tx.NonceKeys is null) tx.Nonce = state.GetNonce(tx.SenderAddress);
-                        ITransactionProcessor processor = environment.Resolve<ITransactionProcessor>();
-                        BlockExecutionContext context = blobFeeOverride is { } overriddenFee ? new(callHeader, spec, overriddenFee) : new(callHeader, spec);
-                        T result = run(processor, state, tx, model, in context, token);
-                        completed = true;
-                        return result;
-                    }
-                    catch (MissingCallState missing)
-                    {
-                        filling = true;
-                        if (trace)
-                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
-                        missingState = missing;
-                    }
-                    finally
-                    {
-                        if (trace && !filling)
-                            _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                        catch (MissingCallState missing)
+                        {
+                            filling = true;
+                            if (trace)
+                                _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome=missing kind={missing.Kind} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                            missingState = missing;
+                        }
+                        finally
+                        {
+                            if (trace && !filling)
+                                _logger.Debug($"LC call id={Activity.Current?.Id} phase=execution attempt={attempt + 1} outcome={(completed ? "completed" : "failed")} elapsedMs={Stopwatch.GetElapsedTime(executionStart).TotalMilliseconds:F3}");
+                        }
                     }
                 }
+                finally { _slots.Release(); }
+                if (attempt == 0 && codeCache is null) prefetch = StartPrefetch(head, tx, spec, missingState.Kind, trace, token);
+                await FillAsync(head, missingState, trace, token, prefetch, retryPrefetchFailure: attempt != 0);
             }
-            finally { _slots.Release(); }
-            await FillAsync(head, missingState, trace, token);
+            throw new RpcException(-32000, "Execution accessed too many distinct state items.");
         }
-        throw new RpcException(-32000, "Execution accessed too many distinct state items.");
+        finally
+        {
+            if (prefetch is not null) await prefetch.DisposeAsync();
+        }
     }
 
     private static string EstimateGas(ITransactionProcessor processor, IWorldState state, Transaction tx,
@@ -401,25 +407,32 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
         }
     }
 
-    private async Task FillAsync(VerifiedHead head, MissingCallState missing, bool trace, CancellationToken token)
+    private async Task FillAsync(VerifiedHead head, MissingCallState missing, bool trace, CancellationToken token,
+        StatePrefetch? prefetch = null, bool retryPrefetchFailure = false)
     {
         long fillStart = trace ? Stopwatch.GetTimestamp() : 0;
         bool filled = false;
         try
         {
+            if (prefetch?.GetPending(missing) is { } pending)
+            {
+                // The first miss starts a real demand. Later misses can have encountered an earlier speculative failure.
+                if (retryPrefetchFailure) await pending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+                else await pending;
+            }
+            token.ThrowIfCancellationRequested();
             switch (missing.Kind)
             {
                 case MissingKind.Account:
-                    Account account = await execution.GetAccountAsync(head, missing.Address!, token);
-                    _cache.Set((head.StateRoot, missing.Address!), account, 512);
+                    await GetAccountAsync(head, missing.Address!, token);
                     break;
                 case MissingKind.Storage:
                     if (!_cache.TryGetValue((head.StateRoot, missing.Address!), out Account? owner) || owner is null)
                         throw new RpcException(-32000, "Account proof is unavailable for storage.");
-                    UInt256 slot = await execution.GetStorageAsync(head, missing.Address!, owner, missing.Slot, token);
-                    _cache.Set((owner.StorageRoot, missing.Address!, missing.Slot), slot, 512);
+                    await GetStorageAsync(head, missing.Address!, owner, missing.Slot, token);
                     break;
                 case MissingKind.Code:
+                    if (_cache.TryGetValue(missing.CodeHash, out byte[]? _)) break;
                     Account? codeOwner = null;
                     foreach (Address address in missing.KnownAccounts!)
                     {
@@ -431,8 +444,7 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
                         }
                     }
                     if (codeOwner is null) throw new RpcException(-32000, "Code hash has no authenticated account.");
-                    byte[] code = await execution.GetCodeAsync(codeOwner, token);
-                    _cache.Set(missing.CodeHash, code, 256L + code.Length);
+                    await GetCodeAsync(codeOwner, token);
                     break;
                 case MissingKind.Blockhash:
                     ulong first = head.Number > 256 ? head.Number - 256 : 0;
@@ -449,11 +461,37 @@ internal sealed partial class EvmExecutor(IExecutionStateSource execution, ISpec
         }
     }
 
+    private async Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken token)
+    {
+        object key = (head.StateRoot, address);
+        if (_cache.TryGetValue(key, out Account? cached)) return cached!;
+        Account account = await execution.GetAccountAsync(head, address, token);
+        _cache.Set(key, account, 512);
+        return account;
+    }
+
+    private async Task GetStorageAsync(VerifiedHead head, Address address, Account owner, UInt256 slot, CancellationToken token)
+    {
+        object key = (owner.StorageRoot, address, slot);
+        if (_cache.TryGetValue(key, out UInt256 _)) return;
+        UInt256 value = await execution.GetStorageAsync(head, address, owner, slot, token);
+        _cache.Set(key, value, 512);
+    }
+
+    private async Task GetCodeAsync(Account owner, CancellationToken token)
+    {
+        ValueHash256 key = owner.CodeHash.ValueHash256;
+        if (_cache.TryGetValue(key, out byte[]? _)) return;
+        byte[] code = await execution.GetCodeAsync(owner, token);
+        _cache.Set(key, code, 256L + code.Length);
+    }
+
     public void Dispose()
     {
         _processing.Dispose();
         _simulation.Dispose();
         if (_replay.IsValueCreated) _replay.Value.Dispose();
+        _prefetchSlots.Dispose();
         _slots.Dispose();
         _cache.Dispose();
     }

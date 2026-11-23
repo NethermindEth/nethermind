@@ -1117,7 +1117,12 @@ public class TransportTests
     [CancelAfter(30_000)]
     public async Task History_shutdown_joins_shared_group_and_child_tasks_before_disposal(CancellationToken token)
     {
-        ExecutionPeers peers = new(1);
+        Nethermind.Logging.InterfaceLogger sink = Substitute.For<Nethermind.Logging.InterfaceLogger>();
+        sink.IsWarn.Returns(true);
+        Nethermind.Logging.ILogManager logs = Substitute.For<Nethermind.Logging.ILogManager>();
+        Nethermind.Logging.ILogger logger = new(sink);
+        logs.GetClassLogger<ExecutionPeerTransport>().Returns(logger);
+        ExecutionPeers peers = new(1, logs: logs);
         using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
         BlockHeader[] chain = HistoryChain(2200);
         BlockHeader anchor = chain[2000];
@@ -1167,6 +1172,10 @@ public class TransportTests
                 Assert.That(starts, Is.EqualTo(3));
                 Assert.That(cancellations, Is.EqualTo(3));
                 Assert.That(peer.ResponsesDisposed, Is.EqualTo(1));
+                Assert.That(peers.Transport.LogHistoryProgress.IsBackfilling, Is.False);
+                Assert.That(peers.Transport.LogHistoryProgress.Error, Is.Null);
+                sink.DidNotReceive().Warn(Arg.Is<string>(message => message.StartsWith("Log header backfill", StringComparison.Ordinal)
+                    || message.StartsWith("Unable to authenticate the requested log header history", StringComparison.Ordinal)));
             }
         }
         finally
@@ -5153,6 +5162,28 @@ public class TransportTests
             Assert.That(removed, Is.True);
             Assert.That(retainedAfterRemoval, Is.False);
         }
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task A_full_relay_returns_the_rpc_limit_error(CancellationToken token)
+    {
+        await using ExecutionPeerTransport transport = new("sepolia", Nethermind.Logging.LimboLogs.Instance,
+            new VerifiedHead(0, 0, KnownHashes.SepoliaGenesis, Keccak.Zero));
+        BoundedTransactionRelay relay = (BoundedTransactionRelay)Services(transport).Resolve<ITxPool>();
+        byte[] data = new byte[32 * 1024];
+        Transaction transaction = new()
+        {
+            Hash = Keccak.Compute("last submission"),
+            Data = data,
+        };
+        int fits = (32 * 1024 * 1024) / (transaction.GetLength() * 2 + 1024);
+        for (int i = 0; i < fits; i++)
+            relay.AddVerified(new Transaction { Hash = Keccak.Compute(i.ToString()), Data = data });
+
+        Assert.That(async () => await transport.BroadcastTransactionAsync(transaction, token),
+            Throws.TypeOf<RpcException>().With.Property(nameof(RpcException.Code)).EqualTo(-32005));
+        Assert.That(relay.IsKnown(transaction.Hash!), Is.False);
     }
 
     [Test]

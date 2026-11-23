@@ -10,6 +10,7 @@
     <Compile Include="../Nethermind.BeaconChain.Test/BeaconChainTestContainer.cs" Link="BeaconChainTestContainer.cs" />
     <Compile Include="../Nethermind.BeaconChain.Test/Spec/ExecutionSchedules.cs" Link="ExecutionSchedules.cs" />
     <Compile Include="../Nethermind.BeaconChain.Test/GlobalUsings.cs" Link="GlobalUsings.cs" />
+    <Compile Include="../Nethermind.LightClient.Test/LightClientTestSigning.cs" Link="LightClientTestSigning.cs" />
     <Compile Include="../Nethermind.LightClient.Test/RpcTestExtensions.cs" Link="RpcTestExtensions.cs" />
   </ItemGroup>
   <ItemGroup>
