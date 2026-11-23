@@ -110,7 +110,8 @@ namespace Nethermind.Consensus.Processing
                     }
                 }
 
-                if (blockToProduce?.InclusionList is { Length: > 0 } inclusionList && !token.IsCancellationRequested)
+                CancellationToken reofferToken = blockToProduce is { AbandonToken.CanBeCanceled: true } ? blockToProduce.AbandonToken : token;
+                if (blockToProduce?.InclusionList is { Length: > 0 } inclusionList && !reofferToken.IsCancellationRequested)
                 {
                     consideredTx.Clear();
                     foreach (Transaction tx in includedTx.AsSpan()) consideredTx.Add(tx);
@@ -134,13 +135,13 @@ namespace Nethermind.Consensus.Processing
                             {
                                 bool firstPass = true;
                                 bool added = true;
-                                while (added && pendingCount > 0 && !token.IsCancellationRequested)
+                                while (added && pendingCount > 0 && !reofferToken.IsCancellationRequested)
                                 {
                                     added = false;
                                     int kept = 0;
                                     for (int k = 0; k < pendingCount; k++)
                                     {
-                                        if (token.IsCancellationRequested)
+                                        if (reofferToken.IsCancellationRequested)
                                         {
                                             added = false;
                                             break;

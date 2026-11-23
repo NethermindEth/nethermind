@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Threading;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Utils;
@@ -36,6 +37,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.FluentRlp;
@@ -979,6 +981,57 @@ public partial class EngineModuleTests
         Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { fund.Hash, relay.Hash, spend.Hash }));
     }
 
+    [Test]
+    public async Task Should_offer_inclusion_list_transactions_again_when_the_improvement_timeout_stops_the_build()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+        (Transaction first, Transaction second, PayloadAttributes payloadAttributes) = SetTwoSenderInclusionList(chain);
+        TimeSpan timeout = TimeSpan.FromMilliseconds(500);
+        counter.OnNextOffer(() => Thread.Sleep(timeout * 4));
+
+        using BlockImprovementContext context = new(null, chain.BlockProducer!, timeout, chain.BlockTree.Head!.Header, payloadAttributes,
+            DateTimeOffset.UtcNow, UInt256.Zero, new SharedCancellationTokenSource(new CancellationTokenSource()));
+        Block? block = await context.ImprovementTask;
+
+        Assert.That(block!.Transactions.Select(static t => t.Hash), Is.EqualTo(new[] { first.Hash, second.Hash }));
+    }
+
+    [Test]
+    public async Task Should_not_offer_inclusion_list_transactions_again_when_the_build_is_abandoned()
+    {
+        CountingTransactionPicker.Counter counter = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance, new MergeConfig { TerminalTotalDifficulty = "0" },
+            configurer: builder => builder.AddDecorator<BlockProcessor.IBlockProductionTransactionPicker>((_, inner) => new CountingTransactionPicker(inner, counter)));
+        (Transaction first, Transaction second, PayloadAttributes payloadAttributes) = SetTwoSenderInclusionList(chain);
+        using CancellationTokenSource round = new();
+        counter.OnNextOffer(round.Cancel);
+
+        using BlockImprovementContext context = new(null, chain.BlockProducer!, TimeSpan.FromMinutes(10), chain.BlockTree.Head!.Header, payloadAttributes,
+            DateTimeOffset.UtcNow, UInt256.Zero, new SharedCancellationTokenSource(round));
+        await context.ImprovementTask;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(counter.OffersPerBlock(first.Hash!), Is.Not.Empty);
+            Assert.That(counter.OffersPerBlock(second.Hash!), Is.Empty);
+        }
+    }
+
+    private (Transaction First, Transaction Second, PayloadAttributes PayloadAttributes) SetTwoSenderInclusionList(MergeTestBlockchain chain)
+    {
+        Transaction first = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction second = Build.A.Transaction
+            .WithNonce(0).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(2.GWei)
+            .WithTo(TestItem.AddressA).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
+        PayloadAttributes payloadAttributes = BuildBogotaPayloadAttributes(inclusionList: [Rlp.Encode(first), Rlp.Encode(second)]);
+        chain.InclusionListTxSource!.Set(payloadAttributes.InclusionListTransactions!, Bogota.Instance);
+        return (first, second, payloadAttributes);
+    }
+
     private static (Transaction Spend, Transaction Fund) BuildSpendFundedByLaterTransaction()
     {
         Transaction spend = Build.A.Transaction
@@ -996,8 +1049,15 @@ public partial class EngineModuleTests
         public sealed class Counter
         {
             private readonly ConcurrentDictionary<(int Block, Hash256 Tx), int> _offers = new();
+            private Action? _onNextOffer;
 
-            public void Add(Block block, Hash256 tx) => _offers.AddOrUpdate((RuntimeHelpers.GetHashCode(block), tx), 1, static (_, count) => count + 1);
+            public void OnNextOffer(Action action) => _onNextOffer = action;
+
+            public void Add(Block block, Hash256 tx)
+            {
+                Interlocked.Exchange(ref _onNextOffer, null)?.Invoke();
+                _offers.AddOrUpdate((RuntimeHelpers.GetHashCode(block), tx), 1, static (_, count) => count + 1);
+            }
 
             public Dictionary<int, int> OffersPerBlock(Hash256 tx) => _offers.Where(entry => entry.Key.Tx == tx).ToDictionary(static entry => entry.Key.Block, static entry => entry.Value);
         }
