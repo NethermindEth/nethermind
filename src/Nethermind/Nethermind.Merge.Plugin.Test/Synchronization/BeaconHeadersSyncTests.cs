@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Headers;
@@ -11,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -21,9 +24,13 @@ using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
+using Nethermind.Stats.SyncLimits;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
@@ -86,6 +93,8 @@ public class BeaconHeadersSyncTests
             set => _invalidChainTracker = value;
         }
 
+        public ILogManager LogManager { get; set; } = LimboLogs.Instance;
+
         private BeaconHeadersSyncFeed? _feed;
         public BeaconHeadersSyncFeed Feed => _feed ??= new BeaconHeadersSyncFeed(
             PoSSwitcher,
@@ -95,7 +104,7 @@ public class BeaconHeadersSyncTests
             Report,
             BeaconPivot,
             InvalidChainTracker,
-            LimboLogs.Instance,
+            LogManager,
             ChainLevelInfoRepository,
             HeaderStore
         );
@@ -392,6 +401,87 @@ public class BeaconHeadersSyncTests
         Assert.That(second, Is.Null);
     }
 
+    private const ulong JoinNumber = 6;
+    private const string NoNewHeaderLine = "No new header to add in beacon headers sync, the highest header of the batch is already known";
+
+    /// <summary>
+    /// The first batch below the pivot ends on the known header the beacon chain joins, so nothing of it is inserted.
+    /// Its headers are already stored, so the feed handles it while preparing a request.
+    /// </summary>
+    [Test]
+    public async Task Feed_merges_when_a_stored_batch_ends_on_a_known_header([Values] bool trace)
+    {
+        BlockTree remote = Build.A.BlockTree().OfChainLength((int)JoinNumber + 2).TestObject;
+        TestLogger logger = new() { IsTrace = trace };
+        Context ctx = PrepareJoin(remote, JoinNumber + 1, logger, localChainKnown: true);
+
+        using HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(request, Is.Null, "the stored batch needs no download");
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant), "merged, so the feed went to sleep");
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(JoinNumber + 1), "nothing inserted below the pivot");
+            Assert.That(logger.LogList, trace ? Has.One.EqualTo(NoNewHeaderLine) : Has.None.EqualTo(NoNewHeaderLine));
+            Assert.That(logger.LogList, Has.None.StartsWith("New header starting from"));
+        }
+    }
+
+    /// <summary>The same join through a downloaded batch: the joining header became known after the request was sent.</summary>
+    [Test]
+    public async Task Feed_merges_when_a_downloaded_batch_ends_on_a_known_header([Values] bool trace)
+    {
+        BlockTree remote = Build.A.BlockTree().OfChainLength((int)JoinNumber + 2).TestObject;
+        TestLogger logger = new() { IsTrace = trace };
+        Context ctx = PrepareJoin(remote, JoinNumber + 1, logger, localChainKnown: false);
+
+        using HeadersSyncBatch? request = await ctx.Feed.PrepareRequest();
+        ulong? requestEnd = request?.EndNumber;
+        SuggestLocalChain(ctx.BlockTree, remote);
+        BuildHeadersSyncBatchResponse(request, remote);
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(request);
+        using HeadersSyncBatch? next = await ctx.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requestEnd, Is.EqualTo(JoinNumber));
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(next, Is.Null, "the range must not be requested again");
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant), "merged, so the feed went to sleep");
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(JoinNumber + 1), "nothing inserted below the pivot");
+        }
+    }
+
+    /// <summary>
+    /// The same join through a parked batch: the stored batch below the first download waits as a dependency until
+    /// the download lands, then is drained.
+    /// </summary>
+    [Test]
+    public async Task Feed_merges_when_a_parked_batch_ends_on_a_known_header([Values] bool trace)
+    {
+        const ulong pivotNumber = JoinNumber + 1 + GethSyncLimits.MaxHeaderFetch;
+        BlockTree remote = Build.A.BlockTree().OfChainLength((int)pivotNumber + 1).TestObject;
+        TestLogger logger = new() { IsTrace = trace };
+        Context ctx = PrepareJoin(remote, pivotNumber, logger, localChainKnown: true);
+
+        using HeadersSyncBatch? upper = await ctx.Feed.PrepareRequest();
+        using HeadersSyncBatch? parked = await ctx.Feed.PrepareRequest();
+        ulong? upperStart = upper?.StartNumber;
+        BuildHeadersSyncBatchResponse(upper, remote);
+        SyncResponseHandlingResult result = ctx.Feed.HandleResponse(upper);
+        using HeadersSyncBatch? next = await ctx.Feed.PrepareRequest();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(upperStart, Is.EqualTo(JoinNumber + 1));
+            Assert.That(parked, Is.Null, "the stored range waits for the download above it");
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
+            Assert.That(next, Is.Null, "the parked range must not be requested again");
+            Assert.That(ctx.Feed.CurrentState, Is.EqualTo(SyncFeedState.Dormant), "merged, so the feed went to sleep");
+            Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(JoinNumber + 1));
+        }
+    }
+
     [Test]
     public async Task When_pivot_changed_during_header_sync_after_chain_merged__do_not_return_null_request()
     {
@@ -445,6 +535,95 @@ public class BeaconHeadersSyncTests
         Assert.That(ctx.BeaconSync.IsBeaconSyncHeadersFinished(), Is.True);
         request = await ctx.Feed.PrepareRequest();
         Assert.That(request, Is.Null);
+    }
+
+    [Test]
+    public async Task Resumes_below_the_lowest_inserted_header_after_reinitialization()
+    {
+        Context ctx = CreateContextWithStoredSyncPivot(syncPivotNumber: 500, beaconPivotNumber: 700);
+        // The first request covers only its top header, so it is the only header inserted before the feed is initialized again.
+        ctx.PeerPool.EstimateRequestLimit(RequestType.Headers, Arg.Any<IPeerAllocationStrategy>(), AllocationContexts.Headers, Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(1), Task.FromResult<int?>(null));
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        ctx.Feed.InitializeFeed();
+        using (HeadersSyncBatch first = (await ctx.Feed.PrepareRequest())!)
+        {
+            BuildHeadersSyncBatchResponse(first, ctx.RemoteBlockTree);
+            first.ResponseSourcePeer = peer;
+            ctx.Feed.HandleResponse(first);
+        }
+        Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Number, Is.EqualTo(ctx.BeaconPivot.PivotNumber - 1));
+
+        ctx.Feed.InitializeFeed();
+        for (int i = 0; i < 16 && !ctx.Feed.IsFinished; i++)
+        {
+            using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+            using HeadersSyncBatch? batch = await Task.Run(() => ctx.Feed.PrepareRequest(cts.Token)).WaitAsync(cts.Token);
+            if (batch is null) continue;
+            BuildHeadersSyncBatchResponse(batch, ctx.RemoteBlockTree);
+            batch.ResponseSourcePeer = peer;
+            ctx.Feed.HandleResponse(batch);
+        }
+
+        Assert.That(ctx.Feed.IsFinished, Is.True, "beacon header sync completes");
+        ctx.PeerPool.DidNotReceive().ReportBreachOfProtocol(Arg.Any<PeerInfo>(), Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Rejects_a_first_header_with_an_unexpected_hash_at_the_lowest_inserted_number()
+    {
+        Context ctx = CreateContextWithStoredSyncPivot(syncPivotNumber: 500, beaconPivotNumber: 700);
+        ctx.Feed.InitializeFeed();
+        using HeadersSyncBatch upper = (await ctx.Feed.PrepareRequest())!;
+        using HeadersSyncBatch last = (await ctx.Feed.PrepareRequest())!;
+        Assert.That(last.StartNumber, Is.EqualTo(ctx.BlockTree.SyncPivot.BlockNumber + 1));
+        BuildHeadersSyncBatchResponse(upper, ctx.RemoteBlockTree);
+        ctx.Feed.HandleResponse(upper);
+
+        // While the last request is in flight, its first block is inserted the way a new payload with a known but
+        // unprocessed parent is, which makes it the lowest inserted beacon header.
+        Block block = ctx.RemoteBlockTree.FindBlock(last.StartNumber, BlockTreeLookupOptions.None)!;
+        ctx.BlockTree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader | BlockTreeInsertBlockOptions.SkipCanAcceptNewBlocks,
+            BlockTreeInsertHeaderOptions.BeaconBlockInsert);
+        Assert.That(ctx.BlockTree.LowestInsertedBeaconHeader?.Hash, Is.EqualTo(block.Hash));
+
+        BlockHeader otherHeader = Build.A.BlockHeader.WithParent(ctx.RemoteBlockTree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!)
+            .WithExtraData([1]).TestObject;
+        PeerInfo peer = new(Substitute.For<ISyncPeer>());
+        last.MarkSent();
+        last.Response = new ArrayPoolList<BlockHeader?>(1) { otherHeader };
+        last.ResponseSourcePeer = peer;
+        ctx.Feed.HandleResponse(last);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.BlockTree.FindHeader(otherHeader.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded), Is.Null, "header is not stored");
+            Assert.That(ctx.ChainLevelInfoRepository.LoadLevel(block.Number)?.BeaconMainChainBlock?.BlockHash, Is.Not.EqualTo(otherHeader.Hash));
+        }
+        ctx.PeerPool.Received().ReportBreachOfProtocol(peer, DisconnectReason.UnexpectedHeaderHash, Arg.Any<string>());
+    }
+
+    /// <summary>
+    /// Creates a context whose local tree holds the sync pivot header, as stored by the fast headers sync, and whose
+    /// beacon headers sync runs from <paramref name="beaconPivotNumber"/> down to the sync pivot.
+    /// </summary>
+    private static Context CreateContextWithStoredSyncPivot(ulong syncPivotNumber, ulong beaconPivotNumber)
+    {
+        Context ctx = new();
+        ctx.SetupRemoteBlockTreeOfLength(1000);
+        BlockHeader syncPivot = ctx.RemoteBlockTree.FindHeader(syncPivotNumber, BlockTreeLookupOptions.None)!;
+        ctx.SyncConfig = new SyncConfig
+        {
+            FastSync = true,
+            PivotNumber = syncPivot.Number,
+            PivotHash = syncPivot.Hash!.ToString(),
+            PivotTotalDifficulty = syncPivot.TotalDifficulty.ToString()!
+        };
+        ctx.BlockTree.SyncPivot = (syncPivot.Number, syncPivot.Hash!);
+        Assert.That(ctx.BlockTree.Insert(syncPivot), Is.EqualTo(AddBlockResult.Added));
+        ctx.BeaconPivot = PreparePivot(beaconPivotNumber, ctx.SyncConfig, ctx.BlockTree,
+            ctx.RemoteBlockTree.FindHeader(beaconPivotNumber, BlockTreeLookupOptions.None));
+        return ctx;
     }
 
     private async Task BuildAndProcessHeaderSyncBatches(
@@ -529,6 +708,29 @@ public class BeaconHeadersSyncTests
         IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
         pivot.EnsurePivot(pivotHeader ?? Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         return pivot;
+    }
+
+    /// <summary>
+    /// A context whose beacon pivot is at <paramref name="pivotNumber"/> of <paramref name="remote"/>, with the feed
+    /// initialized and active, so that a later <see cref="SyncFeedState.Dormant"/> state shows the feed finished.
+    /// </summary>
+    private static Context PrepareJoin(BlockTree remote, ulong pivotNumber, TestLogger logger, bool localChainKnown)
+    {
+        Context ctx = new() { LogManager = new OneLoggerLogManager(new ILogger(logger)) };
+        if (localChainKnown) SuggestLocalChain(ctx.BlockTree, remote);
+        ctx.BeaconPivot = PreparePivot(pivotNumber, ctx.SyncConfig, ctx.BlockTree, remote.FindHeader(pivotNumber, BlockTreeLookupOptions.None));
+        ctx.Feed.InitializeFeed();
+        ctx.Feed.Activate();
+        return ctx;
+    }
+
+    /// <summary>Adds blocks 1 to <see cref="JoinNumber"/> of <paramref name="remote"/> to the local tree.</summary>
+    private static void SuggestLocalChain(IBlockTree blockTree, IBlockTree remote)
+    {
+        for (ulong number = 1; number <= JoinNumber; number++)
+        {
+            Assert.That(blockTree.SuggestBlock(remote.FindBlock(number, BlockTreeLookupOptions.None)!), Is.EqualTo(AddBlockResult.Added));
+        }
     }
 
 }

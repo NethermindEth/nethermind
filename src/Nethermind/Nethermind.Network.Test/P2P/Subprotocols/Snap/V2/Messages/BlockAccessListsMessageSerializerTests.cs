@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
 
             using BlockAccessListsMessage message = new(new ByteArrayListAdapter(data)) { RequestId = 1 };
 
-            SerializerTester.TestZero(Serializer, message);
+            SerializerTester.Test(Serializer, message);
         }
 
         [Test]
@@ -41,7 +41,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V2.Messages
 
             using BlockAccessListsMessage message = new(new ByteArrayListAdapter(data)) { RequestId = 42 };
 
-            byte[] serialized = Serializer.Serialize(message);
+            byte[] serialized = Serializer.SerializeToArray(message);
             Assert.That(serialized, Is.EqualTo(Bytes.FromHexString("cb2ac9c481aa81bb80c281cc")));
 
             using BlockAccessListsMessage decoded = Serializer.Deserialize(serialized);

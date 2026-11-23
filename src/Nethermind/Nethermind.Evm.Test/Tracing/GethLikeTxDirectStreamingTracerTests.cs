@@ -69,6 +69,19 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
 
     private static long? RefundAt(IEnumerable<StructLog> logs, string opcode) => logs.Single(l => l.Op == opcode).Refund;
 
+    [Test]
+    public void Streams_stack_underflow_before_out_of_gas(
+        [ValueSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.StackUnderflowGasAfterIntrinsic))] ulong gasAfterIntrinsic)
+    {
+        List<StructLog> logs = StreamLogs(Prepare.EvmCode.Op(Instruction.ADD).Done, GethTraceOptions.Default, GasCostOf.Transaction + gasAfterIntrinsic);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logs[0].Error, Is.EqualTo("stack underflow (0 <=> 2)"));
+            Assert.That(logs[0].GasCost, Is.EqualTo(GasCostOf.VeryLow));
+        }
+    }
+
     [TestCaseSource(typeof(GethLikeTxMemoryTracerTests), nameof(GethLikeTxMemoryTracerTests.OutOfGasOperations))]
     public void Streams_full_cost_of_out_of_gas_operation(byte[] code, ulong gasAfterIntrinsic, ulong expectedGasCost)
     {
@@ -79,6 +92,15 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
             Assert.That(logs[^1].Error, Is.EqualTo("out of gas"));
             Assert.That(logs[^1].GasCost, Is.EqualTo(expectedGasCost));
         }
+    }
+
+    [Test]
+    public void Streams_callee_out_of_gas_without_an_error_on_the_calling_step([Values] bool precompile)
+    {
+        List<StructLog> logs = StreamLogs(CalleeOutOfGasCode(precompile), GethTraceOptions.Default);
+
+        Assert.That(logs.Where(static l => l.Error is not null).Select(static l => l.Depth).ToArray(),
+            Is.EqualTo(precompile ? Array.Empty<int>() : [2]), "depths of the steps with an error");
     }
 
     [Test]

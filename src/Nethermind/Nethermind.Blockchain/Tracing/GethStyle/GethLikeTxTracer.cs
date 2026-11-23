@@ -59,6 +59,10 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         EvmExceptionType.BadInstruction or EvmExceptionType.InvalidJumpDestination or
         EvmExceptionType.AccessViolation;
 
+    // Geth reports a failed depth or balance precheck only in the rejected action's exit, not on its opcode.
+    protected static bool IsRejectedActionPrecheck(EvmExceptionType error) => error is
+        EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded;
+
     protected static string? GetErrorDescription(EvmExceptionType evmExceptionType) => evmExceptionType switch
     {
         EvmExceptionType.None => null,
@@ -73,6 +77,16 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
         _ => "Error"
     };
+
+    /// <summary>Returns the step error for a stack that cannot hold the opcode's inputs or growth, or null when it can.</summary>
+    /// <remarks>
+    /// Geth validates the stack before charging constant gas, so a stack failure outranks running out of gas, which
+    /// Nethermind checks first for some opcodes.
+    /// </remarks>
+    protected static string? GetStackFailure(int stackHead, int stackInputs, int stackGrowth) =>
+        stackHead < stackInputs ? $"stack underflow ({stackHead} <=> {stackInputs})"
+        : stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth ? GetErrorDescription(EvmExceptionType.StackOverflow)
+        : null;
 
     public override void ReportRefund(long refund) => _refundTracker?.Add(refund);
 
@@ -110,14 +124,6 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
     }
 
     /// <inheritdoc/>
-    public void ReportStorageAttempt(Address address, UInt256 key, UInt256 value)
-    {
-        Span<byte> bytes = stackalloc byte[32];
-        value.ToBigEndian(bytes);
-        SetOperationStorage(address, key, bytes, ReadOnlySpan<byte>.Empty);
-    }
-
-    /// <inheritdoc/>
     public virtual void ReportStorageRefund(long refund) { }
 
     protected void ResetRefund() => _refundTracker?.Reset();
@@ -132,6 +138,7 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
     private bool _gasCostAlreadySetForCurrentOp;
     private bool _gasCostReportedForCurrentOp;
     private ulong? _calculatedGasCost;
+    private string? _stackFailure;
     private byte[]? _lastReturnData;
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -150,10 +157,15 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
         _gasCostAlreadySetForCurrentOp = false;
         _gasCostReportedForCurrentOp = false;
         _calculatedGasCost = null;
+        _stackFailure = null;
     }
 
     /// <inheritdoc/>
-    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) => _calculatedGasCost = gasCost;
+    public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
+    {
+        _calculatedGasCost = gasCost;
+        _stackFailure = GetStackFailure(stackHead, stackInputs, stackGrowth);
+    }
 
     /// <inheritdoc/>
     public void ReportOperationReady(ulong gasCost, string? error) => _calculatedGasCost = gasCost;
@@ -178,9 +190,11 @@ public abstract class GethLikeTxTracer<TEntry>(GethTraceOptions options, long? d
 
     public override void ReportOperationError(EvmExceptionType error)
     {
-        if (CurrentTraceEntry is null)
+        if (CurrentTraceEntry is null || IsRejectedActionPrecheck(error))
             return;
 
+        if (error == EvmExceptionType.OutOfGas)
+            CurrentTraceEntry.Error ??= _stackFailure;
         CurrentTraceEntry.Error ??= GetErrorDescription(error);
         // As in Geth, an opcode that runs out of gas reports the cost it could not pay rather than the gas it had.
         if (error == EvmExceptionType.OutOfGas && !_gasCostReportedForCurrentOp && _calculatedGasCost is ulong gasCost)

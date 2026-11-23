@@ -26,7 +26,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Wallet;
 using NUnit.Framework;
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
@@ -56,8 +55,6 @@ internal sealed class McpTestNode : IAsyncDisposable
     public McpHost Host => Chain.Container.Resolve<McpHost>();
 
     public Uri Endpoint => Host.Endpoint ?? throw new InvalidOperationException("The MCP host is not running.");
-
-    private static readonly Lock WalletLock = new();
 
     /// <summary>Creates the chain, and starts the MCP listener on an ephemeral loopback port unless <paramref name="start"/> is false.</summary>
     /// <param name="configure">Adjusts the MCP config; it starts as enabled on port 0.</param>
@@ -106,13 +103,6 @@ internal sealed class McpTestNode : IAsyncDisposable
                 });
             configureContainer?.Invoke(builder);
         });
-
-        // DevWallet's constructor mutates a static key seed, so concurrent test nodes creating it race and the eth module
-        // fails to activate; creating the singleton up front, one node at a time, keeps parallel fixtures deterministic.
-        lock (WalletLock)
-        {
-            chain.Container.Resolve<IWallet>();
-        }
 
         McpTestNode node = new(chain, config, tokenFile);
         if (start)
@@ -250,8 +240,8 @@ internal sealed record SeededChain(
 /// </summary>
 internal sealed class FaultInjectingRpcModuleProvider(IRpcModuleProvider inner) : IRpcModuleProvider
 {
-    private readonly Dictionary<string, Func<ValueTask<IRpcModule>>> _overrides = new(StringComparer.Ordinal);
-    private readonly HashSet<IRpcModule> _injected = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, Func<ValueTask<IRpcModule>>> _overrides = [with(StringComparer.Ordinal)];
+    private readonly HashSet<IRpcModule> _injected = [with(ReferenceEqualityComparer.Instance)];
     private readonly Lock _lock = new();
     private int _rented;
     private int _returned;
@@ -287,21 +277,25 @@ internal sealed class FaultInjectingRpcModuleProvider(IRpcModuleProvider inner) 
 
     public ResolvedMethodInfo? Resolve(string methodName) => inner.Resolve(methodName);
 
-    public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared)
+    public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared) => Rent(methodName, canBeShared, default);
+
+    public ValueTask<IRpcModule> Rent(string methodName, bool canBeShared, CancellationToken cancellationToken)
     {
         Func<ValueTask<IRpcModule>>? rent;
         lock (_lock) _overrides.TryGetValue(methodName, out rent);
-        if (rent is null) return inner.Rent(methodName, canBeShared);
+        if (rent is null) return inner.Rent(methodName, canBeShared, cancellationToken);
 
         Interlocked.Increment(ref _rented);
         return rent();
     }
 
-    public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method)
+    public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method) => Rent(method, default);
+
+    public ValueTask<IRpcModule> Rent(ResolvedMethodInfo method, CancellationToken cancellationToken)
     {
         bool overridden;
         lock (_lock) overridden = _overrides.ContainsKey(method.MethodInfo.Name);
-        return overridden ? Rent(method.MethodInfo.Name, method.ReadOnly) : inner.Rent(method);
+        return overridden ? Rent(method.MethodInfo.Name, method.ReadOnly, cancellationToken) : inner.Rent(method, cancellationToken);
     }
 
     public void Return(string methodName, IRpcModule rpcModule)

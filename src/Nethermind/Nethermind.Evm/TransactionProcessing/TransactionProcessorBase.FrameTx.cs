@@ -23,9 +23,16 @@ namespace Nethermind.Evm.TransactionProcessing;
 /// EVM call, applying APPROVE effects, enforcing the payer gate and producing per-frame receipts.</summary>
 public abstract partial class TransactionProcessorBase<TGasPolicy>
 {
+    // Wraps the world state the processor was built with, which never changes, so one wrapper serves every
+    // transaction a pooled RPC processor runs.
+    private TracedAccessWorldState? _assertDiffRecorder;
+
     /// <summary>EIP-7906: starts the slice the assertion opcodes read, for a transaction with ASSERT frames on a
     /// path that is not already recording one. Returns the recorder so the caller can stop it.</summary>
     /// <remarks>Recording starts before the transaction touches state, so the prestate is its own baseline.
+    /// Block processing records every transaction into its block access list, and that slice is reused. Elsewhere
+    /// <see cref="WorldState"/> is swapped for a recorder over it until the transaction ends, so every write must
+    /// go through the property, including the code repository's, which take the world state as a parameter.
     /// The EIP-7928 condition mirrors block processing in both directions: without it, simulation could
     /// succeed on a chain whose blocks halt.</remarks>
     private IBlockAccessListSource? BeginAssertFrameDiffRecording(Transaction tx, ExecutionOptions opts, IReleaseSpec spec)
@@ -35,7 +42,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             || !spec.BlockLevelAccessListsEnabled
             || opts.HasFlag(ExecutionOptions.FrameValidationPrefixOnly)
             || tx.Frames is not { } frames
-            || WorldState is not IBlockAccessListSource { GeneratedBlockAccessList: null } recorder)
+            || WorldState is IBlockAccessListSource { GeneratedBlockAccessList: not null })
         {
             return null;
         }
@@ -44,7 +51,15 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             if (frame.Mode == FrameMode.Assert)
             {
+                if (WorldState is IBlockAccessListSource idleRecorder)
+                {
+                    idleRecorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+                    return idleRecorder;
+                }
+
+                TracedAccessWorldState recorder = _assertDiffRecorder ??= new(WorldState, parallel: false);
                 recorder.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
+                WorldState = recorder;
                 return recorder;
             }
         }
@@ -53,12 +68,12 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     }
 
     /// <summary>Checks a frame transaction's nonce against the sender's state, under either nonce shape.</summary>
-    /// <remarks>With <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>,
+    /// <remarks>With a non-empty <see cref="Transaction.NonceKeys"/> every key must sit at <see cref="Transaction.Nonce"/>, or for a single-use set every key must read 0,
     /// so the set is consumed as a unit. Assumes the caller has already checked well-formedness.</remarks>
     private TransactionResult ValidateFrameTxNonce(Transaction tx, Address sender)
     {
         UInt256[]? nonceKeys = tx.NonceKeys;
-        if (nonceKeys is null)
+        if (nonceKeys is null or [])
         {
             UInt256 accountNonce = WorldState.GetNonce(sender);
             return accountNonce == tx.Nonce
@@ -71,9 +86,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.Ok;
         }
 
-        if (tx.Nonce >= Eip8250Constants.MaxNonceSeq)
+        if (tx.Nonce == Eip8250Constants.MaxNonceSeq)
         {
-            return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce sequence is exhausted");
+            return FrameTxNonceMismatch(tooLow: true);
         }
 
         // Cold path only: re-read to report the same too-low / too-high distinction as the account nonce.
@@ -116,7 +131,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             // Structural, so it holds even where validation is skipped: the fixed-size buffers keyed on the set
             // take a well-formed one as their precondition, and eth_call and the simulator arrive without a validator.
-            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys))
+            if (!KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys) || (nonceKeys.Length == 0 && tx.Nonce == Eip8250Constants.MaxNonceSeq))
             {
                 return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction nonce key set is not well-formed");
             }
@@ -161,7 +176,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
         }
 
-        // The structural check bounds the frame gas sum alone; the budget it feeds can still overflow.
+        // Fails only on a frame gas sum past 2^64 - 1, which IsWellFormed above already rejects; a larger budget saturates.
         if (!FrameTxValidation.TryCalculateGasBudget(tx, spec, out ulong intrinsicGas, out ulong floorGas, out ulong txGasLimit, estimateSignatureBytes: allowEmptySignatures))
         {
             WorldState.Restore(txSnapshot);
@@ -887,7 +902,14 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             codeInfo = _codeInfoRepository.GetDelegatedCodeInfo(delegation, spec);
         }
 
+        if (delegation is null && codeInfo.IsEmpty && TTracing.IsActive)
+        {
+            (tracer as IFrameTxReceiptTracer)?.ReportFrameCodelessTarget();
+        }
+
         ReadOnlyMemory<byte> inputData = frame.Data;
+        // A guest whose memory is swizzled takes call input laid out the same way (see EvmPooledMemory.LoadInputAfterGas).
+        if (EvmPooledMemory.IsSwizzled && !inputData.IsEmpty) inputData = SwizzledMemory.FromNatural(inputData.Span);
 
         // VmState.Dispose releases its environment only below the top level, so this one is caller-owned;
         // declared before the VmState so it returns to the pool after it.

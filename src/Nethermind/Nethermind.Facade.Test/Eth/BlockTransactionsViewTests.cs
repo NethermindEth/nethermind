@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
@@ -15,6 +16,7 @@ using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
@@ -27,7 +29,7 @@ namespace Nethermind.Facade.Test.Eth;
 public class BlockTransactionsViewTests
 {
     private static readonly TransactionForRpcContext Pending = new(BlockchainIds.Mainnet);
-    private static readonly TransactionForRpcContext Mined = new(BlockchainIds.Mainnet, TestItem.KeccakB, 25_000_000, 7, 1_700_000_000, 10);
+    private static readonly TransactionForRpcContext Mined = new(BlockchainIds.Mainnet, TestItem.KeccakB, 25_000_000, 7, 1_700_000_000, 10, Eip8141Prototype.Instance);
 
     [Test]
     public void Registered_transaction_types_have_distinct_reuse_slots()
@@ -123,7 +125,7 @@ public class BlockTransactionsViewTests
             .WithBaseFeePerGas(7)
             .WithTransactions(DiverseTransactions().Select(static t => t.Tx).Take(2).ToArray())
             .TestObject;
-        BlockTransactions view = BlockTransactions.FromBlock(block, BlockchainIds.Mainnet, 1_700_000_000_200);
+        BlockTransactions view = BlockTransactions.FromBlock(block, BlockchainIds.Mainnet, ((ISpecProvider)MainnetSpecProvider.Instance).GetSpec(block.Header), 1_700_000_000_200);
         BlockForRpc streamed = new(block, includeFullTransactionData: false, MainnetSpecProvider.Instance, skipTxs: true)
         {
             Transactions = view,

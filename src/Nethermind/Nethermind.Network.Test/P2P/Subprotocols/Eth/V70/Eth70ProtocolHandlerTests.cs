@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
@@ -10,6 +11,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -62,8 +64,10 @@ public class Eth70ProtocolHandlerTests
         Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
         _session.Node.Returns(node);
         _syncManager = Substitute.For<ISyncServer>();
+        _syncManager.FindBlockRlp(Arg.Any<Hash256>()).Returns((MemoryManager<byte>?)null);
         _transactionPool = Substitute.For<ITxPool>();
         _specProvider = Substitute.For<IChainHeadSpecProvider>();
+        _syncManager.ServeReceipts(_specProvider);
         _gossipPolicy = Substitute.For<IGossipPolicy>();
         _genesisBlock = Build.A.Block.Genesis.TestObject;
         _syncManager.Head.Returns(_genesisBlock.Header);
@@ -158,6 +162,21 @@ public class Eth70ProtocolHandlerTests
 
         _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage70>(m =>
             m.TxReceipts.Count == 1 && m.TxReceipts[0].Length == 0 && !m.LastBlockIncomplete));
+    }
+
+    [Test]
+    public void Should_prefetch_receipts_a_window_at_a_time()
+    {
+        using GetReceiptsMessage70 request = new(1111, 0, Enumerable.Repeat(Keccak.Zero, 40).ToArray().ToPooledList());
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Array.Empty<TxReceipt>());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        _syncManager.ReceivedWithAnyArgs(3).PrefetchReceipts(null!, 0, 0);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 0, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 16, 16);
+        _syncManager.Received(1).PrefetchReceipts(Arg.Any<IReadOnlyList<Hash256>>(), 32, 8);
     }
 
     [Test]
@@ -478,7 +497,8 @@ public class Eth70ProtocolHandlerTests
         });
 
         HandleIncomingStatusMessage();
-        Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts([Keccak.Zero, TestItem.KeccakA], new[] { block1.Length, block2.Length }, CancellationToken.None);
+        Task<IOwnedReadOnlyList<TxReceipt[]>> task = _handler.GetReceipts([Keccak.Zero, TestItem.KeccakA],
+            new[] { block1.Length, block2.Length }, CancellationToken.None);
 
         if (exceedsCount)
         {
@@ -495,17 +515,45 @@ public class Eth70ProtocolHandlerTests
         AssertReceiptsEqual(result[1], block2);
     }
 
+    [TestCase(-1, 3)]
+    [TestCase(1, 2)]
+    [TestCase(2, 3)]
+    [TestCase(3, 3)]
+    public async Task Caller_receipt_bounds_do_not_widen_the_known_body_count(int bound, int received)
+    {
+        Hash256 hash = TestItem.KeccakA;
+        SetupBlockMetadata(hash, 1_000_000, 42_000, 100_000, 100_000);
+        GetReceiptsMessage70? request = null;
+        _session.When(session => session.DeliverMessage(Arg.Any<GetReceiptsMessage70>()))
+            .Do(call => request = call.Arg<GetReceiptsMessage70>());
+        HandleIncomingStatusMessage();
+        using CancellationTokenSource cancellation = new();
+        Task pending = _handler.GetReceipts([hash], new[] { bound }, cancellation.Token);
+        try
+        {
+            Assert.That(request, Is.Not.Null);
+            UndecodableResponse.AssertReceiptsRejectedBeforeDecoding(_handler.HandleMessage,
+                UndecodableResponse.CreateReceipts(request!.RequestId, received, Rlp.Encode(0)), Eth70MessageCode.Receipts);
+        }
+        finally
+        {
+            await cancellation.CancelAsync();
+            await pending.ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
+        }
+    }
+
     [Test]
     public async Task Should_not_page_receipts_of_block_with_unknown_header(
         [Values(0, 1)] int knownLeadingBlocks,
-        [Values] bool unknownBlockIncomplete)
+        [Values] bool unknownBlockIncomplete, [Values] bool bounded)
     {
         Hash256[] hashes = [Keccak.Zero, TestItem.KeccakA];
         _syncManager.FindHeader(hashes[knownLeadingBlocks]).Returns((BlockHeader?)null);
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(knownLeadingBlocks > 0, unknownBlockIncomplete);
 
         HandleIncomingStatusMessage();
-        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), CancellationToken.None);
+        ReadOnlyMemory<int> counts = bounded ? new[] { 2, 2 } : ReadOnlyMemory<int>.Empty;
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes.Take(knownLeadingBlocks + 1).ToArray(), counts, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
         {
@@ -525,7 +573,7 @@ public class Eth70ProtocolHandlerTests
             .WithTransactionsRoot(bodyKnown ? Keccak.EmptyTreeHash : TestItem.KeccakB)
             .TestObject;
         _syncManager.FindHeader(Keccak.Zero).Returns(header);
-        _syncManager.Find(Keccak.Zero).Returns(bodyKnown ? new Block(header, [], []) : new Block(header));
+        _syncManager.FindBlockRlp(Keccak.Zero).Returns(bodyKnown ? ArrayMemoryManager.From(new BlockDecoder().Encode(new Block(header, [], []))) : null);
 
         StrongBox<int> requestCount = RespondWithSingleReceiptPages(prependCompleteBlock: false, lastBlockIncomplete: true);
 
@@ -740,8 +788,31 @@ public class Eth70ProtocolHandlerTests
         HandleIncomingStatusMessage();
         using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
 
-        Assert.That(result, Has.Count.EqualTo(1));
+        Assert.That(result, Is.InstanceOf<NetworkBlockReceipts>().And.Count.EqualTo(1), "whole blocks of receipts stay encoded");
         AssertReceiptsEqual(result[0], receipts);
+    }
+
+    [Test]
+    public async Task Should_keep_unequal_blocks_encoded_after_response_disposal([Values] bool largeBlockFirst)
+    {
+        Hash256[] hashes = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
+        TxReceipt[][] blocks = [BuildSequentialReceipts(1), BuildSequentialReceipts(1), BuildSequentialReceipts(1)];
+        int largeBlockIndex = largeBlockFirst ? 0 : blocks.Length - 1;
+        blocks[largeBlockIndex][0].Logs = [new LogEntry(TestItem.AddressA, new byte[2048], [])];
+        foreach (Hash256 hash in hashes) SetupBlockMetadata(hash, 1_000_000, GasCostOf.Transaction, 100_000);
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            using ReceiptsMessage70 response = new(sent.RequestId, blocks.ToPooledList(), false);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(hashes, CancellationToken.None);
+
+        Assert.That(result, Is.InstanceOf<NetworkBlockReceipts>().And.Count.EqualTo(blocks.Length));
+        for (int i = 0; i < blocks.Length; i++) AssertReceiptsEqual(result[i], blocks[i]);
     }
 
     [Test]
@@ -759,10 +830,7 @@ public class Eth70ProtocolHandlerTests
             .WithGasUsed(GasCostOf.Transaction)
             .WithTransactionsRoot(TestItem.KeccakB)
             .TestObject;
-        Block blockWithMissingBody = new(header);
-
         _syncManager.FindHeader(blockHash).Returns(header);
-        _syncManager.Find(blockHash).Returns(blockWithMissingBody);
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
         {
             GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
@@ -865,13 +933,16 @@ public class Eth70ProtocolHandlerTests
     [TestCase(false, false, 1, 2, "Block gas used exceeds header value", true)]
     [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header", true)]
     [TestCase(false, false, 2, 2, null, true)]
+    // Deposit receipts are not kept encoded, so the block takes the decoded checks.
+    [TestCase(false, false, 1, 2, "Block gas used exceeds header value", false, (TxType)0x7E)]
     public async Task Should_validate_receipt_cumulative_against_header_gas_used_by_spec(
         bool isEip7778Enabled,
         bool isEip8037Enabled,
         int headerGasUsedMultiplier,
         int receiptGasUsedMultiplier,
         string? expectedException,
-        bool isEip8116Enabled = false)
+        bool isEip8116Enabled = false,
+        TxType receiptType = TxType.Legacy)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader
@@ -891,7 +962,7 @@ public class Eth70ProtocolHandlerTests
         for (int i = 0; i < receipts.Length; i++)
         {
             // EIP-8116 receipts hold each transaction's own gas rather than the running total.
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
+            receipts[i] = new TxReceipt { TxType = receiptType, GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
         }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
@@ -1384,7 +1455,7 @@ public class Eth70ProtocolHandlerTests
         Block block = new(header, transactions, []);
 
         _syncManager.FindHeader(blockHash).Returns(header);
-        _syncManager.Find(blockHash).Returns(block);
+        _syncManager.FindBlockRlp(blockHash).Returns(ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
     }
 
     private sealed class CountingReadOnlyList<T>(IReadOnlyList<T> inner) : IReadOnlyList<T>
@@ -1478,7 +1549,7 @@ public class Eth70ProtocolHandlerTests
     }
 
     private int GetReceiptsMessageLength(ReceiptsMessage70 message) =>
-        new ReceiptsMessageSerializer70(_specProvider).GetLength(message, out _);
+        new ReceiptsMessageSerializer70(_specProvider).GetLength(message);
 
     public enum EmptyReceiptsPayloadScenario
     {
@@ -1517,14 +1588,97 @@ public class Eth70ProtocolHandlerTests
 
         using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        _handler.HandleMessage(new NettyBufferPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         using DisposableByteBuffer packet = _svc!.ZeroSerialize(msg).AsDisposable();
         packet.ReadByte();
-        _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        _handler!.HandleMessage(new NettyBufferPacket(packet) { PacketType = (byte)messageCode });
+    }
+
+    [TestCase(0L, 2_000_000UL, 10_000_000UL, TestName = "Whole blocks")]
+    [TestCase(2L, 2_000_000UL, 10_000_000UL, TestName = "Partial first block")]
+    [TestCase(3L, 2_000_000UL, 10_000_000UL, TestName = "First block from its end")]
+    [TestCase(0L, 1_000UL, 10_000_000UL, TestName = "Soft limit")]
+    [TestCase(0L, 1_000UL, 3_000UL, TestName = "Hard limit splits a block")]
+    public void Serves_stored_receipts_as_decoded_ones(long firstBlockReceiptIndex, ulong softLimit, ulong hardLimit)
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = softLimit;
+        SyncPeerProtocolHandlerBase.HardOutgoingReceiptsMessageSizeLimit = hardLimit;
+        (Block storedBlock, TxReceipt[] storedReceipts) = ReceiptsServingTestHelper.CreateStoredBlock(_specProvider, 3);
+        Dictionary<Hash256, TxReceipt[]> blocks = new()
+        {
+            [storedBlock.Hash!] = storedReceipts,
+            [TestItem.KeccakB] = [],
+            [TestItem.KeccakC] = [.. Enumerable.Range(1, 40).Select(static i => BuildReceiptWithLogData(GasCostOf.Transaction * (ulong)i, 100))],
+            [TestItem.KeccakD] = BuildSequentialReceipts(2),
+        };
+        Hash256[] hashes = [.. blocks.Keys];
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(call => blocks[call.Arg<Hash256>()]);
+        ReceiptsMessageSerializer70 serializer = new(_specProvider);
+        List<(byte[] Message, bool LastBlockIncomplete)> responses = [];
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call =>
+            {
+                ReceiptsMessage70 response = (ReceiptsMessage70)call[0];
+                byte[] message = new byte[serializer.GetLength(response)];
+                serializer.Serialize(message, response);
+                responses.Add((message, response.LastBlockIncomplete));
+            });
+        HandleIncomingStatusMessage();
+
+        foreach (bool stored in new[] { false, true })
+        {
+            _syncManager.ServeReceipts(_specProvider, stored ? storedBlock : null);
+            using GetReceiptsMessage70 request = new(1111, firstBlockReceiptIndex, hashes.ToPooledList());
+            HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+        }
+
+        Assert.That(responses, Has.Count.EqualTo(2));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(responses[1].Message, Is.EqualTo(responses[0].Message));
+            Assert.That(responses[1].LastBlockIncomplete, Is.EqualTo(responses[0].LastBlockIncomplete));
+        }
+    }
+
+    [Test]
+    public void Serves_full_receipts_response_as_decoded_ones([Values(0L, 3L)] long firstBlockReceiptIndex)
+    {
+        const int count = 64;
+        TxReceipt[][] blocks = [.. Enumerable.Range(0, count).Select(static i => SoftLimitTestHelper.CreateLogHeavyReceipts(200 + i))];
+        Hash256[] hashes = [.. Enumerable.Range(0, count).Select(static i => Keccak.Compute(i.ToString()))];
+        for (int i = 0; i < count; i++) _syncManager.GetReceipts(hashes[i]).Returns(blocks[i]);
+        ReceiptsMessageSerializer70 serializer = new(_specProvider);
+        byte[]? response = null;
+        int servedCount = 0;
+        bool lastBlockIncomplete = false;
+        _session.When(session => session.DeliverMessage(Arg.Any<ReceiptsMessage70>()))
+            .Do(call =>
+            {
+                ReceiptsMessage70 message = (ReceiptsMessage70)call[0];
+                servedCount = message.TxReceipts.Count;
+                lastBlockIncomplete = message.LastBlockIncomplete;
+                response = new byte[serializer.GetLength(message)];
+                serializer.Serialize(response, message);
+            });
+        HandleIncomingStatusMessage();
+
+        using GetReceiptsMessage70 request = new(1111, firstBlockReceiptIndex, hashes.ToPooledList());
+        HandleZeroMessage(request, Eth70MessageCode.GetReceipts);
+
+        TxReceipt[][] expectedBlocks = blocks[..servedCount];
+        expectedBlocks[0] = expectedBlocks[0][(int)firstBlockReceiptIndex..];
+        using ReceiptsMessage70 decoded = new(1111, expectedBlocks.ToPooledList(), lastBlockIncomplete);
+        byte[] expected = new byte[serializer.GetLength(decoded)];
+        serializer.Serialize(expected, decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expected, Has.Length.GreaterThan(1024 * 1024));
+            Assert.That(response, Is.EqualTo(expected));
+        }
     }
 
     private ReceiptsMessage70 RequestReceipts(params Hash256[] hashes)

@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync;
@@ -46,33 +47,38 @@ public class LocalDbContext(
         }
     }
 
-    public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage, bool skipLogs = false)
+    public void CompareTrees(RemoteDbContext remote, ILogger logger, string stage)
     {
-        if (!skipLogs) logger.Info($"==================== {stage} ====================");
+        (string remoteStr, string localStr) = Dump(remote, logger, stage);
+
+        Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}{Environment.NewLine}{remoteStr}{Environment.NewLine}{localStr}");
+        TrieStatsCollector collector = new(CodeDb, LimboLogs.Instance);
+        StateTree.Accept(new NodeRecordVisitorAdapter<TrieStatsCollector.Context>(collector), StateTree.RootHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0), stage);
+            Assert.That(collector.Stats.MissingCode, Is.EqualTo(0), stage);
+        }
+    }
+
+    public void DumpTrees(RemoteDbContext remote, ILogger logger, string stage) => Dump(remote, logger, stage);
+
+    private (string Remote, string Local) Dump(RemoteDbContext remote, ILogger logger, string stage)
+    {
+        logger.Info($"==================== {stage} ====================");
         StateTree.RootHash = remote.StateTree.RootHash;
 
-        if (!skipLogs) logger.Info("-------------------- REMOTE --------------------");
+        logger.Info("-------------------- REMOTE --------------------");
         TreeDumper dumper = new();
-        remote.StateTree.Accept(dumper, remote.StateTree.RootHash);
+        remote.StateTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), remote.StateTree.RootHash);
         string remoteStr = dumper.ToString();
-        if (!skipLogs) logger.Info(remoteStr);
-        if (!skipLogs) logger.Info("-------------------- LOCAL --------------------");
+        logger.Info(remoteStr);
+        logger.Info("-------------------- LOCAL --------------------");
         dumper.Reset();
-        StateTree.Accept(dumper, StateTree.RootHash);
+        StateTree.Accept(new NodeRecordVisitorAdapter<OldStyleTrieVisitContext>(dumper), StateTree.RootHash);
         string localStr = dumper.ToString();
-        if (!skipLogs) logger.Info(localStr);
-
-        if (stage == "END")
-        {
-            Assert.That(localStr, Is.EqualTo(remoteStr), $"{stage}{Environment.NewLine}{remoteStr}{Environment.NewLine}{localStr}");
-            TrieStatsCollector collector = new(CodeDb, LimboLogs.Instance);
-            StateTree.Accept(collector, StateTree.RootHash);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(collector.Stats.MissingNodes, Is.EqualTo(0));
-                Assert.That(collector.Stats.MissingCode, Is.EqualTo(0));
-            }
-        }
+        logger.Info(localStr);
+        return (remoteStr, localStr);
     }
 
     public void DeleteStateRoot() =>

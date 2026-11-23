@@ -3,6 +3,8 @@
 
 using NUnit.Framework;
 using Nethermind.Core.Test.Builders;
+using System.Collections;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -50,6 +52,28 @@ class ShutterBlockHandlerTests : BaseEngineModuleTests
         timeoutSource.Cancel();
         Block? result = await waitTask;
         Assert.That(result, Is.Null);
+    }
+
+    [Test]
+    public async Task Ended_waits_do_not_keep_their_slots([Values] bool timeout)
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        Timestamper timestamper = ShutterTestsCommon.InitTimestamper(ShutterTestsCommon.InitialSlotTimestamp, 0);
+        ShutterApiSimulator api = ShutterTestsCommon.InitApi(rnd, timestamper);
+
+        for (ulong slot = ShutterTestsCommon.InitialSlot; slot < ShutterTestsCommon.InitialSlot + 5; slot++)
+        {
+            using CancellationTokenSource source = new();
+            using CancellationTokenSource timeoutSource = new();
+            Task<Block?> waitTask = api.BlockHandler.WaitForBlockInSlot(slot, source.Token, _ => timeoutSource);
+            (timeout ? timeoutSource : source).Cancel();
+            await Assert.ThatAsync(() => waitTask, timeout ? Is.Null : Throws.InstanceOf<OperationCanceledException>());
+        }
+
+        IDictionary blockWaitTasks = (IDictionary)typeof(ShutterBlockHandler)
+            .GetField("_blockWaitTasks", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(api.BlockHandler)!;
+        Assert.That(blockWaitTasks, Is.Empty);
     }
 
     [Test]

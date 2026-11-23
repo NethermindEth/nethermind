@@ -3,4 +3,5 @@
 
 using System.Runtime.CompilerServices;
 
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.Xdc.Test")]

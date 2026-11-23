@@ -72,7 +72,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV4 payload = result.ExecutionPayload;
 
         uint postExecutionIndex = (uint)included.Length + 1;
-        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(new Rlp(payload.BlockAccessList!))!;
+        ReadOnlyBlockAccessList bal = Rlp.Decode<ReadOnlyBlockAccessList>(payload.BlockAccessList!)!;
         Address createdContract = ContractAddress.From(TestItem.AddressC, 0);
         using (Assert.EnterMultipleScope())
         {

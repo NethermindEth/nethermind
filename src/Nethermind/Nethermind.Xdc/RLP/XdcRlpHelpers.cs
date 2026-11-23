@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using System;
 
@@ -11,22 +12,14 @@ internal static class XdcRlpHelpers
 {
     internal static Address[] DecodeAddressArray(ref RlpReader reader)
     {
-        if (reader.IsNextItemEmptyList())
+        RlpReader items = reader.EnterSequence(out int itemLength);
+        Address[] addresses = new Address[items.Remaining / Rlp.LengthOfAddressRlp];
+        for (int i = 0; i < addresses.Length; i++)
         {
-            _ = reader.ReadByte();
-            return [];
+            addresses[i] = items.DecodeAddress();
         }
 
-        int length = reader.ReadSequenceLength();
-        Address[] addresses = new Address[length / Rlp.LengthOfAddressRlp];
-
-        int index = 0;
-        while (length > 0)
-        {
-            addresses[index++] = reader.DecodeAddress();
-            length -= Rlp.LengthOfAddressRlp;
-        }
-
+        reader.ExitSequence(items, itemLength);
         return addresses;
     }
 
@@ -47,15 +40,15 @@ internal static class XdcRlpHelpers
         return result;
     }
 
-    internal static void EncodeAddressSequence<TWriter>(ref TWriter writer, Address[] addresses)
-        where TWriter : struct, IRlpWriteBackend, allows ref struct
+    internal static void EncodeAddressSequence(ref RlpWriter writer, Address[] addresses)
     {
         int length = addresses.Length;
-        writer.StartSequence(Rlp.LengthOfAddressRlp * length);
+        RlpSequence sequence = writer.StartSequence(Rlp.LengthOfAddressRlp * length);
         for (int i = 0; i < length; i++)
         {
             writer.Encode(addresses[i]);
         }
+        writer.EndSequence(sequence);
     }
 
     internal static int LengthOfAddressSequence(Address[]? addresses) =>

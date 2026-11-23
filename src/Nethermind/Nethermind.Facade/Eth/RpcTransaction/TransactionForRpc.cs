@@ -16,6 +16,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Validation;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
 [assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
@@ -98,16 +100,23 @@ public abstract class TransactionForRpc
     /// leaves that pair to execution, where it fails before any gas is bought, validates with <see cref="ToTransaction"/>.
     /// </summary>
     /// <remarks>
-    /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
-    /// so the first failing check still names the request.
+    /// Differing non-null input and data take precedence over conversion errors; calls instead prefer input over data.
+    /// Otherwise the fee pair is checked after type-specific and gas price checks and before missing contract data.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
-        => CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+    {
+        Result<Transaction> result = CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+        return GetSubmissionDataError(result.Error) is { } error && error != result.Error
+            ? Result<Transaction>.Fail(error)
+            : result;
+    }
+
+    internal virtual string? GetSubmissionDataError(string? conversionError = null) => conversionError;
 
     private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
         this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
         && maxFeePerGas < maxPriorityFeePerGas
-        && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+        && !result.IsError
             ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
             : result;
 
@@ -127,11 +136,25 @@ public abstract class TransactionForRpc
     public Result<Transaction> ToCallTransaction(IReleaseSpec? spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
         Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
+        if (result.Success(out Transaction? call, out _) && call.SupportsAuthorizationList
+            && SetCodeTxValidation.ValidateNoContractCreation(call) is { Error: { } createError })
+            return createError;
         Result<Transaction> ordered = CheckFeeCapOrder(result);
         if (checksFork && spec is not null && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
             return ordered.IsError ? ordered : TxErrorMessages.InvalidTxType(spec.Name);
         return validateFeeCapOrder ? ordered : result;
     }
+
+    /// <summary>Converts a debug trace call with its message-level fork checks and blob fee defaults.</summary>
+    internal Result<Transaction> ToTraceCallTransaction(IReleaseSpec spec, ulong? gasCap, UInt256 baseFee) =>
+        GetTraceCallForkError(spec, baseFee) is { } error
+            ? Result<Transaction>.Fail(error)
+            : ConvertTraceCallTransaction(spec, gasCap);
+
+    internal virtual string? GetTraceCallForkError(IReleaseSpec spec, UInt256 baseFee) => null;
+
+    internal virtual Result<Transaction> ConvertTraceCallTransaction(IReleaseSpec spec, ulong? gasCap) =>
+        ToCallTransaction(spec, gasCap);
 
     private TxType ResolveType(IReleaseSpec? spec)
     {
@@ -187,6 +210,11 @@ public abstract class TransactionForRpc
 
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
+        private delegate TransactionForRpc? ReadFunc(ref Utf8JsonReader reader, JsonSerializerOptions options);
+
+        private static readonly ReadFunc _readLegacy = TypeInfoJsonSerializer.ReadNested<LegacyTransactionForRpc>;
+        private static readonly ReadFunc _readEip1559 = TypeInfoJsonSerializer.ReadNested<EIP1559TransactionForRpc>;
+
         /// <summary>
         /// Transaction type is determined based on type field or type-specific fields present in the request
         /// </summary>
@@ -229,6 +257,7 @@ public abstract class TransactionForRpc
                 Type = txType,
                 RepopulatableSlot = slot,
                 FromTransactionFunc = T.FromTransaction,
+                Read = TypeInfoJsonSerializer.ReadNested<T>,
                 DiscriminatorProperties = uniqueProperties,
                 PropertyNames = Array.ConvertAll(txType.GetProperties(BindingFlags.Public | BindingFlags.Instance), static p => p.Name)
             };
@@ -288,9 +317,9 @@ public abstract class TransactionForRpc
             // Peek property names for the concrete type, then deserialize (no DOM).
             Utf8JsonReader txTypeReader = reader;
 
-            Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
+            ReadFunc read = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
 
-            TransactionForRpc? result = (TransactionForRpc?)TypeInfoJsonSerializer.Deserialize(ref reader, concreteTxType, options);
+            TransactionForRpc? result = read(ref reader, options);
             if (result is not null)
             {
                 result.IsTypeDefaulted = isDefaulted;
@@ -301,7 +330,7 @@ public abstract class TransactionForRpc
         private static ReadOnlySpan<byte> TypeFieldUtf8 => "type"u8;
         private static ReadOnlySpan<byte> GasPriceFieldUtf8 => "gasprice"u8;
 
-        private Type DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted)
+        private ReadFunc DeriveTxType(ref Utf8JsonReader reader, JsonSerializerOptions options, out bool isDefaulted)
         {
             Registry registry = _registry;
             TxType? setType = null;
@@ -386,17 +415,17 @@ public abstract class TransactionForRpc
                     throw new JsonException($"{registry.Names[BitOperations.TrailingZeroCount(missing)]} is not a field of transaction type {(byte)selected.TxType}");
 
                 isDefaulted = false;
-                return selected.Type;
+                return selected.Read;
             }
 
             if (hasGasPrice)
             {
                 isDefaulted = true;
-                return typeof(LegacyTransactionForRpc);
+                return _readLegacy;
             }
 
             isDefaulted = true;
-            return typeof(EIP1559TransactionForRpc);
+            return _readEip1559;
         }
 
         // lowerCaseName must be pure ASCII letters — |0x20 fold is only sound for that alphabet.
@@ -439,6 +468,7 @@ public abstract class TransactionForRpc
             public Type Type { get; set; }
             public int RepopulatableSlot { get; set; } = -1;
             public FromTransactionFunc FromTransactionFunc { get; set; }
+            public ReadFunc Read { get; set; }
             public string[] DiscriminatorProperties { get; set; } = [];
             public string[] PropertyNames { get; set; } = [];
         }

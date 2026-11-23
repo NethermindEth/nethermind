@@ -5,7 +5,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.FluentRlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -17,7 +17,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             using GetReceiptsMessage message = new(keys.ToPooledList());
             GetReceiptsMessageSerializer serializer = new();
-            byte[] serialized = serializer.Serialize(message);
+            byte[] serialized = serializer.SerializeToArray(message);
             using GetReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
             Assert.That(deserialized.Hashes.Count, Is.EqualTo(keys.Length), "count");
@@ -36,7 +36,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             GetReceiptsMessageSerializer serializer = new();
 
-            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(Bytes.FromHexString("c180")), Throws.InstanceOf<RlpReaderException>());
         }
 
         [Test]
@@ -48,11 +48,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             GetReceiptsMessageSerializer serializer = new();
 
             using GetReceiptsMessage message = serializer.Deserialize(bytes1);
-            byte[] serialized = serializer.Serialize(message);
+            byte[] serialized = serializer.SerializeToArray(message);
             Assert.That(serialized, Is.EqualTo(bytes1));
 
             using GetReceiptsMessage message2 = serializer.Deserialize(bytes2);
-            byte[] serialized2 = serializer.Serialize(message2);
+            byte[] serialized2 = serializer.SerializeToArray(message2);
             Assert.That(serialized2, Is.EqualTo(bytes2));
         }
     }

@@ -108,8 +108,9 @@ public sealed partial class KeccakHash
     /// handed them undefined — which is what lets <see cref="InitializeState"/> skip them there, and what
     /// makes a caller resuming a used sponge get a wrong digest on the guest and a right one on the host.
     /// The write drops seventeen loads and seventeen XORs per message; peeling the first block costs a host
-    /// more in register pressure than it saves, so the host form is the plain loop. See
-    /// <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    /// more in register pressure than it saves, so the host does not peel it: at the 136-byte rate it absorbs
+    /// all whole blocks in one scalar loop, except on AVX-512VL cores other than AMD Zen 5 and later, which
+    /// permute block by block. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     private static partial ReadOnlySpan<byte> AbsorbMessageIntoZeroState(scoped Span<ulong> state, scoped Span<byte> stateBytes, ReadOnlySpan<byte> input, int roundSize);
 
     /// <summary>Absorbs the whole rate blocks of <paramref name="input"/>, of which there is at least one,
@@ -155,6 +156,11 @@ public sealed partial class KeccakHash
     /// permutation is a precompile, has a 256-bit-only absorb that leaves little but the lane XORs around
     /// it. See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
     internal static partial ValueHash256 ComputeHash256(ReadOnlySpan<byte> input);
+
+    /// <summary>Copies <paramref name="source"/> to the front of <paramref name="destination"/>, which it may overlap, and
+    /// computes its Keccak-256 digest.</summary>
+    /// <remarks>See <c>KeccakHash.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    internal static partial ValueHash256 CopyAndComputeHash256(ReadOnlySpan<byte> source, Span<byte> destination);
 
     /// <summary>Computes the Keccak-256 digest of each of the first <paramref name="count"/> of <paramref name="nodes"/>
     /// into the same index of <paramref name="hashes"/>.</summary>

@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using Nethermind.Logging;
 
 namespace Nethermind.Core;
 
@@ -45,9 +46,11 @@ public partial class HardwareInfo : IHardwareInfo
                 }
             }
         }
-        catch
+        catch (Exception e)
         {
             // If we can't detect the limit, return null to indicate unknown
+            ILogger logger = Static.LogManager.GetClassLogger<HardwareInfo>();
+            if (logger.IsDebug) logger.Debug($"Cannot detect the open files limit: {e.Message}");
         }
 
         return null;

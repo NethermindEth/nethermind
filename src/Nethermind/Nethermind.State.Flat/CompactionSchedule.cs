@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.State.Flat;
@@ -102,7 +104,8 @@ public sealed class CompactionSchedule : ICompactionSchedule
         }
 
         // On-disk RLP format uses long for backward compatibility; decode as long to detect corrupt negatives.
-        long decoded = new RlpReader(stored).DecodeLong();
+        RlpReader reader = new(stored);
+        long decoded = reader.DecodeLong<OffFlag>();
         if (decoded < 0)
         {
             if (logger.IsWarn) logger.Warn($"Stored FlatDb compaction offset {decoded} is negative; regenerating");
@@ -113,12 +116,13 @@ public sealed class CompactionSchedule : ICompactionSchedule
         return (ulong)decoded;
     }
 
+    [SkipLocalsInit]
     private ulong GenerateAndPersist(IDb metadataDb)
     {
         // Generate in [0, int.MaxValue) so the value encodes cleanly as a non-negative long
         // in the on-disk RLP format (kept as long for database backward compatibility).
         long offset = Random.Shared.NextInt64(0, int.MaxValue);
-        metadataDb.Set(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset).Bytes);
+        metadataDb.PutSpan(MetadataDbKeys.FlatDbCompactionOffset, Rlp.Encode(offset, stackalloc byte[Rlp.MaxLengthOfUInt64Rlp]));
         return (ulong)offset;
     }
 }

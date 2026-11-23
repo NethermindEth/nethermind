@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 
@@ -14,31 +13,31 @@ namespace Nethermind.KeyStore.Config;
 /// </summary>
 public interface IKeyStoreConfig : IConfig
 {
-    [ConfigItem(Description = "The path to the keystore directory.", DefaultValue = "keystore")]
+    [ConfigItem(Description = "The path to the keystore directory.", DefaultValue = "keystore", IsSensitiveWhenMasked = true)]
     string KeyStoreDirectory { get; set; }
 
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "UTF-8")]
     string KeyStoreEncoding { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "scrypt")]
+    [ConfigItem(Description = "The key derivation function for new key files. Only `scrypt` is supported, in any letter case; it is written in lower case. Key files derived with `pbkdf2` can still be read. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "scrypt")]
     string Kdf { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "aes-128-ctr")]
+    [ConfigItem(Description = "The cipher for new key files: `aes-128-ctr` or `aes-128-cbc`, in any letter case; it is written in lower case. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "aes-128-ctr")]
     string Cipher { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
+    [ConfigItem(Description = "The derived key length for new key files, in bytes. Must be `32`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
     int KdfparamsDklen { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "262144")]
+    [ConfigItem(Description = "The scrypt CPU and memory cost (`n`) for new key files. Must be a power of two greater than `1`. With `KdfparamsR` and `KdfparamsP`, scrypt may use at most 2 GiB of memory, `128 * r * (n + 2 * p + 3)` bytes, and `n * r * p` may be at most `16777216`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "262144")]
     int KdfparamsN { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "1")]
+    [ConfigItem(Description = "The scrypt parallelization (`p`) for new key files. Must be at least `1`; see `KdfparamsN` for the combined limits. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "1")]
     int KdfparamsP { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "8")]
+    [ConfigItem(Description = "The scrypt block size (`r`) for new key files. Must be at least `1`; see `KdfparamsN` for the combined limits. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "8")]
     int KdfparamsR { get; set; }
 
-    [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
+    [ConfigItem(Description = "The salt length for new key files, in bytes. Must be at least `16`. Checked when a key file is written. See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "32")]
     int KdfparamsSaltLen { get; set; }
 
     [ConfigItem(Description = "See [Web3 secret storage definition][web3-secret-storage].", DefaultValue = "128")]
@@ -65,7 +64,7 @@ public interface IKeyStoreConfig : IConfig
     [ConfigItem(Description = $"An array of passwords used to unlock the accounts set with `{nameof(UnlockAccounts)}`.", DefaultValue = "[]", IsSensitive = true)]
     string[] Passwords { get; set; }
 
-    [ConfigItem(Description = $"An array of password files paths used to unlock the accounts set with `{nameof(UnlockAccounts)}`.", DefaultValue = "[]")]
+    [ConfigItem(Description = $"An array of password files paths used to unlock the accounts set with `{nameof(UnlockAccounts)}`.", DefaultValue = "[]", IsSensitive = true)]
     string[] PasswordFiles { get; set; }
 
     [ConfigItem(Description = $"An array of accounts to unlock on startup using passwords either in `{nameof(PasswordFiles)}` and `{nameof(Passwords)}`.", DefaultValue = "[]", IsSensitive = true)]
@@ -74,9 +73,9 @@ public interface IKeyStoreConfig : IConfig
 
 public static class KeyStoreConfigExtensions
 {
-    public static int FindUnlockAccountIndex(this IKeyStoreConfig keyStoreConfig, Address address) => Array.IndexOf(
-            (keyStoreConfig.UnlockAccounts ?? [])
-            .Select(static a => a.ToUpperInvariant())
-            .ToArray(),
-            address.ToString().ToUpperInvariant());
+    public static int FindUnlockAccountIndex(this IKeyStoreConfig keyStoreConfig, Address address) =>
+        Array.FindIndex(keyStoreConfig.UnlockAccounts ?? [], account => IsAddress(account, address));
+
+    private static bool IsAddress(string account, Address address) =>
+        account is not null && Address.IsValidAddress(account, allowPrefix: true) && new Address(account) == address;
 }

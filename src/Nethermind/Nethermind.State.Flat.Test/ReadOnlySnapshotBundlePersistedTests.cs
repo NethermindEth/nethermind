@@ -69,7 +69,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -102,7 +102,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
 
         using ReadOnlySnapshotBundle bundle = new(
             new SnapshotPooledList(0),
@@ -136,7 +136,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         PersistedSnapshot persisted = CreatePersistedSnapshot(s0, s1, tableData);
         PersistedSnapshotList list = new(1) { persisted };
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
         using ReadOnlySnapshotBundle bundle = new(
@@ -157,7 +157,7 @@ public class ReadOnlySnapshotBundlePersistedTests
         byte[] dbRlp = [0xC0];
         TreePath path = FlatTestHelpers.CanonicalPath(Keccak.Compute("path"), 4);
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
+        SubstitutablePersistenceReader reader = Substitute.For<SubstitutablePersistenceReader>();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(dbRlp);
 
         using ReadOnlySnapshotBundle bundle = new(
@@ -213,7 +213,7 @@ public class ReadOnlySnapshotBundlePersistedTests
                 : bundle.TryLoadStateRlp(path, Keccak.Compute("hash"), ReadFlags.None);
 
             StrongBox<byte[]?> spanRlp = new();
-            bool found = bundle.TryLoadPersistedRlp(storage ? address : null, path, ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
+            bool found = bundle.TryLoadPersistedRlp(storage ? address : null, path, Keccak.Compute("hash"), ReadFlags.None, static (rlp, box) => box.Value = rlp.ToArray(), spanRlp);
 
             using (Assert.EnterMultipleScope())
             {
@@ -225,16 +225,14 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         const int reads = 64;
         Hash256 expectedHash = Keccak.Compute("hash");
-        MeasureReads(owned: true);
-        MeasureReads(owned: false);
-        long ownedBytes = MeasureReads(owned: true);
-        long borrowedBytes = MeasureReads(owned: false);
+        long ownedBytes = AllocationWindows.MinAllocatedBytes(() => Read(owned: true));
+        long borrowedBytes = AllocationWindows.AllocatedBytes(() => Read(owned: false));
+
         Assert.That(ownedBytes - borrowedBytes, Is.GreaterThanOrEqualTo(reads * persistedRlp.Length),
             "callback reads must avoid the owned RLP array, not merely hide it behind the callback API");
 
-        long MeasureReads(bool owned)
+        void Read(bool owned)
         {
-            long before = GC.GetAllocatedBytesForCurrentThread();
             for (int i = 0; i < reads; i++)
             {
                 if (owned)
@@ -246,11 +244,10 @@ public class ReadOnlySnapshotBundlePersistedTests
                 }
                 else
                 {
-                    bool found = bundle.TryLoadPersistedRlp(storage ? address : null, persistedPath, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
+                    bool found = bundle.TryLoadPersistedRlp(storage ? address : null, persistedPath, expectedHash, ReadFlags.None, CheckRlp, persistedRlp.AsSpan());
                     if (!found) throw new InvalidOperationException("Missing persisted RLP");
                 }
             }
-            return GC.GetAllocatedBytesForCurrentThread() - before;
         }
 
         static void CheckRlp(ReadOnlySpan<byte> rlp, Span<byte> expected)
@@ -280,7 +277,7 @@ public class ReadOnlySnapshotBundlePersistedTests
 
         bundle.WarmUp(storage ? address : null, (hash, 0), ValueKeccak.Zero, forDelete: false);
 
-        Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, action, nodes)), Is.EqualTo(nodeRlp));
+        Assert.That(FlatTestHelpers.LoadRlp((action, nodes) => bundle.TryLoadTrieNodeRecord(storage ? address : null, TreePath.Empty, hash, action, nodes)), Is.EqualTo(nodeRlp));
     }
 
     // Each test snapshot is constructed without a bloom, so it carries the AlwaysTrue

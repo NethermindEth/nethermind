@@ -65,37 +65,34 @@ public class BlockForRpc
         MixHash = block.MixHash;
         Nonce = block.Nonce;
 
-        if (specProvider is not null)
+        IReleaseSpec spec = specProvider.GetSpec(block.Header);
+        if (spec.IsEip1559Enabled)
         {
-            IReleaseSpec spec = specProvider.GetSpec(block.Header);
-            if (spec.IsEip1559Enabled)
-            {
-                BaseFeePerGas = block.Header.BaseFeePerGas;
-            }
+            BaseFeePerGas = block.Header.BaseFeePerGas;
+        }
 
-            if (spec.IsEip4844Enabled)
-            {
-                BlobGasUsed = block.Header.BlobGasUsed;
-                ExcessBlobGas = block.Header.ExcessBlobGas;
-            }
+        if (spec.IsEip4844Enabled)
+        {
+            BlobGasUsed = block.Header.BlobGasUsed;
+            ExcessBlobGas = block.Header.ExcessBlobGas;
+        }
 
-            if (spec.IsEip4788Enabled)
-            {
-                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
-            }
+        if (spec.IsEip4788Enabled)
+        {
+            ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
+        }
 
-            if (spec.IsEip7843Enabled)
-            {
-                SlotNumber = block.SlotNumber;
-            }
+        if (spec.IsEip7843Enabled)
+        {
+            SlotNumber = block.SlotNumber;
+        }
 
-            // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded. A chain that
-            // merges omits it for every block, pre-merge ones included, as the execution-apis test vectors expect. Such a
-            // chain may not know its merge block (mainnet's chainspec has only a TTD), so the TTD also counts.
-            if (specProvider.MergeBlockNumber is null && specProvider.TerminalTotalDifficulty is null)
-            {
-                TotalDifficulty = block.TotalDifficulty;
-            }
+        // Intentional divergence from Geth: non-merge chains still emit totalDifficulty when it's loaded. A chain that
+        // merges omits it for every block, pre-merge ones included, as the execution-apis test vectors expect. Such a
+        // chain may not know its merge block (mainnet's chainspec has only a TTD), so the TTD also counts.
+        if (specProvider.MergeBlockNumber is null && specProvider.TerminalTotalDifficulty is null)
+        {
+            TotalDifficulty = block.TotalDifficulty;
         }
 
         Number = block.Number;
@@ -110,7 +107,7 @@ public class BlockForRpc
         if (!skipTxs)
         {
             Transactions = includeFullTransactionData
-                    ? GetTransactionsForRpc(block, specProvider.ChainId, blockTimestampMs)
+                    ? GetTransactionsForRpc(block, specProvider.ChainId, spec, blockTimestampMs)
                     : GetTransactionHashes(block.Transactions);
         }
         TransactionsRoot = block.TxRoot;
@@ -197,8 +194,8 @@ public class BlockForRpc
         return hashes;
     }
 
-    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId, ulong? blockTimestampMs) =>
-        BlockTransactions.FromBlock(block, chainId, blockTimestampMs);
+    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId, IReleaseSpec spec, ulong? blockTimestampMs) =>
+        BlockTransactions.FromBlock(block, chainId, spec, blockTimestampMs);
 
     private static Hash256[] GetUnclesHashes(BlockHeader[] headers)
     {

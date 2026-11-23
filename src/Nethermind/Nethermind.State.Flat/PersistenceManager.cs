@@ -19,6 +19,7 @@ using Nethermind.State.Flat.PersistedSnapshots.Storage;
 using Nethermind.Trie;
 using Nethermind.Trie.NodeBuffer;
 
+[assembly: InternalsVisibleTo("Nethermind.Benchmark")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.Test")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History.Test")]
@@ -63,6 +64,8 @@ public class PersistenceManager(
     private StateId? _lastWarnedStall;
     private bool _warnedHeldPastBackstop;
     private const int InitialShutdownTailCapacity = 256;
+    private static readonly StableStringLabel _stateNodesLabel = StableStringLabel.Get("state_nodes");
+    private static readonly StableStringLabel _storageNodesLabel = StableStringLabel.Get("storage_nodes");
 
     // StateId is a 40-byte struct (ulong + ValueHash256), so a direct field read/write is not atomic and
     // query threads calling GetCurrentPersistedStateId could observe a torn (BlockNumber, StateRoot) pair
@@ -393,7 +396,7 @@ public class PersistenceManager(
     {
         // Ownership of allStateIds transfers to the compactor on the EnqueueAsync handoff below; until then
         // this method owns it and must dispose it on any early exit (e.g. conversion cancellation).
-        ArrayPoolList<StateId> allStateIds = new(64);
+        ArrayPoolList<StateId> allStateIds = [with(64)];
         bool handedOff = false;
         try
         {
@@ -569,7 +572,8 @@ public class PersistenceManager(
     /// <remarks>
     /// Requires stopped block processing and persistence workers. Keeps the tail reorgable in the
     /// persisted-snapshot tier without advancing RocksDB; blocks become durable oldest first.
-    /// Without long finality there is no persisted tier. Restarted snapshots remain uncompacted until finality.
+    /// Without long finality there is no persisted tier. The next start compacts what this converts
+    /// (<see cref="CompactReloadedSnapshots"/>).
     /// </remarks>
     public int PersistInMemoryTailForShutdown(CancellationToken cancellationToken)
     {
@@ -611,6 +615,14 @@ public class PersistenceManager(
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>Takes no lock: it runs before the workers start, so nothing else uses the tier yet.</remarks>
+    public int CompactReloadedSnapshots(CancellationToken cancellationToken) =>
+        // An empty tier is the steady state, a crash and a new node: nothing is read and nothing is written.
+        snapshotRepository.PersistedSnapshotCount == 0
+            ? 0
+            : compactor.CompactReloaded(GetCurrentPersistedStateId().BlockNumber, cancellationToken);
+
     public void ResetPersistedStateId()
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
@@ -621,6 +633,29 @@ public class PersistenceManager(
     {
         using SemaphoreSlimExtensions.Scope _ = _persistenceLock.EnterScope();
         snapshotRepository.RemoveUnreachableFrom(head, GetCurrentPersistedStateId());
+    }
+
+    public bool TryWriteOnPersistedState(in StateId expected, Action<IPersistence.IWriteBatch> write)
+    {
+        if (!_persistenceLock.Wait(0)) return false;
+        try
+        {
+            // Bypasses the reader caches, which may still serve the state before the last persist.
+            using (IPersistence.IPersistenceReader reader = persistence.CreateReader(ReaderFlags.Sync))
+            {
+                if (reader.CurrentState != expected) return false;
+            }
+
+            // Held until the batch is disposed: a from == to batch rewrites the state pointer on dispose without
+            // checking it again, so a persist committed meanwhile would be rolled back.
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(expected, expected);
+            write(batch);
+            return true;
+        }
+        finally
+        {
+            _persistenceLock.Release();
+        }
     }
 
     public void Dispose()
@@ -694,8 +729,8 @@ public class PersistenceManager(
                 batch.SetStorageTrieNode(address, path, rlp);
             }
 
-            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: new StringLabel("state_nodes"));
-            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: new StringLabel("storage_nodes"));
+            Metrics.FlatPersistenceSnapshotSize.Observe(stateNodesSize, labels: _stateNodesLabel);
+            Metrics.FlatPersistenceSnapshotSize.Observe(storageNodesSize, labels: _storageNodesLabel);
         }
 
         Metrics.FlatPersistenceTime.Observe(Stopwatch.GetTimestamp() - sw);
@@ -725,21 +760,22 @@ public class PersistenceManager(
             // write batch.
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
             {
+                Address address = entry.Address.ToAddress();
                 if (entry.SelfDestructFlag is false)
-                    batch.SelfDestruct(entry.Address);
+                    batch.SelfDestruct(address);
 
                 if (entry.HasAccount)
-                    batch.SetAccount(entry.Address, entry.Account);
+                    entry.WriteAccount(batch, address);
 
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    batch.SetStorage(entry.Address, slot.Slot, slot.Value);
+                    batch.SetStorage(address, slot.Slot, slot.Value);
             }
 
             foreach (WholeReadScanner.StateNodeEntry entry in scanner.StateNodes)
-                batch.SetStateTrieNode(entry.Path, entry.Rlp);
+                entry.Write(batch);
 
             foreach (WholeReadScanner.StorageNodeEntry entry in scanner.StorageNodes)
-                batch.SetStorageTrieNode(entry.AddressHash.ToCommitment(), entry.Path, entry.Rlp);
+                entry.Write(batch);
         }
 
         // The CompactSized is now in RocksDB — drop the prefetched base blob ranges from the

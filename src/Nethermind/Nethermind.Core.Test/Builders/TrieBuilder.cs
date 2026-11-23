@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test.Builders
         private byte[] GenerateIndexedAccountRlp(int index)
         {
             Account account = GenerateIndexedAccount(index);
-            byte[] value = Rlp.Encode(account).Bytes;
+            byte[] value = Rlp.Encode(account);
             return value;
         }
 

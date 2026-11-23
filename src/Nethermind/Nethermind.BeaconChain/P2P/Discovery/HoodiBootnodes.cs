@@ -1,0 +1,21 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+namespace Nethermind.BeaconChain.P2P.Discovery;
+
+/// <summary>Built-in Hoodi testnet consensus-layer bootnode ENRs.</summary>
+/// <remarks>Source: https://github.com/eth-clients/hoodi/blob/b052c061fdab8034d0d8089dc3d84740d9dce939/metadata/bootstrap_nodes.yaml</remarks>
+public static class HoodiBootnodes
+{
+    public static readonly string[] Enrs =
+    [
+        "enr:-KG4QEfvG40PslpTF5F0SAnDMHYwQu7u9dMxVmglDyR0iKEsTUr0MilWHWKPh_Cyo0cHt0muy2SsrWpiC2sC_TRPiMcBgmlkgnY0gmlwhNRj2kKDaXA2kCoAHKALAA0CAAAAAAAAAF6Jc2VjcDI1NmsxoQIM-dQNDiL8ldy7S8t_bkW9awktKz1HHSF2Qups_K5S64N1ZHCCTryEdWRwNoJOvA",
+        "enr:-KG4QDNae3UVXdwSvWbZYotO9IpGRiBDzXr4owQ1_ONk_sOtIuZoI55Ja8EGtD-kzY5I_0bTaYpVefgRK2q2hD1T8sABgmlkgnY0gmlwhIHUpj2DaXA2kCYEqIAABAHQAAAAA2GdUACJc2VjcDI1NmsxoQMu3GRf_l288UJNQcXiLp4NbOQmigxSx14ddTal4tBp9IN1ZHCCI_CEdWRwNoIj8A",
+        "enr:-KG4QOOHORt2Kmo3lgoRTcqJnxH07aELtuidFEuBzN8Xdbzkfb4MblrUOXJnDEJ8RzXpTXWBEqM3q0DRphMm8xOIVbIBgmlkgnY0gmlwhJB-_BiDaXA2kCQAYYABAADQAAAAAYEgYAGJc2VjcDI1NmsxoQOf6T6A1lri5bTBzvb3sAb42Ki9L1pSqQsNzqvBUr7BjoN1ZHCCI_CEdWRwNoIj8A",
+        "enr:-KG4QM0TIrjoocAJvIY2XYOa1UzeSM1c2d3rBf1QzyxchGmzJ3OPdLKUFrjBRCPDYHhq69pEB5YKmFtKOBuF63k1pB4BgmlkgnY0gmlwhLKc14yDaXA2kCoBBP8A9DxKAAAAAAAAAAGJc2VjcDI1NmsxoQNFCY3Kl3VQfYl3lqOTN8YG0598xcIrlg1mmqKzdpLm5IN1ZHCCI_CEdWRwNoIj8A",
+        "enr:-KG4QLBt5eeWOp11A7l2WfR-sC5j3SYybU0PeEepotPzpt4kZE0nDFFZCy8NPjun3dcM8D4_xmYxZCB0WTnitKj7dAMBgmlkgnY0gmlwhAXfXlGDaXA2kCoBBP8C8BytAAAAAAAAAAGJc2VjcDI1NmsxoQLhrnwm2X7ZcxLideAlCmQvGkyHXMl7KXL0K-WDOdAoLIN1ZHCCI_CEdWRwNoIj8A",
+        "enr:-LK4QDwhXMitMbC8xRiNL-XGMhRyMSOnxej-zGifjv9Nm5G8EF285phTU-CAsMHRRefZimNI7eNpAluijMQP7NDC8kEMh2F0dG5ldHOIAAAAAAAABgCEZXRoMpDS8Zl_YAAJEAAIAAAAAAAAgmlkgnY0gmlwhAOIT_SJc2VjcDI1NmsxoQMoHWNL4MAvh6YpQeM2SUjhUrLIPsAVPB8nyxbmckC6KIN0Y3CCIyiDdWRwgiMo",
+        "enr:-LK4QPYl2HnMPQ7b1es6Nf_tFYkyya5bj9IqAKOEj2cmoqVkN8ANbJJJK40MX4kciL7pZszPHw6vLNyeC-O3HUrLQv8Mh2F0dG5ldHOIAAAAAAAAAMCEZXRoMpDS8Zl_YAAJEAAIAAAAAAAAgmlkgnY0gmlwhAMYRG-Jc2VjcDI1NmsxoQPQ35tjr6q1qUqwAnegQmYQyfqxC_6437CObkZneI9n34N0Y3CCIyiDdWRwgiMo",
+        "enr:-KG4QKRSUi4IOAIK_xt5ERrwW_J47wmNCLWFh7Jo0hFE69drZsiZ5Pb5CEcM_njFTTLlIR6SCf67HTcSV1g6hCXdhWkCgmlkgnY0gmlwhLkvrBODaXA2kCoGxcAWAAAYAAAAAAAAABCJc2VjcDI1NmsxoQPU7g2jQGTz8BYbB2vLTb39S_PrcZAehwMM0b3bWsM5rIN1ZHCCIyiEdWRwNoIjKA",
+    ];
+}

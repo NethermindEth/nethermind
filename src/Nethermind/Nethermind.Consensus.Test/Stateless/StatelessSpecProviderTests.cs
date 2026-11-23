@@ -93,6 +93,23 @@ public class StatelessSpecProviderTests
                 .GetSpec(MainnetSpecProvider.OsakaActivation),
             Is.SameAs(Amsterdam.Instance));
 
+    [Test]
+    public void Reads_genesis_state_unavailable_from_the_base_provider([Values] bool unavailable)
+    {
+        ChainSpec chainSpec = new() { GenesisStateUnavailable = unavailable };
+        ISpecProvider provider = new StatelessSpecProvider(
+            new ChainSpecBasedSpecProvider(chainSpec), DevnetChainId, MainnetSpecProvider.OsakaActivation, Osaka.Instance);
+
+        bool before = provider.GenesisStateUnavailable;
+        chainSpec.GenesisStateUnavailable = !unavailable;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before, Is.EqualTo(unavailable));
+            Assert.That(provider.GenesisStateUnavailable, Is.EqualTo(!unavailable), "read on each call, not captured");
+        }
+    }
+
     private static ForkActivation GetOsakaActivation(ulong chainId) =>
         chainId == BlockchainIds.Gnosis ? _gnosisOsakaActivation : MainnetSpecProvider.OsakaActivation;
 }

@@ -18,6 +18,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -178,7 +179,7 @@ public class Eip8141ScenarioTests
         }
 
         ulong frameGasUsed = FrameGasUsed(receipt);
-        ulong tokens = CalldataTokens(frameData) + CalldataTokens(witnessBytes);
+        ulong tokens = CalldataTokens(frameData) + (ulong)witnessBytes.Length * 4;
         ulong floorTokens = (ulong)(frameData.Length + witnessBytes.Length) * 4;
         ulong expected = (ulong)Eip8141Constants.IntrinsicGasCost
                          + 2 * 475UL

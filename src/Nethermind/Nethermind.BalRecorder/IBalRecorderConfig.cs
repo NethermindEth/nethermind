@@ -13,6 +13,6 @@ public interface IBalRecorderConfig : IConfig
     [ConfigItem(Description = "Whether to record block access lists to disk after block processing.", DefaultValue = "false")]
     bool RecordingEnabled { get; set; }
 
-    [ConfigItem(Description = "Directory (relative to BaseDbPath) used to store recorded block access list era files.", DefaultValue = "recordedBal")]
+    [ConfigItem(Description = "Directory (relative to BaseDbPath) used to store recorded block access list era files.", DefaultValue = "recordedBal", IsSensitiveWhenMasked = true)]
     string Path { get; set; }
 }

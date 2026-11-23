@@ -111,6 +111,8 @@ internal static class HistoryColumnsWriter
 
     public static (HistoryAvailability Availability, HistoryRowFormat RowFormat) CreateSharedFormat(IColumnsDb<FlatHistoryColumns> columns, IFlatDbConfig config)
     {
+        // A node resolves Auto before any history component sees the config; Auto resolves to Flat under history.
+        if (config.Layout == FlatLayout.Auto) config.Layout = FlatLayout.Flat;
         HistoryAvailability availability = new(columns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
         HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
         return (availability, rowFormat);

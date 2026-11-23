@@ -146,6 +146,22 @@ namespace Nethermind.JsonRpc.Test.Data
             }
         }
 
+        [TestCase("1.5")]
+        [TestCase("1.0")]
+        [TestCase("1e400")]
+        public void JsonRpcId_non_integer_number_survives_legacy_object_roundtrip(string rawToken)
+        {
+            JsonRpcId id = JsonRpcId.FromValidatedRawNumberToken(Encoding.UTF8.GetBytes(rawToken));
+            JsonRpcId roundTripped = JsonRpcId.FromObject(id.ToObject());
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(roundTripped, Is.EqualTo(id));
+                Assert.That(roundTripped.GetHashCode(), Is.EqualTo(id.GetHashCode()));
+                Assert.That(Serialize(roundTripped), Is.EqualTo(rawToken));
+            }
+        }
+
         [Test]
         public void JsonRpcId_object_equals_never_matches_null()
         {

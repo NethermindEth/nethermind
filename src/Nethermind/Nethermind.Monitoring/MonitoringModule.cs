@@ -25,7 +25,7 @@ public class MonitoringModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<IMonitoringService, MonitoringService>()
-        .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IPruningConfig, ISpecProvider>(
+        .AddSingleton<IMetricsController, IMetricsConfig, ISyncConfig, IPruningConfig, ISpecProvider, ILogManager>(
             PrepareProductInfoMetrics)
 
         .AddSingleton<AllocatorMetricsUpdater>()
@@ -50,7 +50,7 @@ public class MonitoringModule : Module
         ;
 
     [UnconditionalSuppressMessage("Trimming", "IL2072", Justification = "The runner is not trimmed, so the static members of discovered Metrics types are kept.")]
-    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IPruningConfig pruningConfig, ISpecProvider specProvider)
+    private IMetricsController PrepareProductInfoMetrics(IMetricsConfig metricsConfig, ISyncConfig syncConfig, IPruningConfig pruningConfig, ISpecProvider specProvider, ILogManager logManager)
     {
         // Need to be set here, or we cant start before blocktree, which is the one that set this normally.
         ProductInfo.Network = $"{(specProvider.ChainId == specProvider.NetworkId ? BlockchainIds.GetBlockchainName(specProvider.NetworkId) : specProvider.ChainId)}";
@@ -65,7 +65,7 @@ public class MonitoringModule : Module
         ProductInfo.PruningMode = pruningConfig.Mode.ToString();
         Init.Metrics.Version = VersionToMetrics.ConvertToNumber(ProductInfo.Version);
 
-        IMetricsController controller = new MetricsController(metricsConfig);
+        IMetricsController controller = new MetricsController(metricsConfig, logManager);
 
         IEnumerable<Type> metrics = TypeDiscovery.FindNethermindBasedTypes(nameof(Init.Metrics));
         foreach (Type metric in metrics)

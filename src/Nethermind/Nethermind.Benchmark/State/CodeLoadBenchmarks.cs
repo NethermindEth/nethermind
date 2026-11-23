@@ -21,6 +21,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
+using Testably.Abstractions;
 
 namespace Nethermind.Benchmarks.State;
 
@@ -149,7 +150,8 @@ public class CodeLoadBenchmarks
         }
 
         RocksDbConfigFactory configFactory = new(dbConfig, new PruningConfig(), new TestHardwareInfo(8L * 1024 * 1024 * 1024), NullLogManager.Instance, validateConfig: false);
-        _db = new DbOnTheRocks(basePath, new DbSettings(DbNames.Code, DbNames.Code), dbConfig, configFactory, NullLogManager.Instance);
+        _db = (DbOnTheRocks)new RocksDbFactory(configFactory, dbConfig, new HyperClockCacheWrapper(), new RealFileSystem(), NullLogManager.Instance, basePath)
+            .CreateDb(new DbSettings(DbNames.Code, DbNames.Code));
         _codeDb = new CountingCodeDb(new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(_db));
 
         _pool = new ValueHash256[poolSize];

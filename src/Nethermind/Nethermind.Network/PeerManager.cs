@@ -62,7 +62,10 @@ namespace Nethermind.Network
         private bool _isStopping; // guarded by _sessionLock
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private readonly ConcurrentDictionary<Guid, ISession> _sessions = new();
+        // Admission state and the pending count are guarded by _sessionLock.
+        private readonly Dictionary<ISession, AdmissionState> _sessions = [with(ReferenceEqualityComparer.Instance)];
+        private int _incomingSessionsAwaitingHello;
+
         private readonly int _outgoingConnectParallelism;
         private readonly EventHandler<EventArgs> _onHandshakeComplete;
         private readonly SessionDisconnectedEventHandler _onSessionDisconnected;
@@ -103,7 +106,7 @@ namespace Nethermind.Network
             _outgoingConnectionRateLimiter = new RateLimiter(networkConfig.MaxOutgoingConnectPerSec);
 
             _peerPool = peerPool;
-            _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);
+            _candidates = [with(networkConfig.MaxActivePeers * 2)];
         }
 
         public IReadOnlyCollection<Peer> ActivePeers => _peerPool.ActivePeers.Select(static kvp => kvp.Value).ToList();
@@ -237,12 +240,13 @@ namespace Nethermind.Network
                 _peerPool.PeerRemoved -= PeerPoolOnPeerRemoved;
                 _rlpxHost.SessionCreated -= RlpxHostOnSessionCreated;
                 _rlpxHost.SessionDisconnected -= _onSessionDisconnected;
-                foreach (KeyValuePair<Guid, ISession> kvp in _sessions)
+                foreach (ISession session in _sessions.Keys)
                 {
-                    ToggleSessionEventListeners(kvp.Value, false);
+                    ToggleSessionEventListeners(session, false);
                 }
 
                 _sessions.Clear();
+                _incomingSessionsAwaitingHello = 0;
             }
 
             _cancellationTokenSource.Cancel();
@@ -298,7 +302,7 @@ namespace Nethermind.Network
                     catch (Exception e)
                     {
                         // This is strictly speaking not related to the connection, but something outside of it.
-                        if (_logger.IsError) _logger.Error($"Error setting up connection to {peer}, {e}");
+                        if (_logger.IsError) _logger.Error($"Error setting up connection to {peer:hide}, {e:hide}");
                     }
                 }
                 if (_logger.IsDebug) DebugConnectWorker(idx, isCancelled: false);
@@ -414,7 +418,7 @@ namespace Nethermind.Network
             void TraceActivePeers()
             {
                 string nl = Environment.NewLine;
-                _logger.Trace($"{nl}{nl}All active peers: {nl} {string.Join(nl, _peerPool.ActivePeers.Select(static kvp => kvp.Value).Select(x => $"{x.Node:s} | P2P: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.Eth62Initialized)} | {_stats.GetOrAdd(x.Node).P2PNodeDetails?.ClientId} | {_stats.GetOrAdd(x.Node)}"))} {nl}{nl}");
+                _logger.Trace($"{nl}{nl}All active peers: {nl} {string.Join(nl, _peerPool.ActivePeers.Select(static kvp => kvp.Value).Select(x => $"{x.Node:s} | P2P: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62: {_stats.GetOrAdd(x.Node).DidEventHappen(NodeStatsEventType.Eth62Initialized)} | {_stats.GetOrAdd(x.Node).P2PNodeDetails?.ClientId} | {_stats.GetOrAdd(x.Node)}")):hide} {nl}{nl}");
             }
         }
 
@@ -599,7 +603,7 @@ namespace Nethermind.Network
             if (_currentSelection.PreCandidates.Count == 0)
             {
                 _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !IsCandidateContactRetryDelayed(sn, now) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
-                hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
+                hasOnlyStaticNodes = _currentSelection.Candidates.Count > 0;
             }
 
             if (_currentSelection.PreCandidates.Count == 0 && !hasOnlyStaticNodes)
@@ -637,6 +641,12 @@ namespace Nethermind.Network
                 if (IsConnected(preCandidate))
                 {
                     // in transition
+                    continue;
+                }
+
+                // Static peers are added once, together with the other static peers, below
+                if (preCandidate.Node.IsStatic)
+                {
                     continue;
                 }
 
@@ -707,16 +717,16 @@ namespace Nethermind.Network
             bool isOutgoing;
             lock (_sessionLock)
             {
-                if (_isStopping)
+                if (_isStopping || session.IsClosing)
                 {
                     return;
                 }
 
-                _sessions.TryAdd(session.SessionId, session);
+                isOutgoing = session.Direction == ConnectionDirection.Out;
+                if (!_sessions.TryAdd(session, isOutgoing ? AdmissionState.Accepted : AdmissionState.AwaitingHandshake)) return;
                 ToggleSessionEventListeners(session, true);
 
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.Created);
-                isOutgoing = session.Direction == ConnectionDirection.Out;
             }
 
             // ProcessOutgoingConnection may call MarkDisconnected/InitiateDisconnect,
@@ -886,7 +896,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceActivePeerAlreadyAddedToCollection()
-                => _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
+                => _logger.Trace($"Active peer was already added to collection: {peer.Node.Id:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceOutgoingConnectionResult()
@@ -894,7 +904,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceTimeoutDisconnect()
-                => _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
+                => _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id:hide}");
         }
 
         private async Task<bool> InitializeOutgoingPeerConnection(Peer candidate)
@@ -922,17 +932,17 @@ namespace Nethermind.Network
             }
             catch (Exception ex)
             {
-                _logger.DebugError($"Error trying to initiate connection with peer: {candidate.Node:s}", ex);
+                _logger.DebugError($"Error trying to initiate connection with peer: {candidate.Node.ToString("s"):hide}", SensitiveLogMasking.Enabled ? null : ex);
                 return false;
             }
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceConnectingToCandidate()
-                => _logger.Trace($"CONNECTING TO {candidate}");
+                => _logger.Trace($"CONNECTING TO {candidate:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceCannotConnectToPeer(NetworkExceptionType networkExceptionType)
-                => _logger.Trace($"Cannot connect to peer [{networkExceptionType}]: {candidate.Node:s}");
+                => _logger.Trace($"Cannot connect to peer [{networkExceptionType}]: {candidate.Node.ToString("s"):hide}");
         }
 
         /// <summary>
@@ -956,11 +966,22 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceProcessingOutgoing()
-                => _logger.Trace($"PROCESS OUTGOING {id}");
+                => _logger.Trace($"PROCESS OUTGOING {id:hide}");
         }
 
         public void OnP2PProtocolInitialized(ISession session)
         {
+            if (session.Direction == ConnectionDirection.In)
+            {
+                lock (_sessionLock)
+                {
+                    if (!_sessions.TryGetValue(session, out AdmissionState state) || state != AdmissionState.AwaitingHello) return;
+                    _sessions[session] = AdmissionState.Accepted;
+                    _incomingSessionsAwaitingHello--;
+                    ProcessIncomingConnection(session);
+                }
+            }
+
             // The margin-admitted overflow is shed here, now that the P2P protocol can carry a proper
             // disconnect message. Static and trusted peers are must-keep and exempt from the capacity cap.
             if (!session.Node.IsStatic && !session.Node.IsTrusted && ActivePeersCount > MaxActivePeers)
@@ -971,13 +992,6 @@ namespace Nethermind.Network
 
         private void ProcessIncomingConnection(ISession session)
         {
-            if (_peerPool.TryGet(session.Node.Id, out Peer existingPeer))
-            {
-                // TODO: here the session.Node may not be equal peer.Node -> would be good to check if we can improve it
-                session.Node.IsStatic = existingPeer.Node.IsStatic;
-                session.Node.IsTrusted = existingPeer.Node.IsTrusted;
-            }
-
             if (_logger.IsTrace) TraceProcessingIncoming();
 
             // if we have already initiated connection before
@@ -1007,11 +1021,11 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceProcessingIncoming()
-                => _logger.Trace($"INCOMING {session}");
+                => _logger.Trace($"INCOMING {session:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceHardLimitDisconnect()
-                => _logger.Trace($"Initiating disconnect with {session} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
+                => _logger.Trace($"Initiating disconnect with {session:hide} {DisconnectReason.HardLimitTooManyPeers} {DisconnectType.Local}");
         }
 
         private bool ShouldContactPeer(Peer peer)
@@ -1043,11 +1057,11 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceFailedCompatibilityConnection()
-                => _logger.Trace($"Not connecting peer: {peer} due to failed compatibility result");
+                => _logger.Trace($"Not connecting peer: {peer:hide} due to failed compatibility result");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceConnectionDelay(NodeStatsEventType? delayReason)
-                => _logger.Trace($"Not connecting peer: {peer} due forced connection delay. Reason: {delayReason}");
+                => _logger.Trace($"Not connecting peer: {peer:hide} due forced connection delay. Reason: {delayReason}");
         }
 
         private bool AddActivePeer(PublicKey nodeId, Peer peer, string reason)
@@ -1068,9 +1082,12 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceActivePeer(bool isAdded)
-                => _logger.Trace(isAdded
-                    ? $"|NetworkTrace| {peer.Node:s} added to active peers - {reason}"
-                    : $"|NetworkTrace| {peer.Node:s} already in active peers");
+            {
+                if (isAdded)
+                    _logger.Trace($"|NetworkTrace| {peer.Node.ToString("s"):hide} added to active peers - {reason:hide}");
+                else
+                    _logger.Trace($"|NetworkTrace| {peer.Node.ToString("s"):hide} already in active peers");
+            }
         }
 
         private void RemoveActivePeer(PublicKey nodeId, string reason)
@@ -1096,7 +1113,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDeactivatingPeer()
-                => _logger.Trace($"DEACTIVATING IF DISCONNECTED {peer}");
+                => _logger.Trace($"DEACTIVATING IF DISCONNECTED {peer:hide}");
         }
 
         private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
@@ -1132,7 +1149,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceChoosingDirection()
-                => _logger.Trace($"CHOOSING DIRECTION {remoteNode}");
+                => _logger.Trace($"CHOOSING DIRECTION {remoteNode:hide}");
         }
 
         private void AddSession(ISession session, Peer peer)
@@ -1158,7 +1175,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceAddingSession()
-                => _logger.Trace($"ADDING {session} {peer}");
+                => _logger.Trace($"ADDING {session:hide} {peer:hide}");
         }
 
         // An IN session attached while the dial was in flight still has to go through the conflict resolution,
@@ -1232,11 +1249,13 @@ namespace Nethermind.Network
             lock (_sessionLock)
             {
                 ToggleSessionEventListeners(session, false);
-                _sessions.TryRemove(session.SessionId, out _);
-                if (_isStopping)
+                if (!_sessions.Remove(session, out AdmissionState state))
                 {
                     return;
                 }
+
+                if (state == AdmissionState.AwaitingHello) _incomingSessionsAwaitingHello--;
+                if (state != AdmissionState.Accepted) return;
 
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.Closing);
 
@@ -1277,15 +1296,15 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TracePeerDisconnected()
-                => _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session} {e.DisconnectReason} {e.DisconnectType}");
+                => _logger.Trace($"|NetworkTrace| peer disconnected event in PeerManager - {session:hide} {e.DisconnectReason} {e.DisconnectType}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDisconnectWithoutRemoteNodeId()
-                => _logger.Trace($"Disconnect on session with no RemoteNodeId - {session}");
+                => _logger.Trace($"Disconnect on session with no RemoteNodeId - {session:hide}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceIgnoringDifferentSessionDisconnect(PublicKey nodeId)
-                => _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {nodeId}");
+                => _logger.Trace($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {nodeId:hide}");
         }
 
         private void ToggleSessionEventListeners(ISession session, bool shouldListen)
@@ -1305,26 +1324,41 @@ namespace Nethermind.Network
             ISession session = (ISession)sender;
             lock (_sessionLock)
             {
-                if (_isStopping)
+                if (!_sessions.TryGetValue(session, out AdmissionState state))
                 {
                     return;
                 }
 
-                _stats.GetOrAdd(session.Node);
-
-                //In case of OUT connections and different RemoteNodeId we need to replace existing Active Peer with new peer
-                ManageNewRemoteNodeId(session);
-
                 if (_logger.IsTrace) TraceSessionLifecycle(session, SessionLifecycleTraceEvent.HandshakeCompleted);
 
-                //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
                 if (session.Direction == ConnectionDirection.In)
                 {
-                    // For incoming connection, this is the entry point.
-                    ProcessIncomingConnection(session);
+                    if (state != AdmissionState.AwaitingHandshake) return;
+                    Node? poolNode = _peerPool.TryGet(session.Node.Id, out Peer existingPeer) ? existingPeer.Node : null;
+                    bool isPrivileged = poolNode is { IsStatic: true } or { IsTrusted: true };
+
+                    // A privileged id may exceed the cap with one pending session, so false claims of it stay bounded.
+                    // The flags are copied only after this check, as privileged nodes are exempt from this disconnect.
+                    if (_incomingSessionsAwaitingHello >= (long)MaxActivePeers + MaxActivePeerMargin
+                        && (!isPrivileged || IsAwaitingHello(session.Node.Id)))
+                    {
+                        session.InitiateDisconnect(DisconnectReason.HardLimitTooManyPeers, "pending inbound handshakes");
+                        return;
+                    }
+
+                    _incomingSessionsAwaitingHello++;
+                    _sessions[session] = AdmissionState.AwaitingHello;
+
+                    // Set before the Hello, so the disconnect exemptions of privileged peers apply to its validation.
+                    if (poolNode is not null)
+                    {
+                        session.Node.IsStatic = poolNode.IsStatic;
+                        session.Node.IsTrusted = poolNode.IsTrusted;
+                    }
                 }
                 else
                 {
+                    ManageNewRemoteNodeId(session);
                     if (!_peerPool.ActivePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
                     {
                         //Can happen when peer sent Disconnect message before handshake is done, it takes us a while to disconnect
@@ -1339,8 +1373,18 @@ namespace Nethermind.Network
 
                 [MethodImpl(MethodImplOptions.NoInlining)]
                 void TraceHandshakeWithoutActivePeer()
-                    => _logger.Trace($"Initiated handshake (OUT) with a peer without adding it to the Active collection : {session}");
+                    => _logger.Trace($"Initiated handshake (OUT) with a peer without adding it to the Active collection : {session:hide}");
             }
+        }
+
+        private bool IsAwaitingHello(PublicKey nodeId)
+        {
+            foreach ((ISession session, AdmissionState state) in _sessions)
+            {
+                if (state == AdmissionState.AwaitingHello && session.Node.Id == nodeId) return true;
+            }
+
+            return false;
         }
 
         private void ManageNewRemoteNodeId(ISession session)
@@ -1358,7 +1402,15 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceRemoteNodeIdUpdated()
-                => _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId}, new: {session.RemoteNodeId}, new peer not present in candidate collection");
+                => _logger.Trace($"RemoteNodeId was updated due to handshake difference, old: {session.ObsoleteRemoteNodeId:hide}, new: {session.RemoteNodeId:hide}, new peer not present in candidate collection");
+        }
+
+        // An incoming AUTH claims an identity. Only the authenticated Hello establishes it for peer accounting.
+        private enum AdmissionState
+        {
+            AwaitingHandshake,
+            AwaitingHello,
+            Accepted
         }
 
         private enum SessionLifecycleTraceEvent
@@ -1382,16 +1434,16 @@ namespace Nethermind.Network
             switch (traceEvent)
             {
                 case SessionLifecycleTraceEvent.Created:
-                    _logger.Trace($"|NetworkTrace| {session} created in peer manager");
+                    _logger.Trace($"|NetworkTrace| {session:hide} created in peer manager");
                     return;
                 case SessionLifecycleTraceEvent.Closing:
-                    _logger.Trace($"|NetworkTrace| {session} closing");
+                    _logger.Trace($"|NetworkTrace| {session:hide} closing");
                     return;
                 case SessionLifecycleTraceEvent.HandshakeCompleted:
-                    _logger.Trace($"|NetworkTrace| {session} completed handshake - peer manager handling");
+                    _logger.Trace($"|NetworkTrace| {session:hide} completed handshake - peer manager handling");
                     return;
                 case SessionLifecycleTraceEvent.HandshakeInitialized:
-                    _logger.Trace($"|NetworkTrace| {session} handshake initialized in peer manager");
+                    _logger.Trace($"|NetworkTrace| {session:hide} handshake initialized in peer manager");
                     return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(traceEvent), traceEvent, null);
@@ -1404,13 +1456,13 @@ namespace Nethermind.Network
             switch (logEvent)
             {
                 case SessionConflictLogEvent.AlreadyConnected:
-                    _logger.Debug($"Disconnecting a {session} - already connected");
+                    _logger.Debug($"Disconnecting a {session:hide} - already connected");
                     return;
                 case SessionConflictLogEvent.NewSessionAlreadyConnected:
-                    _logger.Debug($"Disconnecting a new {session} - {directionToKeep} session already connected");
+                    _logger.Debug($"Disconnecting a new {session:hide} - {directionToKeep} session already connected");
                     return;
                 case SessionConflictLogEvent.ExistingSessionReplacing:
-                    _logger.Debug($"Disconnecting an existing {session} - {directionToKeep} session to replace");
+                    _logger.Debug($"Disconnecting an existing {session:hide} - {directionToKeep} session to replace");
                     return;
                 default:
                     throw new ArgumentOutOfRangeException(nameof(logEvent), logEvent, null);

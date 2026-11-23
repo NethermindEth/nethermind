@@ -16,6 +16,7 @@ using Nethermind.Core.Test.Encoding;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -97,12 +98,27 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
     public void Deferred_insert_is_visible_before_flush()
     {
         (Block block, TxReceipt[] receipts) = PrepareBlock();
+        receipts[0].TxHash = block.Transactions[0].Hash;
         _storage.InsertDeferred(block, receipts, _specProvider.GetSpec(block.Header));
 
         // Kill the LRU so only the pending overlay can serve.
         _storage.ClearCache();
 
-        Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
+        TxReceipt? pending;
+        int txIndex;
+        int logIndexStart;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.HasBlock(block.Number, block.Hash!), Is.True);
+            Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out pending, out txIndex, out logIndexStart), Is.True);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending, Is.SameAs(receipts[0]));
+            Assert.That(txIndex, Is.Zero);
+            Assert.That(logIndexStart, Is.Zero);
+            Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(0), "the pending receipts give the index");
+        }
         _storage.Get(block).AssertEquivalentTo(receipts, nameof(TxReceipt.Error));
 
 #pragma warning disable NUnit2045 // Each operation advances state required by the following check.
@@ -186,7 +202,7 @@ public class DeferredReceiptStorageTests(bool useCompactReceipts)
         _blockTree.FindBlockHash(oldBlock.Number).Returns(oldBlock.Hash);
         if (throwsDuringLoad)
         {
-            _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(_ => throw new RlpException("malformed block"));
+            _blockStore.GetReceiptRecoveryBlock(oldBlock.Number, oldBlock.Hash).Returns(_ => throw new RlpReaderException("malformed block"));
         }
         else
         {

@@ -537,6 +537,7 @@ public sealed class HistoryWindowPruner(
         // under it is handed back here instead.
         IRangeRemovableKeyValueStore markers = (IRangeRemovableKeyValueStore)_availableBlocks;
         markers.RemoveRange(lowerBound, upperBound);
+        availability.ForgetMatchedRoots();
         markers.ReclaimRange(lowerBound, upperBound);
         _markersPrunedBelow = floor;
     }

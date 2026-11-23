@@ -207,7 +207,7 @@ public sealed class PivotHistoryImageWriter : IDisposable
 
     private async Task WritePartitions(PendingPivotImage image, CancellationToken cancellationToken)
     {
-        List<int> partitions = new(PendingPivotImage.Partitions);
+        List<int> partitions = [with(PendingPivotImage.Partitions)];
         for (int partition = 0; partition < PendingPivotImage.Partitions; partition++)
         {
             if (!image.IsDone(partition)) partitions.Add(partition);
@@ -302,6 +302,8 @@ public sealed class PivotHistoryImageWriter : IDisposable
             }
         }
 
+        // An image starting at block 0 overwrites the genesis marker a reader may already have matched.
+        _availability.ForgetMatchedRoots();
         _history.SyncWal();
         _availability.PublishUnwindowedPivotFloor(image.PivotBlock, image.ImageBlock);
         _availability.PublishWatermark(image.PivotBlock, _formatVersion);

@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core.Test;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -82,11 +83,11 @@ public class RlpByteArrayListTests
         byte[] expected = EncodeItems(items);
 
         byte[] buffer = new byte[list.RlpLength];
-        RlpWriter writer = new(buffer);
+        RlpWriter writer = RlpWriter.ContentWriter(buffer);
         writer.WriteByteArrayList(list);
 
-        Assert.That(writer.Position, Is.EqualTo(expected.Length));
-        Assert.That(buffer.AsSpan(0, writer.Position), Is.SequenceEqualTo(expected));
+        Assert.That(writer.Length, Is.EqualTo(expected.Length));
+        Assert.That(buffer.AsSpan(0, writer.Length), Is.SequenceEqualTo(expected));
     }
 
     [TestCaseSource(nameof(TestCases))]
@@ -96,8 +97,10 @@ public class RlpByteArrayListTests
         byte[] expected = EncodeItems(items);
 
         using DisposableByteBuffer byteBuffer = Unpooled.Buffer(expected.Length).AsDisposable();
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        int length = Rlp.LengthOfByteArrayList(list);
+        RlpWriter writer = byteBuffer.StartRlpWrite(length);
         writer.WriteByteArrayList(list);
+        byteBuffer.CompleteRlpWrite(writer, length);
 
         Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
         Assert.That(byteBuffer.AsSpan(), Is.SequenceEqualTo(expected));
@@ -138,13 +141,13 @@ public class RlpByteArrayListTests
             Assert.Throws<RlpLimitException>(() =>
             {
                 RlpReader ctx = new(encoded);
-                using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+                using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded, rlpLimit);
             });
         }
         else
         {
             RlpReader ctx = new(encoded);
-            using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), rlpLimit);
+            using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded, rlpLimit);
             Assert.That(list.Count, Is.EqualTo(itemCount));
         }
     }
@@ -156,7 +159,7 @@ public class RlpByteArrayListTests
         byte[] encoded = EncodeSingleByteItemList(count);
 
         RlpReader ctx = new(encoded);
-        using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+        using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded);
         Assert.That(list.Count, Is.EqualTo(count));
     }
 
@@ -170,7 +173,7 @@ public class RlpByteArrayListTests
         Assert.Throws<RlpLimitException>(() =>
         {
             RlpReader ctx = new(encoded);
-            using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+            using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded), encoded);
         });
     }
 

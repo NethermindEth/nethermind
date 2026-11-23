@@ -15,6 +15,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Init.Modules;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Test;
 using NUnit.Framework;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -156,10 +157,14 @@ public class HistoryReaderTests
         _reader.GetAccount(10, Address, null);
         _reader.TryGetStorage(10, Address, Slot, out _);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        Account? cached = _reader.GetAccount(10, Address, null);
-        bool slotFound = _reader.TryGetStorage(10, Address, Slot, out UInt256 slot);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Account? cached = null;
+        bool slotFound = false;
+        UInt256 slot = default;
+        long allocated = AllocationWindows.AllocatedBytes(() =>
+        {
+            cached = _reader.GetAccount(10, Address, null);
+            slotFound = _reader.TryGetStorage(10, Address, Slot, out slot);
+        });
 
         using (Assert.EnterMultipleScope())
         {
@@ -339,9 +344,7 @@ public class HistoryReaderTests
     public void ReadScopeState_WithAtMostOneRead_DoesNotAllocate([Values] bool enabled, [Values(0, 1)] int reads)
     {
         ReadScopeWithoutRows(enabled, reads);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        ReadScopeWithoutRows(enabled, reads);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        long allocated = AllocationWindows.AllocatedBytes(() => ReadScopeWithoutRows(enabled, reads));
 
         Assert.That(allocated, Is.Zero);
     }
@@ -400,7 +403,7 @@ public class HistoryReaderTests
         }
         HistoryColumnsWriter.MarkBlockV3(history, 10, Keccak.EmptyTreeHash);
         HistoryColumnsWriter.SetWatermarkV3(history, 20);
-        FlatDbConfig config = new() { HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
+        FlatDbConfig config = new() { Layout = FlatLayout.Flat, HistoryEnabled = true, HistoryRetention = HistoryRetentionMode.Rolling, HistoryRetentionBlocks = 100 };
         List<TrackedView> views = [];
         HookedColumns<FlatHistoryColumns> observed = new(history,
             storage ? FlatHistoryColumns.StorageHistory : FlatHistoryColumns.AccountHistory, static () => { }, view =>
@@ -504,7 +507,6 @@ public class HistoryReaderTests
 
         public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
         public string Name => inner.Name;
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
         public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);

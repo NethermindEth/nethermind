@@ -11,9 +11,15 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
+using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 
 namespace Nethermind.State.Flat;
 
@@ -48,6 +54,12 @@ public sealed class ReadOnlySnapshotBundle(
     private readonly int _persistedSnapshotCount = persistedSnapshots.Count;
     public int SnapshotCount => _persistedSnapshotCount + snapshots.Count;
 
+    // Read once, so a persisted read on a node that is not migrating makes no call to find out.
+    private readonly MigrationCursor? _migrationCursor = persistenceReader.GetMigrationCursor();
+
+    /// <summary>The in-memory snapshot of this bundle's state, which resolves its tries' roots; null when the state is persisted.</summary>
+    internal Snapshot? StateSnapshot => snapshots.Count > 0 ? snapshots[^1] : null;
+
     /// <summary>
     /// True when this bundle is backed by the finalized history index (trie-less): it serves account/storage values
     /// only and has no trie nodes, so post-block state-root recomputation must not traverse it.
@@ -62,16 +74,20 @@ public sealed class ReadOnlySnapshotBundle(
         ? SlotFilterNotBuilt
         : SlotFilterSkipped;
 
-    private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
-    private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");
-    private static readonly StringLabel _readAccountPersistenceNullLabel = new("account_persistence_null");
-    private static readonly StringLabel _readStorageSnapshotLabel = new("storage_snapshot");
-    private static readonly StringLabel _readStoragePersistenceLabel = new("storage_persistence");
-    private static readonly StringLabel _readStoragePersistenceNullLabel = new("storage_persistence_null");
-    private static readonly StringLabel _readStateNodeSnapshotLabel = new("state_node_snapshot");
-    private static readonly StringLabel _readStorageNodeSnapshotLabel = new("storage_node_snapshot");
-    private static readonly StringLabel _readStateRlpLabel = new("state_rlp");
-    private static readonly StringLabel _readStorageRlpLabel = new("storage_rlp");
+    private static readonly StableStringLabel _readAccountSnapshotLabel = StableStringLabel.Get("account_snapshot");
+    private static readonly StableStringLabel _readAccountPersistenceLabel = StableStringLabel.Get("account_persistence");
+    private static readonly StableStringLabel _readAccountPersistenceNullLabel = StableStringLabel.Get("account_persistence_null");
+    private static readonly StableStringLabel _readStorageSnapshotLabel = StableStringLabel.Get("storage_snapshot");
+    private static readonly StableStringLabel _readStoragePersistenceLabel = StableStringLabel.Get("storage_persistence");
+    private static readonly StableStringLabel _readStoragePersistenceNullLabel = StableStringLabel.Get("storage_persistence_null");
+    private static readonly StableStringLabel _readStateNodeSnapshotLabel = StableStringLabel.Get("state_node_snapshot");
+    private static readonly StableStringLabel _readStorageNodeSnapshotLabel = StableStringLabel.Get("storage_node_snapshot");
+    private static readonly StableStringLabel _readStateRlpLabel = StableStringLabel.Get("state_rlp");
+    private static readonly StableStringLabel _readStorageRlpLabel = StableStringLabel.Get("storage_rlp");
+
+    private static readonly ReadOnlySpanAction<byte, Span<Account?>> DecodeAccount = static (value, account) => account[0] = AccountDecoder.Instance.Decode(value);
+    private static readonly ReadOnlySpanAction<byte, Span<UInt256>> DecodeSlot = static (value, slot) =>
+        slot[0] = new UInt256(new RlpReader(value).ReadBytes(), isBigEndian: true);
 
     /// <summary>Starts reading persisted accounts and slots ahead of use. Keys held by the in-memory snapshots are read from there later, so a prefetch of them only warms a cache.</summary>
     public void Prefetch(IPersistence.PrefetchColumns columns, Span<Address> accounts, Span<StorageCell> slots, CancellationToken cancellationToken)
@@ -112,7 +128,7 @@ public sealed class ReadOnlySnapshotBundle(
             return persistedAccount;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        Account? account = persistenceReader.GetAccount(address);
+        Account? account = ShouldReadWithTrie(address) ? GetAccountWithTrie(address) : persistenceReader.GetAccount(address);
         if (account == null)
         {
             if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountPersistenceNullLabel);
@@ -168,7 +184,7 @@ public sealed class ReadOnlySnapshotBundle(
         UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+        value = TryGetPersistedSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
@@ -232,7 +248,7 @@ public sealed class ReadOnlySnapshotBundle(
         UInt256 outSlotValue = default;
 
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        value = persistenceReader.TryGetSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
+        value = TryGetPersistedSlot(key.Key.Item1, key.Key.Item2, ref outSlotValue) ? outSlotValue : null;
 
         if (recordDetailedMetrics)
         {
@@ -250,19 +266,23 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStateNodes(in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStateNodes(path, out node);
 
+    /// <remarks>
+    /// Only the newest snapshot is probed. Its root reaches every buffer record of this state: a block that rewrites a node
+    /// carries the pointers to the records of its unchanged children over from the record it replaces, and the snapshots' pins
+    /// keep those records readable. A node no buffer record holds is unchanged since the persisted state, as block
+    /// processing, which reads the same records and falls back to persistence, relies on. An older snapshot's root reaches
+    /// only the records of that older state, so probing it after a miss finds nothing newer.
+    /// </remarks>
     public bool TryFindStateNodes(HashedKey<TreePath> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
 
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int i = snapshots.Count - 1; i >= 0; i--)
+        if (snapshots.Count > 0 && snapshots[^1].TryGetStateNode(key, out node))
         {
-            if (snapshots[i].TryGetStateNode(key, out node))
-            {
-                Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
-                if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
-                return true;
-            }
+            Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
+            if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateNodeSnapshotLabel);
+            return true;
         }
 
         node = null;
@@ -274,6 +294,10 @@ public sealed class ReadOnlySnapshotBundle(
     public bool TryFindStorageNodes(Hash256 address, in TreePath path, Hash256 hash, [NotNullWhen(true)] out TrieNode? node) =>
         TryFindStorageNodes((address, path), out node);
 
+    /// <remarks>
+    /// Only the newest snapshot holding a storage root entry for the account (0 when the storage was cleared) is probed, as <see cref="TryFindStateNodes(HashedKey{TreePath}, out TrieNode?)"/>
+    /// probes only the newest one: it holds the root of the current storage trie, and older snapshots hold older versions of it.
+    /// </remarks>
     public bool TryFindStorageNodes(HashedKey<(Hash256, TreePath)> key, [NotNullWhen(true)] out TrieNode? node)
     {
         GuardDispose();
@@ -281,12 +305,16 @@ public sealed class ReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         for (int i = snapshots.Count - 1; i >= 0; i--)
         {
-            if (snapshots[i].TryGetStorageNode(key, out node))
+            if (!snapshots[i].TryGetStorageRoot(key.Key.Item1, out ulong root)) continue;
+
+            if (snapshots[i].TryGetStorageNode(root, key.Key.Item2, out node))
             {
                 Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromCacheNodesCount();
                 if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageNodeSnapshotLabel);
                 return true;
             }
+
+            break;
         }
 
         node = null;
@@ -302,7 +330,8 @@ public sealed class ReadOnlySnapshotBundle(
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStateRlp(path, flags);
+        byte[]? value = null;
+        persistenceReader.TryLoadStateRlp(path, hash.ValueHash256, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref value));
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStateRlpLabel);
 
         return value;
@@ -317,7 +346,8 @@ public sealed class ReadOnlySnapshotBundle(
 
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        byte[]? value = persistenceReader.TryLoadStorageRlp(address, path, flags);
+        byte[]? value = null;
+        persistenceReader.TryLoadStorageRlp(address.ValueHash256, path, hash.ValueHash256, flags, static (value, result) => result[0] = value.ToArray(), new Span<byte[]?>(ref value));
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageRlpLabel);
 
         return value;
@@ -325,8 +355,9 @@ public sealed class ReadOnlySnapshotBundle(
 
     /// <summary>Passes the persisted RLP of a trie node to <paramref name="action"/>, borrowed for the duration of the call.</summary>
     /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <param name="hash">The hash of the node, which a hash-keyed fallback below persistence needs to find it.</param>
     /// <returns>Whether the node was found and passed.</returns>
-    public bool TryLoadPersistedRlp<TArg>(Hash256? address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
+    public bool TryLoadPersistedRlp<TArg>(Hash256? address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
     {
         GuardDispose();
 
@@ -337,12 +368,63 @@ public sealed class ReadOnlySnapshotBundle(
         Nethermind.Trie.Pruning.Metrics.IncrementLoadedFromDbNodesCount();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         bool found = address is null
-            ? persistenceReader.TryLoadStateRlp(path, flags, action, arg)
-            : persistenceReader.TryLoadStorageRlp(address, path, flags, action, arg);
+            ? persistenceReader.TryLoadStateRlp(path, hash, flags, action, arg)
+            : persistenceReader.TryLoadStorageRlp(address, path, hash, flags, action, arg);
         if (recordDetailedMetrics) Metrics.ReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, address is null ? _readStateRlpLabel : _readStorageRlpLabel);
 
         return found;
     }
+
+    private bool TryGetPersistedSlot(Address address, in UInt256 index, ref UInt256 value) =>
+        ShouldReadWithTrie(address, index)
+            ? TryGetSlotWithTrie(address, index, ref value)
+            : persistenceReader.TryGetSlot(address, index, ref value);
+
+    /// <summary>Whether the account at <paramref name="address"/> is past the migration cursor, so persistence may not have it flat.</summary>
+    private bool ShouldReadWithTrie(Address address) => _migrationCursor is { } cursor && !cursor.IsCopied(address.ToAccountPath);
+
+    /// <summary>Whether the slot at <paramref name="index"/> of <paramref name="address"/> is past the migration cursor, so persistence may not have it flat.</summary>
+    private bool ShouldReadWithTrie(Address address, in UInt256 index)
+    {
+        if (_migrationCursor is not { } cursor) return false;
+
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(index, ref slotPath);
+        return !cursor.IsCopied(address.ToAccountPath, slotPath);
+    }
+
+    /// <summary>Reads an account the persistence reader cannot read flat, from the state trie of this bundle's state.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private Account? GetAccountWithTrie(Address address)
+    {
+        Metrics.IncrementHalfPathFallbackWalks();
+        Account? account = null;
+        TryGetWithTrie(null, StateRoot, address.ToAccountPath, DecodeAccount, new Span<Account?>(ref account));
+        return account;
+    }
+
+    /// <summary>Reads a slot the persistence reader cannot read flat, from the storage trie of the account in this bundle's state.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private bool TryGetSlotWithTrie(Address address, in UInt256 index, ref UInt256 value)
+    {
+        Metrics.IncrementHalfPathFallbackWalks();
+        if (GetAccount(address) is not { HasStorage: true } account) return false;
+
+        ValueHash256 slotPath = default;
+        StorageTree.ComputeKeyWithLookup(index, ref slotPath);
+        return TryGetWithTrie(address.ToAccountPath.ToCommitment(), account.StorageRoot.ValueHash256, slotPath, DecodeSlot, new Span<UInt256>(ref value));
+    }
+
+    /// <summary>Passes the value at <paramref name="key"/> of the trie at <paramref name="root"/> to <paramref name="action"/>, starting at the root record the state's snapshot finds by hash, as block processing does.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    /// <returns>Whether the trie has a value at <paramref name="key"/>.</returns>
+    /// <exception cref="MissingTrieNodeException">A node on the path is in none of this bundle's tiers.</exception>
+    private bool TryGetWithTrie<TArg>(Hash256? address, in ValueHash256 root, in ValueHash256 key, ReadOnlySpanAction<byte, TArg> action, TArg arg)
+        where TArg : allows ref struct =>
+        NodeRecordTrie.TryGet(new TrieNodes(this, address), address, (root, StateSnapshot?.ResolveRoot(address, root) ?? 0), key, action, arg);
+
+    /// <summary>The state root of this bundle's state: its newest snapshot's, otherwise persistence's.</summary>
+    private ValueHash256 StateRoot => (StateSnapshot?.To ?? persistedSnapshots.To ?? persistenceReader.CurrentState).StateRoot;
 
     // Only the reader that moves the state out of NotBuilt builds. It holds a lease on this bundle, so neither the
     // snapshots it walks nor the filter it publishes can be cleaned up under it.
@@ -414,5 +496,23 @@ public sealed class ReadOnlySnapshotBundle(
         // Null them in case unexpected mutation from trie warmer
         persistenceReader.Dispose();
         bufferPin?.Dispose();
+    }
+
+    /// <summary>One trie of this bundle's state: the buffer records of its in-memory snapshot, then the nodes the persisted snapshots and persistence hold.</summary>
+    /// <param name="address">The storage trie's address hash, or null for the state trie.</param>
+    private sealed class TrieNodes(ReadOnlySnapshotBundle bundle, Hash256? address) : INodeRecordStore
+    {
+        private readonly INodeRecordBuffer? _buffer = bundle.StateSnapshot?.BufferPin?.Buffer;
+
+        public bool TryLocate(ulong pointer, out NodeRecord record)
+        {
+            record = default;
+            return pointer != 0 && _buffer is not null && _buffer.TryLocate(pointer, out record);
+        }
+
+        public INodeRecordWriteBatch StartWriteBatch(int alignedTotalLength) => throw new NotSupportedException();
+
+        public bool TryLoad<TArg>(in TreePath path, in ValueHash256 hash, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            bundle.TryLoadPersistedRlp(address, path, hash, ReadFlags.None, action, arg);
     }
 }

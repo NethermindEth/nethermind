@@ -22,6 +22,8 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
     internal SortedMergeDictionary<HashedKey<Address>, bool> SortedSelfDestructs => _selfDestructedStorageAddresses;
 
     internal ulong StateRootPointer;
+    /// <inheritdoc cref="SnapshotContent.MaxPointer"/>
+    internal ulong MaxPointer = ulong.MaxValue;
     internal readonly Dictionary<Hash256, ulong> StorageRoots = [];
 
     public IEnumerable<KeyValuePair<HashedKey<Address>, Account?>> Accounts => _accounts;
@@ -53,6 +55,7 @@ public sealed class SortedSnapshotContent : IDisposable, IResettable
         _storages.NoResizeClear();
         _selfDestructedStorageAddresses.NoResizeClear();
         StateRootPointer = 0;
+        MaxPointer = ulong.MaxValue;
         StorageRoots.Clear();
     }
 

@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
@@ -41,6 +42,8 @@ public sealed class BlockTransactions
     private readonly ulong _blockTimestamp;
     private readonly ulong? _blockTimestampMs;
     private readonly UInt256 _baseFee;
+    private readonly IReleaseSpec _spec;
+    private readonly ulong? _excessBlobGas;
 
     private BlockTransactions(Hash256[]? hashes, TransactionForRpc[]? full)
     {
@@ -50,7 +53,7 @@ public sealed class BlockTransactions
 
     private BlockTransactions(ValueHash256[] flatHashes) => _flatHashes = flatHashes;
 
-    private BlockTransactions(Block block, ulong chainId, ulong? blockTimestampMs)
+    private BlockTransactions(Block block, ulong chainId, IReleaseSpec spec, ulong? blockTimestampMs)
     {
         _source = block.Transactions;
         _chainId = chainId;
@@ -59,6 +62,8 @@ public sealed class BlockTransactions
         _blockTimestamp = block.Timestamp;
         _blockTimestampMs = blockTimestampMs;
         _baseFee = block.BaseFeePerGas;
+        _spec = spec;
+        _excessBlobGas = block.Header.ExcessBlobGas;
     }
 
     /// <summary>The transaction hashes, or <see langword="null"/> for a block carrying full transactions.</summary>
@@ -73,14 +78,11 @@ public sealed class BlockTransactions
 
     /// <summary>Creates the full form as a view over <paramref name="block"/>'s transactions.</summary>
     /// <exception cref="ArgumentException">A transaction has a type with no registered RPC type, as building it eagerly would report.</exception>
-    internal static BlockTransactions FromBlock(Block block, ulong chainId)
-        => FromBlock(block, chainId, blockTimestampMs: null);
-
-    /// <summary>Creates the full form as a view and carries optional millisecond timestamp metadata to each transaction.</summary>
     /// <param name="block">The block whose transactions are viewed.</param>
     /// <param name="chainId">The chain identifier used by transaction RPC conversion.</param>
-    /// <param name="blockTimestampMs">The authenticated block timestamp in milliseconds, or <see langword="null"/>.</param>
-    internal static BlockTransactions FromBlock(Block block, ulong chainId, ulong? blockTimestampMs)
+    /// <param name="spec">The release spec of the block.</param>
+    /// <param name="blockTimestampMs">The authenticated block timestamp in milliseconds carried to each transaction, or <see langword="null"/>.</param>
+    internal static BlockTransactions FromBlock(Block block, ulong chainId, IReleaseSpec spec, ulong? blockTimestampMs = null)
     {
         Transaction[] transactions = block.Transactions;
         if (transactions.Length == 0) return EmptyInstance;
@@ -91,7 +93,7 @@ public sealed class BlockTransactions
             if (TransactionForRpc.TransactionJsonConverter.GetRegisteredType(transaction.Type) is null) throw new ArgumentException("No converter for transaction type");
         }
 
-        return new BlockTransactions(block, chainId, blockTimestampMs);
+        return new BlockTransactions(block, chainId, spec, blockTimestampMs);
     }
 
     /// <summary>Wraps transaction hashes without an object per hash; the array is written as is and must not change.</summary>
@@ -114,7 +116,7 @@ public sealed class BlockTransactions
     /// <param name="reuse">An instance of the right type to refill instead of creating one, or <see langword="null"/>.</param>
     internal TransactionForRpc GetViewTransaction(int index, TransactionForRpc? reuse)
     {
-        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee);
+        TransactionForRpcContext context = new(_chainId, _blockHash!, _blockNumber, index, _blockTimestamp, _baseFee, _spec, excessBlobGas: _excessBlobGas);
         Transaction transaction = _source![index];
         TransactionForRpc result;
         if (reuse is null)

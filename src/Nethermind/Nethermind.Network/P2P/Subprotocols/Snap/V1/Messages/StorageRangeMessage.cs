@@ -4,6 +4,7 @@
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.State.Snap;
+using Nethermind.State.SnapServer;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
@@ -24,7 +25,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
         public override void Dispose()
         {
             base.Dispose();
-            Slots?.DisposeRecursive();
+            // Disposing the ranges releases all slot lists without making a list object for each account.
+            if (Slots is EncodedStorageRanges ranges) ranges.Dispose();
+            else Slots?.DisposeRecursive();
             Proofs?.Dispose();
         }
     }

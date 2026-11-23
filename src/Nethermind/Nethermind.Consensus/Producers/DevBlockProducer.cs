@@ -9,6 +9,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -58,9 +59,21 @@ namespace Nethermind.Consensus.Producers
         protected override BlockHeader PrepareBlockHeader(BlockHeader parent, PayloadAttributes? payloadAttributes = null)
         {
             BlockHeader header = base.PrepareBlockHeader(parent, payloadAttributes);
+            IReleaseSpec spec = _specProvider.GetSpec(header);
             // EIP-4788 requires the field once Cancun is active; there is no beacon chain to supply it
-            if (_specProvider.GetSpec(header).IsBeaconBlockRootAvailable) header.ParentBeaconBlockRoot ??= Hash256.Zero;
+            if (spec.IsBeaconBlockRootAvailable) header.ParentBeaconBlockRoot ??= Hash256.Zero;
+            // EIP-4844: without the field the block has no blob base fee, so BLOBBASEFEE is invalid and blob transactions fail
+            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             return header;
+        }
+
+        protected override BlockToProduce PrepareBlock(BlockHeader parent, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
+        {
+            BlockToProduce block = base.PrepareBlock(parent, payloadAttributes, flags);
+            // EIP-4895 requires the list once Shanghai is active; there is no beacon chain to supply it
+            return block.Withdrawals is null && _specProvider.GetSpec(block.Header).WithdrawalsEnabled
+                ? new BlockToProduce(block.Header, block.Transactions, block.Uncles, [])
+                : block;
         }
 
         public void Dispose() => BlockTree.NewHeadBlock -= OnNewHeadBlock;

@@ -162,6 +162,26 @@ public class GasEstimatorTests
     }
 
     [Test]
+    public void Estimate_reads_the_output_of_the_probe_run_only([Values] bool transfer)
+    {
+        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: 200_000);
+        Transaction tx = transfer
+            ? Build.A.Transaction.WithTo(TestItem.AddressB).WithGasLimit(RequestedGas).WithGasPrice(0).TestObject
+            : CreateCall();
+
+        Estimate(processor, tx, CreateStateProvider(UInt256.Zero, isContract: !transfer));
+
+        int probe = processor.GasLimits.IndexOf(RequestedGas);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(probe, Is.EqualTo(transfer ? 1 : 0), "a transfer first runs at the base cost");
+            Assert.That(processor.OutputReads, Has.Count.GreaterThan(probe + 1), "the search runs after the probe");
+            for (int run = 0; run < processor.OutputReads.Count; run++)
+                Assert.That(processor.OutputReads[run], Is.EqualTo(run == probe), $"run {run} at {processor.GasLimits[run]}");
+        }
+    }
+
+    [Test]
     public void Estimate_refunded_transaction_needs_its_peak_gas_not_its_gas_used()
     {
         ScriptedTransactionProcessor processor = new(gasUsed: 40_000, peakGas: 60_000, requiredGasLimit: 60_000);
@@ -449,12 +469,14 @@ public class GasEstimatorTests
         public List<ulong> GasLimits { get; } = [];
         public List<UInt256?> MaxFeesPerBlobGas { get; } = [];
         public List<Transaction> Transactions { get; } = [];
+        public List<bool> OutputReads { get; } = [];
 
         public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
         {
             GasLimits.Add(transaction.GasLimit);
             MaxFeesPerBlobGas.Add(transaction.MaxFeePerBlobGas);
             Transactions.Add(transaction);
+            OutputReads.Add(txTracer is not ITxOutputTracingFilter { IsTracingOutput: false });
 
             if (rejection is { } rejected)
                 return rejected;

@@ -32,11 +32,7 @@ public class ChainSpecParametersProvider : IChainSpecParametersProvider
 
     private void RejectUnknownEngineParameters()
     {
-        HashSet<string> knownEngineNames = new(StringComparer.InvariantCultureIgnoreCase);
-        foreach (IChainSpecEngineParameters parameters in _instances.Values)
-        {
-            knownEngineNames.Add(parameters.EngineName);
-        }
+        HashSet<string> knownEngineNames = [with(StringComparer.InvariantCultureIgnoreCase), .. _instances.Values.Select(static parameters => parameters.EngineName)];
 
         List<string> unknownEngineNames = [];
         foreach (string engineName in _chainSpecParameters.Keys)

@@ -30,6 +30,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Logging;
+using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -158,7 +159,7 @@ public partial class EngineModuleTests
             Assert.That(getPayloadResultBlobsBundle.Proofs!.Length, Is.EqualTo(blobTxCount));
         }
         ShardBlobNetworkWrapper wrapper = new(getPayloadResultBlobsBundle.Blobs,
-            getPayloadResultBlobsBundle.Commitments, getPayloadResultBlobsBundle.Proofs, ProofVersion.V0);
+            getPayloadResultBlobsBundle.Commitments, [.. getPayloadResultBlobsBundle.Proofs.SelectMany(static proof => proof)], ProofVersion.V0);
         Assert.That(IBlobProofsManager.For(ProofVersion.V0).ValidateProofs(wrapper), Is.True);
     }
 
@@ -172,7 +173,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors).Bytes).ToArray();
+        payload.Transactions = transactions.Select(tx => TxDecoder.Instance.Encode(tx, rlpBehaviors)).ToArray();
         Hash256[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? []).Select(h => new Hash256(h!)).ToArray();
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
@@ -264,7 +265,7 @@ public partial class EngineModuleTests
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         Block? b = payload.TryGetBlock().Data;
-        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping).Bytes;
+        byte[] txRlp = TxDecoder.Instance.EncodeTx(payload.TryGetTransactions().Data![0], RlpBehaviors.SkipTypedWrapping);
         txRlp[0] = 100; // set TxType to 100
         payload.Transactions = [txRlp];
         payload.BlockHash = b!.CalculateHash();
@@ -586,6 +587,34 @@ public partial class EngineModuleTests
         Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
+    [Test]
+    public async Task ForkChoiceUpdated_rejects_null_withdrawal_entry_without_preparing_payload(
+        [Values(EngineApiVersions.Fcu.V2, EngineApiVersions.Fcu.V3)] int version,
+        [Values] bool afterValidWithdrawal)
+    {
+        IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
+        using MergeTestBlockchain chain = await CreateBlockchain(
+            releaseSpec: version == EngineApiVersions.Fcu.V2 ? Shanghai.Instance : Cancun.Instance,
+            mockedPayloadService: payloadPreparationService);
+        Hash256 headHash = chain.BlockTree.HeadHash!;
+        PayloadAttributes payloadAttributes = new()
+        {
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
+            PrevRandao = Keccak.Zero,
+            SuggestedFeeRecipient = Address.Zero,
+            Withdrawals = afterValidWithdrawal ? [TestItem.WithdrawalA_1Eth, null!] : [null!],
+            ParentBeaconBlockRoot = version == EngineApiVersions.Fcu.V3 ? Keccak.Zero : null,
+        };
+
+        string response = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, $"engine_forkchoiceUpdatedV{version}",
+            chain.JsonSerializer.Serialize(new ForkchoiceStateV1(headHash, headHash, headHash)),
+            chain.JsonSerializer.Serialize(payloadAttributes));
+        JsonRpcErrorResponse errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response)!;
+
+        Assert.That(errorResponse.Error?.Code, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes), response);
+        payloadPreparationService.DidNotReceiveWithAnyArgs().StartPreparingPayload(default!, default!);
+    }
+
     private const string FurtherValidationStatus = "FurtherValidation";
 
     [TestCaseSource(nameof(BlobVersionedHashesMatchTestSource))]
@@ -880,12 +909,55 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task ForkChoiceUpdated_rejects_null_or_missing_forkchoice_state_hash_without_applying_it(
+        [Values(EngineApiVersions.Fcu.V3, EngineApiVersions.Fcu.V4, EngineApiVersions.Fcu.V5)] int version,
+        [Values("headBlockHash", "safeBlockHash", "finalizedBlockHash")] string field,
+        [Values] bool omit)
+    {
+        IReleaseSpec releaseSpec = version switch { EngineApiVersions.Fcu.V3 => Cancun.Instance, EngineApiVersions.Fcu.V4 => Amsterdam.Instance, _ => Bogota.Instance };
+        (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, _, MergeTestBlockchain chain)
+            = await PreparePayloadRequestEnv(releaseSpec);
+        using MergeTestBlockchain disposeChain = chain;
+        IBlockCacheService blockCacheService = chain.Container.Resolve<IBlockCacheService>();
+        Hash256? cachedHead = blockCacheService.HeadBlockHash;
+        Hash256? safe = chain.BlockTree.SafeHash;
+        Hash256? finalized = chain.BlockTree.FinalizedHash;
+        int forkChoiceUpdatedCount = 0;
+        chain.BlockTree.OnForkChoiceUpdated += (_, _) => forkChoiceUpdatedCount++;
+
+        // Unknown hashes take the syncing path, which would record whatever forkchoice state got through.
+        JsonObject forkchoiceState = new()
+        {
+            ["headBlockHash"] = TestItem.KeccakA.ToString(),
+            ["safeBlockHash"] = TestItem.KeccakB.ToString(),
+            ["finalizedBlockHash"] = TestItem.KeccakC.ToString()
+        };
+        if (omit)
+            forkchoiceState.Remove(field);
+        else
+            forkchoiceState[field] = null;
+
+        using JsonRpcResponse response = await jsonRpcService.SendRequestAsync(
+            RpcTest.BuildJsonRequest($"engine_forkchoiceUpdatedV{version}", serializer.Serialize(forkchoiceState), null), context);
+
+        Error error = RpcTest.AssertError(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error.Code, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(blockCacheService.HeadBlockHash, Is.EqualTo(cachedHead));
+            Assert.That(chain.BlockTree.SafeHash, Is.EqualTo(safe));
+            Assert.That(chain.BlockTree.FinalizedHash, Is.EqualTo(finalized));
+            Assert.That(forkChoiceUpdatedCount, Is.Zero);
+        }
+    }
+
+    [Test]
     public async Task GetBlobsV1_should_throw_if_more_than_128_requested_blobs([Values(128, 129)] int requestSize)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
         IEngineRpcModule rpcModule = chain.EngineRpcModule;
 
-        List<byte[]> request = new(requestSize);
+        List<byte[]> request = [with(requestSize)];
         for (int i = 0; i < requestSize; i++)
         {
             request.Add(Bytes.FromHexString(i.ToString("X64")));
@@ -947,7 +1019,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.Select(static b => b!.Blob), Is.EqualTo(wrapper.Blobs));
-            Assert.That(result.Data.Select(static b => b!.Proof), Is.EqualTo(wrapper.Proofs));
+            Assert.That(result.Data.Select(static b => b!.Proof), Is.EqualTo(wrapper.SplitProofs()));
         }
     }
 
@@ -989,8 +1061,8 @@ public partial class EngineModuleTests
 
         Assert.That(chain.TxPool.SubmitTx(blobTx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
-        List<byte[]> blobVersionedHashesRequest = new(requestSize);
-        List<BlobAndProofV1?> blobsAndProofs = new(requestSize);
+        List<byte[]> blobVersionedHashesRequest = [with(requestSize)];
+        List<BlobAndProofV1?> blobsAndProofs = [with(requestSize)];
 
         int actualIndex = 0;
         for (int i = 0; i < requestSize; i++)
@@ -998,7 +1070,7 @@ public partial class EngineModuleTests
             bool addActualHash = i % 10 == 0;
 
             blobsAndProofs.Add(addActualHash && blobTx.NetworkWrapper is ShardBlobNetworkWrapper wrapper
-                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.Proofs[actualIndex])
+                ? new BlobAndProofV1(wrapper.Blobs[actualIndex], wrapper.GetProofs(actualIndex).ToArray())
                 : null);
             blobVersionedHashesRequest.Add(addActualHash ? blobTx.BlobVersionedHashes![actualIndex++]! : Bytes.FromHexString(i.ToString("X64")));
         }
@@ -1014,7 +1086,7 @@ public partial class EngineModuleTests
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(resultBlobsAndProofs[i]!.Blob, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Blobs[i / 10]));
-                    Assert.That(resultBlobsAndProofs[i]!.Proof, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).Proofs[i / 10]));
+                    Assert.That(resultBlobsAndProofs[i]!.Proof, Is.EqualTo(((ShardBlobNetworkWrapper)blobTx.NetworkWrapper!).GetProofs(i / 10).ToArray()));
                 }
             }
             else
@@ -1042,7 +1114,7 @@ public partial class EngineModuleTests
     {
         const int Count = 16;
         byte[]?[] blobs = new byte[Count][];
-        ReadOnlyMemory<byte[]>[] proofs = new ReadOnlyMemory<byte[]>[Count];
+        ReadOnlyMemory<byte>[] proofs = new ReadOnlyMemory<byte>[Count];
         BlobsV2DirectResponse response = new(blobs, proofs, Count);
 
         FlushCountingBufferWriter writer = new();
@@ -1061,7 +1133,7 @@ public partial class EngineModuleTests
     {
         byte[] blob = RandomBytes((int)Eip4844Constants.GasPerBlob);
         byte[]?[] blobs = [blob];
-        ReadOnlyMemory<byte[]>[] proofs = [Array.Empty<byte[]>()];
+        ReadOnlyMemory<byte>[] proofs = [Array.Empty<byte>()];
         BlobsV2DirectResponse response = new(blobs, proofs, 1);
 
         FlushCountingBufferWriter writer = new();

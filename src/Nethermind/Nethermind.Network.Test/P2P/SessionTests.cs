@@ -3,8 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
+using Nethermind.Core.Metric;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -23,27 +24,20 @@ namespace Nethermind.Network.Test.P2P;
 [Parallelizable(ParallelScope.Self)]
 public class SessionTests
 {
-    private IChannel _channel;
-    private IChannelHandlerContext _channelHandlerContext;
+    private IRlpxConnection _connection;
     private IPacketSender _packetSender;
-    private IChannelPipeline _pipeline;
 
     [SetUp]
     public void SetUp()
     {
-        _channel = Substitute.For<IChannel>();
-        _channelHandlerContext = Substitute.For<IChannelHandlerContext>();
-        _pipeline = Substitute.For<IChannelPipeline>();
-        _channelHandlerContext.Channel.Returns(_channel);
-        _channel.Pipeline.Returns(_pipeline);
-        _pipeline.Get<ZeroPacketSplitter>().Returns(new ZeroPacketSplitter());
+        _connection = Substitute.For<IRlpxConnection>();
         _packetSender = Substitute.For<IPacketSender>();
     }
 
     [Test]
     public void Constructor_sets_the_values()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyB, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
@@ -56,7 +50,7 @@ public class SessionTests
     [Test]
     public void Can_set_remaining_properties()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.PingSender = Substitute.For<IPingSender>();
         Assert.That(session.PingSender, Is.Not.Null);
         session.ObsoleteRemoteNodeId = TestItem.PublicKeyC;
@@ -66,7 +60,7 @@ public class SessionTests
     [Test]
     public void Node_can_be_retrieved_only_after_remote_known()
     {
-        Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.Throws<InvalidOperationException>(() =>
         {
             Node node = session.Node;
@@ -81,19 +75,19 @@ public class SessionTests
     [Test]
     public void Throws_when_init_called_before_the_handshake()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        Assert.Throws<InvalidOperationException>(() => session.Init(5, _channelHandlerContext, _packetSender));
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Assert.Throws<InvalidOperationException>(() => session.Init(5, _packetSender));
     }
 
     [Test]
     public void Raises_event_on_init()
     {
         bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Initialized += (s, e) => wasCalled = true;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(session.P2PVersion, Is.EqualTo(5));
@@ -104,9 +98,9 @@ public class SessionTests
     [Test]
     public void Sets_p2p_version_on_init()
     {
-        Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyB);
-        session.Init(4, _channelHandlerContext, _packetSender);
+        session.Init(4, _packetSender);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(session.P2PVersion, Is.EqualTo(4));
@@ -118,7 +112,7 @@ public class SessionTests
     public void Raises_event_on_handshake()
     {
         bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.HandshakeComplete += (s, e) => wasCalled = true;
 
         session.Handshake(TestItem.PublicKeyA);
@@ -126,9 +120,24 @@ public class SessionTests
     }
 
     [Test]
+    public void Outbound_buffer_is_full_when_the_connection_is_not_writable_after_init()
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        _connection.IsWritable.Returns(false);
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Before init");
+
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _packetSender);
+        Assert.That(session.IsOutboundBufferFull, Is.True, "Not writable");
+
+        _connection.IsWritable.Returns(true);
+        Assert.That(session.IsOutboundBufferFull, Is.False, "Writable");
+    }
+
+    [Test]
     public void Cannot_handshake_twice()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         Assert.Throws<InvalidOperationException>(() => session.Handshake(TestItem.PublicKeyA));
     }
@@ -136,53 +145,41 @@ public class SessionTests
     [Test]
     public void Cannot_handshake_after_init()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         Assert.Throws<InvalidOperationException>(() => session.Handshake(TestItem.PublicKeyA));
     }
 
     [Test]
     public void Cannot_enable_snappy_before_init()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.Throws<InvalidOperationException>(() => session.EnableSnappy());
         session.Handshake(TestItem.PublicKeyA);
         Assert.Throws<InvalidOperationException>(() => session.EnableSnappy());
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
     }
 
     [Test]
-    public void Can_enable_snappy_only_with_outbound_splitter([Values] bool hasSplitter)
+    public void Enables_snappy_on_the_connection()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        ZeroNettyP2PHandler handler = new(session, LimboLogs.Instance);
-        _pipeline.Get<ZeroNettyP2PHandler>().Returns(handler);
-        _pipeline.Get<ZeroPacketSplitter>().Returns(hasSplitter ? new ZeroPacketSplitter() : null);
-        Assert.That(handler.SnappyEnabled, Is.False);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
-        if (hasSplitter)
-        {
-            Assert.That(() => session.EnableSnappy(), Throws.Nothing);
-        }
-        else
-        {
-            Assert.That(() => session.EnableSnappy(), Throws.InvalidOperationException.With.Message.Contains(nameof(ZeroPacketSplitter)));
-        }
-        Assert.That(handler.SnappyEnabled, Is.True);
-        _pipeline.Received().Get<ZeroPacketSplitter>();
-        _pipeline.DidNotReceive().AddBefore(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<ZeroSnappyEncoder>());
+        session.Init(5, _packetSender);
+        session.EnableSnappy();
+        _connection.Received(1).EnableSnappy();
     }
 
     [Test]
     public void Enabling_snappy_on_disconnected_will_not_cause_trouble()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
         session.EnableSnappy();
+        _connection.DidNotReceive().EnableSnappy();
     }
 
     [Test]
@@ -190,7 +187,7 @@ public class SessionTests
     {
         bool shouldStop = false;
         int i = 0;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         void addProtocol()
         {
             IProtocolHandler required = Substitute.For<IProtocolHandler>();
@@ -207,7 +204,7 @@ public class SessionTests
         }
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         Task task = new(addProtocol);
         task.Start();
 
@@ -220,39 +217,39 @@ public class SessionTests
     [Test]
     public void Cannot_init_before_the_handshake()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        Assert.Throws<InvalidOperationException>(() => session.Init(5, _channelHandlerContext, _packetSender));
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Assert.Throws<InvalidOperationException>(() => session.Init(5, _packetSender));
     }
 
     [Test]
     public void Is_closing_is_false_when_not_closing()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.That(session.IsClosing, Is.False);
         session.Handshake(TestItem.PublicKeyA);
         Assert.That(session.IsClosing, Is.False);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         Assert.That(session.IsClosing, Is.False);
     }
 
     [Test]
     public void Best_state_reached_is_correct()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.That(session.BestStateReached, Is.EqualTo(SessionState.New));
         session.Handshake(TestItem.PublicKeyA);
         Assert.That(session.BestStateReached, Is.EqualTo(SessionState.HandshakeComplete));
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         Assert.That(session.BestStateReached, Is.EqualTo(SessionState.Initialized));
     }
 
     [Test]
     public void Cannot_dispose_unless_disconnected()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         Assert.Throws<InvalidOperationException>(() => session.Dispose());
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         Assert.Throws<InvalidOperationException>(() => session.Dispose());
 
         IProtocolHandler p2p = BuildHandler("p2p", 10);
@@ -280,11 +277,11 @@ public class SessionTests
     public void Raises_event_on_disconnecting()
     {
         bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalled = true;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.InitiateDisconnect(DisconnectReason.Other);
         Assert.That(wasCalled, Is.True);
     }
@@ -293,11 +290,11 @@ public class SessionTests
     public void Raises_event_on_disconnected()
     {
         bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnected += (s, e) => wasCalled = true;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
         Assert.That(wasCalled, Is.True);
     }
@@ -307,7 +304,7 @@ public class SessionTests
     {
         int firstCalls = 0;
         int secondCalls = 0;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
 
         EventHandler<DisconnectEventArgs>? first = null;
         EventHandler<DisconnectEventArgs>? second = null;
@@ -328,7 +325,7 @@ public class SessionTests
         session.Disconnected += second;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
 
         using (Assert.EnterMultipleScope())
@@ -342,7 +339,7 @@ public class SessionTests
     public void Removing_one_duplicate_disconnected_handler_keeps_remaining_subscription()
     {
         int calls = 0;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         EventHandler<DisconnectEventArgs> handler = (_, _) => calls++;
 
         session.Disconnected += handler;
@@ -350,7 +347,7 @@ public class SessionTests
         session.Disconnected -= handler;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
 
         Assert.That(calls, Is.EqualTo(1));
@@ -360,11 +357,11 @@ public class SessionTests
     public void Disconnects_after_initiating_disconnect()
     {
         bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalled = true;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.InitiateDisconnect(DisconnectReason.Other);
         using (Assert.EnterMultipleScope())
         {
@@ -392,11 +389,11 @@ public class SessionTests
         bool wasCalled = false;
         Node node = new(TestItem.PublicKeyA, "127.0.0.1", 8545);
         if (useStatic) node.IsStatic = true; else node.IsTrusted = true;
-        Session session = new(30312, node, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, node, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalled = true;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.InitiateDisconnect(reason);
         using (Assert.EnterMultipleScope())
         {
@@ -406,38 +403,62 @@ public class SessionTests
     }
 
     [Test]
-    public void Error_on_channel_when_disconnecting_channels_does_not_prevent_the_event()
+    public void Error_on_connection_when_disconnecting_does_not_prevent_the_event([Values] bool initialized)
     {
         bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        _channel.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        _connection.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
         session.Disconnected += (s, e) => wasCalled = true;
+        if (initialized)
+        {
+            session.Handshake(TestItem.PublicKeyA);
+            session.Init(5, _packetSender);
+        }
+
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
         Assert.That(wasCalled, Is.True);
     }
 
     [Test]
-    public void Error_on_context_when_disconnecting_channels_does_not_prevent_the_event()
+    public async Task Delays_closing_the_connection_only_for_local_disconnects_after_init([Values] bool initialized, [Values] DisconnectType disconnectType)
     {
-        bool wasCalled = false;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
-        _channelHandlerContext.DisconnectAsync().Returns(Task.FromException<Exception>(new Exception()));
-        session.Disconnected += (s, e) => wasCalled = true;
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        TaskCompletionSource<TimeSpan> closed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        long start = 0;
+        _connection.DisconnectAsync().Returns(_ =>
+        {
+            closed.TrySetResult(Stopwatch.GetElapsedTime(start));
+            return Task.CompletedTask;
+        });
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
-        session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
-        Assert.That(wasCalled, Is.True);
+        if (initialized) session.Init(5, _packetSender);
+
+        start = Stopwatch.GetTimestamp();
+        session.MarkDisconnected(DisconnectReason.Other, disconnectType, "test");
+
+        if (initialized && disconnectType == DisconnectType.Local)
+        {
+            // A timer can fire up to a system clock tick early
+            Assert.That(await closed.Task.WaitAsync(Timeouts.Disconnection * 10),
+                Is.GreaterThanOrEqualTo(Timeouts.Disconnection - TimeSpan.FromMilliseconds(50)), "Closed after");
+        }
+        else
+        {
+            Assert.That(closed.Task.IsCompleted, Is.True, "Closed right away");
+        }
+
+        await _connection.Received(1).DisconnectAsync();
     }
 
     [Test]
     public void Can_disconnect_many_times()
     {
         int wasCalledTimes = 0;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalledTimes++;
 
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.InitiateDisconnect(DisconnectReason.Other);
         session.InitiateDisconnect(DisconnectReason.Other);
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, "test");
@@ -449,18 +470,22 @@ public class SessionTests
     public void Can_disconnect_before_init()
     {
         int wasCalledTimes = 0;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (s, e) => wasCalledTimes++;
         session.Handshake(TestItem.PublicKeyA);
         session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, "test");
-        session.Init(5, _channelHandlerContext, _packetSender);
-        Assert.That(wasCalledTimes, Is.EqualTo(1));
+        session.Init(5, _packetSender);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wasCalledTimes, Is.EqualTo(1));
+            Assert.That(session.IsOutboundBufferFull, Is.False, "Init returned early");
+        }
     }
 
     [Test]
     public void On_incoming_sessions_can_fill_remote_id_on_handshake()
     {
-        Session session = new(30312, _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyB);
         Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyB));
     }
@@ -469,31 +494,30 @@ public class SessionTests
     public void Outgoing_handshake_with_unexpected_identity_is_rejected()
     {
         DisconnectReason? disconnectReason = null;
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Disconnecting += (_, e) => disconnectReason = e.DisconnectReason;
 
         session.Handshake(TestItem.PublicKeyB);
 
         Assert.That(session.RemoteNodeId, Is.EqualTo(TestItem.PublicKeyA));
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         Assert.That(disconnectReason, Is.EqualTo(DisconnectReason.UnexpectedIdentity));
     }
 
     [Test]
     public void Checks_init_arguments()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        Assert.Throws<ArgumentNullException>(() => session.Init(5, null, _packetSender), "context");
-        Assert.Throws<ArgumentNullException>(() => session.Init(5, _channelHandlerContext, null), "packageSender");
+        Assert.Throws<ArgumentNullException>(() => session.Init(5, null), "packageSender");
     }
 
     [Test]
     public void Can_add_and_disconnect_many_handlers()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         IProtocolHandler aaa = BuildHandler("aaa", 10);
         IProtocolHandler bbb = BuildHandler("bbb", 5);
@@ -511,9 +535,9 @@ public class SessionTests
     [Test]
     public void Cannot_add_handlers_before_p2p()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler aaa = BuildHandler("aaa", 10);
         Assert.Throws<InvalidOperationException>(() => session.AddProtocolHandler(aaa));
     }
@@ -521,9 +545,9 @@ public class SessionTests
     [Test]
     public void Cannot_add_handler_twice()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         IProtocolHandler p2pAgain = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
@@ -545,9 +569,9 @@ public class SessionTests
     {
         Metrics.P2PBytesSent = 0;
 
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         IProtocolHandler aaa = BuildHandler("aaa", 10);
         IProtocolHandler bbb = BuildHandler("bbb", 5);
@@ -573,12 +597,12 @@ public class SessionTests
     public void Cannot_deliver_before_initialized()
     {
         TestMessage message = new();
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
         session.Handshake(TestItem.PublicKeyA);
         Assert.Throws<InvalidOperationException>(() => session.DeliverMessage(message));
         Assert.That(message.WasDisposed, Is.True);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
     }
@@ -586,11 +610,11 @@ public class SessionTests
     [Test]
     public void Cannot_receive_before_initialized()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, [])));
         session.Handshake(TestItem.PublicKeyA);
         Assert.Throws<InvalidOperationException>(() => session.ReceiveMessage(new Packet("p2p", 1, [])));
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
     }
@@ -598,9 +622,9 @@ public class SessionTests
     [Test]
     public void Stops_delivering_messages_after_disconnect()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
 
@@ -619,12 +643,12 @@ public class SessionTests
         Session session = new(
             30312,
             new Node(TestItem.PublicKeyA, "127.0.0.1", 8545),
-            _channel,
+            _connection,
             NullDisconnectsAnalyzer.Instance,
             new OneLoggerLogManager(new ILogger(logger)));
         session.Disconnected += static (_, _) => { };
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         logger.LogList.Clear();
 
         session.InitiateDisconnect(DisconnectReason.BreachOfProtocol);
@@ -635,9 +659,9 @@ public class SessionTests
     [Test]
     public void Stops_receiving_messages_after_disconnect()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
 
@@ -650,14 +674,14 @@ public class SessionTests
     [Test]
     public void Delay_disconnect_until_after_initialize()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         session.InitiateDisconnect(DisconnectReason.TooManyPeers);
 
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
 
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
 
         p2p.Received().DisconnectProtocol(Arg.Any<DisconnectReason>(), Arg.Any<string?>());
     }
@@ -665,7 +689,7 @@ public class SessionTests
     [Test]
     public void Protocol_handler_can_send_message_on_disconnect()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
         session.InitiateDisconnect(DisconnectReason.TooManyPeers);
 
@@ -679,7 +703,7 @@ public class SessionTests
                 session.DeliverMessage(message);
             });
 
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         session.InitiateDisconnect(DisconnectReason.Other);
 
         _packetSender
@@ -692,9 +716,9 @@ public class SessionTests
     [Test]
     public void Can_receive_messages()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         IProtocolHandler aaa = BuildHandler("aaa", 10);
         IProtocolHandler bbb = BuildHandler("bbb", 5);
@@ -725,9 +749,9 @@ public class SessionTests
     [Test]
     public void Updates_local_and_remote_metrics_on_disconnects()
     {
-        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         IProtocolHandler p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
 
@@ -742,9 +766,9 @@ public class SessionTests
             Assert.That(afterRemote, Is.EqualTo(beforeRemote));
         }
 
-        session = new Session(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
+        session = new Session(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, new MetricsDisconnectsAnalyzer(), LimboLogs.Instance);
         session.Handshake(TestItem.PublicKeyA);
-        session.Init(5, _channelHandlerContext, _packetSender);
+        session.Init(5, _packetSender);
         p2p = BuildHandler("p2p", 10);
         session.AddProtocolHandler(p2p);
 
@@ -758,6 +782,135 @@ public class SessionTests
             Assert.That(afterLocal, Is.EqualTo(beforeLocal));
             Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
         }
+    }
+
+    [Test]
+    public void Message_metrics_count_every_message_and_byte_once_per_key()
+    {
+        const string protocol = "mta";
+        const byte version = 7;
+        Session session = CreateInitializedSession(BuildHandler("p2p", 10), BuildVersionedHandler(protocol, 10, version));
+        _packetSender.Enqueue(Arg.Any<ProtocolMessage>()).Returns(20);
+        byte[] data = new byte[10];
+
+        for (int i = 0; i < 5; i++) session.ReceiveMessage(new Packet("---", 11, data));
+        for (int i = 0; i < 3; i++) session.DeliverMessage(new ProtocolMessage(protocol, 2));
+        session.ReceiveMessage(new Packet("---", 100, data));
+
+        P2PMessageKey received = new(new VersionedProtocol(protocol, version), 1);
+        P2PMessageKey delivered = new(new VersionedProtocol(protocol, version), 2);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.IncomingP2PMessages[received].Value, Is.EqualTo(5));
+            Assert.That(Metrics.IncomingP2PMessageBytes[received].Value, Is.EqualTo(50));
+            Assert.That(Metrics.OutgoingP2PMessages[delivered].Value, Is.EqualTo(3));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[delivered].Value, Is.EqualTo(60));
+            Assert.That(Metrics.IncomingP2PMessages.ContainsKey(delivered), Is.False);
+            Assert.That(Metrics.OutgoingP2PMessages.ContainsKey(received), Is.False);
+            Assert.That(CountKeys(Metrics.IncomingP2PMessages, protocol), Is.EqualTo(1));
+            Assert.That(CountKeys(Metrics.OutgoingP2PMessageBytes, protocol), Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Message_metrics_follow_protocol_version_changes()
+    {
+        const string protocol = "mtv";
+        IProtocolHandler handler = BuildVersionedHandler(protocol, 10, 1);
+        Session session = CreateInitializedSession(BuildHandler("p2p", 10), handler);
+        _packetSender.Enqueue(Arg.Any<ProtocolMessage>()).Returns(4);
+        byte[] data = new byte[3];
+
+        for (int i = 0; i < 2; i++) session.ReceiveMessage(new Packet("---", 10, data));
+        session.DeliverMessage(new ProtocolMessage(protocol, 0));
+        handler.ProtocolVersion.Returns((byte)2);
+        for (int i = 0; i < 3; i++) session.ReceiveMessage(new Packet("---", 10, data));
+        for (int i = 0; i < 2; i++) session.DeliverMessage(new ProtocolMessage(protocol, 0));
+
+        P2PMessageKey first = new(new VersionedProtocol(protocol, 1), 0);
+        P2PMessageKey second = new(new VersionedProtocol(protocol, 2), 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.IncomingP2PMessages[first].Value, Is.EqualTo(2));
+            Assert.That(Metrics.IncomingP2PMessageBytes[first].Value, Is.EqualTo(6));
+            Assert.That(Metrics.IncomingP2PMessages[second].Value, Is.EqualTo(3));
+            Assert.That(Metrics.IncomingP2PMessageBytes[second].Value, Is.EqualTo(9));
+            Assert.That(Metrics.OutgoingP2PMessages[first].Value, Is.EqualTo(1));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[first].Value, Is.EqualTo(4));
+            Assert.That(Metrics.OutgoingP2PMessages[second].Value, Is.EqualTo(2));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[second].Value, Is.EqualTo(8));
+        }
+    }
+
+    [Test]
+    public void Message_metrics_are_exact_across_concurrent_sessions()
+    {
+        const string protocol = "mtc";
+        const int sessions = 8;
+        const int messagesPerSession = 1000;
+        Session[] all = new Session[sessions];
+        for (int i = 0; i < sessions; i++)
+        {
+            all[i] = CreateInitializedSession(BuildHandler("p2p", 10), BuildVersionedHandler(protocol, 10, 3));
+        }
+
+        _packetSender.Enqueue(Arg.Any<ProtocolMessage>()).Returns(2);
+        byte[] data = new byte[5];
+        Parallel.For(0, sessions, new ParallelOptions { MaxDegreeOfParallelism = sessions }, i =>
+        {
+            for (int j = 0; j < messagesPerSession; j++)
+            {
+                all[i].ReceiveMessage(new Packet("---", 13, data));
+                all[i].DeliverMessage(new ProtocolMessage(protocol, 4));
+            }
+        });
+
+        P2PMessageKey received = new(new VersionedProtocol(protocol, 3), 3);
+        P2PMessageKey delivered = new(new VersionedProtocol(protocol, 3), 4);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Metrics.IncomingP2PMessages[received].Value, Is.EqualTo(sessions * messagesPerSession));
+            Assert.That(Metrics.IncomingP2PMessageBytes[received].Value, Is.EqualTo(sessions * messagesPerSession * data.Length));
+            Assert.That(Metrics.OutgoingP2PMessages[delivered].Value, Is.EqualTo(sessions * messagesPerSession));
+            Assert.That(Metrics.OutgoingP2PMessageBytes[delivered].Value, Is.EqualTo(sessions * messagesPerSession * 2));
+        }
+    }
+
+    private Session CreateInitializedSession(params IProtocolHandler[] handlers)
+    {
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _connection, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _packetSender);
+        foreach (IProtocolHandler handler in handlers)
+        {
+            session.AddProtocolHandler(handler);
+        }
+
+        return session;
+    }
+
+    private IProtocolHandler BuildVersionedHandler(string code, int spaceSize, byte version)
+    {
+        IProtocolHandler handler = BuildHandler(code, spaceSize);
+        handler.ProtocolVersion.Returns(version);
+        return handler;
+    }
+
+    private static int CountKeys(NonBlocking.ConcurrentDictionary<P2PMessageKey, MetricCounter> metric, string protocol)
+    {
+        int count = 0;
+        foreach (KeyValuePair<P2PMessageKey, MetricCounter> entry in metric)
+        {
+            if (entry.Key.Protocol.Protocol == protocol) count++;
+        }
+
+        return count;
+    }
+
+    private sealed class ProtocolMessage(string protocol, int packetType) : P2PMessage
+    {
+        public override int PacketType => packetType;
+        public override string Protocol => protocol;
     }
 
     private class TestMessage : P2PMessage

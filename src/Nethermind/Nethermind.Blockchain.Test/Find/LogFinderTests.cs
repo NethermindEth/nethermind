@@ -6,7 +6,9 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Facade.Filters;
@@ -28,6 +30,7 @@ using Nethermind.Logging;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Find;
 using Nethermind.Serialization.Json;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -142,7 +145,7 @@ public class LogFinderTests
         ReceiptStorageDecoder decoder = new();
         byte[] receiptRlp = decoder.Encode(
             receipt,
-            RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+            RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
             receiptRlp,
             fieldIndex: 9,
@@ -150,7 +153,7 @@ public class LogFinderTests
         receiptRlp = HeaderRlpTestHelper.ReplaceFieldEncoding(
             receiptRlp,
             fieldIndex: 10,
-            Rlp.Encode(Rlp.OfEmptyList, Rlp.Encode(validLog)).Bytes);
+            RlpTestHelper.EncodeSequence(RlpTestHelper.OfEmptyList, Rlp.Encode(validLog)));
         int receiptsContentLength = receiptRlp.Length * 2 + 1;
         byte[] receiptsRlp = new byte[Rlp.LengthOfSequence(receiptsContentLength)];
         int receiptPosition = Rlp.StartSequence(receiptsRlp, 0, receiptsContentLength);
@@ -691,7 +694,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(rejected, accepted)
             .TestObject;
-        byte[] encoded = new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         IReceiptRefDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
         ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
         LegacyReceiptFinder receiptFinder = new(encoded, decoder,
@@ -732,7 +735,7 @@ public class LogFinderTests
             .WithTransactionHash(block.Transactions[0].Hash)
             .WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA]))
             .TestObject;
-        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts).Bytes;
+        byte[] encoded = new ReceiptArrayStorageDecoder(true).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
         LogFinder finder = new(_blockTree, new LegacyReceiptFinder(encoded, CompactReceiptStorageDecoder.Instance), _receiptStorage,
             LimboLogs.Instance, _receiptsRecovery, _specProvider!);
         LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
@@ -742,6 +745,180 @@ public class LogFinderTests
             Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.ArgumentException);
             Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.ArgumentException);
         }
+    }
+
+    private static readonly Hash256 TopicOne = new("0x0000000000000000000000000000000000000000000000000000000000000001");
+
+    private const int MaxBytesPerSerializedLogs = 96;
+
+    [Test]
+    public void FindLogs_WhenEncodedLogsHaveManyTopics_SerializesThemAsFilterLogs([Values] bool compact, [Values] bool indexed, [Values] bool streamsTopics)
+    {
+        LogEntry[] logEntries =
+        [
+            new(TestItem.AddressA, [1], [TestItem.KeccakA, TopicOne, Keccak.Zero, TestItem.KeccakB]),
+            new(TestItem.AddressA, [], []),
+            new(TestItem.AddressA, [], [Keccak.Zero, new Hash256("0x00ff00000000000000000000000000000000000000000000000000000000ff00")]),
+        ];
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        byte[] encoded = EncodeReceipt(block, compact, logEntries);
+        TopicCountingDecoder decoder = TopicCountingDecoder.Create(compact, streamsTopics);
+        LogFinder finder = CreateEncodedLogFinder(block, encoded, decoder, indexed, out ILogIndexStorage? index);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        foreach (SerializedLogs logs in FoundLogs.Serialize(finder.FindLogs(filter)))
+        {
+            logs.Dispose();
+        }
+
+        Assert.That(decoder.DecodeTopicsCalls, Is.EqualTo(streamsTopics ? 0 : logEntries.Length));
+        AssertSerializedAsFilterLogs(finder.FindLogs(filter));
+        Assert.That(finder.FindLogs(filter).Select(static log => log.Topics), Is.EqualTo(logEntries.Select(static log => log.Topics)));
+        index?.Received().GetEnumerator(TestItem.AddressA, 1, 1);
+    }
+
+    [Test]
+    public void FindLogs_WhenEncodedTopicIsMalformed_ThrowsOnEveryPath([Values] bool compact, [Values] bool indexed, [Values] bool streamsTopics, [Range(0, 1)] int malformedIndex)
+    {
+        Hash256[] topics = compact
+            ? malformedIndex == 0 ? [TopicOne, TestItem.KeccakA] : [TestItem.KeccakA, TopicOne]
+            : malformedIndex == 0 ? [TestItem.KeccakB, TestItem.KeccakA] : [TestItem.KeccakA, TestItem.KeccakB];
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        byte[] encoded = EncodeReceipt(block, compact, new LogEntry(TestItem.AddressA, [], topics));
+        // The log's address follows the receipt's sender, which is also TestItem.AddressA.
+        int address = encoded.AsSpan().LastIndexOf(TestItem.AddressA.Bytes);
+        if (compact)
+        {
+            // TopicOne is stored as the single byte 0x01; an RLP null of the same length replaces it.
+            int topic = address + Address.Size + 1 + malformedIndex * Rlp.LengthOfKeccakRlp;
+            Assert.That(encoded[topic], Is.EqualTo(0x01));
+            encoded[topic] = Rlp.EmptyByteArrayByte;
+        }
+        else
+        {
+            // A list prefix of the same length replaces the hash prefix of TestItem.KeccakB.
+            int topic = encoded.AsSpan(address).IndexOf(TestItem.KeccakB.Bytes) + address - 1;
+            Assert.That(encoded[topic], Is.EqualTo(0xa0));
+            encoded[topic] = 0xe0;
+        }
+
+        LogFinder finder = CreateEncodedLogFinder(block, encoded, TopicCountingDecoder.Create(compact, streamsTopics), indexed, out _);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => finder.FindLogs(filter).ToArray(), Throws.InstanceOf<RlpReaderException>());
+            Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
+        }
+    }
+
+    [Test]
+    public void FindLogs_AfterAMalformedLogFailed_SerializesTheNextLogsUnchanged([Values] bool compact, [Values] bool streamsTopics)
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        byte[] malformed = EncodeReceipt(block, compact, new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA, TestItem.KeccakB]));
+        int topic = malformed.AsSpan().LastIndexOf(TestItem.KeccakB.Bytes) - 1;
+        malformed[topic] = 0xe0;
+        LogFinder malformedFinder = CreateEncodedLogFinder(block, malformed, TopicCountingDecoder.Create(compact, streamsTopics), false, out _);
+        byte[] valid = EncodeReceipt(block, compact,
+            new LogEntry(TestItem.AddressA, [1, 2, 3], [TestItem.KeccakA, TopicOne]),
+            new LogEntry(TestItem.AddressA, new byte[300], [TestItem.KeccakB]));
+        LogFinder validFinder = CreateEncodedLogFinder(block, valid, TopicCountingDecoder.Create(compact, streamsTopics), false, out _);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        Assert.That(() => FoundLogs.Serialize(malformedFinder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
+        AssertSerializedAsFilterLogs(validFinder.FindLogs(filter));
+    }
+
+    [Test]
+    public void FindLogs_AfterAMalformedLogFailed_DetachesTheThreadWriter([Values] bool compact, [Values] bool streamsTopics)
+    {
+        Block block = _rawBlockTree.FindBlock(1, BlockTreeLookupOptions.None)!;
+        byte[] malformed = EncodeReceipt(block, compact, new LogEntry(TestItem.AddressA, [1, 2, 3], [TestItem.KeccakA, TestItem.KeccakB]));
+        int topic = malformed.AsSpan().LastIndexOf(TestItem.KeccakB.Bytes) - 1;
+        malformed[topic] = 0xe0;
+        LogFinder finder = CreateEncodedLogFinder(block, malformed, TopicCountingDecoder.Create(compact, streamsTopics), false, out _);
+        LogFilter filter = FilterBuilder.New().FromBlock(1).ToBlock(1).WithAddress(TestItem.AddressA).Build();
+
+        Assert.That(() => FoundLogs.Serialize(finder.FindLogs(filter)).ToArray(), Throws.InstanceOf<RlpReaderException>());
+
+        Utf8JsonWriter? writer = (Utf8JsonWriter?)typeof(SerializedLogs).GetField("_threadWriter", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null);
+        Assert.That(writer, Is.Not.Null);
+        Assert.That(writer!.BytesPending, Is.Zero, "the failed instance's partly written log is still held by the thread writer");
+    }
+
+    [Test]
+    public void Serialize_KeepsEachLogInItsOwnInstance()
+    {
+        FilterLog[] logs = Enumerable.Range(0, 4)
+            .Select(static i => new FilterLog(i, 1, 2, TestItem.KeccakA, i, TestItem.KeccakB, TestItem.AddressA, new byte[i * 40], [TestItem.KeccakC]))
+            .ToArray();
+        EthereumJsonSerializer serializer = new();
+
+        SerializedLogs[] serialized = FoundLogs.Serialize(logs).ToArray();
+        try
+        {
+            Assert.That(serialized.Select(static s => Encoding.UTF8.GetString(s[0])), Is.EqualTo(logs.Select(log => serializer.Serialize(log))));
+        }
+        finally
+        {
+            foreach (SerializedLogs s in serialized) s.Dispose();
+        }
+    }
+
+    [Test]
+    public void Serialize_DoesNotAllocateAJsonWriterPerInstance()
+    {
+        const int Count = 64;
+        const int Rounds = 5;
+        FilterLog[] logs = Enumerable.Range(0, Count)
+            .Select(static i => new FilterLog(i, 1, 2, TestItem.KeccakA, i, TestItem.KeccakB, TestItem.AddressA, [], []))
+            .ToArray();
+        SerializeAll(logs);
+
+        // The fewest bytes of several rounds: a one-off refill, such as of a pool trimmed by a GC of a parallel test,
+        // lands in one round only, while a writer per instance lands in every round.
+        long allocatedPerInstance = long.MaxValue;
+        for (int round = 0; round < Rounds; round++)
+        {
+            long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+            SerializeAll(logs);
+            allocatedPerInstance = Math.Min(allocatedPerInstance, (GC.GetAllocatedBytesForCurrentThread() - allocatedBefore) / Count);
+        }
+
+        Assert.That(allocatedPerInstance, Is.LessThan(MaxBytesPerSerializedLogs));
+
+        static void SerializeAll(FilterLog[] logs)
+        {
+            foreach (SerializedLogs s in FoundLogs.Serialize(logs)) s.Dispose();
+        }
+    }
+
+    private static byte[] EncodeReceipt(Block block, bool compact, params LogEntry[] logEntries)
+    {
+        TxReceipt receipt = Build.A.Receipt.WithAllFieldsFilled
+            .WithBlockHash(block.Hash)
+            .WithBlockNumber(block.Number)
+            .WithIndex(0)
+            .WithTransactionHash(block.Transactions[0].Hash)
+            .WithLogs(logEntries)
+            .TestObject;
+        return new ReceiptArrayStorageDecoder(compact).Encode([receipt], RlpBehaviors.Storage | RlpBehaviors.Eip658Receipts);
+    }
+
+    private LogFinder CreateEncodedLogFinder(Block block, byte[] encoded, IReceiptRefDecoder decoder, bool indexed, out ILogIndexStorage? index)
+    {
+        ReceiptsRecovery recovery = new(Substitute.For<IEthereumEcdsa>(), _specProvider);
+        LegacyReceiptFinder receiptFinder = new(encoded, decoder, () => recovery.CreateLogRecoveryContext(new ReceiptRecoveryBlock(block)));
+        if (!indexed)
+        {
+            index = null;
+            return new LogFinder(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery, _specProvider!);
+        }
+
+        index = CreateLogIndexStorage(1, 1);
+        index.GetEnumerator(TestItem.AddressA, 1, 1).Returns(_ => new[] { 1 }.AsEnumerable().GetEnumerator());
+        return new IndexedLogFinder(_blockTree, receiptFinder, _receiptStorage, LimboLogs.Instance, recovery, _specProvider!, index, minBlocksToUseIndex: 1);
     }
 
     private const ulong BoundaryOldestStored = 50;
@@ -821,7 +998,7 @@ public class LogFinderTests
         {
             Assert.That(logs, Is.Empty);
             index.Received().GetEnumerator(TestItem.AddressA, BoundaryFrom, BoundaryTo);
-            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeaderIfBloomMatches(default, default!, out _);
+            blockFinder.DidNotReceiveWithAnyArgs().FindCanonicalHeadersIfBloomMatches(default, default!, default, default);
         }
     }
 
@@ -1063,6 +1240,44 @@ public class LogFinderTests
         }
     }
 
+    /// <summary>Counts the calls to <see cref="IReceiptRefDecoder.DecodeTopics"/>.</summary>
+    /// <remarks>Implements only <see cref="IReceiptRefDecoder"/>, as a plugin decoder built before <see cref="IReceiptRefTopicDecoder"/> does.</remarks>
+    private class TopicCountingDecoder(IReceiptRefTopicDecoder decoder) : IReceiptRefDecoder
+    {
+        private int _decodeTopicsCalls;
+
+        protected IReceiptRefTopicDecoder Decoder { get; } = decoder;
+
+        public int DecodeTopicsCalls => Volatile.Read(ref _decodeTopicsCalls);
+
+        public static TopicCountingDecoder Create(bool compact, bool streamsTopics)
+        {
+            IReceiptRefTopicDecoder decoder = compact ? CompactReceiptStorageDecoder.Instance : new ReceiptStorageDecoder();
+            return streamsTopics ? new TopicStreamingCountingDecoder(decoder) : new TopicCountingDecoder(decoder);
+        }
+
+        public void DecodeStructRef(scoped ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, out TxReceiptStructRef item) =>
+            Decoder.DecodeStructRef(ref decoderContext, rlpBehaviors, out item);
+
+        public void DecodeLogEntryStructRef(scoped ref RlpReader decoderContext, RlpBehaviors none, out LogEntryStructRef current) =>
+            Decoder.DecodeLogEntryStructRef(ref decoderContext, none, out current);
+
+        public Hash256[] DecodeTopics(RlpReader reader, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            Interlocked.Increment(ref _decodeTopicsCalls);
+            return Decoder.DecodeTopics(reader, rlpBehaviors);
+        }
+
+        public bool CanDecodeBloom => Decoder.CanDecodeBloom;
+    }
+
+    private sealed class TopicStreamingCountingDecoder(IReceiptRefTopicDecoder decoder) : TopicCountingDecoder(decoder), IReceiptRefTopicDecoder
+    {
+        public RlpReader StartDecodingTopics(scoped ref RlpReader reader) => Decoder.StartDecodingTopics(ref reader);
+
+        public void DecodeTopic(ref RlpReader reader, int index, scoped Span<byte> topic) => Decoder.DecodeTopic(ref reader, index, topic);
+    }
+
     private sealed class LegacyReceiptFinder(byte[] receiptsData, IReceiptRefDecoder? decoder = null,
         Func<IReceiptsRecovery.IRecoveryContext>? recoveryContextFactory = null) : IReceiptFinder
     {
@@ -1104,7 +1319,7 @@ public class LogFinderTests
             }
 
             public readonly void Add(long logIndex, ulong blockNumber, ulong blockTimestamp, Hash256 blockHash, in TxReceiptStructRef receipt,
-                Hash256? recoveredTransactionHash, ref Hash256? transactionHash, in LogEntryStructRef log, Hash256[] topics) =>
+                ReadOnlySpan<byte> transactionHashBytes, ref Hash256? transactionHash, in LogEntryStructRef log, in ReceiptsIterator iterator) =>
                 _cancellation!.Cancel();
 
             public readonly IEnumerable<FilterLog> Complete() => [];

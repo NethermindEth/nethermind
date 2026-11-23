@@ -55,7 +55,7 @@ namespace Nethermind.TxPool
             }
 
             int commitmentsLength = GetFixedByteStringsSequenceLength(wrapper.Commitments.Length, Ckzg.BytesPerCommitment);
-            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.Proofs.Length, Ckzg.BytesPerProof);
+            int proofsLength = GetFixedByteStringsSequenceLength(wrapper.ProofCount, Ckzg.BytesPerProof);
             if (commitmentsLength == 0 || proofsLength == 0)
             {
                 return 0;
@@ -63,7 +63,7 @@ namespace Nethermind.TxPool
 
             long contentLength = (long)tx.GetLength(shouldCountBlobs: false) - 1
                 + versionLength
-                + Rlp.OfEmptyList.Length
+                + Rlp.LengthOfNull
                 + commitmentsLength
                 + proofsLength;
             return GetTypedSequenceLength(contentLength);
@@ -94,7 +94,7 @@ namespace Nethermind.TxPool
 
             long contentLength = (long)consensusEncodingSize - 1
                 + versionLength
-                + Rlp.OfEmptyList.Length
+                + Rlp.LengthOfNull
                 + commitmentsLength
                 + proofsLength;
             return GetTypedSequenceLength(contentLength);

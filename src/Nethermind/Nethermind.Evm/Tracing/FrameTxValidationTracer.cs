@@ -20,6 +20,8 @@ namespace Nethermind.Evm.Tracing;
 /// <param name="token">Cancels the simulation cooperatively; polled by the interpreter.</param>
 /// <param name="preempt">Polled with <paramref name="token"/>; once it returns true the simulation stops and
 /// <see cref="Preempted"/> stays set.</param>
+/// <param name="maxCodeDependencies">The most distinct accounts <see cref="CodeDependencies"/> may hold; recording one
+/// more violates the prefix.</param>
 public sealed class FrameTxValidationTracer(
     Address sender,
     Address expiryVerifier,
@@ -29,9 +31,15 @@ public sealed class FrameTxValidationTracer(
     TimeProvider? timeProvider = null,
     CancellationToken token = default,
     Func<bool>? preempt = null,
-    ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
-    : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
+    ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas,
+    int maxCodeDependencies = int.MaxValue)
+    : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer, IInstructionTracingFilter
 {
+    /// <summary>The opcodes that reach <see cref="StartOperation"/>; every other opcode runs untraced.</summary>
+    /// <remarks>Must cover every opcode the <c>switch</c> in <see cref="StartOperation"/> handles, otherwise the rule for a missing opcode is silently skipped.
+    /// <see cref="Instruction.SLOAD"/> is included only so <c>_inRecentRootCode</c> is current before <c>LoadOperationStorage</c> reads it.</remarks>
+    public UInt256 InstructionMask => new(0x9C02_0000_0000_0000, 0x0000_0000_0430_0DBF, 0x0000_0080_0000_0000, 0xD477_0000_0000_0000);
+
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
 
     private readonly long _deadline = Deadline(timeProvider ?? TimeProvider.System, timeout);
@@ -65,6 +73,7 @@ public sealed class FrameTxValidationTracer(
     public override bool IsTracingInstructions => true;
     public override bool IsTracingOpLevelStorage => true;
     public override bool IsTracingStack => true;
+    public override bool IsTracingStackPushes => false;
     public override bool IsTracingReceipt => true;
 
     // Explicit: ITxTracer declares these as default members, so the mapping must be made on this type
@@ -97,10 +106,14 @@ public sealed class FrameTxValidationTracer(
 
     public ulong MaxVerifyGas => maxVerifyGas;
 
-    /// <summary>EIP-8298 targets the prefix relied on whose code could change through DELEGATECALL or CALLCODE.</summary>
+    /// <summary>Accounts the prefix relied on whose code could change: EIP-8298 targets reachable through DELEGATECALL or
+    /// CALLCODE, and accounts EIP-8151 ecRecover returned.</summary>
     public IReadOnlyList<FrameTxCodeDependency> CodeDependencies => _codeDependencies ?? (IReadOnlyList<FrameTxCodeDependency>)[];
 
     private List<FrameTxCodeDependency>? _codeDependencies;
+
+    /// <summary>Whether the executing frame is the pay frame of a paymaster other than tx.sender.</summary>
+    private bool _inPaymasterFrame;
 
     void IFrameTxPrefixTracer.StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target)
     {
@@ -120,6 +133,7 @@ public sealed class FrameTxValidationTracer(
         }
 
         _inExpiryFrame = _prefixFrameIndex++ == 0 && !isDeployFrame && target == expiryVerifier;
+        _inPaymasterFrame = frame.Mode == FrameMode.Verify && (frame.Flags & FrameFlags.ApprovePayment) != 0 && target != sender;
 
         // The processor dispatches this target rather than an opcode, so it never meets the CALL* rule below,
         // and it is the one arbitrary address the prefix executes. A delegated factory is mutable by its
@@ -289,6 +303,35 @@ public sealed class FrameTxValidationTracer(
         if (!Violated && to != sender) Violate("CREATE outside tx.sender");
     }
 
+    public override void ReportActionEnd(ulong gas, ReadOnlyMemory<byte> output) => SettleCreate();
+
+    public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => SettleCreate();
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType) => SettleCreate();
+
+    public override void ReportActionRevert(ulong gas, ReadOnlyMemory<byte> output) => SettleCreate();
+
+    /// <inheritdoc/>
+    /// <remarks>EIP-8151 ecRecover returns the recovered account only while its code is empty or an EIP-7702 delegation,
+    /// so the prefix depends on that account's code. Under EIP-8298 the account can change its own code by executing
+    /// SETCODEFROM in its own context (an EOA through a 7702 delegation), so a returned account is recorded in
+    /// <see cref="CodeDependencies"/>, and the pool revalidates the transaction when a block touches the account.
+    /// A withheld account is not recorded: it holds regular code, which SETCODEFROM can replace only with other regular
+    /// code (it refuses an empty or 0xEF-prefixed source) and an EIP-7702 authorization cannot replace at all, so ecRecover
+    /// keeps withholding it.
+    /// Without EIP-8298 nothing can flip the result: a key-controlled address cannot be a CREATE, CREATE2 or TCREATE target,
+    /// so it only ever holds empty code or a delegation, both of which EIP-8151 passes, and regular code is permanent under
+    /// EIP-6780. Trade-off: the per-account cap (FrameTxMaxPendingPerDelegatingCode) bounds re-simulation amplification but
+    /// now applies to signing keys, so anyone holding one signature of a key can fill the slots that key has for verify
+    /// frames; a paymaster's pay frame uses a separate set of slots. tx.sender is exempt, its code hash being tracked already.</remarks>
+    public override void ReportPrecompileAccountRead(Address address)
+    {
+        if (Violated || !spec.IsEip8298Enabled || address == sender) return;
+
+        ValueHash256 codeHash = state.GetCodeHash(address);
+        if (codeHash == ValueKeccak.OfAnEmptyString || state.IsDelegatedCode(in codeHash)) AddCodeDependency(address, codeHash);
+    }
+
     void IFrameTxReceiptTracer.ReportFrameTxReceipt(Address payer, TxFrameReceipt[] frameReceipts)
     {
         // The prefix ends here, so anything still owed a creation frame has to be settled before the payer
@@ -347,6 +390,8 @@ public sealed class FrameTxValidationTracer(
         return mutability == CodeMutability.Direct;
     }
 
+    /// <summary>Records <paramref name="target"/> once, or violates the prefix when <c>maxCodeDependencies</c> other
+    /// accounts are recorded already.</summary>
     private void AddCodeDependency(Address target, in ValueHash256 codeHash)
     {
         List<FrameTxCodeDependency> dependencies = _codeDependencies ??= [];
@@ -355,7 +400,15 @@ public sealed class FrameTxValidationTracer(
             if (dependency.Account == target) return;
         }
 
-        dependencies.Add(new FrameTxCodeDependency(target, codeHash));
+        if (dependencies.Count >= maxCodeDependencies)
+        {
+            Violate($"validation prefix relies on the code of more than {maxCodeDependencies} accounts");
+            return;
+        }
+
+        // The pay frame is the last frame of a prefix the public mempool admits, so an account it shares with a verify
+        // frame was already recorded there.
+        dependencies.Add(new FrameTxCodeDependency(target, codeHash, _inPaymasterFrame));
     }
 
     internal enum CodeMutability : byte

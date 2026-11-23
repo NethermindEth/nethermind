@@ -14,7 +14,7 @@ public class PongMessageSerializerTests
     {
         PongMessage msg = PongMessage.Instance;
         PongMessageSerializer serializer = new();
-        byte[] serialized = serializer.Serialize(msg);
+        byte[] serialized = serializer.SerializeToArray(msg);
         Assert.That(serialized[0], Is.EqualTo(0xc0));
         using PongMessage deserialized = serializer.Deserialize(serialized);
         Assert.That(deserialized, Is.Not.Null);
