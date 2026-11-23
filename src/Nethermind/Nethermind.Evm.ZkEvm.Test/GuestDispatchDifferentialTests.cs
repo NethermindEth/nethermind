@@ -1341,7 +1341,8 @@ public class GuestDispatchDifferentialTests
     /// memory, past it with a gap, or at the end of the inline backing. Each copy also runs one and three gas short of
     /// its need, which puts the end of the gas inside its word and expansion charges. An MLOAD at 0x100 or 0x400 grows
     /// the memory and initializes it past its new size, so a destination there still owes its expansion. Memory written
-    /// with 0xff up to 0x120 shows the zeros a copy past its source must leave.
+    /// with 0xff up to 0x120 shows the zeros a copy past its source must leave. A source 13 bytes below the end of the
+    /// code sends a CODECOPY of a word or more, with at most a word of zeros, past its source.
     /// </remarks>
     [Test]
     public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.CODECOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2, 3, 4, 5)] int memory)
@@ -1358,7 +1359,7 @@ public class GuestDispatchDifferentialTests
             _ => [.. Enumerable.Range(0, 9).SelectMany(static word => (byte[])[(byte)Instruction.PUSH0, (byte)Instruction.NOT, (byte)Instruction.PUSH2, (byte)(word * 0x20 >> 8), (byte)(word * 0x20), (byte)Instruction.MSTORE])],
         };
         UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
-        UInt256[] sources = [0, 5, 39, 40, 41, 0x100, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 5, 39, 40, 41, (ulong)prefix.Length + 90, 0x100, UInt256.One << 32, UInt256.One << 64];
         UInt256[] sizes = [0, 1, 31, 32, 33, 64, 200, UInt256.One << 32];
 
         List<string> mismatches = [];

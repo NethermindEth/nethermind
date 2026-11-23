@@ -3184,12 +3184,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>
-        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, of bytes the source holds in
-        /// full into memory already written, with no call; an empty copy charges its base cost alone.
+        /// CALLDATACOPY, CODECOPY or RETURNDATACOPY, as <typeparamref name="TSource"/> sources it, into memory already written,
+        /// with no call: bytes the source holds in full, or a copy of a word or more that ends at most a word past a
+        /// zero-extending source; an empty copy charges its base cost alone.
         /// </summary>
         /// <remarks>
-        /// With no call on its path, the handler saves no return address and reloads no dispatch register. Every other case
-        /// runs <see cref="ExecuteDataCopy{TSource}"/>, which also zero-fills, expands memory and falls back to the shared handler.
+        /// With no call on its path, the handler saves no return address and reloads no dispatch register. Other copies past
+        /// a zero-extending source run <see cref="ExecuteDataCopyPastSource{TSource}"/>. Every other case runs
+        /// <see cref="ExecuteDataCopy{TSource}"/>, which also zero-fills, expands memory and falls back to the shared handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -3257,7 +3259,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     }
                 }
 
-                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0)
+                if (TSource.ZeroExtends && !EvmPooledMemory.IsSwizzled && (above | ((size | from | target) >> 32)) == 0 && from + size > (ulong)source.Length)
                 {
                     nint pastSource = Entry(&ExecuteDataCopyPastSource<TSource>);
                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref sp, pastSource);
@@ -3274,8 +3276,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </summary>
         /// <remarks>
         /// Entered from <see cref="ExecuteDataCopyIntoWritten{TSource}"/> alone, which has checked the stack holds the three
-        /// operands, each below 2^32. A copy of a word or more with at most a word of zeros clears
-        /// its last word before the source's bytes go over it. Kept apart from
+        /// operands, each below 2^32, and that the copy runs past the source. A one-word copy that starts past the source
+        /// clears that word; the caller takes every other copy of a word or more with at most a word of zeros. Kept apart from
         /// <see cref="ExecuteDataCopyIntoWritten{TSource}"/>, where its registers would cost every copy the source holds.
         /// Every other case runs <see cref="ExecuteDataCopy{TSource}"/>.
         /// </remarks>
@@ -3310,11 +3312,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 gas -= (nuint)cost;
                 uint copied = from < (ulong)source.Length ? (uint)Math.Min(size, (ulong)source.Length - from) : 0;
                 uint zeros = (uint)size - copied;
-                if (size >= EvmStack.WordSize && zeros <= EvmStack.WordSize)
+                if (zeros == EvmStack.WordSize && copied == 0)
                 {
                     ClearLastWord(ref range, size);
-                    if (copied != 0)
-                        CopyFromSource<TSource>(ref range, source, from, copied);
                 }
                 else
                 {
