@@ -241,11 +241,11 @@ public class BlockchainTestJsonOutputTests
     }
 
     /// <summary>
-    /// A failing fixture exits 0, which the nethtest workflow relies on; a file that cannot be loaded is named on stderr
-    /// only, never in the results, and exits 2 after the other files have run and been reported.
+    /// A failing fixture exits 1; a file that cannot be loaded is named on stderr only, never in the results, and exits 2
+    /// after the other files have run and been reported.
     /// </summary>
     [Test]
-    public async Task Only_a_fixture_file_that_cannot_be_loaded_changes_the_exit_status(
+    public async Task A_failing_fixture_exits_1_and_a_file_that_cannot_be_loaded_2(
         [Values("blocktest", "enginetest")] string command, [Values] bool withUnloadableFile)
     {
         List<string> paths = [WriteFixture()];
@@ -264,7 +264,7 @@ public class BlockchainTestJsonOutputTests
         {
             Assert.That(failing.GetProperty("pass").GetBoolean(), Is.False, "the fixture has to fail, otherwise this test proves nothing");
             Assert.That(results.RootElement.GetArrayLength(), Is.EqualTo(1), $"stdout was: {Trim(stdout)}");
-            Assert.That(exitCode, Is.EqualTo(withUnloadableFile ? 2 : 0), $"stderr was: {Trim(stderr)}");
+            Assert.That(exitCode, Is.EqualTo(withUnloadableFile ? 2 : 1), $"stderr was: {Trim(stderr)}");
             if (withUnloadableFile)
                 Assert.That(stderr, Does.Contain(unloadable));
         }

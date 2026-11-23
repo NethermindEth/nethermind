@@ -176,8 +176,11 @@ internal class Program
     /// The exit status of a block or engine test run that could not run all of its input: a path that does not exist
     /// or cannot be read, or a fixture file that cannot be loaded, which still leaves the other files to run.
     /// </summary>
-    /// <remarks>A fixture that runs and fails still exits 0, which the nethtest workflow relies on.</remarks>
+    /// <remarks>Takes precedence over <see cref="FailedTestExitCode"/>.</remarks>
     private const int IncompleteInputExitCode = 2;
+
+    /// <summary>The exit status of a run in which any test failed, in every test mode.</summary>
+    private const int FailedTestExitCode = 1;
 
     private static readonly (string Name, Option<bool> TestType)[] StandardCommands =
     [
@@ -250,6 +253,7 @@ internal class Program
         }
 
         int exitCode = 0;
+        bool anyFailed = false;
         while (inputs.Count > 0)
         {
             List<string>? files = CollectFiles(inputs, chunk, failOnUnreadablePath: isBlockTest || isEngineTest);
@@ -280,23 +284,23 @@ internal class Program
                     PreWarming: preWarming,
                     BlockAccessListExecutionObserver: balReport && !trace ? new BlockAccessListExecutionReport(Console.Error) : null);
                 (List<EthereumTestResult> results, bool allFilesLoaded) = await RunBlockTestFiles(files, runnerOptions, workers);
-                resultsOut.Write(_serializer.Serialize(results, true));
+                anyFailed |= WriteResults(resultsOut, results);
                 if (!allFilesLoaded) exitCode = IncompleteInputExitCode;
             }
             else if (isStateTest)
             {
                 List<EthereumTestResult> results = await RunStateTestFiles(files, whenTrace, traceMemory, !excludeStack, chainId, filter, enableWarmup, workers);
-                resultsOut.Write(_serializer.Serialize(results, true));
+                anyFailed |= WriteResults(resultsOut, results);
             }
             else if (isTxTest)
             {
                 List<EthereumTestResult> results = RunTransactionTestFiles(files, filter, workers);
-                resultsOut.Write(_serializer.Serialize(results, true));
+                anyFailed |= WriteResults(resultsOut, results);
             }
             else if (isZkEvmTest)
             {
                 List<EthereumTestResult> results = RunZkEvmTestFiles(files, filter, workers);
-                resultsOut.Write(_serializer.Serialize(results, true));
+                anyFailed |= WriteResults(resultsOut, results);
             }
 
             if (!readStdin) break;
@@ -305,7 +309,19 @@ internal class Program
 
         if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
-        return exitCode;
+        return exitCode != 0 ? exitCode : anyFailed ? FailedTestExitCode : 0;
+    }
+
+    /// <summary>Writes the results document and returns whether any of its tests failed.</summary>
+    private static bool WriteResults(TextWriter resultsOut, List<EthereumTestResult> results)
+    {
+        resultsOut.Write(_serializer.Serialize(results, true));
+        foreach (EthereumTestResult result in results)
+        {
+            if (!result.Pass) return true;
+        }
+
+        return false;
     }
 
     /// <summary>Reads the next path from stdin; an empty list once stdin ends or yields a blank line.</summary>
