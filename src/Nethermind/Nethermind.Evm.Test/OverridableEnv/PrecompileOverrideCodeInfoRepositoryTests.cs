@@ -108,6 +108,56 @@ public class PrecompileOverrideCodeInfoRepositoryTests
         }
     }
 
+    /// <summary>
+    /// A code change after the override, here an EIP-7702 designator written to the overridden account, reaches both
+    /// repositories, and a revert brings back the override's views.
+    /// </summary>
+    [Test]
+    public void Overridden_views_follow_code_writes_in_both_repositories(
+        [Values] bool movedRepository, [Values] bool dynamicAddress, [Values] bool retainNative)
+    {
+        IReleaseSpec spec = Prague.Instance;
+        Address address = dynamicAddress ? TestItem.AddressB : IdentityPrecompile.Address;
+        IWorldState worldState = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
+        ICodeInfoRepository inner = dynamicAddress ? Substitute.For<ICodeInfoRepository>() : new EthereumCodeInfoRepository(worldState);
+        if (dynamicAddress) inner.GetPrecompile(address, spec).Returns(IdentityPrecompile.Instance);
+        CodeOverrideStore overrides = new();
+        OverridableCodeInfoRepository repository = new(inner, worldState, overrides, new(disableOnAccountOverride: !retainNative));
+        ICodeInfoRepository reader = movedRepository ? new MovedPrecompileCodeInfoRepository(inner, worldState, overrides) : repository;
+        byte[] overridden = [(byte)Instruction.STOP];
+        byte[] designator = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressA.Bytes];
+        worldState.ApplyStateOverridesNoCommit(repository, new() { [address] = new() { Code = overridden } }, spec);
+        bool native = retainNative;
+        if (dynamicAddress && !native)
+        {
+            // A dynamic address that loses native dispatch is an ordinary account, which neither repository overrides.
+            Assert.Pass();
+        }
+
+        Snapshot beforeWrite = worldState.TakeSnapshot();
+        worldState.InsertCode(address, designator, spec);
+        CodeInfo dispatch = reader.GetCachedCodeInfo(address, followDelegation: false, spec, out _);
+        CodeInfo plain = reader.GetDelegatedCodeInfo(address, spec);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(dispatch.IsPrecompile, Is.EqualTo(native));
+            if (native) Assert.That(dispatch.Precompile, Is.SameAs(IdentityPrecompile.Instance));
+            Assert.That(dispatch.CodeSpan, Is.SequenceEqualTo(designator));
+            Assert.That(plain.IsPrecompile, Is.False);
+            Assert.That(plain.CodeSpan, Is.SequenceEqualTo(designator), "delegating to the account executes its current code");
+            if (movedRepository || native)
+                Assert.That(reader.GetDelegatedCodeInfo(address, spec), Is.SameAs(plain), "the refreshed view is cached");
+        }
+
+        worldState.Restore(beforeWrite);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.GetCachedCodeInfo(address, followDelegation: false, spec, out _).CodeSpan, Is.SequenceEqualTo(overridden));
+            Assert.That(reader.GetDelegatedCodeInfo(address, spec).CodeSpan, Is.SequenceEqualTo(overridden));
+        }
+    }
+
     [Test]
     public void Retained_native_views_survive_a_fork_activating_a_precompile([Values] bool movedRepository)
     {
