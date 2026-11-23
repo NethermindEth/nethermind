@@ -108,6 +108,7 @@ public class EraImporterTests
 
     [TestCase(1L << 62)]
     [TestCase(-1L)]
+    [TestCase(17L)]
     public async Task Import_WhenEraFileStartsOutsideItsEpoch_Throws(long startBlock)
     {
         await using ImportEnvironment env = await CreateImportEnvironment();
@@ -125,7 +126,7 @@ public class EraImporterTests
 
         Assert.That(
             () => env.Sut.Import(env.ExportPath, 0, ulong.MaxValue, null),
-            startBlock < 0 ? Throws.Exception : Throws.TypeOf<EraVerificationException>().With.Message.Contains("outside the epoch"));
+            startBlock < 0 ? Throws.InstanceOf<EraException>().With.Message.Contains("Invalid starting block number") : Throws.TypeOf<EraVerificationException>().With.Message.Contains("outside the epoch"));
         Assert.That(() => System.IO.File.Open(lastEraFile, System.IO.FileMode.Open, System.IO.FileAccess.ReadWrite, System.IO.FileShare.None).Dispose(), Throws.Nothing);
     }
 
