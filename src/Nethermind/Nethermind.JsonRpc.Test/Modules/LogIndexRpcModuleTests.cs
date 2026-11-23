@@ -185,6 +185,8 @@ public class LogIndexRpcModuleTests
     [TestCase(3, 5, "0x1", "0xa", """["0x4"]""", TestName = "Range wider than index on both sides")]
     [TestCase(0, 5, "0x7", "0xa", "[]", TestName = "Range entirely above index")]
     [TestCase(6, 10, "0x1", "0x5", "[]", TestName = "Range entirely below index")]
+    [TestCase(3, 5, "0x1", "0xffffffffffffffff", """["0x4"]""", TestName = "Range up to the largest block number")]
+    [TestCase(0, 5, "0x8000000000000000", "0xffffffffffffffff", "[]", TestName = "Range above long block numbers")]
     public async Task logIndex_blockNumbers_returns_only_blocks_within_indexed_range(int indexFrom, int indexTo, string fromBlock, string toBlock, string expected)
     {
         // Postings outside the indexed range, such as ones left behind by a reorg, must not be returned

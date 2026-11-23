@@ -36,16 +36,17 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         if (GetBlockNumber(logFilter.ToBlock) is not { } to)
             return ResultWrapper<IEnumerable<long>>.Fail($"Block {logFilter.ToBlock} is not found.", ErrorCodes.UnknownBlockError);
 
-        // Clamped to the indexed range, as eth_getLogs does: postings outside it are not guaranteed to be canonical.
-        // A range entirely outside the index ends up with from > to and yields no blocks.
-        from = Math.Max(from, indexFrom);
-        to = Math.Min(to, indexTo);
+        // Postings outside the indexed range are not guaranteed to be canonical, so only the indexed part of the range
+        // is served; unlike eth_getLogs, the rest is not scanned. Kept unsigned so block numbers above long.MaxValue
+        // stay above the index. A range entirely outside the index ends up with from > to and yields no blocks.
+        from = Math.Max(from, (ulong)indexFrom);
+        to = Math.Min(to, (ulong)indexTo);
 
         // Enumerated here so storage failures become JSON-RPC errors instead of breaking response serialization,
         // stopping one block past the limit so a long indexed range is not loaded in full
         int maxResults = jsonRpcConfig.MaxLogsPerResponse;
         List<long> blockNumbers = [];
-        foreach (long blockNumber in storage.EnumerateBlockNumbersFor(logFilter, (ulong)from, (ulong)to))
+        foreach (long blockNumber in storage.EnumerateBlockNumbersFor(logFilter, from, to))
         {
             if (maxResults > 0 && blockNumbers.Count == maxResults)
                 return ResultWrapper<IEnumerable<long>>.Fail($"Too many blocks requested. Max blocks per response is {maxResults}.", ErrorCodes.LimitExceeded);
@@ -74,6 +75,6 @@ public class LogIndexRpcModule(ILogIndexStorage storage, ILogIndexBuilder builde
         DbSize = storage.GetDbSize()
     });
 
-    private long? GetBlockNumber(BlockParameter parameter) =>
-        (long?)(parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number);
+    private ulong? GetBlockNumber(BlockParameter parameter) =>
+        parameter.BlockNumber ?? blockFinder.FindBlock(parameter)?.Number;
 }
