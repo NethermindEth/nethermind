@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Linq.Expressions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.FullPruning;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using Testably.Abstractions;
@@ -149,7 +151,7 @@ namespace Nethermind.Db.Test.FullPruning
             File.WriteAllText(Path.Combine(newer, "000002.sst"), "data");
             IDbFactory dbFactory = CreatePassThroughDbFactory();
 
-            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path).CreateDb(new DbSettings("name", tempPath.Path));
+            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path, LimboLogs.Instance).CreateDb(new DbSettings("name", tempPath.Path));
 
             dbFactory.Received(1).CreateDb(Arg.Is<DbSettings>(s => s.DbPath == newer));
             using (Assert.EnterMultipleScope())
@@ -170,7 +172,7 @@ namespace Nethermind.Db.Test.FullPruning
             File.WriteAllText(Path.Combine(indexed, "000002.sst"), "data");
             IDbFactory dbFactory = CreatePassThroughDbFactory();
 
-            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path).CreateDb(new DbSettings("name", tempPath.Path));
+            new FullPruningInnerDbFactory(dbFactory, new RealFileSystem(), tempPath.Path, LimboLogs.Instance).CreateDb(new DbSettings("name", tempPath.Path));
 
             dbFactory.Received(1).CreateDb(Arg.Is<DbSettings>(s => s.DbPath == indexed));
             using (Assert.EnterMultipleScope())
@@ -178,6 +180,37 @@ namespace Nethermind.Db.Test.FullPruning
                 Assert.That(Directory.EnumerateFiles(tempPath.Path), Is.Empty);
                 Assert.That(File.Exists(Path.Combine(indexed, "000002.sst")), Is.True);
             }
+        }
+
+        [Test]
+        public void deletes_the_marker_last_when_finishing_an_interrupted_delete()
+        {
+            TestContext test = new();
+            List<string> calls = [];
+            IFileInfo mainMarker = RecordingFile(DbSettings.DeletingMarkerFileName, "main marker", calls);
+            IFileInfo mainTable = RecordingFile("000001.sst", "main table", calls);
+            test.Directory.Exists.Returns(true);
+            test.Directory.EnumerateFiles().Returns(new[] { mainMarker, mainTable });
+            test.Directory.EnumerateFiles(DbSettings.DeletingMarkerFileName).Returns(new[] { mainMarker });
+            IFileInfo indexedMarker = RecordingFile(DbSettings.DeletingMarkerFileName, "indexed marker", calls);
+            IFileInfo indexedTable = RecordingFile("000002.sst", "indexed table", calls);
+            IDirectoryInfo indexed = Dir("0");
+            indexed.EnumerateFiles().Returns(new[] { indexedMarker, indexedTable });
+            indexed.EnumerateFiles(DbSettings.DeletingMarkerFileName).Returns(new[] { indexedMarker });
+            indexed.When(static d => d.Delete(true)).Do(_ => calls.Add("indexed folder"));
+            test.Directory.EnumerateDirectories().Returns(new[] { indexed });
+
+            _ = test.TestedDbFactory;
+
+            Assert.That(calls, Is.EqualTo(new[] { "main table", "main marker", "indexed table", "indexed folder" }));
+        }
+
+        private static IFileInfo RecordingFile(string name, string label, List<string> calls)
+        {
+            IFileInfo file = Substitute.For<IFileInfo>();
+            file.Name.Returns(name);
+            file.When(static f => f.Delete()).Do(_ => calls.Add(label));
+            return file;
         }
 
         private static IDbFactory CreatePassThroughDbFactory()
@@ -213,7 +246,7 @@ namespace Nethermind.Db.Test.FullPruning
             public IFileSystem FileSystem { get; } = Substitute.For<IFileSystem>();
             public IDirectoryInfo Directory { get; } = Substitute.For<IDirectoryInfo>();
 
-            public FullPruningInnerDbFactory TestedDbFactory => _testedDbFactory ??= new(RocksDbFactory, FileSystem, Path);
+            public FullPruningInnerDbFactory TestedDbFactory => _testedDbFactory ??= new(RocksDbFactory, FileSystem, Path, LimboLogs.Instance);
 
             public TestContext()
             {
