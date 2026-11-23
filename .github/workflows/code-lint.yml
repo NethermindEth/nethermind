@@ -68,7 +68,12 @@ jobs:
       # These scripts enforce the private-corpus privacy boundary (what may be staged and
       # published). Their suites are the only thing that verifies it, so CI must run them.
       - name: Run script test suites
-        run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/rpc-bench
+        run: |
+          # Failure fixtures log workflow commands as part of their expected output.
+          stop_token=$(cat /proc/sys/kernel/random/uuid)
+          echo "::stop-commands::$stop_token"
+          trap 'echo "::$stop_token::"' EXIT
+          dotnet run --file scripts/ci/run-script-tests.cs -- scripts/rpc-bench 2>&1
 
   ci-script-tests:
     name: Test CI scripts
@@ -92,6 +97,9 @@ jobs:
       # synthetic mount tables and fails if the copies drift apart.
       - name: Run script test suites
         run: dotnet run --file scripts/ci/run-script-tests.cs -- scripts/ci
+
+      - name: Check light-client deployment
+        run: dotnet run --file src/Nethermind/Nethermind.LightClient/Deployment/tests/test-deployment.cs
 
   zisk-bench-scripts:
     name: Test zkVM benchmark scripts
@@ -198,12 +206,7 @@ jobs:
       # is silently empty. Neither is visible in the Dockerfile diff, only on a built image, so
       # this builds the final stage of every published Dockerfile and inspects the result.
       - name: Check the published images' OCI labels
-        run: |
-          if [[ -f scripts/check-docker-labels.cs ]]; then
-            dotnet run --file scripts/check-docker-labels.cs
-          else
-            scripts/check-docker-labels.sh
-          fi
+        run: dotnet run --file scripts/check-docker-labels.cs
 
   ci-script-lint:
     name: Check C# CI scripts

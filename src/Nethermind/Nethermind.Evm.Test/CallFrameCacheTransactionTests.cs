@@ -124,7 +124,7 @@ public class CallFrameCacheTransactionTests : VirtualMachineTestsBase
                     return;
                 }
 
-                // Access tracing keeps what the reverted call read warm, so only the second reverted call finds it warm.
+                // The first reverted call pays cold; access tracing keeps what it read warm and on the list.
                 Assert.That(Words(output.ReturnValue), Is.EqualTo(new UInt256[] { ColdReverterCall, WarmReverterCall, 107, 2607 }));
                 Assert.That(access.AccessList!.Select(static e => $"{e.Address} [{string.Join(",", e.StorageKeys)}]"),
                     Is.SupersetOf(new[] { $"{Committer} [10]", $"{Reverter} [9]", $"{ColdX} []", $"{ColdY} []" }));
