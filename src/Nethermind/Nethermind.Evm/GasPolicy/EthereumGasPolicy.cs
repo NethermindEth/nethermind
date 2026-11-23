@@ -226,21 +226,19 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     public static bool TryConsumeAccountAccessGasWithDelegation(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         Address? delegated)
     {
         if (!spec.UseHotAndColdStorage)
             return true;
 
-        bool notOutOfGas = TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, address);
-        return notOutOfGas && (delegated is null || TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, isTracingAccess, delegated));
+        bool notOutOfGas = TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, address);
+        return notOutOfGas && (delegated is null || TryConsumeAccountAccessGas(ref gas, spec, in accessTracker, delegated));
     }
 
     public static bool TryConsumeAccountAccessGas(ref EthereumGasPolicy gas,
         IReleaseSpec spec,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         Address address,
         AccountAccessKind kind = AccountAccessKind.Default) =>
         TryConsumeAccountAccessGasCore<ColdAccountGasCost, DynamicStorageMode>(ref gas, spec, in accessTracker, address, kind);
@@ -283,7 +281,6 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 
     public static bool TryConsumeStorageAccessGas(ref EthereumGasPolicy gas,
         ref readonly StackAccessTracker accessTracker,
-        bool isTracingAccess,
         in StorageCell storageCell,
         StorageAccessType storageAccessType,
         IReleaseSpec spec) =>
@@ -320,7 +317,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref EthereumGasPolicy gas,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess,
+        ref readonly StackAccessTracker accessTracker,
         in StorageCell storageCell, StorageAccessType storageAccessType, IReleaseSpec spec)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>
@@ -329,7 +326,7 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
     /// <inheritdoc/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref EthereumGasPolicy gas, IReleaseSpec spec,
-        ref readonly StackAccessTracker accessTracker, bool isTracingAccess, Address address,
+        ref readonly StackAccessTracker accessTracker, Address address,
         AccountAccessKind kind = AccountAccessKind.Default)
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IFlag =>

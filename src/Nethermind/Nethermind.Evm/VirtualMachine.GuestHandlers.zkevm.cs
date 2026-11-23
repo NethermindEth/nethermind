@@ -3111,14 +3111,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref EvmPooledMemory memory = ref AlignedMemory(ref state);
                 if (!TGasPolicy.UpdateMemoryCost(ref policy, in dataOffset, in dataLength, ref memory) ||
                     !TGasPolicy.UpdateMemoryCost(ref policy, in outputOffset, in outputLength, ref memory) ||
-                    !TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, codeSource))
+                    !TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, codeSource))
                     goto OutOfGas;
 
                 ICodeInfoRepository codeInfoRepository = vm.CodeInfoRepository;
                 CodeInfo codeInfo = codeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
                 if (delegated is not null)
                 {
-                    if (!TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, vm.IsTracingAccess, delegated))
+                    if (!TSpec.TryConsumeAccountAccessGas(ref policy, spec, in frame.AccessTracker, delegated))
                         goto OutOfGas;
 
                     vm.WorldState.AddAccountRead(delegated);
