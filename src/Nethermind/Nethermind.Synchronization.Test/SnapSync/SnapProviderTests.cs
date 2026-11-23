@@ -1498,6 +1498,66 @@ public class SnapProviderTests
     }
 
     /// <summary>
+    /// The second root has the account at state path <c>1</c> as a leaf, with its sibling under <c>1d</c> gone and its
+    /// storage changed, so its round removes the storage root of the first root without checking <c>1c</c>, where the
+    /// first root has the leaf of the account, and the pivot moves on before anything is saved. The last root has the
+    /// leaf at <c>1c</c> of the first root back; healing at it has to go down to the storage root rather than stop at the
+    /// leaf at <c>1c</c> as found saved, leaving the storage root empty.
+    /// </summary>
+    [Test]
+    public async Task Flat_healing_after_a_round_abandoned_below_a_shallower_state_leaf_heals_to_the_last_root()
+    {
+        TestRawTrieStore sourceStore = new(new TestMemDb());
+        StateTree sourceTree = new(sourceStore, LimboLogs.Instance);
+        ValueHash256 owner = new("0x1c00000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 sibling = new("0x1d00000000000000000000000000000000000000000000000000000000000000");
+        ValueHash256 counter = new("0x2000000000000000000000000000000000000000000000000000000000000000");
+        StorageTree storage = new(sourceStore.GetTrieStore(owner.ToCommitment()), LimboLogs.Instance);
+        ValueHash256 changedSlot = new("0x1000000000000000000000000000000000000000000000000000000000000000");
+        storage.Set(new ValueHash256("0x2000000000000000000000000000000000000000000000000000000000000000"), [1]);
+        // 1 = branch {1c = leaf of the owner, 1d = leaf of the sibling}; then 1 = leaf of the owner; then 1 as at first.
+        BlockHeader[] headers =
+        [
+            CommitSource(1, slotValue: 1, withSibling: true),
+            CommitSource(2, slotValue: 2, withSibling: false),
+            CommitSource(3, slotValue: 1, withSibling: true),
+        ];
+        TreePath shallowerLeafPath = TreePath.FromHexString("1");
+
+        TestSyncConfig syncConfig = new() { SnapSync = true };
+        using SnapshotableMemColumnsDb<FlatDbColumns> db = new();
+        HealingPivot pivot = new(headers[0], headers) { CanFinalizeAt = header => header == headers[^1] };
+        await HealWithTrieNodes(new RocksDbPersistence(db, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, pivot, sourceStore, afterRequest: (_, batch) =>
+        {
+            if (pivot.Header == headers[1] && batch.RequestedNodes!.Any(item => item.Address is null && item.Path == shallowerLeafPath)) pivot.Header = headers[^1];
+        });
+
+        using SnapshotableMemColumnsDb<FlatDbColumns> atLastRootDb = new();
+        await HealWithTrieNodes(new RocksDbPersistence(atLastRootDb, LimboLogs.Instance, NullTrieNodeLog.Instance), syncConfig, new HealingPivot(headers[^1], headers[^1]), sourceStore);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ReadColumn(db, FlatDbColumns.StorageNodes), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.StorageNodes)), "storage trie nodes");
+            Assert.That(ReadColumn(db, FlatDbColumns.Storage), Is.EqualTo(ReadColumn(atLastRootDb, FlatDbColumns.Storage)), "storage column");
+        }
+
+        BlockHeader CommitSource(ulong blockNumber, byte slotValue, bool withSibling)
+        {
+            storage.Set(changedSlot, [slotValue]);
+            using (sourceStore.BeginBlockCommit(blockNumber))
+            {
+                storage.Commit();
+                sourceTree.Set(owner, Build.An.Account.WithBalance(1).WithStorageRoot(storage.RootHash).TestObject);
+                sourceTree.Set(sibling, withSibling ? Build.An.Account.WithBalance(1).TestObject : null);
+                sourceTree.Set(counter, Build.An.Account.WithBalance(blockNumber).TestObject);
+                sourceTree.Commit();
+            }
+
+            return Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(sourceTree.RootHash).TestObject;
+        }
+    }
+
+    /// <summary>
     /// Heals the state at the pivot with trie nodes, answering each request from <paramref name="source"/>, a round at
     /// each pivot until one can finalize.
     /// </summary>

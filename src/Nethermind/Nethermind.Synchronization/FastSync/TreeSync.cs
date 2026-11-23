@@ -34,6 +34,13 @@ namespace Nethermind.Synchronization.FastSync
 
         private const StateSyncBatch EmptyBatch = null;
 
+        /// <summary>The deepest path below a state leaf at which healing removes a node an earlier root left.</summary>
+        /// <remarks>
+        /// A node deeper on the path of an account needs two account hashes sharing 16 bytes, which takes about 2^64
+        /// hashes to find, so checking all 64 nibbles would only cost reads.
+        /// </remarks>
+        private const int DeepestStateLeafPathChecked = 32;
+
         private static readonly AccountDecoder AccountDecoder = new();
 
         private readonly DetailedProgress _data;
@@ -879,7 +886,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         // Add nibbles to StateSyncItem.PathNibbles
                         TreePath childPath = currentStateSyncItem.Path.Append(trieNode.Key);
-                        RemoveNodesInsideExtension(currentStateSyncItem, childPath);
+                        RemoveSkippedNodes(currentStateSyncItem, childPath);
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -936,6 +943,7 @@ namespace Nethermind.Synchronization.FastSync
                             Debug.Assert(finalStorageRoot.Length == 64);
 
                             Hash256 address = finalStorageRoot.Path.ToCommitment();
+                            RemoveSkippedNodes(currentStateSyncItem, finalStorageRoot.Truncate(DeepestStateLeafPathChecked + 1));
 
                             AddNodeResult addStorageNodeResult = AddNodeToPending(new StateSyncItem(storageRoot, address, TreePath.Empty, NodeDataType.Storage, 0, currentStateSyncItem.Rightness), dependentItem, "storage");
                             if (addStorageNodeResult == AddNodeResult.AlreadySaved)
@@ -975,22 +983,24 @@ namespace Nethermind.Synchronization.FastSync
         }
 
         /// <summary>
-        /// Removes the nodes stored at the paths inside the key of an extension, where this root has no node.
+        /// Removes the nodes stored at the paths between <paramref name="node"/> and <paramref name="next"/>, where this
+        /// root has no node.
         /// </summary>
         /// <remarks>
-        /// Healing goes from the extension straight to its child, so it never checks those paths. A node an earlier root
-        /// left there would stop a later root that has it again above the child, which this round may remove or replace.
-        /// This runs before the child is added, so a round that moves on in between leaves no node above a removed child.
+        /// Healing goes from an extension straight to its child, and from a state leaf straight to its storage, so it never
+        /// checks those paths. A node an earlier root left there would stop a later root that has it again above the
+        /// child, which this round may remove or replace. This runs before the child is added, so a round that moves on in
+        /// between leaves no node above a removed child.
         /// </remarks>
-        private void RemoveNodesInsideExtension(StateSyncItem extension, in TreePath childPath)
+        private void RemoveSkippedNodes(StateSyncItem node, in TreePath next)
         {
             _stateDbLock.EnterReadLock();
             try
             {
                 // No node hashes to zero, so this removes whichever node is stored.
-                for (int length = extension.Path.Length + 1; length < childPath.Length; length++)
+                for (int length = node.Path.Length + 1; length < next.Length; length++)
                 {
-                    _store.RemoveMismatchedNode(extension.Address, childPath.Truncate(length), ValueKeccak.Zero);
+                    _store.RemoveMismatchedNode(node.Address, next.Truncate(length), ValueKeccak.Zero);
                 }
             }
             finally
