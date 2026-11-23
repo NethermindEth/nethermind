@@ -57,7 +57,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
             }
             else
             {
-                if (!TryDecodeBlockAccessList(out ReadOnlyBlockAccessList? blockAccessList, out string? error))
+                if (!TryDecodeBlockAccessList(GasLimit, out ReadOnlyBlockAccessList? blockAccessList, out string? error))
                 {
                     return Result<Block>.Fail(error);
                 }
@@ -75,6 +75,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
     }
 
     internal bool TryDecodeBlockAccessList(
+        ulong gasLimit,
         [NotNullWhen(true)] out ReadOnlyBlockAccessList? blockAccessList,
         [NotNullWhen(false)] out string? error)
     {
@@ -90,10 +91,10 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3, IExecutionPayloadFactory<E
         {
             blockAccessList = _decodedBlockAccessList
                 ?? throw new InvalidOperationException("Cached block access list is missing.");
-            return IsWithinItemLimit(blockAccessList.ItemCount, GasLimit, out error);
+            return IsWithinItemLimit(blockAccessList.ItemCount, gasLimit, out error);
         }
 
-        if (!TryDecodeBlockAccessList(encodedBlockAccessList, GasLimit, out blockAccessList, out error))
+        if (!TryDecodeBlockAccessList(encodedBlockAccessList, gasLimit, out blockAccessList, out error))
         {
             return false;
         }

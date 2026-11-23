@@ -285,7 +285,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         if (block.BlockAccessList is null && block.EncodedBlockAccessList is { } encodedBlockAccessList && block.Header.BlockAccessListHash is not null)
         {
-            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, GetItemLimitGasLimit(block.Header, parentHeader), out ReadOnlyBlockAccessList? blockAccessList, out string? blockAccessListError))
+            if (!ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, PayloadTransactionCountGuard.GetParentBoundedGasLimit(block.Header.GasLimit, parentHeader, _specProvider.GetSpec(block.Header), block.Number), out ReadOnlyBlockAccessList? blockAccessList, out string? blockAccessListError))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, blockAccessListError));
                 return NewPayloadV1Result.Invalid(null, blockAccessListError);
@@ -455,16 +455,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             default:
                 return ThrowUnknownValidationResult(result);
         }
-    }
-
-    private ulong GetItemLimitGasLimit(BlockHeader header, BlockHeader parent)
-    {
-        IReleaseSpec spec = _specProvider.GetSpec(header);
-        if (spec.GasLimitBoundDivisor == 0) return header.GasLimit;
-
-        UInt128 parentGasLimit = Eip1559GasLimitAdjuster.AdjustGasLimit(spec, parent.GasLimit, header.Number);
-        UInt128 maxGasLimit = parentGasLimit + parentGasLimit / spec.GasLimitBoundDivisor;
-        return maxGasLimit < header.GasLimit ? (ulong)maxGasLimit : header.GasLimit;
     }
 
     [DoesNotReturn]

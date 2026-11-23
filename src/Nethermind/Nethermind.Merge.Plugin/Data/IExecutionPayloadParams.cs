@@ -150,7 +150,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
         }
 
         bool isParentUnknown = false;
-        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error, out latestValidHash, out isParentUnknown))
+        ulong boundedGasLimit = executionPayload.GasLimit;
+        if (transactionCountGuard is not null && !transactionCountGuard.IsWithinParentGasLimit(executionPayload, spec, out error, out latestValidHash, out isParentUnknown, out boundedGasLimit))
         {
             return ValidationResult.Invalid;
         }
@@ -173,8 +174,8 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload>(
                 bool decoded = executionPayload is ExecutionPayloadV4 executionPayloadV4
                     ? isParentUnknown
                         ? executionPayloadV4.TryDeferBlockAccessListDecode(out error)
-                        : executionPayloadV4.TryDecodeBlockAccessList(out _, out error)
-                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, executionPayload.GasLimit, out _, out error);
+                        : executionPayloadV4.TryDecodeBlockAccessList(boundedGasLimit, out _, out error)
+                    : ExecutionPayloadV4.TryDecodeBlockAccessList(encodedBlockAccessList, boundedGasLimit, out _, out error);
                 if (!decoded)
                 {
                     return ValidationResult.Invalid;

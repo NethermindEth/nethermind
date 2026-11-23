@@ -445,6 +445,26 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV5_checks_the_access_list_against_the_parent_gas_limit_before_decoding()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance);
+        ExecutionPayloadV4 payload = await GetPayloadV6OnHead(chain);
+        payload.GasLimit = 1UL << 50;
+        byte[] encodedBlockAccessList = EncodeStorageReadsAccessList((int)(chain.BlockTree.Head!.GasLimit * 2 / Eip7928Constants.ItemCost));
+        payload.BlockAccessList = encodedBlockAccessList;
+        payload.BlockHash = payload.TryGetBlock().Data!.CalculateHash();
+        payload.BlockAccessList = [.. encodedBlockAccessList];
+
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV5(payload, [], TestItem.KeccakE, []);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Invalid));
+            Assert.That(response.Data.ValidationError, Does.StartWith("BlockAccessListGasLimitExceeded"));
+        }
+    }
+
+    [Test]
     public async Task NewPayload_validates_a_deferred_access_list_without_access_list_execution()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance, configurer: static builder => builder
