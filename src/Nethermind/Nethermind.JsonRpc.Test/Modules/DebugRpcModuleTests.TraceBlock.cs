@@ -2245,7 +2245,7 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_traceBlockByNumber_mux_preserves_javascript_result_errors(
         [Values] bool nested,
-        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock")] string method,
+        [Values("debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBlock", "debug_traceBadBlock")] string method,
         [Values("result", "step", "cyclic")] string callback)
     {
         using Context ctx = await Context.Create();
@@ -2260,11 +2260,12 @@ public partial class DebugRpcModuleTests
         string expected = callback == "cyclic" ? JavaScriptResultDepthError : $"mux {callback} failure";
         Dictionary<string, object> children = new() { [script] = new { }, ["noopTracer"] = new { } };
         object config = nested ? new Dictionary<string, object> { ["muxTracer"] = children } : children;
+        if (method == "debug_traceBadBlock") ctx.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
 
         object selector = method switch
         {
             "debug_traceBlockByNumber" => block.Number,
-            "debug_traceBlockByHash" => block.Hash!,
+            "debug_traceBlockByHash" or "debug_traceBadBlock" => block.Hash!,
             _ => Rlp.Encode(block).ToHexString(true)
         };
         string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, method, selector,
