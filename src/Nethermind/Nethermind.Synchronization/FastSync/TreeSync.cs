@@ -875,6 +875,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         // Add nibbles to StateSyncItem.PathNibbles
                         TreePath childPath = currentStateSyncItem.Path.Append(trieNode.Key);
+                        RemoveNodesInsideExtension(currentStateSyncItem, childPath);
 
                         AddNodeResult addResult = AddNodeToPending(
                             new StateSyncItem(
@@ -966,6 +967,31 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"Unknown value {currentStateSyncItem.NodeDataType} of {nameof(NodeDataType)} at {currentStateSyncItem.Hash}");
                     invalidNodes++;
                     break;
+            }
+        }
+
+        /// <summary>
+        /// Removes the nodes stored at the paths inside the key of an extension, where this root has no node.
+        /// </summary>
+        /// <remarks>
+        /// Healing goes from the extension straight to its child, so it never checks those paths. A node an earlier root
+        /// left there would stop a later root that has it again above the child, which this round may remove or replace.
+        /// This runs before the child is added, so a round that moves on in between leaves no node above a removed child.
+        /// </remarks>
+        private void RemoveNodesInsideExtension(StateSyncItem extension, in TreePath childPath)
+        {
+            _stateDbLock.EnterReadLock();
+            try
+            {
+                // No node hashes to zero, so this removes whichever node is stored.
+                for (int length = extension.Path.Length + 1; length < childPath.Length; length++)
+                {
+                    _store.RemoveMismatchedNode(extension.Address, childPath.Truncate(length), ValueKeccak.Zero);
+                }
+            }
+            finally
+            {
+                _stateDbLock.ExitReadLock();
             }
         }
 
