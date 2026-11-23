@@ -60,7 +60,7 @@ public static class Eip8288Constants
     /// <summary>EIP-8288 <c>MAX_IL_PROOF_BYTES</c> (1.25 MiB): the bound on an inclusion list's serialized SSZ
     /// <c>InclusionListProof</c> container, both fields and their offsets included, plus the four-byte offset the container
     /// adds to the signed <c>InclusionList</c>.</summary>
-    /// <remarks>Provisional, like <see cref="MaxAggregateProofBytes"/>.</remarks>
+    /// <remarks>Provisional.</remarks>
     public const int MaxIlProofBytes = 1_310_720;
 
     /// <summary>Fixed bytes counted against <see cref="MaxIlProofBytes"/> besides both fields: the container's two field offsets

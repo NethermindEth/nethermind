@@ -922,11 +922,6 @@ jobs:
 
           echo "Exit code: $rc"
 
-          # nethtest exits 1 when a test fails; with complete results that is judged below, as a clean exit is.
-          if [ $rc -eq 1 ] && [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
-            rc=0
-          fi
-
           if [ -f "$LOW_MEMORY_FILE" ]; then
             if [ $rc -eq 0 ] && [ -s "$RESULTS_FILE" ] && jq empty "$RESULTS_FILE" 2>/dev/null; then
               # The watchdog can fire while the process is already exiting; with a clean

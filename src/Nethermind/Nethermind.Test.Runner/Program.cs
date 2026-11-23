@@ -106,6 +106,9 @@ internal class Program
         public static Option<bool> BalReport { get; } =
             new("--bal-report") { Description = "Print a JSON line on stderr naming the executor (parallel or sequential) that ran each block, and one when a block the parallel executor rejected is re-run sequentially. Ignored with --trace, which keeps stderr for the trace. [Only for Blockchain/Engine Test]" };
 
+        public static Option<bool> ExitCode { get; } =
+            new("--exit-code") { Description = "Exit with code 3 when any test fails; by default the exit code only reports whether the input could be loaded." };
+
         public static Option<string[]> ForkAlias { get; } =
             new("--forkAlias") { Description = "Resolve a fixture's declared fork name as another fork, e.g. 'Bogota=Eip8141Prototype'. Repeat the option for more than one alias; needed where separate fixture releases give one fork name incompatible meanings." };
     }
@@ -141,6 +144,7 @@ internal class Program
             Options.PreWarming,
             Options.BalReport,
             Options.MatchExceptions,
+            Options.ExitCode,
             Options.ForkAlias,
         ];
         rootCommand.SetAction((parseResult, cancellationToken) => Run(parseResult, null, cancellationToken));
@@ -176,11 +180,12 @@ internal class Program
     /// The exit status of a block or engine test run that could not run all of its input: a path that does not exist
     /// or cannot be read, or a fixture file that cannot be loaded, which still leaves the other files to run.
     /// </summary>
-    /// <remarks>Takes precedence over <see cref="FailedTestExitCode"/>.</remarks>
+    /// <remarks>A fixture that runs and fails still exits 0 unless <see cref="Options.ExitCode"/> is set, and this status
+    /// takes precedence over <see cref="FailedTestExitCode"/>.</remarks>
     private const int IncompleteInputExitCode = 2;
 
-    /// <summary>The exit status of a run in which any test failed, in every test mode.</summary>
-    private const int FailedTestExitCode = 1;
+    /// <summary>The exit status, with <see cref="Options.ExitCode"/>, of a run in which any test failed, in every test mode.</summary>
+    private const int FailedTestExitCode = 3;
 
     private static readonly (string Name, Option<bool> TestType)[] StandardCommands =
     [
@@ -309,7 +314,7 @@ internal class Program
 
         if (parseResult.GetValue(Options.Wait)) Console.ReadLine();
 
-        return exitCode != 0 ? exitCode : anyFailed ? FailedTestExitCode : 0;
+        return exitCode == 0 && anyFailed && parseResult.GetValue(Options.ExitCode) ? FailedTestExitCode : exitCode;
     }
 
     /// <summary>Writes the results document and returns whether any of its tests failed.</summary>

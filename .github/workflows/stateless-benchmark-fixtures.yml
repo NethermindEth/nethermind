@@ -145,11 +145,9 @@ jobs:
         run: |
           set -euo pipefail
           results="$RUNNER_TEMP/nethtest.json"
-          # nethtest exits 1 on failed cases, which the JSON below reports and judges.
-          rc=0
           artifacts/bin/Nethermind.Test.Runner/release/nethtest --zkevmTest -p 4 \
-            -i "$RUNNER_TEMP/fixtures/fixtures/blockchain_tests" > "$results" || rc=$?
-          [[ "$rc" -le 1 ]]
+            -i "$RUNNER_TEMP/fixtures/fixtures/blockchain_tests" > "$results"
+          # nethtest exits zero on failed cases, so the verdict comes from its JSON.
           jq -r '.[] | select(.pass != true) | "::error::\(.name): \(.error // "failed")"' "$results"
           total=$(jq 'length' "$results")
           failed=$(jq '[.[] | select(.pass != true)] | length' "$results")
