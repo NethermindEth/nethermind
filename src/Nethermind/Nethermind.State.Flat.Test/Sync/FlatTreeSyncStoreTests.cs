@@ -200,6 +200,7 @@ public class FlatTreeSyncStoreTests
         StorageOfAnotherAccount,
         StateNodeBelowTheLeaf,
         LeafOfAnotherAccountAbove,
+        LeafOfTheLeafAccountBelow,
     }
 
     [TestCase(SavedBeforeTheLeaf.Nothing, false)]
@@ -208,7 +209,8 @@ public class FlatTreeSyncStoreTests
     [TestCase(SavedBeforeTheLeaf.StorageOfAnotherAccount, true)]
     [TestCase(SavedBeforeTheLeaf.StateNodeBelowTheLeaf, true)]
     [TestCase(SavedBeforeTheLeaf.LeafOfAnotherAccountAbove, true)]
-    public void SaveNode_compares_a_leaf_with_the_one_RemoveMismatchedNode_took_out_until_another_account_is_saved_under_it(SavedBeforeTheLeaf saved, bool selfDestructsTheRange)
+    [TestCase(SavedBeforeTheLeaf.LeafOfTheLeafAccountBelow, true)]
+    public void SaveNode_compares_a_leaf_with_the_one_RemoveMismatchedNode_took_out_until_a_state_node_or_another_account_is_saved_under_it(SavedBeforeTheLeaf saved, bool selfDestructsTheRange)
     {
         // Both accounts are under the leaf's path "a".
         Hash256 held = new("0xa000000000000000000000000000000000000000000000000000000000000001");
@@ -237,6 +239,7 @@ public class FlatTreeSyncStoreTests
             case SavedBeforeTheLeaf.StorageOfAnotherAccount: SaveSlotLeaf(store, other); break;
             case SavedBeforeTheLeaf.StateNodeBelowTheLeaf: SaveAccountLeaf(store, other, depth: 2); break;
             case SavedBeforeTheLeaf.LeafOfAnotherAccountAbove: SaveAccountLeaf(store, other, depth: 0); break;
+            case SavedBeforeTheLeaf.LeafOfTheLeafAccountBelow: SaveAccountLeaf(store, held, depth: 2); break;
         }
         batch.SelfDestructRangeCalls.Clear();
 

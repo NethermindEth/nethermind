@@ -79,7 +79,7 @@ public class FlatTreeSyncStore(
             if (_removedLeaves.TryRemove(path, out TrieNode? removedLeaf)) existingNode ??= removedLeaf;
             // A leaf writes its account at its full path, which can be under a removed leaf below the node.
             TreePath written = node.IsLeaf ? path.Append(node.Key) : path;
-            ForgetRemovedLeavesAbove(written, exceptAccount: node.IsLeaf ? written.Path : null);
+            ForgetRemovedLeavesAbove(written, savedNodeLength: path.Length, writtenAccount: node.IsLeaf ? written.Path : null);
             RequestStateDeletion(writeBatch, path, node, existingNode);
 
             writeBatch.SetStateTrieNode(path, data);
@@ -87,7 +87,7 @@ public class FlatTreeSyncStore(
         }
         else
         {
-            ForgetRemovedLeavesAbove(new TreePath(address.ValueHash256, 64), exceptAccount: address.ValueHash256);
+            ForgetRemovedLeavesAbove(new TreePath(address.ValueHash256, 64), savedNodeLength: 0, writtenAccount: address.ValueHash256);
             RequestStorageDeletion(writeBatch, address, path, node, existingNode);
 
             writeBatch.SetStorageTrieNode(address, path, data);
@@ -96,17 +96,21 @@ public class FlatTreeSyncStore(
     }
 
     /// <summary>
-    /// Forgets the removed leaves above the path, where something other than the account of the leaf is written: a
-    /// round that moved on to another root can save other accounts there before the leaf is saved again, so the leaf no
+    /// Forgets the removed leaves above <paramref name="written"/> that a state node or another account is written
+    /// under: a round that moved on to another root can save those there before the leaf is saved again, so the leaf no
     /// longer stands for all the path holds. The storage of the leaf account is saved before the leaf, and kept by it.
     /// </summary>
-    private void ForgetRemovedLeavesAbove(in TreePath path, ValueHash256? exceptAccount)
+    /// <param name="written">The full path of the account for a leaf or a storage node, else the path of the node.</param>
+    /// <param name="savedNodeLength">The length of the path of the state node saved, or 0 for a storage node.</param>
+    /// <param name="writtenAccount">The account written, if any.</param>
+    private void ForgetRemovedLeavesAbove(in TreePath written, int savedNodeLength, ValueHash256? writtenAccount)
     {
         if (_removedLeaves.IsEmpty) return;
-        for (int length = 0; length < path.Length; length++)
+        for (int length = 0; length < written.Length; length++)
         {
-            TreePath ancestor = path.Truncate(length);
-            if (_removedLeaves.TryGetValue(ancestor, out TrieNode? leaf) && ancestor.Append(leaf.Key).ToLowerBoundPath() != exceptAccount)
+            TreePath ancestor = written.Truncate(length);
+            if (_removedLeaves.TryGetValue(ancestor, out TrieNode? leaf)
+                && (length < savedNodeLength || ancestor.Append(leaf.Key).ToLowerBoundPath() != writtenAccount))
                 _removedLeaves.TryRemove(ancestor, out _);
         }
     }
