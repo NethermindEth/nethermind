@@ -44,8 +44,8 @@ try
         ("explicit_paths", "engine", new[] { ("test_a", true) }, 0, "Passed 2:"),
         ("array_cases", "engine", new[] { ("test_a", true) }, 0, "Passed 1:"),
         ("sort_names", "engine", new[] { ("zulu", true), ("Alpha", true), ("beta", true) }, 0, "\u001b[32m✔\u001b[0m Alpha\n\u001b[32m✔\u001b[0m beta\n\u001b[32m✔\u001b[0m zulu"),
-        ("null_summary_ignored", "engine", Array.Empty<(string, bool)>(), 1, "Hive ran no test cases."),
-        ("missing_pass_ignored", "engine", Array.Empty<(string, bool)>(), 1, "Hive ran no test cases."),
+        ("null_summary_not_counted", "engine", Array.Empty<(string, bool)>(), 1, "Hive ran no test cases."),
+        ("missing_pass_not_counted", "engine", Array.Empty<(string, bool)>(), 1, "Hive ran no test cases."),
         ("malformed_json", "engine", new[] { ("test_a", true) }, 1, ""),
         ("missing_known_file", "engine", new[] { ("test_a", true) }, 1, ""),
     })
@@ -59,9 +59,9 @@ try
             var testCases = name == "array_cases" ? (JsonNode)new JsonArray(entries)
                 : new JsonObject(entries.Select((test, index) => KeyValuePair.Create(index.ToString(), (JsonNode?)test)));
             var json = new JsonObject { ["name"] = suite, ["testCases"] = testCases }.ToJsonString();
-            if (name == "missing_pass_ignored")
+            if (name == "missing_pass_not_counted")
                 json = "{\"name\":\"engine\",\"testCases\":{\"1\":{\"name\":\"pending\",\"summaryResult\":{}}}}";
-            if (name == "null_summary_ignored")
+            if (name == "null_summary_not_counted")
                 json = "{\"name\":\"engine\",\"testCases\":{\"1\":{\"name\":\"pending\",\"summaryResult\":null}}}";
             if (name != "missing_result_files")
                 File.WriteAllText(Path.Combine(logs, "first.json"), json);
@@ -123,6 +123,21 @@ try
         // A devp2p wrapper without a result leaves the tool's outcome unknown, even next to an explaining failure.
         new("eth_launch_pending", [new("eth", [new(launch, null, false), Passed("test_a")])], 1, ["Suite 'eth' has no result for 'client launch (nethermind)'."]),
         new("discv5_wrapper_pending_next_to_known", [new("discv5", [new("nethermind", null, false), Failed(failing)])], 1, ["Suite 'discv5' has no result for 'nethermind'.", "Unexpected fails: 0"]),
+        // Any other case without a result fails the job too, also next to a passing case, and is not counted as a case the suite ran.
+        new("case_without_summary_next_to_pass", [new("engine", [Passed("test_a"), WithoutSummary("test_b")])], 1, ["Suite 'engine' has no result for 'test_b'.", "Unexpected fails: 0"], Absent: ["ran no test cases"]),
+        new("case_null_summary_next_to_pass", [new("engine", [Passed("test_a"), new("test_b", null, false)])], 1, ["Suite 'engine' has no result for 'test_b'.", "Unexpected fails: 0"], Absent: ["ran no test cases"]),
+        new("case_without_pass_next_to_pass", [new("engine", [Passed("test_a"), Raw("test_b", "{}")])], 1, ["Suite 'engine' has no result for 'test_b'.", "Unexpected fails: 0"], Absent: ["ran no test cases"]),
+        new("case_string_pass_next_to_pass", [new("engine", [Passed("test_a"), Raw("test_b", """{"pass":"true"}""")])], 1, ["Suite 'engine' has no result for 'test_b'.", "Unexpected fails: 0"], Absent: ["ran no test cases"]),
+        // A summary that is not an object leaves the case without a result too, and the rest of the report is kept.
+        new("case_array_summary_next_to_pass", [new("engine", [Passed("test_a"), Raw("test_b", "[]")])], 1, ["\u001b[32m✔\u001b[0m test_a", "Suite 'engine' has no result for 'test_b'."], Absent: ["Cannot process"]),
+        new("case_boolean_summary_next_to_pass", [new("engine", [Passed("test_a"), Raw("test_b", "true")])], 1, ["\u001b[32m✔\u001b[0m test_a", "Suite 'engine' has no result for 'test_b'."], Absent: ["Cannot process"]),
+        new("case_string_summary_next_to_pass", [new("engine", [Passed("test_a"), Raw("test_b", "\"pass\"")])], 1, ["\u001b[32m✔\u001b[0m test_a", "Suite 'engine' has no result for 'test_b'."], Absent: ["Cannot process"]),
+        new("case_number_summary_next_to_pass", [new("engine", [Passed("test_a"), Raw("test_b", "7")])], 1, ["\u001b[32m✔\u001b[0m test_a", "Suite 'engine' has no result for 'test_b'."], Absent: ["Cannot process"]),
+        new("two_cases_without_result", [new("engine", [WithoutSummary("test_b"), Passed("test_a"), Raw("test_c", "{}")])], 1, ["Suite 'engine' has no result for 'test_b'.", "Suite 'engine' has no result for 'test_c'."]),
+        new("rpc_launch_without_result", [new("rpc-compat", [new(launch, null, false), Passed("test_a")])], 1, ["Suite 'rpc-compat' has no result for 'client launch (nethermind)'.", "Unexpected fails: 0"]),
+        new("eth_case_without_result_next_to_known", [new("eth", [Failed(launch), Failed(failing), Raw("test_b", "{}")])], 1, ["Suite 'eth' has no result for 'test_b'.", "Unexpected fails: 0"]),
+        new("case_without_result_allowed_empty", [new("engine", [Passed(launch), WithoutSummary("test_b")]), new("rpc-compat", [Passed("test_a")])], 1,
+            ["Suite 'engine' has no result for 'test_b'."], Options: ["--allow-empty-suites"], Absent: ["ran no test cases"]),
         // Every simulator log must be named by a suite file with cases.
         new("simulator_without_suites", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log")], 1, ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
         new("simulator_with_launch_only", [new("engine", [Passed("test_a")], SimLog: "1-simulator-a.log"), new("graphql", [Passed(launch)], SimLog: "2-simulator-b.log")], 1, ["Simulator log '2-simulator-b.log' has no suite with test cases."], Logs: ["1-simulator-a.log", "2-simulator-b.log"]),
@@ -181,10 +196,13 @@ try
                 for (var test = 0; test < file.Cases.Length; test++)
                 {
                     var (testName, passed, terminated, raw) = file.Cases[test];
-                    var summary = raw is not null ? JsonNode.Parse(raw) : passed is { } pass ? new JsonObject { ["pass"] = pass } : null;
+                    var summary = raw is { Length: > 0 } ? JsonNode.Parse(raw) : passed is { } pass ? new JsonObject { ["pass"] = pass } : null;
                     if (terminated && summary is not null)
                         summary["timeout"] = true;
-                    testCases[(test + 1).ToString()] = new JsonObject { ["name"] = testName, ["summaryResult"] = summary };
+                    var entry = new JsonObject { ["name"] = testName };
+                    if (raw != "")
+                        entry["summaryResult"] = summary;
+                    testCases[(test + 1).ToString()] = entry;
                 }
                 var suite = new JsonObject { ["name"] = file.Name, ["testCases"] = testCases };
                 if (file.SimLog is not null)
@@ -243,6 +261,7 @@ static TestCase Passed(string name) => new(name, true, false);
 static TestCase Failed(string name) => new(name, false, false);
 static TestCase Terminated(string name) => new(name, false, true);
 static TestCase Raw(string name, string summary) => new(name, null, false, summary);
+static TestCase WithoutSummary(string name) => new(name, null, false, "");
 
 static string FindEntryPoint()
 {
@@ -256,7 +275,7 @@ static string FindEntryPoint()
 }
 
 // A case of a suite file: a null Passed writes a summary that Hive has not filled in; Terminated sets Hive's "timeout";
-// Summary, when given, is written as the summaryResult as it stands.
+// Summary, when given, is written as the summaryResult as it stands, and an empty one leaves summaryResult out.
 readonly record struct TestCase(string Name, bool? Passed, bool Terminated, string? Summary = null);
 
 // A suite file in the logs directory; File defaults to "<index>.json", in the order of the scenario.

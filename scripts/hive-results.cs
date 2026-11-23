@@ -45,7 +45,7 @@ try
     var results = new List<(string Name, bool Passed, bool Terminated)>();
     var realCases = 0;
     var emptySuites = new List<string>();
-    var unfinishedWrappers = new List<string>();
+    var unfinishedCases = new List<string>();
     // Each simulator run writes one log next to the suite files, and each suite file names its simulator's log.
     var simulatorLogs = new SortedSet<string>(StringComparer.Ordinal);
     var simulatorsWithCases = new HashSet<string>(StringComparer.Ordinal);
@@ -78,7 +78,8 @@ try
                 foreach (var test in entries)
                 {
                     var name = test.GetProperty("name").GetString() ?? throw new JsonException("Missing test name.");
-                    var hasSummary = test.TryGetProperty("summaryResult", out var summary) && summary.ValueKind != JsonValueKind.Null;
+                    // A summary that is missing, null or not an object leaves the case without a result, like one without "pass".
+                    var hasSummary = test.TryGetProperty("summaryResult", out var summary) && summary.ValueKind == JsonValueKind.Object;
                     // Hive sets "timeout" only on a case it ended itself: at its time limit, on an interrupt or when the
                     // simulator exits. Such a case did not finish, whatever "pass" says or whether it is there at all.
                     var terminated = hasSummary && summary.TryGetProperty("timeout", out var timeout) && timeout.ValueKind == JsonValueKind.True;
@@ -89,9 +90,9 @@ try
                         passed = pass.GetBoolean();
                     else
                     {
-                        // Without the wrapper's result the tool's exit is unknown, and so is whether its sub-tests all ran.
-                        if (name == wrapper)
-                            unfinishedWrappers.Add($"Suite '{suite}' has no result for '{wrapper}'.");
+                        // A case without a result did not finish, so it fails the job and does not count as run. For the
+                        // devp2p wrapper, the tool's exit is then unknown, and so is whether its sub-tests all ran.
+                        unfinishedCases.Add($"Suite '{suite}' has no result for '{name}'.");
                         continue;
                     }
                     // Count on the raw name, before the prefix below, so that no launch case passes for a real one.
@@ -161,7 +162,7 @@ try
         problems.Add("Hive ran no test cases.");
     else if (!allowEmptySuites)
         problems.AddRange(emptySuites.Select(suite => $"Suite '{suite}' ran no test cases."));
-    problems.AddRange(unfinishedWrappers);
+    problems.AddRange(unfinishedCases);
     problems.AddRange(simulatorLogs.Where(log => !simulatorsWithCases.Contains(log))
         .Select(log => $"Simulator log '{log}' has no suite with test cases."));
     // Any other status means Hive was stopped from outside (124 at the workflow's outer limit, 137 when it had to be
