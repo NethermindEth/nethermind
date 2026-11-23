@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Core;
@@ -15,6 +16,9 @@ using Nethermind.Specs.Forks;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Test.NodeBuffer;
+using Nethermind.Trie;
+using Nethermind.Trie.NodeBuffer;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -112,11 +116,20 @@ public class ReadOnlyScopeNodeBufferTests
             Assert.That(pins, Has.Count.EqualTo(1));
         }
 
+        byte[] rlp = NodeRecordBufferTests.Leaf(0, 100);
+        INodeRecordBuffer buffer = bundle.NodeRecordBuffer!;
+        ulong pointer = buffer.AppendRecordFromRlp(null, TreePath.Empty, ValueKeccak.Compute(rlp), rlp, []);
+        Assert.That(buffer.TryLocate(pointer, out NodeRecord record), Is.True);
         pins[0].DidNotReceive().Dispose();
 
         bundle.Dispose();
+        bundle.Dispose();
 
-        pins[0].Received(1).Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => record.Rlp.ToArray(), Throws.InstanceOf<ObjectDisposedException>(), "the private records are freed");
+            pins[0].Received(1).Dispose();
+        }
     }
 
     private static void ApplyBlock(IWorldState state, ulong number)
