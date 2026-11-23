@@ -19,5 +19,5 @@ public sealed partial class GuestWorldState : IGuestSlotStore
         return index;
     }
 
-    void IGuestSlotStore.WriteAt(int slot, in UInt256 newValue) => SetSlot(slot, in newValue);
+    void IGuestSlotStore.WriteAt(int slot, in StorageCell storageCell, in UInt256 current, in UInt256 newValue) => SetSlot(slot, in newValue);
 }

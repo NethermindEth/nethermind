@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -131,7 +132,7 @@ public interface IOptimismOptimismRpcModule : IRpcModule
             }
         }
         """)]
-    public Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber);
+    public Task<ResultWrapper<OptimismOutputAtBlock>> optimism_outputAtBlock(ulong blockNumber, CancellationToken cancellationToken = default);
 
     [JsonRpcMethod(
         IsImplemented = false,

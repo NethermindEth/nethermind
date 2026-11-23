@@ -334,6 +334,9 @@ public static class JsonRpcResponseWriter
         writer.Write(EnvelopeEnd);
     }
 
+    internal static int GetCompactSuccessEnvelopeLength(in JsonRpcId id) =>
+        SuccessEnvelopeStart.Length + IdSeparator.Length + id.GetEncodedLength() + EnvelopeEnd.Length;
+
     /// <summary>
     /// Resolves the contract to serialize <paramref name="value"/> with, or null when the declared
     /// <typeparamref name="TValue"/> contract already describes it.

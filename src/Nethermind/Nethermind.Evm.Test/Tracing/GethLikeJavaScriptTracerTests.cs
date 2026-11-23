@@ -1516,7 +1516,9 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         const string failingTracer = "{ fault: function() { }, result: function() { throw new Error('result failed'); } }";
         using (GethLikeBlockJavaScriptTracer tracer = GetTracer(failingTracer))
         {
-            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.InstanceOf(typeof(IScriptEngineException)));
+            Assert.That(() => ExecuteBlock(tracer, MStore()), Throws.TypeOf<InvalidDataException>()
+                .With.Message.EqualTo("Error: result failed in server-side tracer function 'result'")
+                .And.InnerException.InstanceOf<ScriptEngineException>());
         }
 
         const string recoveringTracer = "{ fault: function() { }, result: function() { return toHex(toWord('1')); } }";
@@ -2470,7 +2472,10 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            if (before == "trace timeout")
+                Assert.That(failure, Is.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
+            else
+                Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
         }
     }
@@ -2493,7 +2498,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         });
         // On a slow runner the timeout can expire during the warm-up; the hook then refuses to start, as it should.
         try { for (int i = 0; i < 200; i++) tracer.SetOperationStack(default); }
-        catch (Exception exception) when (JavaScriptTraceFailure.IsInterruption(exception)) { }
+        catch (GethTraceDeadlineException) { }
         bool expired = WaitForInterrupt(engine);
         armed = true;
 
@@ -2502,7 +2507,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         {
             Assert.That(expired, Is.True);
             Assert.That(busy, Is.False);
-            Assert.That(JavaScriptTraceFailure.IsInterruption(failure), Is.True, failure.ToString());
+            Assert.That(failure, Is.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
         }
     }
 
@@ -2579,7 +2584,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         Stopwatch elapsed = Stopwatch.StartNew();
         if (busyResult)
         {
-            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<ScriptInterruptedException>());
+            Assert.That(() => tracer.BuildResult(), Throws.TypeOf<GethTraceDeadlineException>().With.Message.EqualTo("execution timeout"));
             Assert.That(elapsed.Elapsed, Is.LessThan(TimeSpan.FromSeconds(3)));
         }
         else

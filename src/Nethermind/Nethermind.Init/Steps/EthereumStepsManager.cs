@@ -80,7 +80,7 @@ namespace Nethermind.Init.Steps
 
             // A command's exit code is the target's outcome, so anything short of it completing has to surface
             // as an exception for Program to map.
-            // Shutdown counts as not completing; the exit code is already SigInt and must not be overwritten.
+            // Shutdown counts as not completing; the exit code is already set by whatever requested the shutdown and must not be overwritten.
             cancellationToken.ThrowIfCancellationRequested();
 
             if (targetTask?.IsCompletedSuccessfully != true)
@@ -157,6 +157,7 @@ namespace Nethermind.Init.Steps
                 }
             }
             if (target is not null) PruneToTarget(stepInfoMap, target);
+            ThrowOnDependencyCycle(stepInfoMap);
 
             if (_logger.IsDebug) _logger.Debug($"Ethereum steps dependency tree:\n{BuildStepDependencyTree(stepInfoMap)}");
             List<Task> allRequiredSteps = [];
@@ -198,7 +199,7 @@ namespace Nethermind.Init.Steps
             catch (Exception exception) when (exception is not OperationCanceledException || (dependenciesCompleted && !cancellationToken.IsCancellationRequested))
             {
                 // A selected target is the whole job of the run, so its failure is fatal even for an optional step.
-                if (isTarget || stepWrapper.Step.MustInitialize)
+                if (isTarget || stepWrapper.MustInitialize)
                 {
                     if (_logger.IsError) _logger.Error($"Step {stepWrapper.StepInfo.StepType.Name,-24} failed after {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms", exception);
 
@@ -304,6 +305,51 @@ namespace Nethermind.Init.Steps
                 stepInfoMap.Remove(stepBaseType);
         }
 
+        /// <summary>Rejects a step graph in which some steps wait for each other and so would never start.</summary>
+        /// <exception cref="StepDependencyException">The dependencies form a cycle; the message names the steps on it.</exception>
+        private static void ThrowOnDependencyCycle(Dictionary<Type, StepWrapper> stepInfoMap)
+        {
+            // Set aside every step whose dependencies are all set aside, until nothing changes. A step left over waits for ever.
+            HashSet<Type> waiting = [.. stepInfoMap.Keys];
+            bool changed;
+            do
+            {
+                changed = false;
+                foreach ((Type step, StepWrapper stepWrapper) in stepInfoMap)
+                {
+                    if (waiting.Contains(step) && !stepWrapper.Dependencies.Exists(waiting.Contains))
+                        changed |= waiting.Remove(step);
+                }
+            } while (changed);
+
+            if (waiting.Count == 0) return;
+
+            // Name a left-over step only if its dependencies lead back to it; the others wait behind or between cycles.
+            List<string> onCycle = [];
+            HashSet<Type> reached = [];
+            Stack<Type> toVisit = new();
+            foreach (Type step in waiting)
+            {
+                reached.Clear();
+                toVisit.Clear();
+                foreach (Type dependency in stepInfoMap[step].Dependencies) toVisit.Push(dependency);
+                while (toVisit.TryPop(out Type? current))
+                {
+                    if (current == step)
+                    {
+                        onCycle.Add(step.Name);
+                        break;
+                    }
+
+                    if (!waiting.Contains(current) || !reached.Add(current)) continue;
+                    foreach (Type dependency in stepInfoMap[current].Dependencies) toVisit.Push(dependency);
+                }
+            }
+
+            throw new StepDependencyException(
+                $"Steps depend on each other in a cycle: {string.Join(", ", onCycle.Order())}.");
+        }
+
         private IStep CreateStepInstance(StepInfo stepInfo)
         {
             try
@@ -378,8 +424,6 @@ namespace Nethermind.Init.Steps
                         queue.Enqueue(dependent);
                 }
             }
-            if (sorted.Count != depsMap.Count)
-                sorted = depsMap.Keys.OrderBy(n => n).ToList();
 
             // Compute max dependency depth for indentation
             Dictionary<string, int> depth = [];
@@ -423,6 +467,11 @@ namespace Nethermind.Init.Steps
 
             private IStep? _step;
             public IStep Step => _step ??= stepFactory();
+
+            /// <summary>Whether a failure of this step fails the run.</summary>
+            /// <remarks>Never creates the step, so a constructor that threw is not run again; a step that was not created is required.</remarks>
+            public bool MustInitialize => _step?.MustInitialize ?? true;
+
             private Task StepTask => _taskCompletedSource.Task;
             public readonly List<Type> Dependencies = [.. stepInfo.Dependencies];
 
@@ -439,7 +488,7 @@ namespace Nethermind.Init.Steps
                 catch
                 {
                     // Cancel this step too, so its own dependents finish instead of waiting forever.
-                    _taskCompletedSource.TrySetCanceled();
+                    _taskCompletedSource.TrySetCanceled(CancellationToken.None);
                     throw;
                 }
             }
@@ -456,7 +505,7 @@ namespace Nethermind.Init.Steps
                 catch
                 {
                     //TaskCompletionSource is transitioned to cancelled state to prevent a cascade effect of log statements
-                    _taskCompletedSource.TrySetCanceled();
+                    _taskCompletedSource.TrySetCanceled(CancellationToken.None);
                     throw;
                 }
             }

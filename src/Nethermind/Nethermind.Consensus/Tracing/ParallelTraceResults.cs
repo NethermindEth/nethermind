@@ -140,7 +140,7 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot> : ParallelTraceResult
 
     public override void Reserve(CancellationToken token)
     {
-        if (!_window.Wait(0)) _window.Wait(token);
+        if (!_window.Wait(0, token)) _window.Wait(token);
     }
 
     public override void Unreserve() => _window.Release();

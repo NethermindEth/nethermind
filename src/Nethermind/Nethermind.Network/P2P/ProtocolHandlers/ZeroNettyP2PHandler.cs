@@ -17,7 +17,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.FluentRlp;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 using Snappier;
 
@@ -116,7 +115,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
             {
                 outputPacket.Protocol = null;
                 outputPacket.PacketType = input.PacketType;
-                _session.ReceiveMessage(outputPacket);
+                ReceiveMessage(ctx, outputPacket);
             }
             finally
             {
@@ -131,7 +130,22 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else
         {
-            _session.ReceiveMessage(input);
+            ReceiveMessage(ctx, input);
+        }
+    }
+
+    private void ReceiveMessage(IChannelHandlerContext context, ZeroPacket packet)
+    {
+        try
+        {
+            _session.ReceiveMessage(packet);
+        }
+        catch (RlpReaderException exception) when (exception is not IInternalNethermindException)
+        {
+            if (!_session.IsClosing)
+            {
+                ExceptionCaught(context, exception);
+            }
         }
     }
 
@@ -189,10 +203,12 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else if (_session?.Node?.IsStatic != true && _session?.Node?.IsTrusted != true)
         {
-            DisconnectReason reason =
-                exception is SocketException { SocketErrorCode: SocketError.ConnectionReset }
-                    ? DisconnectReason.ConnectionReset
-                    : DisconnectReason.Exception;
+            DisconnectReason reason = exception switch
+            {
+                SocketException { SocketErrorCode: SocketError.ConnectionReset } => DisconnectReason.ConnectionReset,
+                RlpLimitException => DisconnectReason.MessageLimitsBreached,
+                _ => DisconnectReason.Exception,
+            };
             _session.InitiateDisconnect(reason, $"Error in communication with {GetClientId(_session)} ({exception.GetType().Name}): {exception.Message}");
         }
         else

@@ -140,6 +140,7 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
             catch (ObjectDisposedException)
             {
                 // Dispose ran after the read, so the build starts cancelled like any build after shutdown.
+                if (_logger.IsTrace) _logger.Trace("Shutdown source disposed while linking a payload build; starting it cancelled");
             }
         }
 
@@ -316,14 +317,15 @@ public class PayloadPreparationService : IPayloadPreparationService, IDisposable
                 // Is no point in rebuilding an identical block.
             } while (added == _txPool.PendingTransactionsAdded);
 
-            if (!token.IsCancellationRequested || !blockImprovementContext.Disposed) // if GetPayload wasn't called for this item or it wasn't cleared
+            // Stop only when the round is cancelled (payload retrieved, production cancelled, cleaned up or shut down) and this context is disposed.
+            if (!token.IsCancellationRequested || !blockImprovementContext.Disposed)
             {
                 BlockProductionSnapshot best = blockImprovementContext.Best;
                 ImproveBlock(payloadId, parentHeader, payloadAttributes, best.CurrentBestBlock ?? currentBestBlock, startDateTime, best.BlockFees, cts);
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, it was retrieved");
+                if (_logger.IsTrace) _logger.Trace($"Block for payload {payloadId} with parent {parentHeader.ToString(BlockHeader.Format.FullHashAndNumber)} won't be improved, its improvement was cancelled and this build's context disposed");
             }
         });
 
