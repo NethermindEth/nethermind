@@ -10,7 +10,7 @@ namespace Nethermind.Facade.Eth;
 /// <summary>Joins the EIP-8288 <c>dependency_proof</c> the block store keeps apart into a full-transaction RPC block model.</summary>
 /// <remarks>The proof is not part of the block's encoding, so it does not count towards <c>size</c>. A block whose proof is not
 /// available is returned without it: the RPC model has no way to mark it unavailable.</remarks>
-public sealed class StarkProofBlockForRpcFactory(IBlockForRpcFactory blockForRpcFactory, IStarkProofStore proofStore) : IBlockForRpcFactory
+public sealed class DependencyProofBlockForRpcFactory(IBlockForRpcFactory blockForRpcFactory, IDependencyProofStore proofStore) : IBlockForRpcFactory
 {
     public BlockForRpc Create(Block block, bool includeFullTransactionData, ISpecProvider specProvider, bool skipTxs = false) =>
         blockForRpcFactory.Create(includeFullTransactionData ? proofStore.WithProof(block) : block,

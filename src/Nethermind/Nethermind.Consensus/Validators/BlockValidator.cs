@@ -104,17 +104,10 @@ public class BlockValidator(
                ValidateRecursiveStark(block, spec, ref errorMessage);
     }
 
-    /// <summary>
-    /// EIP-8288 block validity: the header must commit to the <c>dependency_proof</c> and the block's dependencies, its
-    /// <c>block_deps_hash</c> must match the block's transaction dependencies, and a <c>dependency_proof</c> received with
-    /// the block must hash to <c>dependency_proof_hash</c> and verify against the block fork's <c>AGGREGATED_VK</c>, or be
-    /// empty when there are no dependencies.
-    /// </summary>
-    /// <remarks>
-    /// The proof is in neither header nor body; only the execution payload carries it. A block committing to the empty proof
-    /// needs none to be validated. One committing to a nonempty proof it does not carry fails with
-    /// <see cref="BlockErrorMessages.MissingDependencyProof"/> once every other check passed, which is not invalidity.
-    /// </remarks>
+    /// <summary>EIP-8288 block validity: the header commitments must match the block's dependencies and any <c>dependency_proof</c>
+    /// received with it, which must verify against the fork's <c>AGGREGATED_VK</c>.</summary>
+    /// <remarks>A block committing to a nonempty proof it does not carry fails last with
+    /// <see cref="BlockErrorMessages.MissingDependencyProof"/>, which is not invalidity (EIPs#12549).</remarks>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
         RecursiveStarkCommitment? recursiveStark = block.Header.RecursiveStark;

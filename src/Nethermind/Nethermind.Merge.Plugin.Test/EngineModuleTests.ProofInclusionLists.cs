@@ -406,7 +406,7 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(status.Data.Status, Is.EqualTo(scenario == "matching" ? PayloadStatus.Valid : PayloadStatus.Invalid), status.Result.Error);
-            Assert.That(chain.Container.Resolve<IStarkProofStore>().Get(payload.BlockNumber, payload.BlockHash),
+            Assert.That(chain.Container.Resolve<IDependencyProofStore>().Get(payload.BlockNumber, payload.BlockHash),
                 scenario == "matching" ? Is.Empty : Is.Null);
         }
     }

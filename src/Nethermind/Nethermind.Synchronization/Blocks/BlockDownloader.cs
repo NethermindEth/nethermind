@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly ISyncPeerPool _syncPeerPool;
         private readonly IBlockProcessingQueue _processingQueue;
         private readonly BlockAccessListServingWindow _balServingWindow;
-        private readonly IStarkProofStore _proofStore;
+        private readonly IDependencyProofStore _proofStore;
         private readonly ILogger _logger;
 
         // Estimated maximum tx in buffer used to estimate memory limit. Each tx is on average about 1KB.
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.Blocks
             IBlockProcessingQueue processingQueue,
             ISyncConfig syncConfig,
             BlockAccessListServingWindow balServingWindow,
-            IStarkProofStore proofStore,
+            IDependencyProofStore proofStore,
             ILogManager logManager)
         {
             _blockTree = blockTree;
@@ -717,9 +717,8 @@ namespace Nethermind.Synchronization.Blocks
         }
 
         /// <summary>Takes the EIP-8288 dependency proofs of a response, by EIP-8498 rules.</summary>
-        /// <remarks>An empty entry, or one past a response the soft limit cut short, is a proof not available from this peer: it is
-        /// requested again, without penalty. A non-empty proof that does not hash to its header's <c>dependency_proof_hash</c> is a
-        /// breach of protocol.</remarks>
+        /// <remarks>An empty entry, or one past a response the soft limit cut short, is requested again without penalty; a
+        /// non-empty proof not hashing to its header's <c>dependency_proof_hash</c> is a breach of protocol.</remarks>
         /// <returns>How many proofs were taken.</returns>
         private int HandleDependencyProofsResponse(BlocksRequest response, PeerInfo? peer, ref SyncResponseHandlingResult result)
         {

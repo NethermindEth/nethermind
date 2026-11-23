@@ -116,7 +116,7 @@ public partial class BlockDownloaderTests
 
         using BlocksRequest? next = await ServeBodiesAndPrepareOrNull(ctx, bodies);
 
-        IStarkProofStore proofStore = node.Resolve<IStarkProofStore>();
+        IDependencyProofStore proofStore = node.Resolve<IDependencyProofStore>();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(next?.DependencyProofsRequests.Count ?? 0, Is.Zero, "the empty proof is not requested");

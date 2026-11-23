@@ -414,7 +414,7 @@ public partial class BlockDownloaderTests
         IBlockProcessingQueue processingQueue,
         ISyncConfig syncConfig,
         BlockAccessListServingWindow balServingWindow,
-        IStarkProofStore proofStore,
+        IDependencyProofStore proofStore,
         ILogManager logManager)
         : BlockDownloader(blockTree, blockValidator, syncReport, receiptStorage, specProvider, betterPeerStrategy, fullStateFinder,
             forwardHeaderProvider, syncPeerPool, receiptsRecovery, processingQueue, syncConfig, balServingWindow, proofStore, logManager)

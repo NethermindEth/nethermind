@@ -24,7 +24,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     [Test]
     public void Validates_a_block_with_the_proof_the_store_holds()
     {
-        (Block block, StarkProofStore store) = Committed(10);
+        (Block block, DependencyProofStore store) = Committed(10);
         store.Insert(block.Number, block.Hash!, Proof);
         RecordingValidator inner = new();
 
@@ -52,7 +52,7 @@ public class DependencyProofAvailabilityBlockValidatorTests
     [TestCase("canonical-ancestor", BlockErrorMessages.InvalidRecursiveStark, false)]
     public void Trusts_finality_only_for_a_missing_proof_of_a_finalized_ancestor(string relation, string innerError, bool expected)
     {
-        (Block block, StarkProofStore store) = Committed(10);
+        (Block block, DependencyProofStore store) = Committed(10);
         RecordingValidator inner = new() { Error = innerError };
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         BlockHeader? finalized = relation switch
@@ -86,15 +86,15 @@ public class DependencyProofAvailabilityBlockValidatorTests
         }
     }
 
-    private static DependencyProofAvailabilityBlockValidator Create(IBlockValidator inner, IStarkProofStore store) =>
+    private static DependencyProofAvailabilityBlockValidator Create(IBlockValidator inner, IDependencyProofStore store) =>
         new(inner, store, Substitute.For<IBlockTree>());
 
-    private static (Block Block, StarkProofStore Store) Committed(ulong number)
+    private static (Block Block, DependencyProofStore Store) Committed(ulong number)
     {
         Block block = Build.A.Block.WithNumber(number).TestObject;
         block.Header.RecursiveStark = new RecursiveStarkCommitment(Keccak.Compute(Proof), Keccak.Compute("deps"));
         block.Header.Hash = block.Header.CalculateHash();
-        return (block, new StarkProofStore(new TestMemDb()));
+        return (block, new DependencyProofStore(new TestMemDb()));
     }
 
     /// <summary>Fails with <see cref="Error"/> unless the block carries a proof, recording the proof it was given.</summary>

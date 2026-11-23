@@ -16,7 +16,6 @@ public sealed class BlocksRequest : IDisposable
     /// <summary>Hashes per EIP-8498 <c>GetDependencyProofs</c>, an implementation-defined limit serving peers enforce too.</summary>
     public const int MaxDependencyProofsPerRequest = 64;
 
-    /// <summary>Blocks whose EIP-8288 dependency proofs are requested.</summary>
     public IOwnedReadOnlyList<BlockHeader> DependencyProofsRequests { get; set; } = IOwnedReadOnlyList<BlockHeader>.Empty;
 
     /// <summary>The proofs served for <see cref="DependencyProofsRequests"/>, in order; possibly fewer, an empty one unavailable.</summary>

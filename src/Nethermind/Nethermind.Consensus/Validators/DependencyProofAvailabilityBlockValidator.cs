@@ -10,13 +10,9 @@ using Nethermind.Core.Messages;
 namespace Nethermind.Consensus.Validators;
 
 /// <summary>Gives a block received without its EIP-8288 dependency proof the proof the EL stored for it.</summary>
-/// <remarks>
-/// A block inserted by <c>engine_newPayload</c> while syncing is read back without the proof, which the proof store keeps.
-/// A block whose proof is still missing fails with <see cref="BlockErrorMessages.MissingDependencyProof"/>, which is not
-/// invalidity, unless <see cref="DependencyProofFinality"/> trusts it: the only path that accepts a block committing to a
-/// nonempty proof without verifying it.
-/// </remarks>
-public sealed class DependencyProofAvailabilityBlockValidator(IBlockValidator inner, IStarkProofStore proofStore, IBlockTree blockTree)
+/// <remarks>A block still missing its proof is accepted only when <see cref="DependencyProofFinality"/> trusts it: the one
+/// path that accepts a nonempty proof commitment without verifying the proof.</remarks>
+public sealed class DependencyProofAvailabilityBlockValidator(IBlockValidator inner, IDependencyProofStore proofStore, IBlockTree blockTree)
     : IBlockValidator
 {
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>

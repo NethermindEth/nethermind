@@ -39,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         IBlocksConfig blocksConfig,
         BlockAccessListServingWindow balServingWindow,
         IBlockAccessListStore balStore,
-        IStarkProofStore proofStore,
+        IDependencyProofStore proofStore,
         ILogManager logManager,
         FinalizedBlockAccessListPolicy? finalizedBalPolicy = null)
         : BlockDownloader(

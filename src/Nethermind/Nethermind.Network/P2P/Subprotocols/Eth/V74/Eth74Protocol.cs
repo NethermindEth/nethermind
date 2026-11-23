@@ -10,7 +10,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V74;
 /// <summary>EIP-8498 message bounds and this client's local caps.</summary>
 public static class Eth74Protocol
 {
-    /// <summary>One past the last message ID, <c>DependencyProofs</c>.</summary>
     public const int MessageIdSpaceSize = Eth74MessageCode.DependencyProofs + 1;
 
     /// <summary>The EIP-8498 recommended soft limit of a <c>DependencyProofs</c> response (2 MiB).</summary>

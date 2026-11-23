@@ -15,7 +15,7 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Blocks;
 
 [Parallelizable(ParallelScope.All)]
-public class StarkProofStoreTests
+public class DependencyProofStoreTests
 {
     [Test]
     public async Task Block_store_keeps_the_proof_apart_from_the_stored_body([Values] bool deferred, [Values(0, 320 * 1024)] int proofBytes)
@@ -23,7 +23,7 @@ public class StarkProofStoreTests
         await using DeferredBlockDataWriter writer = Writer(deferred);
         using IContainer container = CreateContainer(writer);
         IBlockStore blockStore = container.Resolve<IBlockStore>();
-        IStarkProofStore proofStore = container.Resolve<IStarkProofStore>();
+        IDependencyProofStore proofStore = container.Resolve<IDependencyProofStore>();
         Block block = BlockWithProof(1, proofBytes);
         byte[] proof = block.StarkProof!;
 
@@ -49,7 +49,7 @@ public class StarkProofStoreTests
         await using DeferredBlockDataWriter writer = Writer(deferred);
         using IContainer container = CreateContainer(writer);
         IBlockStore blockStore = container.Resolve<IBlockStore>();
-        IStarkProofStore proofStore = container.Resolve<IStarkProofStore>();
+        IDependencyProofStore proofStore = container.Resolve<IDependencyProofStore>();
         Block block = BlockWithProof(5, 64);
         Block kept = BlockWithProof(6, 64);
         blockStore.InsertDeferred(block);
@@ -75,7 +75,7 @@ public class StarkProofStoreTests
         await using DeferredBlockDataWriter writer = Writer(deferred);
         using IContainer container = CreateContainer(writer);
         IBlockStore blockStore = container.Resolve<IBlockStore>();
-        IStarkProofStore proofStore = container.Resolve<IStarkProofStore>();
+        IDependencyProofStore proofStore = container.Resolve<IDependencyProofStore>();
         Block block = BlockWithProof(1, proofBytes);
         int size = Rlp.Encode(block).Bytes.Length;
         blockStore.InsertDeferred(block);
