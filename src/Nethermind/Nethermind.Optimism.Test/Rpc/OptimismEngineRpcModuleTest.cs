@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
 using Nethermind.Merge.Plugin;
@@ -23,6 +24,31 @@ namespace Nethermind.Optimism.Test.Rpc;
 [Parallelizable(ParallelScope.All)]
 public class OptimismEngineRpcModuleTest
 {
+    [Test]
+    public void GetPayload_serializes_only_a_nonempty_Optimism_withdrawals_root(
+        [Values(3, 4)] int version, [Values("absent", "empty", "nonempty")] string headerRoot)
+    {
+        Hash256? root = headerRoot switch
+        {
+            "absent" => null,
+            "empty" => Keccak.EmptyTreeHash,
+            _ => Keccak.OfAnEmptyString
+        };
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithWithdrawalsRoot(root).TestObject).TestObject;
+        BlobsBundleV1 blobs = new(block);
+        OptimismGetPayloadV3Result result = version == 3
+            ? new OptimismGetPayloadV3Result(new GetPayloadV3Result(block, 0, blobs, shouldOverrideBuilder: false))
+            : new OptimismGetPayloadV4Result(new GetPayloadV4Result(block, 0, blobs, [], shouldOverrideBuilder: false));
+
+        JObject json = JObject.Parse(new EthereumJsonSerializer().Serialize(result));
+
+        JObject payload = (JObject)json["executionPayload"]!;
+        if (root is null || root == Keccak.EmptyTreeHash)
+            Assert.That(payload.Property("withdrawalsRoot"), Is.Null);
+        else
+            Assert.That((string?)payload["withdrawalsRoot"], Is.EqualTo(root.ToString()));
+    }
+
     private static IEnumerable<(OptimismProtocolVersion, OptimismSuperchainSignal, bool behindRecommended, bool behindRequired)> SignalSuperchainV1Cases()
     {
         yield return (
