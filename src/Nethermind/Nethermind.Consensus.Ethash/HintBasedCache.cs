@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -16,7 +17,7 @@ namespace Nethermind.Consensus.Ethash
     {
         private readonly Dictionary<Guid, HashSet<uint>> _epochsPerGuid = [];
         private readonly Dictionary<uint, int> _epochRefs = [];
-        private readonly Dictionary<uint, Task<IEthashDataSet>> _cachedSets = [];
+        private readonly ConcurrentDictionary<uint, Task<IEthashDataSet>> _cachedSets = new();
         private readonly Dictionary<uint, DataSetWithTime> _recent = [];
 
         private struct DataSetWithTime(DateTimeOffset timestamp, Task<IEthashDataSet> dataSet)
@@ -87,7 +88,7 @@ namespace Nethermind.Consensus.Ethash
                     if (_epochRefs[alreadyCachedEpoch] == 0)
                     {
                         // _logger.Warn($"Removing data set for epoch {alreadyCachedEpoch}");
-                        _cachedSets.Remove(alreadyCachedEpoch, out Task<IEthashDataSet> removed);
+                        _cachedSets.TryRemove(alreadyCachedEpoch, out Task<IEthashDataSet> removed);
                         _recent[alreadyCachedEpoch] = new DataSetWithTime(DateTimeOffset.UtcNow, removed);
                         Interlocked.Decrement(ref _cachedEpochsCount);
                     }

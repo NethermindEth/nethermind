@@ -67,6 +67,23 @@ public class TxBroadcasterTests
     public void TearDown() => _broadcaster?.Dispose();
 
     [Test]
+    public void Only_the_registered_connection_can_remove_a_gossip_peer()
+    {
+        CreateBroadcasterWithManualTimer(_headInfo);
+        RecordingTxPoolPeer registered = new(TestItem.PublicKeyA);
+        RecordingTxPoolPeer duplicate = new(TestItem.PublicKeyA);
+        _broadcaster.AddPeer(registered);
+
+        bool removedDuplicate = _broadcaster.RemovePeer(duplicate);
+        bool removedRegistered = _broadcaster.RemovePeer(registered);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removedDuplicate, Is.False);
+            Assert.That(removedRegistered, Is.True);
+        }
+    }
+
+    [Test]
     public void Broadcast_failure_restarts_timer()
     {
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();

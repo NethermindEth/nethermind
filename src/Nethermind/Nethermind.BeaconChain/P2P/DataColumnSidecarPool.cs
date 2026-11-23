@@ -573,6 +573,7 @@ public sealed class DataColumnSidecarPool(int capacity = 1 << 14, BeaconChainSto
         }
         catch (Exception reread) when (reread is not OutOfMemoryException)
         {
+            if (_logger.IsDebug) _logger.Debug($"Re-read of stored data column sidecar {blockRoot} index {column} failed: {reread.GetType().Name}: {reread.Message}");
         }
 
         if (_logger.IsWarn) _logger.Warn($"Stored data column sidecar {blockRoot} index {column} is unreadable and is not served: {e.Message}");

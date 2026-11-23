@@ -1022,7 +1022,7 @@ public partial class EthRpcModuleTests
         await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
         await writer.CompleteAsync();
 
-        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync();
+        System.IO.Pipelines.ReadResult read = await pipe.Reader.ReadAsync(cancellationToken);
         string serialized = Encoding.UTF8.GetString(read.Buffer.ToArray());
         pipe.Reader.AdvanceTo(read.Buffer.End);
         await pipe.Reader.CompleteAsync();

@@ -118,7 +118,7 @@ public class FlatTrieVerifier
         Task[] workers = new Task[_storageWorkerCount];
         for (int i = 0; i < _storageWorkerCount; i++)
         {
-            workers[i] = Task.Run(() => ProcessStorageQueue(channel.Reader, reader, verifyingTrieStore, cancellationToken));
+            workers[i] = Task.Run(() => ProcessStorageQueue(channel.Reader, reader, verifyingTrieStore, cancellationToken), CancellationToken.None);
         }
 
         try
@@ -570,7 +570,7 @@ public class FlatTrieVerifier
                         {
                             Interlocked.Decrement(ref _offloadedPartitions);
                         }
-                    });
+                    }, CancellationToken.None);
                 }
                 else
                 {

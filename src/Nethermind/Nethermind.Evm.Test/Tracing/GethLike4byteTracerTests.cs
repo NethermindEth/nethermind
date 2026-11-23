@@ -161,6 +161,24 @@ public class GethLike4byteTracerTests : VirtualMachineTestsBase
                 ExpectedResult = new Dictionary<string, int>()
             };
 
+            byte[] callEvmCodeInsufficientBalance = Prepare.EvmCode
+                .StoreDataInMemory(0, sampleInput)
+                .PushData(0)
+                .PushData(0)
+                .PushData(sampleInput.Length)
+                .PushData(0)
+                .PushData(UInt256.MaxValue)
+                .PushData(TestItem.AddressC)
+                .PushData(50000)
+                .Op(Instruction.CALL)
+                .STOP()
+                .Done;
+            yield return new TestCaseData(callEvmCodeInsufficientBalance, null)
+            {
+                TestName = "Tracing CALL rejected for insufficient balance",
+                ExpectedResult = singleCall4ByteIds
+            };
+
             byte[] callEvmCodePrecompile = Prepare.EvmCode
                 .CallWithInput(IdentityPrecompile.Address, 50000, sampleInput)
                 .STOP()

@@ -12,14 +12,11 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Merge.AuRa.Contracts;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -65,10 +62,7 @@ namespace Nethermind.Merge.AuRa
                 .AddDecorator<IBlockProducerRunnerFactory, MergeBlockProducerRunnerFactory>()
                 .AddDecorator<IBlockProductionPolicy, MergeBlockProductionPolicy>()
 
-                .AddSingleton<IWithdrawalContractFactory, WithdrawalContractFactory>()
-                .AddScoped<IWithdrawalContract, IWithdrawalContractFactory, ITransactionProcessor>((factory, txProcessor) => factory.Create(txProcessor))
-                .AddScoped<IWithdrawalProcessor, AuraWithdrawalProcessor>()
-                .AddSingleton<IWithdrawalProcessorFactory, AuraWithdrawalProcessorFactory>()
+                .AddModule(new AuRaWithdrawalModule())
                 .AddScoped<IBlockProcessor, AuRaMergeBlockProcessor>()
 
                 .AddDecorator<IHeaderValidator, MergeHeaderValidator>()

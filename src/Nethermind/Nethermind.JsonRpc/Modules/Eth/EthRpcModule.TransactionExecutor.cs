@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             protected readonly IJsonRpcConfig _rpcConfig = rpcConfig;
             protected bool NoBaseFee { get; private set; }
             private BlockOverride? _blockOverride;
-            private CancellationToken _requestToken;
+            private CancellationToken _cancellationToken;
             protected BlockOverride? BlockOverride => _blockOverride;
             protected UInt256? BlobBaseFeeOverride => _blockOverride?.BlobBaseFee;
 
@@ -76,14 +76,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return tx;
             }
 
-            private ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token)
-            {
+            private ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, Dictionary<Address, AccountOverride>? stateOverride, CancellationToken token) =>
                 // The block override is applied later, inside the bridge, after the read-only state scope is opened
                 // on this (base) header — so the overridden block number does not leak into state selection.
-                if (!_requestToken.CanBeCanceled) return ExecuteTx(header, tx, stateOverride, token);
-                using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, _requestToken);
-                return ExecuteTx(header, tx, stateOverride, linked.Token);
-            }
+                ExecuteTx(header, tx, stateOverride, token);
 
             public virtual ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
@@ -106,29 +102,20 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 if ((BlockchainBridge.GetUnsupportedBlockOverrideError(_blockOverride) ?? StateOverrideValidation.GetError(stateOverride, GetSpec(_blockOverride?.ApplyTo(header) ?? header))) is { } overrideError)
                     return ResultWrapper<TResult>.Fail(overrideError, ErrorCodes.InvalidInput);
 
-                CancellationTokenSource timeout = _rpcConfig.BuildTimeoutCancellationToken();
-                try
-                {
-                    Result<Transaction> prepareResult = Prepare(transactionCall, header);
-                    return !prepareResult.Success(out Transaction? data, out string? error)
-                        ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
-                        : Execute(header, data, stateOverride, timeout.Token);
-                }
-                finally
-                {
-                    JsonRpcConfigExtension.ReturnTimeoutCancellationToken(timeout);
-                }
+                Result<Transaction> prepareResult = Prepare(transactionCall, header);
+                return !prepareResult.Success(out Transaction? data, out string? error)
+                    ? ResultWrapper<TResult>.Fail(error, ErrorCodes.InvalidInput)
+                    : Execute(header, data, stateOverride, _cancellationToken);
             }
 
-            /// <param name="requestToken">Cancels this execution along with work the request did before it, so both share one timeout.</param>
             public ResultWrapper<TResult> ExecuteTx(TransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null,
-                BlockOverride? blockOverride = null, CancellationToken requestToken = default, SearchResult<BlockHeader>? searchResult = null)
+                BlockOverride? blockOverride = null, CancellationToken cancellationToken = default, SearchResult<BlockHeader>? searchResult = null)
             {
                 ulong gasCap = _rpcConfig.GasCap.EffectiveGasCap();
                 if (blockOverride?.GasLimit > gasCap)
                     return ResultWrapper<TResult>.Fail($"GasLimit value is too large, max value {gasCap}", ErrorCodes.InvalidInput);
                 _blockOverride = blockOverride;
-                _requestToken = requestToken;
+                _cancellationToken = cancellationToken;
                 return Execute(transactionCall, blockParameter, stateOverride, searchResult);
             }
 

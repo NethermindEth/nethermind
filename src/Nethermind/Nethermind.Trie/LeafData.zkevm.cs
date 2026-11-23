@@ -117,7 +117,7 @@ public sealed partial class LeafData
         int tailLength = compact.Length - 1;
         if (isOdd && ((flags ^ key[key.Length - compact.Length]) & 0xF) != 0) return false;
         ReadOnlySpan<byte> keyTail = key[(key.Length - tailLength)..];
-        return StrictAlignmentFlag.IsActive ? Bytes.SequenceEqualByWords(compact[1..], keyTail) : compact[1..].SequenceEqual(keyTail);
+        return Bytes.SequenceEqualAtAnyAlignment(compact[1..], keyTail);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

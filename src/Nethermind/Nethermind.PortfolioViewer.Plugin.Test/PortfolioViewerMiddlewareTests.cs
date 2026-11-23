@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -79,7 +80,8 @@ public class PortfolioViewerMiddlewareTests
             Substitute.For<ISiblingNodeRegistry>(),
             Substitute.For<IDetectionCache>(),
             Substitute.For<IDetectionScanner>(),
-            Substitute.For<IPinnedCidStore>());
+            Substitute.For<IPinnedCidStore>(),
+            LimboLogs.Instance);
         await middleware.InvokeAsync(ctx);
 
         using (Assert.EnterMultipleScope())
@@ -177,7 +179,7 @@ public class PortfolioViewerMiddlewareTests
     }
 
     private static PortfolioViewerMiddleware CreateMiddleware(bool isAuthenticated = false, ISiblingNodeRegistry? siblings = null, IDetectionScanner? scanner = null, IPinnedCidStore? pins = null) =>
-        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), scanner ?? Substitute.For<IDetectionScanner>(), pins ?? Substitute.For<IPinnedCidStore>());
+        new(_ => Task.CompletedTask, CreateUrlCollection(isAuthenticated), siblings ?? Substitute.For<ISiblingNodeRegistry>(), Substitute.For<IDetectionCache>(), scanner ?? Substitute.For<IDetectionScanner>(), pins ?? Substitute.For<IPinnedCidStore>(), LimboLogs.Instance);
 
     private static IJsonRpcUrlCollection CreateUrlCollection(bool isAuthenticated = false) =>
         new TestJsonRpcUrlCollection(new JsonRpcUrl("http", "127.0.0.1", Port, RpcEndpoint.Http, isAuthenticated, [ModuleType.Eth]));

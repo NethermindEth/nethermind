@@ -412,6 +412,48 @@ public class ReqRespLimitsTests
         }
     }
 
+    [Test]
+    [CancelAfter(15_000)]
+    public async Task Light_client_response_size_limit_includes_the_maximum([Values] bool exceeds, CancellationToken token)
+    {
+        const int Maximum = 256 * 1024;
+        byte[] payload = new byte[exceeds ? Maximum + 1 : Maximum];
+        using MemoryStream framed = new();
+        await ReqRespFraming.WriteResponseChunkAsync(framed, ReqRespFraming.ResponseCode.Success, ForkDigest.Compute(Spec, 0), payload, token);
+        ReadOnlyMemory<byte> response = framed.GetBuffer().AsMemory(0, (int)framed.Length);
+        IChannel channel = Substitute.For<IChannel>();
+        channel.WriteEofAsync(Arg.Any<CancellationToken>()).Returns(new ValueTask<IOResult>(IOResult.Ok));
+        channel.ReadAsync(Arg.Any<int>(), Arg.Any<ReadBlockingMode>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                int length = Math.Min(response.Length, call.ArgAt<int>(0));
+                ReadResult read = new()
+                {
+                    Result = length == 0 ? IOResult.Ended : IOResult.Ok,
+                    Data = new ReadOnlySequence<byte>(response[..length]),
+                };
+                response = response[length..];
+                return new ValueTask<ReadResult>(read);
+            });
+        LightClientSizeProbe protocol = new();
+
+        if (exceeds)
+            Assert.That(async () => await protocol.DialAsync(channel, ReqRespTestChannel.Context(), new(0)),
+                Throws.TypeOf<Eth2ReqRespException>().With.Message.StartsWith("Invalid payload length"));
+        else
+            Assert.That(await protocol.DialAsync(channel, ReqRespTestChannel.Context(), new(0)), Is.EqualTo(Maximum));
+    }
+
+    private sealed class LightClientSizeProbe() : LightClientProtocol<Uint64Request, int>(ReqRespLimitsTests.Spec)
+    {
+        public override string Id => "/test/light-client-response-size/1";
+        protected override bool HasRequestBody => false;
+        protected override int MaxRequestSize => 0;
+        protected override byte[] EncodeRequest(Uint64Request request) => [];
+        protected override int DecodeResponse(byte[] ssz) => ssz.Length;
+        protected override ulong ResponseSlot(int response) => 0;
+    }
+
     private sealed class InvalidDecoderProtocol : SingleChunkProtocol<byte[], ulong>
     {
         public IAsyncDisposable? Enter(ISessionContext context) => TryEnterInbound(context, Id);

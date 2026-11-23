@@ -267,7 +267,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         public Task<string> TestEthRpc(string method, params object?[]? parameters) =>
-            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
+            RpcTest.TestSerializedRequest(EthRpcModule, RpcConfig.Timeout, method, parameters);
 
         private IBlockProcessingQueue? _currentBlockchainProcessor;
 

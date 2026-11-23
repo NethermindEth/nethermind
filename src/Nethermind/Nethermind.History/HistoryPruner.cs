@@ -347,7 +347,7 @@ public class HistoryPruner : IHistoryPruner, IAsyncDisposable
                         throw;
                     }
                 }
-            });
+            }, cancellationToken);
         }
     }
 

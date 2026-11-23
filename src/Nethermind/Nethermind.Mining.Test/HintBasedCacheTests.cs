@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core.Events;
@@ -114,6 +115,51 @@ public class HintBasedCacheTests
             Assert.That(hintBasedCache.Get(firstEpoch - 1), Is.Null);
             Assert.That(hintBasedCache.Get(lastEpoch + 1), Is.Null);
         }
+    }
+
+    /// <remarks>
+    /// A tripwire for lookups racing with another user's hints: an unsynchronized lookup only misses when a reader walks
+    /// the table while a hint unlinks or adds an entry, so this test can pass on broken code.
+    /// </remarks>
+    [Test, MaxTime(60_000)]
+    public async Task Pinned_epoch_stays_readable_while_another_user_moves_its_window()
+    {
+        HintBasedCache hintBasedCache = new(static _ => new NullDataSet());
+        hintBasedCache.Hint(_guidA, 0, 0);
+        bool hinting = true;
+        Task<int>[] readers = new Task<int>[4];
+        using CountdownEvent readersStarted = new(readers.Length);
+        for (int i = 0; i < readers.Length; i++)
+        {
+            readers[i] = Task.Factory.StartNew(() =>
+            {
+                readersStarted.Signal();
+                int misses = 0;
+                while (Volatile.Read(ref hinting))
+                {
+                    if (hintBasedCache.Get(0) is null) misses++;
+                }
+
+                return misses;
+            }, TaskCreationOptions.LongRunning);
+        }
+
+        try
+        {
+            Assert.That(readersStarted.Wait(TimeSpan.FromSeconds(10)), Is.True, "readers started");
+            // Alternating between two disjoint windows removes 11 epochs and adds 11 on every hint.
+            for (int i = 0; i < 2_000; i++)
+            {
+                ulong startEpoch = i % 2 == 0 ? 1UL : 12UL;
+                hintBasedCache.Hint(_guidB, startEpoch * Ethash.EpochLength, (startEpoch + 10) * Ethash.EpochLength);
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref hinting, false);
+        }
+
+        Assert.That(await Task.WhenAll(readers), Is.All.EqualTo(0), "lookups of the pinned epoch that missed");
     }
 
     [Test]
