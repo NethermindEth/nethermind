@@ -255,14 +255,21 @@ public class NodeFilterTests
     }
 
     [Test]
-    public void Create_keeps_recent_connections_when_no_outbound_peers_are_configured()
+    public void Create_keeps_recent_connections_when_peer_target_is_zero()
     {
         NodeFilter filter = NodeFilter.Create(0, filterEnabled: true, subnetBucketing: false, currentIp: null);
-        IPAddress first = IPAddress.Parse("192.0.2.1");
-        IPAddress second = IPAddress.Parse("192.0.2.2");
-        bool[] accepted = [filter.TryAccept(first), filter.TryAccept(second), filter.TryAccept(first), filter.TryAccept(second)];
+        IPAddress[] addresses =
+        [
+            IPAddress.Parse("192.0.2.1"),
+            IPAddress.Parse("192.0.2.2"),
+            IPAddress.Parse("192.0.2.3"),
+            IPAddress.Parse("192.0.2.4"),
+        ];
+        List<bool> accepted = [];
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
+        foreach (IPAddress address in addresses) accepted.Add(filter.TryAccept(address));
 
-        Assert.That(accepted, Is.EqualTo(new[] { true, true, false, false }));
+        Assert.That(accepted, Is.EqualTo(new[] { true, true, true, true, false, false, false, false }));
     }
 
     [TestCase("127.0.0.1", true, Description = "IPv4 loopback")]
