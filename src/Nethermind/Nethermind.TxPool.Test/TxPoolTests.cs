@@ -3896,6 +3896,30 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void SubmitTx_DepositTransaction_RejectedAsNotSupported()
+        {
+            TxValidator txValidator = new(_specProvider.ChainId);
+            txValidator.RegisterValidator(TxType.DepositTx, Always.Valid);
+            _txPool = CreatePool(txValidator: txValidator);
+            Transaction depositTx = Build.A.Transaction
+                .WithType(TxType.DepositTx)
+                .WithNonce(0)
+                .WithGasLimit(100_000)
+                .WithTo(TestItem.AddressB)
+                .WithSenderAddress(TestItem.AddressA)
+                .TestObject;
+            EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
+
+            AcceptTxResult result = _txPool.SubmitTx(depositTx, TxHandlingOptions.PersistentBroadcast);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.NotSupportedTxType));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(0));
+            }
+        }
+
+        [Test]
         public void SubmitTx_FrameTransaction_AcceptedWhenEip8141Active()
         {
             // MAX_VERIFY_GAS disabled: this covers payer resolution, not the verify-gas bound.
@@ -8629,7 +8653,8 @@ namespace Nethermind.TxPool.Test
             IEthereumEcdsa ethereumEcdsa = null,
             ITxValidator specChangeTxValidator = null,
             IFrameTxPrefixSimulator frameTxPrefixSimulator = null,
-            IStateHeaderProvider stateHeaderProvider = null)
+            IStateHeaderProvider stateHeaderProvider = null,
+            ITxValidator txValidator = null)
         {
             specProvider ??= MainnetSpecProvider.Instance;
             ITransactionComparerProvider transactionComparerProvider =
@@ -8649,7 +8674,7 @@ namespace Nethermind.TxPool.Test
                 txStorage,
                 _headInfo,
                 config,
-                new TxValidator(_specProvider.ChainId),
+                txValidator ?? new TxValidator(_specProvider.ChainId),
                 specChangeTxValidator ?? new SpecChangeTxValidator(_specProvider.ChainId),
                 _logManager,
                 transactionComparerProvider.GetDefaultComparer(),

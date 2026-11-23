@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Merge.Plugin;
@@ -75,6 +77,38 @@ class ShutterTxLoaderTests : BaseEngineModuleTests
             IReadOnlyList<ExecutionPayload> payloads = await ProduceBranchV1(rpc, chain, 1, lastPayload, true, null, 5);
             lastPayload = payloads[0];
         }
+    }
+
+    [Test]
+    public async Task Loads_all_transactions_with_available_keys()
+    {
+        Random rnd = new(ShutterTestsCommon.Seed);
+        ShutterEventSimulator events = ShutterTestsCommon.InitEventSimulator(rnd);
+        using ShutterTestBlockchain chain = (ShutterTestBlockchain)await new ShutterTestBlockchain(rnd, eventSimulator: events).Build(ShutterTestsCommon.SpecProvider);
+        await ProduceBranchV1(chain.EngineRpcModule, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true, null, 5);
+
+        (List<ShutterEventSimulator.Event> submitted, Dto.DecryptionKeys decryptionKeys) = events.AdvanceSlot(eventCount: 3, keyCount: 2);
+        Block head = chain.BlockTree.Head!;
+        SwitchLoaderToReceipts(chain, head, decryptionKeys);
+        chain.Api.InsertShutterReceipts(head, submitted.Select(static transaction => transaction.LogEntry).ToArray());
+        IShutterKeyValidator.ValidatedKeys? keys = chain.Api.KeyValidator.ValidateKeys(decryptionKeys);
+        Assert.That(keys, Is.Not.Null);
+
+        ShutterTransactions transactions = chain.Api.TxLoader.LoadTransactions(head, head.Header, keys!.Value);
+
+        Assert.That(transactions.Transactions.Select(static transaction => transaction.Hash), Is.EqualTo(submitted.Take(2).Select(static transaction => Keccak.Compute(transaction.Transaction))));
+    }
+
+    private static void SwitchLoaderToReceipts(ShutterTestBlockchain chain, Block head, Dto.DecryptionKeys decryptionKeys)
+    {
+        ShutterTransactions initial = chain.Api.TxLoader.LoadTransactions(head, head.Header, new IShutterKeyValidator.ValidatedKeys
+        {
+            Eon = decryptionKeys.Eon,
+            Slot = decryptionKeys.Gnosis.Slot - 1,
+            TxPointer = decryptionKeys.Gnosis.TxPointer,
+            Keys = new([], 0),
+        });
+        Assert.That(initial.Transactions, Is.Empty);
     }
 
     [Test]
