@@ -275,7 +275,7 @@ public partial class Engine : IDisposable
     }
 
     /// <summary>
-    /// Converts the elements of a script array to bytes the way <c>Uint8Array.from</c> does.
+    /// Converts the elements of a script array to bytes the way assigning them to a <c>Uint8Array</c> does.
     /// </summary>
     /// <remarks>
     /// As goja's <c>toUint8</c> in Geth, each element goes through JavaScript numeric coercion (so <c>'0x10'</c> and

@@ -48,7 +48,8 @@ internal sealed partial class TracerRuntime : IDisposable
     private const string GethLegacySuffix = "Legacy";
     private const string BigIntegerJavaScript = "_bigInteger.js";
     private const string CreateUint8ArrayCode = "(function (U) {return function (length) {return new U(length);};})(Uint8Array)";
-    private const string ToUint8ArrayCode = "(function (U) {return function (values) {return U.from(values);};})(Uint8Array)";
+    // Element assignment coerces like Uint8Array.from without calling anything a tracer script can replace.
+    private const string ToUint8ArrayCode = "(function (U) {return function (values) {var n = values.length, bytes = new U(n); for (var i = 0; i < n; i++) bytes[i] = values[i]; return bytes;};})(Uint8Array)";
 
     // PublicationOnly does not cache a failed load, so a later request retries it instead of rethrowing it for the process lifetime.
     private static readonly Lazy<Dictionary<string, string>> _builtInSources = new(LoadBuiltInSources, LazyThreadSafetyMode.PublicationOnly);

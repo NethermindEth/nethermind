@@ -52,6 +52,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     [TestCase("toHex([256, 511, -1, 1.9, Infinity, -Infinity, NaN])", "\"0x00ffff01000000\"")]
     [TestCase("toHex([undefined, null, 'x', '2', true, , 3])", "\"0x00000002010003\"")]
     [TestCase("toHex(['0x10', '0b11', '0o77', ' 7 ', { valueOf: function() { return 37; } }])", "\"0x10033f0725\"")]
+    [TestCase("(Uint8Array.from = function() { return new Uint8Array([9]); }, Array.prototype[Symbol.iterator] = function* () { yield 9; }, toHex([1, 2]))", "\"0x0102\"")]
     [TestCase("({ DUP1: 'a', PUSH1: 'b', LOG2: 'c', Foo: 'd', add: 'e' })", "{\"DUP1\":\"a\",\"PUSH1\":\"b\",\"LOG2\":\"c\",\"Foo\":\"d\",\"add\":\"e\"}")]
     [TestCase("({ counts: { SSTORE: 'x' } })", "{\"counts\":{\"SSTORE\":\"x\"}}")]
     [TestCase("[{ DUP1: 1 }]", "[{\"DUP1\":1}]")]
