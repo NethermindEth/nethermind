@@ -42,13 +42,22 @@ public partial class DebugRpcModuleTests
     [Test]
     public async Task Debug_trace_invalid_duration_is_validated_after_selector(
         [Values("debug_traceCall", "debug_traceTransaction", "debug_traceBlock", "debug_traceBlockByNumber", "debug_traceBlockByHash", "debug_traceBadBlock")] string method,
-        [Values] bool missing, [Values] bool streamMode)
+        [Values] bool missing, [Values] bool streamMode,
+        [Values("noop", "mux-empty", "mux-null", "mux-omitted")] string kind,
+        [Values("abc", "5s", "5")] string timeout)
     {
         using Context context = await Context.Create();
         Transaction transaction = await AddBlockWithTransfer(context);
         Block block = context.Blockchain.BlockTree.Head!;
         if (method == "debug_traceBadBlock") context.Blockchain.Container.Resolve<IBadBlockStore>().Insert(block);
-        object options = new { tracer = "noopTracer", timeout = "abc", streamMode };
+        Dictionary<string, object?> options = new()
+        {
+            ["tracer"] = kind == "noop" ? "noopTracer" : "muxTracer",
+            ["timeout"] = timeout,
+            ["streamMode"] = streamMode
+        };
+        if (kind == "mux-empty") options["tracerConfig"] = new { };
+        if (kind == "mux-null") options["tracerConfig"] = null;
         object[] parameters = method switch
         {
             "debug_traceCall" => [new { to = TestItem.AddressC.ToString() }, missing ? TestItem.KeccakA.ToString() : "latest", options],
@@ -61,16 +70,24 @@ public partial class DebugRpcModuleTests
         JToken json = JToken.Parse(response);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(json["result"], Is.Null, response);
-            if (!missing)
+            if (!missing && timeout != "abc")
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
-                Assert.That((string?)json["error"]?["message"], Is.EqualTo("time: invalid duration \"abc\""), response);
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That(json["result"], Is.Not.Null, response);
             }
             else
             {
-                Assert.That((int?)json["error"]?["code"], Is.EqualTo(method == "debug_traceBlock" ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound), response);
-                Assert.That((string?)json["error"]?["message"], Does.Not.Contain("duration").And.Not.Contain("invalid argument 2"), response);
+                Assert.That(json["result"], Is.Null, response);
+                if (!missing)
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                    Assert.That((string?)json["error"]?["message"], Is.EqualTo("time: invalid duration \"abc\""), response);
+                }
+                else
+                {
+                    Assert.That((int?)json["error"]?["code"], Is.EqualTo(method == "debug_traceBlock" ? ErrorCodes.InvalidInput : ErrorCodes.ResourceNotFound), response);
+                    Assert.That((string?)json["error"]?["message"], Does.Not.Contain("duration").And.Not.Contain("invalid argument 2"), response);
+                }
             }
         }
     }

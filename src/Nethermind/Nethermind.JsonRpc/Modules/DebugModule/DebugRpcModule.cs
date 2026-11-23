@@ -280,6 +280,10 @@ public class DebugRpcModule(
         {
             return TracingFailed<GethLikeTxTrace>(ex);
         }
+        catch (NativeTracerConfigException ex)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         catch (InvalidDataException ex) when (IsJavaScriptOrMuxTracer(effective))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
@@ -686,6 +690,7 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -771,6 +776,7 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -831,6 +837,7 @@ public class DebugRpcModule(
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
         }
         catch (Exception exception) when (exception is NativeTracerConfigException or GethTraceException
+            or InvalidDataException { InnerException: NativeTracerConfigException }
             || JavaScriptTraceFailure.IsRecoverable(exception))
         {
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
@@ -882,6 +889,11 @@ public class DebugRpcModule(
         catch (InvalidTransactionException exception)
         {
             return TracingFailed<IReadOnlyCollection<GethLikeTxTrace>>(exception);
+        }
+        catch (Exception exception) when (exception is NativeTracerConfigException
+            or InvalidDataException { InnerException: NativeTracerConfigException })
+        {
+            return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail(exception.Message, ErrorCodes.InvalidInput);
         }
         catch (JavaScriptTraceFailure exception)
         {
