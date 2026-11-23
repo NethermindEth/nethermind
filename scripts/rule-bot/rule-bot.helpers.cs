@@ -972,23 +972,32 @@ static partial class RuleBot
 
     internal static string FixDenyTools() => string.Join(',', FixDeniedPrefixes.SelectMany(prefix => new[] { $"Edit({prefix}**)", $"Write({prefix}**)" }));
 
-    private static void Hits(string logs, string root, string idList, string outPath)
+    private static void Hits(string logs, string root, string idList, string outPath, string? generatedLogs = null, string? generatedId = null)
     {
+        if (generatedLogs is null != generatedId is null) throw new BotExit(2, "rule-bot hits: --generated-logs and --generated-id must be used together");
         var ids = idList.Split(',').ToHashSet();
+        if (generatedId is not null && !ids.Contains(generatedId)) throw new BotExit(2, $"rule-bot hits: --generated-id {generatedId} is not in --ids");
         var files = GlobTree(logs, ".log").Order(CodePointOrder.Instance).ToList();
+        var generatedFiles = generatedLogs is null ? [] : GlobTree(generatedLogs, ".log").Order(CodePointOrder.Instance).ToList();
         var unique = new OrderedDictionary<string, Obj>();
-        foreach (var file in files)
-            foreach (var hit in ParseDiagnostics(FileLines(ReadText(file, replace: true)), root, ids))
-            {
-                hit["solution"] = SolutionOf(file);
-                var key = $"{S(hit["file"])}\0{Text(hit["line"])}\0{Text(hit["col"])}\0{S(hit["id"])}";
-                if (!unique.TryGetValue(key, out var kept))
+        void Read(IEnumerable<string> sources, IReadOnlySet<string> accepted)
+        {
+            foreach (var file in sources)
+                foreach (var hit in ParseDiagnostics(FileLines(ReadText(file, replace: true)), root, accepted))
                 {
-                    kept = new Obj(hit) { ["solutions"] = new List<object?>() };
-                    unique[key] = kept;
+                    hit["solution"] = SolutionOf(file);
+                    var key = $"{S(hit["file"])}\0{Text(hit["line"])}\0{Text(hit["col"])}\0{S(hit["id"])}";
+                    if (!unique.TryGetValue(key, out var kept))
+                    {
+                        kept = new Obj(hit) { ["solutions"] = new List<object?>() };
+                        unique[key] = kept;
+                    }
+                    A(kept["solutions"]).Add(hit["solution"]);
                 }
-                A(kept["solutions"]).Add(hit["solution"]);
-            }
+        }
+        Read(files, generatedId is null ? ids : ids.Where(id => id != generatedId).ToHashSet());
+        if (generatedId is not null) Read(generatedFiles, new HashSet<string> { generatedId });
+        if (generatedId is not null) files = files.Concat(generatedFiles).DistinctBy(SolutionOf).OrderBy(file => file, CodePointOrder.Instance).ToList();
         var found = SortHits(unique.Values);
         var counts = new Obj();
         foreach (var id in ids.Order(CodePointOrder.Instance)) counts[id] = D(("prod", 0L), ("test", 0L), ("generated", 0L));
@@ -1576,7 +1585,7 @@ static partial class RuleBot
         ["catalog"] = new(["sdk", "data"], ["repo"], []),
         ["plan"] = new(["data"], ["repo", "today", "github-output"], ["offline"]),
         ["overlay"] = new(["ids"], ["repo", "extra"], ["exclude-tests"]),
-        ["hits"] = new(["logs", "root", "ids", "out"], [], []),
+        ["hits"] = new(["logs", "root", "ids", "out"], ["generated-logs", "generated-id"], []),
         ["propose"] = new(["data"], ["github-output"], ["offline"]),
         ["guard"] = new([], ["base", "patch", "new-id", "files", "ids"], []),
         ["sample"] = new(["hits", "id", "out"], ["repo", "seed"], []),
@@ -1681,7 +1690,7 @@ static partial class RuleBot
                 case "catalog": Catalog(repo, values["sdk"], values["data"]); return 0;
                 case "plan": await Plan(repo, values["data"], Opt("today"), flags.Contains("offline"), Opt("github-output"), token); return 0;
                 case "overlay": ApplyOverlay(repo, values["ids"], extra, flags.Contains("exclude-tests")); return 0;
-                case "hits": Hits(values["logs"], values["root"], values["ids"], values["out"]); return 0;
+                case "hits": Hits(values["logs"], values["root"], values["ids"], values["out"], Opt("generated-logs"), Opt("generated-id")); return 0;
                 case "propose": await Propose(values["data"], flags.Contains("offline"), Opt("github-output"), token); return 0;
                 case "guard": return await Guard(Opt("base") ?? "HEAD", Opt("patch"), Opt("new-id"), Opt("files"), Opt("ids"), token);
                 case "sample": SampleCommand(values["hits"], values["id"], repo, IntOption(values, "seed", args[0], BigInteger.Zero), values["out"]); return 0;

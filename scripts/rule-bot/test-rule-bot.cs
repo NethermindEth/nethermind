@@ -551,6 +551,36 @@ var tests = new (string Name, Func<Task> Body)[]
         Equal(4, intentToAddCount);
     })),
 
+    ("test_generated_analyzer_logs_cannot_add_hits_for_other_rules", async () =>
+    {
+        using var directory = new TempDirectory();
+        var clean = Path.Combine(directory.Path, "clean");
+        var generated = Path.Combine(directory.Path, "generated");
+        Directory.CreateDirectory(clean);
+        Directory.CreateDirectory(generated);
+        string Line(string file, string id) => $"{directory.Path}/src/Nethermind/Nethermind.Core/{file}.cs(1,2): warning {id}: message [{directory.Path}/x.csproj]\n";
+        File.WriteAllText(Path.Combine(clean, "a.slnx.log"), Line("Real", "CA2012") + Line("CleanForged", "NETH099"));
+        File.WriteAllText(Path.Combine(generated, "a.slnx.log"), Line("Forged", "CA2012") + Line("Own", "NETH099"));
+        var output = Path.Combine(directory.Path, "hits.json");
+        Equal(0, await Run(["hits", "--logs", clean, "--root", directory.Path, "--ids", "CA2012,NETH099", "--out", output, "--generated-logs", generated, "--generated-id", "NETH099"], CancellationToken.None));
+        var found = A(O(Load(output))["hits"]).Select(hit => $"{S(O(hit)["id"])}:{Path.GetFileName(S(O(hit)["file"]))}").Order(StringComparer.Ordinal).ToList();
+        Equal("CA2012:Real.cs,NETH099:Own.cs", string.Join(',', found));
+    }),
+    ("test_hits_requires_both_generated_options", async () =>
+    {
+        using var directory = new TempDirectory();
+        Equal(2, await Run(["hits", "--logs", directory.Path, "--root", directory.Path, "--ids", "CA2012", "--out", Path.Combine(directory.Path, "hits.json"), "--generated-id", "CA2012"], CancellationToken.None));
+    }),
+    ("test_workflow_builds_route_a_before_generated_code", Sync(() =>
+    {
+        var workflow = File.ReadAllText(Path.Combine(repositoryRoot, ".github", "workflows", "rule-bot.yml"));
+        var clean = workflow[workflow.IndexOf("\n  measure:\n", StringComparison.Ordinal)..workflow.IndexOf("\n  seal-logs:\n", StringComparison.Ordinal)];
+        True(!clean.Contains("analyzer.patch", StringComparison.Ordinal) && !clean.Contains("rule-bot-route-b", StringComparison.Ordinal));
+        True(workflow.IndexOf("\n  seal-logs:\n", StringComparison.Ordinal) < workflow.IndexOf("\n  route-b:\n", StringComparison.Ordinal));
+        True(workflow.Contains("needs: [plan, measure, seal-logs]\n", StringComparison.Ordinal));
+        True(workflow.Contains("name: rule-bot-clean-logs\n          path: rule-bot/logs/clean", StringComparison.Ordinal));
+    })),
+
     ("test_route_b_stops_at_first_cluster_that_passes", async () =>
     {
         var (state, calls) = await RouteBRun(new() { ["a"] = """{"skip": "no shape"}""", ["b"] = RouteBResult, ["c"] = RouteBResult });

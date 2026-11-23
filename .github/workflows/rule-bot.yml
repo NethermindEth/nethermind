@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       solutions: ${{ steps.solutions.outputs.solutions }}
+      route_a: ${{ steps.plan.outputs.route_a }}
       route_b: ${{ steps.plan.outputs.route_b }}
       route_b_id: ${{ steps.plan.outputs.route_b_id }}
       skip_measure: ${{ steps.plan.outputs.skip_measure }}
@@ -68,6 +69,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           "$RUNNER_TEMP/rule-bot/rule-bot" plan --data "$DATA" --github-output "$GITHUB_OUTPUT"
+          if grep -q '^skip_measure=true$' "$GITHUB_OUTPUT"; then
+            printf '## Review rule bot\n\nNothing to build: a rule-bot pull request is open, or no pattern needs measuring. See the plan log.\n' >> "$GITHUB_STEP_SUMMARY"
+          elif grep -q . "$DATA/measure_ids.txt"; then
+            echo route_a=true >> "$GITHUB_OUTPUT"
+          fi
 
       - name: List CI solutions
         id: solutions
@@ -80,12 +86,79 @@ jobs:
           name: rule-bot-data
           path: rule-bot/data
 
-  route-b:
-    name: Write a new analyzer
+  measure:
+    name: Build ${{ matrix.solution }}
     needs: plan
-    if: needs.plan.outputs.route_b != ''
+    if: needs.plan.outputs.route_a == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    strategy:
+      fail-fast: true
+      matrix:
+        solution: ${{ fromJSON(needs.plan.outputs.solutions) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          submodules: ${{ matrix.solution == 'src/Nethermind/EthereumTests.slnx' }}
+
+      - name: Keep bot files out of git
+        run: echo /rule-bot/ >> .git/info/exclude
+
+      - name: Set up .NET
+        uses: ./.github/actions/setup-dotnet
+
+      - name: Publish the bot before any generated change
+        run: bash scripts/rule-bot/publish.sh
+
+      - name: Download data
+        uses: actions/download-artifact@v8
+        with:
+          name: rule-bot-data
+          path: rule-bot/data
+
+      - name: Turn the candidate rules on
+        run: |
+          "$RUNNER_TEMP/rule-bot/rule-bot" overlay --ids "$DATA/measure_ids.txt"
+
+      - name: Build
+        env:
+          SOLUTION: ${{ matrix.solution }}
+        run: bash "$RUNNER_TEMP/rule-bot/build.sh" "$SOLUTION" "$LOGS"
+
+      - name: Upload build log
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-log-${{ strategy.job-index }}
+          path: rule-bot/logs
+
+  seal-logs:
+    name: Seal the build logs before generated code runs
+    needs: measure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download build logs
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rule-bot-log-*
+          path: clean-logs
+          merge-multiple: true
+
+      - name: Upload sealed logs
+        uses: actions/upload-artifact@v7
+        with:
+          name: rule-bot-clean-logs
+          path: clean-logs
+
+  route-b:
+    name: Write a new analyzer
+    needs: [plan, measure, seal-logs]
+    if: always() && needs.plan.result == 'success' && needs.plan.outputs.route_b != '' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    outputs:
+      passed: ${{ steps.passed.outputs.passed }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -116,6 +189,15 @@ jobs:
         run: |
           "$RUNNER_TEMP/rule-bot/rule-bot" route-b --data "$DATA"
 
+      - name: Record whether an analyzer passed
+        id: passed
+        run: |
+          if [ -s "$DATA/analyzer.patch" ] && jq -e '.tests_ok and .red_ok and .guard_ok' "$DATA/route_b.json" > /dev/null 2>&1; then
+            echo passed=true >> "$GITHUB_OUTPUT"
+          else
+            printf '## Review rule bot\n\nNo generated analyzer passed its checks.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
       - name: Upload analyzer
         uses: actions/upload-artifact@v7
         with:
@@ -126,10 +208,10 @@ jobs:
             rule-bot/data/analyzer-*.log
           if-no-files-found: ignore
 
-  measure:
-    name: Build ${{ matrix.solution }}
+  measure-route-b:
+    name: Build ${{ matrix.solution }} with the generated analyzer
     needs: [plan, route-b]
-    if: always() && needs.plan.result == 'success' && needs.plan.outputs.skip_measure != 'true' && needs.route-b.result != 'failure' && needs.route-b.result != 'cancelled'
+    if: always() && needs.route-b.result == 'success' && needs.route-b.outputs.passed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     strategy:
@@ -159,25 +241,21 @@ jobs:
           path: rule-bot/data
 
       - name: Download analyzer
-        if: needs.plan.outputs.route_b != ''
         uses: actions/download-artifact@v8
         with:
           name: rule-bot-route-b
           path: rule-bot/data
 
-      - name: Turn the candidate rules on
+      - name: Turn the generated rule on
         env:
           ROUTE_B_ID: ${{ needs.plan.outputs.route_b_id }}
         run: |
-          extra=()
-          if [ -n "$ROUTE_B_ID" ] && [ -s "$DATA/analyzer.patch" ] && jq -e '.tests_ok and .red_ok and .guard_ok' "$DATA/route_b.json" > /dev/null; then
-            "$RUNNER_TEMP/rule-bot/rule-bot" guard --patch "$DATA/analyzer.patch" --new-id "$ROUTE_B_ID"
-            git apply --index "$DATA/analyzer.patch"
-            git add -N .
-            "$RUNNER_TEMP/rule-bot/rule-bot" guard --new-id "$ROUTE_B_ID"
-            extra=(--extra "$ROUTE_B_ID")
-          fi
-          "$RUNNER_TEMP/rule-bot/rule-bot" overlay --ids "$DATA/measure_ids.txt" "${extra[@]}"
+          "$RUNNER_TEMP/rule-bot/rule-bot" guard --patch "$DATA/analyzer.patch" --new-id "$ROUTE_B_ID"
+          git apply --index "$DATA/analyzer.patch"
+          git add -N .
+          "$RUNNER_TEMP/rule-bot/rule-bot" guard --new-id "$ROUTE_B_ID"
+          : > "$RUNNER_TEMP/no-ids.txt"
+          "$RUNNER_TEMP/rule-bot/rule-bot" overlay --ids "$RUNNER_TEMP/no-ids.txt" --extra "$ROUTE_B_ID"
 
       - name: Build
         env:
@@ -187,13 +265,13 @@ jobs:
       - name: Upload build log
         uses: actions/upload-artifact@v7
         with:
-          name: rule-bot-log-${{ strategy.job-index }}
+          name: rule-bot-generated-log-${{ strategy.job-index }}
           path: rule-bot/logs
 
   propose:
     name: Count hits and choose a package
-    needs: [plan, route-b, measure]
-    if: always() && needs.measure.result == 'success'
+    needs: [plan, measure, seal-logs, route-b, measure-route-b]
+    if: always() && needs.plan.result == 'success' && (needs.seal-logs.result == 'success' || needs.measure-route-b.result == 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-latest
     outputs:
       slug: ${{ steps.propose.outputs.slug }}
@@ -225,20 +303,33 @@ jobs:
           name: rule-bot-route-b
           path: rule-bot/data
 
-      - name: Download build logs
+      - name: Download the sealed build logs
+        if: needs.seal-logs.result == 'success'
         uses: actions/download-artifact@v8
         with:
-          pattern: rule-bot-log-*
-          path: rule-bot/logs
+          name: rule-bot-clean-logs
+          path: rule-bot/logs/clean
+
+      - name: Download the generated analyzer build logs
+        if: needs.measure-route-b.result == 'success'
+        uses: actions/download-artifact@v8
+        with:
+          pattern: rule-bot-generated-log-*
+          path: rule-bot/logs/generated
           merge-multiple: true
 
       - name: Count hits
         env:
-          ROUTE_B_ID: ${{ needs.plan.outputs.route_b_id }}
+          ROUTE_B_ID: ${{ needs.measure-route-b.result == 'success' && needs.plan.outputs.route_b_id || '' }}
         run: |
-          ids=$(grep -v '^$' "$DATA/measure_ids.txt" | paste -sd, -)
-          [ -n "$ROUTE_B_ID" ] && ids="${ids:+$ids,}$ROUTE_B_ID"
-          "$RUNNER_TEMP/rule-bot/rule-bot" hits --logs "$LOGS" --root "$GITHUB_WORKSPACE" --ids "$ids" --out "$DATA/hits.json"
+          mkdir -p "$LOGS/clean" "$LOGS/generated"
+          ids=$(grep -v '^$' "$DATA/measure_ids.txt" | paste -sd, - || true)
+          generated=()
+          if [ -n "$ROUTE_B_ID" ]; then
+            ids="${ids:+$ids,}$ROUTE_B_ID"
+            generated=(--generated-logs "$LOGS/generated" --generated-id "$ROUTE_B_ID")
+          fi
+          "$RUNNER_TEMP/rule-bot/rule-bot" hits --logs "$LOGS/clean" --root "$GITHUB_WORKSPACE" --ids "$ids" --out "$DATA/hits.json" "${generated[@]}"
 
       - name: Install Claude Code
         if: needs.plan.outputs.route_b != ''
