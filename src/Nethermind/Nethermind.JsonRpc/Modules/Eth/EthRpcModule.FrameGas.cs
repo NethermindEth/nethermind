@@ -32,7 +32,8 @@ public partial class EthRpcModule
         if (!_blockchainBridge.HasStateForBlock(search.Object!))
             return executor.ExecuteTx(request, blockParameter, stateOverride, blockOverride, searchResult: search);
         using RentedTimeout timeout = _rpcConfig.RentTimeout();
-        Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride);
+        Result<FrameForRpc[]> result = FillFrameGas(frameTx, search.Object!, timeout.Token, out int errorCode, stateOverride, blockOverride,
+            underCallPolicy: executor.RunsUnderCallPolicy);
         if (!result) return ResultWrapper<TResult>.Fail(result.Error!, errorCode);
 
         FrameForRpc[]? originalFrames = frameTx.Frames;
@@ -54,9 +55,10 @@ public partial class EthRpcModule
         return false;
     }
 
+    /// <param name="underCallPolicy">Whether the filled request then runs under the chain's <see cref="RpcCallExecutionPolicy"/>.</param>
     /// <returns>The filled frames, or the failure with <see cref="ErrorCodes.ExecutionReverted"/> when a frame reverted.</returns>
     private Result<FrameForRpc[]> FillFrameGas(FrameTransactionForRpc request, BlockHeader header, CancellationToken token, out int errorCode,
-        Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, bool checksFork = true)
+        Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null, bool checksFork = true, bool underCallPolicy = false)
     {
         errorCode = ErrorCodes.InvalidInput;
         if (!_blockchainBridge.HasStateForBlock(header)) return Result<FrameForRpc[]>.Fail("No state available for block");
@@ -85,7 +87,7 @@ public partial class EthRpcModule
             if (blockOverride?.BaseFeePerGas is not null) blockOverride = blockOverride.WithBaseFee(0);
         }
         Result<TxFrame[]> result = _blockchainBridge.EstimateFrameGas(executionHeader, tx, fillExecution, fillState,
-            gasCap, _rpcConfig.EstimateErrorMargin, maxFeeAt, stateOverride, blockOverride, token, out bool executionReverted);
+            gasCap, _rpcConfig.EstimateErrorMargin, maxFeeAt, stateOverride, blockOverride, underCallPolicy, token, out bool executionReverted);
         if (executionReverted) errorCode = ErrorCodes.ExecutionReverted;
         if (!result.Success(out TxFrame[]? frames, out error)) return Result<FrameForRpc[]>.Fail(error!);
         return FrameForRpc.FromFrames(frames);

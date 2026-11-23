@@ -140,7 +140,8 @@ public static class StateOverridesExtensions
         }
         else if (accountOverride.MovePrecompileToAddress is null && overridableCodeInfoRepository.GetPrecompile(address, currentSpec) is not null)
         {
-            // As in geth, any override of a precompile's address turns it into an ordinary account.
+            // As in geth, any override of a precompile's address turns it into an ordinary account by default. A policy that
+            // keeps native dispatch still takes the account's code, so code reflection shows the stored bytes.
             overridableCodeInfoRepository.SetCodeOverride(currentSpec, address, new CodeInfo(stateProvider.GetCode(address)));
         }
     }

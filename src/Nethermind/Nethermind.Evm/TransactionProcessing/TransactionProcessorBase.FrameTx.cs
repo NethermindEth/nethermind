@@ -197,7 +197,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.GetNonce(sender),
             tx.NonceKeys)
         {
-            SkipFeeReservation = opts.HasFlag(ExecutionOptions.FrameGasEstimation) && opts.HasFlag(ExecutionOptions.Restore)
+            // A fee-free RPC call keeps the fee budget validation but reserves nothing, like a restored gas-search probe.
+            SkipFeeReservation = !ShouldChargeTransactionFees(opts)
+                || (opts.HasFlag(ExecutionOptions.FrameGasEstimation) && opts.HasFlag(ExecutionOptions.Restore))
         };
 
         TxFrameReceipt[] frameReceipts = new TxFrameReceipt[frames.Length];
@@ -550,20 +552,25 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.AddToBalance(payer, refund, spec);
         }
 
-        // Fee-collector chains collect the otherwise-burned legs, exactly as PayFees does.
-        UInt256 collectedFees = spec.IsEip1559Enabled ? baseFeePaid : UInt256.Zero;
-        if (spec.IsEip4844FeeCollectorEnabled)
+        // A fee-free RPC call distributes no fees, as PayFees returns early for it.
+        bool chargeFees = ShouldChargeTransactionFees(opts);
+        if (chargeFees)
         {
-            collectedFees += blobFeePaid;
-        }
-        if (spec.FeeCollector is not null && !collectedFees.IsZero)
-        {
-            WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
-        }
+            // Fee-collector chains collect the otherwise-burned legs, exactly as PayFees does.
+            UInt256 collectedFees = spec.IsEip1559Enabled ? baseFeePaid : UInt256.Zero;
+            if (spec.IsEip4844FeeCollectorEnabled)
+            {
+                collectedFees += blobFeePaid;
+            }
+            if (spec.FeeCollector is not null && !collectedFees.IsZero)
+            {
+                WorldState.AddToBalanceAndCreateIfNotExists(spec.FeeCollector, collectedFees, spec);
+            }
 
-        // EIP-7928: fee accounting touches the beneficiary regardless of premium, so the credit is
-        // unconditional as in PayFees.
-        WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+            // EIP-7928: fee accounting touches the beneficiary regardless of premium, so the credit is
+            // unconditional as in PayFees.
+            WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary!, fees, spec);
+        }
 
         if (accessTracker.TransientCreates is not null)
         {
@@ -595,7 +602,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.Commit(spec, _tracerFlags.IsTracingState ? tracer : NullTxTracer.Instance, commitRoots: false);
         }
 
-        if (TTracing.IsActive && tracer.IsTracingFees)
+        if (TTracing.IsActive && chargeFees && tracer.IsTracingFees)
         {
             // Capped at the effective price paid, as in PayFees, so validation-off runs do not over-report.
             tracer.ReportFees(fees, baseFeePaid + blobFeePaid);
