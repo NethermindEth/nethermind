@@ -5,6 +5,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -17,7 +18,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
-public partial class ParityLikeTxTracer : TxTracer
+public partial class ParityLikeTxTracer : TxTracer, ITraceOperationStart
 {
     private Transaction? _tx;
     private readonly ParityTraceTypes _parityTraceTypes;
@@ -35,6 +36,7 @@ public partial class ParityLikeTxTracer : TxTracer
 
     protected bool _treatGasParityStyle;
     protected bool _gasAlreadySetForCurrentOp;
+    private ulong? _executionCost;
 
     /// <summary>The default limit of the kept trace data, in bytes.</summary>
     public const long DefaultMaxRetainedBytes = 256 * 1024 * 1024;
@@ -493,6 +495,7 @@ public partial class ParityLikeTxTracer : TxTracer
         Retain(RetainedOperationBytes);
         ParityVmOperationTrace operationTrace = new();
         _gasAlreadySetForCurrentOp = false;
+        _executionCost = null;
         operationTrace.Pc = pc;
         operationTrace.Cost = gas;
         _currentOperation = operationTrace;
@@ -500,6 +503,13 @@ public partial class ParityLikeTxTracer : TxTracer
         _currentPushList.Clear();
         _currentVmTrace.Ops.Add(operationTrace);
     }
+
+    void ITraceOperationStart.ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth) =>
+        _executionCost = gasCost;
+
+    // A cost that comes with an error is the attempted cost of a step that fails.
+    void ITraceOperationStart.ReportOperationReady(ulong gasCost, string? error) =>
+        _executionCost = error is null ? gasCost : null;
 
     public override void ReportOperationError(EvmExceptionType error)
     {
@@ -535,7 +545,10 @@ public partial class ParityLikeTxTracer : TxTracer
         {
             _gasAlreadySetForCurrentOp = true;
 
-            _currentOperation.Cost -= (_treatGasParityStyle ? 0UL : gas);
+            // A step that fails keeps its drop in gas left as its cost, so a cost above the gas before it is ignored.
+            if (!_treatGasParityStyle)
+                _currentOperation.Cost = GethLikeTxTracer.GetGasCost(_currentOperation.Cost, gas,
+                    _executionCost <= _currentOperation.Cost ? _executionCost : null);
             _currentOperation.Push = _currentPushList.ToArray();
             _currentOperation.Used = gas;
 

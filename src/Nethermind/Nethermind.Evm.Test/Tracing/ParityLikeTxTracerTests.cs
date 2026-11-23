@@ -2618,6 +2618,18 @@ public class ParityLikeTxTracerTests : VirtualMachineTestsBase
         Assert.That(tracer2.IsTracingRewards, Is.True);
     }
 
+    [Test]
+    public void Sstore_that_refills_state_gas_reports_its_execution_cost_on_Amsterdam([Values] bool reservoirFunded)
+    {
+        (Block block, Transaction transaction) = PrepareSetClearSetSlotTx(reservoirFunded);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.VmTrace);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        ParityVmOperationTrace restore = tracer.BuildResult().VmTrace!.Operations.Single(static o => o.Pc == 9);
+        Assert.That(restore.Cost, Is.EqualTo(Eip8038Constants.WarmAccess));
+    }
+
     private (ParityLikeTxTrace trace, Block block, Transaction tx) ExecuteInitAndTraceParityCall(params byte[] code)
     {
         (Block block, Transaction transaction) = PrepareInitTx((BlockNumber, Timestamp), 100000, code);

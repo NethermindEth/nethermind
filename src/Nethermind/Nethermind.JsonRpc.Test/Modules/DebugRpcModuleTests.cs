@@ -1231,6 +1231,7 @@ public partial class DebugRpcModuleTests
     public static IEnumerable<TestCaseData> OpcodeLoggerLimitCases()
     {
         // Streamed counts pin Geth boundaries; buffered counts pin the conservative estimate.
+        // Rows whose steps change the refund counter follow the execution-apis refund timing, not Geth's.
         (string Code, bool DisableStack, bool EnableMemory, long Limit, int Count, int EstimatedCount)[] cases =
         [
             ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 770, 9, 3),
@@ -1243,8 +1244,8 @@ public partial class DebugRpcModuleTests
             ("6000600060006000600073000000000000000000000000000000000000901261c350f15060206000f3", false, false, 1440, 17, 4),
             ("602a600055600060005500", false, false, 507, 5, 2),
             ("602a600055600060005500", false, false, 508, 6, 2),
-            ("602a600055600060005500", false, false, 752, 6, 3),
-            ("602a600055600060005500", false, false, 753, 7, 3),
+            ("602a600055600060005500", false, false, 737, 6, 3),
+            ("602a600055600060005500", false, false, 738, 7, 3),
             ("602a61ffff5360006000f3", false, true, 224, 3, 1),
             ("602a61ffff5360006000f3", false, true, 225, 4, 1),
             ("602a61ffff5360006000f3", false, true, 141613, 4, 4),
