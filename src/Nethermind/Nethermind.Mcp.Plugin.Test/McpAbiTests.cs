@@ -532,7 +532,7 @@ public class McpAbiTests
         IEthRpcModule eth = Substitute.For<IEthRpcModule>();
         eth.eth_chainId().Returns(ResultWrapper<ulong>.Success(1));
         eth.eth_getCode(Arg.Any<Address>(), Arg.Any<BlockParameter?>()).Returns(static _ => ResultWrapper<byte[]>.Success([0x60]));
-        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>(), Arg.Any<CancellationToken>())
             .Returns(static _ => ResultWrapper<HexBytes>.Fail("execution reverted", ErrorCodes.ExecutionReverted));
         McpTokenMetadata metadata = new();
 

@@ -7,11 +7,13 @@ using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
@@ -156,6 +158,54 @@ public class FlatStateReaderTests
     }
 
     [Test]
+    public void Reads_what_the_reader_cannot_read_flat_with_the_trie_of_the_bundle([Values] bool persistedSnapshot)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        trieReader.Cursor = MigrationCursor.Start;
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        ResourcePool pool = new(new FlatDbConfig());
+        using Snapshot snapshot = pool.CreateSnapshot(StateId.PreGenesis, new StateId(header), ResourcePool.Usage.MainBlockProcessing, _buffer);
+        // The snapshot holds the branch root, A's leaf below it and A's storage root; only persistence holds C's leaf and storage root.
+        trieReader.AddNodesTo(snapshot, TestItem.AddressA, TreePath.Empty, FlatTestHelpers.CanonicalPath(Keccak.Compute(TestItem.AddressA.Bytes), 1));
+        using TempPath arenaPath = TempPath.GetTempDirectory();
+        using TempPath blobsPath = TempPath.GetTempDirectory();
+        using ArenaManager arena = TestFixtureHelpers.CreateArenaManager(arenaPath.Path);
+        using BlobArenaManager blobs = new(blobsPath.Path, 4L * 1024 * 1024);
+        using PersistedSnapshot? persisted = persistedSnapshot
+            ? TestFixtureHelpers.CreatePersistedSnapshot(arena, blobs, snapshot.From, snapshot.To, PersistedSnapshotBuilderTestExtensions.Build(snapshot, blobs))
+            : null;
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, persistedSnapshot ? null : snapshot, persisted));
+
+        bool foundA = reader.TryGetAccount(header, TestItem.AddressA, out AccountStruct accountA);
+        reader.GetStorage(header, TestItem.AddressA, 1, out UInt256 slotA);
+        (int StateLoads, int StorageLoads) loadsForA = (trieReader.StateRlpLoads, trieReader.StorageRlpLoads);
+        bool foundC = reader.TryGetAccount(header, TestItem.AddressC, out AccountStruct accountC);
+        reader.GetStorage(header, TestItem.AddressC, 1, out UInt256 slotC);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((foundA, accountA.Balance, slotA), Is.EqualTo((true, UInt256.One, UInt256.One)));
+            Assert.That((foundC, accountC.Balance, slotC), Is.EqualTo((true, UInt256.One, UInt256.One)));
+            Assert.That(loadsForA, Is.EqualTo((0, 0)), "A is read from the snapshot alone");
+            // C's leaf is loaded twice: for the account and for the storage root its slot read needs.
+            Assert.That((trieReader.StateRlpLoads, trieReader.StorageRlpLoads), Is.EqualTo((2, 1)));
+        }
+    }
+
+    [Test]
+    public void RunTreeVisitor_ReportsTheAccountOfEachStorageTrie([Values(1, 4)] int parallelism)
+    {
+        CountingTrieReader trieReader = CountingTrieReader.WithAccountsAndSlot(out Hash256 stateRoot, TestItem.AddressA, TestItem.AddressC);
+        BlockHeader header = Build.A.BlockHeader.WithNumber(5).WithStateRoot(stateRoot).TestObject;
+        FlatStateReader reader = CreateReader(new CurrentBundleFlatDbManager(trieReader, snapshot: null, persisted: null));
+        StorageAddressCollector collector = new();
+
+        reader.RunTreeVisitor(collector, header, new VisitingOptions { MaxDegreeOfParallelism = parallelism });
+
+        Assert.That(collector.Addresses, Is.EquivalentTo(new[] { Keccak.Compute(TestItem.AddressA.Bytes), Keccak.Compute(TestItem.AddressC.Bytes) }));
+    }
+
+    [Test]
     public void Record_walk_on_one_thread_does_not_allocate([Values] bool fromPersistence)
     {
         // Sixteen leaves under a branch, held either in the buffer or only by persistence.
@@ -178,15 +228,22 @@ public class FlatStateReaderTests
         using ReadOnlySnapshotBundle bundle = new CurrentBundleFlatDbManager(new PathRlpReader(nodes), stateSnapshot, persisted: null).GatherReadOnlySnapshotBundle(new StateId(_header));
         NodeCounter counter = new();
         NodeRecordBufferVisitor<EmptyContext> walk = new(bundle, stateSnapshot, counter, new VisitingOptions { MaxDegreeOfParallelism = 1 }, diagnostics: null);
-        walk.Accept(rootHash);
+        walk.Accept(rootHash, null);
 
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        walk.Accept(rootHash);
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        // A per-walk allocation shows in every window. A one-off runtime allocation on the test thread, seen in CI
+        // while methods tier up, shows in one window only, so the minimum excludes it.
+        const int windows = 5;
+        long allocated = long.MaxValue;
+        for (int window = 0; window < windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            walk.Accept(rootHash, null);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(counter.Nodes, Is.EqualTo(2 * 17));
+            Assert.That(counter.Nodes, Is.EqualTo((1 + windows) * 17));
             Assert.That(allocated, Is.Zero);
         }
     }
@@ -234,6 +291,7 @@ public class FlatStateReaderTests
         public override Account? GetAccount(Address address) => null;
         public override bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
         public override StateId CurrentState => new(5, Keccak.EmptyTreeHash);
+        public override MigrationCursor? GetMigrationCursor() => null;
         public override byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public override bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;
         public override IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
@@ -246,6 +304,7 @@ public class FlatStateReaderTests
     {
         public int Nodes;
         public bool IsFullDbScan => true;
+        public bool IsRangeScan => true;
         public bool ExpectAccounts => false;
         public bool ShouldVisit(in EmptyContext nodeContext, in ValueHash256 nextNode) => true;
         public void VisitTree(in EmptyContext nodeContext, in ValueHash256 rootHash) { }
@@ -301,6 +360,7 @@ public class FlatStateReaderTests
         public int StorageRlpLoads { get; private set; }
         public bool StateAvailable { get; set; } = true;
         public bool StorageAvailable { get; set; } = true;
+        public MigrationCursor? Cursor { get; set; }
 
         /// <summary>A reader over a state trie of <paramref name="addresses"/>, each with a balance of 1 and slot 1 set to 1.</summary>
         public static CountingTrieReader WithAccountsAndSlot(out Hash256 stateRoot, params Address[] addresses)
@@ -370,8 +430,15 @@ public class FlatStateReaderTests
             return true;
         }
 
+        public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            TryLoadStateRlp(path, flags, action, arg);
+
+        public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct =>
+            TryLoadStorageRlp(new Hash256(address), path, flags, action, arg);
+
         public Account? GetAccount(Address address) => null;
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue) => false;
+        public MigrationCursor? GetMigrationCursor() => Cursor;
         public StateId CurrentState => new(5, Keccak.EmptyTreeHash);
         public byte[]? GetAccountRaw(in ValueHash256 addrHash) => null;
         public bool TryGetStorageRaw(in ValueHash256 addrHash, in ValueHash256 slotHash, ref UInt256 value) => false;

@@ -58,10 +58,12 @@ public class SingleCallWitnessCollector(
         transaction.Nonce = worldState.GetNonce(transaction.SenderAddress!);
 
         // Even on revert, the witness captures all accessed state and the tracer records the revert
-        // payload via MarkAsFailed. WithCancellation aborts a run that outlives the caller's deadline:
+        // payload via MarkAsFailed. The cancellation tracer aborts a run that outlives the caller's deadline:
         // the EVM throws OperationCanceledException, surfaced by JsonRpcService as a Timeout error.
+        // A restore run pays fees only when a tracer sees them. Tracing fees keeps the fee accounts in the
+        // witness, because a stateless re-execution of the call pays the fees.
         CallOutputTracer tracer = new();
-        TransactionResult txResult = transactionProcessor.CallAndRestore(transaction, blockHeader, tracer.WithCancellation(cancellationToken));
+        TransactionResult txResult = transactionProcessor.CallAndRestore(transaction, blockHeader, new CancellationTxTracer(tracer, cancellationToken) { IsTracingFees = true });
 
         return new SingleCallWitnessResult(
             Output: tracer.ReturnValue,

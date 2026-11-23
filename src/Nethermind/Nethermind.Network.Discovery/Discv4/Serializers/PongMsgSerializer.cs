@@ -5,6 +5,7 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
@@ -21,7 +22,7 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         (_, int contentLength, int farAddressLength) = GetDataLength(msg);
 
         RlpWriter writer = StartPacket(destination, (byte)msg.MsgType);
-        writer.StartSequence(contentLength);
+        RlpSequence sequence = writer.StartSequence(contentLength);
         Encode(ref writer, msg.FarAddress, farAddressLength);
         ValueHash256? pingMdc = msg.PingMdc;
         writer.Encode(in pingMdc);
@@ -31,6 +32,7 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
             writer.Encode(msg.EnrSequence.Value);
         }
 
+        writer.EndSequence(sequence);
         return CompletePacket(destination, in writer, out _);
     }
 
@@ -38,15 +40,14 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
     {
         (PublicKey farPublicKey, _) = PrepareForDeserialization(msgBytes, out ReadOnlySpan<byte> data);
 
-        RlpReader ctx = new(data);
+        RlpReader ctx = new RlpReader(data).EnterSequence(out _);
 
-        int messageEnd = ctx.ReadSequenceLength() + ctx.Position;
-        int addressEnd = ctx.ReadSequenceLength() + ctx.Position;
+        RlpReader address = ctx.EnterSequence(out int addressLength);
 
-        ctx.DecodeByteArraySpan(IpAddressRlpLimit);
-        ctx.DecodeInt(); // UDP port (we ignore and take it from Netty)
-        ctx.DecodeInt(); // TCP port
-        ctx.Check(addressEnd);
+        address.DecodeByteArraySpan(IpAddressRlpLimit);
+        address.DecodeInt(); // UDP port (we ignore and take it from Netty)
+        address.DecodeInt(); // TCP port
+        ctx.ExitSequence(address, addressLength);
         ReadOnlySpan<byte> token = ctx.DecodeByteArraySpan(RlpLimit.L32);
         if (token.Length != Hash256.Size)
         {
@@ -56,17 +57,16 @@ public sealed class PongMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivate
         long expirationTime = ctx.DecodeLong();
 
         ulong? enrSequence = null;
-        if (ctx.Position < messageEnd && IsNextEnrSequence(ctx))
+        if (ctx.HasNext && IsNextEnrSequence(ctx))
         {
             enrSequence = ctx.DecodeULong();
         }
 
-        while (ctx.Position < messageEnd)
+        while (ctx.HasNext)
         {
             ctx.SkipItem();
         }
 
-        ctx.Check(messageEnd);
         PongMsg msg = new(farPublicKey, expirationTime, new ValueHash256(token), enrSequence);
         return msg;
     }

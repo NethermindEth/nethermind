@@ -23,7 +23,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
-    private readonly bool _isTracingAccess = isTracingAccess;
+    private bool _isTracingAccess = isTracingAccess;
     private TrackingState _trackingState = TrackingState.RentState();
 
     // Word-sized: every call frame stores all four, and zkVMs charge a 32-bit store several times a 64-bit one.
@@ -97,7 +97,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     /// <summary>Records an EIP-8360 <c>TCREATE</c> account and the balance it had at the start of the transaction.</summary>
     public readonly void WasTransientlyCreated(Address address, in UInt256 originalBalance) =>
-        (_trackingState.TransientCreates ??= new(AddressAsKey.EqualityComparer))[address] = originalBalance;
+        (_trackingState.TransientCreates ??= [with(AddressAsKey.EqualityComparer)])[address] = originalBalance;
 
     /// <summary>Returns whether <paramref name="address"/> is a live EIP-8360 <c>TCREATE</c> account.</summary>
     /// <remarks>
@@ -114,6 +114,18 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
         originalBalance = default;
         return false;
+    }
+
+    /// <summary>Makes this tracker share the tracked state of <paramref name="parent"/>; take a snapshot before use.</summary>
+    /// <remarks>
+    /// Copies no snapshot positions, as the caller overwrites them. Where cached frames keep their references
+    /// (<see cref="ExecutionEnvironment.KeepsCachedReferences"/>), it stores the state reference only when it changed:
+    /// a frame reused within a transaction already holds it, and the store takes a GC write barrier.
+    /// </remarks>
+    internal void ShareStateWith(in StackAccessTracker parent)
+    {
+        if (!ExecutionEnvironment.KeepsCachedReferences || !ReferenceEquals(_trackingState, parent._trackingState)) _trackingState = parent._trackingState;
+        _isTracingAccess = parent._isTracingAccess;
     }
 
     public void TakeSnapshot()
@@ -164,7 +176,7 @@ public partial struct StackAccessTracker(bool isTracingAccess) : IDisposable
         public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
-        public HashSet<AddressAsKey> CreateList { get; } = new(AddressAsKey.EqualityComparer);
+        public HashSet<AddressAsKey> CreateList { get; } = [with(AddressAsKey.EqualityComparer)];
         public Dictionary<AddressAsKey, UInt256>? TransientCreates;
         public bool PrecompilesCleared;
 

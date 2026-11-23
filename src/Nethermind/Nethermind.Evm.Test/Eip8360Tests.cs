@@ -29,7 +29,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -471,6 +470,47 @@ public class Eip8360Tests : VirtualMachineTestsBase
             Assert.That(TestState.GetBalance(Sink), Is.EqualTo((UInt256)(fromTransientCreate ? 6 : 1)));
             AssertFinalized(tcreated, (UInt256)(fromTransientCreate ? 0 : 4));
         }
+    }
+
+    [TestCase(true, CallGas, """["step:14000:","post:14000"]""", TestName = "SELFDESTRUCT step cost counts a TCREATE beneficiary's ACCOUNT_WRITE")]
+    [TestCase(true, 10_000L, """["step:14000:out of gas","post:14000"]""", TestName = "SELFDESTRUCT runs out of gas from the step on a TCREATE beneficiary's ACCOUNT_WRITE")]
+    [TestCase(false, 0L, """["step:14000:","post:14000"]""", TestName = "SELFDESTRUCT step cost counts a TCREATE sender's ACCOUNT_WRITE")]
+    public void Self_destruct_step_cost_counts_account_write(bool toTransientCreate, long libraryGas, string expected)
+    {
+        byte[] init = toTransientCreate ? EmptyInit : Prepare.EvmCode.SELFDESTRUCT(Factory).Done;
+        Address tcreated = TCreateAddress(Factory, init);
+        // Funded before the transaction, so its balance starts at its original balance and changing it charges no state gas.
+        TestState.CreateAccount(tcreated, 1);
+        TestState.Commit(Spec);
+        Prepare factory = Prepare.EvmCode.TCreate(init, Salt, 0).Op(Instruction.POP);
+        if (toTransientCreate)
+        {
+            // A pre-existing library, so EIP-6780 only moves its balance to the warm TCREATE account.
+            InstallCode(Library, Prepare.EvmCode.SELFDESTRUCT(tcreated).Done, 4);
+            factory.Call(Library, libraryGas).Op(Instruction.POP);
+        }
+
+        InstallCode(Factory, factory.STOP().Done, 100);
+        (Block block, Transaction tx) = BuildFactoryCall();
+        const string script = """
+            {
+                events: [],
+                step: function(log) { if (log.op.toNumber() === 0xff) this.events.push('step:' + log.getCost() + ':' + (log.getError() || '')); },
+                postStep: function(log) { if (log.op.toNumber() === 0xff) this.events.push('post:' + log.getCost()); },
+                fault: function(log) { if (log.op.toNumber() === 0xff) this.events.push('fault:' + log.getError()); },
+                result: function() { return this.events; }
+            }
+            """;
+        using GethLikeBlockJavaScriptTracer tracer = new(TestState, EnabledSpec, GethTraceOptions.Default with { Tracer = script });
+        tracer.StartNewBlockTrace(block);
+        ITxTracer txTracer = ((IBlockTracer)tracer).StartNewTxTrace(tx);
+
+        ExecuteFactoryCall(block, tx, txTracer);
+        tracer.EndTxTrace();
+        tracer.EndBlockTrace();
+        using GethLikeTxTrace trace = tracer.BuildResult().Single();
+
+        Assert.That(JsonSerializer.Serialize(trace.CustomTracerResult, EthereumJsonSerializer.JsonOptions), Is.EqualTo(expected));
     }
 
     [TestCase(true, TestName = "PAY draining a TCREATE account refills state gas")]

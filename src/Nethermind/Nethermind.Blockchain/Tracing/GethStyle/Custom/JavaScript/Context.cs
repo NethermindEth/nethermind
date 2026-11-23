@@ -17,11 +17,13 @@ public class Context
     private ITypedArray<byte>? _inputConverted;
     private ITypedArray<byte>? _fromConverted;
     private ITypedArray<byte>? _toConverted;
+    private ITypedArray<byte>? _coinbaseConverted;
     private ITypedArray<byte>? _outputConverted;
     private dynamic? _valueConverted;
     private dynamic? _gasPriceConverted;
     private Address? _from;
     private Address? _to;
+    private Address? _coinbase;
     private ReadOnlyMemory<byte> _input;
     private byte[]? _output;
     private Hash256? _blockHash;
@@ -46,6 +48,16 @@ public class Context
         {
             _to = value;
             _toConverted = null;
+        }
+    }
+
+    public Address? Coinbase
+    {
+        get => _coinbase;
+        set
+        {
+            _coinbase = value;
+            _coinbaseConverted = null;
         }
     }
 
@@ -110,17 +122,18 @@ public class Context
     }
 
     public string type { get; set; } = null!;
-    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToArray().ToTypedScriptArray();
-    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToArray().ToTypedScriptArray();
-    public ITypedArray<byte>? input => _inputConverted ??= Input.ToArray().ToTypedScriptArray();
+    public ITypedArray<byte>? from => _fromConverted ??= From?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? to => _toConverted ??= To?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? coinbase => _coinbaseConverted ??= Coinbase?.Bytes.ToTypedScriptArray();
+    public ITypedArray<byte>? input => _inputConverted ??= Input.ToTypedScriptArray();
     public ulong gas { get; set; }
     public ulong gasUsed { get; set; }
     public IJavaScriptObject gasPrice => _gasPriceConverted ??= GasPrice.ToBigInteger();
     public IJavaScriptObject value => _valueConverted ??= Value.ToBigInteger();
     public ulong block { get; set; }
     public ITypedArray<byte>? output => _outputConverted ??= Output?.ToTypedScriptArray();
-    public ITypedArray<byte>? blockHash => _blockHashConverted ??= BlockHash?.BytesToArray().ToTypedScriptArray();
+    public ITypedArray<byte>? blockHash => _blockHashConverted ??= BlockHash?.Bytes.ToTypedScriptArray();
     public int? txIndex { get; set; }
-    public ITypedArray<byte>? txHash => _txHashConverted ??= TxHash?.BytesToArray().ToTypedScriptArray();
+    public ITypedArray<byte>? txHash => _txHashConverted ??= TxHash?.Bytes.ToTypedScriptArray();
     public dynamic? error { get; set; } = Undefined.Value;
 }

@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -159,8 +160,11 @@ namespace Nethermind.Consensus.Ethash
             return (BigInteger)resultAsInteger <= target;
         }
 
-        public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
+        public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null) => Mine(header, startNonce, default);
+
+        public (Hash256 MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce, CancellationToken cancellationToken)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             uint epoch = GetEpoch(header.Number);
             IEthashDataSet dataSet = _hintBasedCache.Get(epoch);
             if (dataSet is null)
@@ -177,6 +181,7 @@ namespace Nethermind.Consensus.Ethash
             byte[] mixHash;
             while (true)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 (mixHash, ValueHash256 result, _) = Hashimoto(fullSize, dataSet, headerHashed, null, nonce);
                 if (IsLessOrEqualThanTarget(result.Bytes, header.Difficulty))
                 {
@@ -238,16 +243,14 @@ namespace Nethermind.Consensus.Ethash
             return IsLessOrEqualThanTarget(result.Bytes, header.Difficulty);
         }
 
-        private readonly Stopwatch _cacheStopwatch = new();
-
         private IEthashDataSet BuildCache(uint epoch)
         {
             uint cacheSize = GetCacheSize(epoch);
             Hash256 seed = GetSeedHash(epoch);
             if (_logger.IsDebug) _logger.Debug($"Building ethash cache for epoch {epoch}");
-            _cacheStopwatch.Restart();
+            long started = Stopwatch.GetTimestamp();
             IEthashDataSet dataSet = new EthashCache(cacheSize, seed.Bytes);
-            _cacheStopwatch.Stop();
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
             if (_logger.IsDebug)
             {
                 string seedText = seed.Bytes.ToHexString(withZeroX: true);
@@ -255,19 +258,15 @@ namespace Nethermind.Consensus.Ethash
                 {
                     seedText = $"{seedText[..8]}...{seedText[^6..]}";
                 }
-                _logger.Debug($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+                _logger.Debug($"Cache for epoch {epoch} with size {cacheSize} and seed {seedText} built in {(long)elapsed.TotalMilliseconds}ms");
             }
             return dataSet;
         }
 
         private static readonly HeaderDecoder _headerDecoder = new();
 
-        private static Hash256 GetTruncatedHash(BlockHeader header)
-        {
-            Rlp encoded = _headerDecoder.Encode(header, RlpBehaviors.ForSealing);
-            Hash256 headerHashed = Keccak.Compute(encoded.Bytes); // sic! Keccak here not Keccak512
-            return headerHashed;
-        }
+        // sic! Keccak here not Keccak512
+        private static Hash256 GetTruncatedHash(BlockHeader header) => _headerDecoder.ComputeHash(header, RlpBehaviors.ForSealing);
 
         public static (byte[], ValueHash256, bool) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Hash256 headerHash, Hash256 expectedMixHash, ulong nonce)
         {

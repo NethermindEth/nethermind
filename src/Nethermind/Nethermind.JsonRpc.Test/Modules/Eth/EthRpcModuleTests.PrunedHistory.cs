@@ -2,14 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Serialization.Rlp;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -203,6 +208,172 @@ public partial class EthRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Eth_get_transaction_receipt_of_a_block_pruned_below_the_served_floor_returns_4444([Values] bool hashValuedIndex)
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        Block block = await PruneBlockBelowTheServedFloor(test);
+        Hash256 txHash = block.Transactions[1].Hash!;
+        // With CompactTxIndex=false the entry is the block hash rather than its number.
+        if (hashValuedIndex) TransactionIndex(test).Set(txHash, block.Hash!.BytesToArray());
+
+        string belowTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+        test.BlockTree.UpdateLowestServedBlock(block.Number);
+        string atTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(belowTheFloor, Is.EqualTo(PrunedTransactionReceipt));
+            Assert.That(atTheFloor, Is.EqualTo(NullResult), "a block missing at the served floor is not pruned history");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_receipt_without_a_canonical_header_below_the_served_floor_returns_null()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        Block block = await PruneBlockBelowTheServedFloor(test);
+        Block sideChain = Build.A.Block.WithParent(test.BlockTree.FindBlock(block.ParentHash!)!)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject).WithExtraData([1]).TestObject;
+        test.BlockTree.SuggestBlock(sideChain, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        test.Container.Resolve<IBlockStore>().Delete(sideChain.Number, sideChain.Hash!);
+        Hash256 sideChainTx = sideChain.Transactions[0].Hash!;
+        // Hash-valued entries, as CompactTxIndex=false writes them: one still names a reorganised-out block, one a hash
+        // without a header.
+        TransactionIndex(test).Set(sideChainTx, sideChain.Hash!.BytesToArray());
+        TransactionIndex(test).Set(TestItem.KeccakB, TestItem.KeccakC.BytesToArray());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.BlockTree.IsMainChain(sideChain.Header), Is.False, "precondition: a side-chain block below the served floor");
+            Assert.That(test.BlockTree.FindHeader(TestItem.KeccakC), Is.Null, "precondition: the second entry names no header");
+        }
+
+        string sideChainReceipt = await test.TestEthRpc("eth_getTransactionReceipt", sideChainTx);
+        string headerlessReceipt = await test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakB);
+        string unknownReceipt = await test.TestEthRpc("eth_getTransactionReceipt", TestItem.KeccakA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sideChainReceipt, Is.EqualTo(NullResult), "an entry naming a side-chain block");
+            Assert.That(headerlessReceipt, Is.EqualTo(NullResult), "an entry naming a hash without a header");
+            Assert.That(unknownReceipt, Is.EqualTo(NullResult), "a hash without an entry");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_receipt_of_a_block_kept_below_the_served_floor_is_unchanged()
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        ulong number = await AddBlockWithTwoTransactionsFromB(test);
+        Hash256 txHash = test.BlockTree.FindBlock(number)!.Transactions[1].Hash!;
+        string served = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+        test.BlockTree.UpdateLowestServedBlock(number + 1);
+
+        string keptBelowTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)JObject.Parse(served).SelectToken("result.transactionHash"), Is.EqualTo(txHash.ToString()), "precondition: the receipt is served");
+            Assert.That(keptBelowTheFloor, Is.EqualTo(served), "a receipt kept below the served floor");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_receipt_missing_for_a_kept_body_returns_4444_only_if_the_body_holds_the_transaction([Values] bool inTheBody)
+    {
+        using Context ctx = await Context.Create();
+        TestRpcBlockchain test = ctx.Test;
+        ulong number = await AddBlockWithTwoTransactionsFromB(test);
+        Block block = test.BlockTree.FindBlock(number)!;
+        Hash256 txHash = inTheBody ? block.Transactions[1].Hash! : TestItem.KeccakD;
+        // History pruning deletes the receipts before the body and leaves the index entries. A compact entry of a
+        // transaction reorganised out of this height resolves to the block now canonical there.
+        test.ReceiptStorage.RemoveReceipts(number, block.Hash!);
+        if (!inTheBody) TransactionIndex(test).Set(txHash, Rlp.Encode(number));
+        test.BlockTree.UpdateLowestServedBlock(number + 1);
+        EvictBlocks(test);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.BlockTree.FindBlock(block.Hash!), Is.Not.Null, "precondition: the body is kept");
+            Assert.That(test.ReceiptStorage.HasBlock(number, block.Hash!), Is.False, "precondition: the receipts are gone");
+            Assert.That(test.ReceiptFinder.FindBlockHash(txHash), Is.EqualTo(block.Hash), "precondition: the index names the block");
+            Assert.That(test.BlockTree.Head!.Number, Is.GreaterThan(number), "precondition: the head is above the block");
+        }
+
+        string belowTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+        test.BlockTree.UpdateLowestServedBlock(number);
+        string atTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+        string blockReceiptsAtTheFloor = await test.TestEthRpc("eth_getBlockReceipts", $"0x{number:x}");
+        test.BlockTree.UpdateLowestServedBlock(0);
+        string aboveTheFloor = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+
+        string expected = inTheBody ? PrunedTransactionReceipt : NullResult;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(belowTheFloor, Is.EqualTo(expected), "below the served floor");
+            Assert.That(atTheFloor, Is.EqualTo(expected), "at the served floor");
+            Assert.That(aboveTheFloor, Is.EqualTo(expected), "above the served floor");
+            // The same answer as for the block: its receipts are pruned history, whether or not it holds the transaction.
+            Assert.That(blockReceiptsAtTheFloor, Is.EqualTo(PrunedTransactionReceipt), "eth_getBlockReceipts for the block");
+        }
+    }
+
+    [Test]
+    public async Task Eth_get_transaction_receipt_of_a_transaction_indexed_during_the_lookup_returns_null()
+    {
+        LateIndexReceiptFinder? receiptFinder = null;
+        using Context ctx = await Context.Create(configurer: builder =>
+            builder.AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, c =>
+                receiptFinder = new LateIndexReceiptFinder(c.Resolve<IReceiptFinder>())));
+        TestRpcBlockchain test = ctx.Test;
+        ulong number = await AddBlockWithTwoTransactionsFromB(test);
+        Hash256 txHash = test.BlockTree.FindBlock(number)!.Transactions[1].Hash!;
+        string served = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+        // The head moves before the index entry of a new block is published, so the first lookup can miss the entry
+        // of a transaction whose block is already settled and whose receipts are stored.
+        receiptFinder!.MissNextLookupOf = txHash;
+
+        string missedOnce = await test.TestEthRpc("eth_getTransactionReceipt", txHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)JObject.Parse(served).SelectToken("result.transactionHash"), Is.EqualTo(txHash.ToString()), "precondition: the receipt is served");
+            Assert.That(receiptFinder.MissNextLookupOf, Is.Null, "precondition: one lookup missed the entry");
+            Assert.That(test.BlockTree.LowestServedBlock, Is.LessThan(number), "precondition: the block is above the served floor");
+            Assert.That(missedOnce, Is.EqualTo(NullResult), "a transaction mined during the lookup is not pruned history");
+        }
+    }
+
+    /// <summary>Misses the next index lookup of one hash, as a lookup made before the index entry of a new block is
+    /// published does; every other read goes to <paramref name="inner"/>.</summary>
+    private sealed class LateIndexReceiptFinder(IReceiptFinder inner) : IReceiptFinder
+    {
+        public Hash256? MissNextLookupOf { get; set; }
+
+        public Hash256? FindBlockHash(Hash256 txHash)
+        {
+            if (!txHash.Equals(MissNextLookupOf)) return inner.FindBlockHash(txHash);
+
+            MissNextLookupOf = null;
+            return null;
+        }
+
+        public TxReceipt[] Get(Block block, bool recover = true, bool recoverSender = true) => inner.Get(block, recover, recoverSender);
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true) => inner.Get(blockHash, recover);
+        public bool CanGetReceiptsByHash(ulong blockNumber) => inner.CanGetReceiptsByHash(blockNumber);
+        public bool TryGetReceiptsIterator(ulong blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => inner.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+
+        public bool TryGetReceipt(ReceiptRecoveryBlock block, Hash256 txHash, [NotNullWhen(true)] out TxReceipt? receipt, out int txIndex, out int logIndexStart) =>
+            inner.TryGetReceipt(block, txHash, out receipt, out txIndex, out logIndexStart);
+    }
+
+    private const string PrunedTransactionReceipt = """{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable"},"id":67}""";
+
+    private static IDb TransactionIndex(TestRpcBlockchain test) => test.DbProvider.ReceiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
+
     private static string PrunedHistory(object selector) =>
         $$"""{"jsonrpc":"2.0","error":{"code":4444,"message":"Pruned history unavailable for block {{selector}}"},"id":67}""";
 
@@ -223,6 +394,23 @@ public partial class EthRpcModuleTests
             Assert.That(test.BlockTree.FindHeader(block.Hash!), Is.Not.Null, "precondition: the header is kept");
             Assert.That(test.BlockTree.FindBlock(block.Hash!), Is.Null, "precondition: the body is gone");
             Assert.That(test.BlockTree.FindBlock(number), Is.Null, "precondition: the body is gone by number");
+        }
+
+        return block;
+    }
+
+    /// <summary><see cref="DeleteBodyBelowTheServedFloor"/>, then deletes the block's receipts too, as history pruning does,
+    /// which leaves the transaction index to a later sweep.</summary>
+    private static async Task<Block> PruneBlockBelowTheServedFloor(TestRpcBlockchain test)
+    {
+        Block block = await DeleteBodyBelowTheServedFloor(test);
+        test.ReceiptStorage.RemoveReceipts(block.Number, block.Hash!);
+        EvictBlocks(test);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.ReceiptStorage.HasBlock(block.Number, block.Hash!), Is.False, "precondition: the receipts are gone");
+            Assert.That(test.ReceiptFinder.FindBlockHash(block.Transactions[1].Hash!), Is.EqualTo(block.Hash), "precondition: the index entry is kept");
         }
 
         return block;

@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Evm;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
@@ -432,8 +433,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             catch (Exception e)
             {
-                Interlocked.Decrement(ref _queueCount);
-                OnBlockRemoved(new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
+                DecrementQueue(blockHash, ProcessingResult.QueueException, e);
                 if (e is not InvalidOperationException || !_recoveryComplete)
                 {
                     throw;
@@ -655,6 +655,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             }
             finally
             {
+                if (ExecutionMetricsFlag.IsActive) PerTxTimingCollector.DiscardPending();
                 IsBlockProcessingThread = previousMainThread;
                 IsProcessingBlock = false;
                 GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
@@ -822,8 +823,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         _stats.CaptureStartStats();
 
-        using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
-        _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
+        using ProcessingBranch processingBranch = PrepareBranchToProcess(suggestedBlock, options, token);
 
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
@@ -934,6 +934,54 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         return processedBlocks;
     }
 
+    private ProcessingBranch PrepareBranchToProcess(Block suggestedBlock, ProcessingOptions options, CancellationToken token)
+    {
+        ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
+        try
+        {
+            _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
+        }
+        catch (Exception exception)
+        {
+            processingBranch.Dispose();
+            if (exception is InvalidBlockException) TryDeleteRefusedBranch(suggestedBlock);
+            throw;
+        }
+
+        return processingBranch;
+    }
+
+    private void TryDeleteRefusedBranch(Block suggestedBlock)
+    {
+        try
+        {
+            DeleteRefusedBranch(suggestedBlock);
+        }
+        catch (Exception exception)
+        {
+            if (_logger.IsError) _logger.Error($"Failed to delete the refused branch of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}", exception);
+        }
+    }
+
+    private void DeleteRefusedBranch(Block suggestedBlock)
+    {
+        if (suggestedBlock.IsPoS() || _blockTree.IsMainChain(suggestedBlock.Header)) return;
+
+        BlockHeader branchRoot = suggestedBlock.Header;
+        BlockHeader? forkPoint = _blockTree.FindParentHeader(branchRoot, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        while (forkPoint is not null && !_blockTree.IsMainChain(forkPoint) && _blockTree.HasBlock(forkPoint.Number, forkPoint.Hash!))
+        {
+            branchRoot = forkPoint;
+            forkPoint = _blockTree.FindParentHeader(branchRoot, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        }
+
+        if (forkPoint is null || forkPoint.Number < (_blockTree.Head?.Number ?? 0))
+        {
+            if (_logger.IsDebug) _logger.Debug($"Deleting refused branch from {branchRoot.ToString(BlockHeader.Format.FullHashAndNumber)} to {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+            _blockTree.DeleteBranchWithoutBadBlockReport(branchRoot);
+        }
+    }
+
     private ProcessingBranch PrepareProcessingBranch(Block suggestedBlock, ProcessingOptions options)
     {
         if (!options.ContainsFlag(ProcessingOptions.IgnoreParentNotOnMainChain))
@@ -943,7 +991,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         // Engine API newPayload processes the block directly on its parent without collecting a branch.
         BlockHeader? parent = suggestedBlock.IsGenesis ? null : _blockTree.FindParentHeader(suggestedBlock.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-        ArrayPoolList<Block> blocks = new(1);
+        ArrayPoolList<Block> blocks = [with(1)];
         if (!options.ContainsFlag(ProcessingOptions.ForceProcessing)) blocks.Add(suggestedBlock);
         return new ProcessingBranch(parent, blocks);
     }

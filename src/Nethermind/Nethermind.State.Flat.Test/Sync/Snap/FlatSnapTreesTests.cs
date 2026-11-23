@@ -19,7 +19,7 @@ namespace Nethermind.State.Flat.Test.Sync.Snap;
 [TestFixture]
 public class FlatSnapTreesTests
 {
-    private static IPersistence.IPersistenceReader Reader() => Substitute.For<IPersistence.IPersistenceReader>();
+    private static SubstitutablePersistenceReader Reader() => Substitute.For<SubstitutablePersistenceReader>();
     private static IPersistence.IWriteBatch WriteBatch() => Substitute.For<IPersistence.IWriteBatch>();
 
     private static FlatSnapStateTree NewStateTree(IPersistence.IPersistenceReader reader, IPersistence.IWriteBatch? writer = null, bool enableDoubleWriteCheck = false) =>
@@ -41,7 +41,7 @@ public class FlatSnapTreesTests
     [TestCaseSource(nameof(StateIsPersistedCases))]
     public void StateTree_IsPersisted(byte[]? storedRlp, ValueHash256? expectedHash, bool expected)
     {
-        IPersistence.IPersistenceReader reader = Reader();
+        SubstitutablePersistenceReader reader = Reader();
         reader.TryLoadStateRlp(Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(storedRlp);
 
         using FlatSnapStateTree tree = NewStateTree(reader);
@@ -52,7 +52,7 @@ public class FlatSnapTreesTests
     [Test]
     public void StorageTree_IsPersisted_DelegatesToStorageRlpLookup()
     {
-        IPersistence.IPersistenceReader reader = Reader();
+        SubstitutablePersistenceReader reader = Reader();
         byte[] rlp = [0xc1, 0x99];
         Hash256 addressHash = Keccak.Compute(Bytes.FromHexString("aa"));
         reader.TryLoadStorageRlp(addressHash, Arg.Any<TreePath>(), Arg.Any<ReadFlags>()).Returns(rlp);
@@ -94,12 +94,12 @@ public class FlatSnapTreesTests
         FakeWriteBatch writer = new();
         using FlatSnapStateTree tree = NewStateTree(reader, writer);
 
-        Account account = new(1, 100);
+        AccountStruct account = new(1, 100);
         ValueHash256 lowPath = PathHash("11");
         ValueHash256 highPath = PathHash("99");
 
         tree.BulkSetAndUpdateRootHash([new PathWithAccount(lowPath, account), new PathWithAccount(highPath, account)]);
-        tree.Commit(PathHash("55"));
+        tree.Commit(ValueKeccak.Zero, PathHash("55"));
 
         Assert.That(writer.SetAccountRawCalls, Has.One.EqualTo((lowPath, account)));
     }
@@ -111,9 +111,9 @@ public class FlatSnapTreesTests
         reader.GetAccountRaw(Arg.Any<ValueHash256>()).Returns([0x01]);
         using FlatSnapStateTree tree = NewStateTree(reader, enableDoubleWriteCheck: true);
 
-        tree.BulkSetAndUpdateRootHash([new PathWithAccount(PathHash("11"), new Account(1, 100))]);
+        tree.BulkSetAndUpdateRootHash([new PathWithAccount(PathHash("11"), new AccountStruct(1, 100))]);
 
-        Assert.That(() => tree.Commit(new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
+        Assert.That(() => tree.Commit(ValueKeccak.Zero, new ValueHash256(Bytes.FromHexString("ff" + new string('f', 62)))),
             Throws.Exception.With.Message.Contain("Double account flat write"));
     }
 }

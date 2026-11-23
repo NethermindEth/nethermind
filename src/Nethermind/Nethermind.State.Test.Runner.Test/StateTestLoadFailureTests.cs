@@ -142,7 +142,7 @@ public class StateTestLoadFailureTests
             Signature = signature
         };
 
-        return Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        return Rlp.Encode(transaction, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
     }
 
     private GeneralStateTest LoadTest(string txBytes)

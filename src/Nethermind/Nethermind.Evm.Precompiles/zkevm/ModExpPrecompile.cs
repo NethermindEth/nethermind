@@ -13,6 +13,8 @@ public partial class ModExpPrecompile
 {
     public static Address Address => field ??= Address.FromNumber(5);
 
+    private const uint ZiskModExpMaxOperandLength = 1056;
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         if (!TryPrepareInput(
@@ -40,7 +42,23 @@ public partial class ModExpPrecompile
 
         ReadOnlySpan<byte> @base = inputSpan.SliceWithZeroPaddingEmptyOnError(96U, baseLength);
         ReadOnlySpan<byte> exp = inputSpan.SliceWithZeroPaddingEmptyOnError(expStart, expLength);
-        Accelerators.ModExp(@base, exp, modulus, result);
+
+        // An empty base or exponent gives 0 or 1 (EIP-198: 0^0 = 1), where ZisK's routine runs the whole ladder. Only
+        // the lengths are tested: a scan for zero bytes costs more than it saves on the common inputs.
+        if (baseLength == 0 || expLength == 0)
+        {
+            if (exp.IsZero() && (modulus[^1] != 1 || !modulus[..^1].IsZero()))
+                result[^1] = 1;
+
+            return result;
+        }
+
+        // ZisK's routine takes operands of up to 1056 bytes (ziskasm/zisklib/zkvm/modexp.zisk), which covers
+        // every input EIP-7823 allows; the standard accelerator keeps the longer pre-Osaka ones.
+        if (ZiskFlag.IsActive && baseLength <= ZiskModExpMaxOperandLength && expLength <= ZiskModExpMaxOperandLength && modulusLength <= ZiskModExpMaxOperandLength)
+            Accelerators.ZiskModExp(@base, exp, modulus, result);
+        else
+            Accelerators.ModExp(@base, exp, modulus, result);
 
         return result;
     }

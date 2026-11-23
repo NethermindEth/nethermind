@@ -46,6 +46,7 @@ jobs:
             "Dockerfile.chiseled"
             "Dockerfile.pgo"
             "scripts/build/Dockerfile"
+            "tools/Bootnode/Dockerfile"
           )
 
           for file in "${dockerfiles[@]}"; do
@@ -58,7 +59,9 @@ jobs:
             sed -i "s|${runtime_pattern}|\1${runtime_tag}@${runtime_digest}|" "$file"
           done
 
-          sed -i "s|${runtime_pattern}|\1${runtime_chiseled_tag}@${runtime_chiseled_digest}|" Dockerfile.chiseled
+          for file in "Dockerfile.chiseled" "tools/Bootnode/Dockerfile"; do
+            sed -i "s|${runtime_pattern}|\1${runtime_chiseled_tag}@${runtime_chiseled_digest}|" "$file"
+          done
 
           # Get the number of modified files
           file_count=$(git status --porcelain | wc -l)

@@ -32,7 +32,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         _writeBatch = writeBatch;
         _enableDoubleWriteCheck = enableDoubleWriteCheck;
         _addressHash = addressHash;
-        _adapter = new SnapUpperBoundAdapter(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash, enableDoubleWriteCheck));
+        _adapter = new SnapUpperBoundAdapter(new PersistenceStorageTrieStoreAdapter(reader, writeBatch, addressHash, enableDoubleWriteCheck), boundWholePath: true);
         _tree = new StorageTree(_adapter, logManager);
     }
 
@@ -42,8 +42,9 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp = _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None);
-        return rlp is not null && ValueKeccak.Compute(rlp) == keccak;
+        ValueHash256 computedHash = default;
+        return _reader.TryLoadStorageRlp(_addressHash, path, ReadFlags.None, static (rlp, result) => result[0] = ValueKeccak.Compute(rlp), new Span<ValueHash256>(ref computedHash))
+            && computedHash == keccak;
     }
 
     public void BulkSetAndUpdateRootHash(IReadOnlyList<PathWithStorageSlot> entries)
@@ -52,8 +53,9 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         ISnapTree<PathWithStorageSlot>.DoBulkSetAndUpdateRootHash(_tree, entries);
     }
 
-    public void Commit(ValueHash256 upperBound)
+    public void Commit(ValueHash256 lowerBound, ValueHash256 upperBound)
     {
+        _adapter.LowerBound = lowerBound;
         _adapter.UpperBound = upperBound;
 
         if (_pendingEntries is not null)

@@ -109,7 +109,7 @@ For more info, see [Building Docker image](https://docs.nethermind.io/developers
 
 **Prerequisites**
 
-Install [.NET SDK](https://get.dot.net) 10 or later.
+Install [.NET SDK](https://get.dot.net) 11 or later.
 
 **Clone the repository**
 
@@ -148,14 +148,6 @@ Nethermind's plugin system lets teams extend the client without touching the cor
 - Additional JSON-RPC namespaces
 
 See the [plugin development guide](https://docs.nethermind.io/developers/plugins) for a full lifecycle walkthrough, configuration auto-mapping, and working examples. Join the [plugin development channel](https://discord.gg/K8MdZT3keK) on Discord.
-
-### RPC execution admission
-
-CPU-heavy RPC methods can opt into bounded execution by setting `IsExecutionHeavy = true` on their `JsonRpcMethod` attribute. The built-in `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction` methods are marked this way. The gate is off by default: while `JsonRpc.MaxConcurrentExecutionRequests` is unset, these methods are admitted without waiting and only the existing module and shared limits bound them. Once it is set, calls over the limit wait asynchronously before parameter decoding or module rental, and a streamed result keeps its execution permit until the response is disposed.
-
-A positive `JsonRpc.MaxConcurrentExecutionRequests` is the requested number of concurrent executions. The effective limit is the smallest of that value, `JsonRpc.EthModuleConcurrentInstances` (the logical processor count when unset) and half of a positive `JsonRpc.MaxConcurrentSharedRequests`, and is never below one. Halving the shared limit leaves shared admission capacity for lightweight methods. A zero or negative value turns the gate on without a requested cap, so only the module and shared bounds apply.
-
-Waiting calls use the existing `JsonRpc.RequestQueueLimit` and `JsonRpc.Timeout`; raising execution concurrency may also require raising the module/shared limits. Qualify throughput and chain following together rather than raising these limits solely to admit more work.
 
 ### Gas policy at exceptional exits
 

@@ -83,8 +83,6 @@ namespace Nethermind.Db
             }
         }
 
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]?>(k, _cache.TryGetValue(k, out byte[]? value) ? value : null)).ToArray();
-
         public void Remove(ReadOnlySpan<byte> key)
         {
             if (_cacheSpan.TryRemove(key, out _))
@@ -214,53 +212,31 @@ namespace Nethermind.Db
             int read = RandomAccess.Read(fileHandle, rentedBuffer, 0);
 
             long offset = 0L;
+            int lineNumber = 0;
             Span<byte> bytes = default;
             while (read > 0)
             {
                 offset += read;
                 bytes = rentedBuffer.AsSpan(0, read + bytes.Length);
-                while (true)
+                int lineEndIndex;
+                // Take a whole line first, so a malformed line cannot reach into the next one
+                while ((lineEndIndex = bytes.IndexOf((byte)'\n')) >= 0)
                 {
-                    // Store the original span in case we need to undo the key slicing when the end of line is not found
-                    Span<byte> iterationSpan = bytes;
-                    int commaIndex = bytes.IndexOf((byte)',');
-                    Span<byte> key = default;
-                    if (commaIndex >= 0)
-                    {
-                        key = bytes[..commaIndex];
-                        bytes = bytes[(commaIndex + 1)..];
-                    }
-                    int lineEndIndex = bytes.IndexOf((byte)'\n');
-                    if (lineEndIndex < 0)
-                    {
-                        // Restore the iteration start span
-                        bytes = iterationSpan;
-                        break;
-                    }
-
-                    Span<byte> value;
-                    if (bytes[lineEndIndex - 1] == (byte)'\r')
-                    {
-                        // Windows \r\n
-                        value = bytes[..(lineEndIndex - 1)];
-                    }
-                    else
-                    {
-                        // Linux \n
-                        value = bytes[..lineEndIndex];
-                    }
-
-                    if (commaIndex < 0)
-                    {
-                        // End of line but no comma
-                        RecordError(value);
-                    }
-                    else if (lineEndIndex >= 0)
-                    {
-                        _cache[Bytes.FromUtf8HexString(key)] = Bytes.FromUtf8HexString(value);
-                    }
+                    lineNumber++;
+                    Span<byte> line = bytes[..lineEndIndex];
                     // Move to after end of line
                     bytes = bytes[(lineEndIndex + 1)..];
+
+                    if (line is [.., (byte)'\r'])
+                    {
+                        // Windows \r\n
+                        line = line[..^1];
+                    }
+
+                    if (!TryLoadLine(line))
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Skipping malformed line {lineNumber} in {DbPath:hide}, expected a hex key and a hex value separated by a comma.");
+                    }
                 }
 
                 if (bytes.Length > 0)
@@ -276,14 +252,28 @@ namespace Nethermind.Db
             {
                 if (_logger.IsWarn) _logger.Warn($"Malformed {Name}. Ignoring...");
             }
+        }
 
-            void RecordError(Span<byte> data)
+        // An empty key or value is valid: the writer emits "key," for an empty value
+        private bool TryLoadLine(ReadOnlySpan<byte> line)
+        {
+            int commaIndex = line.IndexOf((byte)',');
+            if (commaIndex < 0)
             {
-                if (_logger.IsError)
-                {
-                    string line = Encoding.UTF8.GetString(data);
-                    if (_logger.IsError) _logger.Error($"Error when loading data from {Name} - expected two items separated by a comma and got '{line}')");
-                }
+                return false;
+            }
+
+            try
+            {
+                byte[] key = Bytes.FromUtf8HexString(line[..commaIndex]);
+                byte[] value = Bytes.FromUtf8HexString(line[(commaIndex + 1)..]);
+                _cache[key] = value;
+                return true;
+            }
+            catch (FormatException)
+            {
+                // Non-hex text, including a second comma
+                return false;
             }
         }
 

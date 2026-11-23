@@ -67,6 +67,7 @@
         "TipXDCXLendingBlock": 23779191,
         "TipXDCXCancellationFeeBlock": 23779191,
         "Gas50xBlock": 56828700,
+        "Gas2500xBlock": 83600000,
         "TIPXDCXMinerDisable": 61290000,
         "TIPXDCXReceiverDisable": 66825000,
 

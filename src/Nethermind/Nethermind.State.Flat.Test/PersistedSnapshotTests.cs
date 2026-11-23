@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.NodeBuffer;
 using Nethermind.State.Flat.PersistedSnapshots;
@@ -450,7 +451,7 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry entry in scanner.PerAddresses)
                 foreach (WholeReadScanner.SlotEntry slot in entry.Slots)
-                    scanned[(entry.Address, slot.Slot)] = slot.Value;
+                    scanned[(entry.Address.ToAddress(), slot.Slot)] = slot.Value;
         }
 
         foreach (KeyValuePair<(Address, UInt256), UInt256?> entry in scanned)
@@ -518,9 +519,9 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                perAddr[e.Address] = (e.HasAccount, e.Account?.Balance, e.SelfDestructFlag);
+                perAddr[e.Address.ToAddress()] = (e.HasAccount, BalanceOf(e), e.SelfDestructFlag);
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                    slots[(e.Address, s.Slot)] = s.Value;
+                    slots[(e.Address.ToAddress(), s.Slot)] = s.Value;
             }
             foreach (WholeReadScanner.StateNodeEntry n in scanner.StateNodes)
             {
@@ -598,9 +599,9 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                accounts[e.Address] = (e.HasAccount, e.Account?.Balance);
+                accounts[e.Address.ToAddress()] = (e.HasAccount, BalanceOf(e));
                 foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                    slots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
+                    slots[(e.Address.ToAddress(), s.Slot)] = s.Value?.ToBigEndian();
             }
         }
 
@@ -657,16 +658,16 @@ public class PersistedSnapshotTests
             WholeReadScanner scanner = PersistedSnapshotScanner.ForWholeRead(session, persisted);
             foreach (WholeReadScanner.PerAddressEntry e in scanner.PerAddresses)
             {
-                if (e.Address == big)
+                if (e.Address.ToAddress() == big)
                 {
                     // Read the account but deliberately leave big's Slots undrained.
-                    bigEntry = (e.HasAccount, e.Account?.Balance);
+                    bigEntry = (e.HasAccount, BalanceOf(e));
                 }
                 else
                 {
-                    nextEntry = (e.HasAccount, e.Account?.Balance);
+                    nextEntry = (e.HasAccount, BalanceOf(e));
                     foreach (WholeReadScanner.SlotEntry s in e.Slots)
-                        nextSlots[(e.Address, s.Slot)] = s.Value?.ToBigEndian();
+                        nextSlots[(e.Address.ToAddress(), s.Slot)] = s.Value?.ToBigEndian();
                 }
             }
         }
@@ -1237,7 +1238,7 @@ public class PersistedSnapshotTests
     private void Populate(SnapshotContent content, Random random, int source, int sourceCount)
     {
         const int addressPool = 6;
-        Address[] addresses = TestItem.Addresses[..addressPool];
+        Address[] addresses = [Address.Zero, .. TestItem.Addresses[..(addressPool - 1)]];
         Array.Sort(addresses, static (x, y) => x.Bytes.SequenceCompareTo(y.Bytes));
         for (int a = 0; a < addressPool; a++)
         {
@@ -1312,7 +1313,7 @@ public class PersistedSnapshotTests
     {
         int n = snapshots.Count;
         SortedDictionary<byte[], (int Source, byte[] Value)> entries =
-            new(Comparer<byte[]>.Create(static (x, y) => x.AsSpan().SequenceCompareTo(y)));
+            [with(Comparer<byte[]>.Create(static (x, y) => x.AsSpan().SequenceCompareTo(y)))];
         Dictionary<Address, int> barriers = [];
         List<(byte[] Key, byte[] Value)> oldest = [];
         List<(byte[] Key, byte[] Value)> newest = [];
@@ -1410,6 +1411,14 @@ public class PersistedSnapshotTests
             result.Add((enumerator.CurrentKey.ToArray(), pin.Buffer.ToArray()));
         }
         return result;
+    }
+
+    private static UInt256? BalanceOf(WholeReadScanner.PerAddressEntry entry)
+    {
+        if (!entry.HasAccount) return null;
+        using NoOpPin pin = entry.PinAccount();
+        ReadOnlySpan<byte> rlp = WholeReadScanner.PerAddressEntry.SlimAccount(pin.Buffer);
+        return rlp.IsEmpty ? null : AccountDecoder.Slim.Decode(rlp)!.Balance;
     }
 
     private static int MergeCapacity(PersistedSnapshotList snapshots)

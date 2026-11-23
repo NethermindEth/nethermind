@@ -22,8 +22,6 @@ public class FixtureLoadTests : UnchunkedFixture
 {
     private const int ChunkCount = 8;
     private const string ZeroHash = "0x0000000000000000000000000000000000000000000000000000000000000000";
-    private const string TransitionDirectory = "LegacyTests/Cancun/BlockchainTests/TransitionTests/bcArrowGlacierToParis";
-    private const string TotalDifficultyNetwork = "ArrowGlacierToParisAtDiffC0000";
     private const string OverWideValue = "\"0x:bigint 0x10000000000000000000000000000000000000000000000000000000000000001\"";
     private const string OverWideQuantity = "0x10000000000000000000000000000000000000000000000000000000000000000";
 
@@ -34,11 +32,6 @@ public class FixtureLoadTests : UnchunkedFixture
         public override string ToString() => Strategy.GetType().Name;
     }
 
-    public sealed record QuarantinedFile(string RelativePath, string Reason)
-    {
-        public override string ToString() => Path.GetFileName(RelativePath);
-    }
-
     private static readonly DirectoryStrategy[] DirectoryStrategies =
     [
         new(new LoadGeneralStateTestsStrategy(), TestType.State, IsLegacy: false),
@@ -46,13 +39,6 @@ public class FixtureLoadTests : UnchunkedFixture
         new(new LoadEipTestsStrategy(), TestType.State, IsLegacy: false),
         new(new LoadBlockchainTestsStrategy(), TestType.Blockchain, IsLegacy: false),
         new(new LoadLegacyBlockchainTestsStrategy(), TestType.Blockchain, IsLegacy: false),
-    ];
-
-    private static readonly QuarantinedFile[] QuarantinedFiles =
-    [
-        new($"{TransitionDirectory}/difficultyFormula.json", "fork transition at a total difficulty"),
-        new($"{TransitionDirectory}/powToPosBlockRejection.json", "fork transition at a total difficulty"),
-        new($"{TransitionDirectory}/powToPosTest.json", "fork transition at a total difficulty"),
     ];
 
     private string _directory;
@@ -184,35 +170,22 @@ public class FixtureLoadTests : UnchunkedFixture
         await AssertFailsWithLoadFailure(() => new StateRunner().Run(test), test);
     }
 
-    [Test]
-    public async Task Quarantined_file_failing_with_its_listed_error_is_skipped_with_the_reason_and_the_error(
-        [ValueSource(nameof(QuarantinedFiles))] QuarantinedFile quarantined,
-        [Values] bool windowsSeparators)
+    private static IEnumerable<TestCaseData> UnloadableBlockchainFiles()
     {
-        BlockchainTest test = LoadSingle(WriteFixture(quarantined.RelativePath, QuarantineFixture()));
-        if (windowsSeparators)
-            test.Name = test.Name.Replace('/', '\\');
-
-        IgnoreException exception = await Assert.ThrowsAsync<IgnoreException>(RunInBase(test));
-
-        Assert.That(exception.Message, Does.Contain(quarantined.Reason).And.Contain(test.Name).And.Contain(test.LoadFailure));
+        yield return new TestCaseData(Fixture(TestType.Blockchain, "UnknownFork"), "Unknown fork name 'UnknownFork'")
+            .SetArgDisplayNames("unknown fork");
+        yield return new TestCaseData(Fixture(TestType.Blockchain, "ArrowGlacierToParisAtDiffC000G"), "System.FormatException")
+            .SetArgDisplayNames("total difficulty transition with a non-hex digit");
+        yield return new TestCaseData("{\"broken\": ", "JsonException")
+            .SetArgDisplayNames("malformed JSON");
     }
 
-    private static IEnumerable<TestCaseData> LoadFailuresOutsideTheQuarantine()
+    [TestCaseSource(nameof(UnloadableBlockchainFiles))]
+    public async Task Blockchain_file_that_cannot_be_loaded_fails_its_run_naming_the_file(string json, string expectedError)
     {
-        yield return new TestCaseData($"{TransitionDirectory}/unlisted.json", QuarantineFixture())
-            .SetArgDisplayNames("unlisted file next to listed ones");
-        yield return new TestCaseData($"Not{TransitionDirectory}/difficultyFormula.json", QuarantineFixture())
-            .SetArgDisplayNames("listed name under another directory");
-        yield return new TestCaseData($"{TransitionDirectory}/difficultyFormula.json", "{\"broken\": ")
-            .SetArgDisplayNames("listed file with another error");
-    }
+        BlockchainTest test = LoadSingle(WriteFixture("unloadable.json", json));
 
-    [TestCaseSource(nameof(LoadFailuresOutsideTheQuarantine))]
-    public async Task Load_failure_outside_the_quarantine_still_fails(string relativePath, string json)
-    {
-        BlockchainTest test = LoadSingle(WriteFixture(relativePath, json));
-
+        Assert.That(test.LoadFailure, Does.Contain(expectedError));
         await AssertFailsWithLoadFailure(RunInBase(test), test);
     }
 
@@ -268,7 +241,7 @@ public class FixtureLoadTests : UnchunkedFixture
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exception, Is.Not.InstanceOf<IgnoreException>(), "a load failure outside the quarantine is not skipped");
+            Assert.That(exception, Is.Not.InstanceOf<IgnoreException>(), "a load failure is not skipped");
             Assert.That(exception.Message, Does.Contain(test.Name).And.Contain(test.LoadFailure));
         }
     }
@@ -301,9 +274,6 @@ public class FixtureLoadTests : UnchunkedFixture
         Unreadable.MalformedJson => ("{\"broken\": ", false, "JsonException"),
         _ => (Fixture(type, "UnknownFork"), false, "Unknown fork name 'UnknownFork'"),
     };
-
-    /// <summary>A fixture that fails to load the way the quarantined files do.</summary>
-    private static string QuarantineFixture() => Fixture(TestType.Blockchain, TotalDifficultyNetwork);
 
     private string[] ValidCaseNames(TestType type)
     {

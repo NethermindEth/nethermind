@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 
@@ -24,8 +23,6 @@ namespace Nethermind.Db
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
 
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => throw new NotSupportedException();
-
-        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => keys.Select(static k => new KeyValuePair<byte[], byte[]?>(k, null)).ToArray();
 
         public void Remove(ReadOnlySpan<byte> key) => throw new NotSupportedException();
 

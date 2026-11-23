@@ -26,6 +26,41 @@ public class ArrayPoolListTests
         }
     }
 
+    [TestCase(1 << 30, 1, ExpectedResult = 0x7FFFFFC7)]
+    [TestCase(1 << 30, 0x3FFFFFC8, ExpectedResult = 0x7FFFFFC8)]
+    public int Growth_past_1_GiB_rents_at_most_the_largest_array(int count, int itemsToAdd)
+    {
+        RentRecordingPool pool = new();
+        byte[] array = [];
+        int capacity = 1 << 30;
+
+        Assert.Throws<NotSupportedException>(() => ArrayPoolListCore<byte>.GuardResize(pool, ref array, ref capacity, count, itemsToAdd));
+        return pool.RentedLength;
+    }
+
+    [Test]
+    public void Growth_past_int_MaxValue_items_throws()
+    {
+        byte[] array = [];
+        int capacity = 1 << 30;
+
+        Assert.Throws<OverflowException>(() => ArrayPoolListCore<byte>.GuardResize(new RentRecordingPool(), ref array, ref capacity, int.MaxValue, 1));
+    }
+
+    /// <summary>Records the requested length and throws, so no large array is allocated.</summary>
+    private sealed class RentRecordingPool : ArrayPool<byte>
+    {
+        public int RentedLength { get; private set; }
+
+        public override byte[] Rent(int minimumLength)
+        {
+            RentedLength = minimumLength;
+            throw new NotSupportedException();
+        }
+
+        public override void Return(byte[] array, bool clearArray = false) { }
+    }
+
     [Test]
     public void Should_not_hang_when_capacity_is_zero()
     {
@@ -220,6 +255,16 @@ public class ArrayPoolListTests
     }
 
     [Test]
+    public void AddUninitialized_adds_the_items_for_the_caller_to_write([Values(3, 100)] int count)
+    {
+        using ArrayPoolList<int> list = new(16) { 0, 1 };
+        Span<int> added = list.AddUninitialized(count);
+        for (int i = 0; i < added.Length; i++) added[i] = i + 2;
+
+        Assert.That(list, Is.EqualTo(Enumerable.Range(0, count + 2)));
+    }
+
+    [Test]
     public void Construct_from_ICollection_copies_all_items()
     {
         // HashSet is an ICollection<T> but neither an array nor a list, so it exercises the bulk CopyTo path.
@@ -391,12 +436,13 @@ public class ArrayPoolListTests
     [Test]
     public void Dispose_recursive()
     {
-        ArrayPoolList<ArrayPoolList<int>> list = new(8)
-        {
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8),
-            new ArrayPoolList<int>(8)
-        };
+        ArrayPoolList<ArrayPoolList<int>> list =
+        [
+            with(8),
+            [with(8)],
+            [with(8)],
+            [with(8)]
+        ];
 
         list.DisposeRecursive();
         list.DisposeRecursive();

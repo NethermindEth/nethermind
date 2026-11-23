@@ -7,7 +7,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Migration;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
 using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Columns;
@@ -18,15 +20,16 @@ internal sealed class BulkFillStateReader(IColumnsDb<Columns> db, StateId state,
 {
     public StateId CurrentState => state;
     public bool IsPreimageMode => false;
+    public MigrationCursor? GetMigrationCursor() => null;
 
     public Account? GetAccount(Address address)
     {
         byte[]? bytes = GetAccountRaw(address.ToAccountPath);
         if (bytes is null || bytes.Length == 0) return null;
         RlpReader reader = new(bytes);
-        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account) || reader.Position != bytes.Length)
+        if (!AccountDecoder.Slim.TryDecodeStruct(ref reader, out AccountStruct account) || reader.HasNext)
             throw new InvalidDataException("Invalid bulk-fill scratch account.");
-        return new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment());
+        return account.ToAccount();
     }
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
@@ -62,7 +65,7 @@ internal sealed class BulkFillStateReader(IColumnsDb<Columns> db, StateId state,
         {
             RlpReader reader = new(bytes);
             bytes = reader.DecodeByteArraySpan();
-            if (reader.Position != reader.Length) throw new InvalidDataException("Trailing bytes in a scratch slot.");
+            if (reader.HasNext) throw new InvalidDataException("Trailing bytes in a scratch slot.");
         }
         value = BaseFlatPersistence.DecodeSlotValue(bytes);
         return true;
@@ -75,10 +78,10 @@ internal sealed class BulkFillStateReader(IColumnsDb<Columns> db, StateId state,
     }
 
     public void Dispose() { }
-    public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) => throw new NotSupportedException();
-    public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) => throw new NotSupportedException();
     public bool TryLoadStateRlp<TArg>(in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw new NotSupportedException();
     public bool TryLoadStorageRlp<TArg>(Hash256 address, in TreePath path, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw new NotSupportedException();
+    public bool TryLoadStateRlp<TArg>(in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw new NotSupportedException();
+    public bool TryLoadStorageRlp<TArg>(in ValueHash256 address, in TreePath path, in ValueHash256 hash, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct => throw new NotSupportedException();
     public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
     public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
 }

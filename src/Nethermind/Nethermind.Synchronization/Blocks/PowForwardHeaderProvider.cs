@@ -279,17 +279,16 @@ public class PowForwardHeaderProvider(
             if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer:hide} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             cancellation.ThrowIfCancellationRequested();
+            IOwnedReadOnlyList<BlockHeader>? headers = null;
             try
             {
-                IOwnedReadOnlyList<BlockHeader>? headers =
-                    await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
+                headers = await RequestHeaders(bestPeer, cancellation, _currentNumber, headersToRequest);
 
                 {
                     ReadOnlySpan<BlockHeader> headersSpan = headers.AsSpan();
                     if (headersSpan.Length < 2)
                     {
                         // Peer doesn't have a new header
-                        headers.Dispose();
                         return null;
                     }
 
@@ -297,7 +296,9 @@ public class PowForwardHeaderProvider(
                     if (!CheckAncestorJump(bestPeer, headersSpan[0], ref _currentNumber)) continue;
                 }
 
-                return headers;
+                IOwnedReadOnlyList<BlockHeader> result = headers;
+                headers = null; // The caller owns it from here.
+                return result;
             }
             catch (TimeoutException)
             {
@@ -314,6 +315,12 @@ public class PowForwardHeaderProvider(
             {
                 if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer:hide}, {e:hide}");
                 syncPeerPool.ReportBreachOfProtocol(bestPeer, DisconnectReason.ForwardSyncFailed, e.Message);
+            }
+            finally
+            {
+                // A batch not handed to the caller goes back to the pool: a short reply, an ancestor step back,
+                // or a throw from the ancestor check.
+                headers?.Dispose();
             }
 
             return null;
@@ -351,15 +358,24 @@ public class PowForwardHeaderProvider(
         sealValidator.HintValidationRange(_sealValidatorUserGuid, start, currentNumber + 30000);
 
         IOwnedReadOnlyList<BlockHeader> headers = await peer.SyncPeer.GetBlockHeaders(currentNumber, (int)headersToRequest, 0, cancellation);
-        cancellation.ThrowIfCancellationRequested();
-        headers = FilterPosHeader(headers);
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            headers = FilterPosHeader(headers);
 
-        // Consistency must be checked before seals: ValidateSeals force-validates the last header, and
-        // its peer-chosen Number picks the Ethash epoch, whose cache is then built synchronously
-        // (gigabytes, or billions of seed-hash rounds) before anything else could reject the response.
-        ValidateBatchConsistency(peer, headers.AsSpan(), currentNumber);
-        ValidateSeals(headers, cancellation);
-        return headers;
+            // Consistency must be checked before seals: ValidateSeals force-validates the last header, and
+            // its peer-chosen Number picks the Ethash epoch, whose cache is then built synchronously
+            // (gigabytes, or billions of seed-hash rounds) before anything else could reject the response.
+            ValidateBatchConsistency(peer, headers.AsSpan(), currentNumber);
+            ValidateSeals(headers, cancellation);
+            return headers;
+        }
+        catch
+        {
+            // A rejected batch goes back to the pool; the filter disposes any list it replaces.
+            headers?.Dispose();
+            throw;
+        }
     }
 
     private void ValidateBatchConsistency(PeerInfo bestPeer, ReadOnlySpan<BlockHeader> headers, ulong startNumber)

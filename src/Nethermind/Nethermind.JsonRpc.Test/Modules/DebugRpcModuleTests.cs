@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -72,7 +73,7 @@ public partial class DebugRpcModuleTests
     [TestCaseSource(nameof(TransactionIndexingCases))]
     public async Task Debug_traceTransaction_indexing_miss(string scenario, bool stream)
     {
-        List<Hash256?> executed = [];
+        List<Transaction> executed = [];
         bool history = scenario is "uninitialized-completed-history" or "uninitialized-unfinished-history";
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new ReceiptSyncRpcBlockchain { SealEngineType = SealEngineType.NethDev })
             .WithFlatDb(false)
@@ -80,7 +81,7 @@ public partial class DebugRpcModuleTests
             .WithReceiptConfig(new ReceiptConfig { TxLookupLimit = 0 })
             .Build(builder =>
             {
-                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed));
                 if (history)
                 {
                     ReleaseSpec spec = Berlin.Instance.Clone();
@@ -314,7 +315,7 @@ public partial class DebugRpcModuleTests
 
     [TestCaseSource(nameof(InvalidTransactionIndices))]
     public void Trace_options_reject_invalid_transaction_index_quantities(string json, bool segmented) =>
-        Assert.Throws<JsonException>(() => ReadTransactionIndex(json, segmented));
+        Assert.Catch<JsonException>(() => ReadTransactionIndex(json, segmented));
 
     [TestCase("\"0x1\"")]
     [TestCase("\"\\u0030\\u0078\\u0031\"")]
@@ -381,7 +382,7 @@ public partial class DebugRpcModuleTests
         UInt256 senderBalance = chain.WorldStateManager.GlobalStateReader.GetBalance(parent, TestItem.AddressB);
         Block block = await AddTraceCallPrefixTransfers(chain, 3);
         Transaction[] transactions = block.Transactions;
-        string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString();
+        string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToHexString(true);
         int prefixLength = index < 0 ? 3 : index;
         for (int i = 0; i < prefixLength; i++)
             senderBalance -= transactions[i].Value + transactions[i].GasPrice * transactions[i].BlockGasUsed;
@@ -411,7 +412,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((output.StartsWith("0x") ? output[2..] : output), Is.EqualTo(expected), response);
-            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString(), Is.EqualTo(canonicalHeader));
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToHexString(true), Is.EqualTo(canonicalHeader));
             Assert.That(chain.WorldStateManager.GlobalStateReader.GetBalance(block.Header, TestItem.AddressC), Is.EqualTo(initial + 3));
         }
     }
@@ -547,22 +548,215 @@ public partial class DebugRpcModuleTests
         return block;
     }
 
-    [TestCase("0x3", -32000)]
-    [TestCase("0xffffffffffffffff", -32000)]
-    [TestCase("0", -32602)]
-    [TestCase("-1", -32602)]
-    [TestCase("0x00", -32602)]
-    [TestCase("0x", -32602)]
-    [TestCase("0xg", -32602)]
-    [TestCase("0x10000000000000000", -32602)]
-    [TestCase("NUMBER", -32602)]
-    public async Task Debug_traceCall_txIndex_rejects_invalid_input(string value, int errorCode)
+    [TestCase("0x3", -32000, null)]
+    [TestCase("0xffffffffffffffff", -32000, null)]
+    [TestCase("0", -32602, InvalidTxIndexQuantity)]
+    [TestCase("-1", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0x00", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0x", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0xg", -32602, InvalidTxIndexQuantity)]
+    [TestCase("0x10000000000000000", -32602, InvalidTxIndexQuantity)]
+    [TestCase("NUMBER", -32602, "invalid argument 2: Transaction index must be a hex quantity string.")]
+    public async Task Debug_traceCall_txIndex_rejects_invalid_input(string value, int errorCode, string? expectedMessage)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         object index = value == "NUMBER" ? 0 : value;
         string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
             new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest", new { txIndex = index });
-        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(errorCode), response);
+        JToken error = JToken.Parse(response)["error"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)error["code"], Is.EqualTo(errorCode), response);
+            if (expectedMessage is not null) Assert.That((string?)error["message"], Is.EqualTo(expectedMessage), response);
+        }
+    }
+
+    private const string InvalidTxIndexQuantity = "invalid argument 2: Invalid transaction index hex quantity.";
+
+    [Test]
+    public async Task Debug_traceCall_hash_selector_ignores_requireCanonical(
+        [Values] bool requireCanonical, [Values] bool indexed)
+    {
+        using Context context = await Context.Create();
+        await AddBlockWithTransfer(context);
+        Block canonical = context.Blockchain.BlockTree.Head!;
+        BlockHeader parent = context.Blockchain.BlockTree.FindHeader(canonical.ParentHash!, BlockTreeLookupOptions.None)!;
+        Address beneficiary = canonical.Beneficiary == TestItem.AddressD ? TestItem.AddressE : TestItem.AddressD;
+        // Flat-state retention identifies snapshots by both height and root, not by root alone.
+        Block sibling = Build.A.Block.WithParent(parent).WithStateRoot(canonical.StateRoot!)
+            .WithBeneficiary(beneficiary).WithExtraData([1]).TestObject;
+        AddBlockResult suggested = context.Blockchain.BlockTree.SuggestBlock(sibling, BlockTreeSuggestOptions.ForceDontSetAsMain);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(suggested, Is.EqualTo(AddBlockResult.Added));
+            Assert.That(sibling.Hash, Is.Not.EqualTo(canonical.Hash));
+            Assert.That(sibling.Transactions, Is.Empty);
+            Assert.That(context.Blockchain.StateReader.HasStateForBlock(sibling.Header), Is.True,
+                "The non-indexed call must have a retained snapshot at the sibling's own height and root.");
+            Assert.That(context.Blockchain.BlockTree.FindBlock(canonical.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash,
+                Is.EqualTo(canonical.Hash));
+        }
+
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" },
+            new { blockHash = sibling.Hash!.ToString(), requireCanonical },
+            new
+            {
+                streamMode = false,
+                txIndex = indexed ? "0x0" : null,
+                stateOverrides = new Dictionary<string, object>
+                {
+                    [TestItem.AddressC.ToString()] = new { code = "0x4160005260206000f3" }
+                }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x" + new string('0', 24) + beneficiary.ToString()[2..]), response);
+            Assert.That(context.Blockchain.BlockTree.FindBlock(canonical.Number, BlockTreeLookupOptions.RequireCanonical)!.Hash,
+                Is.EqualTo(canonical.Hash));
+            Assert.That(context.Blockchain.BlockTree.Head!.Hash, Is.EqualTo(canonical.Hash));
+            Assert.That(sibling.Header.StateRoot, Is.EqualTo(canonical.StateRoot));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_missing_block_preserves_selector_policy(
+        [Values("number", "number-object", "hash", "hash-object", "safe", "finalized")] string selectorKind,
+        [Values] bool streaming, [Values(null, "0x0")] string? txIndex, [Values] bool invalidOptions)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        object selector = selectorKind switch
+        {
+            "number" => "0x190",
+            "number-object" => new { blockNumber = "0x190" },
+            "hash" => TestItem.KeccakA.ToString(),
+            "safe" or "finalized" => selectorKind,
+            _ => new { blockHash = TestItem.KeccakA.ToString(), requireCanonical = true }
+        };
+        int expectedCode = ErrorCodes.ResourceNotFound;
+        string expected = selectorKind switch
+        {
+            "number" or "number-object" => "block #400 not found",
+            "safe" or "finalized" => $"{selectorKind} block not found",
+            _ => $"block {TestItem.KeccakA} not found"
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, selector,
+            new
+            {
+                txIndex,
+                tracer = invalidOptions ? "missingTracer" : null,
+                blockOverrides = invalidOptions ? new { withdrawals = Array.Empty<object>() } : null,
+                stateOverrides = invalidOptions
+                    ? new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { state = new { }, stateDiff = new { } } }
+                    : null
+            });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedCode), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_missing_body_retains_header_selection(
+        [Values("number", "hash", "canonical-hash", "safe", "finalized")] string selectorKind,
+        [Values] bool streaming, [Values(null, "0x0")] string? txIndex, [Values] bool temporary)
+    {
+        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(builder => builder.AddSingleton<ISyncModeSelector>(syncModeSelector));
+        Block block = await AddTraceCallPrefixTransfers(chain, 2);
+        await chain.AddBlock();
+        if (selectorKind is "safe" or "finalized")
+            chain.BlockTree.ForkChoiceUpdated(block.Hash!, block.Hash!);
+        chain.BlockTree.DeleteOldBlock(block.Number, block.Hash!);
+        syncModeSelector.Current.Returns(temporary ? SyncMode.FastHeaders : SyncMode.None);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.BlockTree.FindHeader(block.Hash!), Is.Not.Null);
+            Assert.That(chain.BlockTree.IsMainChain(block.Header), Is.True);
+            Assert.That(chain.BlockTree.FindBlock(block.Hash!), Is.Null);
+            Assert.That(chain.Bridge.HasStateForBlock(block.Header), Is.True);
+        }
+
+        object selector = selectorKind switch
+        {
+            "number" => $"0x{block.Number:x}",
+            "hash" => block.Hash!.ToString(),
+            "safe" or "finalized" => selectorKind,
+            _ => new { blockHash = block.Hash!.ToString(), requireCanonical = true }
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, selector, new { txIndex });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (txIndex is not null)
+            {
+                bool knownTag = selectorKind is "safe" or "finalized";
+                string expected = knownTag ? $"{selectorKind} block not found"
+                    : selectorKind == "number" ? $"block #{block.Number} not found" : $"block {block.Hash} not found";
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(expected), response);
+                Assert.That(json["result"], Is.Null, response);
+                if (knownTag)
+                {
+                    using ResultWrapper<GethLikeTxTrace> result = chain.DebugRpcModule.debug_traceCall(
+                        new LegacyTransactionForRpc { To = TestItem.AddressD, Gas = 100_000 },
+                        selectorKind == "safe" ? BlockParameter.Safe : BlockParameter.Finalized,
+                        new GethTraceOptions { TxIndex = 0UL });
+                    Assert.That(result.IsTemporary, Is.False);
+                }
+            }
+            else
+            {
+                // Nethermind permits header/state-only tracing without txIndex; Geth requires a body in both modes.
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((long?)json["result"]?["gas"], Is.EqualTo(21_000), response);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_missing_block_preserves_temporary_status(
+        [Values("number", "hash", "safe", "finalized")] string selectorKind, [Values] bool indexed, [Values] bool temporary)
+    {
+        ISyncModeSelector syncModeSelector = Substitute.For<ISyncModeSelector>();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISyncModeSelector>(syncModeSelector));
+        syncModeSelector.Current.Returns(temporary ? SyncMode.FastHeaders : SyncMode.None);
+        BlockParameter selector = selectorKind switch
+        {
+            "hash" => new(TestItem.KeccakA),
+            "safe" => BlockParameter.Safe,
+            "finalized" => BlockParameter.Finalized,
+            _ => new(400UL)
+        };
+        string expected = selectorKind switch
+        {
+            "hash" => $"block {TestItem.KeccakA} not found",
+            "safe" or "finalized" => $"{selectorKind} block not found",
+            _ => "block #400 not found"
+        };
+        bool expectedTemporary = temporary && (!indexed || selectorKind is "number" or "hash");
+        using ResultWrapper<GethLikeTxTrace> result = chain.DebugRpcModule.debug_traceCall(
+            new LegacyTransactionForRpc { To = TestItem.AddressD, Gas = 100_000 }, selector,
+            new GethTraceOptions { TxIndex = indexed ? 0UL : null });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(result.Result.Error, Is.EqualTo(expected));
+            Assert.That(result.IsTemporary, Is.EqualTo(expectedTemporary));
+        }
     }
 
     [Test]
@@ -590,9 +784,10 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task Debug_traceCall_txIndex_checks_parent_state_before_bounds()
+    public async Task Debug_traceCall_txIndex_checks_parent_state_before_bounds([Values] bool streaming)
     {
-        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
         Block parent = chain.BlockTree.Head!;
         Block empty = await chain.AddBlock();
         parent.Header.StateRoot = TestItem.KeccakA;
@@ -655,13 +850,13 @@ public partial class DebugRpcModuleTests
     public async Task TransactionTracing_WhenTargetSelected_ExecutesOnlyPrefix(
         string method, int targetIndex, bool stream, bool unsupportedValidationModule)
     {
-        List<Hash256?> executed = [];
+        List<Transaction> executed = [];
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
             .WithConfig(new JsonRpcConfig { Timeout = -1, EnableTracingStreamMode = stream })
             .Build(builder =>
             {
                 builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
-                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new PrefixCountingAdapter(inner, executed));
+                    .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, executed));
                 if (unsupportedValidationModule) builder.AddSingleton<IBlockValidationModule, UnsupportedTraceValidationModule>();
             });
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
@@ -691,7 +886,7 @@ public partial class DebugRpcModuleTests
                 "an additional validation module without explicit prefix support must retain full replay");
         }
         for (int i = 0; i < executed.Count; i++)
-            Assert.That(executed[i], Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
+            Assert.That(executed[i].Hash, Is.EqualTo(block.Transactions[i].Hash), "prefix order and original transaction identities must be preserved");
     }
 
     private sealed class UnsupportedTraceValidationModule : Module, IBlockValidationModule;
@@ -936,6 +1131,22 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCaseSource(nameof(TraceCallGethCompatFailureCases))]
+    public async Task Debug_traceCall_buffered_failure_returns_geth_compatible_error(object txArgs, string expectedErrorPrefix, int expectedErrorCode)
+    {
+        using Context ctx = await Context.Create();
+
+        string response = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", txArgs, "latest", new { tracer = "callTracer" });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["error"]?["message"], Does.StartWith(expectedErrorPrefix), response);
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(expectedErrorCode), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
     private static IEnumerable<TestCaseData> TraceCallGethCompatFailureCases()
     {
         Address freshA = Build.An.Address.TestObject;
@@ -943,21 +1154,21 @@ public partial class DebugRpcModuleTests
             (object)new { from = $"{freshA}", to = $"{TestItem.AddressC}", value = 50.Ether.ToString("X") },
             $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
-        { TestName = "InsufficientFundsForTransfer" };
+        { TestName = "{m}_InsufficientFundsForTransfer" };
 
         Address freshB = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshB}", to = $"{TestItem.AddressC}", gas = "0x64" },
             "tracing failed: intrinsic gas too low: have 100, want ",
             ErrorCodes.InvalidInput)
-        { TestName = "IntrinsicGasTooLow" };
+        { TestName = "{m}_IntrinsicGasTooLow" };
 
         Address freshC = Build.An.Address.TestObject;
         yield return new TestCaseData(
             (object)new { from = $"{freshC}", to = $"{TestItem.AddressC}", gasPrice = "0x1" },
             $"tracing failed: {TxErrorMessages.InsufficientFundsForGas}: address ",
             ErrorCodes.InvalidInput)
-        { TestName = "InsufficientFundsForGasPriceValue" };
+        { TestName = "{m}_InsufficientFundsForGasPriceValue" };
     }
 
     public static IEnumerable<TestCaseData> KeccakPreimageCases()
@@ -1349,8 +1560,127 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(json["result"], Is.Null, response);
-            Assert.That((string?)json["error"]?["message"], Is.EqualTo(TxErrorMessages.InvalidTxType(spec.Name)), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: transaction type not supported: {(type == TxType.SetCode ? "setcode" : "blob")} tx (sender {Address.Zero})"), response);
             Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+        }
+    }
+
+    private static IEnumerable<TestCaseData> TraceCallFieldInferredForkGatingCases()
+    {
+        object[] authorizationList = [new { chainId = "0x1", address = TestItem.AddressB.ToString(), nonce = "0x0", yParity = "0x0", r = "0x1", s = "0x1" }];
+        string[] blobHashes = ["0x01" + new string('0', 62)];
+        string sender = Address.Zero.ToString();
+        string Unsupported(string type) => $"tracing failed: transaction type not supported: {type} tx (sender {sender})";
+        (string Name, IReleaseSpec Spec, Dictionary<string, object> Fields, string? Error)[] cases =
+        [
+            ("access_before_berlin", Istanbul.Instance, new() { ["accessList"] = Array.Empty<object>() }, Unsupported("access list")),
+            ("access_at_berlin", Berlin.Instance, new() { ["accessList"] = Array.Empty<object>() }, null),
+            ("blob_without_access_before_berlin", Istanbul.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("blob")),
+            ("access_before_blob_fork", Istanbul.Instance, new() { ["accessList"] = Array.Empty<object>(), ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("access list")),
+            ("authorization_without_access_before_berlin", Istanbul.Instance, new() { ["authorizationList"] = authorizationList }, Unsupported("setcode")),
+            ("blob_fork_before_empty_hashes", Shanghai.Instance, new() { ["blobVersionedHashes"] = Array.Empty<string>() }, Unsupported("blob")),
+            ("blobs_only_before_cancun_keeps_conversion_error", Shanghai.Instance, new() { ["blobs"] = new[] { "0x00" } }, "need at least 1 blob for a blob transaction"),
+            ("blob_before_cancun", Shanghai.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, Unsupported("blob")),
+            ("blob_at_cancun", Cancun.Instance, new() { ["blobVersionedHashes"] = blobHashes, ["maxFeePerBlobGas"] = "0x0" }, null),
+            ("authorization_before_prague", Cancun.Instance, new() { ["authorizationList"] = authorizationList }, Unsupported("setcode")),
+            ("authorization_at_prague", Prague.Instance, new() { ["authorizationList"] = authorizationList }, null),
+            ("explicit_type_without_fields", Istanbul.Instance, new() { ["type"] = "0x4" }, null),
+            ("dynamic_fees_before_london", Berlin.Instance, new() { ["maxFeePerGas"] = "0x0" }, "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active"),
+            ("fee_order_before_authorization_fork", Cancun.Instance, new() { ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
+                $"tracing failed: max priority fee per gas higher than max fee per gas: address {sender}, maxPriorityFeePerGas: 2, maxFeePerGas: 1"),
+            ("authorization_fork_before_empty_list", Cancun.Instance, new() { ["authorizationList"] = Array.Empty<object>() }, Unsupported("setcode")),
+            ("blob_recipient_before_london", Berlin.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = blobHashes, ["maxFeePerGas"] = "0x1" }, TxErrorMessages.TxMissingTo),
+            ("authorization_recipient_before_london", Berlin.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1" }, TxErrorMessages.NotAllowedCreateTransaction),
+            ("blob_recipient_before_fork", Shanghai.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["blobVersionedHashes"] = blobHashes }, TxErrorMessages.TxMissingTo),
+            ("authorization_recipient_before_fork", Cancun.Instance, new() { ["to"] = null!, ["input"] = "0x00", ["authorizationList"] = authorizationList }, TxErrorMessages.NotAllowedCreateTransaction),
+            ("unsupported_type_sender_checksum", Cancun.Instance, new() { ["from"] = TestItem.AddressA.ToString(), ["authorizationList"] = authorizationList },
+                "tracing failed: transaction type not supported: setcode tx (sender 0xb7705aE4c6F81B66cdB323C65f4E8133690fC099)"),
+            ("priority_fee_sender_checksum", Cancun.Instance, new() { ["from"] = TestItem.AddressA.ToString(), ["authorizationList"] = authorizationList, ["maxFeePerGas"] = "0x1", ["maxPriorityFeePerGas"] = "0x2" },
+                "tracing failed: max priority fee per gas higher than max fee per gas: address 0xb7705aE4c6F81B66cdB323C65f4E8133690fC099, maxPriorityFeePerGas: 2, maxFeePerGas: 1")
+        ];
+        foreach ((string name, IReleaseSpec spec, Dictionary<string, object> fields, string? error) in cases)
+            foreach (bool streamMode in new[] { false, true })
+                yield return new TestCaseData(spec, fields, error, streamMode).SetName($"{{m}}_{name}_{(streamMode ? "streamed" : "buffered")}");
+    }
+
+    [TestCaseSource(nameof(TraceCallFieldInferredForkGatingCases))]
+    public async Task Debug_traceCall_field_inferred_fork_gating(IReleaseSpec spec, Dictionary<string, object> fields, string? expectedError, bool streamMode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
+            .Build(new TestSpecProvider(spec));
+        Dictionary<string, object> call = [with(fields)];
+        call.TryAdd("from", Address.Zero.ToString());
+        call.TryAdd("to", TestItem.AddressC.ToString());
+        call.TryAdd("gas", "0x493e0");
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest");
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (expectedError is not null)
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo(expectedError), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+                Assert.That((long?)json["result"]?["gas"], Is.GreaterThanOrEqualTo(21000), response);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_field_inferred_fork_gating_uses_effective_block(
+        [Values(99UL, 100UL)] ulong number, [Values] bool streamMode)
+    {
+        CustomSpecProvider specs = new(((ForkActivation)0, Istanbul.Instance), ((ForkActivation)100, Berlin.Instance));
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
+            .Build(specs);
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0", accessList = Array.Empty<object>() }, "latest",
+            new { blockOverrides = new { number = "0x" + number.ToString("x") } });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            if (number < 100)
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: transaction type not supported: access list tx (sender {Address.Zero})"), response);
+                Assert.That(json["result"], Is.Null, response);
+            }
+            else
+            {
+                Assert.That(json["error"], Is.Null, response);
+                Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_field_inferred_fork_gating_checks_effective_base_fee([Values] bool streamMode, [Values] bool checksumSender)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streamMode })
+            .Build(new TestSpecProvider(Cancun.Instance));
+
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = (checksumSender ? TestItem.AddressA : Address.Zero).ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0", maxFeePerGas = "0x1", authorizationList = Array.Empty<object>() }, "latest",
+            new { blockOverrides = new { baseFeePerGas = "0x2" } });
+
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidInput), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"tracing failed: max fee per gas less than block base fee: address {(checksumSender ? "0xb7705aE4c6F81B66cdB323C65f4E8133690fC099" : Address.Zero.ToString())}, maxFeePerGas: 1, baseFee: 2"), response);
+            Assert.That(json["result"], Is.Null, response);
         }
     }
 
@@ -1415,6 +1745,33 @@ public partial class DebugRpcModuleTests
             Assert.That(result["failed"]!.Value<bool>(), Is.False);
             Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(Bytes.FromHexString(value).ToUInt256()));
         }
+    }
+
+    [Test]
+    public async Task Call_resolves_blockhash_from_the_base_block_under_a_number_override(
+        [Values("eth_call", "debug_traceCall", "debug_traceCall at index")] string mode,
+        [Values(1, 10)] int offset,
+        [Values(0, 1)] int depth)
+    {
+        using Context ctx = await Context.Create();
+        BlockHeader head = ctx.Blockchain.BlockTree.Head!.Header;
+        ulong queried = head.Number - (ulong)depth;
+        const string address = "0xc200000000000000000000000000000000000000";
+        byte[] code = Prepare.EvmCode.PushData(queried).Op(Instruction.BLOCKHASH)
+            .PushData(0).Op(Instruction.MSTORE).PushData(32).PushData(0).Op(Instruction.RETURN).Done;
+        object stateOverrides = new Dictionary<string, object> { [address] = new { code = code.ToHexString(true) } };
+        object blockOverrides = new { number = $"0x{head.Number + (ulong)offset:x}" };
+        object call = new { to = address, gas = "0x186a0" };
+
+        string response = mode == "eth_call"
+            ? await RpcTest.TestSerializedRequest(ctx.Blockchain.EthRpcModule, "eth_call", call, "latest", stateOverrides, blockOverrides)
+            : await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall", call, "latest",
+                new { stateOverrides, blockOverrides, txIndex = mode == "debug_traceCall" ? null : "0x0" });
+
+        // As in Geth, only debug_traceCall serves the base block's own hash, and only to its immediate successor (go-ethereum#32175).
+        byte[] expected = depth == 0 && (offset != 1 || mode == "eth_call") ? new byte[32] : ctx.Blockchain.BlockTree.FindHeader(queried, BlockTreeLookupOptions.None)!.Hash!.BytesToArray();
+        byte[] actual = mode == "eth_call" ? Bytes.FromHexString(JToken.Parse(response)["result"]!.Value<string>()!) : ParseReturnValue(response);
+        Assert.That(actual, Is.EqualTo(expected), response);
     }
 
     [Test]
@@ -1488,6 +1845,8 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("{ ) }", "SyntaxError: Unexpected token ')'", false)]
+    [TestCase("{ ) }", "SyntaxError: Unexpected token ')'", true)]
     [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", false)]
     [TestCase("unknownTracer", "ReferenceError: unknownTracer is not defined at <eval>:1:2(0)", true)]
     [TestCase("_unknownTracer", "ReferenceError: _unknownTracer is not defined at <eval>:1:2(0)", false)]
@@ -2005,7 +2364,7 @@ public partial class DebugRpcModuleTests
             ["gasPrice"] = "0x1",
             ["maxFeePerGas"] = "0x2"
         };
-        Dictionary<string, object> validFees = new(mixedFees);
+        Dictionary<string, object> validFees = [with(mixedFees)];
         validFees.Remove("maxFeePerGas");
         string selector = block.Hash!.ToString();
         string feeResponse = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", mixedFees, selector);
@@ -2114,7 +2473,7 @@ public partial class DebugRpcModuleTests
         }
         string expected = scenario switch
         {
-            "source-before-destination" => $"Account {source} is not a precompile",
+            "source-before-destination" => "account 0x0000000000000000000000000000000000000000 is not a precompile",
             "storage-before-move" => $"account {Address.Zero} has both 'state' and 'stateDiff'",
             _ => $"account {destination} is already overridden"
         };
@@ -2124,11 +2483,18 @@ public partial class DebugRpcModuleTests
         AssertTraceCallInputError(response, expected);
     }
 
+    private static readonly (string Input, string Expected)[] TraceCallPrecompileSourceCases =
+    [
+        ("0x0000000000000000000000000000000000010001", "0x0000000000000000000000000000000000010001"),
+        ("0x000000000000000000000000000000000000dead", "0x000000000000000000000000000000000000dEaD")
+    ];
+
     [Test]
     public async Task Debug_traceCall_uses_the_trace_repository_for_custom_precompile_preflight(
-        [Values] bool streaming, [Values] bool indexed)
+        [Values] bool streaming, [Values] bool indexed,
+        [ValueSource(nameof(TraceCallPrecompileSourceCases))] (string Input, string Expected) sourceCase)
     {
-        Address source = new("0x0000000000000000000000000000000000010001");
+        Address source = new(sourceCase.Input);
         Address destination = new("0x0000000000000000000000000000000000020000");
         TestSpecProvider specs = new(Berlin.Instance)
         {
@@ -2182,7 +2548,7 @@ public partial class DebugRpcModuleTests
         };
         string inactive = await RpcTest.TestSerializedRequest(module, "debug_traceCall", mixedFees, "latest",
             new { stateOverrides = collision });
-        AssertTraceCallInputError(inactive, $"Account {source} is not a precompile");
+        AssertTraceCallInputError(inactive, $"account {sourceCase.Expected} is not a precompile");
         object collisionOptions = new
         {
             txIndex = indexed ? "0x0" : null,
@@ -2277,9 +2643,9 @@ public partial class DebugRpcModuleTests
             return inner.GetCachedCodeInfo(address, followDelegation, spec, out delegation);
         }
         public CodeInfo GetDelegatedCodeInfo(Address address, IReleaseSpec spec) => inner.GetDelegatedCodeInfo(address, spec);
-        public void InsertCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertCode(code, address, spec);
-        public void InsertTransientCode(ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertTransientCode(code, address, spec);
-        public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec) => inner.SetDelegation(codeSource, authority, spec);
+        public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertCode(worldState, code, address, spec);
+        public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address address, IReleaseSpec spec) => inner.InsertTransientCode(worldState, code, address, spec);
+        public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec) => inner.SetDelegation(worldState, codeSource, authority, spec);
         public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) => inner.TryGetDelegation(address, spec, out delegatedAddress);
     }
 
@@ -2339,7 +2705,7 @@ public partial class DebugRpcModuleTests
         (int code, string message) = blockSelection switch
         {
             "pending" => (ErrorCodes.InvalidInput, "tracing on top of pending is not supported"),
-            "missing" => (ErrorCodes.ResourceNotFound, "header not found"),
+            "missing" => (ErrorCodes.ResourceNotFound, $"block {TestItem.KeccakA} not found"),
             _ => (ErrorCodes.ResourceUnavailable, "No state available")
         };
         JToken json = JToken.Parse(response);
@@ -2822,15 +3188,20 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    private sealed class PrefixCountingAdapter(ITransactionProcessorAdapter inner, List<Hash256?> executed) : ITransactionProcessorAdapter
+    /// <summary>A call with the fields and signature of a signed transaction runs as its <c>from</c>, the zero address when omitted.</summary>
+    [Test]
+    public async Task Debug_traceCall_runs_a_signed_call_as_its_from([Values] bool fromOmitted, [Values] bool streaming)
     {
-        public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
-        {
-            executed.Add(transaction.Hash);
-            return inner.Execute(transaction, txTracer);
-        }
+        using TestRpcBlockchain chain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming })
+            .Build(new TestSpecProvider(Cancun.Instance));
+        Address from = fromOmitted ? Address.Zero : TestItem.AddressF;
+        EIP1559TransactionForRpc call = SignedCallScenario.BuildCall(chain.EthereumEcdsa, chain.SpecProvider.ChainId, fromOmitted ? null : from, unpriced: true);
 
-        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(blockExecutionContext);
-        public void PrepareForInclusionCheck(Transaction transaction, ulong stateGasAvailable) => inner.PrepareForInclusionCheck(transaction, stateGasAvailable);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest", new { tracer = "callTracer" });
+
+        string? caller = (string?)JToken.Parse(response)["result"]?["from"];
+        Assert.That(caller is null ? null : new Address(caller), Is.EqualTo(from), response);
     }
 }

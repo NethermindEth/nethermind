@@ -42,13 +42,13 @@ namespace Nethermind.Core
         /// <param name="flags">Read behavior flags that control how the value is retrieved.</param>
         /// <param name="action">Receives the value; it must not keep the span past the call.</param>
         /// <param name="arg">Passed to <paramref name="action"/>.</param>
-        /// <returns>Whether the key holds a non-empty value, which was passed to <paramref name="action"/>.</returns>
+        /// <returns>Whether the key exists, in which case its value, possibly empty, was passed to <paramref name="action"/>.</returns>
         bool TryGet<TArg>(scoped ReadOnlySpan<byte> key, ReadFlags flags, ReadOnlySpanAction<byte, TArg> action, TArg arg) where TArg : allows ref struct
         {
             Span<byte> value = GetSpan(key, flags);
             try
             {
-                if (value.IsEmpty) return false;
+                if (value.IsNull()) return false;
                 action(value, arg);
                 return true;
             }

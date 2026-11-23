@@ -43,6 +43,7 @@ using Nethermind.Logging;
 using Nethermind.History;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
@@ -271,7 +272,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(new BlockParameter(0UL)).Returns(header);
 
         using JsonRpcResponse response = await Request("debug_getRawHeader", "0x0");
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(header).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new HeaderDecoder().Encode(header)));
         _debugBridge.DidNotReceiveWithAnyArgs().GetBlock(null!);
     }
 
@@ -282,14 +283,14 @@ public class DebugModuleTests
         _debugBridge.GetBlock(blockParameter).Returns(block);
 
         using JsonRpcResponse response = await Request("debug_getRawBlock", requestParameter);
-        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new BlockDecoder().Encode(block).Bytes));
+        Assert.That(RpcTest.AssertSuccess<ArrayPoolList<byte>>(response).AsSpan(), Is.SequenceEqualTo(new BlockDecoder().Encode(block)));
     }
 
     [Test]
     public async Task DebugGetRawTransaction_WhenTransactionExists_ReturnsTransactionRlp()
     {
         Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
-        string expected = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).Bytes.ToHexString(true);
+        string expected = TxDecoder.Instance.Encode(transaction, RlpBehaviors.SkipTypedWrapping).ToHexString(true);
         _debugBridge.GetTransactionFromHash(transaction.Hash!).Returns(transaction);
 
         string serialized = await SerializedRequest("debug_getRawTransaction", transaction.Hash!);
@@ -312,7 +313,7 @@ public class DebugModuleTests
         Block block = BlockAtNumberOne();
         _debugBridge.GetReceiptsForBlock(block).Returns(receipts);
         RlpBehaviors behavior = (_specProvider.GetReceiptSpec(receipts[0].BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
-        string expected = $"[\"{Rlp.Encode(receipts[0], behavior).Bytes.ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).Bytes.ToHexString(true)}\"]";
+        string expected = $"[\"{Rlp.Encode(receipts[0], behavior).ToHexString(true)}\",\"{Rlp.Encode(receipts[1], behavior).ToHexString(true)}\"]";
 
         // Only the plain hash lookup is stubbed, so honouring requireCanonical would find nothing; geth ignores it here.
         object parameter = byHash ? new { blockHash = block.Hash, requireCanonical = true } : "0x1";
@@ -871,7 +872,7 @@ public class DebugModuleTests
         {
             Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
             Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
-            Assert.That(actual.Result.Error, Does.Contain("Cannot find header"));
+            Assert.That(actual.Result.Error, Is.EqualTo(isBadBlock ? $"bad block {blockHash} not found" : $"block {blockHash} not found"));
         }
     }
 
@@ -903,13 +904,7 @@ public class DebugModuleTests
     public void DebugIntermediateRoots_WhenStateAvailable_ReturnsRoots([Values] bool poststateAvailable, [Values] bool bodyStored)
     {
         Hash256 blockHash = TestItem.KeccakA;
-        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
-        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
-        _blockFinder.FindHeader(blockHash).Returns(header);
-        _blockFinder.HasBlock(header.Number, blockHash).Returns(bodyStored);
-        if (!bodyStored) _blockFinder.FindBlock(blockHash, header.Number).Returns(new Block(header));
-        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
-        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        BlockHeader header = SetUpIntermediateRootsBlock(blockHash, bodyStored);
         _blockchainBridge.HasStateForBlock(header).Returns(poststateAvailable);
 
         Hash256[] expected = [TestItem.KeccakB, TestItem.KeccakC];
@@ -924,6 +919,37 @@ public class DebugModuleTests
             Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
             Assert.That(actual.Data, Is.EqualTo(expected));
         }
+    }
+
+    [Test]
+    public async Task DebugIntermediateRoots_WhenStateIsTrieLess_ReturnsStateUnavailable()
+    {
+        Hash256 blockHash = TestItem.KeccakA;
+        SetUpIntermediateRootsBlock(blockHash, bodyStored: true);
+        StateNotRetainedException refusal = new("trie-less");
+        _debugBridge
+            .GetBlockIntermediateRoots(Arg.Is(blockHash), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions?>())
+            .Returns(_ => throw refusal);
+
+        JsonRpcErrorResponse actual = (JsonRpcErrorResponse)await Request("debug_intermediateRoots", blockHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Error!.Code, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Error.Message, Is.EqualTo(refusal.Message));
+        }
+    }
+
+    private BlockHeader SetUpIntermediateRootsBlock(Hash256 blockHash, bool bodyStored)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _blockFinder.FindHeader(blockHash).Returns(header);
+        _blockFinder.HasBlock(header.Number, blockHash).Returns(bodyStored);
+        if (!bodyStored) _blockFinder.FindBlock(blockHash, header.Number).Returns(new Block(header));
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        return header;
     }
 
     [TestCaseSource(nameof(IntermediateRootsErrorCases))]
@@ -967,7 +993,7 @@ public class DebugModuleTests
         {
             "debug_traceBlockByHash" => block.Hash!,
             "debug_traceBlockByNumber" => new BlockParameter(1UL),
-            _ => new BlockDecoder().Encode(block).Bytes
+            _ => new BlockDecoder().Encode(block)
         };
 
         JToken json = JToken.Parse(await SerializedRequest(method, selector, new { streamMode = streaming }));
@@ -1026,7 +1052,7 @@ public class DebugModuleTests
 
         using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = method switch
         {
-            "debug_traceBlock" => module.debug_traceBlock(Rlp.Encode(block).Bytes, options),
+            "debug_traceBlock" => module.debug_traceBlock(Rlp.Encode(block), options),
             "debug_traceBlockByNumber" => module.debug_traceBlockByNumber(new BlockParameter(header.Number), options),
             _ => module.debug_traceBlockByHash(header.Hash!, options),
         };
@@ -1068,6 +1094,29 @@ public class DebugModuleTests
         _debugBridge.Received(1).GetTransactionBlockHash(TestItem.KeccakA);
         _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(),
             Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+    }
+
+    [Test]
+    public async Task DebugTraceTransaction_buffered_trace_runs_on_the_dispatcher_token()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+
+        try
+        {
+            await SerializedRequest("debug_traceTransaction", TestItem.KeccakA, new { tracer = "noopTracer" });
+            _debugBridge.Received(1).GetTransactionTrace(header.Hash!, TestItem.KeccakA, timeout.Token, Arg.Any<GethTraceOptions>(),
+                Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
     }
 
     [Test]
@@ -1297,6 +1346,39 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugStandardTraceBlockToFile_WhenTxHashNotInBlock_FailsBeforeStateCheck([Values] bool isBadBlock, [Values("inBlock", "zero", "missing")] string filter)
+    {
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(Build.A.Transaction.TestObject).TestObject;
+        if (isBadBlock)
+        {
+            _debugBridge.GetBadBlocks().Returns([block]);
+        }
+        else
+        {
+            _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+            _blockFinder.HasBlock(block.Number, block.Hash!).Returns(true);
+            _blockFinder.FindBlock(block.Hash!, block.Number).Returns(block);
+        }
+        Hash256 txHash = filter switch { "inBlock" => block.Transactions[0].Hash!, "zero" => Hash256.Zero, _ => TestItem.KeccakA };
+        bool missing = filter == "missing";
+        GethTraceOptions options = new() { TxHash = txHash };
+        DebugRpcModule module = CreateModule();
+
+        using ResultWrapper<IEnumerable<string>> actual = isBadBlock
+            ? module.debug_standardTraceBadBlockToFile(block.Hash!, options)
+            : module.debug_standardTraceBlockToFile(block.Hash!, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ErrorCode, Is.EqualTo(missing ? ErrorCodes.InvalidInput : ErrorCodes.ResourceUnavailable));
+            if (missing)
+                Assert.That(actual.Result.Error, Is.EqualTo($"transaction {txHash} not found in block"));
+        }
+        _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+    }
+
+    [Test]
     public void DebugStandardTraceBlockToFile_WhenTreeBodyMissing_DoesNotUseBadStore()
     {
         Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -1423,7 +1505,7 @@ public class DebugModuleTests
         blockTree.DeleteInvalidBlock(block1);
 
         BlockDecoder decoder = new();
-        _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1).Bytes);
+        _blocksDb.Set(block1.Hash ?? new Hash256("0x0"), decoder.Encode(block1));
 
         _debugBridge.GetBadBlocks().Returns(badBlocksStore.GetAll());
 
@@ -1670,6 +1752,40 @@ public class DebugModuleTests
     }
 
     [Test]
+    [NonParallelizable]
+    public void DebugGetBadBlocks_WhenTimedOutDuringWrite_StopsAndLeavesNoFile()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        TimeoutTestHelper.TrackingCancellationTokenSource timeout = TimeoutTestHelper.RentTrackingTimeoutSourceForNextRequest();
+        bool resumedAfterTimeout = false;
+        _debugBridge.GetBadBlocks().Returns(TimeOutAfter(Build.A.Block.WithNumber(1).TestObject, Build.A.Block.WithNumber(2).TestObject));
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(() => CreateModule().debug_getBadBlocks(file), Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(resumedAfterTimeout, Is.False, "the write stops at the first block after the timeout");
+                Assert.That(Directory.GetFileSystemEntries(directory.Path), Is.Empty, "neither the target nor a temporary file is left behind");
+                Assert.That(timeout.DisposeCount, Is.EqualTo(1), "the cancelled timeout source is disposed, not pooled");
+            }
+        }
+        finally
+        {
+            TimeoutTestHelper.DisposeIfNotAlreadyObserved(timeout);
+        }
+
+        IEnumerable<Block> TimeOutAfter(Block first, Block second)
+        {
+            yield return first;
+            timeout.Cancel();
+            yield return second;
+            resumedAfterTimeout = true;
+        }
+    }
+
+    [Test]
     public async Task DebugGetBadBlocks_WhenExtraParamGiven_ReturnsInvalidParams()
     {
         _debugBridge.GetBadBlocks().Returns([]);
@@ -1879,7 +1995,7 @@ public class DebugModuleTests
             transactions[i] = Build.A.Transaction.SignedAndResolved().TestObject;
         }
 
-        return new BlockDecoder().Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject).Bytes;
+        return new BlockDecoder().Encode(Build.A.Block.WithNumber(1).WithTransactions(transactions).TestObject);
     }
 
     private static IEnumerable<IEnumerable<GethLikeTxTrace>> StreamBundles(CancellationToken token)
@@ -1966,7 +2082,7 @@ public class DebugModuleTests
             (Action<Hash256, IBlockFinder, IBlockchainBridge>)((blockHash, finder, _) =>
                 finder.FindHeader(blockHash).ReturnsNull()),
             ErrorCodes.ResourceNotFound,
-            "Cannot find header")
+            $"block {TestItem.KeccakA} not found")
         { TestName = "block_not_found" };
 
         yield return new TestCaseData(

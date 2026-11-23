@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Int256;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Logging;
 using Nethermind.Shutter.Contracts;
@@ -108,7 +109,7 @@ public class ShutterTxLoader(
         if (txCount > keyCount)
         {
             if (_logger.IsWarn) _logger.Warn($"Could not decrypt all Shutter transactions: found {txCount} transactions but received {keyCount} keys (excluding placeholder).");
-            sequencedTransactions.ReduceCount(txCount - keyCount);
+            sequencedTransactions.ReduceCount(keyCount);
             txCount = keyCount;
         }
 
@@ -170,7 +171,7 @@ public class ShutterTxLoader(
         {
             _logger.DebugError("Could not decrypt Shutter transaction with invalid key", e);
         }
-        catch (RlpException e)
+        catch (RlpReaderException e)
         {
             _logger.DebugError("Could not decode decrypted Shutter transaction", e);
         }

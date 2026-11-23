@@ -27,7 +27,8 @@ mount exists before anything is pulled.
 Benchmark output and profiling archives are staged in a per-run directory
 (`rpcbench.XXXXXX`) that the job removes at the end: under the runner's
 temporary directory on amd64, and on the scratch volume on arm64, whose small
-root disk cannot hold them. The ARM disk guard requires 6 GiB free on each
+root disk cannot hold them. On both boxes the disk guard prunes Docker garbage and
+stale unpinned images before the pull, then requires 6 GiB free on each
 Docker/containerd filesystem and on the output filesystem, plus 1 GiB on `/`,
 and sweeps per-run directories that a killed job left on the scratch volume.
 
@@ -904,7 +905,7 @@ perf annotate --stdio2 -i perfjit.data --percent-limit 1 -M intel > perf.asm
 - `-M intel` is for x64 only. Remove it on arm64.
 - If `perf inject` writes no `/tmp/jitted-<pid>-*.so`, the runtime wrote an
   incomplete jitdump, and `perf annotate` has no JIT code. Runtime 10.0.12 has
-  this problem. Runtime 10.0.14 (the node image's runtime) works.
+  this problem. Runtime 10.0.14 works.
 - Samples often land one or two instructions after the instruction that stalls
   (skid). Examine the instructions before the hot one, for example a slow load
   or a division.
@@ -1011,7 +1012,7 @@ The `reproducible-benchmarks-arm` self-hosted runner must provide:
 
 ## Files
 
-Run the C# entry points from the repository with .NET 10: `dotnet run --file scripts/rpc-bench/start-node.cs -- arguments`. Workflow jobs install the SDK before invoking them. Included `*.helpers.cs` files are shared implementation, not standalone commands.
+Run the C# entry points from the repository with the SDK from `global.json`: `dotnet run --file scripts/rpc-bench/start-node.cs -- arguments`. Workflow jobs install the SDK before invoking them. Included `*.helpers.cs` files are shared implementation, not standalone commands.
 
 | File | Role |
 |---|---|

@@ -131,7 +131,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
             ValueHash256 slotPath = default;
             if (pathAndAccounts.Length > 0)
             {
-                accountRlp = AccountRlpDecoder.EncodeAsBytes(pathAndAccounts[0].Account);
+                accountRlp = AccountRlpDecoder.Encode(pathAndAccounts[0].Account);
                 slotPath = pathAndAccounts[0].Path;
             }
 
@@ -181,7 +181,7 @@ public class SnapRangeRecovery(ISyncPeerPool peerPool, ILogManager logManager) :
         byte[] value,
         IByteArrayList proofs)
     {
-        ArrayPoolList<(TreePath, byte[])> result = new(1);
+        ArrayPoolList<(TreePath, byte[])> result = [with(1)];
 
         ITrieNodeResolver emptyResolver = new EmptyTrieNodeResolver();
         Dictionary<ValueHash256, byte[]> nodes = [];

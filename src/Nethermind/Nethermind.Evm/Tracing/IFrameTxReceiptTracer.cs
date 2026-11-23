@@ -22,6 +22,12 @@ public interface IFrameTxReceiptTracer
     /// <param name="error">The EVM error that ended the frame, or <c>null</c> when it succeeded.</param>
     void ReportFrameEnd(int frameIndex, EvmExceptionType? error) { }
 
+    /// <summary>Reports that the frame about to dispatch targets an account whose own code hash is empty and that
+    /// is no precompile, so it enters the VM with no code to run.</summary>
+    /// <remarks>A target delegating to an account without code is not reported: its code hash is the delegation
+    /// designator's, so the frame runs code as far as the profile is concerned.</remarks>
+    void ReportFrameCodelessTarget() { }
+
     /// <summary>Reports that the frames from <paramref name="fromFrameIndex"/> up to the failed frame at
     /// <paramref name="toFrameIndex"/> had their state and logs rolled back, by an atomic batch unroll or a failed
     /// <c>ASSERT</c> frame.</summary>
@@ -34,8 +40,8 @@ public interface IFrameTxReceiptTracer
     /// <summary>The first tracer in <paramref name="tracer"/>'s wrapper chain that takes EIP-8141 frame reports,
     /// or <see langword="null"/> when none does.</summary>
     /// <remarks>The tracing RPCs hand the processor a wrapped tracer, so the capability is reached through
-    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> is not a wrapper
-    /// and ends the walk; no tracing RPC builds one, and a chain that did would need this to fan out.</remarks>
+    /// the wrapper chain rather than on the outermost one. A <see cref="CompositeTxTracer"/> forwards reports
+    /// to its children, so the walk stops there rather than visiting the children twice.</remarks>
     static IFrameTxReceiptTracer? FindIn(ITxTracer tracer)
     {
         while (true)

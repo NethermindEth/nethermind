@@ -430,7 +430,7 @@ public class TransportMemoryPoolTests
             try
             {
                 trimming.Cancel();
-                trimmer.Wait();
+                trimmer.Wait(CancellationToken.None);
             }
             finally
             {
@@ -640,7 +640,7 @@ public class TransportMemoryPoolTests
         using HttpClient client = new();
         using HttpResponseMessage response = await client.PostAsync(Addresses(app)[0], new ByteArrayContent(sent), token);
         byte[] received = await response.Content.ReadAsByteArrayAsync(token);
-        await app.StopAsync();
+        await app.StopAsync(token);
         // Kestrel disposes its pools when it stops, and the last one stops the timer.
         bool trimmingAfterStop = ours?.IsTrimming ?? true;
 
@@ -705,7 +705,7 @@ public class TransportMemoryPoolTests
             byte[][] busyEchoes = await Task.WhenAll(busy);
             long busySmallAllocated = busyPools.Sum(static p => p.Small.BlocksAllocated);
             int poolsCreated = factory.PoolsCreated;
-            await app.StopAsync();
+            await app.StopAsync(token);
 
             using (Assert.EnterMultipleScope())
             {
@@ -795,7 +795,7 @@ public class TransportMemoryPoolTests
 
     private static List<IMemoryOwner<byte>> RentBlocks(MemoryPool<byte> pool, int count)
     {
-        List<IMemoryOwner<byte>> owners = new(count);
+        List<IMemoryOwner<byte>> owners = [with(count)];
         for (int i = 0; i < count; i++) owners.Add(pool.Rent());
         return owners;
     }

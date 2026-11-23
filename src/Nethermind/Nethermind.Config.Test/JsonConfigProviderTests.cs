@@ -8,6 +8,7 @@ using System.IO;
 using Nethermind.Api;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Collections;
+using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.KeyStore.Config;
@@ -44,6 +45,17 @@ public class JsonConfigProviderTests
         IConfig config = Activator.CreateInstance(type) as IConfig ?? throw new Exception("type is not IConfig");
         T actual = config.GetDefaultValue<T>(propName);
         Assert.That(actual, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void GetDefaultValue_parses_null_and_UInt256_defaults_like_config_values()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(new BlocksConfig().GetDefaultValue<ulong?>(nameof(BlocksConfig.TargetBlockGasLimit)), Is.Null);
+            Assert.That(new InitConfig().GetDefaultValue<string?>(nameof(InitConfig.KzgSetupPath)), Is.Null);
+            Assert.That(new BlocksConfig().GetDefaultValue<UInt256>(nameof(BlocksConfig.MinGasPrice)), Is.EqualTo(UInt256.One));
+        }
     }
 
     [Test]

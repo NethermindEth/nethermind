@@ -20,10 +20,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = """
-            The max number of concurrent requests waiting in the exclusive (non-sharable) module queue or,
-            when `MaxConcurrentExecutionRequests` is set, for an execution permit. Execution-heavy calls are
-            `eth_call`, `eth_estimateGas`, `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction`.
-            Exclusive calls include:
+            The max number of concurrent requests waiting in the exclusive (non-sharable) queue for:
 
             - `eth_getLogs`
             - `eth_newFilter`
@@ -39,27 +36,14 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(
         Description = """
             The max number of concurrent in-flight requests on the shared (sharable) singleton handler.
-            Applies to every sharable method, including lightweight head reads and CPU-heavy execution.
-            `MaxConcurrentExecutionRequests`, when set, separately limits heavy execution before shared
-            rental, leaving shared headroom for lightweight methods. `eth_sendRawTransactionSync` holds a
-            shared slot while waiting for inclusion; see `RpcTxSyncMaxConcurrentRequests`.
-            `0` to lift the shared limit.
+            Caps heavy methods promoted to sharable — `eth_call`, `eth_estimateGas`,
+            `eth_createAccessList` — preventing unbounded concurrency from exhausting memory.
+            Light sharable methods (e.g. `eth_blockNumber`, `eth_getBalance`) complete in <1 ms and
+            effectively never approach this limit. `eth_sendRawTransactionSync` holds a slot for as long
+            as it waits for inclusion; see `RpcTxSyncMaxConcurrentRequests`. `0` to lift the limit.
             """,
         DefaultValue = "10000")]
     int MaxConcurrentSharedRequests { get; set; }
-
-    [ConfigItem(
-        Description = """
-            The max number of concurrent execution-heavy RPCs: `eth_call`, `eth_estimateGas`,
-            `eth_createAccessList`, `eth_simulateV1` and `eth_fillTransaction`. Excess calls wait
-            asynchronously before parameter decoding or module rental, using `RequestQueueLimit` and `Timeout`.
-            Unset by default, which disables this limit. A set value is bounded by `EthModuleConcurrentInstances`
-            (which defaults to logical processor count) and half `MaxConcurrentSharedRequests`
-            when that limit is positive, with at least one execution slot. A non-positive value
-            applies only those module/shared bounds.
-            """,
-        DefaultValue = "null")]
-    int? MaxConcurrentExecutionRequests { get; set; }
 
     [ConfigItem(
         Description = "The path to the base file for diagnostic recording.",
@@ -148,6 +132,16 @@ public interface IJsonRpcConfig : IConfig
     public int MaxLogsPerResponse { get; set; }
 
     [ConfigItem(
+        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of one WebSocket or IPC connection. A call above this limit returns a `LimitExceeded` error. `0` to lift the limit.",
+        DefaultValue = "1000")]
+    public int MaxSubscriptionsPerConnection { get; set; }
+
+    [ConfigItem(
+        Description = "The max number of `eth_subscribe` and `admin_subscribe` subscriptions of all connections together. A call above this limit returns a `LimitExceeded` error. IPC and authenticated connections are not refused by this limit. `0` to lift the limit.",
+        DefaultValue = "10000")]
+    public int MaxSubscriptions { get; set; }
+
+    [ConfigItem(
         Description = "The max number of blocks the `overlay_getLogs` JSON-RPC method re-executes in one call. `0` to lift the limit.",
         DefaultValue = "1000")]
     int OverlayMaxBlockRange { get; set; }
@@ -204,6 +198,9 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
+    [ConfigItem(Description = "The maximum number of `eth_call`, `eth_estimateGas` and `eth_createAccessList` requests that execute at a time, with or without overrides. A request above this number waits for a free slot for up to `JsonRpc.Timeout` and then fails with a `ModuleTimeout` JSON-RPC error. Waiting requests do not hold a thread and count toward `JsonRpc.RequestQueueLimit`; a request that would exceed it fails at once with a `LimitExceeded` JSON-RPC error. `0` or negative disables the limit. Defaults to four times the number of logical processors.")]
+    int? EthCallMaxConcurrentRequests { get; set; }
+
     [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     public string JwtSecretFile { get; set; }
 
@@ -240,8 +237,23 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
 
+    [ConfigItem(Description = "The max total size, in bytes, of HTTP JSON-RPC responses to unauthenticated URLs that are written but not yet sent. One response alone can use all of it. While a remote address has other unsent responses, it can hold at most 1/16 of it. IPv6 addresses are grouped by their /64 prefix, and a connection without a known address counts alone. A response that would go above either limit is not sent and its connection is closed; responses already in progress are not affected. Streamed results are not counted when `BufferResponses` is off, and bytes that a streamed result flushes are released when the streamed result ends. A batch that reaches `MaxBatchResponseBodySize` first, when that value is not above the share of one address, ends with the batch limit errors instead. Behind a reverse proxy all callers share the proxy's address, so rely on the proxy's limits or raise this value. `0` or negative to disable this limit.", DefaultValue = "536870912")]
+    long MaxUnsentResponsesSize { get; set; }
+
+    [ConfigItem(Description = "The max number of HTTP JSON-RPC responses to unauthenticated URLs that one remote address, or one IPv6 /64 prefix, can have with more than 1 MiB written but not yet sent. Smaller responses, and responses still being written below that size, are not counted. A further response above 1 MiB is not sent and its connection is closed. Behind a reverse proxy all callers share the proxy's address, so rely on the proxy's limits or raise this value. `0` or negative to disable. Ignored when `MaxUnsentResponsesSize` is disabled.", DefaultValue = "8")]
+    int MaxUnsentResponsesPerAddress { get; set; }
+
+    [ConfigItem(Description = "The min rate, in bytes per second, at which a caller of an unauthenticated HTTP JSON-RPC URL must read a response, after a grace period of 10 seconds. The server closes the connection of a caller that reads more slowly. `0` disables the rate, also the server default one.", DefaultValue = "65536")]
+    int MinResponseDataRate { get; set; }
+
     [ConfigItem(Description = "The max block count limit for the `eth_simulate` JSON-RPC method.", DefaultValue = "256")]
     long? MaxSimulateBlocksCap { get; set; }
+
+    [ConfigItem(Description = "The max total call count, across all blocks, for `eth_simulateV1`, `debug_simulateV1`, `trace_simulateV1` and, with bundle overrides, `debug_traceCallMany`.", DefaultValue = "10000")]
+    long? MaxSimulateCallsCap { get; set; }
+
+    [ConfigItem(Description = "The max call count per block (per bundle for `debug_traceCallMany`) for the methods that `MaxSimulateCallsCap` covers.", DefaultValue = "5000")]
+    long? MaxSimulateCallsPerBlockCap { get; set; }
 
     [ConfigItem(Description = "The error margin used in the `eth_estimateGas` JSON-RPC method, in basis points.", DefaultValue = "150")]
     int EstimateErrorMargin { get; set; }
@@ -263,6 +275,9 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Connections that are authenticated or enable the Engine module always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int WebSocketsProcessingConcurrency { get; set; }
+
+    [ConfigItem(Description = "The max size, in bytes, of a written but not yet sent response on one WebSocket connection to an unauthenticated URL. A connection is closed when its response is larger, or when the send does not complete within `JsonRpc.Timeout` plus one second for each 64 KiB of the response, at most five minutes more. `0` or negative to disable both.", DefaultValue = "67108864")]
+    long MaxUnsentWebSocketResponseSize { get; set; }
 
     [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. When `JsonRpc.EnabledModules` includes the Engine module, IPC always processes its requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int IpcProcessingConcurrency { get; set; }
@@ -295,6 +310,12 @@ public interface IJsonRpcConfig : IConfig
     /// </summary>
     [ConfigItem(Description = "Maximum number of concurrent eth_sendRawTransactionSync calls, independent of EthModuleConcurrentInstances. Excess calls are rejected before submitting the transaction. Each pending call also counts against MaxConcurrentSharedRequests for up to RpcTxSyncMaxTimeoutMs, so keep this well below MaxConcurrentSharedRequests. 0 disables this limit; MaxConcurrentSharedRequests then remains the only bound (none if it is 0 too).", DefaultValue = "128")]
     int RpcTxSyncMaxConcurrentRequests { get; set; }
+
+    [ConfigItem(Description = "The maximum number of blocks one `eth_feeHistory` call returns, from 1 to 1024; `0`, negative values and values above 1024 mean 1024. A larger `blockCount` is lowered to it, so the response then covers fewer blocks than requested.", DefaultValue = "1024")]
+    int FeeHistoryMaxBlockCount { get; set; }
+
+    [ConfigItem(Description = "The maximum number of `eth_feeHistory` calls at once that need blocks missing from the fee cache of recent blocks. Calls served from that cache take no slot; one successful read of a cached block's reward data is shared by the calls that ask for it. Calls beyond the cap return `LimitExceeded` at once instead of waiting; a newest block whose header is not found gets the usual not-found error instead. Right after a restart, recent blocks count until each has been read once. `0` or negative to lift the limit. Defaults to a quarter of the number of logical processors, at least 1.")]
+    int? FeeHistoryMaxConcurrentRequests { get; set; }
 
     [ConfigItem(
         Description = """

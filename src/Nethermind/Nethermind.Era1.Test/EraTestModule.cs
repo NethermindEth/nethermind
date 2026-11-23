@@ -28,6 +28,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
         return new ContainerBuilder()
             .AddModule(new EraTestModule())
             .AddSingleton<IBlockTree>(blockTreeBuilder.TestObject)
+            .AddSingleton(blockTreeBuilder.BlockStore)
             .OnBuild((ctx) =>
             {
                 blockTreeBuilder
@@ -50,7 +51,7 @@ public class EraTestModule(bool useRealValidator = false) : Module
             await util.AddBlock(cancellationToken);
         }
 
-        await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), start, end);
+        await testCtx.Resolve<IEraExporter>().Export(testCtx.ResolveTempDirPath(), start, end, cancellationToken);
         return testCtx;
     }
 

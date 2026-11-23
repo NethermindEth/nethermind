@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -13,9 +15,13 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Encoding;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network;
+using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Snap;
@@ -134,8 +140,7 @@ public class SnapStateServerTests
     {
         using IWriteBatch batch = context.BeginWriteBatch();
         foreach (PathWithAccount pwa in TestItem.Tree.AccountsWithPaths)
-            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account
-                ?? throw new InvalidOperationException("A test account entry must contain an account value."));
+            batch.SetAccount(pwa.Path.ToCommitment(), pwa.Account.ToAccount());
     }
 
     private static void FillMultipleAccounts(ISnapServerContext context, int count)
@@ -221,7 +226,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = useCorrectRoot ? context.RootHash : TestItem.KeccakA,
@@ -237,7 +242,7 @@ public class SnapStateServerTests
         {
             Assert.That(result, Is.EqualTo(expectedResult));
             // On success the stale empty storage root must be replaced by the verified one.
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(useCorrectRoot ? storageRoot : Keccak.EmptyTreeHash));
         }
     }
 
@@ -255,7 +260,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
 
         // Drop the leaf nodes from the proof; the leaves are still present in the returned accounts.
-        ArrayPoolList<byte[]> trimmedProofs = new(proofs.Count);
+        ArrayPoolList<byte[]> trimmedProofs = [with(proofs.Count)];
         for (int i = 0; i < proofs.Count; i++)
         {
             byte[] proof = proofs[i].ToArray();
@@ -267,7 +272,7 @@ public class SnapStateServerTests
         proofs.Dispose();
 
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = new ByteArrayListAdapter(trimmedProofs) };
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = context.RootHash,
@@ -282,7 +287,7 @@ public class SnapStateServerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(storageRoot));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(storageRoot));
         }
     }
 
@@ -300,7 +305,7 @@ public class SnapStateServerTests
             context.Server.GetAccountRanges(context.RootHash, path, path.IncrementPath(), 4000, CancellationToken.None);
         using AccountsAndProofs response = new() { PathAndAccounts = accounts, Proofs = proofs };
 
-        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject);
+        PathWithAccount stale = new(path, Build.An.Account.WithBalance(2).TestObject.ToStruct());
         using AccountsToRefreshRequest request = new()
         {
             RootHash = context.RootHash,
@@ -316,7 +321,7 @@ public class SnapStateServerTests
         {
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             // Absent account: nothing adopted, storage root unchanged.
-            Assert.That(stale.Account?.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(stale.Account.StorageRoot, Is.EqualTo(Keccak.EmptyTreeHash));
         }
     }
 
@@ -370,14 +375,14 @@ public class SnapStateServerTests
     {
         yield return new TestCaseData(Array.Empty<byte>()).SetName("{m}: AbsentAccount");
         yield return new TestCaseData(new byte[] { 0xc1, 0x80 }).SetName("{m}: PlaceholderAccount");
-        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)).SetName("{m}: EmptyAccount");
-        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(
+        yield return new TestCaseData(AccountDecoder.Instance.Encode(Account.TotallyEmpty)).SetName("{m}: EmptyAccount");
+        yield return new TestCaseData(AccountDecoder.Instance.Encode(
             new Account(1).WithChangedCodeHash(TestItem.KeccakA))).SetName("{m}: AccountWithCode");
         yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0x80, 0x80 }).SetName("{m}: NullHashes");
-        yield return new TestCaseData(Rlp.Encode(Rlp.Encode(0), Rlp.Encode(0), Rlp.Encode(Keccak.EmptyTreeHash), Rlp.OfEmptyByteArray).Bytes)
+        yield return new TestCaseData(RlpTestHelper.EncodeSequence(Rlp.Encode(0), Rlp.Encode(0), Rlp.Encode(Keccak.EmptyTreeHash), RlpTestHelper.OfEmptyByteArray))
             .SetName("{m}: NullCodeHash");
         yield return new TestCaseData(new byte[] { 0xc4, 0x80, 0x80, 0xa0 }).SetName("{m}: TruncatedStorageHash");
-        yield return new TestCaseData(AccountDecoder.Instance.EncodeAsBytes(Account.TotallyEmpty)[..^1]).SetName("{m}: TruncatedCodeHash");
+        yield return new TestCaseData(AccountDecoder.Instance.Encode(Account.TotallyEmpty)[..^1]).SetName("{m}: TruncatedCodeHash");
     }
 
     [TestCaseSource(nameof(AccountPayloads))]
@@ -388,8 +393,8 @@ public class SnapStateServerTests
         context.SetRawAccount(accountPath, accountRlp);
         using RlpPathGroupList pathSet = PathGroup.EncodeToRlpPathGroupList(
             [new PathGroup { Group = [accountPath.BytesToArray(), []] }]);
-        PathWithAccount[] accounts = [new(accountPath, Account.TotallyEmpty)];
-        RlpException? expectedException = null;
+        PathWithAccount[] accounts = [new(accountPath, AccountStruct.TotallyEmpty)];
+        RlpReaderException? expectedException = null;
         Account? expected = null;
         if (accountRlp.Length > 0)
         {
@@ -397,7 +402,7 @@ public class SnapStateServerTests
             {
                 expected = AccountDecoder.Instance.Decode(accountRlp);
             }
-            catch (RlpException exception)
+            catch (RlpReaderException exception)
             {
                 expectedException = exception;
             }
@@ -515,6 +520,211 @@ public class SnapStateServerTests
         accountProofs.Dispose();
         proofs?.Dispose();
         storageSlots.DisposeRecursive();
+    }
+
+    private static readonly Account[] AccountShapes =
+    [
+        new(0, 1),
+        new(0x7f, 0x80),
+        new(ulong.MaxValue, UInt256.MaxValue),
+        new(5, 10, TestItem.KeccakA, Keccak.OfAnEmptyString),
+        new(5, 10, Keccak.EmptyTreeHash, TestItem.KeccakB),
+        new(5, 10, TestItem.KeccakA, TestItem.KeccakB)
+    ];
+
+    [Test]
+    public void AccountCollector_CountsPathAndSlimAccountBytes([ValueSource(nameof(AccountShapes))] Account account)
+    {
+        AccountCollector collector = new();
+        using EncodedSnapEntries<PathWithAccount> accounts = collector.Accounts;
+
+        int size = collector.Collect(TestItem.KeccakC.ValueHash256, AccountDecoder.Instance.Encode(account));
+
+        Assert.That(size, Is.EqualTo(Hash256.Size + AccountDecoder.Slim.GetLength(account)));
+    }
+
+    [Test]
+    public void AccountCollector_RejectsEmptyLeaf()
+    {
+        AccountCollector collector = new();
+        using EncodedSnapEntries<PathWithAccount> accounts = collector.Accounts;
+
+        Assert.That(() => collector.Collect(TestItem.KeccakC.ValueHash256, ReadOnlySpan<byte>.Empty), Throws.TypeOf<TrieException>());
+        Assert.That(accounts, Is.Empty);
+    }
+
+    [Test]
+    public void EncodedSnapEntries_AreEmptyAfterDispose()
+    {
+        AccountCollector collector = new();
+        EncodedSnapEntries<PathWithAccount> accounts = collector.Accounts;
+        collector.Collect(TestItem.KeccakC.ValueHash256, AccountDecoder.Instance.Encode(AccountShapes[0]));
+        Assert.That(accounts.AsSpan().Length, Is.EqualTo(1));
+
+        accounts.Dispose();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accounts.Count, Is.Zero);
+            Assert.That(accounts.Encoded.Length, Is.Zero);
+            Assert.That(accounts.AsSpan().Length, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void GetStorageRanges_OfManyAccounts_UseOneBufferThatDisposeReturns()
+    {
+        const int accountCount = 100;
+        using ISnapServerContext context = CreateContext();
+        PathWithAccount[] accounts = new PathWithAccount[accountCount];
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            for (int i = 0; i < accountCount; i++)
+            {
+                Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+                batch.SetSlot(path, TestItem.KeccakA, [(byte)(i + 1)]);
+                batch.SetAccount(path, Build.An.Account.WithBalance(1).TestObject);
+                accounts[i] = new PathWithAccount(path, default);
+            }
+        }
+
+        using SharedByteBufferRentals rentals = new(minimumLength: 0);
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> served, IByteArrayList? proofs) =
+            context.Server.GetStorageRanges(context.RootHash, accounts, null, null, ISnapStateServer.HardResponseByteLimit, CancellationToken.None);
+        proofs?.Dispose();
+        byte[][] values = [.. served.Select(static slots => slots.Single().SlotRlpValue)];
+        bool adjacent = AreAdjacent(served);
+        served.DisposeRecursive();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values, Is.EqualTo(Enumerable.Range(1, accountCount).Select(static i => Rlp.Encode(new[] { (byte)i }))));
+            Assert.That(adjacent, Is.True, "the accounts share the buffer of the response");
+            Assert.That(rentals.Outstanding, Is.Empty, "the buffer goes back to the pool");
+        }
+
+        static bool AreAdjacent(IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> lists)
+        {
+            for (int i = 1; i < lists.Count; i++)
+            {
+                ReadOnlySpan<byte> previous = ((EncodedSnapEntries<PathWithStorageSlot>)lists[i - 1]).Encoded;
+                ReadOnlySpan<byte> next = ((EncodedSnapEntries<PathWithStorageSlot>)lists[i]).Encoded;
+                if (!Unsafe.AreSame(ref Unsafe.Add(ref MemoryMarshal.GetReference(previous), previous.Length), ref MemoryMarshal.GetReference(next))) return false;
+            }
+
+            return true;
+        }
+    }
+
+    [Test]
+    public void EncodedStorageRanges_SlotListsAreEmptyAfterDispose([Values] bool recursive)
+    {
+        EncodedStorageRanges ranges = new(2);
+        foreach (Hash256 path in (Hash256[])[TestItem.KeccakA, TestItem.KeccakB])
+        {
+            ranges.Collector.Collect(path.ValueHash256, [1]);
+            ranges.TryCompleteAccount();
+        }
+
+        IOwnedReadOnlyList<PathWithStorageSlot>[] slotLists = [.. ranges];
+        if (recursive) ranges.DisposeRecursive();
+        else ranges.Dispose();
+
+        Assert.That(slotLists.Select(static slots => (slots.Count, ((EncodedSnapEntries<PathWithStorageSlot>)slots).Encoded.Length, slots.AsSpan().Length)),
+            Is.All.EqualTo((0, 0, 0)));
+    }
+
+    [Test]
+    public void GetAccountRanges_SerializesAsDecodedAccounts([Values(1, 2000, 10_000_000)] int byteLimit)
+    {
+        using ISnapServerContext context = CreateContext();
+        List<PathWithAccount> expected = [];
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            for (int i = 0; i < 100; i++)
+            {
+                Hash256 path = Keccak.Compute(i.ToBigEndianByteArray());
+                batch.SetAccount(path, AccountShapes[i % AccountShapes.Length]);
+                expected.Add(new PathWithAccount(path, AccountShapes[i % AccountShapes.Length].ToStruct()));
+            }
+        }
+
+        expected.Sort(static (a, b) => a.Path.CompareTo(b.Path));
+        (IOwnedReadOnlyList<PathWithAccount> served, IByteArrayList proofs) =
+            context.Server.GetAccountRanges(context.RootHash, Keccak.Zero, null, byteLimit, CancellationToken.None);
+        using IByteArrayList servedProofs = proofs;
+        using AccountRangeMessage servedMessage = new() { RequestId = 1, PathsWithAccounts = served, Proofs = EmptyByteArrayList.Instance };
+        using AccountRangeMessage decodedMessage = new()
+        {
+            RequestId = 1,
+            PathsWithAccounts = new ArrayPoolList<PathWithAccount>(served.Count, expected.Take(served.Count)),
+            Proofs = EmptyByteArrayList.Instance
+        };
+        AccountRangeMessageSerializer serializer = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Is.TypeOf<EncodedSnapEntries<PathWithAccount>>().And.Not.Empty, "the serializer copies only encoded entries as they are");
+            Assert.That(Serialize(serializer, servedMessage), Is.EqualTo(Serialize(serializer, decodedMessage)));
+            Assert.That(served.Select(static a => (a.Path, a.Account)), Is.EqualTo(decodedMessage.PathsWithAccounts.Select(static a => (a.Path, a.Account))));
+        }
+    }
+
+    // The first account has about 2,500 bytes of slots and the second about 25,000. The second account is served only
+    // when at least 10,000 bytes of the limit remain.
+    [TestCase(1, 1, true)]
+    [TestCase(2000, 1, true)]
+    [TestCase(20_000, 2, true)]
+    [TestCase(10_000_000, 2, false)]
+    public void GetStorageRanges_SerializesAsDecodedSlots(int byteLimit, int servedAccounts, bool lastPartial)
+    {
+        using ISnapServerContext context = CreateContext();
+        Hash256[] accountPaths = [TestItem.Tree.AccountAddress0, TestItem.KeccakH];
+        int[] slotCounts = [50, 500];
+        List<PathWithStorageSlot>[] expected = [[], []];
+        using (IWriteBatch batch = context.BeginWriteBatch())
+        {
+            for (int account = 0; account < accountPaths.Length; account++)
+            {
+                for (int i = 0; i < slotCounts[account]; i++)
+                {
+                    Hash256 slot = Keccak.Compute((account * 1000 + i).ToBigEndianByteArray());
+                    byte[] value = slot.Bytes[..(i % Hash256.Size + 1)].ToArray();
+                    value[0] = i % 2 == 0 ? (byte)0x01 : (byte)0x80;
+                    batch.SetSlot(accountPaths[account], slot, value);
+                    expected[account].Add(new PathWithStorageSlot(slot, Rlp.Encode(value)));
+                }
+
+                batch.SetAccount(accountPaths[account], Build.An.Account.WithBalance(1).TestObject);
+                expected[account].Sort(static (a, b) => a.Path.CompareTo(b.Path));
+            }
+        }
+
+        PathWithAccount[] accounts = [.. accountPaths.Select(static path => new PathWithAccount(path, default))];
+        (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> served, IByteArrayList? proofs) =
+            context.Server.GetStorageRanges(context.RootHash, accounts, null, null, byteLimit, CancellationToken.None);
+        using IByteArrayList? servedProofs = proofs;
+        using StorageRangeMessage servedMessage = new() { RequestId = 1, Slots = served, Proofs = EmptyByteArrayList.Instance };
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> decoded = [with(served.Count)];
+        for (int i = 0; i < served.Count; i++) decoded.Add(new ArrayPoolList<PathWithStorageSlot>(served[i].Count, expected[i].Take(served[i].Count)));
+        using StorageRangeMessage decodedMessage = new() { RequestId = 1, Slots = decoded, Proofs = EmptyByteArrayList.Instance };
+        StorageRangesMessageSerializer serializer = new();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Has.Count.EqualTo(servedAccounts).And.All.TypeOf<EncodedSnapEntries<PathWithStorageSlot>>(), "the serializer copies only encoded entries as they are");
+            for (int i = 0; i < served.Count - 1; i++) Assert.That(served[i], Has.Count.EqualTo(slotCounts[i]), $"account {i}");
+            Assert.That(served[^1], lastPartial ? Has.Count.InRange(1, slotCounts[served.Count - 1] - 1) : Has.Count.EqualTo(slotCounts[served.Count - 1]), "last account");
+            Assert.That(Serialize(serializer, servedMessage), Is.EqualTo(Serialize(serializer, decodedMessage)));
+            Assert.That(served.SelectMany(static s => s).Select(static s => (s.Path, s.SlotRlpValue)),
+                Is.EqualTo(decoded.SelectMany(static s => s).Select(static s => (s.Path, s.SlotRlpValue))));
+        }
+    }
+
+    private static byte[] Serialize<T>(IMessageSerializer<T> serializer, T message) where T : MessageBase
+    {
+        byte[] bytes = new byte[serializer.GetLength(message)];
+        return bytes[..serializer.Serialize(bytes, message)];
     }
 
     [Test]
@@ -638,7 +848,7 @@ public class SnapStateServerTests
             StorageRange storageRangeRequest = new()
             {
                 StartingHash = Keccak.Zero,
-                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct()) }
             };
             AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
@@ -693,7 +903,7 @@ public class SnapStateServerTests
                 StorageRange storageRangeRequest = new()
                 {
                     StartingHash = startRange,
-                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot)) }
+                    Accounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.Tree.AccountsWithPaths[0].Path, new Account(UInt256.Zero).WithChangedStorageRoot(storageRoot).ToStruct()) }
                 };
                 AddRangeResult result = context.SnapProvider.AddStorageRangeForAccount(storageRangeRequest, 0, storageSlots[0], proofs);
 
@@ -735,7 +945,7 @@ public class SnapStateServerTests
                 for (int j = 0; j < i; j += 1)
                     batch.SetSlot(storagePath, TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
                 batch.SetAccount(address, TestItem.GenerateRandomAccount());
-                accountWithStorage.Add(new PathWithAccount(address.ToAccountPath, new Account(0)));
+                accountWithStorage.Add(new PathWithAccount(address.ToAccountPath, new AccountStruct(0)));
             }
         }
 

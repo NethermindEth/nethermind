@@ -19,6 +19,8 @@ public partial struct EvmPooledMemory
 
     private static readonly TraceMemory EmptyTraceMemory = new(0, default);
 
+    internal static partial bool IsSwizzled => false;
+
     private static byte[] RentLarge(int minLength, out ulong initializedSize)
     {
         if (minLength > MaxLargePooledArrayLength)

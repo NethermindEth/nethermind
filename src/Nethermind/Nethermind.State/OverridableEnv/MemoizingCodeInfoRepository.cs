@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Evm.State;
 
 namespace Nethermind.State.OverridableEnv;
 
@@ -62,22 +63,22 @@ public sealed class MemoizingCodeInfoRepository(ICodeInfoRepository codeInfoRepo
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
         codeInfoRepository.GetDelegatedCodeInfo(target, vmSpec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         memo.Forget(codeOwner);
-        codeInfoRepository.InsertCode(code, codeOwner, spec);
+        codeInfoRepository.InsertCode(worldState, code, codeOwner, spec);
     }
 
-    public void InsertTransientCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertTransientCode(IWorldState worldState, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         memo.Forget(codeOwner);
-        codeInfoRepository.InsertTransientCode(code, codeOwner, spec);
+        codeInfoRepository.InsertTransientCode(worldState, code, codeOwner, spec);
     }
 
-    public void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec)
+    public void SetDelegation(IWorldState worldState, Address codeSource, Address authority, IReleaseSpec spec)
     {
         memo.Forget(authority);
-        codeInfoRepository.SetDelegation(codeSource, authority, spec);
+        codeInfoRepository.SetDelegation(worldState, codeSource, authority, spec);
     }
 
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>

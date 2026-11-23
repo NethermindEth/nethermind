@@ -49,6 +49,10 @@ public class SyncDbTunerTests
     [Test]
     public void WhenReceiptsIsOn_TriggerReceiptsDbTune() => TestFeedAndDbTune(_receiptSyncFeed, _receiptDb);
 
+    [Test]
+    public void Null_feeds_are_ignored() =>
+        Assert.DoesNotThrow(() => _ = new SyncDbTuner(_syncConfig, null, null, _blockDb, _receiptDb));
+
     private void TestFeedAndDbTune<T>(ISyncFeed<T> feed, ITunableDb db, ITunableDb.TuneType? tuneType = null)
     {
         feed.StateChanged += Raise.EventWith(new SyncFeedStateEventArgs(SyncFeedState.Active));

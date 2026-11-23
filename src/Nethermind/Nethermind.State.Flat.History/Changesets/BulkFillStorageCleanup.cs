@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.State.Flat.Persistence;
 using Columns = Nethermind.State.Flat.History.Changesets.BulkFillScratchState.Columns;
@@ -39,6 +40,32 @@ internal static class BulkFillStorageCleanup
             address.Bytes.CopyTo(lower);
             lower[^1] = 0;
             lowerLength = lower.Length;
+            CleanAccount(db, address, clearedAt, token);
+        }
+    }
+
+    /// <summary>Cleans the accounts whose storage the replayed blocks cleared. Point reads find their markers, so the
+    /// cleanup does not walk the tombstones that earlier cleanups left across the column; an account cleared twice, or
+    /// already cleaned, has no marker left and is skipped.</summary>
+    public static void Run(IColumnsDb<Columns> db, IReadOnlyList<ValueHash256> addresses, CancellationToken token)
+    {
+        IDb clears = db.GetColumnDb(Columns.Clears);
+        for (int i = 0; i < addresses.Count; i++)
+        {
+            token.ThrowIfCancellationRequested();
+            ValueHash256 address = addresses[i];
+            ulong clearedAt;
+            Span<byte> marker = clears.GetSpan(address.Bytes);
+            try
+            {
+                if (marker.IsNull()) continue;
+                if (marker.Length != sizeof(ulong)) throw new InvalidDataException("Invalid scratch clear during cleanup.");
+                clearedAt = BinaryPrimitives.ReadUInt64BigEndian(marker);
+            }
+            finally
+            {
+                clears.DangerousReleaseMemory(marker);
+            }
             CleanAccount(db, address, clearedAt, token);
         }
     }

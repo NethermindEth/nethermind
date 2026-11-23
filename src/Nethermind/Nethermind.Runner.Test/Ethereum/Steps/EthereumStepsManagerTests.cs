@@ -262,6 +262,108 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             Assert.That(async () => await act(), Throws.TypeOf<InvalidConfigurationException>());
         }
 
+        [TestCase(typeof(ThrowingConstructorStep))]
+        [TestCase(typeof(OptionalStepThrowingOnFirstConstruction))]
+        public async Task Step_whose_constructor_throws_is_constructed_once_and_fails_the_run(Type stepType)
+        {
+            ConstructorAttempts attempts = new();
+            TestErrorLogManager logs = new();
+            IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+            consensusPlugin.ApiType.Returns(typeof(NethermindApi));
+            await using IContainer container = CreateCommonBuilder(new StepInfo(stepType))
+                .AddSingleton(consensusPlugin)
+                .AddSingleton(attempts)
+                .AddSingleton<ILogManager>(logs)
+                .Build();
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(30));
+
+            StepDependencyException? exception = await Assert.ThrowsAsync<StepDependencyException>(() => container.Resolve<EthereumStepsManager>().InitializeAll(source.Token));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(attempts.Count, Is.EqualTo(1));
+                Assert.That(exception?.GetBaseException().Message, Is.EqualTo("attempt 1"));
+                Assert.That(logs.Errors.Count(static error => error.Text.Contains("failed after")), Is.EqualTo(1));
+            }
+        }
+
+        [TestCase(false, "SelfDependentStep", typeof(SelfDependentStep))]
+        [TestCase(true, "SelfDependentStep", typeof(SelfDependentStep))]
+        [TestCase(false, "CycleStepA, CycleStepB", typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle))]
+        [TestCase(true, "CycleStepA, CycleStepB", typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle))]
+        public async Task Dependency_cycle_fails_the_run_naming_the_steps_on_it(bool debugLogging, string cycle, params Type[] steps)
+        {
+            await using IContainer container = CreateNethermindEnvironment(steps.Select(static step => new StepInfo(step)));
+            using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+                .AddSingleton<ILogManager>(debugLogging ? LimboLogs.Instance : NullLogManager.Instance)
+                .AddSingleton<EthereumStepsManager>());
+            // Without the check the steps wait for each other until the run is cancelled.
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
+
+            Assert.That(async () => await scope.Resolve<EthereumStepsManager>().InitializeAll(source.Token),
+                Throws.TypeOf<StepDependencyException>().With.Message.EqualTo($"Steps depend on each other in a cycle: {cycle}."));
+        }
+
+        [Test]
+        public async Task Dependency_cycle_with_a_two_step_tail_names_only_the_cycle()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(StepBehindStepAfterCycle), typeof(StepAfterCycle), typeof(CycleStepA), typeof(CycleStepB));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(source.Token),
+                Throws.TypeOf<StepDependencyException>().With.Message.EqualTo("Steps depend on each other in a cycle: CycleStepA, CycleStepB."));
+        }
+
+        [Test]
+        public async Task Dependency_cycles_joined_by_a_step_name_only_the_cycles()
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle), typeof(SecondCycleStepA), typeof(SecondCycleStepB));
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
+
+            // StepAfterCycle waits for the first cycle and the second waits for it, but it is on neither cycle.
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(source.Token),
+                Throws.TypeOf<StepDependencyException>().With.Message.EqualTo(
+                    "Steps depend on each other in a cycle: CycleStepA, CycleStepB, SecondCycleStepA, SecondCycleStepB."));
+        }
+
+        // The cycle check runs on the graph that will execute: after target pruning and after skipped steps are cleared.
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Target_outside_a_dependency_cycle_runs(CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                typeof(StepA), command: null, [typeof(StepA), typeof(CycleStepA), typeof(CycleStepB)]);
+
+            await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken);
+
+            Assert.That(container.Resolve<StepA>().WasExecuted, Is.True);
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Dependency_cycle_broken_by_a_skipped_step_runs(CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(typeof(CycleStepA), typeof(CycleStepB));
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeThrough(typeof(CycleStepA), cancellationToken, typeof(CycleStepB)),
+                Throws.Nothing);
+        }
+
+        [Test]
+        public async Task Dependency_cycle_behind_a_target_fails_the_run([Values] bool through)
+        {
+            await using IContainer container = through
+                ? CreateNethermindEnvironment(typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle))
+                : CreateNethermindEnvironment(typeof(StepAfterCycle), command: null, [typeof(CycleStepA), typeof(CycleStepB), typeof(StepAfterCycle)]);
+            using CancellationTokenSource source = new(TimeSpan.FromSeconds(5));
+            EthereumStepsManager manager = container.Resolve<EthereumStepsManager>();
+
+            Assert.That(async () => await (through ? manager.InitializeThrough(typeof(StepAfterCycle), source.Token) : manager.InitializeAll(source.Token)),
+                Throws.TypeOf<StepDependencyException>().With.Message.EqualTo("Steps depend on each other in a cycle: CycleStepA, CycleStepB."));
+        }
+
         [Test]
         public async Task With_constructor_without_nethermind_api()
         {
@@ -389,6 +491,19 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
             Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
                 selected ? Throws.TypeOf<TestException>() : Throws.Nothing);
+        }
+
+        [Test]
+        [CancelAfter(5000)]
+        public async Task Optional_step_cancelled_without_shutdown_fails_the_run_only_when_selected([Values] bool selected, CancellationToken cancellationToken)
+        {
+            await using IContainer container = CreateNethermindEnvironment(
+                selected ? typeof(SelfCancellingOptionalStep) : null, command: null, [typeof(SelfCancellingOptionalStep)]);
+
+            Assert.That(async () => await container.Resolve<EthereumStepsManager>().InitializeAll(cancellationToken),
+                selected
+                    ? Throws.TypeOf<StepDependencyException>().With.InnerException.TypeOf<OperationCanceledException>()
+                    : Throws.Nothing);
         }
 
         [Test]
@@ -565,6 +680,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         public bool MustInitialize => false;
 
         public Task Execute(CancellationToken cancellationToken) => throw new TestException();
+    }
+
+    /// <summary>An optional step that ends Canceled without anyone requesting cancellation, e.g. its own timeout.</summary>
+    public class SelfCancellingOptionalStep : IStep
+    {
+        public bool MustInitialize => false;
+
+        public Task Execute(CancellationToken cancellationToken) => throw new OperationCanceledException();
     }
 
     [RunnerStepDependencies(typeof(FailingOptionalStep))]
@@ -755,7 +878,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         {
         }
 
-        public override async Task Execute(CancellationToken cancellationToken) => await Task.Run(static () => throw new TestException());
+        public override async Task Execute(CancellationToken cancellationToken) => await Task.Run(static () => throw new TestException(), CancellationToken.None);
     }
 
     public class StepCStandard : StepC
@@ -768,6 +891,74 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class FailedConstructorWithInvalidConfigurationStep : StepC
     {
         public FailedConstructorWithInvalidConfigurationStep() => throw new InvalidConfigurationException("Invalid config", -1);
+    }
+
+    /// <summary>Counts the constructor calls of the steps that receive it.</summary>
+    public class ConstructorAttempts
+    {
+        public int Count { get; set; }
+    }
+
+    public class ThrowingConstructorStep : IStep
+    {
+        public ThrowingConstructorStep(ConstructorAttempts attempts) => throw new InvalidOperationException($"attempt {++attempts.Count}");
+
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    /// <summary>An optional step whose constructor throws only the first time it runs.</summary>
+    public class OptionalStepThrowingOnFirstConstruction : IStep
+    {
+        public OptionalStepThrowingOnFirstConstruction(ConstructorAttempts attempts)
+        {
+            if (++attempts.Count == 1) throw new InvalidOperationException("attempt 1");
+        }
+
+        public bool MustInitialize => false;
+
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(SelfDependentStep))]
+    public class SelfDependentStep : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(CycleStepB))]
+    public class CycleStepA : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(CycleStepA))]
+    public class CycleStepB : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(CycleStepA))]
+    public class StepAfterCycle : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(StepAfterCycle))]
+    public class StepBehindStepAfterCycle : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(StepAfterCycle), typeof(SecondCycleStepB))]
+    public class SecondCycleStepA : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [RunnerStepDependencies(typeof(SecondCycleStepA))]
+    public class SecondCycleStepB : IStep
+    {
+        public Task Execute(CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     class TestException : Exception

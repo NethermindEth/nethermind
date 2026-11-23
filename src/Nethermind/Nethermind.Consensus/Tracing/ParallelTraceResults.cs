@@ -66,7 +66,7 @@ internal sealed class CollectedTraceResults<TTrace> : ParallelTraceResults<TTrac
 
     public List<TTrace> Flatten()
     {
-        List<TTrace> all = new(_count);
+        List<TTrace> all = [with(_count)];
         for (int i = 0; i < _count; i++)
         {
             if (_results[i] is { } result) all.AddRange(result);
@@ -140,7 +140,7 @@ internal abstract class OrderedTraceEmitter<TTrace, TSlot> : ParallelTraceResult
 
     public override void Reserve(CancellationToken token)
     {
-        if (!_window.Wait(0)) _window.Wait(token);
+        if (!_window.Wait(0, token)) _window.Wait(token);
     }
 
     public override void Unreserve() => _window.Release();

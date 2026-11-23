@@ -19,7 +19,6 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
     public override void Write(Utf8JsonWriter writer, GethTraceOptions value, JsonSerializerOptions options) =>
         JsonSerializer.Serialize(writer, new WireOptions(value), options);
 
-    /// <remarks>Inheriting init-only properties adds synthetic constructor arguments even when setter shadows hide them.</remarks>
     internal sealed class WireOptions
     {
         public WireOptions() { }

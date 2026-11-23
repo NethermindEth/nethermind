@@ -81,7 +81,7 @@ namespace Nethermind.Runner.JsonRpc
                 socket.ReceiveTimeout = _jsonRpcConfig.Timeout;
                 socket.SendTimeout = _jsonRpcConfig.Timeout;
 
-                _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken));
+                _ = Task.Run(async () => await HandleIpcConnection(socket, cancellationToken), CancellationToken.None);
             }
         }
 

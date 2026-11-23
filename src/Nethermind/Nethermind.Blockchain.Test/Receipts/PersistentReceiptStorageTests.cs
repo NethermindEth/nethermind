@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -29,6 +30,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Evm;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -179,8 +181,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Hash256 retained = TestItem.KeccakB;
         Hash256 legacy = TestItem.KeccakC;
 
-        txIndex.Set(stale, Rlp.Encode(5UL).Bytes);
-        txIndex.Set(retained, Rlp.Encode(50UL).Bytes);
+        txIndex.Set(stale, Rlp.Encode(5UL));
+        txIndex.Set(retained, Rlp.Encode(50UL));
         txIndex.Set(legacy, TestItem.KeccakD.BytesToArray());
 
         byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, isHeightRetained: null, CancellationToken.None, out int removed);
@@ -201,8 +203,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
         Hash256 sliced = TestItem.KeccakA;
         Hash256 stale = TestItem.KeccakB;
-        txIndex.Set(sliced, Rlp.Encode(5UL).Bytes);
-        txIndex.Set(stale, Rlp.Encode(6UL).Bytes);
+        txIndex.Set(sliced, Rlp.Encode(5UL));
+        txIndex.Set(stale, Rlp.Encode(6UL));
 
         _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 100, isHeightRetained: static height => height == 5, CancellationToken.None, out int removed);
 
@@ -250,7 +252,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         CreateStorage();
 
         IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
-        txIndex.Set(TestItem.KeccakA, Rlp.Encode(100UL).Bytes);
+        txIndex.Set(TestItem.KeccakA, Rlp.Encode(100UL));
 
         _storage.SweepTransactionIndex(retainedFromBlock, resumeFrom: null, maxEntries: 100, isHeightRetained: null, CancellationToken.None, out int removed);
 
@@ -270,7 +272,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         IDb txIndex = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
         foreach (Hash256 key in new[] { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD })
         {
-            txIndex.Set(key, Rlp.Encode(5UL).Bytes);
+            txIndex.Set(key, Rlp.Encode(5UL));
         }
 
         using CancellationTokenSource cts = new();
@@ -293,7 +295,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         const int entries = 5000;
         for (int i = 0; i < entries; i++)
         {
-            txIndex.Set(Keccak.Compute(i.ToBigEndianByteArray()), Rlp.Encode(5UL).Bytes);
+            txIndex.Set(Keccak.Compute(i.ToBigEndianByteArray()), Rlp.Encode(5UL));
         }
 
         using CancellationTokenSource cts = new();
@@ -316,7 +318,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Hash256[] keys = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC, TestItem.KeccakD];
         foreach (Hash256 key in keys)
         {
-            txIndex.Set(key, Rlp.Encode(5UL).Bytes);
+            txIndex.Set(key, Rlp.Encode(5UL));
         }
 
         byte[]? cursor = _storage.SweepTransactionIndex(retainedFromBlock: 10, resumeFrom: null, maxEntries: 2, isHeightRetained: null, CancellationToken.None, out int firstRemoved);
@@ -359,6 +361,153 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         { MigratedBlockNumber = 0 };
     }
 
+    [Test]
+    public void Prefetch_reads_the_receipts_and_bodies_of_the_blocks([Values] bool legacyHashKeys)
+    {
+        using PrefetchingTestDb receiptsBlocksDb = new();
+        if (legacyHashKeys) receiptsBlocksDb.Set(Keccak.Zero, [1]);
+        TestMemColumnsDb<ReceiptsColumns> receiptsDb = new();
+        receiptsDb.SetColumnDb(ReceiptsColumns.Blocks, receiptsBlocksDb);
+        using PrefetchingTestDb blocksDb = new();
+        PersistentReceiptStorage storage = new(receiptsDb, _specProvider, _receiptsRecovery, _blockTree, new BlockStore(blocksDb), _receiptConfig, _decoder, logManager: _logManager);
+        Block block = Build.A.Block.WithNumber(3).TestObject;
+        byte[] key = Bytes.Concat(block.Number.ToBigEndianByteArray(), block.Hash!.BytesToArray());
+
+        storage.Prefetch(new[] { (block.Number, block.Hash!.ValueHash256) });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiptsBlocksDb.Prefetches, legacyHashKeys ? Is.Empty : Is.EqualTo(new[] { new[] { key } }));
+            Assert.That(blocksDb.Prefetches, Is.EqualTo(new[] { new[] { key } }));
+        }
+    }
+
+    [Test]
+    public void Network_receipts_store_the_same_receipts_and_index_as_decoded_ones([Values] bool eip658, [Values] bool eip7668, [Values] bool inBatch)
+    {
+        IReleaseSpec spec = eip658 ? Byzantium.Instance : SpuriousDragon.Instance;
+        _specProvider.NextForkSpec = eip7668 ? new OverridableReleaseSpec(spec) { IsEip7668Enabled = true } : spec;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).SignedAndResolved().TestObject).TestObject;
+        TxReceipt[] CreateSpecReceipts()
+        {
+            TxReceipt[] specReceipts = CreateReceipts();
+            if (!eip658)
+            {
+                specReceipts[0].PostTransactionState = TestItem.KeccakC;
+                specReceipts[1].PostTransactionState = TestItem.KeccakD;
+            }
+
+            return specReceipts;
+        }
+
+        TxReceipt[] receipts = CreateSpecReceipts();
+        foreach (TxReceipt receipt in receipts) receipt.Bloom = new Bloom(receipt.Logs);
+        ReceiptMessageDecoder decoder = new();
+        RlpBehaviors behaviors = eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+        byte[] message = RlpTestHelper.EncodeSequence([.. receipts.Select(receipt => decoder.Encode(receipt, behaviors))]);
+        TestMemColumnsDb<ReceiptsColumns> otherDb = new();
+        otherDb.GetColumnDb(ReceiptsColumns.Blocks).Set(Keccak.Zero, Array.Empty<byte>());
+        PersistentReceiptStorage other = new(otherDb, _specProvider, _receiptsRecovery, _blockTree, _blockStore, _receiptConfig, _decoder)
+        { MigratedBlockNumber = 0 };
+
+        // Sync stores receipts against blocks from the database, whose transactions have no senders.
+        byte[] encodedBlock = new BlockDecoder().Encode(block);
+        RlpReader reader = new(encodedBlock);
+        Block stored = new BlockDecoder().Decode(ref reader)!;
+        _blockStore.Get(stored.Number, stored.Hash!, Arg.Any<RlpBehaviors>(), Arg.Any<bool>()).Returns(stored);
+        Transaction[] encodedTransactions = BlockBodyDecoder.DecodeEncodedTransactionsOfBlock(encodedBlock);
+        TxReceipt[]? inserted = null;
+        other.ReceiptsInserted += (_, args) => inserted = args.TxReceipts;
+        TxReceipt[]? insertedDecoded = null;
+        _storage.ReceiptsInserted += (_, args) => insertedDecoded = args.TxReceipts;
+
+        _storage.Insert(stored, CreateSpecReceipts(), ensureCanonical: true);
+        Block withEncodedTransactions = new(stored.Header, new BlockBody(encodedTransactions, []));
+        bool keptEncoded;
+        if (inBatch)
+        {
+            using IReceiptsInsertBatch batch = other.StartInsertBatch();
+            keptEncoded = batch.TryInsertNetworkReceipts(withEncodedTransactions, message, withBloom: true);
+            if (keptEncoded)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(other.HasBlock(stored.Number, stored.Hash!), Is.False);
+                    Assert.That(otherDb.GetColumnDb(ReceiptsColumns.Transactions).Get(block.Transactions[0].Hash!), Is.Null);
+                    Assert.That(inserted, Is.Null);
+                }
+            }
+        }
+        else
+        {
+            keptEncoded = other.TryInsertNetworkReceipts(withEncodedTransactions, message, withBloom: true, ensureCanonical: true);
+        }
+
+        foreach (Transaction transaction in encodedTransactions) TxDecoder.TxObjectPool.Return(transaction);
+
+        Assert.That(keptEncoded, Is.EqualTo(useCompactReceipts));
+        if (keptEncoded)
+        {
+            AssertSameContent(otherDb);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(inserted!.Select(static r => r.Recipient), Is.EqualTo(block.Transactions.Select(static tx => tx.To)));
+                Assert.That(inserted!.Select(static r => r.Bloom), Is.EqualTo(insertedDecoded!.Select(static r => r.Bloom)));
+            }
+        }
+    }
+
+    [Test]
+    public void Stored_receipts_are_served_encoded_as_the_recovered_ones([Values] bool eip658)
+    {
+        if (!eip658) _specProvider.NextForkSpec = SpuriousDragon.Instance;
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).SignedAndResolved().TestObject).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        TxReceipt[] receipts = CreateReceipts();
+        if (!eip658)
+        {
+            receipts[0].PostTransactionState = TestItem.KeccakC;
+            receipts[1].PostTransactionState = TestItem.KeccakD;
+        }
+
+        _storage.Insert(block, receipts);
+        _blockStore.GetOwnedRlp(block.Number, block.Hash!).Returns(_ => ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
+        ReceiptMessageDecoder decoder = new();
+        RlpBehaviors behaviors = eip658 ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None;
+        byte[] expected = RlpTestHelper.EncodeSequence([.. _storage.Get(block).Select(receipt => decoder.Encode(receipt, behaviors))]);
+
+        using ArrayPoolList<byte> encoded = new(0);
+
+        bool served = _storage.TryAppendNetworkReceipts(block.Header, withBloom: true, encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(served, Is.EqualTo(useCompactReceipts));
+            Assert.That(encoded.AsSpan().ToArray(), Is.EqualTo(served ? expected : []));
+            // Receipts that are not compact are left to the decoders without a read of the block.
+            _blockStore.Received(useCompactReceipts ? 1 : 0).GetOwnedRlp(block.Number, block.Hash!);
+        }
+    }
+
+    private void AssertSameContent(TestMemColumnsDb<ReceiptsColumns> otherDb)
+    {
+        foreach (ReceiptsColumns column in new[] { ReceiptsColumns.Default, ReceiptsColumns.Transactions, ReceiptsColumns.Blocks })
+        {
+            Assert.That(otherDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value),
+                Is.EquivalentTo(_receiptsDb.GetColumnDb(column).GetAll().ToDictionary(static kv => kv.Key.ToHexString(), static kv => kv.Value)),
+                column.ToString());
+        }
+    }
+
+    private static TxReceipt[] CreateReceipts() =>
+    [
+        Build.A.Receipt.WithGasUsedTotal(21_000).WithLogs(Build.A.LogEntry.TestObject).TestObject,
+        Build.A.Receipt.WithGasUsedTotal(100_000).WithStatusCode(StatusCode.Failure).TestObject,
+    ];
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Returns_null_for_missing_tx()
     {
@@ -375,7 +524,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void FindBlockHash_returns_null_for_the_lowest_inserted_receipt_pointer_key()
     {
         _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
-            .Set(PersistentReceiptStorage.LowestInsertedReceiptBlockKey, Rlp.Encode(24_600_000UL).Bytes);
+            .Set(PersistentReceiptStorage.LowestInsertedReceiptBlockKey, Rlp.Encode(24_600_000UL));
 
         Assert.That(_storage.FindBlockHash(Keccak.Zero), Is.Null);
     }
@@ -393,7 +542,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         TxReceipt receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
         _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
-            .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
+            .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage));
 
         Assert.That(_storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
     }
@@ -402,7 +551,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void FindBlockHash_span_read_resolves_the_current_canonical_number([Values(0UL, 1UL, ulong.MaxValue)] ulong number)
     {
         IndexReadDb index = new();
-        index.Set(TestItem.KeccakA, Rlp.Encode(number).Bytes);
+        index.Set(TestItem.KeccakA, Rlp.Encode(number));
         PersistentReceiptStorage storage = CreateStorageWithIndex(index);
         _blockTree.FindBlockHash(number).Returns(TestItem.KeccakB);
         Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(TestItem.KeccakB));
@@ -441,7 +590,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         {
             TxReceipt receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
             _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
-                .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
+                .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage));
         }
         PersistentReceiptStorage storage = CreateStorageWithIndex(index);
         Assert.That(storage.FindBlockHash(TestItem.KeccakA), Is.EqualTo(legacyReceipt ? TestItem.KeccakB : null));
@@ -465,7 +614,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         {
             TxReceipt receipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
             _receiptsDb.GetColumnDb(ReceiptsColumns.Default)
-                .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage).Bytes);
+                .Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(receipt, RlpBehaviors.Storage));
         }
         PersistentReceiptStorage storage = CreateStorageWithIndex(index);
         using (Assert.EnterMultipleScope())
@@ -477,7 +626,6 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
     private static IEnumerable<byte[]> MalformedIndexValues() =>
     [
-        [0],
         [0x89, 1, 2, 3, 4, 5, 6, 7, 8, 9],
         Enumerable.Repeat((byte)0xc0, Hash256.Size + 1).ToArray()
     ];
@@ -488,7 +636,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         IndexReadDb index = new();
         index.Set(TestItem.KeccakA, value);
         PersistentReceiptStorage storage = CreateStorageWithIndex(index);
-        Exception? original = Assert.Catch(() => new RlpReader(value).DecodeULong());
+        Exception? original = Assert.Catch(() =>
+        {
+            RlpReader reader = new(value);
+            reader.DecodeULong<OffFlag>();
+        });
         Assert.That(original, Is.Not.Null);
         Assert.That(() => storage.FindBlockHash(TestItem.KeccakA), Throws.TypeOf(original!.GetType()));
         using (Assert.EnterMultipleScope())
@@ -526,7 +678,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     public void FindBlockHash_releases_the_index_when_canonical_resolution_throws()
     {
         IndexReadDb index = new();
-        index.Set(TestItem.KeccakA, Rlp.Encode(1UL).Bytes);
+        index.Set(TestItem.KeccakA, Rlp.Encode(1UL));
         PersistentReceiptStorage storage = CreateStorageWithIndex(index);
         IOException failure = new("canonical lookup failure");
         _blockTree.FindBlockHash(1UL).Returns(_ => throw failure);
@@ -605,6 +757,116 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             _receiptConfig, _decoder, writer, barrier, _logManager);
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Receipt_reads_from_a_native_store_decode_before_releasing_the_pinned_value()
+    {
+        PinnedReadDb blocks = new();
+        PinnedReadDb legacy = new();
+        TxReceipt legacyReceipt = Build.A.Receipt.WithBlockHash(TestItem.KeccakB).WithTransactionHash(TestItem.KeccakA).TestObject;
+        legacy.Set(TestItem.KeccakA, new ReceiptStorageDecoder().Encode(legacyReceipt, RlpBehaviors.Storage));
+        IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call => call.Arg<ReceiptsColumns>() switch
+        {
+            ReceiptsColumns.Blocks => blocks,
+            ReceiptsColumns.Default => legacy,
+            _ => _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>())
+        });
+        columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
+        PersistentReceiptStorage storage = new(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
+            _receiptConfig, _decoder, logManager: _logManager)
+        { MigratedBlockNumber = 0 };
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        storage.Insert(block, receipts);
+        storage.ClearCache();
+        _blockTree.FindBlock(block.Hash!).Returns((Block?)null);
+        _blockTree.FindHeader(block.Hash!, Arg.Any<BlockTreeLookupOptions>()).Returns(block.Header);
+
+        Hash256? legacyBlockHash = storage.FindBlockHash(TestItem.KeccakA);
+        TxReceipt[] retained = storage.Get(block.Hash!);
+        _blockTree.FindBlock(block.Hash!).Returns(block);
+        TxReceipt?[] migrated = ((IReceiptMigrationStore)storage).GetForMigration(block.Number, block.Hash!);
+        bool found = storage.TryGetReceipt(new ReceiptRecoveryBlock(block), receipts[0].TxHash!, out TxReceipt? single, out _, out _);
+        TxReceipt[] read = storage.Get(block);
+        TxReceipt[] missing = storage.Get(Build.A.Block.WithNumber(9).WithReceiptsRoot(TestItem.KeccakA).TestObject);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(migrated.Single()!.GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
+            Assert.That(found, Is.EqualTo(useCompactReceipts));
+            Assert.That(single?.GasUsedTotal, Is.EqualTo(useCompactReceipts ? receipts[0].GasUsedTotal : null));
+            Assert.That(read.Single().GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
+            Assert.That(missing, Is.Empty);
+            Assert.That(legacyBlockHash, Is.EqualTo(TestItem.KeccakB));
+            Assert.That(retained.SingleOrDefault()?.GasUsedTotal, Is.EqualTo(useCompactReceipts ? null : receipts[0].GasUsedTotal));
+            Assert.That(blocks.Lent, Is.EqualTo(4));
+            Assert.That(blocks.Outstanding, Is.Zero);
+            Assert.That(legacy.Lent, Is.EqualTo(1));
+            Assert.That(legacy.Outstanding, Is.Zero);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Transaction_index_and_network_receipt_reads_from_a_native_store_finish_before_releasing_the_pinned_value()
+    {
+        PinnedReadDb blocks = new();
+        IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call => call.Arg<ReceiptsColumns>() == ReceiptsColumns.Blocks
+            ? blocks
+            : _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>()));
+        columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
+        PersistentReceiptStorage storage = new(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
+            _receiptConfig, _decoder, logManager: _logManager);
+        Block block = Build.A.Block.WithNumber(1).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).WithType(TxType.EIP1559).SignedAndResolved().TestObject).WithReceiptsRoot(TestItem.KeccakA).TestObject;
+        storage.Insert(block, CreateReceipts());
+        ReceiptMessageDecoder decoder = new();
+        byte[] expected = RlpTestHelper.EncodeSequence([.. storage.Get(block).Select(receipt => decoder.Encode(receipt, RlpBehaviors.Eip658Receipts))]);
+        storage.ClearCache();
+        _blockStore.GetOwnedRlp(block.Number, block.Hash!).Returns(_ => ArrayMemoryManager.From(new BlockDecoder().Encode(block)));
+        int lentBefore = blocks.Lent;
+        using ArrayPoolList<byte> encoded = new(0);
+
+        int index = storage.FindTransactionIndex(block, block.Transactions[1].Hash!);
+        bool served = storage.TryAppendNetworkReceipts(block.Header, withBloom: true, encoded);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(useCompactReceipts ? 1 : -1));
+            Assert.That(served, Is.EqualTo(useCompactReceipts));
+            Assert.That(encoded.AsSpan().ToArray(), Is.EqualTo(served ? expected : []));
+            Assert.That(blocks.Lent - lentBefore, Is.EqualTo(useCompactReceipts ? 2 : 1));
+            Assert.That(blocks.Outstanding, Is.Zero);
+        }
+    }
+
+    private sealed class PinnedReadDb : TestMemDb, IReadOnlyNativeKeyValueStore
+    {
+        private readonly Dictionary<nint, byte[]> _borrowed = [];
+        public int Lent { get; private set; }
+        public int Outstanding => _borrowed.Count;
+
+        public ReadOnlySpan<byte> GetNativeSlice(scoped ReadOnlySpan<byte> key, out nint handle, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? value = Get(key, flags)?.ToArray();
+            if (value is null)
+            {
+                handle = 0;
+                return null;
+            }
+
+            handle = ++Lent;
+            _borrowed.Add(handle, value);
+            return value;
+        }
+
+        public void DangerousReleaseHandle(nint handle)
+        {
+            Assert.That(_borrowed.Remove(handle, out byte[]? value), Is.True);
+            value.AsSpan().Fill(0xff);
+        }
+    }
+
     private sealed class IndexReadDb : TestMemDb, IReadOnlyKeyValueStore
     {
         private byte[]? _borrowed;
@@ -651,6 +913,64 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Assert.That(iterator.TryGetNext(out _), Is.False);
     }
 
+    [TestCase(new byte[] { 0x01 })]
+    [TestCase(new byte[] { ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes, 0x83, 1, 2, 3 })]
+    [MaxTime(Timeout.MaxTestTime)]
+    public void ReceiptsIterator_releases_a_malformed_stored_value(byte[] stored)
+    {
+        (PersistentReceiptStorage storage, IndexReadDb blocks) = CreateStorageWithTrackedBlocks();
+        (Block block, _) = PrepareBlock();
+        blocks.Set(StoredReceiptsKey(block), stored);
+
+        Assert.Catch<RlpReaderException>(() => storage.TryGetReceiptsIterator(block.Number, block.Hash!, out _));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blocks.SpanReads, Is.EqualTo(1));
+            Assert.That(blocks.Releases, Is.EqualTo(1));
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void ReceiptsIterator_keeps_a_well_formed_stored_value_until_disposed()
+    {
+        (PersistentReceiptStorage storage, IndexReadDb blocks) = CreateStorageWithTrackedBlocks();
+        (Block block, TxReceipt[] receipts) = PrepareBlock();
+        storage.Insert(block, receipts);
+        storage.ClearCache();
+
+        Assert.That(storage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator), Is.True);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
+                Assert.That(receipt.GasUsedTotal, Is.EqualTo(receipts[0].GasUsedTotal));
+                Assert.That(blocks.SpanReads, Is.EqualTo(1));
+                Assert.That(blocks.Releases, Is.Zero);
+            }
+        }
+        finally
+        {
+            iterator.Dispose();
+        }
+
+        Assert.That(blocks.Releases, Is.EqualTo(1));
+    }
+
+    private (PersistentReceiptStorage Storage, IndexReadDb Blocks) CreateStorageWithTrackedBlocks()
+    {
+        IndexReadDb blocks = new();
+        IColumnsDb<ReceiptsColumns> columns = Substitute.For<IColumnsDb<ReceiptsColumns>>();
+        columns.GetColumnDb(Arg.Any<ReceiptsColumns>()).Returns(call => call.Arg<ReceiptsColumns>() == ReceiptsColumns.Blocks
+            ? blocks
+            : _receiptsDb.GetColumnDb(call.Arg<ReceiptsColumns>()));
+        columns.StartWriteBatch().Returns(_ => _receiptsDb.StartWriteBatch());
+        PersistentReceiptStorage storage = new(columns, _specProvider, _receiptsRecovery, _blockTree, _blockStore,
+            _receiptConfig, _decoder, logManager: _logManager)
+        { MigratedBlockNumber = 0 };
+        return (storage, blocks);
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Get_returns_empty_on_empty_span() =>
         Assert.That(_storage.Get(Keccak.Zero), Is.EqualTo(Array.Empty<TxReceipt>()));
@@ -663,7 +983,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         using ArrayPoolSpan<byte> encoded = _decoder.EncodeToArrayPoolSpan(legacyReceipts, RlpBehaviors.Storage);
         Hash256 blockHash = block.Hash ?? throw new AssertionException("Test block hash is missing.");
         byte[] encodedBytes = ((ReadOnlySpan<byte>)encoded).ToArray();
-        Span<byte> encodedSpan = encodedBytes;
+        ReadOnlySpan<byte> encodedSpan = encodedBytes;
         Assert.That(_decoder.DecodeAllowingMissing(in encodedSpan), Has.Length.EqualTo(2));
 
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[blockHash.Bytes] = encodedBytes;
@@ -701,7 +1021,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             null!,
             Build.A.Receipt.WithCalculatedBloom().TestObject
         ];
-        byte[] encoded = _decoder.EncodeAsBytes(legacyReceipts, RlpBehaviors.Storage);
+        byte[] encoded = _decoder.Encode(legacyReceipts, RlpBehaviors.Storage);
         _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = encoded;
 
         TxReceipt[] receipts = _storage.Get(block, recover);
@@ -861,7 +1181,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         }
         Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(transactions).TestObject;
         PrepareBlock(block);
-        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.Encode(receipts, RlpBehaviors.Storage));
 
         for (int i = 0; i < transactions.Length; i++)
         {
@@ -885,9 +1205,9 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
             Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
         PrepareBlock(block);
-        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.Encode(
             [Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, Build.A.Receipt.WithGasUsedTotal(42_000).TestObject], RlpBehaviors.Storage));
-        RecoveryMemory owner = new([.. TxDecoder.Instance.Encode(block.Transactions[0]).Bytes, .. TxDecoder.Instance.Encode(block.Transactions[1]).Bytes]);
+        RecoveryMemory owner = new([.. TxDecoder.Instance.Encode(block.Transactions[0]), .. TxDecoder.Instance.Encode(block.Transactions[1])]);
         ReceiptRecoveryBlock recoveryBlock = new(owner, block.Header, owner.Memory, 2);
         try
         {
@@ -920,7 +1240,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         (Block block, _) = PrepareBlock();
         TxReceipt[] receipts = [Build.A.Receipt.WithTransactionHash(TestItem.KeccakH).WithGasUsedTotal(21_000).TestObject];
-        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.Instance.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.Instance.Encode(receipts, RlpBehaviors.Storage));
 
         Assert.That(_storage.TryGetReceipt(new ReceiptRecoveryBlock(block), block.Transactions[0].Hash!, out _, out _, out _), Is.False);
     }
@@ -931,27 +1251,26 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     {
         (Block block, _) = PrepareBlock();
         byte[] malformed = Bytes.FromHexString(malformedHex);
-        byte[] transactions = beforeTarget ? [.. malformed, .. TxDecoder.Instance.Encode(block.Transactions[0]).Bytes] : malformed;
+        byte[] transactions = beforeTarget ? [.. malformed, .. TxDecoder.Instance.Encode(block.Transactions[0])] : malformed;
         ReceiptRecoveryBlock recoveryBlock = new(null, block.Header, transactions, beforeTarget ? 2 : 1);
         TxReceipt receipt = Build.A.Receipt.WithGasUsedTotal(21_000).TestObject;
         TxReceipt[] receipts = beforeTarget ? [receipt, receipt] : [receipt];
-        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.Encode(receipts, RlpBehaviors.Storage));
 
-        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(recoveryBlock, block.Transactions[0].Hash!, out _, out _, out _));
+        Assert.Catch<RlpReaderException>(() => _storage.TryGetReceipt(recoveryBlock, block.Transactions[0].Hash!, out _, out _, out _));
     }
 
     [Test]
     public void TryGetReceipt_without_hash_prefix_still_decodes_the_target_transaction_fields()
     {
         (Block block, _) = PrepareBlock();
-        byte[] transaction = Rlp.Encode(
-            Rlp.Encode(0), Rlp.Encode(1), Rlp.Encode(21_000), Rlp.Encode(new byte[] { 1 }),
-            Rlp.Encode(0), Rlp.OfEmptyByteArray, Rlp.Encode(27), Rlp.Encode(1), Rlp.Encode(1)).Bytes;
+        byte[] transaction = RlpTestHelper.EncodeSequence(Rlp.Encode(0), Rlp.Encode(1), Rlp.Encode(21_000), Rlp.Encode(new byte[] { 1 }),
+            Rlp.Encode(0), RlpTestHelper.OfEmptyByteArray, Rlp.Encode(27), Rlp.Encode(1), Rlp.Encode(1));
         ReceiptRecoveryBlock recoveryBlock = new(null, block.Header, transaction, 1);
-        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.EncodeAsBytes(
+        WriteStoredReceipts(block, ReceiptArrayStorageDecoder.WithoutTxHashes.Encode(
             [Build.A.Receipt.WithGasUsedTotal(21_000).TestObject], RlpBehaviors.Storage));
 
-        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(recoveryBlock, Keccak.Compute(transaction), out _, out _, out _));
+        Assert.Catch<RlpReaderException>(() => _storage.TryGetReceipt(recoveryBlock, Keccak.Compute(transaction), out _, out _, out _));
     }
 
     [Test]
@@ -961,12 +1280,12 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
             Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
             Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
         PrepareBlock(block);
-        Rlp valid = CompactReceiptStorageDecoder.Instance.Encode(Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, RlpBehaviors.Storage);
-        Rlp malformed = Rlp.Encode(Rlp.Encode(new byte[33]), Rlp.OfEmptyByteArray, Rlp.Encode(21_000), Rlp.OfEmptyList);
-        Rlp receipts = beforeTarget ? Rlp.Encode(malformed, valid) : Rlp.Encode(valid, malformed);
-        WriteStoredReceipts(block, [(byte)ReceiptArrayStorageDecoder.CompactEncoding, .. receipts.Bytes]);
+        byte[] valid = CompactReceiptStorageDecoder.Instance.Encode(Build.A.Receipt.WithGasUsedTotal(21_000).TestObject, RlpBehaviors.Storage);
+        byte[] malformed = RlpTestHelper.EncodeSequence(Rlp.Encode(new byte[33]), RlpTestHelper.OfEmptyByteArray, Rlp.Encode(21_000), RlpTestHelper.OfEmptyList);
+        byte[] receipts = beforeTarget ? RlpTestHelper.EncodeSequence(malformed, valid) : RlpTestHelper.EncodeSequence(valid, malformed);
+        WriteStoredReceipts(block, [(byte)ReceiptArrayStorageDecoder.CompactEncoding, .. receipts]);
 
-        Assert.Catch<RlpException>(() => _storage.TryGetReceipt(RecoveryBlock(block, true), block.Transactions[1].Hash!, out _, out _, out _));
+        Assert.Catch<RlpReaderException>(() => _storage.TryGetReceipt(RecoveryBlock(block, true), block.Transactions[1].Hash!, out _, out _, out _));
     }
 
     [Test]
@@ -1001,7 +1320,127 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     }
 
     private void WriteStoredReceipts(Block block, TxReceipt[] receipts, bool storeTxHashes) =>
-        WriteStoredReceipts(block, new ReceiptArrayStorageDecoder(useCompactReceipts, storeTxHashes).EncodeAsBytes(receipts, RlpBehaviors.Storage));
+        WriteStoredReceipts(block, new ReceiptArrayStorageDecoder(useCompactReceipts, storeTxHashes).Encode(receipts, RlpBehaviors.Storage));
+
+    [Test]
+    public void FindTransactionIndex_reads_the_stored_hashes_and_hashes_only_the_target([Values] bool cached)
+    {
+        const int target = 2;
+        Block block = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1));
+        _storage.ClearCache();
+        if (cached) _storage.Get(block);
+        Block decoded = Rlp.Decode<Block>(new BlockDecoder().Encode(block))!;
+        Hash256 txHash = block.Transactions[target].Hash!;
+
+        int index = _storage.FindTransactionIndex(decoded, txHash);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(useCompactReceipts || cached ? target : -1), "only compact receipts store transaction hashes");
+            for (int i = 0; i < decoded.Transactions.Length; i++)
+            {
+                Assert.That(decoded.Transactions[i].IsHashCalculated, Is.EqualTo(i == index), $"transaction {i} is hashed only to confirm the index");
+            }
+        }
+    }
+
+    [Test]
+    public void FindTransactionIndex_returns_minus_one_when_the_stored_hashes_do_not_match_the_block()
+    {
+        Block block = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1));
+        Block reordered = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
+            .WithTransactions(block.Transactions[1], block.Transactions[0], block.Transactions[2]).TestObject;
+        TxReceipt[] stored = WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject,
+            Build.A.Receipt.WithGasUsedTotal(42_000).TestObject, Build.A.Receipt.WithGasUsedTotal(63_000).TestObject);
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[reordered.Hash!.Bytes] = _decoder.Encode(stored, RlpBehaviors.Storage);
+        _storage.ClearCache();
+        Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(useCompactReceipts ? 0 : -1), "precondition: the stored hashes give the index");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindTransactionIndex(reordered, block.Transactions[0].Hash!), Is.EqualTo(-1), "the index of another order");
+            Assert.That(_storage.FindTransactionIndex(block, TestItem.KeccakH), Is.EqualTo(-1), "a transaction outside the block");
+        }
+    }
+
+    [Test]
+    public void FindTransactionIndex_returns_minus_one_when_receipts_are_stored_without_transaction_hashes()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA).WithTransactions(
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        WriteStoredReceipts(block, WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject,
+            Build.A.Receipt.WithGasUsedTotal(42_000).TestObject), storeTxHashes: false);
+        _storage.ClearCache();
+
+        Assert.That(_storage.FindTransactionIndex(block, block.Transactions[1].Hash!), Is.EqualTo(-1), "the trace falls back to the lookup by hash");
+    }
+
+    [Test]
+    public void FindTransactionIndex_returns_minus_one_without_stored_receipts()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindTransactionIndex(block, block.Transactions[0].Hash!), Is.EqualTo(-1));
+            _logger.DidNotReceive().Warn(Arg.Any<string>());
+        }
+    }
+
+    [Test]
+    public void FindTransactionIndex_returns_minus_one_when_the_stored_hashes_are_malformed()
+    {
+        Block block = Build.A.Block.WithNumber(1).WithReceiptsRoot(TestItem.KeccakA)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject).TestObject;
+        PrepareBlock(block);
+        byte[] malformed = new byte[2 + Hash256.Size - 1];
+        malformed[0] = ReceiptArrayStorageDecoder.CompactEncodingWithTxHashes;
+        malformed[1] = 0x80 + Hash256.Size - 1;
+        _receiptsDb.GetColumnDb(ReceiptsColumns.Blocks)[block.Hash!.Bytes] = malformed;
+
+        int index = _storage.FindTransactionIndex(block, block.Transactions[0].Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(index, Is.EqualTo(-1), "the trace falls back to the lookup by hash");
+            _logger.Received(1).Warn(Arg.Is<string>(static message => message.Contains("malformed")));
+        }
+    }
+
+    /// <remarks>Two blocks at one height hold the same transactions in reverse order; neither is canonical.</remarks>
+    [Test]
+    public void FindTransactionIndex_reads_the_receipts_of_the_requested_block_at_its_height()
+    {
+        Block first = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1).WithExtraData([0xAA]), ensureCanonical: false);
+        Block second = InsertThreeTransactionBlock(Build.A.Block.WithNumber(1).WithExtraData([0xBB]),
+            [first.Transactions[2], first.Transactions[1], first.Transactions[0]], ensureCanonical: false);
+        _storage.ClearCache();
+        Hash256 txHash = first.Transactions[0].Hash!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_storage.FindTransactionIndex(first, txHash), Is.EqualTo(useCompactReceipts ? 0 : -1), "first block");
+            Assert.That(_storage.FindTransactionIndex(second, txHash), Is.EqualTo(useCompactReceipts ? 2 : -1), "second block");
+        }
+    }
+
+    private Block InsertThreeTransactionBlock(BlockBuilder builder, Transaction[]? transactions = null, bool ensureCanonical = true)
+    {
+        Block block = builder.WithReceiptsRoot(TestItem.KeccakA).WithTransactions(transactions ??
+        [
+            Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject,
+            Build.A.Transaction.WithNonce(2).SignedAndResolved().TestObject,
+        ]).TestObject;
+        PrepareBlock(block);
+        _storage.Insert(block, WithTransactionHashes(block, Build.A.Receipt.WithGasUsedTotal(21_000).TestObject,
+            Build.A.Receipt.WithGasUsedTotal(42_000).TestObject, Build.A.Receipt.WithGasUsedTotal(63_000).TestObject), ensureCanonical);
+        return block;
+    }
 
     private static TxReceipt[] WithTransactionHashes(Block block, params TxReceipt[] receipts)
     {
@@ -1011,7 +1450,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
     private static ReceiptRecoveryBlock RecoveryBlock(Block block, bool fromRlp) =>
         fromRlp
-            ? new BlockDecoder().DecodeToReceiptRecoveryBlock(null, new BlockDecoder().EncodeAsBytes(block), RlpBehaviors.None)!.Value
+            ? new BlockDecoder().DecodeToReceiptRecoveryBlock(null, new BlockDecoder().Encode(block), RlpBehaviors.None)!.Value
             : new ReceiptRecoveryBlock(block);
 
     [Test]
@@ -1200,7 +1639,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         (Block block, TxReceipt[] receipts) = InsertBlock();
         _storage.ClearCache();
         TxReceipt[] withoutHashes = receipts.Select(static r => new TxReceipt(r) { TxHash = null }).ToArray();
-        WriteStoredReceipts(block, _decoder.EncodeAsBytes(withoutHashes, RlpBehaviors.Storage));
+        WriteStoredReceipts(block, _decoder.Encode(withoutHashes, RlpBehaviors.Storage));
         _blockStore.ClearReceivedCalls();
 
         using (Assert.EnterMultipleScope())
@@ -1281,7 +1720,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Span<byte> txHashBytes = receipts[0].TxHash!.Bytes;
         if (_receiptConfig.CompactTxIndex)
         {
-            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.EqualTo(Rlp.Encode(block.Number).Bytes));
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.EqualTo(Rlp.Encode(block.Number)));
         }
         else
         {
@@ -1373,7 +1812,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         if (_receiptConfig.CompactTxIndex)
         {
-            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes], Is.EqualTo(Rlp.Encode(block.Number).Bytes));
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block.Transactions[0].Hash!.Bytes], Is.EqualTo(Rlp.Encode(block.Number)));
         }
         else
         {
@@ -1397,7 +1836,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         await Task.Delay(100);
         if (_receiptConfig.CompactTxIndex)
         {
-            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes], Is.EqualTo(Rlp.Encode(block4.Number).Bytes));
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[block4.Transactions[0].Hash!.Bytes], Is.EqualTo(Rlp.Encode(block4.Number)));
         }
         else
         {
@@ -1415,7 +1854,7 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         Span<byte> txHashBytes = receipts[0].TxHash!.Bytes;
         if (_receiptConfig.CompactTxIndex)
         {
-            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.EqualTo(Rlp.Encode(block.Number).Bytes));
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Transactions)[txHashBytes], Is.EqualTo(Rlp.Encode(block.Number)));
         }
         else
         {
@@ -1458,6 +1897,67 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
 
         Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(expectedMigratedBlockNumber),
             "the migration owns the pointer under parallel out-of-order inserts, so only the normal Insert path may advance it");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Insert_batch_stores_its_blocks_in_one_write_and_then_lowers_the_migrated_block_number()
+    {
+        _storage.MigratedBlockNumber = ulong.MaxValue;
+        (Block high, TxReceipt[] highReceipts) = PrepareBlock(BuildBlock(6, nonce: 0));
+        (Block low, TxReceipt[] lowReceipts) = PrepareBlock(BuildBlock(5, nonce: 1));
+        (Block mismatched, _) = PrepareBlock(BuildBlock(4, nonce: 2));
+        int writeBatches = _receiptsDb.WriteBatchCount;
+        int insertedEvents = 0;
+        _storage.ReceiptsInserted += (_, _) => insertedEvents++;
+
+        using (IReceiptsInsertBatch batch = _storage.StartInsertBatch())
+        {
+            batch.Insert(high, highReceipts);
+            batch.Insert(low, lowReceipts);
+            Assert.Throws<InvalidDataException>(() => batch.Insert(mismatched, []));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_storage.HasBlock(high.Number, high.Hash!), Is.False);
+                Assert.That(_storage.FindBlockHash(lowReceipts[0].TxHash!), Is.Null);
+                Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(ulong.MaxValue));
+                Assert.That(insertedEvents, Is.EqualTo(0));
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_receiptsDb.WriteBatchCount - writeBatches, Is.EqualTo(1));
+            Assert.That(insertedEvents, Is.EqualTo(2));
+            Assert.That(_storage.HasBlock(high.Number, high.Hash!), Is.True);
+            Assert.That(_storage.HasBlock(low.Number, low.Hash!), Is.True);
+            Assert.That(_storage.HasBlock(mismatched.Number, mismatched.Hash!), Is.False);
+            Assert.That(_storage.FindBlockHash(lowReceipts[0].TxHash!), Is.EqualTo(low.Hash));
+            Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(low.Number));
+            Assert.That(_receiptsDb.GetColumnDb(ReceiptsColumns.Default).Get(Keccak.Compute(nameof(PersistentReceiptStorage.MigratedBlockNumber)))!
+                .ToULongFromBigEndianByteArrayWithoutLeadingZeros(), Is.EqualTo(low.Number));
+        }
+
+        static Block BuildBlock(ulong number, ulong nonce) => Build.A.Block
+            .WithNumber(number)
+            .WithTransactions(Build.A.Transaction.WithNonce(nonce).SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA)
+            .TestObject;
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Insert_batch_does_not_raise_the_migrated_block_number()
+    {
+        _storage.MigratedBlockNumber = 3;
+        (Block block, TxReceipt[] receipts) = PrepareBlock(Build.A.Block.WithNumber(6)
+            .WithTransactions(Build.A.Transaction.SignedAndResolved().TestObject)
+            .WithReceiptsRoot(TestItem.KeccakA).TestObject);
+        using (IReceiptsInsertBatch batch = _storage.StartInsertBatch())
+        {
+            batch.Insert(block, receipts);
+        }
+
+        Assert.That(_storage.MigratedBlockNumber, Is.EqualTo(3ul));
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -1739,8 +2239,8 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
         try
         {
             Assert.That(iterator.TryGetNext(out TxReceiptStructRef receipt), Is.True);
-            iterator.RecoverLogFieldsIfNeeded(ref receipt, out Hash256? transactionHash);
-            return new RecoveredLogFields(transactionHash, receipt.Index, receipt.BlockNumber, receipt.BlockHash.ToCommitment());
+            bool recovered = iterator.RecoverLogFieldsIfNeeded(ref receipt, out ValueHash256 transactionHash);
+            return new RecoveredLogFields(recovered ? transactionHash.ToCommitment() : null, receipt.Index, receipt.BlockNumber, receipt.BlockHash.ToCommitment());
         }
         finally
         {

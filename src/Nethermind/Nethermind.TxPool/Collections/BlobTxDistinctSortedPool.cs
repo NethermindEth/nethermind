@@ -23,7 +23,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
 {
     protected override string ShortPoolName => "BlobPool";
 
-    internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = new(Bytes.EqualityComparer);
+    internal readonly Dictionary<byte[], List<Hash256>> BlobIndex = [with(Bytes.EqualityComparer)];
 
     /// <summary>
     /// Attempts to flush retained deletes before publishing a spec-change validation marker.
@@ -38,20 +38,20 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
        byte[] requestedBlobVersionedHash,
        [NotNullWhen(true)] out byte[]? blob,
        [NotNullWhen(true)] out byte[]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V0,
-           static (proofs, index) => proofs[index]);
+           static (proofs, index) => proofs.AsSpan(index * Ckzg.BytesPerProof, Ckzg.BytesPerProof).ToArray());
 
     public bool TryGetBlobAndProofV1(
        byte[] requestedBlobVersionedHash,
        [NotNullWhen(true)] out byte[]? blob,
-       [NotNullWhen(true)] out byte[][]? proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1,
-           static (proofs, index) => [.. proofs.Slice(Ckzg.CellsPerExtBlob * index, Ckzg.CellsPerExtBlob)]);
+       out ReadOnlyMemory<byte> proof) => TryGetBlobAndProof(requestedBlobVersionedHash, out blob, out proof, ProofVersion.V1,
+           static (proofs, index) => proofs.AsMemory(Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof * index, Ckzg.CellsPerExtBlob * Ckzg.BytesPerProof));
 
     private bool TryGetBlobAndProof<TProof>(
         byte[] requestedBlobVersionedHash,
         [NotNullWhen(true)] out byte[]? blob,
         [NotNullWhen(true)] out TProof? proof,
         ProofVersion requiredVersion,
-        Func<byte[][], int, TProof> proofSelector)
+        Func<byte[], int, TProof> proofSelector)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
 
@@ -87,7 +87,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     public virtual int TryGetBlobsAndProofsV1(
         byte[][] requestedBlobVersionedHashes,
         Span<byte[]?> blobs,
-        Span<ReadOnlyMemory<byte[]>> proofs)
+        Span<ReadOnlyMemory<byte>> proofs)
     {
         using McsLock.Disposable lockRelease = Lock.Acquire();
         int found = 0;
@@ -116,10 +116,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
                         }
 
                         blobs[i] = wrapper.Blobs[indexOfBlob];
-                        proofs[i] = new ReadOnlyMemory<byte[]>(
-                            wrapper.Proofs,
-                            Ckzg.CellsPerExtBlob * indexOfBlob,
-                            Ckzg.CellsPerExtBlob);
+                        proofs[i] = wrapper.GetProofs(Ckzg.CellsPerExtBlob * indexOfBlob, Ckzg.CellsPerExtBlob);
                         found++;
                         matched = true;
                         break;
@@ -190,6 +187,21 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     }
 
     /// <summary>
+    /// Gets the cell availability mask of a pooled blob transaction and, for a full type-3 transaction that only
+    /// persistent storage holds, its network form, without decoding it.
+    /// </summary>
+    /// <param name="networkForm">
+    /// The encoding <see cref="IBlobTxNetworkFormStorage.TryGetNetworkForm"/> writes, or <see langword="null"/> when the
+    /// transaction is not a full type-3 transaction or is held in memory. The caller disposes it.
+    /// </param>
+    /// <returns><see langword="true"/> when the transaction is present in the blob pool.</returns>
+    internal virtual bool TryGetAvailableCellMask(ValueHash256 hash, out BlobCellMask availableMask, out IOwnedReadOnlyList<byte>? networkForm)
+    {
+        networkForm = null;
+        return TryGetAvailableCellMask(hash, out availableMask);
+    }
+
+    /// <summary>
     /// Gets the cell availability mask of a pooled blob transaction without touching blob payloads,
     /// the blob cache, or persistent storage.
     /// </summary>
@@ -212,12 +224,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             return false;
         }
 
-        availableMask = blobTx switch
-        {
-            LightTransaction lightTx => lightTx.BlobCellMask,
-            { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.GetAvailableCellMask(),
-            _ => default
-        };
+        availableMask = GetAvailableCellMask(blobTx);
         blobCount = blobTx.BlobVersionedHashes?.Length ?? 0;
         int materializedCellsPerBlob = blobTx switch
         {
@@ -228,6 +235,13 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         materializationWork = checked(blobCount * materializedCellsPerBlob);
         return true;
     }
+
+    private protected static BlobCellMask GetAvailableCellMask(Transaction blobTx) => blobTx switch
+    {
+        LightTransaction lightTx => lightTx.BlobCellMask,
+        { NetworkWrapper: ShardBlobNetworkWrapper wrapper } => wrapper.GetAvailableCellMask(),
+        _ => default
+    };
 
     public virtual bool TryGetCells(ValueHash256 hash, BlobCellMask requestedMask, out BlobCellMask availableMask, out byte[][]? cells)
     {
@@ -267,7 +281,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         {
             if (BlobIndex.TryGetValue(requestedBlobVersionedHash, out List<Hash256>? txHashes))
             {
-                candidates = new(Math.Min(txHashes.Count, requestedMask.Count + 1));
+                candidates = [with(Math.Min(txHashes.Count, requestedMask.Count + 1))];
                 BlobCellMask capturedMask = BlobCellMask.Empty;
                 foreach (Hash256 hash in CollectionsMarshal.AsSpan(txHashes))
                 {
@@ -408,7 +422,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
     {
         if (current.Version != validated.Version
             || current.Commitments.Length != validated.Commitments.Length
-            || current.Proofs.Length != validated.Proofs.Length)
+            || !current.Proofs.AsSpan().SequenceEqual(validated.Proofs))
         {
             return false;
         }
@@ -416,14 +430,6 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
         for (int i = 0; i < current.Commitments.Length; i++)
         {
             if (!Bytes.AreEqual(current.Commitments[i], validated.Commitments[i]))
-            {
-                return false;
-            }
-        }
-
-        for (int i = 0; i < current.Proofs.Length; i++)
-        {
-            if (!Bytes.AreEqual(current.Proofs[i], validated.Proofs[i]))
             {
                 return false;
             }
@@ -556,13 +562,7 @@ public class BlobTxDistinctSortedPool(int capacity, IComparer<Transaction> compa
             }
 
             byte[][] selectedProofs = BlobCellsHelper.SelectProofs(candidate.Wrapper, candidate.BlobIndex, selectedMask);
-            bool proofsAreValid = selectedProofs.Length == selectedMask.Count;
-            for (int i = 0; proofsAreValid && i < selectedProofs.Length; i++)
-            {
-                proofsAreValid = selectedProofs[i] is { Length: Ckzg.BytesPerProof };
-            }
-
-            if (!proofsAreValid
+            if (selectedProofs.Length != selectedMask.Count
                 || !TryGetFlattenedCellsForBlob(candidate.Wrapper, candidate.BlobIndex, selectedMask, out byte[][]? selectedCells))
             {
                 availableMask = default;

@@ -22,8 +22,6 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperationStart, ITraceOperationGasCost, ITraceRevertFault
 {
-    private static readonly TimeSpan MaxTimeout = TimeSpan.FromMinutes(2);
-
     /// <summary>
     /// The Geth-style error texts that <c>exit</c> reports, by the exception name a failed substate reports as its error.
     /// </summary>
@@ -37,19 +35,21 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private readonly Db _db;
     private readonly CallFrame _frame = new();
     private readonly FrameResult _result = new();
-    private readonly CancellationTokenSource? _cts;
     private readonly GethTraceDeadline? _deadline;
     private readonly bool _ownsDeadline;
     private readonly CancellationToken _external;
     private readonly CancellationTokenRegistration _ctsRegistration;
     private bool _disposed;
     private readonly bool _captureErrors;
+    private readonly bool _enforceExecutionDeadline;
     private readonly Dictionary<TracerFunctions, ScriptObject> _callbacks = [];
     private string? _traceError;
     private bool _failedBeforeExecution;
     private bool _pendingStep;
     private bool _pendingPostStep;
-    private bool _gasCostIsStatic;
+    private bool _pendingSelfDestruct;
+    private bool _rootReverted;
+    private string? _codeDepositError;
     private TraceStack _operationStack;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
@@ -58,6 +58,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     // Context is updated only of first ReportAction call.
     private readonly Context _ctx;
     private readonly TracerFunctions _functions;
+
+    internal bool IsFrameTransaction { get; init; }
 
     /// <summary>Creates a JavaScript tracer using the supplied execution context and engine.</summary>
     /// <remarks>SELFDESTRUCT refunds are credited at transaction finalization, avoiding a second credit at the opcode boundary.</remarks>
@@ -80,6 +82,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _db = db;
         _ctx = ctx;
         _captureErrors = options.CaptureJavaScriptErrors;
+        _enforceExecutionDeadline = options.EnforceExecutionDeadline;
         _external = options.DeadlineScope?.External ?? options.ExecutionCancellationToken;
         if (_captureErrors)
         {
@@ -90,20 +93,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         try
         {
             _external.ThrowIfCancellationRequested();
-            if (options.EnforceExecutionDeadline)
-            {
-                _ownsDeadline = options.DeadlineScope is null;
-                _deadline = _ownsDeadline ? new(_external, options.DeadlineClock) : options.DeadlineScope!.Current;
-                _ctsRegistration = (_deadline?.Token ?? _external).Register(static e => ((Engine)e!).Interrupt(), engine);
-            }
-            else
-            {
-                // Registered before user code runs, so the request token also stops the tracer expression and setup;
-                // the trace timeout is armed on the same source only after setup.
-                _cts = _external.CanBeCanceled ? CancellationTokenSource.CreateLinkedTokenSource(_external) : new CancellationTokenSource();
-                _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
-                _external.ThrowIfCancellationRequested();
-            }
+            _ownsDeadline = options.DeadlineScope is null;
+            _deadline = _ownsDeadline ? new(_external, options.DeadlineClock) : options.DeadlineScope!.Current;
+            _ctsRegistration = (_deadline?.Token ?? _external).Register(static e => ((Engine)e!).Interrupt(), engine);
             Engine.CurrentEngine = _engine;
             engine.PrepareNullThrowCapture();
             try
@@ -129,22 +121,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             {
                 throw new JavaScriptTraceFailure(exception);
             }
-            if (options.EnforceExecutionDeadline)
-            {
-                if (_ownsDeadline) _deadline!.Start(timeout);
-            }
-            else
-            {
-                if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
-                    throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
-                _cts!.CancelAfter(timeout);
-            }
+            if (_ownsDeadline) _deadline!.Start(timeout);
         }
         catch (Exception exception)
         {
             _ctsRegistration.Dispose();
             if (_ownsDeadline) _deadline?.Dispose();
-            _cts?.Dispose();
             DisposeCallbacks();
             if (_external.IsCancellationRequested && JavaScriptTraceFailure.IsInterruption(exception))
                 throw new OperationCanceledException(_external);
@@ -271,9 +253,13 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
         }
 
-        _log.contract = callType == ExecutionType.DELEGATECALL
-            ? new Log.Contract(_log.contract.Caller, from, value, input)
-            : new Log.Contract(from, to, value, isAnyCreate ? null : input);
+        _log.contract = callType switch
+        {
+            ExecutionType.DELEGATECALL => new Log.Contract(_log.contract.Caller, from, value, input),
+            // CALLCODE runs the callee's code in the caller's account.
+            ExecutionType.CALLCODE => new Log.Contract(from, from, value, input),
+            _ => new Log.Contract(from, to, value, isAnyCreate ? null : input)
+        };
     }
 
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
@@ -288,19 +274,18 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _log.gasCost = null;
         _failedBeforeExecution = false;
         _pendingPostStep = false;
-        _gasCostIsStatic = false;
         _pendingStep = opcode is Instruction.KECCAK256 or Instruction.RETURNDATACOPY or Instruction.RETURN or Instruction.REVERT
             or Instruction.MLOAD or Instruction.MSTORE or Instruction.MSTORE8 or Instruction.CALLDATACOPY or Instruction.CODECOPY
             or Instruction.BALANCE or Instruction.EXTCODESIZE or Instruction.EXTCODEHASH or Instruction.SLOAD or Instruction.SSTORE or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL
             or Instruction.EXP or Instruction.EXTCODECOPY or Instruction.MCOPY or Instruction.CREATE or Instruction.CREATE2
-            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4;
+            or Instruction.LOG0 or Instruction.LOG1 or Instruction.LOG2 or Instruction.LOG3 or Instruction.LOG4 or Instruction.SELFDESTRUCT
+            or Instruction.BLOCKHASH;
     }
 
     /// <inheritdoc/>
     public void ReportOperationStart(ulong gasCost, int stackHead, int stackInputs, int stackGrowth)
     {
         _log.gasCost = gasCost;
-        _gasCostIsStatic = true;
         if (stackHead < stackInputs)
             _log.error = $"stack underflow ({stackHead} <=> {stackInputs})";
         else if (stackGrowth > 0 && stackHead >= EvmStack.MaxStackSize - stackGrowth)
@@ -311,11 +296,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     }
 
     /// <inheritdoc/>
-    public void ReportOperationGasCost(ulong gasCost)
-    {
-        _log.gasCost = gasCost;
-        _gasCostIsStatic = false;
-    }
+    public void ReportOperationGasCost(ulong gasCost) => _log.gasCost = gasCost;
 
     /// <inheritdoc/>
     public void ReportOperationReady(ulong gasCost, string? error)
@@ -324,7 +305,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             return;
 
         _log.gasCost = gasCost;
-        _gasCostIsStatic = false;
         _log.error = error ?? (_log.gas < gasCost ? "out of gas" : null);
         _failedBeforeExecution = _log.error is not null;
         InvokeStep();
@@ -339,17 +319,16 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             return;
         }
 
-        if (_log.gasCost is null)
-            _log.gasCost = _log.gas - gas;
-        else if (_gasCostIsStatic && !_failedBeforeExecution)
-            // The static cost a step reported leaves out what an opcode that ran paid beyond it.
-            _log.gasCost = Math.Max(_log.gasCost.Value, _log.gas - gas);
+        _log.gasCost ??= _log.gas - gas;
         InvokePostStep();
     }
 
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
+        // A transaction that runs no opcode, such as a top-level precompile call, faults no step; Geth reports it through ctx.error only.
+        if (_log.op is null)
+            return;
         if (error is EvmExceptionType.NotEnoughBalance or EvmExceptionType.CallDepthExceeded && _log.op?.Value is
             Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL)
             return;
@@ -411,14 +390,15 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionRevert(ulong gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionRevert(gasLeft, output);
+        if (_depth == 0 && !IsFrameTransaction) _rootReverted = true;
         InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 
     /// <inheritdoc/>
-    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address? to,
+    public override void ReportRejectedAction(ulong gas, ulong gasLeft, UInt256 value, Address from, Address to,
         ReadOnlyMemory<byte> input, ExecutionType callType, EvmExceptionType error, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to!, input, callType, isPrecompileCall);
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         base.ReportActionError(error);
         InvokeExit(gasLeft, ReadOnlyMemory<byte>.Empty, error.GetEvmExceptionDescription());
     }
@@ -426,11 +406,56 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
+        string? error = _codeDepositError ?? evmExceptionType.GetEvmExceptionDescription();
+        // A precompile can fail without running an opcode; its parent's last step is not its error.
+        if (_log.depth == _depth + 1) error = _codeDepositError ?? _log.error ?? error;
+        // The root's error stays for ctx.error, which MarkAsFailed sets.
+        if (_depth > 0)
+            _codeDepositError = null;
+        InvokeExit(0, Array.Empty<byte>(), error);
+    }
+
+    /// <inheritdoc/>
+    public override void ReportCodeDepositError(string error) => _codeDepositError = error;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Geth reports SELFDESTRUCT to <c>enter</c> and <c>exit</c> as a frame of its own. The frame is reported when the
+    /// halted frame ends, since the opcode can still run out of gas after this call, and Geth reports no frame then.
+    /// </remarks>
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        base.ReportSelfDestruct(address, balance, refundAddress);
+        if (!_functions.HasFlag(TracerFunctions.enter))
+            return;
+
+        _frame.Type = nameof(Instruction.SELFDESTRUCT);
+        _frame.From = address;
+        _frame.To = refundAddress;
+        _frame.Input = ReadOnlyMemory<byte>.Empty;
+        _frame.Value = balance;
+        _frame.Gas = 0;
+        _pendingSelfDestruct = true;
+    }
+
+    private void InvokeSelfDestructFrame()
+    {
+        Invoke(TracerFunctions.enter);
+        _result.GasUsed = 0;
+        _result.Output = [];
+        _result.Error = null;
+        Invoke(TracerFunctions.exit);
     }
 
     private void InvokeExit(ulong gas, ReadOnlyMemory<byte> output, string? error = null)
     {
+        if (_pendingSelfDestruct)
+        {
+            _pendingSelfDestruct = false;
+            if (error is null)
+                InvokeSelfDestructFrame();
+        }
+
         if (_contracts?.TryPop(out Log.Contract contract) == true)
         {
             _log.contract = contract;
@@ -451,17 +476,17 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     {
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
-        _ctx.Output = output;
-        // A revert reason is decoded from the output, which an exceptional halt never has.
-        // The halting step's error carries Geth's detailed text; a failed code deposit or a precompile call has no such step.
-        _ctx.error = output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _log.error ?? description : error;
+        _ctx.Output = output.AsSpan().ToArray();
+        // A failed code deposit and the halting step carry Geth's detailed text; a precompile call has neither.
+        _ctx.error = _rootReverted ? EvmExceptionType.Revert.GetEvmExceptionDescription()
+            : output.Length == 0 && error is not null && ErrorDescriptionsBySubstateError.TryGetValue(error, out string? description) ? _codeDepositError ?? _log.error ?? description : error;
     }
 
     public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         _ctx.gasUsed = gasSpent.SpentGas;
-        _ctx.Output = output;
+        _ctx.Output = output.AsSpan().ToArray();
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -536,7 +561,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
             }
             if (required)
             {
-                if (_captureErrors) throw new ArgumentException($"trace object must expose required function {name}");
+                if (_captureErrors) throw new ArgumentException($"trace object must expose a function {name}()");
                 throw new InvalidDataException($"trace object must expose a function {name}()");
             }
             return TracerFunctions.none;
@@ -561,7 +586,6 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         {
             base.Dispose();
             _ctsRegistration.Dispose();
-            _cts?.Dispose();
             if (_ownsDeadline) _deadline?.Dispose();
         }
         finally
@@ -581,7 +605,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
     private void CheckDeadline()
     {
         _external.ThrowIfCancellationRequested();
-        if (_deadline?.Expired == true) throw new GethTraceDeadlineException();
+        bool recordedErrorWins = !_enforceExecutionDeadline && _traceError is not null;
+        if (!recordedErrorWins && _deadline?.Expired == true) throw new GethTraceDeadlineException();
     }
 
     private bool IsOwnDeadlineInterruption(Exception exception) =>
@@ -623,6 +648,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         {
             _external.ThrowIfCancellationRequested();
             throw new GethTraceDeadlineException();
+        }
+        catch (Exception exception) when (!_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
+        {
+            string message = function == TracerFunctions.setup ? exception.Message
+                : $"{exception.Message} in server-side tracer function '{function}'";
+            throw new InvalidDataException(message, exception);
         }
         catch (Exception exception) when (_captureErrors
             && (_engine.TryGetInputError(exception, out string? inputError, observedNullThrow)

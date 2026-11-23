@@ -5,13 +5,13 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Transport.Channels;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
+using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
@@ -150,12 +150,12 @@ namespace Nethermind.Network.Test
 
         private ISession CreateSession(IPingSender pingSender)
         {
-            ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            ISession session = new Session(30312, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.RemoteHost = "1.2.3.4";
             session.RemotePort = 12345;
             session.PingSender = pingSender;
             session.Handshake(TestItem.PublicKeyB);
-            session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
+            session.Init(5, Substitute.For<IPacketSender>());
             return session;
         }
 
@@ -185,12 +185,12 @@ namespace Nethermind.Network.Test
 
         private ISession CreateUnresponsiveSession()
         {
-            ISession session = new Session(30312, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+            ISession session = new Session(30312, Substitute.For<IRlpxConnection>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
             session.RemoteHost = "1.2.3.4";
             session.RemotePort = 12345;
             session.PingSender = _noPong;
             session.Handshake(TestItem.PublicKeyB);
-            session.Init(5, Substitute.For<IChannelHandlerContext>(), Substitute.For<IPacketSender>());
+            session.Init(5, Substitute.For<IPacketSender>());
             return session;
         }
     }

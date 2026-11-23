@@ -15,10 +15,12 @@ namespace Nethermind.Blockchain
 
         /// <summary>
         /// Whether a forced head update (FCU reorg) clears canonical markers left above the new head.
+        /// </summary>
+        /// <remarks>
         /// Overlay trees that discard their writes (eth_simulateV1) turn this off: the levels above the base
         /// head belong to the base tree, and walking them up to <see cref="BestKnownNumber"/> costs a write
         /// per level when the head is far behind, e.g. during snap sync.
-        /// </summary>
+        /// </remarks>
         public bool ClearStaleMarkersOnForcedHeadUpdate { get; init; } = true;
 
         public void HealCanonicalChain(Hash256 startHash, long maxBlockDepth)

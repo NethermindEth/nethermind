@@ -98,35 +98,28 @@ namespace Nethermind.Synchronization.FastSync
 
         private float CalculatePriority(NodeDataType nodeDataType, byte level, uint rightness)
         {
-            if (nodeDataType == NodeDataType.Code)
-            {
-                return 0f;
-            }
-
             switch (nodeDataType)
             {
                 case NodeDataType.Storage:
                     MaxStorageLevel = Math.Max(MaxStorageLevel, level);
                     _maxStorageRightness = Math.Max(_maxStorageRightness, rightness);
-                    break;
+                    return CalculatePriority(level, rightness, MaxStorageLevel, _maxStorageRightness);
                 case NodeDataType.State:
                     MaxStateLevel = Math.Max(MaxStateLevel, level);
                     _maxRightness = Math.Max(_maxRightness, rightness);
-                    break;
+                    return CalculatePriority(level, rightness, MaxStateLevel, _maxRightness);
+                default:
+                    return 0f; // code has its own queue; other types are rejected by PushToSelectedStream
             }
-
-            float priority = CalculatePriority(level, rightness);
-
-            return priority;
         }
 
-        private float CalculatePriority(byte level, uint rightness)
+        private float CalculatePriority(byte level, uint rightness, byte maxLevel, uint maxRightness)
         {
             // the more synced we are the more to the right we want to go - hence the sync progress modifier at the end
             // we want to keep more or less to the same side (left or right - we chose left) so we punish
             // the high child indices
             // we want to go deep first so we add bonus for the depth
-            float priority = 1.00f - (float)level / Math.Max(MaxStateLevel, (byte)1) + (float)rightness / Math.Max(_maxRightness, 1) - (float)_lastSyncProgress / 2;
+            float priority = 1.00f - (float)level / Math.Max(maxLevel, (byte)1) + (float)rightness / Math.Max(maxRightness, 1) - (float)_lastSyncProgress / 2;
             return priority;
         }
 
@@ -178,7 +171,7 @@ namespace Nethermind.Synchronization.FastSync
                 length = maxSize;
             }
 
-            List<StateSyncItem> requestItems = new(length);
+            List<StateSyncItem> requestItems = [with(length)];
 
             // Codes have priority over State Nodes
             if (!CodeItems.IsEmpty)

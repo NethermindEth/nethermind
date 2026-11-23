@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.FluentRlp;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Xdc.Contracts;
@@ -99,7 +100,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
             return null;
 
         RlpReader context = new(value);
-        TSnapshot decoded = _snapshotDecoder.Decode(ref context);
+        TSnapshot decoded = _snapshotDecoder.Decode(ref context, RlpBehaviors.TrustedInput);
         snapshot = decoded;
         _snapshotCache.Set(headerHash, snapshot);
         return snapshot;
@@ -119,9 +120,7 @@ internal abstract class BaseSnapshotManager<TSnapshot> : ISnapshotManager
         if (_snapshotDb.KeyExists(key))
             return;
 
-        Rlp rlpEncodedSnapshot = _snapshotDecoder.Encode(snapshot);
-
-        _snapshotDb.Set(key, rlpEncodedSnapshot.Bytes);
+        _snapshotDb.Set(key, _snapshotDecoder.Encode(snapshot));
         _snapshotCache.Set(snapshot.HeaderHash, snapshot);
     }
 

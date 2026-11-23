@@ -275,7 +275,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             _ => _kind.GetHashCode()
         };
 
-    /// <summary>Returns a diagnostic representation of the ID.</summary>
+    /// <summary>Returns a diagnostic representation of the ID with string controls escaped.</summary>
     /// <returns>The ID as text, or a marker for missing/null states.</returns>
     public override string ToString() =>
         _kind switch
@@ -284,7 +284,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
             JsonRpcIdKind.Null => "null",
             JsonRpcIdKind.Long => _longValue.ToString(CultureInfo.InvariantCulture),
             JsonRpcIdKind.Decimal => _decimalValue.ToString(CultureInfo.InvariantCulture),
-            JsonRpcIdKind.String => GetStringValue(),
+            JsonRpcIdKind.String => JsonRpcRequest.EncodeLogText(GetStringValue()),
             JsonRpcIdKind.Number => Encoding.UTF8.GetString(_rawValue!),
             _ => string.Empty
         };

@@ -15,6 +15,8 @@ internal sealed class TreeVisitorAdapter<TNodeContext>(ITreeVisitor<TNodeContext
 {
     public bool IsFullDbScan => visitor.IsFullDbScan;
 
+    public bool IsRangeScan => visitor.IsRangeScan;
+
     public bool ExpectAccounts => visitor.ExpectAccounts;
 
     public ReadFlags ExtraReadFlag => visitor.ExtraReadFlag;

@@ -76,7 +76,7 @@ public sealed class ProcessingTransactionIndexBulkFill(
                 // captured, a disk that fills and is freed.
                 if (_logger.IsWarn) _logger.Warn($"Bulk transaction index paused with its checkpoint retained: {exception.Message}");
             }
-            if (delay.Wait(TimeSpan.FromSeconds(30))) return;
+            if (delay.Wait(TimeSpan.FromSeconds(30), CancellationToken.None)) return;
         }
     }
 

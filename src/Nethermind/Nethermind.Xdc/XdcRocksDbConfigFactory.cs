@@ -14,7 +14,7 @@ public class XdcRocksDbConfigFactory(IRocksDbConfigFactory baseFactory, IDbConfi
     public const string XdcSnapshotDbName = "XdcSnapshots";
     public const string XdcRewardsDbName = "XdcRewards";
 
-    public IRocksDbConfig GetForDatabase(string databaseName, string? columnName)
+    public IRocksDbConfig GetForDatabase(string? databaseName, string? columnName)
     {
         // For XdcSnapshots, create PerTableDbConfig with validate=false since it doesn't have
         // XdcSnapshotsDbRocksDbOptions configured in IDbConfig
