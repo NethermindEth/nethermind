@@ -217,19 +217,28 @@ public class FrameExceptionFragmentsTests
         }
     }
 
+    private static TxFrame SelfVerifyFrame() =>
+        new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, UInt256.Zero, default);
+
     private static IEnumerable<TestCaseData> DependencyFrameRuleCases()
     {
         static TestCaseData Case(string name, string expectedError, ulong gasLimit = Eip8288Constants.LeanSphincsVerificationGas,
-            UInt256 value = default, int claims = 1, Action<byte[]> mutateData = null, int extraBytes = 0)
+            UInt256 value = default, int claims = 1, Action<byte[]> mutateData = null, int extraBytes = 0, Address target = null,
+            bool inAtomicBatch = false)
         {
             byte[] data = new byte[claims * Eip8288Constants.DependencyTripleLength + extraBytes];
             for (int i = 0; i < claims; i++) data[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
             mutateData?.Invoke(data);
-            return new TestCaseData(new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, gasLimit, value, data), expectedError)
-                .SetName($"Format covers {name}");
+            TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, target, gasLimit, value, data);
+            TxFrame[] frames = inAtomicBatch
+                ? [SelfVerifyFrame(), new TxFrame(FrameMode.Sender, FrameFlags.AtomicBatch, TestItem.AddressB, 50_000, UInt256.Zero, default), dependencyFrame]
+                : [dependencyFrame, SelfVerifyFrame()];
+            return new TestCaseData(frames, expectedError).SetName($"Format covers {name}");
         }
 
         yield return Case("a dependency frame carrying value", FrameTxValidation.DependencyFrameShape, value: UInt256.One);
+        yield return Case("a dependency frame with a target", FrameTxValidation.DependencyFrameShape, target: TestItem.AddressB);
+        yield return Case("a dependency frame closing an atomic batch", FrameTxValidation.DependencyFrameInAtomicBatch, inAtomicBatch: true);
         yield return Case("dependency data that is not a whole number of claims", FrameTxValidation.DependencyFrameDataLength, extraBytes: 1);
         yield return Case("too many dependencies in one frame", FrameTxValidation.TooManyDependenciesPerFrame,
             gasLimit: (Eip8288Constants.MaxDependenciesPerFrame + 1) * Eip8288Constants.LeanSphincsVerificationGas,
@@ -240,13 +249,13 @@ public class FrameExceptionFragmentsTests
     }
 
     [TestCaseSource(nameof(DependencyFrameRuleCases))]
-    public void Format_CoversTheEip8288DependencyFrameRules(TxFrame dependencyFrame, string expectedError)
+    public void Format_CoversTheEip8288DependencyFrameRules(TxFrame[] frames, string expectedError)
     {
         Nethermind.Core.Transaction tx = new()
         {
             Type = TxType.FrameTx,
             SenderAddress = TestItem.AddressA,
-            Frames = [dependencyFrame, new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 100_000, UInt256.Zero, default)],
+            Frames = frames,
             FrameSignatures = [],
         };
 
