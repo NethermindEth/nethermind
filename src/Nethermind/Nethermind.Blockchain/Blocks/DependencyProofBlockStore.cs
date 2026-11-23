@@ -20,13 +20,13 @@ public sealed class DependencyProofBlockStore(IBlockStore blockStore, IDependenc
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
     {
         if (block.StarkProof is { } proof) proofStore.Insert(block.Number, HashOf(block), proof);
-        blockStore.Insert(WithoutProof(block), writeFlags);
+        blockStore.Insert(block, writeFlags);
     }
 
     public void InsertDeferred(Block block)
     {
         if (block.StarkProof is { } proof) proofStore.InsertDeferred(block.Number, HashOf(block), proof);
-        blockStore.InsertDeferred(WithoutProof(block));
+        blockStore.InsertDeferred(block);
     }
 
     public void Delete(ulong blockNumber, Hash256 blockHash)
@@ -55,7 +55,7 @@ public sealed class DependencyProofBlockStore(IBlockStore blockStore, IDependenc
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(ulong blockNumber, Hash256 blockHash) =>
         blockStore.GetReceiptRecoveryBlock(blockNumber, blockHash);
 
-    public void Cache(Block block) => blockStore.Cache(WithoutProof(block));
+    public void Cache(Block block) => blockStore.Cache(block);
 
     public bool HasBlock(ulong blockNumber, Hash256 blockHash) => blockStore.HasBlock(blockNumber, blockHash);
 
@@ -63,12 +63,4 @@ public sealed class DependencyProofBlockStore(IBlockStore blockStore, IDependenc
 
     private static Hash256 HashOf(Block block) =>
         block.Hash ?? throw new InvalidOperationException("An attempt to store a block with a null hash.");
-
-    /// <summary>A copy of <paramref name="block"/> without the proof; the caller's block may still be validated.</summary>
-    private static Block WithoutProof(Block block) => block.StarkProof is null
-        ? block
-        : new Block(block.Header, new BlockBody(block.Transactions, block.Uncles, block.Withdrawals))
-        {
-            EncodedTransactions = block.EncodedTransactions
-        };
 }
