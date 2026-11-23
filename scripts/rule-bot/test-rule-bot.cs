@@ -488,6 +488,31 @@ var tests = new (string Name, Func<Task> Body)[]
     })),
 
     ("test_prebuilt_guard_ignores_hostile_build_files", () => HostileBuildFiles(Home)),
+    ("test_guard_patch_splits_on_carriage_return_like_git", () => HiddenBlockFails("\r")),
+    ("test_guard_patch_splits_on_form_feed_like_git", () => HiddenBlockFails("\f")),
+    ("test_guard_patch_splits_on_next_line_like_git", () => HiddenBlockFails("\u0085")),
+    ("test_guard_patch_splits_on_line_separator_like_git", () => HiddenBlockFails("\u2028")),
+    ("test_guard_patch_fails_on_path_only_git_parses", async () =>
+    {
+        var (code, output) = await GuardPatch("diff --git \"a/.github/e\\tvil.yml\" \"b/.github/e\\tvil.yml\"\nnew file mode 100644\n--- /dev/null\n+++ \"b/.github/e\\tvil.yml\"\n@@ -0,0 +1 @@\n+x\n");
+        Equal(1, code);
+        True(output.Contains("git applies it but the guard did not parse it"));
+    }),
+    ("test_numstat_paths_keep_tabs_and_both_rename_sides", Sync(() =>
+        Equal("a\tb.cs|c.cs\t|old.cs|new.cs|bin.dat", string.Join('|', NumstatPaths("1\t0\ta\tb.cs\0002\t1\tc.cs\t\0003\t3\t\0old.cs\0new.cs\0-\t-\tbin.dat\0"))))),
+    ("test_guard_patch_fails_on_hidden_rename_into_a_listed_path", async () =>
+    {
+        var (code, output) = await GuardPatch("diff --git a/src/Nethermind/Nethermind.Analyzers/N.cs b/src/Nethermind/Nethermind.Analyzers/N.cs\nnew file mode 100644\n--- /dev/null\n+++ b/src/Nethermind/Nethermind.Analyzers/N.cs\n@@ -0,0 +1 @@\n+x\nx\r@@ -1,1 +1,2 @@\ndiff --git a/.github/e.yml b/src/Nethermind/Nethermind.Analyzers/M.cs\nsimilarity index 100%\nrename from .github/e.yml\nrename to src/Nethermind/Nethermind.Analyzers/M.cs\n");
+        Equal(1, code);
+        True(output.Contains("Nethermind.Analyzers/M.cs: symlink, mode, rename"));
+    }),
+    ("test_guard_fails_on_applied_ignored_file", () => IgnoredFileFails(repositoryRoot)),
+    ("test_workflow_applies_patches_to_the_index", Sync(() =>
+    {
+        var applies = File.ReadAllLines(Path.Combine(repositoryRoot, ".github", "workflows", "rule-bot.yml")).Where(line => line.TrimStart().StartsWith("git apply", StringComparison.Ordinal)).ToList();
+        Equal(3, applies.Count);
+        True(applies.All(line => line.TrimStart().StartsWith("git apply --index ", StringComparison.Ordinal)));
+    })),
 
     ("test_route_b_stops_at_first_cluster_that_passes", async () =>
     {
@@ -629,6 +654,56 @@ static class RuleBotTestSupport
             return (O(Load(Path.Combine(data, "route_b.json"))), calls);
         }
         finally { Environment.CurrentDirectory = previous; }
+    }
+
+    private static async Task<(int Code, string Output)> GuardIn(string directory, string? patch)
+    {
+        var previous = Environment.CurrentDirectory;
+        Environment.CurrentDirectory = directory;
+        try
+        {
+            var code = 0;
+            var output = await Quiet(async () => code = await Guard("HEAD", patch, "NETH012", null, null, default));
+            return (code, output);
+        }
+        finally { Environment.CurrentDirectory = previous; }
+    }
+
+    internal static async Task<(int Code, string Output)> GuardPatch(string patch)
+    {
+        using var directory = new TempDirectory();
+        var path = Path.Combine(directory.Path, "p.patch");
+        File.WriteAllText(path, patch);
+        return await GuardIn(directory.Path, path);
+    }
+
+    internal static async Task HiddenBlockFails(string separator)
+    {
+        var (code, output) = await GuardPatch($"x{separator}@@ -1,1 +1,2 @@\ndiff --git a/.github/workflows/evil.yml b/.github/workflows/evil.yml\nnew file mode 100644\n--- /dev/null\n+++ b/.github/workflows/evil.yml\n@@ -0,0 +1 @@\n+on: push\n");
+        Equal(1, code);
+        True(output.Contains("guard: FAIL .github/workflows/evil.yml"));
+    }
+
+    internal static async Task IgnoredFileFails(string repositoryRoot)
+    {
+        using var directory = new TempDirectory();
+        var tree = directory.Path;
+        await Checked("git", ["init", "-q"], tree);
+        File.WriteAllText(Path.Combine(tree, ".gitignore"), "*.user\n");
+        await Checked("git", ["add", "."], tree);
+        await Checked("git", ["-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "base"], tree);
+        var patch = Path.Combine(tree, "..", $"{Path.GetFileName(tree)}.patch");
+        File.WriteAllText(patch, "diff --git a/src/Demo/Demo.csproj.user b/src/Demo/Demo.csproj.user\nnew file mode 100644\n--- /dev/null\n+++ b/src/Demo/Demo.csproj.user\n@@ -0,0 +1 @@\n+<Project />\n");
+        try
+        {
+            var apply = File.ReadAllLines(Path.Combine(repositoryRoot, ".github", "workflows", "rule-bot.yml")).First(line => line.TrimStart().StartsWith("git apply", StringComparison.Ordinal)).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            await Checked("git", [.. apply[1..^1], patch], tree);
+            await Checked("git", ["add", "-N", "."], tree);
+            var (code, output) = await GuardIn(tree, null);
+            Equal(1, code);
+            True(output.Contains("guard: FAIL src/Demo/Demo.csproj.user"));
+        }
+        finally { File.Delete(patch); }
     }
 
     internal static async Task HostileBuildFiles(string home)

@@ -1187,8 +1187,9 @@ static partial class RuleBot
         var status = "";
         bool inUnshipped = false, inEditorConfig = false;
         BigInteger oldLeft = 0, newLeft = 0;
-        foreach (var line in SplitLines(text))
+        foreach (var rawLine in FileLines(text))
         {
+            var line = rawLine.EndsWith('\r') ? rawLine[..^1] : rawLine;
             if (oldLeft > 0 || newLeft > 0)
             {
                 if (TagIn(line, " -")) oldLeft--;
@@ -1250,12 +1251,39 @@ static partial class RuleBot
         return Universal(output);
     }
 
-    private static async Task<int> Guard(string baseRef, string? patch, string? newId, string? files, string? idList, CancellationToken token)
+    internal static IEnumerable<string> NumstatPaths(string output)
+    {
+        var fields = output.Split('\0');
+        for (var i = 0; i < fields.Length - 1; i++)
+        {
+            var path = fields[i].Split('\t', 3)[2];
+            if (path.Length > 0) yield return path;
+            else
+            {
+                yield return fields[++i];
+                yield return fields[++i];
+            }
+        }
+    }
+
+    private static async Task<List<string>> PathsOnlyGitSees(string patch, List<(string Status, string Path)> changes, CancellationToken token)
+    {
+        if (new FileInfo(patch).Length == 0) return [];
+        var (code, output, _) = await Exec(["git", "apply", "--numstat", "-z", patch], false, token);
+        if (code != 0 || output.Contains('\uFFFD')) return ["patch: git cannot read it"];
+        var seen = changes.Select(change => change.Path).ToHashSet();
+        return NumstatPaths(output).Where(path => !seen.Contains(path)).Select(path => $"{path}: git applies it but the guard did not parse it").ToList();
+    }
+
+    internal static async Task<int> Guard(string baseRef, string? patch, string? newId, string? files, string? idList, CancellationToken token)
     {
         List<(string Status, string Path)> changes;
-        List<string> unshipped, edits;
+        List<string> unshipped, edits, gitBad = [];
         if (!string.IsNullOrEmpty(patch))
-            (changes, unshipped, edits) = PatchChanges(ReadText(patch, replace: true));
+        {
+            (changes, unshipped, edits) = PatchChanges(LenientUtf8.GetString(File.ReadAllBytes(patch)));
+            gitBad = await PathsOnlyGitSees(patch, changes, token);
+        }
         else
         {
             changes = [];
@@ -1274,6 +1302,7 @@ static partial class RuleBot
         var ids = (idList ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries).ToHashSet();
         var bad = CheckPaths(changes, unshipped, newId, FixFilesOf(files), edits, ids);
         bad.AddRange(changes.Where(change => change.Status == "X").Select(change => $"{change.Path}: symlink, mode, rename, binary or unlisted header change"));
+        bad.AddRange(gitBad);
         foreach (var line in bad) Console.WriteLine($"guard: FAIL {line}");
         Console.WriteLine($"guard: {(bad.Count == 0 ? "PASS" : "FAIL")} ({changes.Count} files)");
         return bad.Count == 0 ? 0 : 1;

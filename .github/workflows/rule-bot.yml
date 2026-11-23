@@ -169,7 +169,7 @@ jobs:
           extra=()
           if [ -n "$ROUTE_B_ID" ] && [ -s "$DATA/analyzer.patch" ] && jq -e '.tests_ok and .red_ok and .guard_ok' "$DATA/route_b.json" > /dev/null; then
             "$RUNNER_TEMP/rule-bot/rule-bot" guard --patch "$DATA/analyzer.patch" --new-id "$ROUTE_B_ID"
-            git apply "$DATA/analyzer.patch"
+            git apply --index "$DATA/analyzer.patch"
             git add -N .
             "$RUNNER_TEMP/rule-bot/rule-bot" guard --new-id "$ROUTE_B_ID"
             extra=(--extra "$ROUTE_B_ID")
@@ -333,7 +333,7 @@ jobs:
         run: |
           if [ "$ROUTE" = B ]; then
             "$RUNNER_TEMP/rule-bot/rule-bot" guard --patch "$DATA/analyzer.patch" --new-id "$IDS"
-            git apply "$DATA/analyzer.patch"
+            git apply --index "$DATA/analyzer.patch"
             git add -N .
             "$RUNNER_TEMP/rule-bot/rule-bot" guard --new-id "$IDS"
           fi
@@ -437,7 +437,7 @@ jobs:
           new_id=()
           [ "$ROUTE" = B ] && new_id=(--new-id "$IDS")
           "$RUNNER_TEMP/rule-bot/rule-bot" guard --patch "$DATA/fix.patch" --files "$RUNNER_TEMP/rule-bot-result/fix-hits.txt" --ids "$IDS" "${new_id[@]}"
-          git apply "$DATA/fix.patch"
+          git apply --index "$DATA/fix.patch"
           git add -N .
           "$RUNNER_TEMP/rule-bot/rule-bot" guard --files "$RUNNER_TEMP/rule-bot-result/fix-hits.txt" --ids "$IDS" "${new_id[@]}"
           branch="rule-bot/$SLUG-$GITHUB_RUN_ID"
