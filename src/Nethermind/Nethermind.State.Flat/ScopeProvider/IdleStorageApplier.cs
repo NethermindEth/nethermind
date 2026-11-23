@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -12,11 +13,18 @@ namespace Nethermind.State.Flat.ScopeProvider;
 /// One process-wide thread that applies committed storage writes to early storage trees while the block executes.
 /// It runs under SCHED_IDLE on Linux, never blocks the block thread, and is skipped by blocks processed back to back.
 /// </summary>
+/// <remarks>
+/// A large pass spreads its trie update over helper threads at the same idle priority. A contract with thousands of
+/// writes in a block needs them: on one thread its pass is still running when the block ends, so all of its early
+/// work is dropped. Thread-pool workers would take CPU from block execution instead.
+/// </remarks>
 internal sealed partial class IdleStorageApplier
 {
     private const int SchedIdle = 5;
     private const int YieldsBeforeSleeping = 64;
     private const int SleepsBeforeParking = 50;
+    // The most children a bulk set updates in parallel.
+    private const int MaxHelpers = 15;
 
     // Settable for tests.
     internal static TimeSpan MinIdleGap { get; set; } = TimeSpan.FromMilliseconds(250);
@@ -30,12 +38,18 @@ internal sealed partial class IdleStorageApplier
     // 1 while the thread is parked or about to park.
     private int _parked;
     private long _lastBlockCommit;
+    private readonly BlockingCollection<IThreadPoolWorkItem> _helperWork = [];
+    private readonly int _helperCount = Math.Min(Environment.ProcessorCount - 1, MaxHelpers);
 
     private IdleStorageApplier(ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<IdleStorageApplier>();
         Thread thread = new(Run) { IsBackground = true, Name = "Storage early apply" };
         thread.Start();
+        for (int i = 0; i < _helperCount; i++)
+        {
+            new Thread(RunHelper) { IsBackground = true, Name = "Storage early apply helper" }.Start();
+        }
     }
 
     public static IdleStorageApplier GetInstance(ILogManager logManager)
@@ -70,6 +84,8 @@ internal sealed partial class IdleStorageApplier
     private void Run()
     {
         LowerPriority();
+        // The bulk set of a pass joins this scope, so its parallel work goes to the helpers.
+        using ParallelUnbalancedWork.WorkerScope? helpers = _helperCount > 0 ? new(_helperCount + 1, _helperWork.Add) : null;
 
         int idleRounds = 0;
         while (true)
@@ -102,6 +118,12 @@ internal sealed partial class IdleStorageApplier
                 idleRounds = 0;
             }
         }
+    }
+
+    private void RunHelper()
+    {
+        LowerPriority();
+        foreach (IThreadPoolWorkItem work in _helperWork.GetConsumingEnumerable()) work.Execute();
     }
 
     private void Park()
